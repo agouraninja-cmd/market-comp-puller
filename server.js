@@ -6957,15 +6957,82 @@ async function permitTrackerPayload(user) {
 // ---------------------------------------------------------------------------
 const PERMIT_WATCH_CITIES = PERMIT_SWEPT.map((c) => c.key);
 
-async function permitWatchesPayload(user) {
+// The member's firms for permit tracking (2026-09-29; migration 055): the
+// active memberships, and the one firm — the oldest they OWN — that a permit
+// of theirs may be tracked for. Fails open to "no firm": a failed membership
+// read costs the firm switch and the firm's shared permits, never the
+// member's own list.
+async function permitFirmContext(user) {
+  try {
+    const active = await activeMembershipsFor(user);
+    const owned = active.find((m) => PERMIT_WATCH.canShareWithFirm(m)) || null;
+    const names = await orgsByIds(active.map((m) => m.org_id));
+    const nameOf = (id) => String(((names.get(String(id || "")) || {}).name) || "");
+    return {
+      orgIds: active.map((m) => String(m.org_id)),
+      owned: owned ? { id: String(owned.org_id), name: nameOf(owned.org_id) } : null,
+      nameOf,
+    };
+  } catch (err) {
+    console.error("Permit firm context failed (own permits unaffected):", err.message);
+    return { orgIds: [], owned: null, nameOf: () => "" };
+  }
+}
+
+// `ent` decides whether this member may track (Pro, owner's call 2026-09-29).
+// A member who may not still sees the permits they already track — a lapse
+// locks the list, it never deletes it — but not the firm's shared ones,
+// which exist to deliver notices a free account does not get.
+async function permitWatchesPayload(user, ent) {
   const uid = encodeURIComponent(user.id);
-  const [rows, events] = await Promise.all([
+  const canTrack = Boolean(ent && ent.canTrackPermits === true);
+  const [rows, events, firm] = await Promise.all([
     sbRequest("GET", `permit_watches?user_id=eq.${uid}&order=created_at.desc&limit=${PERMIT_WATCH.MAX_WATCHES_PER_USER}`),
     sbRequest("GET", `permit_watch_events?user_id=eq.${uid}&order=detected_at.desc&limit=400`),
+    permitFirmContext(user),
   ]);
+  // The firm's shared permits (another member's watch with this member's firm
+  // attached) and this member's mutes. Both fail open to none: before 055 has
+  // run there is no org_id to filter on, and a failed read must never cost the
+  // member's own list above them.
+  let shared = [];
+  let muted = new Set();
+  let sharers = new Map();
+  if (canTrack && firm.orgIds.length) {
+    try {
+      shared = (await sbRequest("GET",
+        `permit_watches?org_id=in.(${pgInList(firm.orgIds)})&user_id=neq.${uid}` +
+        `&order=created_at.desc&limit=${PERMIT_WATCH.MAX_WATCHES_PER_USER * 4}`)) || [];
+      if (shared.length) {
+        const [mutes, people] = await Promise.all([
+          sbRequest("GET", `permit_watch_mutes?user_id=eq.${uid}&select=watch_id&limit=500`),
+          usersByIds(shared.map((w) => w.user_id)),
+        ]);
+        muted = new Set((mutes || []).map((m) => String(m.watch_id)));
+        sharers = people;
+      }
+    } catch (err) {
+      console.error("Firm permit read failed (own permits unaffected):", err.message);
+      shared = [];
+    }
+  }
+  const view = (r, extra) => PERMIT_WATCH.watchView(r, events || [], {
+    cityOf: permitCityOf, viewerId: user.id, firmName: r.org_id ? firm.nameOf(r.org_id) : "", ...extra,
+  });
   return {
     cities: PERMIT_SWEPT.map((c) => ({ key: c.key, label: c.label })),
-    watches: (rows || []).map((r) => PERMIT_WATCH.watchView(r, events || [], { cityOf: permitCityOf })),
+    // Whether this member may add a permit or change one: Pro. The page
+    // shows the list either way and the way to Pro when this is false.
+    canTrack,
+    // The firm a permit of theirs may be tracked for — set only for an owner.
+    firm: canTrack ? firm.owned : null,
+    watches: [
+      ...(rows || []).map((r) => view(r)),
+      ...shared.map((r) => {
+        const who = sharers.get(String(r.user_id)) || {};
+        return view(r, { sharedBy: who.name || who.email || "a colleague", muted: muted.has(String(r.id)) });
+      }),
+    ],
     unread: PERMIT_WATCH.unreadCount(events || []),
     max: PERMIT_WATCH.MAX_WATCHES_PER_USER,
     steps: PERMIT_WATCH.STEPS,
@@ -6982,6 +7049,63 @@ async function permitWatchUnread(user) {
   const rows = await sbRequest("GET",
     `permit_watch_events?user_id=eq.${encodeURIComponent(user.id)}&app=is.true&seen_at=is.null&select=id&limit=100`);
   return (rows || []).length;
+}
+
+// The colleagues one firm permit's event is copied to (2026-09-29; 055).
+// Three reads, each memoized per run in `memo`, and one rule each:
+//  - The roster. The watch's owner must STILL be an active owner of the firm
+//    the watch names; a watch left pointing at a firm its owner has since
+//    left or handed over reaches the owner alone.
+//  - Each colleague's plan. Tracking is Pro, so a colleague is told only when
+//    their own entitlements include it — a firm seat, a subscription, a trial
+//    or a tester grant. (The comped-team admin grant is a browser cookie, not
+//    a stored fact, so the sweep cannot see it.)
+//  - The mutes. A failed mute read treats every colleague as muted: their
+//    history is still written, and nobody who muted this permit is
+//    interrupted by it — the member's veto is the one thing not to guess at.
+// PERMIT_WATCH.firmRecipients owns the rule itself; this only reads.
+async function permitFirmRecipients(w, g, memo, out) {
+  const orgId = String(w.org_id);
+  try {
+    if (!memo.members.has(orgId)) memo.members.set(orgId, orgMemberRows(orgId).then((rows) => rows.filter((r) => ORG.isActive(r))));
+    const members = await memo.members.get(orgId);
+    const ownerRow = members.find((m) => String(m.user_id || "") === String(w.user_id));
+    if (!ownerRow || !PERMIT_WATCH.canShareWithFirm(ownerRow)) return [];
+    const ids = [...new Set(members.map((m) => String(m.user_id || "")).filter((id) => id && id !== String(w.user_id)))];
+    const unknown = ids.filter((id) => !memo.entitled.has(id));
+    if (unknown.length) {
+      const people = findUsersByIds(unknown);
+      for (const id of unknown) {
+        memo.entitled.set(id, people.then(async (list) => {
+          const u = list.find((x) => String(x.id) === id);
+          if (!u) return false;
+          const ent = await getEntitlements(u, undefined, false);
+          return ent.canTrackPermits === true;
+        }).catch(() => false));
+      }
+    }
+    const entitledIds = [];
+    for (const id of ids) if (await memo.entitled.get(id)) entitledIds.push(id);
+    const key = String(w.id);
+    if (!memo.mutes.has(key)) {
+      memo.mutes.set(key, sbRequest("GET", `permit_watch_mutes?watch_id=eq.${encodeURIComponent(key)}&select=user_id&limit=${ORG.MAX_MEMBERS}`)
+        .then((rows) => (rows || []).map((r) => String(r.user_id)))
+        .catch((err) => {
+          out.errors.push(`firm permit ${w.permit_number} mutes: ${err.message} (colleagues treated as muted this run)`);
+          return null;
+        }));
+    }
+    const mutes = await memo.mutes.get(key);
+    return PERMIT_WATCH.firmRecipients({
+      watch: w, members,
+      ownWatcherIds: g.watches.map((x) => x.user_id),
+      entitledIds,
+      mutedIds: mutes === null ? entitledIds : mutes,
+    });
+  } catch (err) {
+    out.errors.push(`firm permit ${w.permit_number}: ${err.message}`);
+    return [];
+  }
 }
 
 // The weekday re-check, called from sweepPermitFilings so it inherits that
@@ -7001,6 +7125,11 @@ async function checkPermitWatches({ dryRun = false, deps, now }) {
     return out;
   }
   out.watched = rows.length;
+  out.firmNotices = 0;
+  // One run's memo for the firm fan-out: each firm's roster, each member's
+  // plan and each firm permit's mutes are read once however many permits
+  // move. Promises, not values, so two permits of one firm share one read.
+  const fanout = { members: new Map(), entitled: new Map(), mutes: new Map() };
   const due = PERMIT_WATCH.dueChecks(rows, { cities: PERMIT_WATCH_CITIES });
   for (let i = 0; i < due.length; i++) {
     const g = due[i];
@@ -7031,10 +7160,20 @@ async function checkPermitWatches({ dryRun = false, deps, now }) {
       try {
         // The event BEFORE the watch: if the watch write then fails, the next
         // run sees the old status and records the move again — a duplicate,
-        // where the other order would lose the notice outright.
+        // where the other order would lose the notice outright. A firm
+        // permit's colleagues get their copies in the same place, for the
+        // same reason.
         if (event) {
           await sbRequest("POST", "permit_watch_events",
             { watch_id: w.id, user_id: w.user_id, ...event }, { prefer: "return=minimal" });
+          if (w.org_id) {
+            const recipients = await permitFirmRecipients(w, g, fanout, out);
+            for (const r of recipients) {
+              await sbRequest("POST", "permit_watch_events",
+                { watch_id: w.id, user_id: r.userId, ...PERMIT_WATCH.firmEvent(event, r.muted) }, { prefer: "return=minimal" });
+              if (event.notice && !r.muted) out.firmNotices += 1;
+            }
+          }
         }
         await sbRequest("PATCH", `permit_watches?id=eq.${encodeURIComponent(w.id)}`,
           { ...watchPatch, last_checked_at: stamp }, { prefer: "return=minimal" });
@@ -7068,14 +7207,20 @@ async function sendPermitNoticeEmails(now) {
   const byUser = new Map();
   for (const e of due) {
     const w = watchById.get(String(e.watch_id));
-    if (!w || w.notify_email !== true || String(w.user_id) !== String(e.user_id)) continue;
+    // The watch's owner, or — for a permit tracked for the firm (055) — a
+    // colleague whose copy the fan-out wrote with email_due. Anyone else's
+    // event on a watch is not theirs to be mailed about.
+    if (!w || w.notify_email !== true) continue;
+    if (String(w.user_id) !== String(e.user_id) && !w.org_id) continue;
     if (!byUser.has(String(e.user_id))) byUser.set(String(e.user_id), []);
     byUser.get(String(e.user_id)).push({ watch: w, event: e });
   }
   const accounts = await findUsersByIds([...byUser.keys()]);
+  const firms = await orgsByIds(watches.map((w) => w.org_id).filter(Boolean));
+  const firmNameOf = (id) => String(((firms.get(String(id || "")) || {}).name) || "");
   for (const account of accounts) {
     const items = byUser.get(String(account.id)) || [];
-    const mail = PERMIT_WATCH.buildNoticeEmail({ items, siteUrl: SITE_URL, cityOf: permitCityOf });
+    const mail = PERMIT_WATCH.buildNoticeEmail({ items, siteUrl: SITE_URL, cityOf: permitCityOf, recipientId: account.id, firmNameOf });
     if (!mail || !account.email) continue;
     let sent = false;
     try { sent = await sendOutboundEmail(account.email, mail.subject, mail.text); }
@@ -21030,8 +21175,11 @@ const server = http.createServer((req, res) =>
   // the "Preview" button on /admin. { days } widens the window (1..60).
   // --- Tracking your own permit (2026-09-27; migration 054) ---------------
   //
-  // Any signed-in account, like the tracker itself: the permit is public
-  // record and the watch is the member's own. No file fallback (rule 4), so
+  // Tracking is Pro (owner's call, 2026-09-29: "pro tool only"): adding a
+  // permit and changing one need ent.canTrackPermits. Reading the list,
+  // stopping tracking, clearing the unread count and muting a firm permit do
+  // not — a lapse locks the list, it never takes away the way out of it. The
+  // public filings feed on /permits stays for every account. No file fallback (rule 4), so
   // every route answers 503 without a database. The re-check and the emails
   // ride POST /api/permits/sweep below; nothing here runs on a timer.
   if (req.url.split("?")[0] === "/api/permits/unread" && req.method === "GET") {
@@ -21048,7 +21196,8 @@ const server = http.createServer((req, res) =>
       const user = await requireUser(req, res);
       if (!user) return;
       if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Permit tracking is unavailable right now." });
-      return sendJson(res, 200, await permitWatchesPayload(user));
+      const ent = await getEntitlements(user, undefined, isAdminRequest(req));
+      return sendJson(res, 200, await permitWatchesPayload(user, ent));
     })().catch((err) => { console.error("permits mine error:", err.message); sendJson(res, 503, { error: "Permit tracking is unavailable right now." }); });
     return;
   }
@@ -21073,6 +21222,49 @@ const server = http.createServer((req, res) =>
     });
     return;
   }
+  // Mute or unmute a permit a colleague tracks for the firm (055). The
+  // member's veto (031's rule): not Pro-gated, because it only ever makes
+  // CompNinja quieter. The watch must be attached to a firm the caller is an
+  // ACTIVE member of, and must not be their own — their own permit has its
+  // own settings.
+  if (req.url.split("?")[0] === "/api/permits/mute" && req.method === "POST") {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Permit tracking is unavailable right now." });
+        const b = JSON.parse(body || "{}");
+        const id = String(b.id || "");
+        if (!isUuidish(id) || typeof b.muted !== "boolean") return sendJson(res, 400, { error: "Bad request." });
+        const orgIds = await activeOrgIdsFor(user);
+        const rows = orgIds.length ? ((await sbRequest("GET",
+          `permit_watches?id=eq.${encodeURIComponent(id)}&org_id=in.(${pgInList(orgIds)})&user_id=neq.${encodeURIComponent(user.id)}&select=id&limit=1`)) || []) : [];
+        if (!rows.length) return sendJson(res, 404, { error: "That permit isn't one your firm tracks." });
+        const uid = encodeURIComponent(user.id);
+        if (b.muted) {
+          await sbRequest("POST", "permit_watch_mutes?on_conflict=watch_id,user_id",
+            { watch_id: id, user_id: user.id }, { prefer: "resolution=ignore-duplicates,return=minimal" });
+          // What was waiting stops waiting: muting clears this permit's unread
+          // notices and any email not yet sent.
+          await sbRequest("PATCH", `permit_watch_events?watch_id=eq.${encodeURIComponent(id)}&user_id=eq.${uid}&seen_at=is.null`,
+            { seen_at: new Date().toISOString() }, { prefer: "return=minimal" });
+          await sbRequest("PATCH", `permit_watch_events?watch_id=eq.${encodeURIComponent(id)}&user_id=eq.${uid}&emailed_at=is.null`,
+            { email_due: false }, { prefer: "return=minimal" });
+        } else {
+          await sbRequest("DELETE", `permit_watch_mutes?watch_id=eq.${encodeURIComponent(id)}&user_id=eq.${uid}`, undefined, { prefer: "return=minimal" });
+        }
+        return sendJson(res, 200, { ok: true, muted: b.muted });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("permit mute error:", err.message);
+        return sendJson(res, 503, { error: "Permit tracking is unavailable right now. Please try again in a minute." });
+      }
+    });
+    return;
+  }
   if (req.url.split("?")[0] === "/api/permits/watch" && ["POST", "PATCH", "DELETE"].includes(req.method)) {
     let body = "";
     req.setEncoding("utf8");
@@ -21084,8 +21276,13 @@ const server = http.createServer((req, res) =>
         if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Permit tracking is unavailable right now." });
         const uid = encodeURIComponent(user.id);
         const cityLabels = PERMIT_SWEPT.map((c) => c.label);
+        const ent = await getEntitlements(user, undefined, isAdminRequest(req));
+        const proRequired = () => sendJson(res, 403, {
+          error: "Tracking a permit is part of CompNinja Pro.", code: "pro_required",
+        });
 
         if (req.method === "POST") {
+          if (!ent.canTrackPermits) return proRequired();
           // Each add is a live portal search, so it is limited per account.
           if (rateLimited("permit-watch:" + user.id, 20, 60 * 60 * 1000)) {
             return sendJson(res, 429, { error: "That's a lot of permits in one go. Try again in a little while." });
@@ -21132,17 +21329,51 @@ const server = http.createServer((req, res) =>
           // The events cascade in Postgres; deleted here too so the stand-in
           // (and any future table without the FK) cannot leave orphans that
           // still count as unread.
-          await sbRequest("DELETE", `permit_watch_events?watch_id=eq.${encodeURIComponent(id)}&user_id=eq.${uid}`, undefined, { prefer: "return=minimal" });
+          // Every copy, colleagues' included: a firm permit (055) wrote one per
+          // member, and ownership of the watch was proven by the scoped read
+          // above.
+          await sbRequest("DELETE", `permit_watch_events?watch_id=eq.${encodeURIComponent(id)}`, undefined, { prefer: "return=minimal" });
           await sbRequest("DELETE", `permit_watches?${scoped}`, undefined, { prefer: "return=minimal" });
           return sendJson(res, 200, { ok: true });
         }
 
-        const v = PERMIT_WATCH.validateWatchPatch(JSON.parse(body || "{}"), rows[0]);
-        if (!v.ok) return sendJson(res, 400, { error: v.error });
-        const updated = (await sbRequest("PATCH", `permit_watches?${scoped}`, v.patch, { prefer: "return=representation" })) || [];
+        if (!ent.canTrackPermits) return proRequired();
+        const input = JSON.parse(body || "{}");
+        const patch = {};
+        let firm = null;
+        // The firm switch (055): { firm: true } attaches the member's owned
+        // firm, { firm: false } detaches whatever firm is attached. Only an
+        // active OWNER may attach (PERMIT_WATCH.canShareWithFirm); detaching
+        // is always the watch owner's, owner of the firm or not.
+        if (input && typeof input.firm === "boolean") {
+          firm = await permitFirmContext(user);
+          if (input.firm) {
+            if (!firm.owned) return sendJson(res, 403, { error: "Only a firm's owner can track a permit for the whole firm." });
+            patch.org_id = firm.owned.id;
+          } else {
+            patch.org_id = null;
+          }
+        }
+        const rest = { ...(input || {}) };
+        delete rest.firm;
+        if (Object.prototype.hasOwnProperty.call(rest, "label") || (rest.notify && typeof rest.notify === "object") || !Object.keys(patch).length) {
+          const v = PERMIT_WATCH.validateWatchPatch(rest, rows[0]);
+          if (!v.ok) return sendJson(res, 400, { error: v.error });
+          Object.assign(patch, v.patch);
+        }
+        const updated = (await sbRequest("PATCH", `permit_watches?${scoped}`, patch, { prefer: "return=representation" })) || [];
+        // Switched off the firm: the colleagues' copies go, or an unread one
+        // would light their nav dot for a permit they can no longer open.
+        if (patch.org_id === null && rows[0].org_id) {
+          await sbRequest("DELETE", `permit_watch_events?watch_id=eq.${encodeURIComponent(id)}&user_id=neq.${uid}`, undefined, { prefer: "return=minimal" });
+        }
         const events = (await sbRequest("GET",
           `permit_watch_events?watch_id=eq.${encodeURIComponent(id)}&user_id=eq.${uid}&order=detected_at.desc&limit=100`)) || [];
-        return sendJson(res, 200, { watch: PERMIT_WATCH.watchView(updated[0] || { ...rows[0], ...v.patch }, events, { cityOf: permitCityOf }) });
+        const after = updated[0] || { ...rows[0], ...patch };
+        if (after.org_id && !firm) firm = await permitFirmContext(user);
+        return sendJson(res, 200, { watch: PERMIT_WATCH.watchView(after, events, {
+          cityOf: permitCityOf, viewerId: user.id, firmName: after.org_id && firm ? firm.nameOf(after.org_id) : "",
+        }) });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("permit watch error:", err.message);
@@ -29994,7 +30225,8 @@ const server = http.createServer((req, res) =>
           // shown, never here (rule 15: this render may be speculative).
           const [feed, mine] = await Promise.all([
             permitTrackerPayload(user),
-            permitWatchesPayload(user).then((j) => ({ s: 200, j })).catch((err) => {
+            getEntitlements(user, undefined, isAdminRequest(req))
+              .then((ent) => permitWatchesPayload(user, ent)).then((j) => ({ s: 200, j })).catch((err) => {
               console.error("permit watches boot failed:", err.message);
               return { s: 503, j: { error: "Your tracked permits couldn't be loaded just now." } };
             }),

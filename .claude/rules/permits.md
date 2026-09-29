@@ -248,3 +248,70 @@ Not built: tracking a permit in a city the sweep does not read (it would need
 the member to mark steps by hand, and a notice about a step you marked
 yourself is no notice), a "check now" button (each is a live portal search),
 and the parcel number as a match to the member's board buildings.
+
+## Pro, and a permit tracked for the whole firm (2026-09-29)
+
+Owner's calls, the same day: tracking is "pro tool only", and "firm owners can
+set alerts to the whole firm if they want to but it is mostly for employees
+tracking permits". Migration **`055-permit-watch-firm.sql`**
+(`permit_watches.org_id`, `permit_watch_mutes`) — run it before deploying,
+though the order is SOFT: the watch reads are `select=*`, the firm and mute
+reads fail open to none, and the firm switch answers "unavailable" until it
+runs. Rules in `permit-watch.js` (`canShareWithFirm`, `firmRecipients`,
+`firmEvent`, the firm-aware `buildNoticeEmail` and `watchView`), tested in
+`test/permit-watch.test.js`; the whole loop runs against the stand-in in
+**`test/permit-watch-firm-run.test.js`** (the portal stub is shared with the
+older suite through `test/helpers/permit-portal-stub.js`). Seven rules:
+
+- **`canTrackPermits` is the gate, and it guards the doors in, never the
+  way out.** Pro, tester, trial, comped admin and a firm seat have it; a
+  single-report purchase and a dark deployment do not (`entitlements.js`,
+  every branch — the trial and admin branches are early returns, so a key
+  missing there reads as locked). `POST` and `PATCH /api/permits/watch`
+  answer 403 `code: "pro_required"` without it and never reach a portal.
+  Reading the list, `DELETE`, `/api/permits/seen` and muting stay open: a
+  lapse locks the list, it does not take away the way out of it. The public
+  filings feed on /permits is not behind it.
+- **A lapsed member's own permits keep being checked.** The sweep does not
+  read the owner's plan: the comped-team grant is a browser cookie the sweep
+  cannot see, and gating on it would silence the team's own permits. What a
+  lapse costs is adding and changing — the page shows the list with only
+  Stop tracking, and a Pro line where the add button was. Revisit if lapsed
+  accounts start mattering; the fix is an owner check in
+  `checkPermitWatches` beside the colleague one.
+- **A firm permit is the owner's watch with `org_id`, not a second watch.**
+  One portal read, one status, one `passed_steps` ledger. Only an active
+  **owner** attaches it (`canShareWithFirm` — narrower than
+  `canManageMembers`, because the owner said owners, and a notice to every
+  colleague is the firm speaking); detaching (`{ firm: false }`, "Just me")
+  is always the watch owner's, and it deletes the colleagues' copies of its
+  events so no phantom nav dot survives for a permit they can no longer open.
+- **Events stay per recipient.** `checkPermitWatches` writes the owner's
+  event, then one copy per colleague from `permitFirmRecipients` (roster,
+  plans and mutes each read once per run, memoized as promises). A colleague
+  is told only when their OWN entitlements carry `canTrackPermits`; never the
+  owner twice; never a member who tracks the same permit themselves (their
+  own watch already wrote their event — `ownWatcherIds` is the permit group
+  `dueChecks` built); and not at all when the watch's owner is no longer an
+  active owner of that firm. The email and the unread count then work
+  unchanged, which is why `sendPermitNoticeEmails` now accepts an event whose
+  `user_id` is not the watch's owner **only** when the watch carries a firm.
+- **A mute is the member's veto** (031's rule). `POST /api/permits/mute`
+  (`{ id, muted }`), not Pro-gated since it only makes the product quieter,
+  404 for a permit not attached to a firm the caller is ACTIVE in, and 404
+  for their own permit (their own settings are the control there). Muting
+  clears that permit's unread notices and unsent emails. A muted member's
+  events are still written, with `app` and `email_due` off, so the history
+  reads whole if they unmute. **A failed mute read treats every colleague as
+  muted for that run** — the member's veto is the one thing not to guess at.
+- **The page and the Workspace say whose permit it is.** `watchView` takes a
+  `viewerId` and returns `mine`, `firm`, `sharedBy`, `muted`; a colleague's
+  card carries the firm tag and "tracked by …" with Mute as its only
+  control. The Workspace's Tracked permits card lists firm permits too
+  (same `/api/permits/mine` read) and hides outright for an account that
+  cannot track and tracks nothing, since its only content would be a door
+  onto a Pro gate — with `deskPermitNotices = []`, never null, because the
+  read succeeded.
+- **The email names the firm.** A permit that reached somebody through their
+  firm reads "Tracked for Colliers Boise" and ends with how to mute it; the
+  owner's copy reads as their own.

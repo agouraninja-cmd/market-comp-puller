@@ -131,6 +131,11 @@ function renderPermitsBody(boot) {
 .pw-hist li{margin:2px 0}
 .pw-hist li.unread{font-weight:600;color:var(--ink)}
 .pw-empty{font-size:13px;color:var(--ink-3);margin:0}
+.pw-pro{font-size:13px;color:var(--ink-body);background:var(--wash);border-radius:8px;padding:10px 12px;margin:0 0 12px}
+.pw-pro a{color:var(--red);text-decoration:none;font-weight:600}
+.pw-pro a:hover{text-decoration:underline}
+.pw-firm{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:9px;border:1px solid var(--edge);color:var(--ink-2);font-size:10.5px;letter-spacing:.02em;vertical-align:2px}
+.pw-firm.muted{color:var(--ink-3);border-style:dashed}
 @media (max-width:640px){.pt-row{flex-wrap:wrap}.pt-date{flex:1 1 100%}.pt-strip{flex-wrap:wrap}.pt-cell{flex:1 1 45%}
   .pw-steps li{font-size:10px}}
 .hide{display:none}
@@ -146,6 +151,7 @@ function renderPermitsBody(boot) {
       <button type="button" class="pw-btn hide" id="pwAddBtn">Track a permit</button>
     </div>
     <p class="pw-sub" id="pwSub"></p>
+    <p class="pw-pro hide" id="pwPro">Tracking a permit is part of CompNinja Pro: add a permit number, pick the steps you care about, and hear about them by email each weekday morning and here on CompNinja. <a href="/?pricing=1">See Pro →</a></p>
     <form class="pw-form hide" id="pwForm" novalidate>
       <div class="pw-grid">
         <label>City <select id="pwCity"></select></label>
@@ -153,6 +159,9 @@ function renderPermitsBody(boot) {
         <label><span>Nickname <span class="opt">optional</span></span><input id="pwLabel" maxlength="80" autocomplete="off" placeholder="e.g. Federal Way warehouse"/></label>
       </div>
       <div id="pwFormNotify"></div>
+      <fieldset class="pw-set hide" id="pwFirmSet"><legend>Who</legend><div class="pw-opts">
+        <label class="chk"><input type="checkbox" id="pwFirm"/> <span id="pwFirmText">Everyone at your firm</span></label></div>
+        <p class="pw-fine">Everyone at the firm on Pro gets this permit’s notices, the way you set them above. Each of them can mute it.</p></fieldset>
       <div class="pw-actions">
         <button type="submit" class="pw-btn pri" id="pwSave">Track this permit</button>
         <button type="button" class="pt-rm" id="pwCancel">Cancel</button>
@@ -300,10 +309,29 @@ function renderPermitsBody(boot) {
     return n;
   }
   function watchName(w){ return w.label||(w.address?w.address.split(",")[0]:"")||w.permitNumber; }
+  // The foot's controls depend on whose permit it is (2026-09-29, 055): your
+  // own gets Change, the firm switch (owners) and Stop tracking; a permit a
+  // colleague tracks for the firm gets Mute; and without Pro your own keeps
+  // only Stop tracking, so a lapse never takes away the way out.
+  function footControls(w){
+    var b=function(attr,id,text){ return ' · <button type="button" class="pt-rm" '+attr+'="'+esc(id)+'">'+esc(text)+"</button>"; };
+    if(!w.mine) return b("data-mute",w.id,w.muted?"Unmute":"Mute");
+    var out="";
+    if(MINE.canTrack) out+=b("data-edit",w.id,"Change");
+    if(MINE.canTrack&&w.firmId) out+=b("data-firmoff",w.id,"Just me");
+    else if(MINE.canTrack&&MINE.firm) out+=b("data-firmon",w.id,"Track for "+MINE.firm.name);
+    return out+b("data-rm",w.id,"Stop tracking");
+  }
+  function firmTag(w){
+    if(!w.firm) return "";
+    var text=w.mine?"For "+w.firm:(w.muted?"Muted · ":"")+w.firm;
+    return '<span class="pw-firm'+(w.muted?" muted":"")+'">'+esc(text)+"</span>";
+  }
   function card(w){
     var num=w.sourceUrl?'<a href="'+esc(w.sourceUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(w.permitNumber)+"</a>":esc(w.permitNumber);
     var meta=[esc(w.city),num];
     if(w.label&&w.address)meta.push(esc(w.address));
+    if(!w.mine&&w.sharedBy)meta.push("tracked by "+esc(w.sharedBy));
     var steps=w.steps.map(function(s){
       return '<li class="'+(s.done?"done":"")+(s.key===w.step?" now":"")+'">'+esc(s.label)+"</li>";
     }).join("");
@@ -317,26 +345,30 @@ function renderPermitsBody(boot) {
     // id="pw-<id>" is the Workspace's door (2026-09-29): its Tracked permits
     // card and its "Needs you" entries link to /permits#pw-<id>.
     return '<div class="pw-card" id="pw-'+esc(w.id)+'" data-id="'+esc(w.id)+'">'+
-      '<div class="pw-top"><div><span class="pw-name">'+esc(watchName(w))+"</span>"+(w.unread?'<span class="pw-new">New</span>':"")+
+      '<div class="pw-top"><div><span class="pw-name">'+esc(watchName(w))+"</span>"+firmTag(w)+(w.unread?'<span class="pw-new">New</span>':"")+
       '<div class="pw-meta">'+meta.join(" · ")+"</div></div>"+
       '<span class="pw-status'+(w.flag?" "+esc(w.flag):"")+'">'+(w.status?"“"+esc(w.status)+"”":"Status not read yet")+"</span></div>"+
       '<ol class="pw-steps" aria-label="Permit steps">'+steps+"</ol>"+latestHtml+
-      '<div class="pw-foot">'+checked+" · "+esc(notifyText(w.notify))+
-      ' · <button type="button" class="pt-rm" data-edit="'+esc(w.id)+'">Change</button>'+
-      ' · <button type="button" class="pt-rm" data-rm="'+esc(w.id)+'">Stop tracking</button></div>'+
-      '<form class="pw-form hide" data-editform="'+esc(w.id)+'" style="margin-top:10px">'+
+      '<div class="pw-foot">'+checked+" · "+esc(w.mine||!w.muted?notifyText(w.notify):"Muted: nothing from this permit reaches you")+footControls(w)+"</div>"+
+      (w.mine&&MINE.canTrack?'<form class="pw-form hide" data-editform="'+esc(w.id)+'" style="margin-top:10px">'+
       '<div class="pw-grid"><label><span>Nickname <span class="opt">optional</span></span><input data-label maxlength="80" value="'+esc(w.label)+'"/></label></div>'+
       notifyFields(w.notify)+
-      '<div class="pw-actions"><button type="submit" class="pw-btn pri">Save</button> <button type="button" class="pt-rm" data-cancel>Cancel</button> <span class="pw-msg" role="status"></span></div></form>'+
+      '<div class="pw-actions"><button type="submit" class="pw-btn pri">Save</button> <button type="button" class="pt-rm" data-cancel>Cancel</button> <span class="pw-msg" role="status"></span></div></form>':"")+
       hist+"</div>";
   }
+  function ownCount(){ return watches.filter(function(w){return w.mine}).length; }
   function renderMine(){
     var list=$("pwList");
-    $("pwAddBtn").className=watches.length<(MINE.max||25)?"pw-btn":"pw-btn hide";
+    $("pwAddBtn").className=MINE.canTrack&&ownCount()<(MINE.max||25)?"pw-btn":"pw-btn hide";
+    $("pwPro").className=MINE.canTrack?"pw-pro hide":"pw-pro";
     var cities=(MINE.cities||[]).map(function(c){return c.label});
-    $("pwSub").textContent=watches.length
-      ? "Read from each city’s own permit portal every weekday morning. You’re told when a permit reaches the steps you picked."
-      : "Filed a permit in "+words(cities)+"? Track it here: we read its status from the city’s portal every weekday morning and tell you — by email, here on CompNinja, or both — when it reaches the steps you pick.";
+    var firmLine=MINE.firm?" As "+MINE.firm.name+"’s owner, you can track one for everyone at the firm.":"";
+    $("pwSub").textContent=!MINE.canTrack
+      ? (watches.length?"The permits you track are kept here. You can stop tracking any of them.":"")
+      : watches.length
+      ? "Read from each city’s own permit portal every weekday morning. You’re told when a permit reaches the steps you picked."+firmLine
+      : "Filed a permit in "+words(cities)+"? Track it here: we read its status from the city’s portal every weekday morning and tell you — by email, here on CompNinja, or both — when it reaches the steps you pick."+firmLine;
+    $("pwSub").className=$("pwSub").textContent?"pw-sub":"pw-sub hide";
     list.innerHTML=watches.length?watches.map(card).join(""):"";
   }
   function formMsg(el,text,kind){ el.textContent=text||""; el.className="pw-msg"+(kind?" "+kind:""); }
@@ -362,6 +394,7 @@ function renderPermitsBody(boot) {
     var sel=$("pwCity");
     (MINE.cities||[]).forEach(function(c){ var op=document.createElement("option"); op.value=c.key; op.textContent=c.label; sel.appendChild(op); });
     $("pwFormNotify").innerHTML=notifyFields(MINE.defaults||{});
+    if(MINE.firm){ $("pwFirmSet").className="pw-set"; $("pwFirmText").textContent="Everyone at "+MINE.firm.name; }
     renderMine();
     // The Workspace's doors (2026-09-29): ?track=1 opens the add form (its
     // empty card says "Add a permit number"), and #pw-<id> brings that
@@ -369,7 +402,7 @@ function renderPermitsBody(boot) {
     var hash=String(location.hash||"");
     var target=hash.indexOf("#pw-")===0?document.getElementById(decodeURIComponent(hash.slice(1))):null;
     if(target){ target.className+=" pw-focus"; target.scrollIntoView({block:"center"}); }
-    else if(/(^|[?&])track=1(&|$)/.test(String(location.search||""))&&watches.length<(MINE.max||25)){ openAdd(); }
+    else if(/(^|[?&])track=1(&|$)/.test(String(location.search||""))&&MINE.canTrack&&ownCount()<(MINE.max||25)){ openAdd(); }
     // Seen: clears the count on the nav dot. A fetch, so a prerendered copy
     // of this page does not send it until the page is actually shown.
     if(MINE.unread>0){
@@ -396,6 +429,8 @@ function renderPermitsBody(boot) {
         if(o.s!==200||!o.j.watch){ formMsg(msg,(o.j&&o.j.error)||"Couldn’t add that permit. Please try again.","bad"); return; }
         var w=o.j.watch;
         watches.unshift(w);
+        if(MINE.firm&&$("pwFirm").checked){ setFirm(w.id,true); }
+        $("pwFirm").checked=false;
         $("pwNum").value=""; $("pwLabel").value="";
         $("pwFormNotify").innerHTML=notifyFields(MINE.defaults||{});
         $("pwForm").className="pw-form hide";
@@ -410,10 +445,37 @@ function renderPermitsBody(boot) {
       .catch(function(){ btn.disabled=false; formMsg(msg,"That didn’t reach the server. Nothing was added.","bad"); });
   });
   function watchIndex(id){ for(var i=0;i<watches.length;i++){ if(String(watches[i].id)===String(id))return i; } return -1; }
+  function keepMarks(id,fresh){
+    var i=watchIndex(id);
+    if(i>-1){ fresh.unread=watches[i].unread; fresh.history=watches[i].history; watches[i]=fresh; }
+  }
+  function setFirm(id,on){
+    return fetch("/api/permits/watch?id="+encodeURIComponent(id),{method:"PATCH",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({firm:on})})
+      .then(function(r){return r.json().catch(function(){return {}}).then(function(j){return {s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200||!o.j.watch){ alert((o.j&&o.j.error)||"Couldn’t change that just now. Please try again."); return; }
+        keepMarks(id,o.j.watch); renderMine();
+      })
+      .catch(function(){ alert("That didn’t reach the server. Nothing was changed."); });
+  }
   $("pwList").addEventListener("click",function(e){
     var t=e.target;
     if(!t||!t.getAttribute)return;
     var ed=t.getAttribute("data-edit"), rm=t.getAttribute("data-rm");
+    var fon=t.getAttribute("data-firmon"), foff=t.getAttribute("data-firmoff"), mu=t.getAttribute("data-mute");
+    if(fon){
+      if(!confirm("Track this permit for everyone at "+MINE.firm.name+"? Everyone there on Pro gets its notices the way you set them, and each can mute it."))return;
+      setFirm(fon,true); return;
+    }
+    if(foff){ setFirm(foff,false); return; }
+    if(mu){
+      var mi=watchIndex(mu); if(mi<0)return;
+      var want=!watches[mi].muted;
+      fetch("/api/permits/mute",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({id:mu,muted:want})})
+        .then(function(r){ if(!r.ok)throw new Error("x"); var k=watchIndex(mu); if(k>-1){ watches[k].muted=want; if(want)watches[k].unread=0; } renderMine(); })
+        .catch(function(){ alert("Couldn’t change that just now. Please try again."); });
+      return;
+    }
     if(ed){
       var f=document.querySelector('form[data-editform="'+ed+'"]');
       if(f)f.className=f.className.indexOf("hide")>-1?"pw-form":"pw-form hide";
@@ -444,10 +506,9 @@ function renderPermitsBody(boot) {
       .then(function(r){return r.json().catch(function(){return {}}).then(function(j){return {s:r.status,j:j}})})
       .then(function(o){
         if(o.s!==200||!o.j.watch){ formMsg(msg,(o.j&&o.j.error)||"Couldn’t save that. Please try again.","bad"); return; }
-        var i=watchIndex(id);
         // Keep this page view's "New" marks: the server's copy was read after
         // the page cleared them.
-        if(i>-1){ o.j.watch.unread=watches[i].unread; o.j.watch.history=watches[i].history; watches[i]=o.j.watch; }
+        keepMarks(id,o.j.watch);
         renderMine();
       })
       .catch(function(){ formMsg(msg,"That didn’t reach the server. Nothing was changed.","bad"); });

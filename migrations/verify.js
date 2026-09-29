@@ -90,6 +90,7 @@ const TABLES = [
   ["trial_notices",       "053-trial-notices.sql"],
   ["permit_watches",      "054-permit-watches.sql"],
   ["permit_watch_events", "054-permit-watches.sql"],
+  ["permit_watch_mutes",  "055-permit-watch-firm.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -276,6 +277,9 @@ const COLUMNS = [
   // missing emailed_at mails the same notice on every sweep.
   ["permit_watches",    ["passed_steps", "notify_steps", "last_checked_at"], "054-permit-watches.sql"],
   ["permit_watch_events", ["email_due", "emailed_at", "seen_at", "app"],     "054-permit-watches.sql"],
+  // A missing org_id leaves the firm switch answering "unavailable" and every
+  // firm permit reaching its owner alone.
+  ["permit_watches",    ["org_id"],                                  "055-permit-watch-firm.sql"],
 ];
 
 // What this tool deliberately CANNOT see: 037-org-shop-kind-tenant-rep.sql

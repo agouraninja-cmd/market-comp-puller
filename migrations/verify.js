@@ -88,6 +88,8 @@ const TABLES = [
   ["permit_filings",      "052-permit-filings.sql"],
   ["permit_filing_events", "052-permit-filings.sql"],
   ["trial_notices",       "053-trial-notices.sql"],
+  ["permit_watches",      "054-permit-watches.sql"],
+  ["permit_watch_events", "054-permit-watches.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -270,6 +272,10 @@ const COLUMNS = [
   // The sweep's dedupe read and the building-sheet join both name these; a
   // partially applied 052 would 400 every sweep into an error line.
   ["permit_filings",    ["street_key", "market", "status", "last_seen_at"], "052-permit-filings.sql"],
+  // The two ledgers (054): a missing passed_steps re-announces every step, a
+  // missing emailed_at mails the same notice on every sweep.
+  ["permit_watches",    ["passed_steps", "notify_steps", "last_checked_at"], "054-permit-watches.sql"],
+  ["permit_watch_events", ["email_due", "emailed_at", "seen_at", "app"],     "054-permit-watches.sql"],
 ];
 
 // What this tool deliberately CANNOT see: 037-org-shop-kind-tenant-rep.sql

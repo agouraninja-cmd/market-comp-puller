@@ -53,6 +53,9 @@ const RADIUSBLEND = require("./blend-corpus");
 const PERMITS = require("./permit-portals");
 const PERMIT_ZONING = require("./permit-zoning");
 const PERMIT_FILINGS = require("./permit-filings");
+// Tracking your own permit (2026-09-27): the five steps, what a status change
+// announces, the notice email. Pure; the tables are migration 054's.
+const PERMIT_WATCH = require("./permit-watch");
 // Who may read a shared report. Pure and tested for the same reason as the
 // modules above it: this gate protects a broker's private comps, not a comp
 // count, so it has to be provable rather than reviewed.
@@ -6730,6 +6733,14 @@ async function sweepPermitFilings({ days, dryRun = false } = {}) {
       summary.errors.push(`${key}: ${err.message}`);
     }
   }
+  // --- tracked permits ride this same run (054) --------------------------
+  // ONE trigger, the renewal watch's argument: whatever drives the sweep
+  // already drives this, so it cannot be the job somebody forgets to
+  // schedule. Its errors stay in summary.watches, NOT summary.errors: those
+  // fail the scheduled workflow, and one member's mistyped-then-deleted
+  // permit must not turn the city sweep red.
+  try { summary.watches = await checkPermitWatches({ dryRun, deps, now }); }
+  catch (err) { summary.watches = { errors: [err.message] }; }
   summary.finishedAt = new Date().toISOString();
   return summary;
 }
@@ -6922,6 +6933,160 @@ async function permitTrackerPayload(user) {
     filings,
     ...PERMIT_FILINGS.sweepFreshness(lastSweptAt, now),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Tracking your own permit (2026-09-27, owner's call; migration 054; rules in
+// permit-watch.js). A member adds a permit by city and number, picks which
+// steps they want to hear about and how (email, CompNinja, or both), and the
+// weekday sweep re-reads it from the city's portal.
+//
+// Three rules this block keeps:
+//  - PER MEMBER. Every read and write names `user_id=eq.` the signed-in
+//    member; the sweep's re-check is the one reader across members, and it
+//    writes each member's rows under their own user_id.
+//  - NO TIMER, NO FILE (CLAUDE.md rules 4 and 12). The re-check rides POST
+//    /api/permits/sweep — the ADMIN_KEY route the weekday workflow already
+//    drives — and without a database the routes answer 503.
+//  - MARKED AFTER THE SEND. The re-check writes an event with email_due;
+//    sendPermitNoticeEmails stamps emailed_at only when sendOutboundEmail says
+//    the mail went, so a switched-off mailer leaves notices due rather than
+//    quietly marking them delivered (the watchlist digest's trap).
+// Only the cities the sweep reads can be watched: a permit in a city we do
+// not read would sit in the list never checked.
+// ---------------------------------------------------------------------------
+const PERMIT_WATCH_CITIES = PERMIT_SWEPT.map((c) => c.key);
+
+async function permitWatchesPayload(user) {
+  const uid = encodeURIComponent(user.id);
+  const [rows, events] = await Promise.all([
+    sbRequest("GET", `permit_watches?user_id=eq.${uid}&order=created_at.desc&limit=${PERMIT_WATCH.MAX_WATCHES_PER_USER}`),
+    sbRequest("GET", `permit_watch_events?user_id=eq.${uid}&order=detected_at.desc&limit=400`),
+  ]);
+  return {
+    cities: PERMIT_SWEPT.map((c) => ({ key: c.key, label: c.label })),
+    watches: (rows || []).map((r) => PERMIT_WATCH.watchView(r, events || [], { cityOf: permitCityOf })),
+    unread: PERMIT_WATCH.unreadCount(events || []),
+    max: PERMIT_WATCH.MAX_WATCHES_PER_USER,
+    steps: PERMIT_WATCH.STEPS,
+    notifySteps: PERMIT_WATCH.NOTIFY_STEP_KEYS,
+    defaults: PERMIT_WATCH.DEFAULT_NOTIFY,
+    // The page says so beside the email box when outbound mail is off here,
+    // rather than letting a member tick a box that cannot do anything yet.
+    emailLive: Boolean(EMAIL_FROM && RESEND_API_KEY),
+    email: String(user.email || ""),
+  };
+}
+
+async function permitWatchUnread(user) {
+  const rows = await sbRequest("GET",
+    `permit_watch_events?user_id=eq.${encodeURIComponent(user.id)}&app=is.true&seen_at=is.null&select=id&limit=100`);
+  return (rows || []).length;
+}
+
+// The weekday re-check, called from sweepPermitFilings so it inherits that
+// route's gate, its dry run and its schedule. One portal lookup per permit
+// however many members watch it, stalest first, paused between lookups like
+// the sweep. A lookup that fails is an error line and leaves the watch's
+// last_checked_at alone, so it is first in line next run.
+async function checkPermitWatches({ dryRun = false, deps, now }) {
+  const out = { watched: 0, checked: 0, changed: 0, notices: 0, emailed: 0, emailsPending: 0, errors: [] };
+  if (!DB_CONFIGURED) return { ...out, skipped: "no database" };
+  let rows;
+  try {
+    rows = (await sbRequest("GET",
+      `permit_watches?jurisdiction=in.(${pgInList(PERMIT_WATCH_CITIES)})&limit=5000`)) || [];
+  } catch (err) {
+    out.errors.push(`read: ${err.message}`);
+    return out;
+  }
+  out.watched = rows.length;
+  const due = PERMIT_WATCH.dueChecks(rows, { cities: PERMIT_WATCH_CITIES });
+  for (let i = 0; i < due.length; i++) {
+    const g = due[i];
+    if (i > 0) await deps.sleep();
+    let lookup;
+    try {
+      lookup = await PERMITS.lookupPermit(permitJurisdiction(g.jurisdiction), g.permit_number, deps);
+    } catch (err) {
+      out.errors.push(`${g.jurisdiction} ${g.permit_number}: ${err.message}`);
+      if (!dryRun) {
+        try {
+          await sbRequest("PATCH", `permit_watches?id=in.(${pgInList(g.watches.map((w) => w.id))})`,
+            { check_error: "The city's portal did not answer on the last check. We'll try again on the next weekday sweep." },
+            { prefer: "return=minimal" });
+        } catch (_) { /* the error line above already says it */ }
+      }
+      continue;
+    }
+    out.checked += 1;
+    const stamp = new Date().toISOString();
+    for (const w of g.watches) {
+      const { watchPatch, event } = PERMIT_WATCH.decideCheck(w, lookup, now);
+      if (event) {
+        out.changed += 1;
+        if (event.notice) out.notices += 1;
+      }
+      if (dryRun) continue;
+      try {
+        // The event BEFORE the watch: if the watch write then fails, the next
+        // run sees the old status and records the move again — a duplicate,
+        // where the other order would lose the notice outright.
+        if (event) {
+          await sbRequest("POST", "permit_watch_events",
+            { watch_id: w.id, user_id: w.user_id, ...event }, { prefer: "return=minimal" });
+        }
+        await sbRequest("PATCH", `permit_watches?id=eq.${encodeURIComponent(w.id)}`,
+          { ...watchPatch, last_checked_at: stamp }, { prefer: "return=minimal" });
+      } catch (err) {
+        out.errors.push(`${g.jurisdiction} ${g.permit_number} (watch ${w.id}): ${err.message}`);
+      }
+    }
+  }
+  if (!dryRun) {
+    try { Object.assign(out, await sendPermitNoticeEmails(now)); }
+    catch (err) { out.errors.push(`email: ${err.message}`); }
+  }
+  return out;
+}
+
+// Every notice still owed an email (from this run or a recent one whose send
+// did not go), one email per member, stamped emailed_at only when the send
+// succeeded. A member who switched email off since is skipped, and the notice
+// stays unsent rather than being marked sent.
+async function sendPermitNoticeEmails(now) {
+  const since = new Date(now - PERMIT_WATCH.EMAIL_WINDOW_DAYS * 86400000).toISOString();
+  const due = (await sbRequest("GET",
+    `permit_watch_events?email_due=is.true&emailed_at=is.null&detected_at=gte.${encodeURIComponent(since)}` +
+    `&order=detected_at.asc&limit=1000`)) || [];
+  const res = { emailed: 0, emailsPending: 0 };
+  if (!due.length) return res;
+  if (!(EMAIL_FROM && RESEND_API_KEY)) return { ...res, emailsPending: due.length, mailOff: true };
+  const watchIds = [...new Set(due.map((e) => e.watch_id))];
+  const watches = (await sbRequest("GET", `permit_watches?id=in.(${pgInList(watchIds)})&limit=${watchIds.length}`)) || [];
+  const watchById = new Map(watches.map((w) => [String(w.id), w]));
+  const byUser = new Map();
+  for (const e of due) {
+    const w = watchById.get(String(e.watch_id));
+    if (!w || w.notify_email !== true || String(w.user_id) !== String(e.user_id)) continue;
+    if (!byUser.has(String(e.user_id))) byUser.set(String(e.user_id), []);
+    byUser.get(String(e.user_id)).push({ watch: w, event: e });
+  }
+  const accounts = await findUsersByIds([...byUser.keys()]);
+  for (const account of accounts) {
+    const items = byUser.get(String(account.id)) || [];
+    const mail = PERMIT_WATCH.buildNoticeEmail({ items, siteUrl: SITE_URL, cityOf: permitCityOf });
+    if (!mail || !account.email) continue;
+    let sent = false;
+    try { sent = await sendOutboundEmail(account.email, mail.subject, mail.text); }
+    catch (err) { console.error(`Permit notice email failed for ${account.id}:`, err.message); }
+    if (!sent) { res.emailsPending += items.length; continue; }
+    await sbRequest("PATCH",
+      `permit_watch_events?id=in.(${pgInList(items.map((x) => x.event.id))})&user_id=eq.${encodeURIComponent(account.id)}`,
+      { emailed_at: new Date().toISOString() }, { prefer: "return=minimal" });
+    res.emailed += 1;
+  }
+  return res;
 }
 
 async function locateCorpusRows(rows) {
@@ -10356,6 +10521,9 @@ const DESK_BOOT_HEADER = "x-cn-desk-boot";
 const DESK_BOOT_URLS = [
   "/api/config", "/api/account/me", "/api/portfolio", "/api/org",
   "/api/shares", "/api/hubs", "/api/branding", "/api/recents", "/api/messages/unread",
+  // The Permit tracker's unread dot (2026-09-27), and the Workspace's Tracked
+  // permits card and its Needs-you entries (2026-09-29).
+  "/api/permits/unread", "/api/permits/mine",
 ];
 const DESK_BOOT_ORG_URLS = (id) => [
   `/api/org/members?id=${id}`, `/api/org/buildings?id=${id}`, "/api/messages",
@@ -10760,6 +10928,10 @@ const ACCOUNT_NAV_JS =
   // (which runs on every page load and is under a standing rule against DB
   // reads). A 403 (no firm) or any failure leaves the dot hidden.
   `fetch("/api/messages/unread",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(function(j){var d=$("navMsgDot");if(!d||!j||!(j.count>0))return;d.textContent=j.count>9?"9+":String(j.count);d.hidden=false;}).catch(function(){});` +
+  // The Permit tracker's dot (2026-09-27): a tracked permit's step completed
+  // and the member asked to hear about it on CompNinja. Its own endpoint for
+  // the same reason as Messages'. Not on /permits itself, which clears it.
+  `if(location.pathname!=="/permits")fetch("/api/permits/unread",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(function(j){var d=$("navPermitDot");if(!d||!j||!(j.count>0))return;d.textContent=j.count>9?"9+":String(j.count);d.hidden=false;}).catch(function(){});` +
   // The tester badge, where the page asked for one. Same read, same pass:
   // this script has already paid for /api/config, and the badge ships
   // hidden so a non-tester never sees it blink. classList, not the hidden
@@ -11914,7 +12086,10 @@ const marketBar = (signedIn = false, current = "") =>
       // The Permit tracker (2026-09-24, owner's: "it should be under tools"),
       // the THIRD Tools row, after Comp report (owner's order, same day).
       // Every member; index.html carries the twin row in the same place.
-      `<a href="/permits"${current === "/permits" ? ' aria-current="page"' : ""}>Permit tracker</a>` +
+      // The unread dot (2026-09-27): a tracked permit's step completed. Same
+      // shape and same after-paint fill as Messages' dot; index.html carries
+      // the twin.
+      `<a href="/permits"${current === "/permits" ? ' aria-current="page"' : ""}>Permit tracker<span id="navPermitDot" class="navdot" hidden aria-label="permit updates"></span></a>` +
       // Dropped on the four working pages — see CTA_FREE_PAGES above.
       // POINTS AT /bulk since the evening of 2026-09-04 (owner's: Bulk
       // valuation is the comp-report tool). It pointed at `/` until that
@@ -20808,6 +20983,130 @@ const server = http.createServer((req, res) =>
   //   409  a sweep is already running
   // { dryRun: true } discovers, enriches and reports, and writes nothing —
   // the "Preview" button on /admin. { days } widens the window (1..60).
+  // --- Tracking your own permit (2026-09-27; migration 054) ---------------
+  //
+  // Any signed-in account, like the tracker itself: the permit is public
+  // record and the watch is the member's own. No file fallback (rule 4), so
+  // every route answers 503 without a database. The re-check and the emails
+  // ride POST /api/permits/sweep below; nothing here runs on a timer.
+  if (req.url.split("?")[0] === "/api/permits/unread" && req.method === "GET") {
+    (async () => {
+      const user = await requireUser(req, res);
+      if (!user) return;
+      if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Permit tracking is unavailable right now." });
+      return sendJson(res, 200, { count: await permitWatchUnread(user) });
+    })().catch((err) => { console.error("permits unread error:", err.message); sendJson(res, 503, { error: "Permit tracking is unavailable right now." }); });
+    return;
+  }
+  if (req.url.split("?")[0] === "/api/permits/mine" && req.method === "GET") {
+    (async () => {
+      const user = await requireUser(req, res);
+      if (!user) return;
+      if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Permit tracking is unavailable right now." });
+      return sendJson(res, 200, await permitWatchesPayload(user));
+    })().catch((err) => { console.error("permits mine error:", err.message); sendJson(res, 503, { error: "Permit tracking is unavailable right now." }); });
+    return;
+  }
+  // Opening /permits clears the unread count. A POST from the page, never a
+  // write in the page's GET render: member pages are built before anyone sees
+  // them (rule 15), and the page's fetch holds a POST until it is shown.
+  if (req.url.split("?")[0] === "/api/permits/seen" && req.method === "POST") {
+    req.resume();
+    req.on("end", async () => {
+      try {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Permit tracking is unavailable right now." });
+        await sbRequest("PATCH",
+          `permit_watch_events?user_id=eq.${encodeURIComponent(user.id)}&app=is.true&seen_at=is.null`,
+          { seen_at: new Date().toISOString() }, { prefer: "return=minimal" });
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        console.error("permits seen error:", err.message);
+        return sendJson(res, 503, { error: "Permit tracking is unavailable right now." });
+      }
+    });
+    return;
+  }
+  if (req.url.split("?")[0] === "/api/permits/watch" && ["POST", "PATCH", "DELETE"].includes(req.method)) {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Permit tracking is unavailable right now." });
+        const uid = encodeURIComponent(user.id);
+        const cityLabels = PERMIT_SWEPT.map((c) => c.label);
+
+        if (req.method === "POST") {
+          // Each add is a live portal search, so it is limited per account.
+          if (rateLimited("permit-watch:" + user.id, 20, 60 * 60 * 1000)) {
+            return sendJson(res, 429, { error: "That's a lot of permits in one go. Try again in a little while." });
+          }
+          const v = PERMIT_WATCH.validateWatchInput(JSON.parse(body || "{}"), { cities: PERMIT_WATCH_CITIES, cityLabels });
+          if (!v.ok) return sendJson(res, 400, { error: v.error });
+          const have = (await sbRequest("GET",
+            `permit_watches?user_id=eq.${uid}&select=id,jurisdiction,permit_number&limit=${PERMIT_WATCH.MAX_WATCHES_PER_USER + 1}`)) || [];
+          if (have.some((w) => w.jurisdiction === v.value.jurisdiction && String(w.permit_number).toUpperCase() === v.value.permit_number)) {
+            return sendJson(res, 409, { error: "You're already tracking that permit." });
+          }
+          if (have.length >= PERMIT_WATCH.MAX_WATCHES_PER_USER) {
+            return sendJson(res, 400, { error: `You can track up to ${PERMIT_WATCH.MAX_WATCHES_PER_USER} permits. Stop tracking one to add another.` });
+          }
+          const city = permitCityOf(v.value.jurisdiction);
+          // Looked up NOW, while the member is still looking at the form: a
+          // mistyped number is refused here rather than sitting in the list
+          // as a permit that never moves. A portal that is down is not a
+          // refusal — the watch is kept and the sweep reads it first.
+          let lookup = null;
+          try {
+            lookup = await PERMITS.lookupPermit(permitJurisdiction(v.value.jurisdiction), v.value.permit_number, permitDeps());
+          } catch (err) {
+            console.warn(`[permit watch] ${v.value.jurisdiction} ${v.value.permit_number} lookup failed: ${err.message}`);
+          }
+          if (lookup && !lookup.found) {
+            return sendJson(res, 400, { error: `${city}'s permit portal has no permit numbered ${v.value.permit_number}. Check the number, including the letters at the start.`, code: "not_found" });
+          }
+          const row = PERMIT_WATCH.newWatchRow(user.id, v.value, lookup, Date.now());
+          const inserted = (await sbRequest("POST", "permit_watches?on_conflict=user_id,jurisdiction,permit_number",
+            row, { prefer: "resolution=ignore-duplicates,return=representation" })) || [];
+          if (!inserted.length) return sendJson(res, 409, { error: "You're already tracking that permit." });
+          logEvent("permit_watch_add", { market: marketOf(`${city}, ID`), source: lookup ? "checked" : "unchecked" });
+          return sendJson(res, 200, { watch: PERMIT_WATCH.watchView(inserted[0], [], { cityOf: permitCityOf }), checked: Boolean(lookup) });
+        }
+
+        const id = new URL(req.url, "http://localhost").searchParams.get("id");
+        if (!isUuidish(id)) return sendJson(res, 404, { error: "That permit isn't in your list." });
+        const scoped = `id=eq.${encodeURIComponent(id)}&user_id=eq.${uid}`;
+        const rows = (await sbRequest("GET", `permit_watches?${scoped}&limit=1`)) || [];
+        if (!rows.length) return sendJson(res, 404, { error: "That permit isn't in your list." });
+
+        if (req.method === "DELETE") {
+          // The events cascade in Postgres; deleted here too so the stand-in
+          // (and any future table without the FK) cannot leave orphans that
+          // still count as unread.
+          await sbRequest("DELETE", `permit_watch_events?watch_id=eq.${encodeURIComponent(id)}&user_id=eq.${uid}`, undefined, { prefer: "return=minimal" });
+          await sbRequest("DELETE", `permit_watches?${scoped}`, undefined, { prefer: "return=minimal" });
+          return sendJson(res, 200, { ok: true });
+        }
+
+        const v = PERMIT_WATCH.validateWatchPatch(JSON.parse(body || "{}"), rows[0]);
+        if (!v.ok) return sendJson(res, 400, { error: v.error });
+        const updated = (await sbRequest("PATCH", `permit_watches?${scoped}`, v.patch, { prefer: "return=representation" })) || [];
+        const events = (await sbRequest("GET",
+          `permit_watch_events?watch_id=eq.${encodeURIComponent(id)}&user_id=eq.${uid}&order=detected_at.desc&limit=100`)) || [];
+        return sendJson(res, 200, { watch: PERMIT_WATCH.watchView(updated[0] || { ...rows[0], ...v.patch }, events, { cityOf: permitCityOf }) });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("permit watch error:", err.message);
+        return sendJson(res, 503, { error: "Permit tracking is unavailable right now. Please try again in a minute." });
+      }
+    });
+    return;
+  }
+
   if (req.method === "POST" && req.url.split("?")[0] === "/api/permits/sweep") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
     if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
@@ -20826,8 +21125,11 @@ const server = http.createServer((req, res) =>
         try { summary = await sweepPermitFilings({ days: opts.days, dryRun }); }
         finally { PERMIT_SWEEP.running = false; }
         PERMIT_SWEEP.lastSummary = summary;
+        const pw = summary.watches || {};
         console.log(`🏗  Permit sweep${dryRun ? " (dry run)" : ""}: ${summary.discovered} discovered, ` +
-          `${summary.added} new, ${summary.statusChanges} status change(s), ${summary.errors.length} error(s)`);
+          `${summary.added} new, ${summary.statusChanges} status change(s), ${summary.errors.length} error(s); ` +
+          `tracked permits: ${pw.checked || 0} checked, ${pw.notices || 0} notice(s), ${pw.emailed || 0} emailed` +
+          `${pw.emailsPending ? `, ${pw.emailsPending} email(s) pending` : ""}${(pw.errors || []).length ? `, ${pw.errors.length} error(s)` : ""}`);
         return sendJson(res, 200, summary);
       } catch (err) {
         console.error("permit sweep error:", err);
@@ -29639,7 +29941,21 @@ const server = http.createServer((req, res) =>
         const user = await getSessionUser(req);
         if (!user) boot = { s: 401, j: { error: "Please sign in." } };
         else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "The permit tracker is unavailable right now." } };
-        else boot = { s: 200, j: await permitTrackerPayload(user) };
+        else {
+          // Your permits (054) is read beside the feed and fails on its own:
+          // an unrun migration or a failed read costs that section, which
+          // says so, and never the public list under it. A READ only — the
+          // unread notices are cleared by the page's own POST once it is
+          // shown, never here (rule 15: this render may be speculative).
+          const [feed, mine] = await Promise.all([
+            permitTrackerPayload(user),
+            permitWatchesPayload(user).then((j) => ({ s: 200, j })).catch((err) => {
+              console.error("permit watches boot failed:", err.message);
+              return { s: 503, j: { error: "Your tracked permits couldn't be loaded just now." } };
+            }),
+          ]);
+          boot = { s: 200, j: feed, mine };
+        }
       } catch (err) {
         console.error("permit tracker boot failed:", err.message);
       }

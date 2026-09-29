@@ -68,5 +68,12 @@ jobs:
             const s = JSON.parse(require("fs").readFileSync("sweep.json", "utf8"));
             console.log(`discovered ${s.discovered} · added ${s.added} · status changes ${s.statusChanges} · industrial ${s.industrial}`);
             if (s.truncated && s.truncated.length) console.log(`::warning::Truncated at the page cap: ${s.truncated.join(", ")}`);
+            // Tracked permits (054) ride this run. Their problems WARN rather
+            // than fail: a permit the portal cannot find for one member is not the
+            // city sweep breaking. Emails pending means outbound mail is off.
+            const w = s.watches || {};
+            console.log(`tracked permits: ${w.checked || 0} checked · ${w.notices || 0} notice(s) · ${w.emailed || 0} emailed${w.emailsPending ? ` · ${w.emailsPending} email(s) pending` : ""}`);
+            if (w.errors && w.errors.length) console.log(`::warning::Tracked permits: ${w.errors.join(" | ")}`);
+            if (w.mailOff) console.log("::warning::Permit notice emails are waiting: outbound mail (EMAIL_FROM + RESEND_API_KEY) is not configured.");
             if (s.errors && s.errors.length) { console.log(`::error::${s.errors.join(" | ")}`); process.exit(1); }
           '

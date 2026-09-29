@@ -43,6 +43,25 @@ test("the page's script compiles, and the literal interpolates the boot alone", 
     "the boot escapes < so a portal string cannot close the script");
 });
 
+test("the Workspace's two doors land: #pw-<id> on each permit's card, ?track=1 on the add form", () => {
+  // The Workspace's Tracked permits card and its "Needs you" entries link to
+  // /permits#pw-<id>; its empty card links to /permits?track=1 (2026-09-29).
+  const body = renderPermitsBody({ s: 200, j: { filings: [] } });
+  const script = body.match(/<script>([\s\S]*)<\/script>/)[1];
+  assert.match(script, /class="pw-card" id="pw-'\+esc\(w\.id\)\+'"/, "each card carries the id the Workspace links to");
+  const apply = script.slice(script.indexOf("function applyMine(o){"), script.indexOf('$("pwAddBtn").addEventListener'));
+  assert.ok(apply.indexOf('hash.indexOf("#pw-")===0') > apply.indexOf("renderMine();"),
+    "the card is looked for after the list is drawn");
+  assert.match(apply, /track=1/);
+  assert.match(apply, /watches\.length<\(MINE\.max\|\|25\)\)\{ openAdd\(\); \}/, "the form opens only while there is room to add");
+  // The door must not also clear the count before the page is shown: the
+  // seen POST stays the fetch it was, after the doors.
+  assert.ok(apply.indexOf('fetch("/api/permits/seen"') > apply.indexOf("openAdd()"));
+  // And the Workspace links to exactly that shape.
+  assert.ok(INDEX_HTML.includes('"/permits#pw-" + encodeURIComponent(w.id)'));
+  assert.ok(INDEX_HTML.includes('href="/permits?track=1"'));
+});
+
 test("Tools reads Market explorer, Comp report, Permit tracker on both nav authors", () => {
   // The owner's order (2026-09-24): the permit tracker is the THIRD row.
   for (const [name, src, bulk] of [["server.js", SERVER_JS, '<a id="navBulk" href="/bulk"'],
@@ -119,7 +138,11 @@ test("the /permits route, signed out and signed in", async (t) => {
     assert.equal(boot.j.inFirm, true);
     assert.equal(boot.j.cities, "Boise and Meridian");
     assert.equal(boot.j.stale, false);
-    assert.ok(html.includes('<a href="/permits" aria-current="page">Permit tracker</a>'), "the Tools row marks the page");
+    assert.ok(html.includes('<a href="/permits" aria-current="page">Permit tracker<span id="navPermitDot" class="navdot" hidden'),
+      "the Tools row marks the page, and carries its unread dot hidden until asked");
+    assert.equal(boot.mine.s, 200, "Your permits rides the same boot");
+    assert.deepEqual(boot.mine.j.watches, []);
+    assert.deepEqual(boot.mine.j.cities, [{ key: "boise", label: "Boise" }, { key: "meridian", label: "Meridian" }]);
   });
 
   await t.test("a member with no firm still gets the list, with nothing marked", async () => {

@@ -799,6 +799,58 @@ async function fetchFilingStatus(key, permitNumber, deps) {
   throw new Error(`portal-error: unknown platform "${j.platform}"`);
 }
 
+// ONE record by number, with what a person tracking it needs to recognise it:
+// { found, status, address, description, project_name, source_url }. The
+// Permit tracker's "track your own permit" (2026-09-27) calls this when a
+// member adds a permit — so a mistyped number is refused while they are
+// still looking at the form — and the sweep calls it once per tracked permit.
+// fetchFilingStatus above answers { found, status } alone; this is the same
+// search, read for more. Throws on a portal error or a redesign, exactly as
+// that does, so "not on the portal" and "the portal is down" stay two answers.
+//
+// Accela's exact hit lands on the record's own detail page (the address is
+// there, the URL is the record's link); several matches render a grid, and
+// only the row whose number equals ours counts — parseAccelaStatus's rule.
+function parseAccelaLookup(html, url, wanted, base) {
+  const want = String(wanted || "").trim().toUpperCase();
+  if (/id="ctl00_PlaceHolderMain_lblRecordStatus"/.test(html)) {
+    const d = parseAccelaDetail(html, url);
+    return {
+      found: true, status: d.status || "(blank)", address: d.address,
+      description: d.description, project_name: d.project_name, source_url: url || "",
+    };
+  }
+  if (/returned no results/i.test(html)) return { found: false };
+  const rows = parseAccelaGrid(html, base);
+  const hit = rows.find((r) => String(r.permit_number || "").trim().toUpperCase() === want);
+  if (hit) {
+    return {
+      found: true, status: hit.status || "(blank)", address: hit.address,
+      description: hit.description, project_name: hit.project_name, source_url: hit.ref.detailUrl || "",
+    };
+  }
+  if (rows.length > 0) return { found: false };
+  throw new Error("portal-changed: response was neither detail page, results grid, nor no-results");
+}
+
+async function lookupPermit(key, permitNumber, deps) {
+  const j = resolveJurisdiction(key);
+  if (!j) throw new Error(`portal-error: unknown jurisdiction "${key}"`);
+  const wanted = String(permitNumber || "").trim();
+  if (!wanted) throw new Error("no permit number given");
+  if (j.platform === "accela") {
+    const { html, url } = await accelaPostSearch({
+      "ctl00$PlaceHolderMain$generalSearchForm$txtGSPermitNumber": wanted,
+    }, j, deps);
+    return parseAccelaLookup(html, url, wanted, j.base);
+  }
+  if (j.platform === "energov") {
+    const r = await fetchEnergovStatus(wanted, j, deps);
+    return r.found ? { found: true, status: r.status, address: "", description: "", project_name: "", source_url: j.portalUrl || "" } : r;
+  }
+  throw new Error(`portal-error: unknown platform "${j.platform}"`);
+}
+
 module.exports = {
   UA,
   JURISDICTIONS, JURISDICTION_KEYS, SWEEP_KEYS, getJurisdiction, resolveJurisdiction,
@@ -817,4 +869,6 @@ module.exports = {
   ENERGOV_INCLUDE_RE, ENERGOV_EXCLUDE_RE, INDUSTRIAL_RE, keepEnergovRow, flagIndustrial,
   // the sweep's face
   discoverFilings, enrichFiling, fetchFilingStatus,
+  // one record, for a tracked permit
+  parseAccelaLookup, lookupPermit,
 };

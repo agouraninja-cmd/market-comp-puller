@@ -402,7 +402,7 @@ gone. Document a new feature in its area's file, not here.
 | `public-pages.md` | home, FAQ, how-it-works, brokers-firms, the brand entity, `SITE_URL`, Search Console | `home-page.js`, `faq-page.js`, `brokers-firms-page.js` |
 | `markets.md` | market pages, momentum map, city photos and boundaries, the Market Explorer, broker directory | `market-*.js`, `city-check.js`, `gen-market-seed.js`, `broker-directory.js` |
 | `bulk.md` | bulk valuation | `bulk.js`, `bulk-page.js` |
-| `permits.md` | the permit sweep and `/permits` | `permit-*.js`, `permits-page.js` |
+| `permits.md` | the permit sweep, `/permits`, and tracking your own permit (notices by email and on CompNinja) | `permit-*.js`, `permits-page.js` |
 | `watchlist-and-mail.md` | Resend and outbound mail settings, `/api/lead`, the watchlist digest, search demand | `watchlist-digest.js`, `search-demand.js`, `email-shell.js` |
 | `admin-and-analytics.md` | `/admin`, `/api/stats`, the visitor funnel, the `/dev` hub | `devlog.json`, `dev-returns.js` |
 | `maps.md` | the Google Maps key, `/api/geocode`, `/api/streetview` | `index.html`, `streetview-aim.js` |

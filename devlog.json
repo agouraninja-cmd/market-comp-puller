@@ -1,5 +1,17 @@
 [
   {
+    "date": "2026-09-29",
+    "type": "feature",
+    "title": "Tracked permits show up on your Workspace when they reach a step",
+    "details": "The Workspace has a Tracked permits card: every permit you added on the Permit tracker, with its five steps drawn as a bar (Submitted, In review, Approved, Issued, Finaled) and the city's status word for word. When a permit reaches a step you asked to hear about on CompNinja, it moves to the top marked New with the step it reached, and — for a member of a firm — it also appears in Needs you at the top of the Workspace, counted in the banner line. Each one links straight to that permit on the Permit tracker, which is what marks it read. With nothing tracked yet, the card offers to add a permit number. If the permit list can't be read, the card hides and Needs you says it couldn't check, rather than claiming nothing happened."
+  },
+  {
+    "date": "2026-09-27",
+    "type": "feature",
+    "title": "Track your own permit, and hear when it reaches a step",
+    "details": "The Permit tracker has a new Your permits section at the top. Pick Boise or Meridian, type a permit number, and CompNinja looks it up on the city’s own portal right then, so a mistyped number is caught on the spot. Each permit shows five plain steps (Submitted, In review, Approved, Issued, Finaled) read from whatever the city prints, the current status word for word, and its history. You choose which steps you want to hear about, whether to be told when it needs attention or ends (returned for corrections, on hold, denied, expired) or on every change, and how: by email, here on CompNinja, or both. On CompNinja that is a red count on Permit tracker in the sidebar and a New mark on the permit. The weekday permit sweep re-reads every tracked permit, so there is no new timer. A step is announced once, ever: a permit that jumps two steps announces both in one message, a permit that drops back and returns is not announced twice, and adding a permit that is already issued announces nothing. An email is marked sent only after it actually goes, so if email is switched off the notice waits (for up to a week) instead of being lost. Needs the 054 migration run in Supabase before deploying."
+  },
+  {
     "date": "2026-09-26",
     "type": "fix",
     "title": "Esc no longer throws away what you’re typing",

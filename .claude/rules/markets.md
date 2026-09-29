@@ -216,3 +216,14 @@ paths:
   d'Alene. Fails OPEN on validator outages (`DAILY_SEARCH_CAP` backstops);
   `ok`/`unknown` verdicts memoize per process, `unavailable` never does.
   Spec: `docs/superpowers/specs/2026-08-09-explore-market-city-validation-design.md`.
+- **A market page's comps table arrives newest deal first** (2026-09-27,
+  owner's call: the Explorer's data "should start sorting the dates from
+  newest to oldest"). `renderMarketPageHTML` sorts `p.comps` by
+  `marketCompYear` (deal-date.js's `parseDealDate`, `dateKey` as the
+  fallback), undated comps last in stored order, so the page, a no-script
+  reader and the CSV all get that order; the Date header ships
+  `aria-sort="descending"` and `MARKET_RESEARCH_JS` starts its sort state
+  there, so the first click flips to oldest first. The Date column's `data-s`
+  is the same fractional year — "Q1 2025" used to sort as unreadable and
+  fall to the bottom. `test/public-pages.test.js` pins the order against the
+  committed seed, which stores that market's comps out of order.

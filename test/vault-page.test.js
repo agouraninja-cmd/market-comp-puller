@@ -1941,6 +1941,35 @@ test("a saved cell goes back to the formatted figure the server actually stored"
     "data-raw must follow the stored value, or the next focus offers a stale one");
 });
 
+// Cap rate is typed in the compact table itself (2026-09-27, owner's call),
+// not only in the spreadsheet: shown with its % sign, the bare number on
+// focus, and only that field travels in the PATCH.
+test("the compact table carries an editable cap rate cell", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", cap_rate: 6.25 });
+  let sentBody = null;
+  const { doc } = await runPage([c1], null, {
+    comp: (init) => {
+      sentBody = JSON.parse(init.body);
+      return Promise.resolve(jsonResponse(200, { ok: true, unpublished: false, comp: { cap_rate: 5.75 } }));
+    },
+  });
+
+  assert.match(doc.getElementById("tblHead").innerHTML, /data-k="cap_rate"[^>]*>Cap rate/,
+    "the compact table must have a Cap rate column");
+  const cap = cellOf(doc, "cap_rate");
+  assert.ok(cap, "the cap rate cell must be an input in the ordinary table");
+  assert.equal(cap.value, "6.25%", "the cell shows the rate with its sign");
+  assert.equal(cap.getAttribute("data-raw"), "6.25");
+  doc.getElementById("tbody").fire("focusin", { target: cap });
+  assert.equal(cap.value, "6.25", "focus offers the bare stored number");
+
+  cap.value = "5.75%";
+  doc.getElementById("tbody").fire("focusout", { target: cap });
+  await tick();
+  assert.deepEqual(sentBody, { cap_rate: "5.75%" }, "only the cap rate travels");
+  assert.equal(cap.value, "5.75%", "the server's stored figure goes back on screen");
+});
+
 // A <td> of text told the column how wide its content was and wrapped when it
 // could not have it. An <input> does neither, so without a width derived from
 // the value a long address rendered clipped inside a default-width box.
@@ -2256,8 +2285,10 @@ test("Done returns to the compact table", async () => {
   // make it obvious.
   assert.ok(!doc.getElementById("sheetBar").classList.contains("hide"));
   assert.match(doc.getElementById("sheetBar").textContent, /Type in any cell/i);
-  assert.match(doc.getElementById("sheetBar").textContent, /cap rate, tenancy, year built and notes/i,
+  assert.match(doc.getElementById("sheetBar").textContent, /tenancy, year built and notes/i,
     "the compact view must say where the fields it has no column for live");
+  assert.ok(!/cap rate/i.test(doc.getElementById("sheetBar").textContent),
+    "cap rate has its own column in the compact table now, so the hint must not send brokers to the spreadsheet for it");
 });
 
 // ---------------------------------------------------------------------------

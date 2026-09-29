@@ -11518,6 +11518,8 @@ button.btn{border:0;cursor:pointer;font-family:inherit}
 .mkt-tx button[aria-pressed="true"]{border-color:var(--ink);color:var(--ink);font-weight:600;background:var(--wash)}
 table.stmt th[data-k]{cursor:pointer;user-select:none}
 table.stmt th[data-k]:hover{color:var(--ink)}
+table.stmt th[aria-sort="descending"]::after{content:" ▼";font-size:.8em}
+table.stmt th[aria-sort="ascending"]::after{content:" ▲";font-size:.8em}
 /* Header-sized variant, for the auth controls in the market bar. Mirrors the
    same rule HOW_CSS carried, so the two site headers sat at the same height
    (HOW_CSS was deleted 2026-09-02; MARKET_CSS is the only header now). The nav
@@ -13305,14 +13307,28 @@ const MARKET_RESEARCH_JS = `(function(){
       applyFilter();
     });
   }
+  // The server sends the rows newest deal first, so the sort state starts on
+  // Date, descending, and says so on the header: the first click on Date
+  // flips to oldest first instead of re-sorting to the order already shown.
   var sortCol = -1, sortDir = 1;
+  function markSorted() {
+    if (!table.tHead) return;
+    [].forEach.call(table.tHead.querySelectorAll("th[data-k]"), function (h) {
+      var i = [].indexOf.call(h.parentNode.children, h);
+      if (i === sortCol) h.setAttribute("aria-sort", sortDir > 0 ? "ascending" : "descending");
+      else h.removeAttribute("aria-sort");
+    });
+  }
   if (table.tHead) {
+    var dateTh = table.tHead.querySelector('th[data-k="date"]');
+    if (dateTh) { sortCol = [].indexOf.call(dateTh.parentNode.children, dateTh); sortDir = -1; markSorted(); }
     table.tHead.addEventListener("click", function (e) {
       var th = e.target.closest("th[data-k]");
       if (!th) return;
       var idx = [].indexOf.call(th.parentNode.children, th);
       if (idx === sortCol) sortDir = -sortDir;
       else { sortCol = idx; sortDir = 1; }
+      markSorted();
       var numeric = th.getAttribute("data-num") === "1";
       rows.sort(function (a, b) {
         var av = a.cells[idx] ? (a.cells[idx].getAttribute("data-s") || "") : "";
@@ -13735,6 +13751,18 @@ const DIR_CSS_CLASS = {
   expanding: "mdirv-expanding", flat: "mdirv-flat", contracting: "mdirv-contracting",
 };
 
+// A market-page comp's deal date as a fractional year, NaN when it cannot be
+// read. parseDealDate takes the shapes the model writes ("Mar 2026", "Q1
+// 2025", "2025", "2026-04"); dateKey is the fallback for a month-year buried in
+// a longer string ("Closed Mar 2026"). One function for the table's order and
+// its Date column's sort key.
+function marketCompYear(date) {
+  const y = parseDealDate(date);
+  if (y != null) return y;
+  const k = dateKey(date);
+  return Number.isFinite(k) ? k / 12 : NaN;
+}
+
 function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   const title = marketTitle(p);
   const canonical = marketUrl(slug);
@@ -13841,7 +13869,21 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   // A spec column that is empty on EVERY comp is dropped, which is what lets
   // the pre-#5 seed markets render exactly as they always have instead of
   // sprouting blank columns until they are backfilled.
-  const marketComps = p.comps || [];
+  // Newest deal first (2026-09-27, owner's call: the Explorer's data "should
+  // start sorting the dates from newest to oldest"). Sorted HERE, so the page
+  // arrives in that order with no script and the CSV writes it the same way;
+  // MARKET_RESEARCH_JS starts its own sort state on Date, descending, so the
+  // first click on the header flips to oldest first rather than re-sorting to
+  // the order already shown. Undated comps go last, in the order stored.
+  const marketComps = (p.comps || [])
+    .map((c, i) => ({ c, i, y: marketCompYear(c.date) }))
+    .sort((a, b) => {
+      const ay = Number.isFinite(a.y), by = Number.isFinite(b.y);
+      if (ay && by && a.y !== b.y) return b.y - a.y;
+      if (ay !== by) return ay ? -1 : 1;
+      return a.i - b.i;
+    })
+    .map((x) => x.c);
   const typeCols = ((TYPE_COMP_FIELDS[p.type] || { fields: [] }).fields)
     .filter((key) => marketComps.some((c) => String(c[key] || "").trim()))
     .map((key) => ({ key, label: FIELD_LABELS[key] || key }));
@@ -13876,8 +13918,10 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   const numCol = (k) => /^(date|size_sqft|price_or_rate|price_per_|cap_rate|year_built|units|dock_doors|clear_height|lot_acres|floor_plate)/.test(k);
   const cellSort = (col, c) => {
     if (col.key === "date") {
-      const k = dateKey(c.date);
-      return isFinite(k) ? String(k) : String(c.date || "").toLowerCase();
+      // The same fractional year the server-side order used, so a click on
+      // Date and the order the page arrived in can never disagree.
+      const y = marketCompYear(c.date);
+      return Number.isFinite(y) ? String(y) : "";
     }
     if (numCol(col.key)) {
       const n = parseFloat(String(c[col.key] || "").replace(/[^0-9.\-]/g, ""));
@@ -13931,7 +13975,8 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       txBar +
       `<div class="scroll"><table class="stmt" id="mktComps"><thead><tr>` +
       compCols.map((col) =>
-        `<th data-k="${escHtml(col.key)}"${numCol(col.key) ? " data-num=\"1\"" : ""}>${escHtml(col.label)}</th>`).join("") +
+        `<th data-k="${escHtml(col.key)}"${numCol(col.key) ? " data-num=\"1\"" : ""}` +
+        `${col.key === "date" ? ' aria-sort="descending"' : ""}>${escHtml(col.label)}</th>`).join("") +
       `</tr></thead><tbody>${compRows}</tbody>${medianRow}</table></div>` +
       `<p class="disc" id="mktTxEmpty" hidden>No comps in this filter.</p>` +
       `<script>${MARKET_RESEARCH_JS}</script></div>`

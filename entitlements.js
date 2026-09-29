@@ -356,6 +356,7 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       // a subscriber sees, or the one figure nobody can sanity-check is the
       // one being sold.
       canSeeSearchDemand: true,
+      canTrackPermits: true,
       // The broker vault included, for the same reason: the team is permanently
       // on the far side of every paywall, so this is the only way anyone
       // internal ever renders the broker workspace at all. `admin: true` below
@@ -406,6 +407,9 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       // site's own traffic, so granting it on a dark deployment would publish
       // that to every anonymous visitor.
       canSeeSearchDemand: false,
+      // FALSE for the same reason: permit tracking arrived long after the
+      // tier did, so a dark deployment never had it to give back.
+      canTrackPermits: false,
       // FALSE here, unlike every other capability on this branch — and the
       // asymmetry is deliberate, not an oversight.
       //
@@ -505,6 +509,7 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       canBulkValue: true,
       bulkMaxAddresses: PRO_BULK_MAX_ADDRESSES,
       canSeeSearchDemand: true,
+      canTrackPermits: true,
       broker: true,
       canUseVault: true,
       canUseOrg: true,
@@ -553,6 +558,7 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       canBulkValue: true,
       bulkMaxAddresses: PRO_BULK_MAX_ADDRESSES,
       canSeeSearchDemand: true,
+      canTrackPermits: true,
       broker: true,
       canUseVault: true,
       canUseOrg: true,
@@ -667,6 +673,13 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     // scoped to a property. Selling it per-report would be selling Pro at a
     // one-off price.
     canSeeSearchDemand: pro,
+    // Tracking a permit and its notices (owner's call, 2026-09-29: "pro tool
+    // only"). Pro, not `reportUnlocked` — a permit is not the property a
+    // single-report purchase bought. The public filings feed on /permits is
+    // NOT behind this: it is public record and stays for every account.
+    // Lapsing keeps the member's list (read-only) and stops the weekday
+    // re-check; nothing is deleted.
+    canTrackPermits: pro,
     broker,
     // Now simply Pro. Under one subscription the vault is a Pro capability,
     // not a second tier's, so this tracks `pro` exactly.

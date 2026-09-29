@@ -383,6 +383,24 @@ test("search demand stays dark when the Pro tier is off", () => {
   assert.equal(computeEntitlements({ now: NOW, enabled: false, user: null }).canSeeSearchDemand, false);
 });
 
+test("permit tracking is Pro: every Pro door opens it, nothing else does", () => {
+  // Owner's call, 2026-09-29: "pro tool only". The public filings feed is not
+  // behind this; only tracking a permit and its notices are.
+  assert.equal(ent({ user: null }).canTrackPermits, false, "anonymous");
+  assert.equal(ent({ user: USER }).canTrackPermits, false, "free account");
+  assert.equal(ent({ user: USER, subscription: activeSub() }).canTrackPermits, true, "active");
+  assert.equal(ent({ user: USER, admin: true }).canTrackPermits, true, "comped admin");
+  assert.equal(ent({ user: USER, tester: true }).canTrackPermits, true, "tester");
+  assert.equal(ent({ user: USER, trialUntil: NOW + DAY }).canTrackPermits, true, "trial");
+  assert.equal(
+    ent({ user: USER, subscription: activeSub({ status: "canceled", current_period_end: iso(NOW - 30 * DAY) }) }).canTrackPermits,
+    false, "expired");
+  assert.equal(
+    ent({ user: USER, reportId: "r1", purchase: { report_id: "r1" } }).canTrackPermits,
+    false, "single-report purchase");
+  assert.equal(computeEntitlements({ now: NOW, enabled: false, user: USER }).canTrackPermits, false, "dark deployment");
+});
+
 test("free account: FREE_MAX_COMPS comps and three exports a month", () => {
   const e = ent({ user: USER });
   assert.equal(e.plan, "free");

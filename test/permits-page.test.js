@@ -53,7 +53,8 @@ test("the Workspace's two doors land: #pw-<id> on each permit's card, ?track=1 o
   assert.ok(apply.indexOf('hash.indexOf("#pw-")===0') > apply.indexOf("renderMine();"),
     "the card is looked for after the list is drawn");
   assert.match(apply, /track=1/);
-  assert.match(apply, /watches\.length<\(MINE\.max\|\|25\)\)\{ openAdd\(\); \}/, "the form opens only while there is room to add");
+  assert.match(apply, /MINE\.canTrack&&ownCount\(\)<\(MINE\.max\|\|25\)\)\{ openAdd\(\); \}/,
+    "the form opens only for a member who may track (Pro), and only while there is room to add");
   // The door must not also clear the count before the page is shown: the
   // seen POST stays the fetch it was, after the doors.
   assert.ok(apply.indexOf('fetch("/api/permits/seen"') > apply.indexOf("openAdd()"));

@@ -15309,6 +15309,12 @@ async function renderMyDesk() {
       if (res.ok) data = await res.json();
     } catch (_) { /* handled below */ }
     if (!data || !Array.isArray(data.watches)) { box.classList.add("hidden"); deskPermitNotices = null; return; }
+    // Tracking is Pro (2026-09-29). With nothing tracked and no way to add
+    // one, the card's only content would be a door onto a Pro gate, so it
+    // stays down — and the read DID succeed, so the agenda hears "nothing",
+    // never null ("couldn't read"). A lapsed member with permits still sees
+    // them: `canTrack === false` hides only the empty invitation.
+    if (data.canTrack === false && !data.watches.length) { box.classList.add("hidden"); deskPermitNotices = []; return; }
     const lastMove = (w) => String(w.statusChangedAt || (w.history && w.history[0] && w.history[0].at) || "");
     const watches = data.watches.slice().sort((a, b) => {
       const na = trackedNotice(a) ? 1 : 0, nb = trackedNotice(b) ? 1 : 0;

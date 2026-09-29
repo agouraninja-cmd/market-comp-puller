@@ -4423,5 +4423,11 @@
     "type": "improvement",
     "title": "The vault page now just says Vault",
     "details": "The /vault page heading and browser tab read \"Broker Vault\". Both now read \"Vault\", with the Private workspace label and the description underneath unchanged."
+  },
+  {
+    "date": "2026-09-29",
+    "type": "feature",
+    "title": "Permit tracking is Pro, and an owner can track a permit for the whole firm",
+    "details": "Adding a permit to track and changing how it notifies you are now part of Pro. A free account sees the public filings and a line pointing to Pro; a lapsed member keeps their list and can still stop tracking. A firm owner can switch any permit they track to “Track for <firm>”: every colleague on Pro then gets its notices by email on weekday mornings and on CompNinja, exactly as the owner set them, with the permit tagged with the firm and who tracks it. Each colleague can mute it for themselves, and “Just me” switches it back. Nobody hears about one permit twice. Needs migration 055."
   }
 ]

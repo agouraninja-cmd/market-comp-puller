@@ -216,3 +216,68 @@ test("the page view lights the ledger's furthest step and counts the unread noti
   assert.equal(v.city, "Boise");
   assert.equal(W.unreadCount([{ app: true }, { app: true, seen_at: "x" }, { app: false }]), 1);
 });
+
+// --- A permit tracked for the whole firm (2026-09-29; migration 055) --------
+
+test("only an active owner may switch a permit to the firm", () => {
+  assert.equal(W.canShareWithFirm({ role: "owner", joined_at: "2026-01-01" }), true);
+  assert.equal(W.canShareWithFirm({ role: "admin", joined_at: "2026-01-01" }), false, "an admin is not the owner");
+  assert.equal(W.canShareWithFirm({ role: "member", joined_at: "2026-01-01" }), false);
+  assert.equal(W.canShareWithFirm({ role: "owner", joined_at: null }), false, "an invite is not a membership");
+  assert.equal(W.canShareWithFirm({ role: "owner", joined_at: "2026-01-01", removed_at: "2026-02-01" }), false, "removed beats ownership");
+  assert.equal(W.canShareWithFirm(null), false);
+});
+
+test("a firm permit reaches each Pro colleague once, never the owner or a member tracking it themselves", () => {
+  const watch = { id: "w1", user_id: "owner", org_id: "o1" };
+  const members = [
+    { user_id: "owner" }, { user_id: "ann" }, { user_id: "bob" }, { user_id: "cy" },
+    { user_id: "dee" }, { user_id: "ann" }, { user_id: null },
+  ];
+  const out = W.firmRecipients({
+    watch, members,
+    ownWatcherIds: ["owner", "bob"],        // bob tracks it himself
+    entitledIds: ["owner", "ann", "bob", "dee"], // cy is not on Pro
+    mutedIds: ["dee"],
+  });
+  assert.deepEqual(out, [{ userId: "ann", muted: false }, { userId: "dee", muted: true }]);
+  assert.deepEqual(W.firmRecipients({ watch, members, entitledIds: [] }), [], "nobody on Pro, nobody told");
+});
+
+test("a muted colleague's event is written with nothing to show or send", () => {
+  const e = { kind: "step", notice: "Step complete: Issued", app: true, email_due: true, steps: ["issued"] };
+  assert.deepEqual(W.firmEvent(e, false), e);
+  const m = W.firmEvent(e, true);
+  assert.equal(m.app, false);
+  assert.equal(m.email_due, false);
+  assert.equal(m.notice, e.notice, "the history still says what happened");
+  assert.equal(e.app, true, "the owner's event object is not mutated");
+});
+
+test("a firm permit's email says it came through the firm and how to mute it", () => {
+  const w = { permit_number: "BLD26-1", jurisdiction: "boise", user_id: "owner", org_id: "o1", label: "Federal Way" };
+  const e = { notice: "Step complete: Issued", new_status: "Issued", old_status: "Approved", detected_at: "2026-09-29T13:00:00Z" };
+  const firm = W.buildNoticeEmail({ items: [{ watch: w, event: e }], cityOf: () => "Boise", recipientId: "ann", firmNameOf: () => "Colliers Boise" });
+  assert.match(firm.text, /permit your firm is tracking/);
+  assert.match(firm.text, /Tracked for Colliers Boise/);
+  assert.match(firm.text, /Colliers Boise tracks this permit for everyone at the firm; mute/);
+  const owner = W.buildNoticeEmail({ items: [{ watch: w, event: e }], cityOf: () => "Boise", recipientId: "owner", firmNameOf: () => "Colliers Boise" });
+  assert.doesNotMatch(owner.text, /Tracked for/, "the owner reads it as their own permit");
+  assert.match(owner.text, /you asked for email updates/);
+  const mixed = W.buildNoticeEmail({ items: [{ watch: { ...w, user_id: "ann", org_id: null }, event: e }, { watch: w, event: e }], recipientId: "ann", firmNameOf: () => "Colliers Boise" });
+  assert.match(mixed.text, /your firm tracks the others/);
+});
+
+test("the page view says whose permit it is", () => {
+  const row = { id: "w1", user_id: "owner", org_id: "o1", jurisdiction: "boise", permit_number: "BLD26-1", passed_steps: [] };
+  const mine = W.watchView(row, [], { viewerId: "owner", firmName: "Colliers Boise" });
+  assert.equal(mine.mine, true);
+  assert.equal(mine.firm, "Colliers Boise");
+  assert.equal(mine.sharedBy, "", "no 'shared by' on your own permit");
+  const theirs = W.watchView(row, [], { viewerId: "ann", firmName: "Colliers Boise", sharedBy: "Brad", muted: true });
+  assert.equal(theirs.mine, false);
+  assert.equal(theirs.sharedBy, "Brad");
+  assert.equal(theirs.muted, true);
+  assert.equal(W.watchView({ ...row, org_id: null }, []).firm, "", "one member's permit names no firm");
+  assert.equal(W.watchView(row, []).mine, true, "with no viewer, the route's own answer reads as the caller's");
+});

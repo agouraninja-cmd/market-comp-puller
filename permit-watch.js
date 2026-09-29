@@ -343,6 +343,58 @@ function dueChecks(watches, { cities, cap } = {}) {
     .slice(0, n);
 }
 
+// ---------------------------------------------------------------------------
+// A tracked permit shared with the whole firm (2026-09-29; migration 055).
+// Owner's call: tracking is a Pro tool, and "firm owners can set alerts to the
+// whole firm if they want to but it is mostly for employees tracking permits".
+// So a watch stays ONE member's, and its owner — the firm's owner — can attach
+// the firm to it. Every active Pro member then gets the notices the owner's
+// settings produce, as their own event rows (054's per-recipient ledger), and
+// each member can mute it for themselves (the member's veto beats the firm's
+// decision, migration 031's rule).
+// ---------------------------------------------------------------------------
+
+// Who may switch a watch to the firm: an ACTIVE OWNER of that firm, nobody
+// else. Deliberately narrower than managing members (owner or admin) — the
+// owner's words were "firm owners", and a notice sent to every colleague is
+// the firm speaking, not an administrator tidying a roster.
+function canShareWithFirm(membership) {
+  const m = membership || {};
+  return m.role === "owner" && Boolean(m.joined_at) && !m.removed_at;
+}
+
+// The colleagues one firm permit's event is written for, each with whether
+// they muted it. `members` are the firm's ACTIVE rows (the caller filters
+// with org-access.js); `ownWatcherIds` are members who track the same
+// permit themselves — their own watch already writes their event, and a
+// second one would announce the same step twice; `entitledIds` are the
+// members whose plan includes tracking ("Pro tool only"); `mutedIds` are
+// the members who muted this watch. The owner is never a recipient here:
+// their own watch already wrote their event.
+function firmRecipients({ watch, members, ownWatcherIds, entitledIds, mutedIds } = {}) {
+  const owner = String((watch && watch.user_id) || "");
+  const own = new Set((ownWatcherIds || []).map(String));
+  const ok = new Set((entitledIds || []).map(String));
+  const muted = new Set((mutedIds || []).map(String));
+  const seen = new Set();
+  const out = [];
+  for (const m of members || []) {
+    const id = String((m && m.user_id) || "");
+    if (!id || id === owner || own.has(id) || !ok.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ userId: id, muted: muted.has(id) });
+  }
+  return out;
+}
+
+// A colleague's copy of an event. A muted member's row is still written, with
+// nothing to show and nothing to send, so the permit's history reads whole if
+// they unmute; the notice itself stays, because it is what happened.
+function firmEvent(event, muted) {
+  const e = event || {};
+  return muted ? { ...e, app: false, email_due: false } : { ...e };
+}
+
 function shortDate(iso) {
   const t = Date.parse(String(iso || ""));
   if (!Number.isFinite(t)) return "";
@@ -352,17 +404,22 @@ function shortDate(iso) {
 // One member's due notices -> { subject, text }, or null with nothing to say
 // (a caller cannot mail a blank email by forgetting to check — the digest's
 // rule). `items` are { watch, event } pairs; `cityOf` names a jurisdiction.
-function buildNoticeEmail({ items, siteUrl, cityOf } = {}) {
+function buildNoticeEmail({ items, siteUrl, cityOf, recipientId, firmNameOf } = {}) {
   const list = (items || []).filter((x) => x && x.watch && x.event && x.event.notice);
   if (!list.length) return null;
   const city = (w) => (typeof cityOf === "function" ? cityOf(w.jurisdiction) : "") || "";
   const subject = list.length === 1
     ? `${list[0].event.notice} · ${[city(list[0].watch), "permit", list[0].watch.permit_number].filter(Boolean).join(" ")}`
     : `${list.length} permit updates`;
+  // A permit the recipient did not add themselves reached them through their
+  // firm; the email says so, and says how to mute it.
+  const viaFirm = (w) => Boolean(w.org_id) && recipientId != null && String(w.user_id) !== String(recipientId);
+  const firmName = (w) => (typeof firmNameOf === "function" ? clean(firmNameOf(w.org_id)) : "") || "your firm";
   const blocks = list.map(({ watch: w, event: e }) => {
     const name = displayName(w);
     const lines = [
       `${[city(w), "permit", w.permit_number].filter(Boolean).join(" ")}${name ? ` — ${name}` : ""}`,
+      ...(viaFirm(w) ? [`Tracked for ${firmName(w)}`] : []),
       e.notice,
       `The city's portal now reads “${e.new_status}”${e.old_status ? ` (it read “${e.old_status}”)` : ""}. Seen ${shortDate(e.detected_at)}.`,
     ];
@@ -370,22 +427,34 @@ function buildNoticeEmail({ items, siteUrl, cityOf } = {}) {
     return lines.join("\n");
   });
   const base = String(siteUrl || "").replace(/\/+$/, "");
+  const fromFirm = list.filter((x) => viaFirm(x.watch));
+  const own = list.length - fromFirm.length;
+  const why = fromFirm.length && !own
+    ? `You're getting this because ${firmName(fromFirm[0].watch)} tracks ${fromFirm.length === 1 ? "this permit" : "these permits"} for everyone at the firm; mute any of them on the Permit tracker.`
+    : fromFirm.length
+      ? "You're getting this because you asked for email updates on your own permits, and your firm tracks the others for everyone; switch yours off, or mute the firm's, on the Permit tracker."
+      : "You're getting this because you asked for email updates when you started tracking the permit; switch them off per permit on the Permit tracker.";
   const text = [
-    list.length === 1 ? "An update on a permit you're tracking on CompNinja." : "Updates on permits you're tracking on CompNinja.",
+    fromFirm.length && !own
+      ? (list.length === 1 ? "An update on a permit your firm is tracking on CompNinja." : "Updates on permits your firm is tracking on CompNinja.")
+      : (list.length === 1 ? "An update on a permit you're tracking on CompNinja." : "Updates on permits you're tracking on CompNinja."),
     "",
     blocks.join("\n\n"),
     "",
     `See each permit's history, or change which steps notify you: ${base}/permits`,
     "",
-    "CompNinja reads each city's public permit portal on weekday mornings, so a status can change on the portal a day before we see it. " +
-      "You're getting this because you asked for email updates when you started tracking the permit; switch them off per permit on the Permit tracker.",
+    "CompNinja reads each city's public permit portal on weekday mornings, so a status can change on the portal a day before we see it. " + why,
   ].join("\n");
   return { subject, text };
 }
 
 // One stored watch + its events -> what the page draws. camelCase, nothing
 // the page does not use.
-function watchView(row, events, { cityOf } = {}) {
+// `viewerId` makes the view relative to who is reading: their own watch, or a
+// firm permit a colleague shares (then `firmName`, `sharedBy` and `muted`
+// describe it). Without a viewer every watch reads as the caller's own, which
+// is what the add and edit routes answer.
+function watchView(row, events, { cityOf, viewerId, firmName, sharedBy, muted } = {}) {
   const r = row || {};
   const cls = classifyStatus(r.status);
   const passed = inStepOrder(r.passed_steps);
@@ -412,6 +481,12 @@ function watchView(row, events, { cityOf } = {}) {
     lastCheckedAt: r.last_checked_at || null,
     checkError: String(r.check_error || ""),
     notify: notifyOfRow(r),
+    mine: viewerId == null || String(r.user_id) === String(viewerId),
+    // The firm this permit is tracked for, or "" when it is one member's.
+    firmId: r.org_id ? String(r.org_id) : "",
+    firm: r.org_id ? clean(firmName) : "",
+    sharedBy: viewerId != null && String(r.user_id) !== String(viewerId) ? clean(sharedBy) : "",
+    muted: muted === true,
     history: mine.map((e) => ({
       id: e.id,
       from: String(e.old_status || ""),
@@ -436,4 +511,5 @@ module.exports = {
   normalizePermitNumber, normalizeNotify, notifyColumns, notifyOfRow,
   validateWatchInput, validateWatchPatch, newWatchRow, displayName, headlineFor,
   decideCheck, dueChecks, buildNoticeEmail, watchView, unreadCount,
+  canShareWithFirm, firmRecipients, firmEvent,
 };

@@ -440,3 +440,34 @@ test("MIN_SEATS is at least two and never exceeds the structural cap", () => {
   assert.ok(ORG.MIN_SEATS <= ORG.MAX_MEMBERS,
     "a minimum above the cap would make every firm plan unbuyable");
 });
+
+// --- changing roles (2026-09-29) --------------------------------------------
+
+test("only an owner changes roles", () => {
+  assert.deepEqual(ORG.canChangeRole({ members: FIRM, actorEmail: OWNER_EMAIL, targetId: "m3", role: "admin" }),
+    { ok: true, reason: "changed" });
+  assert.equal(ORG.canChangeRole({ members: FIRM, actorEmail: ADMIN_EMAIL, targetId: "m3", role: "admin" }).reason,
+    "forbidden", "an admin cannot make admins");
+  assert.equal(ORG.canChangeRole({ members: FIRM, actorEmail: ADMIN_EMAIL, targetId: "m2", role: "owner" }).reason,
+    "forbidden", "or promote themselves");
+  assert.equal(ORG.canChangeRole({ members: FIRM, actorEmail: MEMBER_EMAIL, targetId: "m3", role: "owner" }).reason, "forbidden");
+  assert.equal(ORG.canChangeRole({ members: FIRM, actorEmail: STRANGER, targetId: "m3", role: "admin" }).reason, "not_a_member");
+});
+
+test("the last owner cannot step down, but can once there is another", () => {
+  assert.equal(ORG.canChangeRole({ members: FIRM, actorEmail: OWNER_EMAIL, targetId: "m1", role: "member" }).reason, "last_owner");
+  const two = [OWNER, row({ id: "m2", email: ADMIN_EMAIL, role: "owner" }), MEMBER];
+  assert.equal(ORG.canChangeRole({ members: two, actorEmail: OWNER_EMAIL, targetId: "m1", role: "admin" }).ok, true, "handing the firm on");
+  assert.equal(ORG.canChangeRole({ members: two, actorEmail: OWNER_EMAIL, targetId: "m2", role: "member" }).ok, true);
+});
+
+test("a role change refuses junk, a pending invite and a removed row, and a no-op is fine", () => {
+  assert.equal(ORG.canChangeRole({ members: FIRM, actorEmail: OWNER_EMAIL, targetId: "m3", role: "superuser" }).reason, "bad_role");
+  assert.equal(ORG.canChangeRole({ members: FIRM, actorEmail: OWNER_EMAIL, targetId: "m3", role: "OWNER" }).reason, "bad_role");
+  const pending = row({ id: "p1", email: "new@colliers.com", role: "member", joined_at: null });
+  const gone = row({ id: "g1", email: "gone@colliers.com", role: "member", removed_at: "2026-02-01T00:00:00Z" });
+  assert.equal(ORG.canChangeRole({ members: [...FIRM, pending], actorEmail: OWNER_EMAIL, targetId: "p1", role: "admin" }).reason, "pending");
+  assert.equal(ORG.canChangeRole({ members: [...FIRM, gone], actorEmail: OWNER_EMAIL, targetId: "g1", role: "admin" }).reason, "not_found");
+  assert.deepEqual(ORG.canChangeRole({ members: FIRM, actorEmail: OWNER_EMAIL, targetId: "m2", role: "admin" }),
+    { ok: true, reason: "unchanged" });
+});

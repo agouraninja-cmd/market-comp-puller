@@ -27320,6 +27320,48 @@ const server = http.createServer((req, res) =>
       return;
     }
 
+    // --- PATCH /api/org/member?id=&org= { role } — make admin / make owner --
+    // Owners only (2026-09-29). org-access.js's canChangeRole owns every rule,
+    // the last-owner rule included; this reads the roster and writes the row,
+    // scoped by BOTH org and member id so knowing an id is not enough.
+    if (req.method === "PATCH" && orgPath === "/api/org/member") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const q = new URL(req.url, "http://localhost").searchParams;
+        const orgId = (q.get("org") || "").trim();
+        const memberId = (q.get("id") || "").trim();
+        let body;
+        try { body = await readOrgBody(); }
+        catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const rows = await orgMemberRows(orgId);
+        const role = String((body && body.role) || "");
+        const verdict = ORG.canChangeRole({ members: rows, actorEmail: user.email, targetId: memberId, role });
+        if (!verdict.ok) {
+          const refusals = {
+            bad_role: [400, "Pick owner, admin or member."],
+            not_found: [404, "That person is not on the list."],
+            pending: [400, "They need to accept the invitation first."],
+            last_owner: [400, "A firm needs an owner. Make someone else an owner first."],
+          };
+          const [status, error] = refusals[verdict.reason] || [403, "Only a firm's owner can change someone's role."];
+          return sendJson(res, status, { error });
+        }
+        if (verdict.reason === "changed") {
+          await sbRequest("PATCH",
+            `org_members?org_id=eq.${encodeURIComponent(orgId)}&id=eq.${encodeURIComponent(memberId)}&removed_at=is.null`,
+            { role }, { prefer: "return=minimal" });
+        }
+        return sendJson(res, 200, { ok: true, role, changed: verdict.reason === "changed" });
+      })().catch((err) => {
+        console.error("Firm role change failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't update the member list. Please try again in a minute." });
+      });
+      return;
+    }
+
     // --- DELETE /api/org/member?id=&org= — remove someone, or leave ---------
     // ONE route for both, deliberately: "remove" and "leave" are the same
     // state change under different permissions, and org-access.js's

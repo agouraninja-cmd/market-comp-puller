@@ -419,3 +419,29 @@ paths:
   the shops, so it goes stale the day a kind is added OR removed — the same
   suite pins it to the module's own words. The `/brokers-firms` page draws its
   shop row off `SHOP_KINDS` for the same reason, rather than typing the cards.
+
+## Changing roles (2026-09-29)
+
+Owner's call: "add make admin and make owner, for owner controls". Until then
+nothing in the product could make an admin (invites always write `member`,
+the creator is the only owner) and a firm could never be handed on.
+`PATCH /api/org/member?org=&id=` with `{ role }`, rules in
+`org-access.js`'s **`canChangeRole`** (tested in `test/org-access.test.js`,
+run against a real server in `test/org-run.test.js`). Four rules:
+
+- **Owners only**, narrower than `canManageMembers`: an admin who could make
+  admins could make themselves an owner by way of a friend, which is
+  `canRemoveMember`'s "admin must not be a way to take a firm" one step
+  removed.
+- **The last owner cannot step down**, the same last-owner rule as removal.
+  Handing a firm on is "Make owner" on the successor, then "Make me an admin"
+  (or member) on your own row. Several owners may coexist.
+- **A pending invite has no role to change** (`pending`): it becomes a member
+  on accept, and an owner then promotes a person, not an address.
+- **The write is scoped by BOTH `org_id` and member `id`** and skips removed
+  rows. No migration: `org_members.role` and its CHECK have allowed
+  owner/admin/member since 030.
+
+The buttons render in the Firm & branding panel's member list only for an
+accepted owner (`iAmOwner`), never on the last owner's row; the server
+re-decides everything.

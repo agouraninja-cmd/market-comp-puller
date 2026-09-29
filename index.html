@@ -17089,6 +17089,7 @@ async function renderMyDesk() {
     // their own row. This is the same rule the server enforces, read from the
     // same roster, not a second opinion about it.
     const owners = members.filter((m) => !m.pending && m.role === "owner").length;
+    const iAmOwner = members.some((m) => m.self && !m.pending && m.role === "owner");
     stats.textContent = `${data.name} · ${joined} ${joined === 1 ? "person" : "people"}` +
       (members.length > joined ? ` · ${members.length - joined} invited` : "");
 
@@ -17113,6 +17114,40 @@ async function renderMyDesk() {
       // both, including the last-owner rule, so a button that should not be
       // here buys a 403 rather than a removal.
       const lastOwner = m.role === "owner" && !m.pending && owners <= 1;
+      // Role controls, for OWNERS only (2026-09-29): org-access.js's
+      // canChangeRole is the rule and the server re-decides it. Offered on
+      // accepted rows, never on the last owner's (a firm needs one), and on
+      // your own row too, which is how an owner hands the firm on: make
+      // someone else owner, then step down.
+      if (iAmOwner && !m.pending && !lastOwner) {
+        ["owner", "admin", "member"].filter((r) => r !== m.role).forEach((r) => {
+          const rb = document.createElement("button");
+          rb.type = "button";
+          rb.className = "text-xs text-[#68707E] hover:text-[#374253] underline mr-3";
+          rb.textContent = m.self ? `Make me ${r === "admin" ? "an admin" : "a member"}` : `Make ${r}`;
+          rb.addEventListener("click", async () => {
+            const msg = r === "owner"
+              ? `Make ${m.email} an owner of ${data.name}? Owners can invite and remove people, pay for seats, change every firm setting and change anyone's role, including yours.`
+              : m.self
+                ? `Step down to ${r} in ${data.name}? You will no longer be able to change roles${r === "member" ? ", invite people or change firm settings" : " or pay for seats"}.`
+                : `Make ${m.email} ${r === "admin" ? "an admin" : "a member"} of ${data.name}?`;
+            if (!confirm(msg)) return;
+            rb.disabled = true;
+            try {
+              const res = await fetch(
+                `/api/org/member?org=${encodeURIComponent(firm.id)}&id=${encodeURIComponent(m.id)}`,
+                { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ role: r }) });
+              const body = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(body.error || "failed");
+              await renderShares();
+            } catch (err) {
+              meta.textContent = err.message || "That didn't go through.";
+              rb.disabled = false;
+            }
+          });
+          row.appendChild(rb);
+        });
+      }
       if ((data.canManage || m.self) && !lastOwner) {
         const btn = document.createElement("button");
         btn.type = "button";

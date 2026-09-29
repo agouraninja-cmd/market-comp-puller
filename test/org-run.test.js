@@ -273,6 +273,30 @@ test("firms, end to end", async (t) => {
     assert.match((await r.json()).error, /needs an owner/);
   });
 
+  await t.test("roles: only the owner changes them, and handing the firm on works", async () => {
+    const mikeRow = tables.org_members.find((m) => m.email === MIKE.email);
+    const bradRow = tables.org_members.find((m) => m.email === BRAD.email);
+    const patch = (who, id, role) => fetch(`${srv.base}/api/org/member?org=${orgId}&id=${id}`,
+      as(who, { method: "PATCH", body: JSON.stringify({ role }) }));
+    assert.equal((await patch(MIKE, mikeRow.id, "owner")).status, 403, "a member cannot promote themselves");
+    assert.equal((await patch(OUTSIDER, mikeRow.id, "admin")).status, 403);
+    assert.equal((await patch(BRAD, bradRow.id, "member")).status, 400, "the last owner cannot step down");
+    assert.equal((await patch(BRAD, mikeRow.id, "boss")).status, 400);
+    const r = await patch(BRAD, mikeRow.id, "admin");
+    assert.equal(r.status, 200);
+    assert.equal(mikeRow.role, "admin");
+    assert.equal((await patch(MIKE, bradRow.id, "member")).status, 403, "an admin cannot demote the owner");
+    const roster = await (await fetch(srv.base + "/api/org/members?id=" + orgId, as(MIKE))).json();
+    assert.equal(roster.canManage, true, "an admin manages people");
+    assert.equal((await patch(BRAD, mikeRow.id, "owner")).status, 200);
+    assert.equal((await patch(BRAD, bradRow.id, "admin")).status, 200, "with another owner, Brad can step down");
+    assert.equal(bradRow.role, "admin");
+    // Put it back so the rest of the suite reads the firm it was written for.
+    assert.equal((await patch(MIKE, bradRow.id, "owner")).status, 200);
+    assert.equal((await patch(BRAD, mikeRow.id, "member")).status, 200);
+    assert.equal(mikeRow.role, "member");
+  });
+
   await t.test("removing Mike takes the report away again, immediately", async () => {
     const mikeRow = tables.org_members.find((m) => m.email === MIKE.email);
     const r = await fetch(

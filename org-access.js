@@ -363,6 +363,41 @@ function canRemoveMember({ members, actorEmail, targetId }) {
 }
 
 /**
+ * Change a member's role (2026-09-29, owner's call: "add make admin and make
+ * owner, for owner controls"). Until this existed nothing in the product
+ * could make an admin, and a firm could never hand ownership on.
+ *
+ * OWNERS ONLY, deliberately narrower than canManageMembers: an admin who
+ * could make admins could make themselves an owner by way of a friend, and
+ * "admin" would then be a way to take a firm from the person who created it
+ * (canRemoveMember's reason, one step removed). Several owners may exist, so
+ * handing a firm on is "make them owner", then — if you like — "make me a
+ * member" on your own row.
+ *
+ * The last-owner rule is canRemoveMember's: a firm needs an owner, so the
+ * only owner cannot step down until somebody else is one. A pending invite
+ * has no role to change yet — it becomes a member on accept, and an owner
+ * then promotes a person rather than an address.
+ *
+ * @returns {{ok:boolean, reason:string}} reason: changed | unchanged |
+ *   bad_role | not_a_member | forbidden | not_found | pending | last_owner
+ */
+function canChangeRole({ members, actorEmail, targetId, role }) {
+  if (!ROLES.includes(role)) return { ok: false, reason: "bad_role" };
+  const list = Array.isArray(members) ? members : [];
+  const actor = membershipOf(list, actorEmail);
+  if (!actor) return { ok: false, reason: "not_a_member" };
+  if (roleOf(actor) !== "owner") return { ok: false, reason: "forbidden" };
+  const target = list.find((r) => r && String(r.id) === String(targetId)) || null;
+  if (!target || target.removed_at) return { ok: false, reason: "not_found" };
+  if (!isActive(target)) return { ok: false, reason: "pending" };
+  if (roleOf(target) === role) return { ok: true, reason: "unchanged" };
+  const owners = list.filter((r) => isActive(r) && roleOf(r) === "owner");
+  if (roleOf(target) === "owner" && owners.length <= 1) return { ok: false, reason: "last_owner" };
+  return { ok: true, reason: "changed" };
+}
+
+/**
  * Clean a pasted invite list.
  *
  * Drops the caller's own address silently (they are already in the firm, and
@@ -395,7 +430,7 @@ module.exports = {
   SHARE_DEFAULTS, AUTO_SHARE_CHOICES, SHOP_KINDS, SHOP_COPY,
   normalizeEmail, roleOf, isActive, isPending,
   validateOrgName, membershipOf, pendingInviteOf, activeOrgIds,
-  canManageMembers, canPublishToOrg, canRemoveMember, normalizeInviteEmails,
+  canManageMembers, canPublishToOrg, canRemoveMember, canChangeRole, normalizeInviteEmails,
   shareDefaultOf, autoShareFor, autoShareValue,
   kindOf, shopCopyOf, validateShopKind,
 };

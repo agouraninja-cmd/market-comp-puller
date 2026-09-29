@@ -445,3 +445,53 @@ run against a real server in `test/org-run.test.js`). Four rules:
 The buttons render in the Firm & branding panel's member list only for an
 accepted owner (`iAmOwner`), never on the last owner's row; the server
 re-decides everything.
+
+## The member profile card (2026-09-29)
+
+The owner's pick, Draft A of the drafts page
+(https://claude.ai/artifact/WY7eTbXd345KM84GruDx12). In Firm & branding an
+accepted colleague is a named row (`.mc-row`, a button) that opens their card
+beside the panel, or as a sheet from the bottom on a phone. Rules in the pure
+**`member-card.js`** (`test/member-card.test.js`); the routes run against the
+stand-in in **`test/member-card-run.test.js`**; the list and card code are
+exercised in `test/org-desk.test.js`. Migration **`056-user-title.sql`**
+(`users.title`) — soft deploy order: `memberPeople()` retries without the
+column, so only saving a title fails until it runs. Seven rules:
+
+- **`GET /api/org/person?org=&id=`** is behind an active membership of THAT
+  firm (`openOrg` + `memberOf`), and the person must be an accepted member of
+  it (an invitation and another firm's member are 404). `id` is the
+  `org_members.id`.
+- **Every count reads a FIRM table scoped by `org_id`**: shared_reports with
+  the firm's org and not revoked, org_comps, the firm's buildings (through
+  `orgBuildingRows`, never a new read of that table — 046's rule is enforced
+  by `test/org-routes.test.js`), and permit watches tracked for the firm.
+  Never a vault, portfolio, search or unshared report, not even as a count.
+  A failed count is left OUT of `shared`, never drawn as 0.
+- **Coverage is shown to colleagues by default** (owner's call): it is the
+  person's `broker_coverage`. A failed read is `covers: null` and the card
+  says nothing about coverage; an empty list is "No markets picked yet" (on
+  your own card it becomes a to-do instead).
+- **The seat line is for an owner looking at somebody else** (`cardView`
+  decides): "On Pro through a firm seat", "On Pro", or "Not on Pro. Firm
+  permit notices don't reach Mike." — the entitlement read is paid only then.
+- **The buttons are `memberCardActions()`**, read from the roster the list
+  drew: Make admin on a member and Make owner on an admin as the visible
+  button (owners only), the rest of the role moves plus Remove from firm in
+  the ••• menu, Leave firm and "Make me an admin/member" on your own card.
+  The last owner is offered no way out; an admin removes non-owners and
+  changes no role. The confirms are word for word the ones the row buttons
+  carried. The server re-decides all of it (`canChangeRole`,
+  `canRemoveMember`). An invitation has no card and keeps its Remove on the
+  row.
+- **Message is `/messages?to=<user id>`**, which picks that colleague in the
+  new-conversation panel and sends nothing (the discovery doors' rule), then
+  drops the parameter so a reload does not reopen the panel.
+- **Photos: `GET /api/org/person/photo?org=&id=&v=<rev>`**, the same gate,
+  `cache-control: private`. The roster carries `name` and `photoRev` for
+  accepted rows only. Title: `PATCH /api/account/profile { title }`, 80
+  characters refused not truncated.
+
+Escape closes the card first (`memberCard` heads `MODAL_CANCELS`), closing the
+panel closes it, and a click outside it puts it away. Not built: opening the
+card from "shared by" on the firm shelf and from other names on the site.

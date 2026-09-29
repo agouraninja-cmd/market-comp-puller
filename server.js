@@ -66,6 +66,7 @@ const SHAREACCESS = require("./report-access.js");
 // consults, so there is exactly one place that decides a pending invite is not
 // a membership. "org" is the internal noun here, "firm" is the word on screen.
 const ORG = require("./org-access.js");
+const MEMBERCARD = require("./member-card.js");
 const BUILDINGS = require("./org-buildings.js");
 const ORGLEASES = require("./org-leases.js");
 // A firm's own tenant contacts: what may be stored and what a CSV of them
@@ -4887,6 +4888,33 @@ async function activeOrgIdsFor(user) {
 // canRemoveMember's last-owner rule — which is why it returns removed rows
 // too: org-access.js filters them, and counting owners from a list that had
 // already dropped them would be a second opinion about who is active.
+// Names, photos and titles for a firm's members (2026-09-29, the profile
+// card). A SECOND QUERY and a stitch, the house pattern. `title` arrived in
+// migration 056; until that runs the first read 400s on the unknown column
+// and the second, without it, answers — so the roster never depends on the
+// migration. Never throws: a missing name falls back to the email.
+async function memberPeople(ids) {
+  const out = new Map();
+  const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
+  if (!DB_CONFIGURED || !list.length) return out;
+  const base = `users?id=in.(${pgInList(list)})&limit=${list.length}&select=id,name,email,avatar_rev`;
+  let rows = null;
+  try { rows = await sbRequest("GET", base + ",title"); }
+  catch (_) {
+    try { rows = await sbRequest("GET", base); }
+    catch (err) { console.error("Member names read failed (the roster shows emails):", err.message); return out; }
+  }
+  for (const r of rows || []) out.set(String(r.id), r);
+  return out;
+}
+
+// A count of one firm table's rows for one person, or null when the read
+// failed — the card leaves a failed count OUT rather than drawing a 0.
+async function firmCount(pathAndQuery) {
+  try { return ((await sbRequest("GET", pathAndQuery)) || []).length; }
+  catch (err) { console.error("Profile card count failed:", err.message); return null; }
+}
+
 async function orgMemberRows(orgId) {
   if (!DB_CONFIGURED || !orgId) return [];
   return (await sbRequest("GET",
@@ -20057,6 +20085,33 @@ const server = http.createServer((req, res) =>
   // Profile photo. Bytes live in user_avatars (file fallback: on the user
   // object). /me only ever carries avatarRev, never the data URI, so the
   // header hydration on every market page stays small.
+  // Your title on your profile card (2026-09-29; migration 056). The one new
+  // thing the card stores; everything else on it already existed.
+  if (req.url.split("?")[0] === "/api/account/profile" && req.method === "PATCH") {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (c) => { body += c; if (body.length > 4000) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const v = MEMBERCARD.validateTitle((JSON.parse(body || "{}") || {}).title);
+        if (!v.ok) return sendJson(res, 400, { error: v.error });
+        if (DB_CONFIGURED) {
+          await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(user.id)}`, { title: v.value || null }, { prefer: "return=minimal" });
+        } else {
+          const u = (await accountStore()).users.find((x) => x.id === user.id);
+          if (u) { u.title = v.value; await saveAccountStore(); }
+        }
+        return sendJson(res, 200, { ok: true, title: v.value });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Profile title save failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save your title just now. Please try again in a minute." });
+      }
+    });
+    return;
+  }
   if (req.url.split("?")[0] === "/api/account/avatar") {
     if (req.method === "GET") {
       (async () => {
@@ -26222,6 +26277,10 @@ const server = http.createServer((req, res) =>
         const membership = await memberOf(user, orgId);
         if (!membership) return;
         const [org, rows] = await Promise.all([findOrg(orgId), orgMemberRows(orgId)]);
+        // Names and photos (2026-09-29): the list showed only emails although
+        // every account has a name. Accepted rows only — an invitation is an
+        // address, not yet a person.
+        const people = await memberPeople(rows.filter((r) => r.joined_at && !r.removed_at).map((r) => r.user_id));
         // Emails are shown to colleagues, which is what a member list IS —
         // and is exactly why this route is behind an active membership of
         // this firm rather than behind knowing its id.
@@ -26234,11 +26293,83 @@ const server = http.createServer((req, res) =>
             id: r.id, email: r.email, role: ORG.roleOf(r),
             pending: !r.joined_at, invitedAt: r.invited_at, joinedAt: r.joined_at,
             self: ORG.normalizeEmail(r.email) === ORG.normalizeEmail(user.email),
+            name: String(((people.get(String(r.user_id || "")) || {}).name) || "").trim(),
+            photoRev: String(((people.get(String(r.user_id || "")) || {}).avatar_rev) || ""),
           })),
         });
       })().catch((err) => {
         console.error("Firm roster read failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't load the member list. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- GET /api/org/person?org=&id= — a colleague's profile card ----------
+    // --- GET /api/org/person/photo?org=&id=&v= — their profile photo --------
+    // (2026-09-29, the owner's pick: Draft A.) Behind an active membership of
+    // THIS firm, and the person must be an accepted member of it too. What
+    // may appear is member-card.js's decision; every count below reads a
+    // FIRM table scoped by org_id, never a person's own book.
+    if (req.method === "GET" && (orgPath === "/api/org/person" || orgPath === "/api/org/person/photo")) {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const q = new URL(req.url, "http://localhost").searchParams;
+        const orgId = (q.get("org") || "").trim();
+        const memberId = (q.get("id") || "").trim();
+        const viewer = await memberOf(user, orgId);
+        if (!viewer) return;
+        const rows = await orgMemberRows(orgId);
+        const member = rows.find((r) => String(r.id) === memberId && ORG.isActive(r));
+        if (!member || !member.user_id) return sendJson(res, 404, { error: "That person isn't in this firm." });
+        const uid = String(member.user_id);
+
+        if (orgPath === "/api/org/person/photo") {
+          const row = await findUserAvatar(uid).catch(() => null);
+          const decoded = row && row.data_uri ? AVATAR.decodeAvatar(row.data_uri) : null;
+          if (!decoded) return sendJson(res, 404, { error: "No photo." });
+          res.writeHead(200, {
+            "content-type": decoded.mime,
+            "content-length": decoded.bytes.length,
+            // Private: it is a colleague's face, served only to their firm.
+            "cache-control": "private, max-age=86400",
+            "x-content-type-options": "nosniff",
+          });
+          return res.end(decoded.bytes);
+        }
+
+        const o = encodeURIComponent(orgId);
+        const u = encodeURIComponent(uid);
+        const self = String(member.id) === String(viewer.id);
+        const viewerIsOwner = ORG.roleOf(viewer) === "owner";
+        const [people, coverage, reports, comps, buildings, permits, seat] = await Promise.all([
+          memberPeople([uid]),
+          sbRequest("GET", `broker_coverage?user_id=eq.${u}&select=market,property_type&limit=100`)
+            .catch((err) => { console.error("Profile card coverage read failed:", err.message); return null; }),
+          firmCount(`shared_reports?org_id=eq.${o}&visibility=eq.org&revoked_at=is.null&user_id=eq.${u}&select=id&limit=1000`),
+          firmCount(`org_comps?org_id=eq.${o}&shared_by_user_id=eq.${u}&select=id&limit=1000`),
+          // Through the board's one sanctioned read (org_buildings is named
+          // nowhere else, 046's rule), counted here.
+          orgBuildingRows(orgId).then((list) => list.filter((r) => String(r.added_by_user_id || "") === uid).length)
+            .catch((err) => { console.error("Profile card buildings read failed:", err.message); return null; }),
+          firmCount(`permit_watches?org_id=eq.${o}&user_id=eq.${u}&select=id&limit=200`),
+          // The seat line is for an owner looking at somebody else, so the
+          // entitlement read is paid only then.
+          viewerIsOwner && !self
+            ? findUsersByIds([uid]).then(async (list) => {
+              if (!list[0]) return null;
+              const ent = await getEntitlements(list[0], undefined, false);
+              return { pro: ent.pro === true, viaFirm: Boolean(ent.viaFirm) };
+            }).catch(() => null)
+            : Promise.resolve(null),
+        ]);
+        return sendJson(res, 200, MEMBERCARD.cardView({
+          member, person: people.get(uid) || { id: uid, email: member.email }, viewer, coverage,
+          shared: { reports, comps, buildings, permits }, seat,
+        }));
+      })().catch((err) => {
+        console.error("Profile card read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load that profile. Please try again in a minute." });
       });
       return;
     }

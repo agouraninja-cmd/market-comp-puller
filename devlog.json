@@ -4435,5 +4435,11 @@
     "type": "feature",
     "title": "Firm owners can make admins and hand the firm on",
     "details": "In Firm & branding, an owner now sees Make owner, Make admin and Make member beside each colleague who has accepted. Admins can invite and remove people and change firm settings; owners can also pay for seats, change roles and track permits for the whole firm. An owner can hand the firm on by making someone else owner and then stepping down; the last owner can never step down."
+  },
+  {
+    "date": "2026-09-29",
+    "type": "feature",
+    "title": "Every colleague has a profile card",
+    "details": "In Firm & branding, the member list now shows names and photos instead of bare emails, and clicking someone opens their card: title, role, when they joined, the markets and property types they cover, and how many reports, comps, buildings and firm permits they have shared with the firm. Owners get Make admin on a member and Make owner on an admin, with Make member and Remove from firm in the ••• menu, plus a line saying whether that person is on Pro. Message opens a conversation with them. Your own card asks you to add a photo, a title and the markets you cover. Nothing private appears on a card. Needs migration 056 for titles."
   }
 ]

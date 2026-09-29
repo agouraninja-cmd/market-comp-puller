@@ -1,0 +1,21 @@
+-- 056 — a job title on your profile card (2026-09-29)
+-- Rules:  member-card.js (validateTitle: refused over 80 characters, control
+--         characters stripped, empty clears)
+-- Routes: PATCH /api/account/profile { title }; read by GET /api/org/person
+--         and GET /api/org/members through memberPeople()
+--
+-- The profile card (the owner's pick, Draft A) shows a colleague's name,
+-- photo, role, the markets they cover and what they shared with the firm.
+-- All of that already existed. The title — "Associate · Retail" — is the one
+-- thing the card asks a person to say about themselves that nothing stored.
+--
+-- On `users`, not on `org_members`: a title describes the person, and the
+-- same person in two firms is the same associate. Nullable, no default: an
+-- empty title is "has not said", and the card then shows none.
+--
+-- Deploy order is SOFT. memberPeople() asks for `title` and, when PostgREST
+-- 400s on the unknown column, asks again without it, so the roster and the
+-- card work before this runs; only saving a title answers "couldn't save"
+-- until it does. Purely additive and idempotent.
+
+alter table users add column if not exists title text;

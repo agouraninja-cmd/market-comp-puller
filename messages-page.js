@@ -1818,11 +1818,17 @@ function renderMessagesBody(boot) {
   // paints without a round trip; the fetch below is what keeps it current and
   // is also the whole path when BOOT is null.
   function start(){
-    var wanted = "", wantedX = "";
+    var wanted = "", wantedX = "", wantedTo = "";
     try {
       var qp = new URL(location.href).searchParams;
       wanted = qp.get("t") || "";
       wantedX = qp.get("x") || "";
+      // ?to=<user id> is the profile card's Message door (2026-09-29): it
+      // picks that colleague in the new-conversation panel and sends nothing
+      // — the person still presses Start, the discovery doors' rule. Consumed
+      // on arrival, so a reload does not reopen the panel.
+      wantedTo = (qp.get("to") || "").trim();
+      if (wantedTo) { try { history.replaceState({}, "", "/messages"); } catch (e) {} }
       var say = (qp.get("say") || "").slice(0, 4000), compId = (qp.get("comp") || "").trim();
       if (say || compId) {
         state.draft = { text: say, compId: compId };
@@ -1838,6 +1844,14 @@ function renderMessagesBody(boot) {
       // named a conversation (?t= internal, ?x= a deal room) jumps straight
       // into it; arriving bare on a phone leaves the reader on the list.
       if (wantedX) { openExternal(wantedX, true, true); return; }
+      if (wantedTo && state.firm && joinedPeople().some(function(p){ return p.userId === wantedTo; })) {
+        openNewPanel();
+        state.picked = [wantedTo];
+        renderNewChips();
+        renderNewPeople();
+        $("msgNewMsg").textContent = "Press Start to message " + pickedName(wantedTo) + ".";
+        return;
+      }
       if (wanted) { openThread(wanted, true, true); return; }
       // A draft needs somebody to say it to, and the picker only searches a
       // firm. A reader with none keeps the draft and lands on their rooms

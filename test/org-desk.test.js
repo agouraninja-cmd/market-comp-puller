@@ -332,95 +332,176 @@ test("an accept that fails says so and gives the button back", async () => {
 // ---------------------------------------------------------------------------
 // The roster — the last-owner rule, read from the same list the server uses
 // ---------------------------------------------------------------------------
-const MEMBERS_RE = /  async function renderFirmMembers\(firm\) \{[\s\S]*?\n  \}/;
+// The roster and the profile card (2026-09-29, Draft A) load together: the
+// list's rows open the card, and the card's buttons are the ones the rows
+// used to carry. Captured from renderFirmMembers through renderMemberCard.
+const MEMBERS_RE = /  async function renderFirmMembers\(firm\) \{[\s\S]*?\n  function renderMemberCard\([\s\S]*?\n  \}/;
 
-function loadMembers(body, status) {
+function loadMembers(body, status, extras) {
   const fetch = makeFetch([["/api/org/members", { status: status || 200, body }]]);
   return load(MEMBERS_RE,
-    "this.fn = renderFirmMembers; this.confirms = () => __confirms;",
+    "this.fn = renderFirmMembers; this.confirms = () => __confirms;" +
+    " this.actions = memberCardActions; this.run = runMemberAction; this.card = renderMemberCard;",
     "const __confirms = [];\n" +
     "function confirm(m) { __confirms.push(m); return true; }\n" +
     "async function renderShares() {}\n" +
+    "function openSettingsModal() {}\n" +
     "function renderFirmAutoShare() {} function renderFirmBilling() {}\n" +
     "function renderFirmShop() {}",
-    { fetch });
+    Object.assign({ fetch }, extras || {}));
 }
 
-const OWNER = { id: "m1", email: "brad@colliers.com", role: "owner", pending: false, self: true };
-const MEMBER = { id: "m2", email: "mike@colliers.com", role: "member", pending: false, self: false };
+const OWNER = { id: "m1", email: "brad@colliers.com", name: "Brad Nolan", role: "owner", pending: false, self: true };
+const MEMBER = { id: "m2", email: "mike@colliers.com", name: "Mike Chen", role: "member", pending: false, self: false };
+const ADMIN = { id: "m4", email: "ann@colliers.com", name: "Ann Ruiz", role: "admin", pending: false, self: false };
+const labels = (list) => list.map((a) => a.label);
+const cardFor = (ctx, m, data) => {
+  const owners = data.members.filter((x) => !x.pending && x.role === "owner").length;
+  const a = ctx.actions(m, data, owners);
+  return { primary: labels(a.primary), menu: labels(a.menu) };
+};
+// The rows that OPEN a card are buttons too; these are the other buttons.
+const rowControls = (ctx) => buttons(ctx.dom.el("firmMemberRows")).filter((b) => !b.getAttribute("data-card"));
 
-test("the sole owner is not offered a Leave button the server would refuse", async () => {
+test("an accepted colleague is a named row that opens their card", async () => {
+  const data = { name: "Colliers Boise", canManage: true, members: [OWNER, MEMBER, { id: "m9", email: "nameless@colliers.com", role: "member", pending: false }] };
+  const ctx = loadMembers(data);
+  await ctx.fn({ id: "o1" });
+  const rows = buttons(ctx.dom.el("firmMemberRows")).filter((b) => b.getAttribute("data-card"));
+  assert.deepEqual(rows.map((b) => b.getAttribute("data-card")), ["m1", "m2", "m9"]);
+  assert.match(rows[0].textContent, /Brad Nolan \(you\)/);
+  assert.match(rows[1].textContent, /Mike Chen/);
+  assert.match(rows[1].textContent, /mike@colliers\.com/, "the email rides beside the name");
+  assert.match(rows[2].textContent, /nameless@colliers\.com/, "no name falls back to the email");
+  assert.equal(rows[0].getAttribute("aria-haspopup"), "dialog");
+  assert.deepEqual(rowControls(ctx), [], "the role and remove buttons moved into the card");
+});
+
+test("the sole owner is not offered a way out the server would refuse", async () => {
   // org-access.js refuses it: a firm with no owner has nobody who can invite,
-  // remove or hand the role on, and no route repairs one. Offering the control
-  // and answering with an error is how a person learns to distrust the page.
-  const ctx = loadMembers({ name: "Colliers Boise", canManage: true, members: [OWNER] });
-  await ctx.fn({ id: "o1" });
-  assert.equal(buttons(ctx.dom.el("firmMemberRows")).length, 0);
+  // remove or hand the role on, and no route repairs one.
+  const data = { name: "Colliers Boise", canManage: true, members: [OWNER] };
+  const ctx = loadMembers(data);
+  assert.deepEqual(cardFor(ctx, OWNER, data), { primary: ["Edit your card"], menu: [] });
 });
 
-test("a second owner makes leaving offerable again", async () => {
-  const ctx = loadMembers({
-    name: "Colliers Boise", canManage: true,
-    members: [OWNER, Object.assign({}, MEMBER, { role: "owner" })],
-  });
-  await ctx.fn({ id: "o1" });
-  const labels = buttons(ctx.dom.el("firmMemberRows")).map((b) => b.textContent);
-  // With a second owner, the owner may also step down (2026-09-29 role
-  // controls) and change the other owner's role.
-  assert.deepEqual(labels, ["Make me an admin", "Make me a member", "Leave firm", "Make admin", "Make member", "Remove"]);
+test("a second owner makes leaving and stepping down offerable", async () => {
+  const other = Object.assign({}, MEMBER, { role: "owner" });
+  const data = { name: "Colliers Boise", canManage: true, members: [OWNER, other] };
+  const ctx = loadMembers(data);
+  assert.deepEqual(cardFor(ctx, OWNER, data), { primary: ["Edit your card"], menu: ["Make me an admin", "Make me a member", "Leave firm"] });
+  assert.deepEqual(cardFor(ctx, other, data), { primary: ["Message"], menu: ["Make admin", "Make member", "Remove from firm"] });
 });
 
-test("role controls: an owner is offered them on accepted colleagues, an admin never", async () => {
-  const ADMIN = { id: "m4", email: "ann@colliers.com", role: "admin", pending: false, self: false };
-  const owner = loadMembers({ name: "Colliers Boise", canManage: true, members: [OWNER, ADMIN, MEMBER] });
-  await owner.fn({ id: "o1" });
-  assert.deepEqual(buttons(owner.dom.el("firmMemberRows")).map((b) => b.textContent),
-    ["Make owner", "Make member", "Remove", "Make owner", "Make admin", "Remove"],
-    "nothing on the sole owner's own row; both other roles on each colleague");
-  const admin = loadMembers({
-    name: "Colliers Boise", canManage: true,
-    members: [Object.assign({}, OWNER, { self: false }), Object.assign({}, ADMIN, { self: true }), MEMBER],
-  });
-  await admin.fn({ id: "o1" });
-  assert.equal(buttons(admin.dom.el("firmMemberRows")).some((b) => /^Make /.test(b.textContent)), false);
+test("the owner's ladder: Make admin on a member, Make owner on an admin, the way down in the menu", async () => {
+  const data = { name: "Colliers Boise", canManage: true, members: [OWNER, ADMIN, MEMBER] };
+  const ctx = loadMembers(data);
+  assert.deepEqual(cardFor(ctx, MEMBER, data), { primary: ["Message", "Make admin"], menu: ["Make owner", "Remove from firm"] });
+  assert.deepEqual(cardFor(ctx, ADMIN, data), { primary: ["Message", "Make owner"], menu: ["Make member", "Remove from firm"] });
 });
 
-test("a pending invitation is not an owner, so it cannot hold the firm hostage", async () => {
-  // owners counts !pending rows only. A firm whose second owner has not
-  // accepted still has exactly one real owner, and the button must stay off.
-  const ctx = loadMembers({
-    name: "Colliers Boise", canManage: true,
-    members: [OWNER, { id: "m3", email: "new@colliers.com", role: "owner", pending: true }],
-  });
-  await ctx.fn({ id: "o1" });
-  // The sole ACCEPTED owner keeps no button; the unaccepted one is revocable,
-  // which is the point — an invitation nobody took must not lock the roster.
-  assert.deepEqual(buttons(ctx.dom.el("firmMemberRows")).map((b) => b.textContent), ["Remove"]);
-  assert.match(ctx.dom.text("firmMemberRows"), /invited, not accepted/);
-  assert.match(ctx.dom.text("firmStats"), /1 person · 1 invited/);
+test("an admin removes people but never changes a role or removes an owner", async () => {
+  const me = Object.assign({}, ADMIN, { self: true });
+  const owner = Object.assign({}, OWNER, { self: false });
+  const data = { name: "Colliers Boise", canManage: true, members: [owner, me, MEMBER] };
+  const ctx = loadMembers(data);
+  assert.deepEqual(cardFor(ctx, MEMBER, data), { primary: ["Message"], menu: ["Remove from firm"] });
+  assert.deepEqual(cardFor(ctx, owner, data), { primary: ["Message"], menu: [] });
 });
 
-test("a plain member may leave, and is offered nothing on anybody else's row", async () => {
-  const ctx = loadMembers({
-    name: "Colliers Boise", canManage: false,
-    members: [Object.assign({}, OWNER, { self: false }), Object.assign({}, MEMBER, { self: true })],
-  });
+test("a plain member may leave, and is offered nothing on anybody else's card", async () => {
+  const me = Object.assign({}, MEMBER, { self: true });
+  const owner = Object.assign({}, OWNER, { self: false });
+  const data = { name: "Colliers Boise", canManage: false, members: [owner, me] };
+  const ctx = loadMembers(data);
   await ctx.fn({ id: "o1" });
-  assert.deepEqual(buttons(ctx.dom.el("firmMemberRows")).map((b) => b.textContent), ["Leave firm"]);
+  assert.deepEqual(cardFor(ctx, me, data), { primary: ["Edit your card"], menu: ["Leave firm"] });
+  assert.deepEqual(cardFor(ctx, owner, data), { primary: ["Message"], menu: [] });
   assert.equal(ctx.dom.hidden("firmInviteWrap"), true,
     "the invite form was offered to somebody the server will not let invite");
 });
 
-test("removing somebody is confirmed by name, and says what they keep", async () => {
-  const ctx = loadMembers({ name: "Colliers Boise", canManage: true, members: [OWNER, MEMBER] });
+test("a pending invitation is not an owner, so it cannot hold the firm hostage", async () => {
+  // owners counts !pending rows only. A firm whose second owner has not
+  // accepted still has exactly one real owner, and stepping down stays off.
+  const data = {
+    name: "Colliers Boise", canManage: true,
+    members: [OWNER, { id: "m3", email: "new@colliers.com", role: "owner", pending: true }],
+  };
+  const ctx = loadMembers(data);
   await ctx.fn({ id: "o1" });
-  const remove = buttons(ctx.dom.el("firmMemberRows")).find((b) => b.textContent === "Remove");
-  await remove.fire("click");
+  // The unaccepted one has no card and keeps its Remove on the row, which is
+  // the point — an invitation nobody took must not lock the roster.
+  assert.deepEqual(rowControls(ctx).map((b) => b.textContent), ["Remove"]);
+  assert.match(ctx.dom.text("firmMemberRows"), /invited, not accepted/);
+  assert.match(ctx.dom.text("firmStats"), /1 person · 1 invited/);
+  assert.deepEqual(cardFor(ctx, OWNER, data).menu, []);
+});
+
+test("removing somebody is confirmed by name, and says what they keep", async () => {
+  const data = { name: "Colliers Boise", canManage: true, members: [OWNER, MEMBER] };
+  const ctx = loadMembers(data);
+  await ctx.run({ id: "o1" }, data, MEMBER, "remove", {}, null);
   const msg = ctx.confirms()[0];
   assert.match(msg, /mike@colliers\.com/);
   assert.match(msg, /Colliers Boise/);
   assert.match(msg, /keep their own reports/,
     "the confirm must say what removal does NOT take — a broker's own book is not the firm's");
+  await ctx.run({ id: "o1" }, data, MEMBER, "role:owner", {}, null);
+  assert.match(ctx.confirms()[1], /change anyone's role, including yours/);
+});
+
+test("Message opens a conversation with that person and sends nothing", async () => {
+  const loc = { href: "" };
+  const data = { name: "Colliers Boise", canManage: true, members: [OWNER, MEMBER] };
+  const ctx = loadMembers(data, 200, { location: loc });
+  await ctx.run({ id: "o1" }, data, MEMBER, "message", { userId: "u-mike" }, null);
+  assert.equal(loc.href, "/messages?to=u-mike");
+  assert.equal(ctx.confirms().length, 0);
+});
+
+test("the card says what the server sent, and nothing it did not", async () => {
+  const data = { name: "Colliers Boise", canManage: true, members: [OWNER, MEMBER] };
+  const ctx = loadMembers(data);
+  ctx.card({ id: "o1" }, data, MEMBER, {
+    name: "Mike Chen", email: "mike@colliers.com", title: "Associate · Industrial", role: "member",
+    joinedAt: "2026-06-10T00:00:00Z", self: false, photoRev: "",
+    covers: [{ market: "Meridian, ID", type: "Industrial" }], shared: { reports: 7, comps: 0 },
+    seat: { pro: false, viaFirm: false },
+  }, 1);
+  const text = ctx.dom.text("memberCardBody");
+  assert.match(text, /Mike Chen/);
+  assert.match(text, /Associate · Industrial/);
+  assert.match(text, /Meridian · Industrial/, "a market reads as the city, not the city and state code");
+  assert.match(text, /7 reports/);
+  assert.doesNotMatch(text, /\d+ (comps?|buildings?|firm permits?)\b/, "a zero is not listed, and a count the server left out is not invented");
+  assert.match(text, /Not on Pro\. Firm permit notices don't reach Mike\./);
+  assert.deepEqual(buttons(ctx.dom.el("memberCardBody")).map((b) => b.textContent).slice(0, 3), ["Message", "Make admin", "•••"]);
+
+  ctx.card({ id: "o1" }, data, MEMBER, { name: "Mike Chen", email: "mike@colliers.com", role: "member", self: false,
+    covers: null, shared: {}, seat: null }, 1);
+  const bare = ctx.dom.text("memberCardBody");
+  assert.doesNotMatch(bare, /Covers|No markets/, "a failed coverage read says nothing about coverage");
+  assert.doesNotMatch(bare, /Shared with the firm|Nothing shared/, "failed counts are left out, not drawn as nothing");
+  assert.doesNotMatch(bare, /Pro/, "no seat line unless the server sent one (owners only)");
+
+  ctx.card({ id: "o1" }, data, MEMBER, null, 1);
+  assert.match(ctx.dom.text("memberCardBody"), /Couldn't load this profile/);
+});
+
+test("your own empty card asks you to finish it, and says it is what colleagues see", async () => {
+  const data = { name: "Colliers Boise", canManage: true, members: [OWNER, MEMBER] };
+  const ctx = loadMembers(data);
+  ctx.card({ id: "o1" }, data, OWNER, { name: "Brad Nolan", email: "brad@colliers.com", title: "", role: "owner",
+    self: true, photoRev: "", covers: [], shared: { reports: 0, comps: 0, buildings: 0, permits: 0 }, seat: null }, 1);
+  const text = ctx.dom.text("memberCardBody");
+  assert.match(text, /Finish your card/);
+  assert.match(text, /Add a photo/);
+  assert.match(text, /Add your title/);
+  assert.match(text, /Pick the markets and property types you cover/);
+  assert.match(text, /Nothing shared with the firm yet/);
+  assert.match(text, /This is what your colleagues see/);
+  assert.doesNotMatch(text, /No markets picked yet/, "your own card asks, rather than reporting a gap");
 });
 
 test("a members read that fails still names the firm rather than blanking it", async () => {

@@ -4397,7 +4397,7 @@
   {
     "date": "2026-09-28",
     "type": "improvement",
-    "title": "The vault heading now just says Vault",
-    "details": "The /vault page heading read \"Broker Vault\". It now reads \"Vault\", with the Private workspace label and the description underneath unchanged."
+    "title": "The vault page now just says Vault",
+    "details": "The /vault page heading and browser tab read \"Broker Vault\". Both now read \"Vault\", with the Private workspace label and the description underneath unchanged."
   }
 ]

@@ -29776,7 +29776,7 @@ const server = http.createServer((req, res) =>
       // could rebuild the head, the header and the footer by hand; all of that
       // is the shell's now, and the page renders a body.
       res.end(marketShell({
-        title: "Broker Vault · CompNinja",
+        title: "Vault · CompNinja",
         description: "Your private comp workspace.",
         canonical: `${SITE_URL}/vault`,
         noindex: true,

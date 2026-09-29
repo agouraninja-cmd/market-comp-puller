@@ -280,6 +280,9 @@ const COLUMNS = [
   // A missing org_id leaves the firm switch answering "unavailable" and every
   // firm permit reaching its owner alone.
   ["permit_watches",    ["org_id"],                                  "055-permit-watch-firm.sql"],
+  // The profile card's title. Its absence degrades (the roster retries the
+  // read without it) but every title save answers "couldn't save".
+  ["users",             ["title"],                                   "056-user-title.sql"],
 ];
 
 // What this tool deliberately CANNOT see: 037-org-shop-kind-tenant-rep.sql

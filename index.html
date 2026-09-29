@@ -1900,6 +1900,63 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     .dk-person { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 7px 0; border-bottom: 1px solid var(--hair); font-size: 13px; color: var(--ink-body); }
     .dk-person:last-child { border-bottom: 0; }
+    /* The member profile card (2026-09-29, the owner's pick: Draft A). An
+       accepted colleague's row is a button that opens their card beside the
+       Firm & branding panel; on a phone the card is a sheet from the bottom.
+       Colours are the page's tokens only, so dark mode needs nothing. */
+    .mc-row { display: flex; align-items: center; gap: 10px; width: calc(100% + 16px); margin: 0 -8px; padding: 7px 8px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13px; text-align: left; color: var(--ink-body); cursor: pointer; }
+    .mc-row:hover, .mc-row[aria-expanded="true"] { background: var(--wash); }
+    .mc-row:focus-visible, .mc-btn:focus-visible, .mc-link:focus-visible { outline: 2px solid var(--red); outline-offset: 1px; }
+    .mc-av { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--wash) center / cover no-repeat; border: 1px solid var(--edge); color: var(--ink); font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+    .mc-av.photo { color: transparent; }
+    .mc-rname { font-weight: 500; color: var(--ink); font-size: 14px; }
+    .mc-rmail { font-size: 12px; color: var(--ink-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mc-rrole { margin-left: auto; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+    .mc-pop { position: fixed; z-index: 1300; width: 340px; max-height: calc(100vh - 32px); overflow: auto; padding: 18px; background: var(--card); color: var(--ink-body); border: 1px solid var(--edge); border-radius: 14px; box-shadow: 0 18px 50px -20px rgba(15,23,42,.45), 0 2px 6px rgba(15,23,42,.08); font-size: 14px; line-height: 1.5; }
+    .mc-pop.hidden { display: none; }
+    #memberCardBody { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    .mc-close { position: absolute; top: 8px; right: 10px; border: 0; background: none; font-size: 20px; line-height: 1; color: var(--ink-3); cursor: pointer; padding: 4px 6px; }
+    .mc-head { display: flex; gap: 12px; align-items: flex-start; padding-right: 18px; }
+    .mc-who { min-width: 0; }
+    .mc-head .mc-av { width: 52px; height: 52px; font-size: 16px; }
+    .mc-name { font-family: Georgia, 'Times New Roman', serif; font-size: 20px; line-height: 1.2; color: var(--ink); letter-spacing: -.01em; }
+    .mc-role { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 9px; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: capitalize; vertical-align: 3px; background: var(--wash); color: var(--ink-2); }
+    .mc-role.owner { background: var(--bv-bg); color: var(--bv-text); }
+    .mc-role.admin { background: var(--ok-bg); color: var(--ok-text); }
+    .mc-title { font-size: 13px; color: var(--ink-2); }
+    .mc-muted { font-size: 12px; color: var(--ink-3); overflow-wrap: anywhere; }
+    .mc-lab { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; color: var(--ink-3); margin: 0 0 7px; }
+    .mc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .mc-chip { font-size: 12px; padding: 3px 9px; border-radius: 12px; border: 1px solid var(--edge); color: var(--ink-body); white-space: nowrap; }
+    .mc-chip b { font-weight: 600; color: var(--ink); }
+    .mc-empty { font-size: 13px; color: var(--ink-3); margin: 0; }
+    .mc-seat { font-size: 12.5px; border-radius: 8px; padding: 8px 10px; background: var(--ok-bg); color: var(--ok-text); }
+    .mc-seat.none { background: var(--warn-bg); color: var(--warn-text); }
+    .mc-self { font-size: 12.5px; color: var(--ink-2); background: var(--wash); border-radius: 8px; padding: 8px 10px; margin: 0; }
+    .mc-todo { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--hair); font-size: 13px; color: var(--ink-body); }
+    .mc-todo:first-of-type { border-top: 0; }
+    .mc-todo i { flex: 0 0 18px; height: 18px; border-radius: 50%; border: 1.5px dashed var(--ink-4); }
+    .mc-link { border: 0; background: none; padding: 0; font: inherit; color: var(--red); cursor: pointer; text-decoration: none; }
+    .mc-link:hover { text-decoration: underline; }
+    .mc-actions { position: relative; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .mc-btn { font: inherit; font-size: 13px; font-weight: 500; padding: 7px 13px; border-radius: 8px; border: 1px solid var(--edge); background: var(--card); color: var(--ink); cursor: pointer; white-space: nowrap; }
+    .mc-btn.pri { background: var(--red-fill); border-color: var(--red-fill); color: #fff; }
+    .mc-btn.more { padding: 7px 10px; letter-spacing: .1em; }
+    .mc-btn[disabled] { opacity: .6; cursor: default; }
+    .mc-menu { position: absolute; top: calc(100% + 6px); right: 0; min-width: 190px; padding: 5px; background: var(--card); border: 1px solid var(--edge); border-radius: 10px; box-shadow: 0 14px 32px -14px rgba(15,23,42,.4); z-index: 2; }
+    .mc-menu.hidden { display: none; }
+    .mc-menu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 6px; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; }
+    .mc-menu button:hover { background: var(--wash); }
+    .mc-menu button.danger { color: var(--err-text); }
+    .mc-edit { display: flex; flex-direction: column; gap: 8px; }
+    .mc-edit.hidden { display: none; }
+    .mc-edit input { font: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--edge); border-radius: 8px; background: var(--card); color: var(--ink); min-width: 0; }
+    .mc-msg { font-size: 12.5px; color: var(--err-text); margin: 0; }
+    .mc-msg:empty { display: none; }
+    @media (max-width: 700px) {
+      .mc-pop { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-height: 85vh; border-radius: 18px 18px 0 0; border-width: 1px 0 0; padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
+      .mc-rmail { display: none; }
+    }
     .dk-person .who { font-weight: 500; color: var(--ink); }
     .dk-person .what { font-size: 11px; color: var(--ink-3); }
     .dk-person .act { margin-left: auto; font-size: 11.5px; white-space: nowrap; }
@@ -2703,6 +2760,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        and a solo member's letterhead alike, and the workspace holds only
        work. .mcard scrolls (max-height: calc(100dvh - 32px)), which is what
        lets a roster and a 570px form share one panel. -->
+  <!-- A colleague's profile card (2026-09-29, Draft A). Opened from a name in
+       the Firm & branding member list; renderMemberCard() is its one writer.
+       Above the panel (z 1300 over its 1200), and closed with it. -->
+  <div id="memberCard" class="hidden mc-pop no-print" role="dialog" aria-labelledby="memberCardName">
+    <button id="memberCardClose" type="button" class="mc-close" aria-label="Close">&times;</button>
+    <div id="memberCardBody"></div>
+  </div>
   <div id="firmModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
     <div class="mcard bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-2xl p-6">
       <div class="rd-lab">Firm &amp; branding</div>
@@ -17089,75 +17153,57 @@ async function renderMyDesk() {
     // their own row. This is the same rule the server enforces, read from the
     // same roster, not a second opinion about it.
     const owners = members.filter((m) => !m.pending && m.role === "owner").length;
-    const iAmOwner = members.some((m) => m.self && !m.pending && m.role === "owner");
     stats.textContent = `${data.name} · ${joined} ${joined === 1 ? "person" : "people"}` +
       (members.length > joined ? ` · ${members.length - joined} invited` : "");
 
     members.forEach((m) => {
+      // An accepted colleague is a row that opens their profile card
+      // (2026-09-29, Draft A); the role, remove and leave controls live in
+      // the card now, where memberCardActions() decides them. An invitation
+      // is still an address with no card, so it keeps its Remove here.
+      if (!m.pending) {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "mc-row";
+        row.setAttribute("data-card", m.id);
+        row.setAttribute("aria-haspopup", "dialog");
+        row.setAttribute("aria-expanded", "false");
+        row.appendChild(memberAvatar(firm, m));
+        const name = document.createElement("span");
+        name.className = "mc-rname";
+        name.textContent = (m.name || m.email) + (m.self ? " (you)" : "");
+        row.appendChild(name);
+        if (m.name) {
+          const mail = document.createElement("span");
+          mail.className = "mc-rmail";
+          mail.textContent = m.email;
+          row.appendChild(mail);
+        }
+        const role = document.createElement("span");
+        role.className = "mc-rrole";
+        role.textContent = m.role === "member" ? "" : m.role;
+        row.appendChild(role);
+        row.addEventListener("click", () => openMemberCard(firm, data, m, row, owners));
+        wrap.appendChild(row);
+        return;
+      }
       const row = document.createElement("div");
       row.className = "dk-person";
       const who = document.createElement("span");
       who.className = "who";
       who.textContent = m.email;
       row.appendChild(who);
-      const bits = [];
-      if (m.role !== "member") bits.push(m.role);
-      if (m.pending) bits.push("invited, not accepted");
-      if (m.self) bits.push("you");
       const meta = document.createElement("span");
       meta.className = "what";
-      meta.textContent = bits.join(" · ");
+      meta.textContent = [m.role !== "member" ? m.role : "", "invited, not accepted"].filter(Boolean).join(" · ");
       row.appendChild(meta);
-
-      // Offered when the server said this account can manage people, or on
-      // your own row (leaving is always yours to do). The server re-decides
-      // both, including the last-owner rule, so a button that should not be
-      // here buys a 403 rather than a removal.
-      const lastOwner = m.role === "owner" && !m.pending && owners <= 1;
-      // Role controls, for OWNERS only (2026-09-29): org-access.js's
-      // canChangeRole is the rule and the server re-decides it. Offered on
-      // accepted rows, never on the last owner's (a firm needs one), and on
-      // your own row too, which is how an owner hands the firm on: make
-      // someone else owner, then step down.
-      if (iAmOwner && !m.pending && !lastOwner) {
-        ["owner", "admin", "member"].filter((r) => r !== m.role).forEach((r) => {
-          const rb = document.createElement("button");
-          rb.type = "button";
-          rb.className = "text-xs text-[#68707E] hover:text-[#374253] underline mr-3";
-          rb.textContent = m.self ? `Make me ${r === "admin" ? "an admin" : "a member"}` : `Make ${r}`;
-          rb.addEventListener("click", async () => {
-            const msg = r === "owner"
-              ? `Make ${m.email} an owner of ${data.name}? Owners can invite and remove people, pay for seats, change every firm setting and change anyone's role, including yours.`
-              : m.self
-                ? `Step down to ${r} in ${data.name}? You will no longer be able to change roles${r === "member" ? ", invite people or change firm settings" : " or pay for seats"}.`
-                : `Make ${m.email} ${r === "admin" ? "an admin" : "a member"} of ${data.name}?`;
-            if (!confirm(msg)) return;
-            rb.disabled = true;
-            try {
-              const res = await fetch(
-                `/api/org/member?org=${encodeURIComponent(firm.id)}&id=${encodeURIComponent(m.id)}`,
-                { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ role: r }) });
-              const body = await res.json().catch(() => ({}));
-              if (!res.ok) throw new Error(body.error || "failed");
-              await renderShares();
-            } catch (err) {
-              meta.textContent = err.message || "That didn't go through.";
-              rb.disabled = false;
-            }
-          });
-          row.appendChild(rb);
-        });
-      }
-      if ((data.canManage || m.self) && !lastOwner) {
+      if (data.canManage) {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "text-xs text-[#68707E] hover:text-[#374253] underline";
-        btn.textContent = m.self ? "Leave firm" : "Remove";
+        btn.textContent = "Remove";
         btn.addEventListener("click", async () => {
-          const msg = m.self
-            ? `Leave ${data.name}? You will stop seeing reports shared with the firm. Anything you already shared with it stays.`
-            : `Remove ${m.email} from ${data.name}? They keep their own reports and lose access to the firm's.`;
-          if (!confirm(msg)) return;
+          if (!confirm(`Remove ${m.email} from ${data.name}? They keep their own reports and lose access to the firm's.`)) return;
           btn.disabled = true;
           try {
             const res = await fetch(
@@ -17181,6 +17227,324 @@ async function renderMyDesk() {
     renderFirmAutoShare(firm);
     renderFirmBilling(firm);
   }
+
+  // ---------------------------------------------------------------------------
+  // The member profile card (2026-09-29, the owner's pick: Draft A)
+  //
+  // What the card SAYS is the server's (GET /api/org/person, member-card.js):
+  // only what a colleague shared with the firm, their lead coverage, and — to
+  // an owner looking at somebody else — whether they are on Pro. What the
+  // card lets you DO is memberCardActions(), read from the same roster the
+  // list drew, and the server re-decides every one of them (org-access.js).
+  // ---------------------------------------------------------------------------
+  function memberInitials(name, email) {
+    const words = String(name || "").trim().split(/\s+/).filter(Boolean);
+    const src = words.length ? words.map((w) => w[0]).join("") : String(email || "?")[0];
+    return src.slice(0, 2).toUpperCase();
+  }
+  function memberAvatar(firm, m) {
+    const av = document.createElement("span");
+    av.className = "mc-av";
+    av.setAttribute("aria-hidden", "true");
+    av.textContent = memberInitials(m.name, m.email);
+    if (m.photoRev) {
+      av.className = "mc-av photo";
+      av.style.backgroundImage = `url(/api/org/person/photo?org=${encodeURIComponent(firm.id)}&id=${encodeURIComponent(m.id)}&v=${encodeURIComponent(m.photoRev)})`;
+    }
+    return av;
+  }
+
+  // The buttons a card offers, from the roster: { primary, menu }, each a list
+  // of { label, act, danger }. The owner's rule (2026-09-29): Make admin on a
+  // member, Make owner on an admin, with the way back down in the menu. Only
+  // an owner changes roles; the last owner cannot step down, leave or be
+  // removed; an admin may remove people but never an owner.
+  function memberCardActions(m, data, owners) {
+    const members = Array.isArray(data.members) ? data.members : [];
+    const iAmOwner = members.some((x) => x.self && !x.pending && x.role === "owner");
+    const lastOwner = m.role === "owner" && owners <= 1;
+    const primary = [];
+    const menu = [];
+    if (m.self) {
+      primary.push({ label: "Edit your card", act: "edit" });
+      if (iAmOwner && !lastOwner) {
+        menu.push({ label: "Make me an admin", act: "role:admin" }, { label: "Make me a member", act: "role:member" });
+      }
+      if (!lastOwner) menu.push({ label: "Leave firm", act: "leave", danger: true });
+      return { primary, menu };
+    }
+    primary.push({ label: "Message", act: "message" });
+    if (iAmOwner) {
+      if (m.role === "member") {
+        primary.push({ label: "Make admin", act: "role:admin" });
+        menu.push({ label: "Make owner", act: "role:owner" });
+      } else if (m.role === "admin") {
+        primary.push({ label: "Make owner", act: "role:owner" });
+        menu.push({ label: "Make member", act: "role:member" });
+      } else if (!lastOwner) {
+        menu.push({ label: "Make admin", act: "role:admin" }, { label: "Make member", act: "role:member" });
+      }
+    }
+    if (data.canManage && !lastOwner && !(m.role === "owner" && !iAmOwner)) {
+      menu.push({ label: "Remove from firm", act: "remove", danger: true });
+    }
+    return { primary, menu };
+  }
+
+  // What each action asks before it acts. Kept word for word from the row
+  // buttons it replaced: removal says what the person KEEPS, and making an
+  // owner says that owners can change your role too.
+  function memberActionConfirm(act, m, data) {
+    const who = m.name || m.email;
+    if (act === "remove") return `Remove ${m.email} from ${data.name}? They keep their own reports and lose access to the firm's.`;
+    if (act === "leave") return `Leave ${data.name}? You will stop seeing reports shared with the firm. Anything you already shared with it stays.`;
+    const r = act.slice(5);
+    if (r === "owner") return `Make ${who} an owner of ${data.name}? Owners can invite and remove people, pay for seats, change every firm setting and change anyone's role, including yours.`;
+    if (m.self) return `Step down to ${r} in ${data.name}? You will no longer be able to change roles${r === "member" ? ", invite people or change firm settings" : " or pay for seats"}.`;
+    return `Make ${who} ${r === "admin" ? "an admin" : "a member"} of ${data.name}?`;
+  }
+
+  async function runMemberAction(firm, data, m, act, card, msg) {
+    if (act === "message") {
+      if (card && card.userId) location.href = "/messages?to=" + encodeURIComponent(card.userId);
+      return;
+    }
+    if (act === "edit") {
+      if (memberCardForm) { memberCardForm.classList.remove("hidden"); if (memberCardForm.input) memberCardForm.input.focus(); }
+      return;
+    }
+    if (!confirm(memberActionConfirm(act, m, data))) return;
+    const url = `/api/org/member?org=${encodeURIComponent(firm.id)}&id=${encodeURIComponent(m.id)}`;
+    try {
+      const res = act.indexOf("role:") === 0
+        ? await fetch(url, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ role: act.slice(5) }) })
+        : await fetch(url, { method: "DELETE" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "failed");
+      closeMemberCard();
+      await renderShares();
+    } catch (err) {
+      if (msg) msg.textContent = err.message || "That didn't go through.";
+    }
+  }
+
+  let memberCardRow = null;
+  let memberCardForm = null;   // the open card's title editor, when it is yours
+  function closeMemberCard() {
+    document.getElementById("memberCard").classList.add("hidden");
+    if (memberCardRow) { memberCardRow.setAttribute("aria-expanded", "false"); memberCardRow = null; }
+  }
+  // Beside the Firm & branding panel when there is room for it, otherwise
+  // over the panel's right edge. A phone ignores both: the stylesheet makes
+  // it a sheet from the bottom.
+  function placeMemberCard(box, row) {
+    const panel = document.querySelector("#firmModal .mcard");
+    const p = panel ? panel.getBoundingClientRect() : { right: window.innerWidth - 356, top: 16 };
+    const r = row.getBoundingClientRect();
+    const left = p.right + 14 + 340 + 16 <= window.innerWidth ? p.right + 14 : Math.max(16, window.innerWidth - 356);
+    box.style.left = left + "px";
+    box.style.top = Math.max(16, Math.min(r.top - 30, window.innerHeight - box.offsetHeight - 16)) + "px";
+  }
+
+  async function openMemberCard(firm, data, m, row, owners) {
+    const box = document.getElementById("memberCard");
+    const body = document.getElementById("memberCardBody");
+    if (memberCardRow === row && !box.classList.contains("hidden")) { closeMemberCard(); return; }
+    closeMemberCard();
+    memberCardRow = row;
+    row.setAttribute("aria-expanded", "true");
+    body.innerHTML = "";
+    const loading = document.createElement("p");
+    loading.className = "mc-empty";
+    loading.textContent = "Loading…";
+    body.appendChild(loading);
+    box.classList.remove("hidden");
+    placeMemberCard(box, row);
+    let card = null;
+    try {
+      const res = await fetch(`/api/org/person?org=${encodeURIComponent(firm.id)}&id=${encodeURIComponent(m.id)}`);
+      if (res.ok) card = await res.json();
+    } catch (_) { /* said below */ }
+    if (memberCardRow !== row) return;   // another card was opened meanwhile
+    renderMemberCard(firm, data, m, card, owners);
+    placeMemberCard(box, row);
+    const first = box.querySelector(".mc-btn");
+    if (first) first.focus();
+  }
+
+  function renderMemberCard(firm, data, m, card, owners) {
+    const body = document.getElementById("memberCardBody");
+    body.innerHTML = "";
+    const el = (tag, cls, text) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    };
+    if (!card) {
+      body.appendChild(el("p", "mc-empty", "Couldn't load this profile just now. Close it and try again in a moment."));
+      return;
+    }
+    const head = el("div", "mc-head");
+    const av = memberAvatar(firm, { id: m.id, name: card.name, email: card.email, photoRev: card.photoRev });
+    head.appendChild(av);
+    const who = el("div", "mc-who");
+    const name = el("div", "mc-name", card.name || card.email);
+    name.id = "memberCardName";
+    name.appendChild(el("span", "mc-role " + card.role, card.role));
+    who.appendChild(name);
+    if (card.title) who.appendChild(el("div", "mc-title", card.title));
+    const joined = card.joinedAt ? new Date(card.joinedAt) : null;
+    who.appendChild(el("div", "mc-muted", [card.email,
+      joined && !isNaN(joined) ? "joined " + joined.toLocaleDateString("en-US", { month: "short", year: "numeric" }) : ""].filter(Boolean).join(" · ")));
+    head.appendChild(who);
+    body.appendChild(head);
+
+    const needs = card.self ? [
+      card.photoRev ? null : ["Add a photo", "photo"],
+      card.title ? null : ["Add your title, like “Associate · Retail”", "title"],
+      Array.isArray(card.covers) && !card.covers.length ? ["Pick the markets and property types you cover", "covers"] : null,
+    ].filter(Boolean) : [];
+    if (needs.length) {
+      const box = el("div");
+      box.appendChild(el("p", "mc-lab", "Finish your card"));
+      needs.forEach(([text, what]) => {
+        const row = el("div", "mc-todo");
+        row.appendChild(el("i"));
+        const go = el(what === "covers" ? "a" : "button", "mc-link", text);
+        if (what === "covers") go.href = "/vault";
+        else {
+          go.type = "button";
+          go.addEventListener("click", () => {
+            if (what === "title") return runMemberAction(firm, data, m, "edit", card);
+            closeMemberCard();
+            document.getElementById("firmClose").click();
+            openSettingsModal();
+          });
+        }
+        row.appendChild(go);
+        box.appendChild(row);
+      });
+      body.appendChild(box);
+    }
+
+    // Coverage is left out when its read failed (covers: null), so "No
+    // markets picked yet" is only ever said when it is true.
+    if (Array.isArray(card.covers) && (card.covers.length || !card.self)) {
+      const sec = el("div");
+      sec.appendChild(el("p", "mc-lab", "Covers"));
+      if (card.covers.length) {
+        const chips = el("div", "mc-chips");
+        card.covers.forEach((c) => {
+          const chip = el("span", "mc-chip");
+          chip.appendChild(el("b", "", c.market.replace(/,\s*[A-Z]{2}$/, "")));
+          chip.appendChild(document.createTextNode(" · " + c.type));
+          chips.appendChild(chip);
+        });
+        sec.appendChild(chips);
+      } else sec.appendChild(el("p", "mc-empty", "No markets picked yet."));
+      body.appendChild(sec);
+    }
+
+    const shared = card.shared || {};
+    const kinds = [["reports", "report"], ["comps", "comp"], ["buildings", "building"], ["permits", "firm permit"]]
+      .filter(([k]) => Number.isInteger(shared[k]));
+    if (kinds.length) {
+      const sec = el("div");
+      sec.appendChild(el("p", "mc-lab", "Shared with the firm"));
+      const bits = kinds.filter(([k]) => shared[k] > 0).map(([k, one]) => `${shared[k]} ${one}${shared[k] === 1 ? "" : "s"}`);
+      sec.appendChild(bits.length ? el("div", "", bits.join(" · ")) : el("p", "mc-empty", "Nothing shared with the firm yet."));
+      body.appendChild(sec);
+    }
+
+    if (card.seat) {
+      const first = String(card.name || card.email).split(/\s+/)[0];
+      body.appendChild(card.seat.pro
+        ? el("div", "mc-seat", card.seat.viaFirm ? "On Pro through a firm seat." : "On Pro.")
+        : el("div", "mc-seat none", `Not on Pro. Firm permit notices don't reach ${first}. Add a seat to include them.`));
+    }
+    if (card.self) body.appendChild(el("p", "mc-self", "This is what your colleagues see."));
+
+    const msg = el("p", "mc-msg");
+    msg.setAttribute("role", "status");
+    if (card.self) {
+      const form = el("form", "mc-edit hidden");
+      const label = el("label", "mc-lab", "Your title");
+      const input = el("input");
+      input.type = "text";
+      input.maxLength = 80;
+      input.value = card.title || "";
+      input.placeholder = "e.g. Associate · Retail";
+      input.setAttribute("aria-label", "Your title");
+      form.appendChild(label);
+      form.appendChild(input);
+      const row = el("div", "mc-actions");
+      const save = el("button", "mc-btn pri", "Save");
+      save.type = "submit";
+      const photo = el("button", "mc-link", "Change your photo in Settings");
+      photo.type = "button";
+      photo.addEventListener("click", () => { closeMemberCard(); document.getElementById("firmClose").click(); openSettingsModal(); });
+      row.appendChild(save);
+      row.appendChild(photo);
+      form.appendChild(row);
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        save.disabled = true;
+        try {
+          const res = await fetch("/api/account/profile", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: input.value }) });
+          const out = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(out.error || "failed");
+          renderMemberCard(firm, data, m, Object.assign({}, card, { title: out.title }), owners);
+        } catch (err) {
+          msg.textContent = err.message || "That didn't save.";
+          save.disabled = false;
+        }
+      });
+      form.input = input;
+      memberCardForm = form;
+      body.appendChild(form);
+    } else memberCardForm = null;
+
+    const { primary, menu } = memberCardActions(m, data, owners);
+    const actions = el("div", "mc-actions");
+    primary.forEach((a, i) => {
+      const b = el("button", "mc-btn" + (i === 0 ? " pri" : ""), a.label);
+      b.type = "button";
+      b.addEventListener("click", () => runMemberAction(firm, data, m, a.act, card, msg));
+      actions.appendChild(b);
+    });
+    if (menu.length) {
+      const more = el("button", "mc-btn more", "•••");
+      more.type = "button";
+      more.setAttribute("aria-label", "More");
+      more.setAttribute("aria-haspopup", "menu");
+      const list = el("div", "mc-menu hidden");
+      list.setAttribute("role", "menu");
+      menu.forEach((a) => {
+        const b = el("button", a.danger ? "danger" : "", a.label);
+        b.type = "button";
+        b.setAttribute("role", "menuitem");
+        b.addEventListener("click", () => { list.classList.add("hidden"); runMemberAction(firm, data, m, a.act, card, msg); });
+        list.appendChild(b);
+      });
+      more.addEventListener("click", () => list.classList.toggle("hidden"));
+      actions.appendChild(more);
+      actions.appendChild(list);
+    }
+    body.appendChild(actions);
+    body.appendChild(msg);
+  }
+
+  document.getElementById("memberCardClose").addEventListener("click", closeMemberCard);
+  // The card belongs to the panel: closing the panel closes it, and a click
+  // anywhere outside both it and the row that opened it puts it away.
+  document.getElementById("firmClose").addEventListener("click", closeMemberCard);
+  document.addEventListener("mousedown", (e) => {
+    const box = document.getElementById("memberCard");
+    if (box.classList.contains("hidden")) return;
+    if (box.contains(e.target) || (memberCardRow && memberCardRow.contains(e.target))) return;
+    closeMemberCard();
+  });
 
   // Which shop this firm is (036). The control is offered only to somebody who
   // may actually change it: /api/org/settings refuses everyone else, and a
@@ -18850,6 +19214,9 @@ async function renderMyDesk() {
   // knows when entitlements change (sign-in, sign-out, a checkout return).
 
   const MODAL_CANCELS = [
+    // The member profile card sits ON the Firm & branding panel, so it is
+    // first: Escape puts the card away and leaves the panel open.
+    ["memberCard", "memberCardClose"],
     ["pricingModal", "pricingCancel"],
     ["shareModal", "shareCancelBtn"],
     ["leadModal", "leadCancel"],

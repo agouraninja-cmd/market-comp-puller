@@ -1,6 +1,18 @@
 [
   {
     "date": "2026-09-29",
+    "type": "improvement",
+    "title": "Market comps list the newest deal first",
+    "details": "The comps table on every market page (the Market explorer’s data) now arrives sorted by date, newest first, with undated comps last, and the Date header shows the arrow. Clicking Date flips it to oldest first. The CSV download follows the same order. Quarter and year dates (Q1 2025, 2025) now sort in their right place too; before, a click on Date pushed them to the bottom as if they had no date."
+  },
+  {
+    "date": "2026-09-29",
+    "type": "improvement",
+    "title": "Cap rate is editable right in the vault’s table",
+    "details": "The book’s table has a Cap rate column you can type into, like price and size: it shows 6.25% and gives you the bare number to edit, takes 5.75 or 5.75%, and saves when you leave the cell. Before, cap rate could only be changed by opening the spreadsheet view."
+  },
+  {
+    "date": "2026-09-29",
     "type": "feature",
     "title": "Tracked permits show up on your Workspace when they reach a step",
     "details": "The Workspace has a Tracked permits card: every permit you added on the Permit tracker, with its five steps drawn as a bar (Submitted, In review, Approved, Issued, Finaled) and the city's status word for word. When a permit reaches a step you asked to hear about on CompNinja, it moves to the top marked New with the step it reached, and — for a member of a firm — it also appears in Needs you at the top of the Workspace, counted in the banner line. Each one links straight to that permit on the Permit tracker, which is what marks it read. With nothing tracked yet, the card offers to add a permit number. If the permit list can't be read, the card hides and Needs you says it couldn't check, rather than claiming nothing happened."

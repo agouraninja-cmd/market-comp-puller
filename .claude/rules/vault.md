@@ -243,8 +243,12 @@ paths:
     writing into the detached input, or the row would show the pre-save value
     with a refreshed $/SF next to it. Spreadsheet mode (`Open spreadsheet`,
     or Open on that import) stays as the other door: it is the only place
-    `cap_rate`/`tenancy`/`year_built`/`notes` and the per-type extras have
-    columns, and its cells deliberately show STORED values with no
+    `tenancy`/`year_built`/`notes` and the per-type extras have columns
+    (**`cap_rate` joined the compact table's `CELL_FIELDS` on 2026-09-27**,
+    owner's call — a typed cell after the rate column, shown as "6.25%" and
+    edited as the bare number, parsed by `parsePercent`; the footer grew one
+    trailing cell to keep the column count `test/vault-page.test.js`
+    checks), and its cells deliberately show STORED values with no
     formatting, because it is the view a broker opens to check what an import
     actually landed. **`EDITABLE_FIELDS` in `broker-vault.js` is an
     allowlist**, not a second validator — `validateEdit(existing, patch)`

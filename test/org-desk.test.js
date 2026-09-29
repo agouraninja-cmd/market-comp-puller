@@ -365,7 +365,24 @@ test("a second owner makes leaving offerable again", async () => {
   });
   await ctx.fn({ id: "o1" });
   const labels = buttons(ctx.dom.el("firmMemberRows")).map((b) => b.textContent);
-  assert.deepEqual(labels, ["Leave firm", "Remove"]);
+  // With a second owner, the owner may also step down (2026-09-29 role
+  // controls) and change the other owner's role.
+  assert.deepEqual(labels, ["Make me an admin", "Make me a member", "Leave firm", "Make admin", "Make member", "Remove"]);
+});
+
+test("role controls: an owner is offered them on accepted colleagues, an admin never", async () => {
+  const ADMIN = { id: "m4", email: "ann@colliers.com", role: "admin", pending: false, self: false };
+  const owner = loadMembers({ name: "Colliers Boise", canManage: true, members: [OWNER, ADMIN, MEMBER] });
+  await owner.fn({ id: "o1" });
+  assert.deepEqual(buttons(owner.dom.el("firmMemberRows")).map((b) => b.textContent),
+    ["Make owner", "Make member", "Remove", "Make owner", "Make admin", "Remove"],
+    "nothing on the sole owner's own row; both other roles on each colleague");
+  const admin = loadMembers({
+    name: "Colliers Boise", canManage: true,
+    members: [Object.assign({}, OWNER, { self: false }), Object.assign({}, ADMIN, { self: true }), MEMBER],
+  });
+  await admin.fn({ id: "o1" });
+  assert.equal(buttons(admin.dom.el("firmMemberRows")).some((b) => /^Make /.test(b.textContent)), false);
 });
 
 test("a pending invitation is not an owner, so it cannot hold the firm hostage", async () => {

@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-09-29",
+    "type": "improvement",
+    "title": "Permit tracker: apartments count as Multifamily",
+    "details": "A permit that names apartments is Multifamily in the Property type menu, including apartments over shops, which were listed under Mixed use. Mixed use keeps mixed-use buildings with no apartments named."
+  },
+  {
+    "date": "2026-09-29",
     "type": "feature",
     "title": "Permit tracker: filter by property type",
     "details": "The Industrial only box on /permits became a Property type menu: Industrial, Office, Retail, Multifamily, Mixed use and Other, each with its count for the month. The type is worked out from how Ada County zones the parcel and what the permit says it is for, with nothing new stored; Industrial shows exactly what the old box did, and a permit that does not say is listed under Other rather than guessed. Each permit names its type, and a type with nothing in it says so in words."

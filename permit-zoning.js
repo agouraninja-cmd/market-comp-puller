@@ -113,8 +113,9 @@ async function fetchZoningByParcel(parcelNumber, deps) {
 //  - Zoning cannot tell office from retail (a commercial parcel allows both),
 //    so the permit's own words decide there; an office zone with words that
 //    say nothing is Office.
-//  - Shops below apartments is MIXED USE only (a mixed-use zone, the phrase,
-//    or both kinds of words) — never also Multifamily, so the counts add up.
+//  - Apartments are MULTIFAMILY, shops below them included (owner's call,
+//    2026-09-29: "that's what they are"). Mixed use is a mixed-use zone or
+//    phrase with no apartments named. One type per permit, so counts add up.
 //  - MISS RATHER THAN GUESS: a permit whose words and zoning do not say is
 //    Other, never a best guess.
 const PROPERTY_TYPES = Object.freeze(["Industrial", "Office", "Retail", "Multifamily", "Mixed use", "Other"]);
@@ -135,8 +136,8 @@ function propertyTypeOf(f) {
   const mf = MULTIFAMILY_RE.test(words);
   const rt = RETAIL_RE.test(words);
   const of = OFFICE_RE.test(words);
-  if (/^MX/.test(z) || z === "TN-C" || /\bmixed[- ]use\b/.test(words) || (mf && rt)) return "Mixed use";
   if (mf) return "Multifamily";
+  if (/^MX/.test(z) || z === "TN-C" || /\bmixed[- ]use\b/.test(words)) return "Mixed use";
   if (rt && !of) return "Retail";
   if (of && !rt) return "Office";
   if (!rt && !of && OFFICE_ZONES.has(z)) return "Office";

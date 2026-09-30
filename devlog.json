@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-09-29",
+    "type": "feature",
+    "title": "Messages: unsend a message for 15 minutes",
+    "details": "Point at a message you sent in the last 15 minutes and press Unsend. It comes off everyone’s screen, and the chat shows “Brad unsent a message” where it was. After 15 minutes the message stays. Any comp it carried stays on the Comps tab, and a chat someone has open catches up on its next check. Firm chats only; deal rooms are unchanged."
+  },
+  {
+    "date": "2026-09-29",
     "type": "improvement",
     "title": "Permit tracker: apartments count as Multifamily",
     "details": "A permit that names apartments is Multifamily in the Property type menu, including apartments over shops, which were listed under Mixed use. Mixed use keeps mixed-use buildings with no apartments named."

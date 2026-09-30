@@ -6953,6 +6953,9 @@ async function permitTrackerPayload(user) {
   const filings = PERMIT_FILINGS.trackerFeed({
     filings: rows || [], now, cityOf: permitCityOf, board: board ? board.rows : [], addressKey: VAULT.addressKey,
   });
+  // The Property type menu (2026-09-29): read-time, from what each filing
+  // already carries — permit-zoning.js owns the rule.
+  for (const f of filings) f.propertyType = PERMIT_ZONING.propertyTypeOf(f);
   return {
     cities: PERMIT_FILINGS.citiesLine(PERMIT_SWEPT.map((c) => c.label)),
     windowDays: PERMIT_FILINGS.TRACKER_WINDOW_DAYS,

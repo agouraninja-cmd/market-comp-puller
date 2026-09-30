@@ -63,6 +63,17 @@ test("the Workspace's two doors land: #pw-<id> on each permit's card, ?track=1 o
   assert.ok(INDEX_HTML.includes('href="/permits?track=1"'));
 });
 
+test("the Property type menu replaced the Industrial only box, and the permit-type menu kept its name", () => {
+  const html = renderPermitsBody({ s: 200, j: { filings: [] } });
+  assert.ok(html.includes('<select id="ptProp" aria-label="Filter by property type"><option value="">All property types</option>'));
+  assert.equal(html.includes("ptInd"), false, "the box is gone");
+  assert.equal(html.includes("Industrial only"), false);
+  assert.ok(html.includes('<option value="">All permit types</option>'), "owner kept this label (2026-09-29)");
+  const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
+  assert.ok(script.includes("if(prop&&f.propertyType!==prop)return false;"));
+  assert.ok(script.includes('$("ptProp").value=""; render();'), "Clear filters resets the menu");
+});
+
 test("Tools reads Market explorer, Comp report, Permit tracker on both nav authors", () => {
   // The owner's order (2026-09-24): the permit tracker is the THIRD row.
   for (const [name, src, bulk] of [["server.js", SERVER_JS, '<a id="navBulk" href="/bulk"'],
@@ -136,6 +147,8 @@ test("the /permits route, signed out and signed in", async (t) => {
       "the 45-day-old filing and the switched-off city stay out");
     assert.deepEqual(boot.j.filings[0].onBoard, { id: B1, address: "1450 W Mission Ave, Boise, ID 83705" });
     assert.equal(boot.j.filings[1].onBoard, null);
+    assert.deepEqual(boot.j.filings.map((f) => f.propertyType), ["Industrial", "Other"],
+      "each filing carries its property type for the menu, worked out at read time");
     assert.equal(boot.j.inFirm, true);
     assert.equal(boot.j.cities, "Boise and Meridian");
     assert.equal(boot.j.stale, false);

@@ -68,11 +68,14 @@ function boiseOffsetMinutes(instant) {
   return Math.round((wall - Math.floor(d.getTime() / 1000) * 1000) / 60000);
 }
 
-// The day a run reports on: the Boise day it was six hours ago. A run at
-// 00:07 reports the day that just ended, and so does one GitHub delayed until
-// 05:59 — scheduled Actions are routinely late, sometimes by an hour.
+// The day a run reports on: the Boise day before the one it is now. The cron
+// fires at 00:07, never before midnight, so "yesterday" is the day that just
+// ended however late GitHub starts the run. It used to be "the Boise day it
+// was six hours ago", and on 2026-09-28 to 30 scheduled Actions started 6 to
+// 7 hours late: each run landed after 06:00 Boise, counted the new day at
+// dawn, and posted zeros while the day before went unreported.
 function targetDay(now) {
-  return boiseDate(new Date(now).getTime() - 6 * 3600 * 1000);
+  return addDays(boiseDate(now), -1);
 }
 
 function addDays(day, n) {
@@ -177,8 +180,10 @@ function buildModel(prs, day, people = PEOPLE, now = Date.now()) {
   const counts = tally(prs, period.days, people);
   const series = people.map((p) => {
     const points = period.days.map((d) => (d <= day ? counts[d][p.login].commits : null));
-    const periodTotal = period.days.filter((d) => d <= day).reduce((s, d) => s + counts[d][p.login].commits, 0);
-    return { ...p, today: counts[day][p.login], periodTotal, points };
+    const past = period.days.filter((d) => d <= day);
+    const periodTotal = past.reduce((s, d) => s + counts[d][p.login].commits, 0);
+    const periodPrs = past.reduce((s, d) => s + counts[d][p.login].prs, 0);
+    return { ...p, today: counts[day][p.login], periodTotal, periodPrs, points };
   });
   const merged = prs
     .filter((pr) => pr && pr.mergedAt && boiseDate(pr.mergedAt) === day)
@@ -215,7 +220,7 @@ function sanitizeModel(raw, people = PEOPLE) {
     const pts = Array.isArray(r.points) ? r.points : [];
     const points = period.days.map((d, i) => (d <= raw.day ? int(pts[i]) : null));
     const today = r.today || {};
-    return { ...p, today: { commits: int(today.commits), prs: int(today.prs) }, periodTotal: int(r.periodTotal), points };
+    return { ...p, today: { commits: int(today.commits), prs: int(today.prs) }, periodTotal: int(r.periodTotal), periodPrs: int(r.periodPrs), points };
   });
   const others = raw.others || {};
   const merged = (Array.isArray(raw.merged) ? raw.merged : []).slice(0, 100).map((m) => ({

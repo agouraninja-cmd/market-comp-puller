@@ -16,7 +16,8 @@ paths:
 
 `.github/workflows/ship-chat.yml` posts to the **Developer thread** of the
 team's CompNinja Chat space at midnight Boise time: Jacob's, Owen's and
-Chuck's commits for the day that just ended, as Chat text, with a button to
+Chuck's commits and merges for the day that just ended, and the list of that
+day's merged PRs, as Chat text, with a button to
 the **shipped board at `/dev/shipped`** — the day, a line chart of the current
 14-day period (fixed periods from Thursday 2026-09-24, the first post's day, so
 it starts over every other Thursday) and the day's PRs. The post carried the

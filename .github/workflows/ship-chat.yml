@@ -1,6 +1,6 @@
 # The nightly "who shipped what" post to the team's Google Chat space, and the
 # numbers behind the shipped board at compninja.co/dev/shipped. The post is a
-# card with Jacob's, Owen's and Chuck's commits for the day that just ended,
+# card with Jacob's, Owen's and Chuck's commits and merges for the day that just ended, a list of the day's merged PRs,
 # as Chat text, and a button to the board, which draws the 14-day chart and
 # the day's PRs at full size. The rules (who gets credit, which day a merge
 # belongs to, when the chart resets) live in ship-board.js, shared by
@@ -10,8 +10,8 @@
 # twice a year, so this fires at BOTH candidate hours and the script posts
 # from the one that matches the season — one post a night, all year, which
 # the test suite checks for every night of two years. Scheduled Actions are
-# often late; the script reports "the Boise day it was six hours ago", so a
-# late start still reports the right day.
+# often late (6-7 hours on 2026-09-28 to 30); the script reports the Boise day
+# before the one it is now, so a late start still reports the right day.
 #
 # NEEDS ONE REPOSITORY SECRET, GOOGLE_CHAT_WEBHOOK_URL — the incoming webhook
 # made in the Chat space (space name > Apps & integrations > Webhooks). It

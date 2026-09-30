@@ -92,3 +92,26 @@ test("fetchZoningByParcel honours an injected parcelsUrl (the test-only origin r
   assert.deepEqual(out, { zoning: "I-1", zoning_acres: 2 });
   assert.match(calls[0], /^http:\/\/127\.0\.0\.1:1\/gis\/query\?/);
 });
+
+test("propertyTypeOf: the Permit tracker's property type, read from what a filing already carries", () => {
+  const t = (o) => Z.propertyTypeOf(o);
+  // Industrial is the stored flag, unchanged, in both shapes.
+  assert.equal(t({ isIndustrial: true, zoning: "C-2", description: "Coffee shop" }), "Industrial");
+  assert.equal(t({ is_industrial: true }), "Industrial");
+  // Zoning cannot split office from retail; the words do.
+  assert.equal(t({ zoning: "C-2", description: "Call center TI, 120 workstations." }), "Office");
+  assert.equal(t({ zoning: "C-G", description: "Coffee shop with drive-thru." }), "Retail");
+  assert.equal(t({ zoning: "L-O", description: "Dental clinic buildout." }), "Office");
+  // An office zone whose words say nothing is Office; a commercial one is Other.
+  assert.equal(t({ zoning: "L-O", description: "New 9,800 SF single-story professional building." }), "Office");
+  assert.equal(t({ zoning: "C-2", description: "Interior alterations, suite 200." }), "Other");
+  // Shops below apartments is Mixed use only, never also Multifamily.
+  assert.equal(t({ zoning: "C-2", description: "Ground-floor retail with 84 apartments above." }), "Mixed use");
+  assert.equal(t({ zoning: "MX-2", description: "Tenant finish, ground floor." }), "Mixed use");
+  assert.equal(t({ zoning: "R-15", description: "Two 12-unit apartment buildings." }), "Multifamily");
+  // Miss rather than guess: words that name both, or nothing, are Other.
+  assert.equal(t({ zoning: "C-2", description: "Hotel lobby renovation." }), "Other");
+  assert.equal(t({}), "Other");
+  assert.equal(t(null), "Other");
+  assert.deepEqual([...Z.PROPERTY_TYPES], ["Industrial", "Office", "Retail", "Multifamily", "Mixed use", "Other"]);
+});

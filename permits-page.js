@@ -13,8 +13,8 @@
 // the read (permitTrackerPayload); this file only decides how it is drawn.
 //
 // ONE READ, FILTERED HERE. The boot carries the whole window (capped, and it
-// says so), and the search box, city, type and industrial switch filter it
-// in the browser. The header count describes the whole window, never the
+// says so), and the search box, property type, city and permit type filter
+// it in the browser. The header count describes the whole window, never the
 // filtered view — the shelf's rule.
 //
 // HONESTY (spec §7): the page names the cities it reads and when the sweep
@@ -30,6 +30,12 @@
 // unavailable section never costs the list. The page CLEARS the unread count
 // with a POST once shown (a fetch, which instant-nav holds until the page is
 // visible — CLAUDE.md rule 15), never in the server render.
+//
+// PROPERTY TYPE (2026-09-29, the owner's pick of Draft A): a menu in place of
+// the old "Industrial only" box. Each filing arrives with its propertyType
+// (permit-zoning.js owns the rule, read-time, nothing stored), the menu shows
+// each type's count for the window, and a type with nothing in it says so in
+// words rather than as a bare "no match".
 //
 // The page literal below contains exactly ONE backtick, its own opener, and
 // interpolates the boot JSON alone; test/permits-page.test.js guards both.
@@ -65,6 +71,7 @@ function renderPermitsBody(boot) {
 .pt-addr{color:var(--ink);font-family:Georgia,"Times New Roman",serif;font-size:14px}
 .pt-meta{font-size:11.5px;color:var(--ink-3);margin-top:2px}
 .pt-meta .ind{color:var(--ink-2);font-weight:600}
+.pt-empty2{font-size:13px;color:var(--ink-2);margin:10px 0 0;padding:12px 14px;border:1px solid var(--hair);border-radius:8px;background:var(--wash)}
 .pt-desc{font-size:11.5px;color:var(--ink-3);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .pt-board{display:inline-block;margin-left:8px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--ok-text);text-decoration:none;font-family:inherit}
@@ -180,16 +187,17 @@ function renderPermitsBody(boot) {
     <div class="pt-strip" id="ptStrip"></div>
     <div class="pt-tools">
       <input type="search" id="ptSearch" placeholder="Search address, applicant, contractor or description" aria-label="Search permits" autocomplete="off"/>
+      <select id="ptProp" aria-label="Filter by property type"><option value="">All property types</option></select>
       <select id="ptCity" aria-label="Filter by city"><option value="">All cities</option></select>
       <select id="ptType" aria-label="Filter by permit type"><option value="">All permit types</option></select>
-      <label class="chk"><input type="checkbox" id="ptInd"/> Industrial only</label>
       <span class="pt-shown" id="ptShown"></span>
     </div>
     <div id="ptRows"></div>
+    <p class="pt-empty2 hide" id="ptTypeNone"><span id="ptTypeNoneText"></span> <button type="button" class="pt-rm" id="ptTypeAll">Show every type</button></p>
     <p class="pt-note hide" id="ptNone">No permit matches. <button type="button" class="pt-rm" id="ptClear">Clear filters</button></p>
     <p class="pt-note hide" id="ptEmpty"></p>
     <p class="pt-note hide" id="ptTrunc"></p>
-    <p class="pt-note">Public record, read from each city’s own permit portal on weekday mornings. “Industrial” means the parcel is zoned industrial by Ada County, or — where the county could not answer — the permit describes industrial work.</p>
+    <p class="pt-note">Public record, read from each city’s own permit portal on weekday mornings. A permit’s property type comes from how Ada County zones its parcel and what the permit says it is for. Industrial means the parcel is zoned industrial, or, where the county could not answer, the permit describes industrial work. Where the zoning allows several uses, the permit’s own words decide, and a permit that does not say is listed under Other.</p>
   </div>
 </main>
 <script>
@@ -197,7 +205,8 @@ function renderPermitsBody(boot) {
   var BOOT = ${bootJson};
   function $(id){return document.getElementById(id)}
   function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
-  var items=[];
+  var items=[], CITY_LINE="these cities", WIN=30;
+  var PROP_TYPES=["Industrial","Office","Retail","Multifamily","Mixed use","Other"];
   function wall(html){ var w=$("ptWall"); w.innerHTML=html; w.className="pt-wall"; $("ptBody").className="hide"; $("ptFeedHead").className="pt-head2 hide"; }
   function day(iso){
     if(!iso)return "";
@@ -221,6 +230,7 @@ function renderPermitsBody(boot) {
     if(o.s!==200||!o.j){ wall("<p>Couldn\\u2019t load the permit tracker just now. Refresh in a moment.</p>"); return; }
     var j=o.j;
     items=Array.isArray(j.filings)?j.filings:[];
+    CITY_LINE=j.cities||"these cities"; WIN=j.windowDays||30;
     var sub="Commercial building permits filed in "+(j.cities||"no city")+" in the last "+(j.windowDays||30)+" days \\u2014 the cities we read today.";
     if(j.never)sub+=" The sweep has not run yet.";
     else if(j.stale)sub+=" Last checked "+ago(j.lastSweptAt)+", more than a business day ago \\u2014 newer filings may be missing.";
@@ -238,6 +248,11 @@ function renderPermitsBody(boot) {
     var cities={},types={};
     items.forEach(function(f){ if(f.city)cities[f.city]=1; if(f.type)types[f.type]=1; });
     opts($("ptCity"),Object.keys(cities).sort()); opts($("ptType"),Object.keys(types).sort());
+    // Every type is offered with its count, a zero included, so an empty
+    // type is visible before it is picked.
+    var counts={}; PROP_TYPES.forEach(function(t){counts[t]=0});
+    items.forEach(function(f){ var t=PROP_TYPES.indexOf(f.propertyType)>-1?f.propertyType:"Other"; f.propertyType=t; counts[t]++; });
+    PROP_TYPES.forEach(function(t){ var o=document.createElement("option"); o.value=t; o.textContent=t+" ("+counts[t]+")"; $("ptProp").appendChild(o); });
     $("ptEmpty").textContent="No commercial permit filed in "+(j.cities||"these cities")+" in the last "+(j.windowDays||30)+" days"+(j.never?" \\u2014 the sweep has not run yet.":".");
     $("ptEmpty").className=items.length?"pt-note hide":"pt-note";
     $("ptTrunc").textContent=j.truncated?"Showing the "+items.length+" most recent filings; older ones in the window are not listed.":"";
@@ -246,23 +261,27 @@ function renderPermitsBody(boot) {
   }
   function render(){
     var q=$("ptSearch").value.toLowerCase().split(/\\s+/).filter(Boolean);
-    var city=$("ptCity").value, type=$("ptType").value, ind=$("ptInd").checked;
+    var city=$("ptCity").value, type=$("ptType").value, prop=$("ptProp").value;
     var list=items.filter(function(f){
       if(city&&f.city!==city)return false;
       if(type&&f.type!==type)return false;
-      if(ind&&!f.isIndustrial)return false;
+      if(prop&&f.propertyType!==prop)return false;
       if(!q.length)return true;
       var hay=[f.address,f.applicant,f.contractor,f.description,f.projectName,f.permitNumber,f.type,f.status,f.zoning].join(" ").toLowerCase();
       return q.every(function(t){return hay.indexOf(t)>-1});
     });
     var filtered=list.length!==items.length;
     $("ptShown").textContent=filtered?list.length+" of "+items.length+" shown":"";
-    $("ptNone").className=(items.length&&!list.length)?"pt-note":"pt-note hide";
+    // A type with nothing in the window, and no other filter: say it in words.
+    var typeEmpty=!!(prop&&!list.length&&items.length&&!q.length&&!city&&!type);
+    $("ptTypeNoneText").textContent=typeEmpty?"No "+(prop==="Other"?"other":prop.toLowerCase())+" permit filed in "+CITY_LINE+" in the last "+WIN+" days.":"";
+    $("ptTypeNone").className=typeEmpty?"pt-empty2":"pt-empty2 hide";
+    $("ptNone").className=(items.length&&!list.length&&!typeEmpty)?"pt-note":"pt-note hide";
     $("ptRows").innerHTML=list.map(function(f){
       var addr=f.address||"(no address on the permit)";
       if(f.city&&addr.toLowerCase().indexOf(f.city.toLowerCase())<0)addr+=", "+f.city;
       var bits=[f.type,f.status,f.zoning?'zoned '+f.zoning:""].filter(Boolean).map(esc);
-      if(f.isIndustrial)bits.push('<span class="ind">industrial</span>');
+      bits.unshift('<span class="ind">'+esc(f.propertyType)+"</span>");
       var who=[f.applicant?"applicant "+f.applicant:"",f.contractor&&f.contractor!==f.applicant?"contractor "+f.contractor:""].filter(Boolean);
       var num=f.sourceUrl?'<a href="'+esc(f.sourceUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(f.permitNumber)+"</a>":esc(f.permitNumber);
       return '<div class="pt-row"><span class="pt-date">'+esc(day(f.appliedDate))+"</span>"+
@@ -517,8 +536,9 @@ function renderPermitsBody(boot) {
   $("ptSearch").addEventListener("input",render);
   $("ptCity").addEventListener("change",render);
   $("ptType").addEventListener("change",render);
-  $("ptInd").addEventListener("change",render);
-  $("ptClear").addEventListener("click",function(){ $("ptSearch").value=""; $("ptCity").value=""; $("ptType").value=""; $("ptInd").checked=false; render(); });
+  $("ptProp").addEventListener("change",render);
+  $("ptTypeAll").addEventListener("click",function(){ $("ptProp").value=""; render(); });
+  $("ptClear").addEventListener("click",function(){ $("ptSearch").value=""; $("ptCity").value=""; $("ptType").value=""; $("ptProp").value=""; render(); });
   apply(BOOT);
   if(BOOT&&BOOT.s===200)applyMine(BOOT.mine);
 })();

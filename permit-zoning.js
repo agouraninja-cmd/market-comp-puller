@@ -102,7 +102,49 @@ async function fetchZoningByParcel(parcelNumber, deps) {
   }
 }
 
+// The Permit tracker's property type (2026-09-29, the owner's pick of Draft A:
+// a Property type menu in place of the "Industrial only" box). Nothing new is
+// stored or read from a city: the type is worked out at READ time from what a
+// filing already carries, so it moves the day this rule does.
+//
+// Four rules:
+//  - INDUSTRIAL IS THE STORED FLAG, unchanged, so picking Industrial shows
+//    exactly what the old box showed.
+//  - Zoning cannot tell office from retail (a commercial parcel allows both),
+//    so the permit's own words decide there; an office zone with words that
+//    say nothing is Office.
+//  - Shops below apartments is MIXED USE only (a mixed-use zone, the phrase,
+//    or both kinds of words) — never also Multifamily, so the counts add up.
+//  - MISS RATHER THAN GUESS: a permit whose words and zoning do not say is
+//    Other, never a best guess.
+const PROPERTY_TYPES = Object.freeze(["Industrial", "Office", "Retail", "Multifamily", "Mixed use", "Other"]);
+
+const MULTIFAMILY_RE = /\b(apartments?|multi-?family|dwelling units|residential units|senior living)\b/;
+const RETAIL_RE = /\b(retail|restaurant|coffee|drive[- ]?thru|store|salon|grocery|brewery|taproom|bakery|pharmacy|fitness|car wash|bank|credit union)\b/;
+const OFFICE_RE = /\b(office|offices|dental|dentist|medical clinic|clinic|orthodont\w*|law firm|insurance agency|call center)\b/;
+const OFFICE_ZONES = new Set(["L-O", "N-O", "R-O", "O", "H-E"]);
+
+// `f` is a filing view (isIndustrial, zoning, description, projectName, type)
+// or a stored row (is_industrial, permit_type, project_name) — both shapes.
+function propertyTypeOf(f) {
+  const o = f || {};
+  if (o.isIndustrial === true || o.is_industrial === true) return "Industrial";
+  const words = [o.description, o.projectName || o.project_name, o.type || o.permit_type]
+    .filter(Boolean).join(" ").toLowerCase();
+  const z = baseZone(o.zoning);
+  const mf = MULTIFAMILY_RE.test(words);
+  const rt = RETAIL_RE.test(words);
+  const of = OFFICE_RE.test(words);
+  if (/^MX/.test(z) || z === "TN-C" || /\bmixed[- ]use\b/.test(words) || (mf && rt)) return "Mixed use";
+  if (mf) return "Multifamily";
+  if (rt && !of) return "Retail";
+  if (of && !rt) return "Office";
+  if (!rt && !of && OFFICE_ZONES.has(z)) return "Office";
+  return "Other";
+}
+
 module.exports = {
+  PROPERTY_TYPES, propertyTypeOf,
   ADA_PARCELS_URL, INDUSTRIAL_ZONES,
   baseZone, isIndustrialZone, industrialFor, cleanParcel, parcelQueryUrl,
   parseParcelAnswer, fetchZoningByParcel,

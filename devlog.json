@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-09-29",
+    "type": "feature",
+    "title": "Permit tracker: filter by property type",
+    "details": "The Industrial only box on /permits became a Property type menu: Industrial, Office, Retail, Multifamily, Mixed use and Other, each with its count for the month. The type is worked out from how Ada County zones the parcel and what the permit says it is for, with nothing new stored; Industrial shows exactly what the old box did, and a permit that does not say is listed under Other rather than guessed. Each permit names its type, and a type with nothing in it says so in words."
+  },
+  {
+    "date": "2026-09-29",
     "type": "improvement",
     "title": "Market comps list the newest deal first",
     "details": "The comps table on every market page (the Market explorer’s data) now arrives sorted by date, newest first, with undated comps last, and the Date header shows the arrow. Clicking Date flips it to oldest first. The CSV download follows the same order. Quarter and year dates (Q1 2025, 2025) now sort in their right place too; before, a click on Date pushed them to the bottom as if they had no date."

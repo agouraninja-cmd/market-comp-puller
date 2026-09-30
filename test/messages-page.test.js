@@ -310,9 +310,36 @@ test("delete asks first, on firm conversations only, and Escape backs out withou
   // The shared header's Escape listener goes BACK a page. The page's own
   // listener must run first (capture) and stop it, or cancelling the question
   // also leaves Messages.
-  assert.match(script,
-    /addEventListener\("keydown", function\(e\)\{\s*if \(e\.key !== "Escape" \|\| !state\.confirmId\) return;[\s\S]{0,120}e\.stopPropagation\(\);[\s\S]{0,80}\}, true\);/,
+  // The same listener serves the Unsend question (2026-09-29), so it is
+  // pinned as one capture-phase block that stops BOTH questions' Escape.
+  const at = script.search(/document\.addEventListener\("keydown", function\(e\)\{\s*if \(e\.key !== "Escape"\) return;/);
+  assert.ok(at >= 0, "the page's Escape listener is gone or no longer checks Escape first");
+  const block = script.slice(at, script.indexOf("}, true);", at) + 9);
+  assert.match(block, /\}, true\);$/, "the Escape listener no longer runs in the capture phase");
+  assert.match(block, /if \(!state\.confirmId\) return;[\s\S]{0,120}e\.stopPropagation\(\);/,
     "Escape on the delete question is no longer caught before the header's go-back listener");
+  assert.match(block, /if \(state\.unsendId\) \{[\s\S]{0,80}e\.stopPropagation\(\);/,
+    "Escape on the unsend question is no longer caught before the header's go-back listener");
+});
+
+test("Unsend is offered only while the server says so, and asks in the page", () => {
+  const script = scriptOf(renderMessagesBody(null));
+  // The button follows the server's unsendUntil and the clock, never just
+  // "is this mine" — an old message of yours must not offer it.
+  assert.match(script, /if \(!m \|\| !m\.mine \|\| m\.unsent \|\| !m\.unsendUntil\) return false;/,
+    "Unsend is offered on a message the server did not mark as unsendable");
+  assert.equal((script.match(/"\/api\/messages\/unsend"/g) || []).length, 1,
+    "the unsend route is called from more than one place");
+  assert.match(script, /doUnsend\(unYes\.getAttribute\("data-unsend-yes"\)\)/,
+    "unsending no longer waits for the question's own Unsend button");
+  const fn = script.slice(script.indexOf("function unsendQuestion("), script.indexOf("function scheduleUnsendExpiry("));
+  assert.doesNotMatch(fn, /window\.confirm/, "the unsend question became a browser dialog");
+  // An unsent message is drawn from the marker alone: nothing of its body.
+  assert.match(script, /if \(m\.unsent\) \{\s*html \+= '<div class="msg-unsent">'/,
+    "an unsent message is no longer drawn as its own marker");
+  // An open conversation catches up on the poll, not only on reopening.
+  assert.match(script, /var gone = j\.unsent \|\| \[\]/,
+    "the poll no longer applies messages unsent since the last read");
 });
 
 test("the header's question is asked once, and a list read from before a delete cannot undo it", () => {

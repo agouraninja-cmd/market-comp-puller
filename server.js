@@ -5465,6 +5465,22 @@ async function msgMessageRows(threadId, since) {
     `&order=created_at.asc&limit=${MSG.PAGE_SIZE}`)) || [];
 }
 
+// The messages in a thread UNSENT after `since` (the poll cursor). The poll
+// only asks for messages newer than the last one the browser holds, so
+// without this an open conversation would keep showing a message its author
+// took back until somebody reopened it. Every message unsent since the
+// browser last read was unsent after the newest message it holds was sent,
+// so deleted_at > cursor catches all of them. Ids and times only — an unsent
+// message's body never leaves this function because it is never selected.
+async function msgUnsentSince(threadId, since) {
+  const at = Date.parse(String(since || ""));
+  if (!DB_CONFIGURED || !threadId || !Number.isFinite(at)) return [];
+  return (await sbRequest("GET",
+    `msg_messages?thread_id=eq.${encodeURIComponent(threadId)}` +
+    `&deleted_at=gt.${encodeURIComponent(new Date(at).toISOString())}` +
+    `&select=id,created_at,deleted_at&limit=${MSG.PAGE_SIZE}`)) || [];
+}
+
 // The comps attached to a set of messages. A separate read and a stitch, the
 // house pattern (usersByIds, orgsByIds) — PostgREST embedding would tie this
 // payload to a foreign-key name.
@@ -27699,7 +27715,15 @@ const server = http.createServer((req, res) =>
         left: Boolean(m.left_at),
       })),
       lastMessageAt: thread.last_message_at || thread.created_at || null,
-      preview: MSG.previewOf(latest),
+      // An unsent last message previews as the line it left behind, never
+      // its body (messaging.js, "Unsending a message").
+      preview: latest && latest.deleted_at
+        ? MSG.unsentLine({
+          mine: String(latest.user_id || "") === String(me),
+          name: (names && names.get(String(latest.user_id || ""))) ||
+            MSG.displayName({ email: latest.author_email }),
+        })
+        : MSG.previewOf(latest),
       unread: unread || 0,
     });
 
@@ -27973,7 +27997,10 @@ const server = http.createServer((req, res) =>
         // they deleted it, on the first read and on every poll.
         const since = MSG.readCursor(q.get("since") || "", MSG.historyStart(thread, mineRow));
         const messages = await msgMessageRows(id, since);
-        const comps = await msgCompRowsForMessages(messages.map((m) => m.id));
+        // An unsent message's comps are not drawn in the conversation (they
+        // stay on the Comps tab), so they are not read for it either.
+        const comps = await msgCompRowsForMessages(
+          messages.filter((m) => !m.deleted_at).map((m) => m.id));
         const saved = await msgCompSaveIdsFor(g.user.id, comps.map((c) => c.id));
         const byMessage = new Map();
         for (const c of comps) {
@@ -27995,23 +28022,44 @@ const server = http.createServer((req, res) =>
           });
         }
         const names = await namesFor(rows);
+        // On a poll, the messages taken back since the browser last read, so
+        // an open conversation swaps them for the marker too. Not on the first
+        // read, which already carries every marker in `messages`.
+        const start = MSG.historyStart(thread, mineRow);
+        const unsent = q.get("since")
+          ? (await msgUnsentSince(id, since)).filter((m) => MSG.afterHistoryStart(m, start)).map((m) => String(m.id))
+          : [];
+        const nowMs = Date.now();
         return sendJson(res, 200, {
           ok: true,
           thread: threadPayload(thread, rows, String(g.user.id), null, 0, names),
-          messages: messages.filter((m) => !m.deleted_at).map((m) => ({
-            id: String(m.id),
-            userId: String(m.user_id || ""),
-            author: String(m.author_email || ""),
-            // Resolved server-side so the browser never has to guess a name
-            // out of an email address. Falls back to the local part, which is
-            // what it used to do everywhere.
-            authorName: names.get(String(m.user_id || "")) ||
-              MSG.displayName({ email: m.author_email }),
-            mine: String(m.user_id || "") === String(g.user.id),
-            body: String(m.body || ""),
-            createdAt: m.created_at,
-            comps: byMessage.get(String(m.id)) || [],
-          })),
+          messages: messages.map((m) => {
+            const mine = String(m.user_id || "") === String(g.user.id);
+            const base = {
+              id: String(m.id),
+              userId: String(m.user_id || ""),
+              author: String(m.author_email || ""),
+              // Resolved server-side so the browser never has to guess a name
+              // out of an email address. Falls back to the local part, which
+              // is what it used to do everywhere.
+              authorName: names.get(String(m.user_id || "")) ||
+                MSG.displayName({ email: m.author_email }),
+              mine,
+              createdAt: m.created_at,
+            };
+            // Unsent: a marker in its place, with NO body and NO comps.
+            if (m.deleted_at) return { ...base, unsent: true, body: "", comps: [] };
+            const can = mine && MSG.canUnsend({ message: m, userId: g.user.id, now: nowMs }).ok;
+            return {
+              ...base,
+              body: String(m.body || ""),
+              comps: byMessage.get(String(m.id)) || [],
+              // Present only while the author may still take it back; the
+              // page hides the button at this moment and the route decides.
+              ...(can ? { unsendUntil: MSG.unsendDeadline(m) } : {}),
+            };
+          }),
+          unsent,
           // SERVER-ISSUED, never a browser clock — the hub's rule. Echoes the
           // cursor it was given when nothing new arrived, so a quiet poll does
           // not rewind the conversation.
@@ -28300,6 +28348,82 @@ const server = http.createServer((req, res) =>
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Message thread delete failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't delete that conversation. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- POST /api/messages/unsend — take back my own message ---------------
+    //
+    // The rules are messaging.js's ("Unsending a message"): your own message,
+    // for fifteen minutes after you sent it, off everybody's screen. The
+    // message is read by id AND the caller's firm (the second wall), then the
+    // caller must still be in its thread, then canUnsend decides. The write
+    // repeats the author and "not yet unsent" in its own filter, so it can
+    // only ever stamp the caller's own live message whatever the reads said.
+    //
+    // Nothing is removed: deleted_at is stamped and the row stays (044).
+    // msg_comps is untouched — the Comps tab keeps what was sent.
+    if (req.method === "POST" && msgPath === "/api/messages/unsend") {
+      (async () => {
+        const g = await openMessaging();
+        if (!g) return;
+        const body = await readMsgBody(2e3);
+        const id = String((body && body.messageId) || "").trim();
+        if (!id) return sendJson(res, 400, { error: "Which message?" });
+        const found = await sbRequest("GET",
+          `msg_messages?id=eq.${encodeURIComponent(id)}&org_id=eq.${encodeURIComponent(g.orgId)}` +
+          `&select=id,thread_id,user_id,created_at,deleted_at&limit=1`);
+        const message = (found && found[0]) || null;
+        const notYours = { error: "That message isn't yours to unsend." };
+        if (!message) return sendJson(res, 404, notYours);
+        const thread = await msgThreadRow(message.thread_id, g.orgId);
+        const rows = await msgThreadMemberRows([message.thread_id]);
+        const verdict = MSG.canPostToThread({
+          thread, orgId: g.orgId, memberRow: MSG.memberRowOf(rows, g.user.id),
+        });
+        if (!verdict.ok) return sendJson(res, 404, notYours);
+        const can = MSG.canUnsend({ message, userId: g.user.id, now: Date.now() });
+        if (!can.ok && can.reason === "too_late") {
+          return sendJson(res, 409, {
+            error: "You can only unsend a message for 15 minutes after sending it.",
+            code: "too_late",
+          });
+        }
+        if (!can.ok) return sendJson(res, 404, notYours);
+        if (can.reason === "already") return sendJson(res, 200, { ok: true, id: String(message.id) });
+        await sbRequest("PATCH",
+          `msg_messages?id=eq.${encodeURIComponent(message.id)}` +
+          `&org_id=eq.${encodeURIComponent(g.orgId)}` +
+          `&user_id=eq.${encodeURIComponent(g.user.id)}&deleted_at=is.null`,
+          { deleted_at: new Date().toISOString() }, { prefer: "return=minimal" });
+        // The unread dot reads msg_threads.last_message_at, and the send
+        // route set it to this message's own time — so without this the
+        // other person's dot stays lit for words they will never see. It goes
+        // back to the latest message still showing (or the thread's birth),
+        // and ONLY while it still names this message: the eq filter means a
+        // message sent in the meantime is never rolled back over. A failure
+        // costs one stale dot, never the unsend.
+        try {
+          const prev = await sbRequest("GET",
+            `msg_messages?thread_id=eq.${encodeURIComponent(message.thread_id)}&deleted_at=is.null` +
+            `&select=created_at&order=created_at.desc&limit=1`);
+          const back = (prev && prev[0] && prev[0].created_at) || thread.created_at;
+          if (back && message.created_at) {
+            await sbRequest("PATCH",
+              `msg_threads?id=eq.${encodeURIComponent(message.thread_id)}` +
+              `&org_id=eq.${encodeURIComponent(g.orgId)}` +
+              `&last_message_at=eq.${encodeURIComponent(message.created_at)}`,
+              { last_message_at: back }, { prefer: "return=minimal" });
+          }
+        } catch (err) {
+          console.error("Unsend thread touch failed (the unsend is fine):", err.message);
+        }
+        logEvent("message_unsent", { source: MSG.kindOf(thread) });
+        return sendJson(res, 200, { ok: true, id: String(message.id) });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Message unsend failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't unsend that. Please try again in a minute." });
       });
       return;
     }

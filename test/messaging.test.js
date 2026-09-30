@@ -388,3 +388,54 @@ test("a deleted conversation leaves the list until somebody writes again", () =>
   // it was made on purpose a moment ago.
   assert.equal(MSG.listedFor(MADE, fresh, 0), true, "a brand-new conversation vanished");
 });
+
+// ---------------------------------------------------------------------------
+// Unsending a message — your own, for fifteen minutes
+// ---------------------------------------------------------------------------
+
+const SENT = "2026-09-29T18:00:00.000Z";
+const AT = (min) => Date.parse(SENT) + min * 60 * 1000;
+
+test("the author may unsend a message inside fifteen minutes", () => {
+  const m = { user_id: "u1", created_at: SENT, deleted_at: null };
+  assert.deepEqual(MSG.canUnsend({ message: m, userId: "u1", now: AT(3) }), { ok: true, reason: "yours" });
+  assert.equal(MSG.canUnsend({ message: m, userId: "u1", now: AT(15) }).ok, true, "the last moment counts");
+});
+
+test("after fifteen minutes the message stays", () => {
+  const m = { user_id: "u1", created_at: SENT, deleted_at: null };
+  assert.deepEqual(MSG.canUnsend({ message: m, userId: "u1", now: AT(15) + 1 }), { ok: false, reason: "too_late" });
+});
+
+test("nobody unsends somebody else's message", () => {
+  const m = { user_id: "u1", created_at: SENT, deleted_at: null };
+  assert.equal(MSG.canUnsend({ message: m, userId: "u2", now: AT(1) }).reason, "not_yours");
+  assert.equal(MSG.canUnsend({ message: m, userId: "", now: AT(1) }).reason, "not_yours");
+  // A message with no author (a deleted account) is nobody's to take back.
+  assert.equal(MSG.canUnsend({ message: { created_at: SENT }, userId: "", now: AT(1) }).ok, false);
+  assert.equal(MSG.canUnsend({ message: null, userId: "u1", now: AT(1) }).reason, "not_found");
+});
+
+test("unsending twice is a success, not an error", () => {
+  const m = { user_id: "u1", created_at: SENT, deleted_at: AT(2) };
+  assert.deepEqual(MSG.canUnsend({ message: m, userId: "u1", now: AT(40) }), { ok: true, reason: "already" });
+});
+
+test("an unreadable send time refuses rather than allowing forever", () => {
+  assert.equal(MSG.canUnsend({ message: { user_id: "u1", created_at: "soon" }, userId: "u1", now: AT(1) }).reason, "too_late");
+  assert.equal(MSG.unsendDeadline({ created_at: "soon" }), "");
+});
+
+test("the deadline is fifteen minutes after sending", () => {
+  assert.equal(MSG.unsendDeadline({ created_at: SENT }), "2026-09-29T18:15:00.000Z");
+});
+
+test("an unsent message previews as nothing, never as its words", () => {
+  assert.equal(MSG.previewOf({ body: "Closed at $14.1M", deleted_at: SENT }), "");
+});
+
+test("the line an unsent message leaves says who, by first name", () => {
+  assert.equal(MSG.unsentLine({ mine: true, name: "Brad Keller" }), "You unsent a message");
+  assert.equal(MSG.unsentLine({ mine: false, name: "Brad Keller" }), "Brad unsent a message");
+  assert.equal(MSG.unsentLine({ mine: false, name: "" }), "Someone unsent a message");
+});

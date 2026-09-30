@@ -176,6 +176,20 @@ function renderMessagesBody(boot) {
 .msg-author{font-weight:600;font-size:13px}
 .msg-time{font-size:11px;color:var(--ink-faint)}
 .msg-text{font-size:14px;color:var(--ink-body);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
+/* Unsend (2026-09-29, Draft A). Only a message you sent in the last fifteen
+   minutes carries the button, so almost every line is untouched. The button
+   shows on hover or focus with a mouse and is always drawn under (hover:none),
+   the chat bin's rule. The negative margin and matching padding give the
+   hover wash room without moving the text. */
+.msg-line.can-unsend{position:relative;margin:0 -8px;padding:3px 8px;border-radius:6px}
+.msg-line.can-unsend .msg-body{padding-right:74px}
+.msg-line.can-unsend:hover,.msg-line.is-asking{background:var(--wash)}
+.msg-unsend{position:absolute;right:8px;top:3px;opacity:0;pointer-events:none;font-size:12px;padding:3px 9px}
+.msg-line.can-unsend:hover .msg-unsend,.msg-unsend:focus-visible,.msg-line.is-asking .msg-unsend{opacity:1;pointer-events:auto}
+@media (hover:none){ .msg-unsend{opacity:1;pointer-events:auto} }
+.msg-unsendq{margin:4px 0 10px 44px;max-width:560px;padding:11px 14px 12px;background:var(--wash);
+  border:1px solid var(--edge);border-radius:8px}
+.msg-unsent{align-self:center;font-size:12px;font-style:italic;color:var(--ink-3);padding:6px 0 4px}
 
 /* --- a comp inside a message -------------------------------------------- */
 .msg-comp{border:1px solid var(--edge);border-radius:8px;padding:10px 12px;margin:6px 0;
@@ -413,6 +427,10 @@ function renderMessagesBody(boot) {
     // Deleting (2026-09-26): which row is asking "Delete this conversation?",
     // which delete is in flight, and what went wrong with the last one.
     confirmId: "", deleting: "", delErr: "",
+    // Unsend (2026-09-29): which message is asking "Unsend this message?",
+    // which unsend is in flight, its error, and the timer that takes the
+    // button away when a message's fifteen minutes run out.
+    unsendId: "", unsending: "", unsendErr: "", unsendTimer: null,
     // The open firm conversation as its own read described it, so it stays on
     // the list while it is open even when the list read leaves it out — a
     // conversation you deleted and then reopened has nothing in it yet, and
@@ -525,6 +543,8 @@ function renderMessagesBody(boot) {
     state.openId = id;
     state.cursor = "";
     state.messages = [];
+    state.unsendId = "";
+    state.unsendErr = "";
     state.extItems = [];
     state.extPeopleList = [];
     state.attach = [];
@@ -1039,29 +1059,153 @@ function renderMessagesBody(boot) {
         lastWho = "";
       }
       var t = Date.parse(m.createdAt || "") || 0;
+      // The server resolves this against the users table; the email local part
+      // is the fallback it already uses, restated here for a payload written
+      // before authorName existed.
+      var name = m.mine ? "You" : (m.authorName || String(m.author || "").split("@")[0] || "A colleague");
+      // An unsent message is one quiet line where it was, for everybody. The
+      // server sends it with no body and no comps. The next message starts a
+      // block of its own, so it never reads as a continuation of nothing.
+      if (m.unsent) {
+        html += '<div class="msg-unsent">' +
+          esc(m.mine ? "You unsent a message" : (firstName(name) + " unsent a message")) + '</div>';
+        lastWho = "";
+        continue;
+      }
       // Consecutive messages from one author inside five minutes collapse into
       // one block, the way every messenger does it — a name and a timestamp on
       // every line makes a short back-and-forth unreadable.
       var cont = m.author === lastWho && t - lastAt < 5 * 60 * 1000;
       lastWho = m.author; lastAt = t;
-      // The server resolves this against the users table; the email local part
-      // is the fallback it already uses, restated here for a payload written
-      // before authorName existed.
-      var name = m.mine ? "You" : (m.authorName || String(m.author || "").split("@")[0] || "A colleague");
       var comps = "";
       for (var k = 0; k < (m.comps || []).length; k++) comps += compCard(m.comps[k]);
-      html += '<div class="msg-line' + (cont ? " cont" : "") + '">' +
+      var canU = canUnsendNow(m);
+      var asking = canU && state.unsendId === m.id;
+      html += '<div class="msg-line' + (cont ? " cont" : "") + (canU ? " can-unsend" : "") + (asking ? " is-asking" : "") + '">' +
         '<span class="msg-av">' + esc(initial(name)) + '</span>' +
         '<div class="msg-body">' +
           (cont ? "" : '<div class="msg-meta"><span class="msg-author">' + esc(name) + '</span>' +
             '<span class="msg-time">' + esc(when(m.createdAt)) + '</span></div>') +
           (m.body ? '<div class="msg-text">' + esc(m.body) + '</div>' : "") +
           comps +
-        '</div></div>';
+        '</div>' +
+        (canU ? '<button class="msg-btn sm msg-unsend" type="button" data-unsend="' + esc(m.id) + '"' +
+          ' title="Unsend (for 15 minutes after you send)">Unsend</button>' : "") +
+        '</div>';
+      if (asking) html += unsendQuestion(m);
     }
     var el = $("msgStream");
     el.innerHTML = html;
-    el.scrollTop = el.scrollHeight;
+    var q = el.querySelector(".msg-unsendq");
+    if (q) { try { q.scrollIntoView({ block: "nearest" }); } catch (e) {} }
+    else el.scrollTop = el.scrollHeight;
+    scheduleUnsendExpiry();
+  }
+
+  // --- unsending a message --------------------------------------------------
+  // Your own message, for fifteen minutes, off everybody's screen (Draft A,
+  // 2026-09-29). The server decides; unsendUntil is only present while it
+  // would say yes, and this page takes the button away when it runs out.
+  function firstName(s){ return String(s || "").trim().split(" ")[0] || "Someone"; }
+  function canUnsendNow(m){
+    if (!m || !m.mine || m.unsent || !m.unsendUntil) return false;
+    return (Date.parse(m.unsendUntil) || 0) > Date.now();
+  }
+  function findMessage(id){
+    for (var i = 0; i < state.messages.length; i++) if (state.messages[i].id === id) return state.messages[i];
+    return null;
+  }
+  // Says whose screen it leaves: the one other person in a direct message,
+  // everyone in a group.
+  function unsendQuestion(m){
+    var row = state.openRow, who = "";
+    if (row && row.kind === "dm") {
+      var other = (row.members || []).filter(function(p){ return p.userId !== state.me; })[0];
+      if (other) who = firstName(other.name);
+    }
+    var busy = state.unsending === m.id;
+    return '<div class="msg-unsendq" role="group" aria-label="Unsend this message">' +
+      '<div class="msg-confirm-q">Unsend this message?</div>' +
+      '<div class="msg-confirm-sub">' +
+        (who ? "It comes off " + esc(who) + "\\u2019s screen too" : "It comes off everyone\\u2019s screen") +
+        ", and the chat shows that you unsent something. You can unsend for 15 minutes after sending.</div>" +
+      '<div class="msg-confirm-go">' +
+        '<button class="msg-btn primary sm" type="button" data-unsend-yes="' + esc(m.id) + '"' + (busy ? " disabled" : "") + '>' +
+          (busy ? "Unsending\\u2026" : "Unsend") + '</button>' +
+        '<button class="msg-btn sm" type="button" data-unsend-no="1"' + (busy ? " disabled" : "") + '>Cancel</button>' +
+        (state.unsendErr ? '<span class="msg-hint">' + esc(state.unsendErr) + '</span>' : "") +
+      '</div>' +
+    '</div>';
+  }
+  function askUnsend(id){
+    state.unsendId = id;
+    state.unsendErr = "";
+    renderStream();
+    var yes = document.querySelector('#msgStream [data-unsend-yes]');
+    try { if (yes) yes.focus(); } catch (e) {}
+  }
+  function cancelUnsend(){
+    var id = state.unsendId;
+    state.unsendId = "";
+    state.unsendErr = "";
+    renderStream();
+    // Back to the button it came from, so a keyboard user is not dropped at
+    // the top of the page.
+    var back = id ? document.querySelector('[data-unsend="' + id.replace(/"/g, "") + '"]') : null;
+    try { if (back) back.focus(); } catch (e) {}
+  }
+  function markUnsent(m){
+    m.unsent = true;
+    m.body = "";
+    m.comps = [];
+    delete m.unsendUntil;
+    if (state.unsendId === m.id) { state.unsendId = ""; state.unsendErr = ""; }
+  }
+  function doUnsend(id){
+    if (state.unsending) return;
+    state.unsending = id;
+    state.unsendErr = "";
+    renderStream();
+    api("POST", "/api/messages/unsend", { messageId: id }).then(function(o){
+      state.unsending = "";
+      if (o.s !== 200) {
+        state.unsendErr = (o.j && o.j.error) || "Couldn\\u2019t unsend that. Please try again.";
+        renderStream();
+        return;
+      }
+      var m = findMessage(id);
+      if (m) markUnsent(m);
+      state.unsendId = "";
+      renderStream();
+      refreshList(true);
+    });
+  }
+  // One timer, for the soonest button to run out. It removes the button in
+  // place rather than redrawing the conversation, which would scroll it. A
+  // question already open stays: pressing Unsend then gets the server's
+  // plain answer.
+  function scheduleUnsendExpiry(){
+    if (state.unsendTimer) { clearTimeout(state.unsendTimer); state.unsendTimer = null; }
+    var soonest = 0;
+    for (var i = 0; i < state.messages.length; i++) {
+      var m = state.messages[i];
+      if (!canUnsendNow(m)) continue;
+      var at = Date.parse(m.unsendUntil);
+      if (!soonest || at < soonest) soonest = at;
+    }
+    if (!soonest) return;
+    state.unsendTimer = setTimeout(function(){
+      state.unsendTimer = null;
+      var btns = document.querySelectorAll("#msgStream [data-unsend]");
+      for (var j = 0; j < btns.length; j++) {
+        var mm = findMessage(btns[j].getAttribute("data-unsend"));
+        if (canUnsendNow(mm) || (mm && state.unsendId === mm.id)) continue;
+        var line = btns[j].parentNode;
+        line.className = line.className.replace(" can-unsend", "");
+        line.removeChild(btns[j]);
+      }
+      scheduleUnsendExpiry();
+    }, Math.max(0, soonest - Date.now()) + 50);
   }
 
   // --- the Comps tab ------------------------------------------------------
@@ -1159,6 +1303,8 @@ function renderMessagesBody(boot) {
     state.openId = id;
     state.cursor = "";
     state.messages = [];
+    state.unsendId = "";
+    state.unsendErr = "";
     state.extItems = [];
     state.attach = [];
     renderTray();
@@ -1197,6 +1343,14 @@ function renderMessagesBody(boot) {
           : ((members.filter(function(m){ return m.userId !== state.me; })[0] || {}).email || "");
       }
       var fresh = j.messages || [];
+      // Messages their author took back since the last read: the poll only
+      // brings NEW messages, so without this an open conversation would keep
+      // showing one until it was reopened.
+      var gone = j.unsent || [], changed = false;
+      for (var g = 0; g < gone.length; g++) {
+        var was = findMessage(gone[g]);
+        if (was && !was.unsent) { markUnsent(was); changed = true; }
+      }
       if (fresh.length) {
         // Ids, not positions: an optimistic local echo and the server's own
         // copy of the same message must not both render.
@@ -1204,7 +1358,7 @@ function renderMessagesBody(boot) {
         for (var i = 0; i < state.messages.length; i++) have[state.messages[i].id] = true;
         for (var k = 0; k < fresh.length; k++) if (!have[fresh[k].id]) state.messages.push(fresh[k]);
         renderStream();
-      } else if (first) {
+      } else if (first || changed) {
         renderStream();
       }
       if (j.cursor) state.cursor = j.cursor;
@@ -1626,6 +1780,15 @@ function renderMessagesBody(boot) {
     if (row) openThread(row.getAttribute("data-thread"), true);
   });
   $("msgStream").addEventListener("click", function(e){
+    var un = e.target.closest("[data-unsend]");
+    if (un) {
+      var uid = un.getAttribute("data-unsend");
+      if (state.unsendId === uid) cancelUnsend(); else askUnsend(uid);
+      return;
+    }
+    var unYes = e.target.closest("[data-unsend-yes]");
+    if (unYes) { doUnsend(unYes.getAttribute("data-unsend-yes")); return; }
+    if (e.target.closest("[data-unsend-no]")) { if (!state.unsending) cancelUnsend(); return; }
     var btn = e.target.closest("[data-save]");
     if (!btn) return;
     btn.disabled = true;
@@ -1688,7 +1851,15 @@ function renderMessagesBody(boot) {
   // the previous page: without this, dismissing the question would also leave
   // Messages altogether.
   document.addEventListener("keydown", function(e){
-    if (e.key !== "Escape" || !state.confirmId) return;
+    if (e.key !== "Escape") return;
+    // The Unsend question backs out the same way, for the same reason.
+    if (state.unsendId) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!state.unsending) cancelUnsend();
+      return;
+    }
+    if (!state.confirmId) return;
     e.preventDefault();
     e.stopPropagation();
     if (!state.deleting) cancelDelete();

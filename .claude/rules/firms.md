@@ -221,6 +221,34 @@ paths:
   question is open, because the shared header's Escape goes back a page.
   Proven in `test/messages-run.test.js` ("deleting a conversation is for the
   person who deletes it").
+  **Unsending a message** (2026-09-29, no migration; owner's pick, Draft A
+  of https://claude.ai/artifact/7sgbCPsjsT5V2cZrYgThFo). `POST
+  /api/messages/unsend {messageId}` takes back the CALLER'S OWN message within
+  `UNSEND_WINDOW_MS` (15 minutes) and it comes off EVERYBODY'S screen — the
+  deliberate opposite of deleting a conversation, because "I sent the wrong
+  thing" only helps if the other person stops seeing it; the window is what
+  keeps it from rewriting a record. Soft: it stamps 044's long-unwritten
+  `msg_messages.deleted_at` and the row (body included) stays. Rules in
+  `messaging.js` (`canUnsend`, `unsendDeadline`, `unsentLine`; `previewOf`
+  refuses a deleted message). The thread read returns an unsent message as a
+  MARKER (`unsent: true`, no body, no comps) and adds `unsendUntil` only to
+  the author's own still-unsendable messages; on a poll (`since` given) it
+  also returns `unsent: [ids]` from `msgUnsentSince` (`deleted_at=gt.<cursor>`
+  — every unsend the browser has not seen happened after the newest message
+  it holds), because the poll otherwise only brings NEW messages. The list
+  previews an unsent last message as "Brad unsent a message" / "You unsent a
+  message". Unsend rolls `msg_threads.last_message_at` back to the latest
+  visible message, filtered `last_message_at=eq.<the unsent message's time>`
+  so a newer message is never rolled back over — without it the unread dot
+  (which reads that column) stayed lit for words nobody could see. The comps
+  STAY on the Comps tab ("kept here for good"). Deal rooms get no Unsend. On
+  the page: an Unsend button on the line (hover/focus on a mouse, always under
+  `(hover:none)`), the question in place under the message, the same capture
+  phase Escape, and one timer that removes a button when its window ends.
+  The fake PostgREST now never matches a NULL on `gt./gte./lte./lt.`, as
+  Postgres does not — the unsend poll found it. Proven in
+  `test/messages-run.test.js` ("unsending a message takes it off everybody's
+  screen, for fifteen minutes").
   **Contacts attach to buildings (2026-09-02).** The write half of
   `org_contacts.building_id`: slice 5 shipped the sheet's read
   (`buildingContacts`) with nothing filling it, so every sheet's Contacts

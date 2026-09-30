@@ -52,6 +52,12 @@ function matches(row, key, expr) {
   // value so it matches, which is the one place this could have been wrong.
   if (expr.startsWith("neq.")) return String(val) !== decodeValue(expr.slice(4));
   if (expr.startsWith("in.(")) return parseInList(expr).some((v) => String(val) === v);
+  // A NULL never satisfies an ordering comparison in Postgres (NULL > x is
+  // NULL, which a WHERE drops), and the string compare below would get it
+  // wrong: String(null) is "null", which sorts after every ISO date. The
+  // unsend poll (`deleted_at=gt.<cursor>`) is the caller that found it — it
+  // would have reported every live message as unsent.
+  if (/^(gte|gt|lte|lt)\./.test(expr) && (val === null || val === undefined)) return false;
   // `gte.` is taught deliberately, like `neq.` above and for the same reason:
   // server.js sends it (every date-windowed read — the vault blend, the firm
   // blend, bulk's daily ceiling), and a fake that 400s on it cannot exercise

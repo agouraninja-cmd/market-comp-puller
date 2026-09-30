@@ -238,6 +238,66 @@ function listedFor(thread, memberRow, visibleCount) {
 }
 
 // ---------------------------------------------------------------------------
+// Unsending a message — your own, for fifteen minutes
+// ---------------------------------------------------------------------------
+
+// WHAT "UNSEND" MEANS HERE (owner's pick, Draft A of the drafts at
+// https://claude.ai/artifact/7sgbCPsjsT5V2cZrYgThFo, 2026-09-29): the author
+// takes back a message they JUST sent, and it comes off everybody's screen.
+// Where it was, everyone sees one line ("Brad unsent a message"), so the
+// conversation never looks silently edited.
+//
+// Why this is for everyone when deleting a conversation is for you only: the
+// reason a person takes back one message is "I sent the wrong thing", and that
+// only helps if the other person stops seeing it. The WINDOW is what keeps
+// that from becoming a way to rewrite a record — a message a colleague has had
+// for an afternoon, and may have acted on, is theirs as much as yours.
+//
+// SOFT, like everything else here: msg_messages.deleted_at is stamped (044
+// shipped that column unwritten for exactly this) and the row stays, so what
+// was said can still be found if it ever matters. Nothing in the app shows it:
+// the thread read replaces an unsent message with a marker that carries no
+// body and no comps, and previewOf refuses one.
+//
+// The comps it carried STAY on the Comps tab, whose promise is "kept here for
+// good" — and a copy a colleague already saved to their vault is theirs.
+const UNSEND_WINDOW_MS = 15 * 60 * 1000;
+
+// When this message stops being unsendable, as an ISO string, or "" when it
+// never was (no parseable time).
+function unsendDeadline(message) {
+  const t = Date.parse(str(message && message.created_at));
+  if (!Number.isFinite(t)) return "";
+  return new Date(t + UNSEND_WINDOW_MS).toISOString();
+}
+
+// May this person unsend this message now? The caller has already proved they
+// may read the thread; this is only about the message. `now` is passed in —
+// this file reads no clock.
+//
+// `already` is its own answer rather than a refusal: pressing Unsend twice
+// (two tabs, a double click) should end with the message unsent and no error.
+function canUnsend({ message, userId, now } = {}) {
+  if (!message) return { ok: false, reason: "not_found" };
+  const me = str(userId).trim();
+  if (!me || str(message.user_id) !== me) return { ok: false, reason: "not_yours" };
+  if (message.deleted_at) return { ok: true, reason: "already" };
+  const t = Date.parse(str(message.created_at));
+  if (!Number.isFinite(t)) return { ok: false, reason: "too_late" };
+  if (Number(now) - t > UNSEND_WINDOW_MS) return { ok: false, reason: "too_late" };
+  return { ok: true, reason: "yours" };
+}
+
+// The line an unsent message leaves behind, for one reader. A first name,
+// because it sits in the middle of a conversation where everybody knows who
+// that is, and "Brad Keller unsent a message" reads like a system log.
+function unsentLine({ mine, name } = {}) {
+  if (mine) return "You unsent a message";
+  const first = str(name).trim().split(/\s+/)[0];
+  return (first || "Someone") + " unsent a message";
+}
+
+// ---------------------------------------------------------------------------
 // Access
 // ---------------------------------------------------------------------------
 
@@ -397,7 +457,10 @@ function unreadCount(messages, { lastReadAt, userId } = {}) {
 // showing an empty preview — which would read as a bug in the list rather than
 // as a message somebody sent.
 function previewOf(message) {
-  if (!message) return "";
+  // An unsent message previews as NOTHING here, never as its body: the words
+  // were taken back. The caller draws unsentLine instead, which needs a name
+  // this function does not have.
+  if (!message || message.deleted_at) return "";
   const body = cleanText(message.body).replace(/\s+/g, " ").trim();
   const comps = Number(message.comp_count) || 0;
   if (body) return body.length > 120 ? body.slice(0, 119) + "…" : body;
@@ -466,6 +529,7 @@ module.exports = {
   participantKey,
   inThread, activeMembers, memberRowOf,
   historyStart, isCleared, readCursor, afterHistoryStart, listedFor,
+  UNSEND_WINDOW_MS, unsendDeadline, canUnsend, unsentLine,
   canReadThread, canPostToThread,
   validateMessage, validateThread,
   compRowFrom,

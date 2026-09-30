@@ -788,3 +788,130 @@ test("deleting a conversation is for the person who deletes it", async (t) => {
     assert.equal(row.unread, 0, "his own message counted as unread");
   });
 });
+
+test("unsending a message takes it off everybody's screen, for fifteen minutes", async (t) => {
+  const ctx = await bootWithDb(seedTables());
+  t.after(() => ctx.stop());
+  const B = ctx.srv.base;
+  const tick = () => new Promise((r) => setTimeout(r, 15));
+  const get = async (user, url) => {
+    const r = await fetch(B + url, as(user));
+    return { s: r.status, j: await r.json().catch(() => ({})) };
+  };
+  const post = async (user, url, body) => {
+    const r = await fetch(B + url, as(user, { method: "POST", body: JSON.stringify(body || {}) }));
+    return { s: r.status, j: await r.json().catch(() => ({})) };
+  };
+  const read = (user, id, since) => get(user, "/api/messages/thread?id=" + encodeURIComponent(id) +
+    (since ? "&since=" + encodeURIComponent(since) : ""));
+  const listed = async (user, id) => (await get(user, "/api/messages")).j.threads.filter((x) => x.id === id)[0];
+
+  const opened = await post(BRAD, "/api/messages/thread", { memberIds: [MIKE.id] });
+  assert.equal(opened.s, 201);
+  const id = opened.j.thread.id;
+  assert.equal((await post(MIKE, "/api/messages/send", { threadId: id, body: "What did it trade at?" })).s, 201);
+  await tick();
+  assert.equal((await post(BRAD, "/api/messages/send", {
+    threadId: id, body: "Closed at $14.1M, keep it quiet", compIds: [BRADS_COMP.id],
+  })).s, 201);
+  await tick();
+  const row = () => ctx.tables.msg_messages.find((m) => m.body === "Closed at $14.1M, keep it quiet");
+  const msgId = row().id;
+  // Mike has the conversation open: this is the cursor his page polls with.
+  const mikeFirst = await read(MIKE, id);
+  assert.equal(mikeFirst.s, 200);
+  const cursor = mikeFirst.j.cursor;
+
+  await t.test("only the author's own copy offers Unsend, and only while it can", async () => {
+    const brads = (await read(BRAD, id)).j.messages;
+    const mine = brads.find((m) => m.id === msgId);
+    assert.ok(mine.unsendUntil, "the author's fresh message offers no Unsend");
+    assert.ok(Date.parse(mine.unsendUntil) > Date.now());
+    assert.equal(brads.find((m) => m.body === "What did it trade at?").unsendUntil, undefined,
+      "Brad was offered Unsend on Mike's message");
+    assert.equal(mikeFirst.j.messages.find((m) => m.id === msgId).unsendUntil, undefined,
+      "Mike was offered Unsend on Brad's message");
+  });
+
+  await t.test("nobody but the author can unsend it", async () => {
+    assert.equal((await post(MIKE, "/api/messages/unsend", { messageId: msgId })).s, 404);
+    // Dana is at the firm but not in this conversation; Rival is at another shop.
+    assert.equal((await post(DANA, "/api/messages/unsend", { messageId: msgId })).s, 404);
+    assert.equal((await post(RIVAL, "/api/messages/unsend", { messageId: msgId })).s, 404);
+    assert.equal((await post(BRAD, "/api/messages/unsend", {})).s, 400);
+    assert.equal(row().deleted_at, null, "somebody other than the author unsent it");
+  });
+
+  await t.test("Brad unsends it, and the record is kept rather than destroyed", async () => {
+    const o = await post(BRAD, "/api/messages/unsend", { messageId: msgId });
+    assert.equal(o.s, 200);
+    assert.ok(row().deleted_at, "unsend stamped nothing");
+    assert.equal(row().body, "Closed at $14.1M, keep it quiet", "unsend destroyed the row's words");
+    assert.equal(ctx.tables.msg_comps.length, 1, "unsend removed the sent comp");
+  });
+
+  await t.test("MIKE'S OPEN CONVERSATION HEARS ABOUT IT ON ITS NEXT POLL", async () => {
+    const poll = await read(MIKE, id, cursor);
+    assert.equal(poll.s, 200);
+    assert.deepEqual(poll.j.unsent, [msgId]);
+    assert.equal(poll.j.messages.length, 0, "the poll replayed old messages");
+  });
+
+  await t.test("a fresh read shows the marker and never the words or the comp", async () => {
+    const r = await read(MIKE, id);
+    const m = r.j.messages.find((x) => x.id === msgId);
+    assert.equal(m.unsent, true);
+    assert.equal(m.body, "");
+    assert.deepEqual(m.comps, []);
+    assert.ok(!JSON.stringify(r.j).includes("14.1M"), "the unsent words reached the reader");
+    assert.equal(r.j.messages.length, 2, "the marker should hold the message's place");
+  });
+
+  await t.test("the list says who unsent it, never what it said", async () => {
+    assert.equal((await listed(MIKE, id)).preview, "Brad unsent a message");
+    assert.equal((await listed(BRAD, id)).preview, "You unsent a message");
+  });
+
+  await t.test("the comp it carried stays on the Comps tab", async () => {
+    const comps = await get(MIKE, "/api/messages/comps?thread=" + encodeURIComponent(id));
+    assert.equal(comps.j.comps.length, 1);
+  });
+
+  await t.test("pressing it again is a success, not an error", async () => {
+    assert.equal((await post(BRAD, "/api/messages/unsend", { messageId: msgId })).s, 200);
+  });
+
+  await t.test("an unsent message never lights the other person's dot", async () => {
+    await read(MIKE, id); // Mike is caught up
+    await tick();
+    assert.equal((await post(BRAD, "/api/messages/send", { threadId: id, body: "wrong chat" })).s, 201);
+    const oops = ctx.tables.msg_messages.find((m) => m.body === "wrong chat");
+    assert.equal((await post(BRAD, "/api/messages/unsend", { messageId: oops.id })).s, 200);
+    assert.equal((await get(MIKE, "/api/messages/unread")).j.count, 0);
+  });
+
+  await t.test("unsending an older message never rolls the conversation back over a newer one", async () => {
+    await tick();
+    assert.equal((await post(BRAD, "/api/messages/send", { threadId: id, body: "first thought" })).s, 201);
+    await tick();
+    assert.equal((await post(MIKE, "/api/messages/send", { threadId: id, body: "newer reply" })).s, 201);
+    const first = ctx.tables.msg_messages.find((m) => m.body === "first thought");
+    const newer = ctx.tables.msg_messages.find((m) => m.body === "newer reply");
+    assert.equal((await post(BRAD, "/api/messages/unsend", { messageId: first.id })).s, 200);
+    const th = ctx.tables.msg_threads.find((x) => x.id === id);
+    assert.equal(th.last_message_at, newer.created_at, "the newer reply lost its place in the list");
+  });
+
+  await t.test("after fifteen minutes the message stays", async () => {
+    await tick();
+    assert.equal((await post(BRAD, "/api/messages/send", { threadId: id, body: "Old news" })).s, 201);
+    const old = ctx.tables.msg_messages.find((m) => m.body === "Old news");
+    old.created_at = new Date(Date.now() - 16 * 60 * 1000).toISOString();
+    const o = await post(BRAD, "/api/messages/unsend", { messageId: old.id });
+    assert.equal(o.s, 409);
+    assert.equal(o.j.code, "too_late");
+    assert.equal(old.deleted_at, null);
+    const mine = (await read(BRAD, id)).j.messages.find((m) => m.id === old.id);
+    assert.equal(mine.unsendUntil, undefined, "a message past its window still offers Unsend");
+  });
+});

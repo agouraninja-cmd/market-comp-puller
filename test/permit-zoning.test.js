@@ -105,8 +105,9 @@ test("propertyTypeOf: the Permit tracker's property type, read from what a filin
   // An office zone whose words say nothing is Office; a commercial one is Other.
   assert.equal(t({ zoning: "L-O", description: "New 9,800 SF single-story professional building." }), "Office");
   assert.equal(t({ zoning: "C-2", description: "Interior alterations, suite 200." }), "Other");
-  // Shops below apartments is Mixed use only, never also Multifamily.
-  assert.equal(t({ zoning: "C-2", description: "Ground-floor retail with 84 apartments above." }), "Mixed use");
+  // Apartments are Multifamily, shops below them included (owner, 2026-09-29).
+  assert.equal(t({ zoning: "C-2", description: "Ground-floor retail with 84 apartments above." }), "Multifamily");
+  assert.equal(t({ zoning: "MX-3", description: "Mixed-use building: retail and 24 apartments." }), "Multifamily");
   assert.equal(t({ zoning: "MX-2", description: "Tenant finish, ground floor." }), "Mixed use");
   assert.equal(t({ zoning: "R-15", description: "Two 12-unit apartment buildings." }), "Multifamily");
   // Miss rather than guess: words that name both, or nothing, are Other.

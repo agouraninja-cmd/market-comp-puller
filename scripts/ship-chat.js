@@ -61,32 +61,48 @@ function shouldPost(schedule, now) {
 
 // --- the post ---------------------------------------------------------------
 
+// "3 commits, 1 merge": a merge is a PR merged to main.
+function tallyText(commits, merges) {
+  return `${B.plural(commits, "commit", "commits")}, ${B.plural(merges, "merge", "merges")}`;
+}
+
 // The plain line Chat shows in notifications and above the card.
 function summaryLine(model) {
-  const who = model.series.map((s) => `${s.name} ${s.today.commits}`).join(" · ");
-  return `*Shipped ${B.shortDay(model.day)}* — ${who} commits`;
+  const who = model.series.map((s) => `${s.name} ${tallyText(s.today.commits, s.today.prs)}`).join(" · ");
+  return `*Shipped ${B.shortDay(model.day)}* — ${who}`;
 }
 
 // The Chat message: the summary line, then a card with each person's day as
 // native Chat text — never a picture, which Chat shrinks to a phone's width
 // until the figures are unreadable — and a button to the board, where the
-// chart and the day's PRs are drawn at full size.
+// chart is drawn at full size. Under the people, the day's merges themselves,
+// each a link to its PR.
 function chatPayload(model) {
   const widgets = model.series.map((s) => ({
     decoratedText: {
       topLabel: s.name,
       text: `<font color="${s.color}">●</font> <b>${B.plural(s.today.commits, "commit", "commits")}</b> · ` +
-        (s.today.prs ? `${B.plural(s.today.prs, "PR", "PRs")} merged` : "nothing merged"),
-      bottomLabel: `${B.plural(s.periodTotal, "commit", "commits")} this period`,
+        `<b>${B.plural(s.today.prs, "merge", "merges")}</b>`,
+      bottomLabel: `${tallyText(s.periodTotal, s.periodPrs || 0)} this period`,
     },
   }));
-  if (model.others && model.others.commits) {
-    widgets.push({ textParagraph: { text: `Also ${B.plural(model.others.commits, "commit", "commits")} from others.` } });
+  if (model.others && (model.others.commits || model.others.prs)) {
+    widgets.push({ textParagraph: { text: `Also ${tallyText(model.others.commits, model.others.prs)} from others.` } });
   }
-  widgets.push({ buttonList: { buttons: [
+  const names = Object.fromEntries(B.PEOPLE.map((p) => [p.login, p.name]));
+  const merged = model.merged || [];
+  const MAX_LISTED = 25; // a card has a size limit; the board lists them all
+  const lines = merged.slice(0, MAX_LISTED).map((m) =>
+    `<a href="https://github.com/${B.REPO}/pull/${m.number}">#${m.number}</a> ${B.esc(m.title)} <font color="#68707E">· ${B.esc(names[m.login] || m.login || "someone")}, ${B.plural(m.commits, "commit", "commits")}</font>`);
+  if (merged.length > MAX_LISTED) lines.push(`…and ${merged.length - MAX_LISTED} more on the board.`);
+  const mergedSection = {
+    header: `Merged to main (${merged.length})`,
+    widgets: [{ textParagraph: { text: lines.length ? lines.join("<br>") : "Nothing was merged to main that day." } }],
+  };
+  const buttons = { buttonList: { buttons: [
     { text: "Open the board", onClick: { openLink: { url: BOARD_URL } } },
     { text: "See the PRs", onClick: { openLink: { url: B.prSearchUrl(model) } } },
-  ] } });
+  ] } };
   return {
     text: summaryLine(model),
     cardsV2: [{
@@ -96,7 +112,7 @@ function chatPayload(model) {
           title: `Shipped · ${B.longDay(model.day)}`,
           subtitle: `Day ${model.period.index} of ${model.period.length} · the chart resets ${B.shortDay(model.resetsOn)}`,
         },
-        sections: [{ widgets }],
+        sections: [{ widgets }, mergedSection, { widgets: [buttons] }],
       },
     }],
   };
@@ -228,7 +244,7 @@ async function main(argv) {
 module.exports = {
   ...B,
   BOARD_URL, SCHEDULE_OFFSETS, THREAD_KEY, THREAD_INTRO,
-  shouldPost, summaryLine, chatPayload, threadedUrl, postToChat,
+  shouldPost, tallyText, summaryLine, chatPayload, threadedUrl, postToChat,
 };
 
 if (require.main === module) {

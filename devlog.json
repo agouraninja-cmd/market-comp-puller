@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-09-30",
+    "type": "fix",
+    "title": "Nightly shipped post: the right day, with merges",
+    "details": "GitHub started the midnight job 6 to 7 hours late, and it counted the new day at dawn, so the Developer thread showed zero commits for Sep 28 and 29. It now always reports the Boise day before the one it is, however late it runs. The post also shows each person’s merges beside their commits, and lists the day’s merged PRs with links."
+  },
+  {
     "date": "2026-09-29",
     "type": "feature",
     "title": "Messages: unsend a message for 15 minutes",

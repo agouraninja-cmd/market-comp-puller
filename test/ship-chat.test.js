@@ -27,6 +27,11 @@ test("a run reports the day that just ended, even when GitHub starts it late", (
   assert.strictEqual(S.targetDay(utc("2026-09-26T06:07:00Z")), "2026-09-25"); // 00:07 MDT
   assert.strictEqual(S.targetDay(utc("2026-09-26T11:50:00Z")), "2026-09-25"); // 05:50 MDT
   assert.strictEqual(S.targetDay(utc("2026-12-02T07:07:00Z")), "2026-12-01"); // 00:07 MST
+  // The runs that posted zeros: GitHub started them after 06:00 Boise, when
+  // "six hours ago" was already the new, empty day.
+  assert.strictEqual(S.targetDay(utc("2026-09-30T12:27:10Z")), "2026-09-29"); // 06:27 MDT
+  assert.strictEqual(S.targetDay(utc("2026-09-30T13:34:34Z")), "2026-09-29"); // 07:34 MDT
+  assert.strictEqual(S.targetDay(utc("2026-10-01T05:59:00Z")), "2026-09-29"); // 23:59 MDT, a day late
 });
 
 test("exactly one of the two cron fires posts, every night for two years", () => {
@@ -192,7 +197,8 @@ test("a day read back from storage is rebuilt, never trusted", () => {
 test("the Chat post is sharp text and a button to the board, never a picture", () => {
   const m = S.buildModel([pr("owenbarnes5", "2026-09-24T18:00:00Z", [1, 1])], "2026-09-24");
   const post = S.chatPayload(m);
-  assert.strictEqual(post.text, "*Shipped Thu, Sep 24* — Jacob 0 · Owen 2 · Chuck 0 commits");
+  assert.strictEqual(post.text,
+    "*Shipped Thu, Sep 24* — Jacob 0 commits, 0 merges · Owen 2 commits, 1 merge · Chuck 0 commits, 0 merges");
   assert.strictEqual(post.cardsV2[0].cardId, "shipped-2026-09-24");
   const card = post.cardsV2[0].card;
   assert.match(card.header.title, /Thursday, September 24/);
@@ -200,9 +206,13 @@ test("the Chat post is sharp text and a button to the board, never a picture", (
   const widgets = card.sections[0].widgets;
   assert.ok(!JSON.stringify(post).includes("imageUrl"), "Chat shrinks pictures until they are unreadable");
   const owen = widgets.find((w) => w.decoratedText && w.decoratedText.topLabel === "Owen").decoratedText;
-  assert.match(owen.text, /<b>2 commits<\/b> · 1 PR merged/);
-  assert.strictEqual(owen.bottomLabel, "2 commits this period");
-  const buttons = widgets.find((w) => w.buttonList).buttonList.buttons;
+  assert.match(owen.text, /<b>2 commits<\/b> · <b>1 merge<\/b>/);
+  assert.strictEqual(owen.bottomLabel, "2 commits, 1 merge this period");
+  // The day's merges themselves, each linking to its PR.
+  const merged = card.sections[1];
+  assert.strictEqual(merged.header, "Merged to main (1)");
+  assert.match(merged.widgets[0].textParagraph.text, /<a href="https:\/\/github\.com\/[^"]+\/pull\/[^"]*">#.*Owen, 2 commits/);
+  const buttons = card.sections[2].widgets[0].buttonList.buttons;
   assert.deepStrictEqual(buttons.map((b) => b.text), ["Open the board", "See the PRs"]);
   assert.strictEqual(buttons[0].onClick.openLink.url, "https://compninja.co/dev/shipped");
   assert.strictEqual(S.BOARD_URL, `https://compninja.co${S.BOARD_PATH}`);

@@ -145,6 +145,17 @@ function renderPermitsBody(boot) {
 .pw-firm.muted{color:var(--ink-3);border-style:dashed}
 @media (max-width:640px){.pt-row{flex-wrap:wrap}.pt-date{flex:1 1 100%}.pt-strip{flex-wrap:wrap}.pt-cell{flex:1 1 45%}
   .pw-steps li{font-size:10px}}
+.pw-bulk textarea{display:block;width:100%;margin:10px 0 0;font:inherit;font-size:13px;font-family:ui-monospace,Menlo,Consolas,monospace;
+  padding:8px 10px;border:1px solid var(--edge);border-radius:8px;background:var(--card);color:var(--ink);resize:vertical;min-height:110px}
+.pw-bulk input[type=file]{font-size:12.5px;padding:6px 0;border:0;background:none}
+.pw-review{margin:12px 0 0;font-size:12.5px;color:var(--ink-body)}
+.pw-review ul,.pw-done ul{margin:4px 0 8px;padding-left:18px}
+.pw-review li,.pw-done li{margin:2px 0}
+.pw-review .why,.pw-done .why{color:var(--ink-3)}
+.pw-review b,.pw-done b{font-weight:600}
+.pw-done{font-size:12.5px;color:var(--ink-body);background:var(--ok-bg);border-radius:6px;padding:8px 10px;margin:0 0 10px}
+.pw-done.warn{background:var(--warn-bg)}
+.pw-btns{display:flex;gap:8px;flex-wrap:wrap}
 .hide{display:none}
 </style>
 <main class="wrap pt-page">
@@ -155,7 +166,7 @@ function renderPermitsBody(boot) {
   <section class="pw hide" id="pwSec" aria-labelledby="pwTitle">
     <div class="pw-head">
       <h2 id="pwTitle">Your permits</h2>
-      <button type="button" class="pw-btn hide" id="pwAddBtn">Track a permit</button>
+      <span class="pw-btns"><button type="button" class="pw-btn hide" id="pwBulkBtn">Add several</button><button type="button" class="pw-btn hide" id="pwAddBtn">Track a permit</button></span>
     </div>
     <p class="pw-sub" id="pwSub"></p>
     <p class="pw-pro hide" id="pwPro">Tracking a permit is part of CompNinja Pro: add a permit number, pick the steps you care about, and hear about them by email each weekday morning and here on CompNinja. <a href="/?pricing=1">See Pro →</a></p>
@@ -175,6 +186,24 @@ function renderPermitsBody(boot) {
         <span class="pw-msg" id="pwMsg" role="status"></span>
       </div>
     </form>
+    <form class="pw-form pw-bulk hide" id="pwBulk" novalidate>
+      <p class="pw-fine" style="margin:0 0 10px">Paste permit numbers, one per line, or choose a CSV or Excel file. A sheet can have City, Permit number and Nickname columns; a row without a city uses the city picked here. Each permit is looked up on its city’s portal as it is added.</p>
+      <div class="pw-grid">
+        <label>City, when a row doesn’t say <select id="pwBulkCity"></select></label>
+        <label><span>Or choose a file <span class="opt">CSV or Excel</span></span><input type="file" id="pwBulkFile" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/plain"/></label>
+      </div>
+      <textarea id="pwBulkText" rows="6" spellcheck="false" aria-label="Permit numbers" placeholder="BLD26-02789&#10;BLD26-02790, Federal Way warehouse&#10;Meridian, C-NEW-2026-0052"></textarea>
+      <div id="pwBulkNotify"></div>
+      <fieldset class="pw-set hide" id="pwBulkFirmSet"><legend>Who</legend><div class="pw-opts">
+        <label class="chk"><input type="checkbox" id="pwBulkFirm"/> <span id="pwBulkFirmText">Everyone at your firm</span></label></div></fieldset>
+      <div class="pw-review hide" id="pwBulkReview"></div>
+      <div class="pw-actions">
+        <button type="submit" class="pw-btn pri" id="pwBulkGo">Check the list</button>
+        <button type="button" class="pt-rm" id="pwBulkCancel">Cancel</button>
+        <span class="pw-msg" id="pwBulkMsg" role="status"></span>
+      </div>
+    </form>
+    <div class="pw-done hide" id="pwBulkDone" role="status"></div>
     <div id="pwList"></div>
   </section>
   <div class="pt-head2 hide" id="ptFeedHead">
@@ -378,7 +407,10 @@ function renderPermitsBody(boot) {
   function ownCount(){ return watches.filter(function(w){return w.mine}).length; }
   function renderMine(){
     var list=$("pwList");
-    $("pwAddBtn").className=MINE.canTrack&&ownCount()<(MINE.max||25)?"pw-btn":"pw-btn hide";
+    var roomy=MINE.canTrack&&ownCount()<(MINE.max||25);
+    var formOpen=$("pwForm").className.indexOf("hide")<0||$("pwBulk").className.indexOf("hide")<0;
+    $("pwAddBtn").className=roomy&&!formOpen?"pw-btn":"pw-btn hide";
+    $("pwBulkBtn").className=roomy&&!formOpen?"pw-btn":"pw-btn hide";
     $("pwPro").className=MINE.canTrack?"pw-pro hide":"pw-pro";
     var cities=(MINE.cities||[]).map(function(c){return c.label});
     var firmLine=MINE.firm?" As "+MINE.firm.name+"’s owner, you can track one for everyone at the firm.":"";
@@ -392,8 +424,9 @@ function renderPermitsBody(boot) {
   }
   function formMsg(el,text,kind){ el.textContent=text||""; el.className="pw-msg"+(kind?" "+kind:""); }
   function openAdd(){
+    closeBulk();
     $("pwForm").className="pw-form";
-    $("pwAddBtn").className="pw-btn hide";
+    $("pwAddBtn").className="pw-btn hide"; $("pwBulkBtn").className="pw-btn hide";
     $("pwNum").focus();
   }
   function closeAdd(){
@@ -413,7 +446,10 @@ function renderPermitsBody(boot) {
     var sel=$("pwCity");
     (MINE.cities||[]).forEach(function(c){ var op=document.createElement("option"); op.value=c.key; op.textContent=c.label; sel.appendChild(op); });
     $("pwFormNotify").innerHTML=notifyFields(MINE.defaults||{});
-    if(MINE.firm){ $("pwFirmSet").className="pw-set"; $("pwFirmText").textContent="Everyone at "+MINE.firm.name; }
+    $("pwBulkNotify").innerHTML=notifyFields(MINE.defaults||{});
+    (MINE.cities||[]).forEach(function(c){ var op=document.createElement("option"); op.value=c.key; op.textContent=c.label; $("pwBulkCity").appendChild(op); });
+    if(MINE.firm){ $("pwFirmSet").className="pw-set"; $("pwFirmText").textContent="Everyone at "+MINE.firm.name;
+      $("pwBulkFirmSet").className="pw-set"; $("pwBulkFirmText").textContent="Everyone at "+MINE.firm.name; }
     renderMine();
     // The Workspace's doors (2026-09-29): ?track=1 opens the add form (its
     // empty card says "Add a permit number"), and #pw-<id> brings that
@@ -431,6 +467,109 @@ function renderPermitsBody(boot) {
     }
   }
   $("pwAddBtn").addEventListener("click",openAdd);
+  // ---- Adding several at once (2026-09-30) ---------------------------------
+  // Two passes over one list, the bulk valuation's rule that the count is
+  // said before the button: "Check the list" asks the server which rows are
+  // permits (no portal is asked), then "Track N permits" adds them, each
+  // looked up on its city's portal. Editing the list or the city sends it
+  // back to the first pass, so what is added is always what was shown.
+  var bulkChecked=null;
+  function openBulk(){
+    $("pwForm").className="pw-form hide"; formMsg($("pwMsg"),"");
+    $("pwBulk").className="pw-form pw-bulk";
+    $("pwAddBtn").className="pw-btn hide"; $("pwBulkBtn").className="pw-btn hide";
+    $("pwBulkDone").className="pw-done hide";
+    $("pwBulkText").focus();
+  }
+  function bulkReset(){
+    bulkChecked=null;
+    $("pwBulkGo").textContent="Check the list"; $("pwBulkGo").disabled=false;
+    $("pwBulkReview").className="pw-review hide"; $("pwBulkReview").innerHTML="";
+  }
+  function closeBulk(){
+    $("pwBulk").className="pw-form pw-bulk hide";
+    $("pwBulkText").value=""; $("pwBulkFile").value=""; $("pwBulkFirm").checked=false;
+    formMsg($("pwBulkMsg"),""); bulkReset();
+  }
+  function lineList(items,fn){ return "<ul>"+items.map(fn).join("")+"</ul>"; }
+  function skippedHtml(sk){
+    if(!sk||!sk.length)return "";
+    return "<b>Left out ("+sk.length+")</b>"+lineList(sk,function(x){
+      return "<li>Row "+esc(x.line)+": "+esc(x.text)+' <span class="why">— '+esc(x.reason)+"</span></li>";
+    });
+  }
+  function showReview(j){
+    var p=j.permits||[];
+    var html=p.length?"<b>Ready to track ("+p.length+")</b>"+lineList(p,function(x){
+      return "<li>"+esc(x.permit_number)+' <span class="why">· '+esc(x.city)+(x.label?" · "+esc(x.label):"")+"</span></li>";
+    }):"<b>Nothing in this list can be added.</b>";
+    $("pwBulkReview").innerHTML=html+skippedHtml(j.skipped);
+    $("pwBulkReview").className="pw-review";
+    bulkChecked=p.length?j:null;
+    $("pwBulkGo").textContent=p.length?"Track "+p.length+(p.length===1?" permit":" permits"):"Check the list";
+  }
+  function bulkPost(payload){
+    return fetch("/api/permits/watch/bulk",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
+      .then(function(r){return r.json().catch(function(){return {}}).then(function(j){return {s:r.status,j:j}})});
+  }
+  function bulkPreview(payload){
+    var msg=$("pwBulkMsg");
+    $("pwBulkGo").disabled=true; formMsg(msg,"Reading the list…");
+    payload.preview=true; payload.jurisdiction=$("pwBulkCity").value;
+    return bulkPost(payload).then(function(o){
+      $("pwBulkGo").disabled=false;
+      if(o.s!==200||!o.j.preview){ formMsg(msg,(o.j&&o.j.error)||"Couldn’t read that list. Please try again.","bad"); return; }
+      if(payload.xlsx&&typeof o.j.text==="string")$("pwBulkText").value=o.j.text;
+      formMsg(msg,"");
+      showReview(o.j);
+    }).catch(function(){ $("pwBulkGo").disabled=false; formMsg(msg,"That didn’t reach the server. Nothing was added.","bad"); });
+  }
+  function bulkDone(j){
+    var added=j.watches||[], nf=j.notFound||[];
+    added.slice().reverse().forEach(function(w){ watches.unshift(w); });
+    closeBulk(); renderMine();
+    var html="<b>Tracking "+added.length+(added.length===1?" permit":" permits")+".</b>";
+    if(j.unchecked)html+=" "+j.unchecked+(j.unchecked===1?" wasn’t":" weren’t")+" read from the portal just now; we’ll read "+(j.unchecked===1?"it":"them")+" on the next weekday sweep.";
+    if(nf.length)html+="<br>Not added: the city’s portal has no permit with "+(nf.length===1?"this number":"these numbers")+". Check the letters at the start."+
+      lineList(nf,function(x){return "<li>"+esc(x.permitNumber)+' <span class="why">· '+esc(x.city)+"</span></li>";});
+    $("pwBulkDone").innerHTML=html;
+    $("pwBulkDone").className="pw-done"+(nf.length?" warn":"");
+  }
+  $("pwBulkBtn").addEventListener("click",openBulk);
+  $("pwBulkCancel").addEventListener("click",function(){ closeBulk(); renderMine(); });
+  $("pwBulkText").addEventListener("input",bulkReset);
+  $("pwBulkCity").addEventListener("change",bulkReset);
+  $("pwBulkFile").addEventListener("change",function(){
+    var file=this.files&&this.files[0]; if(!file)return;
+    bulkReset();
+    var msg=$("pwBulkMsg");
+    if(file.size>1024*1024){ formMsg(msg,"That file is larger than 1 MB. Save just the permit numbers as CSV.","bad"); return; }
+    var rd=new FileReader();
+    rd.onerror=function(){ formMsg(msg,"That file couldn’t be read.","bad"); };
+    if(file.name.toLowerCase().slice(-5)===".xlsx"){
+      rd.onload=function(){ bulkPreview({xlsx:String(rd.result||"")}); };
+      rd.readAsDataURL(file);
+    }else{
+      rd.onload=function(){ $("pwBulkText").value=String(rd.result||""); bulkPreview({text:$("pwBulkText").value}); };
+      rd.readAsText(file);
+    }
+  });
+  $("pwBulk").addEventListener("submit",function(e){
+    e.preventDefault();
+    var msg=$("pwBulkMsg"), text=$("pwBulkText").value;
+    if(!text.trim()){ formMsg(msg,"Paste some permit numbers, or choose a file.","bad"); $("pwBulkText").focus(); return; }
+    if(!bulkChecked){ bulkPreview({text:text}); return; }
+    var n=bulkChecked.permits.length;
+    $("pwBulkGo").disabled=true;
+    formMsg(msg,"Looking up "+n+(n===1?" permit":" permits")+" on the city portals, one at a time. This can take a minute.");
+    bulkPost({text:text,jurisdiction:$("pwBulkCity").value,notify:readNotify($("pwBulk")),firm:!!(MINE.firm&&$("pwBulkFirm").checked)})
+      .then(function(o){
+        $("pwBulkGo").disabled=false;
+        if(o.s!==200||!o.j.watches){ formMsg(msg,(o.j&&o.j.error)||"Couldn’t add those permits. Refresh to see what was added.","bad"); if(o.j&&o.j.permits)showReview(o.j); return; }
+        bulkDone(o.j);
+      })
+      .catch(function(){ $("pwBulkGo").disabled=false; formMsg(msg,"That didn’t reach the server. Refresh to see what was added.","bad"); });
+  });
   $("pwCancel").addEventListener("click",closeAdd);
   $("pwForm").addEventListener("submit",function(e){
     e.preventDefault();

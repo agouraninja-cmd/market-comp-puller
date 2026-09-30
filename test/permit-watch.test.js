@@ -281,3 +281,70 @@ test("the page view says whose permit it is", () => {
   assert.equal(W.watchView({ ...row, org_id: null }, []).firm, "", "one member's permit names no firm");
   assert.equal(W.watchView(row, []).mine, true, "with no viewer, the route's own answer reads as the caller's");
 });
+
+// ---- Adding several at once (2026-09-30) ----------------------------------
+const CITIES = [{ key: "boise", label: "Boise" }, { key: "meridian", label: "Meridian" }];
+
+test("a pasted list: one number per line, the form's city, a nickname after a comma", () => {
+  const out = W.parseBulkPermits([["bld26-00001"], ["BLD26-00002", "Federal Way warehouse"], ["Meridian", "C-NEW-2026-0052"]],
+    { cities: CITIES, defaultCity: "boise" });
+  assert.deepEqual(out.permits.map((p) => [p.line, p.jurisdiction, p.permit_number, p.label]), [
+    [1, "boise", "BLD26-00001", null],
+    [2, "boise", "BLD26-00002", "Federal Way warehouse"],
+    [3, "meridian", "C-NEW-2026-0052", null],
+  ]);
+  assert.deepEqual(out.skipped, []);
+  assert.equal(out.permits[2].city, "Meridian");
+});
+
+test("a row of nothing but numbers is that many permits", () => {
+  const out = W.parseBulkPermits([["BLD26-1", "BLD26-2", "BLD26-3"]], { cities: CITIES, defaultCity: "boise" });
+  assert.deepEqual(out.permits.map((p) => p.permit_number), ["BLD26-1", "BLD26-2", "BLD26-3"]);
+});
+
+test("a sheet with a header row reads its named columns, in any order, and ignores the rest", () => {
+  const out = W.parseBulkPermits([
+    ["Nickname", "Status", "Permit #", "City"],
+    ["Warehouse", "In Review", "BLD26-7", "Boise, ID"],
+    ["", "", "C-TI-2026-1", "meridian"],
+  ], { cities: CITIES });
+  assert.deepEqual(out.permits.map((p) => [p.line, p.jurisdiction, p.permit_number, p.label]), [
+    [2, "boise", "BLD26-7", "Warehouse"],
+    [3, "meridian", "C-TI-2026-1", null],
+  ]);
+});
+
+test("every row left out says why, and nothing is guessed", () => {
+  const out = W.parseBulkPermits([
+    ["BLD26-1"],
+    ["Nampa", "NP-2026-9"],          // a city we do not read
+    ["Federal Way warehouse"],       // no number at all
+    ["bld26-1"],                     // a repeat, whatever its case
+    ["BLD26-5"],                     // already tracked
+    ["BLD26-6"],
+    ["BLD26-7"],                     // past the cap
+  ], { cities: CITIES, defaultCity: "boise", existing: [{ jurisdiction: "boise", permit_number: "BLD26-5" }], room: 2, otherCities: ["Nampa"] });
+  assert.deepEqual(out.permits.map((p) => p.permit_number), ["BLD26-1", "BLD26-6"]);
+  const why = Object.fromEntries(out.skipped.map((s) => [s.line, s.reason]));
+  assert.match(why[2], /We don't read Nampa's permits\. We read Boise and Meridian/);
+  assert.match(why[3], /No permit number/);
+  assert.match(why[4], /already higher in the list/);
+  assert.match(why[5], /already tracking BLD26-5/);
+  assert.match(why[7], /25-permit limit/);
+});
+
+test("with no city on the row and none picked, the row is left out rather than placed", () => {
+  const out = W.parseBulkPermits([["BLD26-1"]], { cities: CITIES, defaultCity: "nampa" });
+  assert.equal(out.permits.length, 0);
+  assert.match(out.skipped[0].reason, /No city/);
+});
+
+test("line numbers are the file's own when the grid carries them, and a huge list is refused whole", () => {
+  const row = ["BLD26-1"];
+  Object.defineProperty(row, "line", { value: 9, enumerable: false });
+  assert.equal(W.parseBulkPermits([row], { cities: CITIES, defaultCity: "boise" }).permits[0].line, 9);
+  const huge = Array.from({ length: W.BULK_MAX_ROWS + 1 }, (_, i) => ["BLD26-" + i]);
+  const out = W.parseBulkPermits(huge, { cities: CITIES, defaultCity: "boise" });
+  assert.equal(out.tooMany, true);
+  assert.equal(out.permits.length, 0);
+});

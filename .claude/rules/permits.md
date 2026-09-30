@@ -315,3 +315,41 @@ older suite through `test/helpers/permit-portal-stub.js`). Seven rules:
 - **The email names the firm.** A permit that reached somebody through their
   firm reads "Tracked for Colliers Boise" and ends with how to mute it; the
   owner's copy reads as their own.
+
+## Adding several permits at once (2026-09-30)
+
+Owner's call: "create an option to bulk upload permits." An **Add several**
+button beside Track a permit on /permits opens a form that takes a pasted list
+or a CSV / Excel file, and **`POST /api/permits/watch/bulk`** adds them. No
+migration: the rows are ordinary `permit_watches`. Rules in the pure
+`permit-watch.js` (`parseBulkPermits`, tested in `test/permit-watch.test.js`);
+the route runs against the stand-in and the portal stub in
+**`test/permit-watch-bulk-run.test.js`**. Five rules:
+
+- **Two passes, the count before the button** (the bulk valuation's rule).
+  `{ preview: true }` parses and answers `permits` + `skipped` (each with its
+  row and reason) and asks no portal; the page shows both and the button
+  becomes "Track N permits". Editing the list or the city sends it back to
+  the first pass, so what is added is what was shown. An .xlsx (base64,
+  `xlsxGridFromBase64`, 1 MB, untyped) comes back as CSV `text`, which the
+  page puts in the box and sends on the second pass.
+- **Each permit is looked up exactly as the one-permit form does**:
+  `found: false` is not added and is named in `notFound`; a portal error is
+  stored unchecked with its `check_error`. Lookups run one at a time with the
+  sweep's pause; past `BULK_LOOKUP_BUDGET_MS` (45 s) the rest are stored
+  unchecked for the weekday sweep (stalest-first reads them first), so a slow
+  portal costs a delay, never the request.
+- **Nothing is guessed.** A header row (a cell says permit / number / record)
+  maps City / Permit number / Nickname columns; without one, a city cell, the
+  first cell shaped like a number (it has a digit), and the next cell as the
+  nickname. A row with no city takes the form's city. A city we know but do
+  not read (Nampa, `otherCities`) is SKIPPED with the reason, never filed
+  under the form's city. Repeats, permits already tracked and rows past the
+  25 cap are skipped by name.
+- **Same gates as the one-permit POST**: `canTrackPermits` (403
+  `pro_required` before anything is read), the swept cities, the account's own
+  rows, the 25 cap. Rate-limited 5 lists/hour per account (the cap already
+  bounds a list to 25 portal searches). `firm: true` attaches the member's
+  OWNED firm to each new permit (`permitFirmContext`, 403 otherwise).
+- **Adding announces nothing** — `newWatchRow` marks the steps so far passed
+  without an event, as on the one-permit form.

@@ -7003,6 +7003,11 @@ async function permitTrackerPayload(user) {
 // not read would sit in the list never checked.
 // ---------------------------------------------------------------------------
 const PERMIT_WATCH_CITIES = PERMIT_SWEPT.map((c) => c.key);
+// How long POST /api/permits/watch/bulk keeps asking portals before it stores
+// the rest of the list unchecked for the weekday sweep. 25 permits at two
+// requests and a two-second pause each would otherwise hold a browser request
+// open for well over a minute.
+const BULK_LOOKUP_BUDGET_MS = 45000;
 
 // The member's firms for permit tracking (2026-09-29; migration 055): the
 // active memberships, and the one firm — the oldest they OWN — that a permit
@@ -21334,6 +21339,119 @@ const server = http.createServer((req, res) =>
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("permit mute error:", err.message);
+        return sendJson(res, 503, { error: "Permit tracking is unavailable right now. Please try again in a minute." });
+      }
+    });
+    return;
+  }
+  // Tracking several permits at once (2026-09-30, owner's call: "create an
+  // option to bulk upload permits"). One body, two passes, the bulk
+  // valuation's "the count is said BEFORE the button" rule:
+  //  - { preview: true } reads the list (pasted `text`, or an Excel file as
+  //    base64 `xlsx`) and answers which rows are permits and why each other
+  //    row was left out. No portal is asked. An .xlsx comes back as `text`
+  //    (CSV), which the page puts in the box and sends on the second pass.
+  //  - without it, every accepted row is looked up on its city's portal ONE
+  //    AT A TIME (paused, like the sweep), exactly as the one-permit form
+  //    does: a number the portal does not know is not added and is named in
+  //    `notFound`; a portal that does not answer is not a refusal. Past
+  //    BULK_LOOKUP_BUDGET_MS the rest are stored unchecked for the weekday
+  //    sweep to read first (stalest-first, nulls first), so a slow portal
+  //    costs a delay, never the request.
+  // Same gates as the one-permit POST: Pro (canTrackPermits), the 25 cap,
+  // the swept cities, the account's own rows. `firm: true` attaches the
+  // member's owned firm to each new permit (owners only, canShareWithFirm).
+  if (req.url.split("?")[0] === "/api/permits/watch/bulk" && req.method === "POST") {
+    let body = "";
+    let tooBig = false;
+    req.setEncoding("utf8");
+    req.on("data", (c) => { body += c; if (body.length > 1.6e6 && !tooBig) { tooBig = true; req.destroy(); } });
+    req.on("end", async () => {
+      try {
+        if (tooBig) return;
+        const user = await requireUser(req, res);
+        if (!user) return;
+        if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Permit tracking is unavailable right now." });
+        const ent = await getEntitlements(user, undefined, isAdminRequest(req));
+        if (!ent.canTrackPermits) {
+          return sendJson(res, 403, { error: "Tracking a permit is part of CompNinja Pro.", code: "pro_required" });
+        }
+        const b = JSON.parse(body || "{}");
+        const preview = b.preview === true;
+        let text = typeof b.text === "string" ? b.text : "";
+        if (typeof b.xlsx === "string" && b.xlsx) {
+          if (rateLimited("permit-bulk-inspect:" + user.id, 30)) {
+            return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
+          }
+          const got = xlsxGridFromBase64(b.xlsx, MAX_CONTACTS_XLSX_BYTES);
+          if (!got.ok) return sendJson(res, got.status, { error: got.error });
+          text = VAULT.gridToCsv(got.grid);
+        }
+        if (!text.trim()) return sendJson(res, 400, { error: "Paste some permit numbers, or choose a file." });
+        const grid = VAULT.parseCsv(text, { delimiter: VAULT.delimiterOf(text) });
+        const uid = encodeURIComponent(user.id);
+        const have = (await sbRequest("GET",
+          `permit_watches?user_id=eq.${uid}&select=id,jurisdiction,permit_number&limit=${PERMIT_WATCH.MAX_WATCHES_PER_USER + 1}`)) || [];
+        const parsed = PERMIT_WATCH.parseBulkPermits(grid, {
+          cities: PERMIT_SWEPT, defaultCity: String(b.jurisdiction || "").toLowerCase(),
+          otherCities: PERMITS.JURISDICTION_KEYS.filter((k) => !PERMIT_WATCH_CITIES.includes(k)).map(permitCityOf),
+          existing: have, room: PERMIT_WATCH.MAX_WATCHES_PER_USER - have.length,
+        });
+        if (parsed.tooMany) {
+          return sendJson(res, 400, { error: `That list is longer than ${PERMIT_WATCH.BULK_MAX_ROWS} rows. You can track up to ${PERMIT_WATCH.MAX_WATCHES_PER_USER} permits.` });
+        }
+        const summary = { permits: parsed.permits, skipped: parsed.skipped, room: Math.max(0, PERMIT_WATCH.MAX_WATCHES_PER_USER - have.length) };
+        if (preview) return sendJson(res, 200, { preview: true, text, ...summary });
+        if (!parsed.permits.length) return sendJson(res, 400, { error: "Nothing in that list can be added.", ...summary });
+        // Each add is a live portal search. A whole list counts once here; the
+        // 25 cap already bounds how many searches one list can be.
+        if (rateLimited("permit-watch-bulk:" + user.id, 5, 60 * 60 * 1000)) {
+          return sendJson(res, 429, { error: "That's a lot of permits in one go. Try again in a little while." });
+        }
+        const notify = PERMIT_WATCH.normalizeNotify(b.notify);
+        let orgId = null;
+        if (b.firm === true) {
+          const firm = await permitFirmContext(user);
+          if (!firm.owned) return sendJson(res, 403, { error: "Only a firm's owner can track a permit for the whole firm." });
+          orgId = firm.owned.id;
+        }
+        const started = Date.now();
+        const deps = permitDeps();
+        const added = [];
+        const notFound = [];
+        let unchecked = 0;
+        let lookups = 0;
+        let first = true;
+        for (const p of parsed.permits) {
+          let lookup = null;
+          if (Date.now() - started < BULK_LOOKUP_BUDGET_MS) {
+            if (!first) await deps.sleep();
+            first = false;
+            lookups += 1;
+            try {
+              lookup = await PERMITS.lookupPermit(permitJurisdiction(p.jurisdiction), p.permit_number, deps);
+            } catch (err) {
+              console.warn(`[permit watch bulk] ${p.jurisdiction} ${p.permit_number} lookup failed: ${err.message}`);
+            }
+          }
+          if (lookup && !lookup.found) { notFound.push({ line: p.line, city: p.city, permitNumber: p.permit_number }); continue; }
+          if (!lookup) unchecked += 1;
+          const row = PERMIT_WATCH.newWatchRow(user.id, { ...p, notify }, lookup, Date.now());
+          if (orgId) row.org_id = orgId;
+          const inserted = (await sbRequest("POST", "permit_watches?on_conflict=user_id,jurisdiction,permit_number",
+            row, { prefer: "resolution=ignore-duplicates,return=representation" })) || [];
+          if (inserted.length) added.push(inserted[0]);
+        }
+        // One row per list: `searches` is how many portal lookups it cost.
+        if (added.length) logEvent("permit_watch_bulk_add", { source: "bulk", searches: lookups });
+        const firmName = orgId ? (await permitFirmContext(user)).nameOf(orgId) : "";
+        return sendJson(res, 200, {
+          watches: added.map((w) => PERMIT_WATCH.watchView(w, [], { cityOf: permitCityOf, viewerId: user.id, firmName })),
+          notFound, unchecked, skipped: parsed.skipped,
+        });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("permit watch bulk error:", err.message);
         return sendJson(res, 503, { error: "Permit tracking is unavailable right now. Please try again in a minute." });
       }
     });

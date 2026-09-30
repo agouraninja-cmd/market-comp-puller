@@ -206,6 +206,129 @@ function validateWatchInput(body, { cities, cityLabels } = {}) {
   };
 }
 
+// ---- Adding several at once (2026-09-30, owner's call: "create an option to
+// bulk upload permits"). A pasted list or a file's rows arrive as a GRID of
+// strings (server.js turns text, CSV and .xlsx into one); this decides which
+// rows are permits, in which city, and why each other row was left out. Every
+// accepted row is still looked up on the portal one at a time by the route, so
+// a typo in row 14 is caught exactly as it would be on the one-permit form.
+//
+// Two shapes, both forgiving of what a person pastes:
+//  - WITH A HEADER ROW (a cell reads "permit", "number" or "record"): the
+//    columns named City / Permit number / Nickname are read, others ignored.
+//  - WITHOUT ONE: in each row, a cell naming a city we read is the city, the
+//    first cell shaped like a permit number (it has a digit) is the number,
+//    and the next other cell is the nickname. A row whose cells are ALL
+//    permit numbers ("BLD26-1, BLD26-2") is that many permits.
+// A row with no city takes `defaultCity` (the form's menu). Nothing is
+// guessed past that: a city we do not read, a number the shape rule refuses,
+// a repeat, one already tracked, or one past the 25 cap is SKIPPED WITH ITS
+// REASON, so the member sees every row accounted for before anything is added.
+const BULK_MAX_ROWS = 300;
+
+function bulkCityOf(cell, cities) {
+  const s = clean(cell).toLowerCase().replace(/,?\s*(id|idaho)\.?$/, "").trim();
+  if (!s) return null;
+  const hit = cities.find((c) => c.key === s || String(c.label || "").toLowerCase() === s);
+  return hit ? hit.key : null;
+}
+function looksLikePermitNumber(cell) {
+  const n = normalizePermitNumber(cell);
+  return n && /\d/.test(n) ? n : null;
+}
+// Header cell -> which column it is, or null.
+function bulkHeaderKind(cell) {
+  const s = clean(cell).toLowerCase();
+  if (!s) return null;
+  if (/^(city|jurisdiction|municipality)$/.test(s)) return "city";
+  if (/permit|record|number|^no\.?$|^#$/.test(s)) return "number";
+  if (/nickname|label|^name$|project|description/.test(s)) return "label";
+  return null;
+}
+
+function parseBulkPermits(grid, { cities, otherCities, defaultCity, existing, room } = {}) {
+  const list = Array.isArray(cities) ? cities.filter((c) => c && c.key) : [];
+  // Cities we know of but do not read (Nampa, switched off): a row naming one
+  // is left out with the reason, never filed under the form's city.
+  const others = (Array.isArray(otherCities) ? otherCities : []).map((l) => ({ key: "other:" + l, label: l }));
+  const fallback = list.some((c) => c.key === defaultCity) ? defaultCity : null;
+  const labelOf = (k) => (list.find((c) => c.key === k) || {}).label || k;
+  const rows = (Array.isArray(grid) ? grid : [])
+    // parseCsv stamps each row with its FILE line (blank rows dropped); a
+    // grid without the stamp counts its own rows.
+    .map((r, i) => ({ line: r && Number.isFinite(r.line) ? r.line : i + 1, cells:(Array.isArray(r) ? r : [r]).map(clean) }))
+    .filter((r) => r.cells.some(Boolean));
+  const out = { permits: [], skipped: [], tooMany: rows.length > BULK_MAX_ROWS };
+  if (out.tooMany) return out;
+
+  let cols = null;
+  if (rows.length) {
+    const kinds = rows[0].cells.map(bulkHeaderKind);
+    const numberAt = kinds.indexOf("number");
+    // A header row is one that names a number column and holds no permit
+    // number itself ("Permit #" is a header; "BLD26-1" is a permit).
+    if (numberAt > -1 && !rows[0].cells.some(looksLikePermitNumber)) {
+      cols = { number: numberAt, city: kinds.indexOf("city"), label: kinds.indexOf("label") };
+      rows.shift();
+    }
+  }
+
+  const candidates = [];
+  const skip = (line, text, reason) => out.skipped.push({ line, text, reason });
+  for (const r of rows) {
+    const text = r.cells.filter(Boolean).join(", ");
+    if (cols) {
+      const raw = r.cells[cols.number] || "";
+      const cityCell = cols.city > -1 ? r.cells[cols.city] || "" : "";
+      candidates.push({ line: r.line, text, raw, cityCell, label: cols.label > -1 ? r.cells[cols.label] || "" : "" });
+      continue;
+    }
+    const cells = r.cells.filter(Boolean);
+    const cityIdx = cells.findIndex((c) => bulkCityOf(c, list) || bulkCityOf(c, others));
+    const cityCell = cityIdx > -1 ? cells[cityIdx] : "";
+    const rest = cells.filter((_, i) => i !== cityIdx);
+    if (rest.length > 1 && rest.every((c) => looksLikePermitNumber(c) && !/\s/.test(c))) {
+      for (const c of rest) candidates.push({ line: r.line, text: c, raw: c, cityCell, label: "" });
+      continue;
+    }
+    const numIdx = rest.findIndex(looksLikePermitNumber);
+    if (numIdx < 0) { skip(r.line, text, "No permit number in this row."); continue; }
+    const label = rest.find((c, i) => i !== numIdx) || "";
+    candidates.push({ line: r.line, text, raw: rest[numIdx], cityCell, label });
+  }
+
+  const have = new Set((Array.isArray(existing) ? existing : [])
+    .map((w) => `${w.jurisdiction}|${String(w.permit_number || "").toUpperCase()}`));
+  const seen = new Set();
+  let left = Number.isFinite(room) ? Math.max(0, room) : MAX_WATCHES_PER_USER;
+  for (const c of candidates) {
+    const permitNumber = looksLikePermitNumber(c.raw);
+    if (!permitNumber) { skip(c.line, c.text, "That isn't shaped like a permit number."); continue; }
+    let jurisdiction = fallback;
+    if (c.cityCell) {
+      jurisdiction = bulkCityOf(c.cityCell, list);
+      if (!jurisdiction) {
+        skip(c.line, c.text, `We don't read ${clean(c.cityCell)}'s permits. We read ${list.map((x) => x.label).join(" and ")}.`);
+        continue;
+      }
+    }
+    if (!jurisdiction) { skip(c.line, c.text, "No city. Add a City column, or pick the city above."); continue; }
+    const key = `${jurisdiction}|${permitNumber}`;
+    if (seen.has(key)) { skip(c.line, c.text, `${permitNumber} is already higher in the list.`); continue; }
+    seen.add(key);
+    if (have.has(key)) { skip(c.line, c.text, `You're already tracking ${permitNumber}.`); continue; }
+    if (left <= 0) { skip(c.line, c.text, `Past the ${MAX_WATCHES_PER_USER}-permit limit.`); continue; }
+    left -= 1;
+    out.permits.push({
+      line: c.line, jurisdiction, city: labelOf(jurisdiction),
+      permit_number: permitNumber, label: cleanLabel(c.label) || null,
+    });
+  }
+  // In the order the member's own list is in.
+  out.skipped.sort((a, b) => a.line - b.line);
+  return out;
+}
+
 // PATCH /api/permits/watch's body -> the columns to write. Only a nickname and
 // the notification settings are editable: the city and number ARE the permit,
 // and a different one is a different watch.
@@ -512,4 +635,5 @@ module.exports = {
   validateWatchInput, validateWatchPatch, newWatchRow, displayName, headlineFor,
   decideCheck, dueChecks, buildNoticeEmail, watchView, unreadCount,
   canShareWithFirm, firmRecipients, firmEvent,
+  BULK_MAX_ROWS, parseBulkPermits,
 };

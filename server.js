@@ -57,6 +57,7 @@ const PERMIT_FILINGS = require("./permit-filings");
 // announces, the notice email. Pure; the tables are migration 054's.
 const PERMIT_WATCH = require("./permit-watch");
 const PERMIT_PULSE_MOD = require("./permit-pulse");
+const PERMIT_ALERTS = require("./permit-alerts");
 // Who may read a shared report. Pure and tested for the same reason as the
 // modules above it: this gate protects a broker's private comps, not a comp
 // count, so it has to be provable rather than reviewed.
@@ -6860,6 +6861,10 @@ async function sweepPermitFilings({ days, dryRun = false, history, only } = {}) 
   if (!historyOnly) {
     try { summary.watches = await checkPermitWatches({ dryRun, deps, now }); }
     catch (err) { summary.watches = { errors: [err.message] }; }
+    // Permit alerts (057): their errors stay in summary.alerts, for the same
+    // reason — an alert email failing is not the city sweep failing.
+    try { summary.alerts = await sendPermitAlertDigests({ now, dryRun }); }
+    catch (err) { summary.alerts = { errors: [err.message] }; }
   }
   summary.finishedAt = new Date().toISOString();
   return summary;
@@ -7123,6 +7128,9 @@ async function permitTrackerPayload(user) {
   // The Property type menu (2026-09-29): read-time, from what each filing
   // already carries — permit-zoning.js owns the rule.
   for (const f of filings) f.propertyType = PERMIT_ZONING.propertyTypeOf(f);
+  // Its kind (2026-10-01, permit alerts): build-out or new building, the
+  // market pages' grouping, so an alert's "kind" is one word on both.
+  for (const f of filings) f.kind = PERMIT_ALERTS.kindOf(f.type);
   return {
     cities: PERMIT_FILINGS.citiesLine(PERMIT_SWEPT.map((c) => c.label)),
     windowDays: PERMIT_FILINGS.TRACKER_WINDOW_DAYS,
@@ -7186,6 +7194,87 @@ async function permitFirmContext(user) {
 // A member who may not still sees the permits they already track — a lapse
 // locks the list, it never deletes it — but not the firm's shared ones,
 // which exist to deliver notices a free account does not get.
+// Permit alerts (2026-10-01, Draft B; migration 057; rules in
+// permit-alerts.js). The page's "Your alerts" section boots from this, read
+// on its own so an unrun migration or a failed read costs the section and
+// never the feed. The counts and the feed's tags are the page's own (it has
+// the feed); this is the list and what the form may offer.
+async function permitAlertsPayload(user, ent) {
+  const rows = (await sbRequest("GET",
+    `permit_alerts?user_id=eq.${encodeURIComponent(user.id)}&order=created_at.asc&limit=${PERMIT_ALERTS.MAX_ALERTS_PER_USER}`)) || [];
+  return {
+    alerts: rows.map((r) => PERMIT_ALERTS.alertView(r, { cityOf: permitCityOf })),
+    canTrack: Boolean(ent && ent.canTrackPermits === true),
+    max: PERMIT_ALERTS.MAX_ALERTS_PER_USER,
+    cities: PERMIT_SWEPT.map((c) => ({ key: c.key, label: c.label })),
+    propertyTypes: PERMIT_ALERTS.PROPERTY_TYPES,
+    kinds: Object.entries(PERMIT_ALERTS.KINDS).map(([key, label]) => ({ key, label })),
+  };
+}
+
+// The weekday email (2026-10-01): one per member, every alert with new
+// permits in it. Rides the sweep like checkPermitWatches (rule 12: a route,
+// never a timer), after the short window has stored today's permits, and
+// marks each alert's notified_through only AFTER its email went. With mail
+// switched off nothing is marked (mailOff), the tracked-permits rule. Like
+// those, a lapsed member's alerts keep being sent: the comped-team grant is a
+// browser cookie the sweep cannot see, so gating here would silence a team.
+async function sendPermitAlertDigests({ now, dryRun }) {
+  const res = { alerts: 0, members: 0, emailed: 0, pending: 0 };
+  const alerts = (await sbRequest("GET", "permit_alerts?notify_email=is.true&order=created_at.asc&limit=5000")) || [];
+  res.alerts = alerts.length;
+  if (!alerts.length) return res;
+  // Read the permits once for everybody: stored since the oldest mark, and
+  // filed recently enough to be news. `cutoff` is taken BEFORE the read, so a
+  // permit stored while this runs is the next run's.
+  const cutoff = new Date().toISOString();
+  const oldest = alerts.map((a) => String(a.notified_through || "")).filter(Boolean).sort()[0] || cutoff;
+  const freshFrom = PERMIT_FILINGS.localIsoDate(now - PERMIT_ALERTS.EMAIL_FRESH_DAYS * 86400000);
+  const rows = [];
+  for (let offset = 0; offset < 20000; offset += 1000) {
+    const page = (await sbRequest("GET",
+      `permit_filings?jurisdiction=in.(${pgInList(PERMITS.SWEEP_KEYS)})&first_seen_at=gt.${encodeURIComponent(oldest)}` +
+      `&applied_date=gte.${freshFrom}&order=id.asc&limit=1000&offset=${offset}`)) || [];
+    rows.push(...page);
+    if (page.length < 1000) break;
+  }
+  const views = rows.map((r) => {
+    const v = PERMIT_FILINGS.toFilingView(r, permitCityOf);
+    v.propertyType = PERMIT_ZONING.propertyTypeOf(v);
+    v.kind = PERMIT_ALERTS.kindOf(v.type);
+    v.firstSeenAt = r.first_seen_at;
+    return v;
+  });
+  const byUser = new Map();
+  for (const a of alerts) {
+    if (!byUser.has(String(a.user_id))) byUser.set(String(a.user_id), []);
+    byUser.get(String(a.user_id)).push(a);
+  }
+  const due = new Map();
+  for (const [uid, list] of byUser) {
+    const items = PERMIT_ALERTS.digestFor(list, views, { now, cutoff });
+    if (items.length) due.set(uid, items);
+  }
+  res.members = due.size;
+  if (!due.size) return res;
+  if (dryRun) { res.pending = due.size; return res; }
+  if (!(EMAIL_FROM && RESEND_API_KEY)) return { ...res, pending: due.size, mailOff: true };
+  for (const account of await findUsersByIds([...due.keys()])) {
+    const items = due.get(String(account.id)) || [];
+    const mail = PERMIT_ALERTS.buildDigestEmail({ items, siteUrl: SITE_URL, cityOf: permitCityOf });
+    if (!mail || !account.email) continue;
+    let sent = false;
+    try { sent = await sendOutboundEmail(account.email, mail.subject, mail.text); }
+    catch (err) { console.error(`Permit alert email failed for ${account.id}:`, err.message); }
+    if (!sent) { res.pending += 1; continue; }
+    await sbRequest("PATCH",
+      `permit_alerts?id=in.(${pgInList(items.map((x) => x.alert.id))})&user_id=eq.${encodeURIComponent(account.id)}`,
+      { notified_through: cutoff, last_emailed_at: new Date().toISOString() }, { prefer: "return=minimal" });
+    res.emailed += 1;
+  }
+  return res;
+}
+
 async function permitWatchesPayload(user, ent) {
   const uid = encodeURIComponent(user.id);
   const canTrack = Boolean(ent && ent.canTrackPermits === true);
@@ -21522,6 +21611,65 @@ const server = http.createServer((req, res) =>
   // Same gates as the one-permit POST: Pro (canTrackPermits), the 25 cap,
   // the swept cities, the account's own rows. `firm: true` attaches the
   // member's owned firm to each new permit (owners only, canShareWithFirm).
+  // Permit alerts (2026-10-01, Draft B; migration 057). POST adds one, PATCH
+  // changes it, DELETE removes it. Every read and write is `user_id=eq.` the
+  // signed-in member. Adding and changing are Pro (canTrackPermits, the
+  // tracked permits' gate); deleting is not — a lapse locks the list, never
+  // the way out of it. No file fallback (rule 4): 503 without a database.
+  if (req.url.split("?")[0] === "/api/permits/alerts" && ["POST", "PATCH", "DELETE"].includes(req.method)) {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Permit alerts are unavailable right now." });
+        const uid = encodeURIComponent(user.id);
+        const opts = { cities: PERMIT_WATCH_CITIES, cityOf: permitCityOf, now: Date.now() };
+        const proRequired = () => sendJson(res, 403, { error: "Permit alerts are part of CompNinja Pro.", code: "pro_required" });
+        if (req.method === "POST") {
+          const ent = await getEntitlements(user, undefined, isAdminRequest(req));
+          if (!ent.canTrackPermits) return proRequired();
+          if (rateLimited("permit-alert:" + user.id, 30, 60 * 60 * 1000)) {
+            return sendJson(res, 429, { error: "That's a lot of alerts in one go. Try again in a little while." });
+          }
+          const v = PERMIT_ALERTS.validateAlertInput(JSON.parse(body || "{}"), opts);
+          if (!v.ok) return sendJson(res, 400, { error: v.error });
+          const have = (await sbRequest("GET", `permit_alerts?user_id=eq.${uid}&select=id&limit=${PERMIT_ALERTS.MAX_ALERTS_PER_USER + 1}`)) || [];
+          if (have.length >= PERMIT_ALERTS.MAX_ALERTS_PER_USER) {
+            return sendJson(res, 400, { error: `You can keep up to ${PERMIT_ALERTS.MAX_ALERTS_PER_USER} alerts. Delete one to add another.` });
+          }
+          const inserted = (await sbRequest("POST", "permit_alerts",
+            { user_id: user.id, ...v.value, notified_through: new Date().toISOString() },
+            { prefer: "return=representation" })) || [];
+          if (!inserted.length) return sendJson(res, 503, { error: "Permit alerts are unavailable right now." });
+          logEvent("permit_alert_add", { source: v.value.kind || "any" });
+          return sendJson(res, 200, { alert: PERMIT_ALERTS.alertView(inserted[0], { cityOf: permitCityOf }) });
+        }
+        const id = new URL(req.url, "http://localhost").searchParams.get("id");
+        if (!isUuidish(id)) return sendJson(res, 404, { error: "That alert isn't in your list." });
+        const scoped = `id=eq.${encodeURIComponent(id)}&user_id=eq.${uid}`;
+        const rows = (await sbRequest("GET", `permit_alerts?${scoped}&limit=1`)) || [];
+        if (!rows.length) return sendJson(res, 404, { error: "That alert isn't in your list." });
+        if (req.method === "DELETE") {
+          await sbRequest("DELETE", `permit_alerts?${scoped}`, undefined, { prefer: "return=minimal" });
+          return sendJson(res, 200, { ok: true });
+        }
+        const ent = await getEntitlements(user, undefined, isAdminRequest(req));
+        if (!ent.canTrackPermits) return proRequired();
+        const v = PERMIT_ALERTS.validateAlertPatch(JSON.parse(body || "{}"), rows[0], opts);
+        if (!v.ok) return sendJson(res, 400, { error: v.error });
+        const updated = (await sbRequest("PATCH", `permit_alerts?${scoped}`, v.patch, { prefer: "return=representation" })) || [];
+        return sendJson(res, 200, { alert: PERMIT_ALERTS.alertView(updated[0] || { ...rows[0], ...v.patch }, { cityOf: permitCityOf }) });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("permit alert error:", err.message);
+        return sendJson(res, 503, { error: "Permit alerts are unavailable right now. Please try again in a minute." });
+      }
+    });
+    return;
+  }
   if (req.url.split("?")[0] === "/api/permits/watch/bulk" && req.method === "POST") {
     let body = "";
     let tooBig = false;
@@ -30825,15 +30973,20 @@ const server = http.createServer((req, res) =>
           // says so, and never the public list under it. A READ only — the
           // unread notices are cleared by the page's own POST once it is
           // shown, never here (rule 15: this render may be speculative).
-          const [feed, mine] = await Promise.all([
+          const entP = getEntitlements(user, undefined, isAdminRequest(req));
+          const [feed, mine, alerts] = await Promise.all([
             permitTrackerPayload(user),
-            getEntitlements(user, undefined, isAdminRequest(req))
-              .then((ent) => permitWatchesPayload(user, ent)).then((j) => ({ s: 200, j })).catch((err) => {
+            entP.then((ent) => permitWatchesPayload(user, ent)).then((j) => ({ s: 200, j })).catch((err) => {
               console.error("permit watches boot failed:", err.message);
               return { s: 503, j: { error: "Your tracked permits couldn't be loaded just now." } };
             }),
+            // Your alerts (057), on its own for the same reason.
+            entP.then((ent) => permitAlertsPayload(user, ent)).then((j) => ({ s: 200, j })).catch((err) => {
+              console.error("permit alerts boot failed:", err.message);
+              return { s: 503, j: { error: "Your alerts couldn't be loaded just now." } };
+            }),
           ]);
-          boot = { s: 200, j: feed, mine };
+          boot = { s: 200, j: feed, mine, alerts };
         }
       } catch (err) {
         console.error("permit tracker boot failed:", err.message);

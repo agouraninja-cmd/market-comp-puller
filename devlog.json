@@ -4483,5 +4483,11 @@
     "type": "feature",
     "title": "Market pages: building permits in Boise and Meridian",
     "details": "Every Boise and Meridian market page now shows what the city’s building permits say about the market: permits filed a month, tenant build-outs (demand) and new buildings (supply), how long the city takes to issue them, how much is still in review, and how many were voided, with the other city alongside. Nampa’s pages say we don’t read its permits yet. The weekday permit sweep now also re-reads older months, which fills in the past year and keeps every stored permit’s status current."
+  },
+  {
+    "date": "2026-10-01",
+    "type": "feature",
+    "title": "Permit tracker: alerts",
+    "details": "Pro members can save the permits they follow on the Permit tracker — a city, a property type, tenant build-outs or new buildings, and optional words — and get the new ones by email each weekday morning. Each alert shows how many permits are new this week, and matching permits in the list carry the alert’s name."
   }
 ]

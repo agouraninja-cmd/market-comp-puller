@@ -37,6 +37,15 @@
 // each type's count for the window, and a type with nothing in it says so in
 // words rather than as a bare "no match".
 //
+// YOUR ALERTS (2026-10-01, the owner's pick of Draft B; migration 057; rules
+// in permit-alerts.js). Under Your permits: a member saves what they follow —
+// a city, a property type, a kind and optional words — and gets the new
+// permits that fit it by email each weekday morning. Each alert's line says
+// how many of the list's permits are new this week, and a permit in the list
+// that fits an alert carries its name. Pro to add or change; deleting is open.
+// The counts, the tags and the form's preview are drawn here from the feed the
+// page already has (alertMatches, a ⚠ pair with permit-alerts.js's matches).
+//
 // The page literal below contains exactly ONE backtick, its own opener, and
 // interpolates the boot JSON alone; test/permits-page.test.js guards both.
 // ---------------------------------------------------------------------------
@@ -156,6 +165,17 @@ function renderPermitsBody(boot) {
 .pw-done{font-size:12.5px;color:var(--ink-body);background:var(--ok-bg);border-radius:6px;padding:8px 10px;margin:0 0 10px}
 .pw-done.warn{background:var(--warn-bg)}
 .pw-btns{display:flex;gap:8px;flex-wrap:wrap}
+.pa-list{border-top:1px solid var(--hair)}
+.pa-item{display:flex;justify-content:space-between;align-items:baseline;gap:8px 12px;flex-wrap:wrap;padding:11px 0;border-bottom:1px solid var(--hair)}
+.pa-item:last-child{border-bottom:0}
+.pa-l{min-width:0}
+.pa-nm{font-family:Georgia,"Times New Roman",serif;font-size:15px;color:var(--ink)}
+.pa-wd{font-size:12px;color:var(--ink-3);margin-top:2px}
+.pa-rt{display:flex;align-items:baseline;gap:6px 10px;font-size:12px;color:var(--ink-3);flex-wrap:wrap}
+.pa-new{display:inline-block;padding:1px 8px;border-radius:9px;background:var(--red-fill);color:#fff;font-size:11px;font-weight:600}
+.pa-none{display:inline-block;padding:1px 8px;border-radius:9px;border:1px solid var(--edge);color:var(--ink-3);font-size:11px}
+.pa-tag{display:inline-block;margin-left:8px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--red);font-weight:600}
+.pa-h{margin:0 0 8px;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:16px;color:var(--ink)}
 .hide{display:none}
 </style>
 <main class="wrap pt-page">
@@ -205,6 +225,35 @@ function renderPermitsBody(boot) {
     </form>
     <div class="pw-done hide" id="pwBulkDone" role="status"></div>
     <div id="pwList"></div>
+  </section>
+  <section class="pw hide" id="paSec" aria-labelledby="paTitle">
+    <div class="pw-head">
+      <h2 id="paTitle">Your alerts</h2>
+      <button type="button" class="pw-btn hide" id="paAdd">New alert</button>
+    </div>
+    <p class="pw-sub" id="paSub"></p>
+    <p class="pw-pro hide" id="paPro">Permit alerts are part of CompNinja Pro: save the permits you follow, like industrial in Boise or tenant build-outs in Meridian, and get the new ones by email each weekday morning. <a href="/?pricing=1">See Pro →</a></p>
+    <form class="pw-form hide" id="paForm" novalidate>
+      <h3 class="pa-h" id="paFormTitle">New alert</h3>
+      <div class="pw-grid">
+        <label>City <select id="paCity"><option value="">Every city we read</option></select></label>
+        <label>Property type <select id="paProp"><option value="">Every type</option></select></label>
+        <label>Kind <select id="paKind"><option value="">Every kind</option></select></label>
+        <label><span>Words <span class="opt">optional</span></span><input id="paWords" maxlength="60" autocomplete="off" placeholder="a street, applicant or contractor"/></label>
+      </div>
+      <div class="pw-grid" style="margin-top:10px">
+        <label><span>Name <span class="opt">optional</span></span><input id="paName" maxlength="80" autocomplete="off" placeholder="Named from the filters if left blank"/></label>
+      </div>
+      <fieldset class="pw-set"><legend>How</legend><div class="pw-opts">
+        <label class="chk"><input type="checkbox" id="paEmail" checked/> <span id="paEmailText">Email me its new permits each weekday morning</span></label></div>
+        <p class="pw-fine" id="paFine">It is always listed here, and its permits are marked in the list below.</p></fieldset>
+      <div class="pw-actions">
+        <button type="submit" class="pw-btn pri" id="paSave">Save alert</button>
+        <button type="button" class="pt-rm" id="paCancel">Cancel</button>
+        <span class="pw-msg" id="paMsg" role="status"></span>
+      </div>
+    </form>
+    <div id="paList"></div>
   </section>
   <div class="pt-head2 hide" id="ptFeedHead">
     <h2>Every commercial filing</h2>
@@ -314,7 +363,7 @@ function renderPermitsBody(boot) {
       var who=[f.applicant?"applicant "+f.applicant:"",f.contractor&&f.contractor!==f.applicant?"contractor "+f.contractor:""].filter(Boolean);
       var num=f.sourceUrl?'<a href="'+esc(f.sourceUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(f.permitNumber)+"</a>":esc(f.permitNumber);
       return '<div class="pt-row"><span class="pt-date">'+esc(day(f.appliedDate))+"</span>"+
-        '<div class="pt-main"><span class="pt-addr">'+esc(addr)+"</span>"+
+        '<div class="pt-main"><span class="pt-addr">'+esc(addr)+"</span>"+alertTag(f)+
         (f.onBoard?'<a class="pt-board" href="/building/'+esc(encodeURIComponent(f.onBoard.id))+'">on your board \\u2192</a>':"")+
         '<div class="pt-meta">'+bits.join(" \\u00b7 ")+"</div>"+
         // Boise's descriptions run to whole paragraphs (seen on the first
@@ -673,6 +722,121 @@ function renderPermitsBody(boot) {
       .catch(function(){ formMsg(msg,"That didn’t reach the server. Nothing was changed.","bad"); });
   });
 
+  // ---- Your alerts (2026-10-01, Draft B) ----------------------------------
+  var AL=null, alerts=[], alEditing=null;
+  // ⚠ PAIR with permit-alerts.js's matches(): one rule in two places, since
+  // the browser cannot require the module. test/permit-alerts.test.js runs the
+  // two over the same permits; change both or neither.
+  function alertMatches(a,p){
+    if(!a||!p)return false;
+    if(a.jurisdiction&&p.jurisdiction!==a.jurisdiction)return false;
+    if(a.propertyType&&p.propertyType!==a.propertyType)return false;
+    if(a.kind&&p.kind!==a.kind)return false;
+    if(a.words){
+      var hay=[p.address,p.description,p.projectName,p.applicant,p.contractor,p.permitNumber].join(" ").toLowerCase();
+      if(hay.indexOf(String(a.words).toLowerCase())<0)return false;
+    }
+    return true;
+  }
+  function alertTag(f){
+    for(var i=0;i<alerts.length;i++){ if(alertMatches(alerts[i],f))return '<span class="pa-tag">'+esc(alerts[i].name)+"</span>"; }
+    return "";
+  }
+  function alCounts(a){
+    var all=items.filter(function(f){return alertMatches(a,f)});
+    return {all:all.length,week:all.filter(function(f){return f.daysAgo!=null&&f.daysAgo<=6}).length};
+  }
+  function alIndex(id){ for(var i=0;i<alerts.length;i++){ if(String(alerts[i].id)===String(id))return i; } return -1; }
+  function alLine(a){
+    var c=alCounts(a);
+    var how=a.email?"Emailed each weekday"+(a.lastEmailedAt?" · last sent "+day(a.lastEmailedAt):""):"On CompNinja only";
+    return '<div class="pa-item"><div class="pa-l"><span class="pa-nm">'+esc(a.name)+'</span><div class="pa-wd">'+esc(a.describe)+"</div></div>"+
+      '<div class="pa-rt">'+(c.week?'<span class="pa-new">'+c.week+" new this week</span>":'<span class="pa-none">nothing new this week</span>')+
+      "<span>"+esc(how)+"</span>"+
+      (AL.canTrack?'<button type="button" class="pt-rm" data-aledit="'+esc(a.id)+'">Change</button>':"")+
+      '<button type="button" class="pt-rm" data-aldel="'+esc(a.id)+'">Delete</button></div></div>';
+  }
+  function alFormOpen(){ return $("paForm").className.indexOf("hide")<0; }
+  function renderAlerts(){
+    $("paSec").className="pw";
+    $("paAdd").className=AL.canTrack&&alerts.length<(AL.max||10)&&!alFormOpen()?"pw-btn":"pw-btn hide";
+    $("paPro").className=AL.canTrack?"pw-pro hide":"pw-pro";
+    $("paSub").textContent=!AL.canTrack
+      ? (alerts.length?"Your alerts are kept here. You can delete any of them.":"")
+      : alerts.length
+      ? "New permits that fit each alert come by email each weekday morning, after the city portals are read. Nothing is sent on a day with no match."
+      : "Get the new permits that fit what you follow, by email each weekday morning and here. For example, industrial permits in Boise, or tenant build-outs in Meridian.";
+    $("paSub").className=$("paSub").textContent?"pw-sub":"pw-sub hide";
+    $("paList").innerHTML=alerts.length?'<div class="pa-list">'+alerts.map(alLine).join("")+"</div>":"";
+  }
+  function alPreview(){
+    var a={jurisdiction:$("paCity").value,propertyType:$("paProp").value,kind:$("paKind").value,words:$("paWords").value.trim()};
+    var n=items.filter(function(f){return alertMatches(a,f)}).length;
+    formMsg($("paMsg"),n+(n===1?" permit":" permits")+" in the last "+WIN+" days "+(n===1?"matches.":"match."));
+  }
+  function openAlertForm(a){
+    alEditing=a&&a.id?a.id:null;
+    $("paFormTitle").textContent=alEditing?"Change alert":"New alert";
+    $("paSave").textContent=alEditing?"Save":"Save alert";
+    $("paCity").value=(a&&a.jurisdiction)||""; $("paProp").value=(a&&a.propertyType)||"";
+    $("paKind").value=(a&&a.kind)||""; $("paWords").value=(a&&a.words)||"";
+    $("paName").value=alEditing?a.name:""; $("paEmail").checked=!a||a.email!==false;
+    $("paForm").className="pw-form";
+    renderAlerts(); alPreview();
+  }
+  function closeAlertForm(){ alEditing=null; $("paForm").className="pw-form hide"; formMsg($("paMsg"),""); }
+  function asJson(r){ return r.json().catch(function(){return {}}).then(function(j){return {s:r.status,j:j}}); }
+  function applyAlerts(o){
+    if(!o)return;
+    $("paSec").className="pw";
+    if(o.s!==200||!o.j){
+      $("paSub").textContent="Your alerts couldn’t be loaded just now. Refresh in a moment.";
+      return;
+    }
+    AL=o.j; alerts=Array.isArray(AL.alerts)?AL.alerts:[];
+    (AL.cities||[]).forEach(function(c){ var op=document.createElement("option"); op.value=c.key; op.textContent=c.label; $("paCity").appendChild(op); });
+    (AL.propertyTypes||[]).forEach(function(t){ var op=document.createElement("option"); op.value=t; op.textContent=t; $("paProp").appendChild(op); });
+    (AL.kinds||[]).forEach(function(k){ var op=document.createElement("option"); op.value=k.key; op.textContent=k.label; $("paKind").appendChild(op); });
+    if(MINE&&MINE.email)$("paEmailText").textContent="Email me its new permits each weekday morning ("+MINE.email+")";
+    if(MINE&&!MINE.emailLive)$("paFine").textContent="Email isn’t switched on for CompNinja yet, so for now new permits show here on the Permit tracker.";
+    renderAlerts();
+    // A member with Pro and no alert yet finds the form open with an example.
+    if(AL.canTrack&&!alerts.length)openAlertForm({jurisdiction:"boise",propertyType:"Industrial",email:true});
+    render();
+  }
+  $("paAdd").addEventListener("click",function(){ openAlertForm(null); });
+  $("paCancel").addEventListener("click",function(){ closeAlertForm(); renderAlerts(); });
+  ["paCity","paProp","paKind"].forEach(function(id){ $(id).addEventListener("change",alPreview); });
+  $("paWords").addEventListener("input",alPreview);
+  $("paForm").addEventListener("submit",function(e){
+    e.preventDefault();
+    var body={jurisdiction:$("paCity").value,propertyType:$("paProp").value,kind:$("paKind").value,
+      words:$("paWords").value,name:$("paName").value,email:$("paEmail").checked};
+    var url="/api/permits/alerts"+(alEditing?"?id="+encodeURIComponent(alEditing):"");
+    $("paSave").disabled=true; formMsg($("paMsg"),"Saving…");
+    fetch(url,{method:alEditing?"PATCH":"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(body)})
+      .then(asJson)
+      .then(function(o){
+        $("paSave").disabled=false;
+        if(o.s!==200||!o.j.alert){ formMsg($("paMsg"),(o.j&&o.j.error)||"Couldn’t save that alert. Please try again.","bad"); return; }
+        var i=alIndex(o.j.alert.id); if(i>-1)alerts[i]=o.j.alert; else alerts.push(o.j.alert);
+        closeAlertForm(); renderAlerts(); render();
+      })
+      .catch(function(){ $("paSave").disabled=false; formMsg($("paMsg"),"That didn’t reach the server. Nothing was saved.","bad"); });
+  });
+  $("paList").addEventListener("click",function(e){
+    var t=e.target; if(!t||!t.getAttribute)return;
+    var ed=t.getAttribute("data-aledit"), del=t.getAttribute("data-aldel");
+    if(ed){ var i=alIndex(ed); if(i>-1){ openAlertForm(alerts[i]); $("paForm").scrollIntoView({block:"nearest"}); } return; }
+    if(del){
+      var k=alIndex(del); if(k<0)return;
+      if(!confirm("Delete the alert “"+alerts[k].name+"”? Its emails stop."))return;
+      fetch("/api/permits/alerts?id="+encodeURIComponent(del),{method:"DELETE",credentials:"same-origin"})
+        .then(function(r){ if(!r.ok)throw new Error("x"); var j=alIndex(del); if(j>-1)alerts.splice(j,1); if(alEditing===del)closeAlertForm(); renderAlerts(); render(); })
+        .catch(function(){ alert("Couldn’t delete that alert just now. Please try again."); });
+    }
+  });
+
   $("ptSearch").addEventListener("input",render);
   $("ptCity").addEventListener("change",render);
   $("ptType").addEventListener("change",render);
@@ -681,6 +845,7 @@ function renderPermitsBody(boot) {
   $("ptClear").addEventListener("click",function(){ $("ptSearch").value=""; $("ptCity").value=""; $("ptType").value=""; $("ptProp").value=""; render(); });
   apply(BOOT);
   if(BOOT&&BOOT.s===200)applyMine(BOOT.mine);
+  if(BOOT&&BOOT.s===200)applyAlerts(BOOT.alerts);
 })();
 </script>`;
 }

@@ -43,9 +43,9 @@ test("the page's script compiles, and the literal interpolates the boot alone", 
     "the boot escapes < so a portal string cannot close the script");
 });
 
-test("the Workspace's two doors land: #pw-<id> on each permit's card, ?track=1 on the add form", () => {
-  // The Workspace's Tracked permits card and its "Needs you" entries link to
-  // /permits#pw-<id>; its empty card links to /permits?track=1 (2026-09-29).
+test("the two deep links land: #pw-<id> on each permit's card, ?track=1 on the add form", () => {
+  // Made for the Workspace's Tracked permits card (2026-09-29), which came
+  // off on 2026-09-30; a saved link to either still lands.
   const body = renderPermitsBody({ s: 200, j: { filings: [] } });
   const script = body.match(/<script>([\s\S]*)<\/script>/)[1];
   assert.match(script, /class="pw-card" id="pw-'\+esc\(w\.id\)\+'"/, "each card carries the id the Workspace links to");
@@ -58,9 +58,6 @@ test("the Workspace's two doors land: #pw-<id> on each permit's card, ?track=1 o
   // The door must not also clear the count before the page is shown: the
   // seen POST stays the fetch it was, after the doors.
   assert.ok(apply.indexOf('fetch("/api/permits/seen"') > apply.indexOf("openAdd()"));
-  // And the Workspace links to exactly that shape.
-  assert.ok(INDEX_HTML.includes('"/permits#pw-" + encodeURIComponent(w.id)'));
-  assert.ok(INDEX_HTML.includes('href="/permits?track=1"'));
 });
 
 test("the Property type menu replaced the Industrial only box, and the permit-type menu kept its name", () => {

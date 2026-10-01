@@ -390,8 +390,9 @@ function renderPermitsBody(boot) {
     var hist=w.history.length?'<details class="pw-hist"><summary>Status history ('+w.history.length+")</summary><ul>"+w.history.map(function(h){
       return '<li class="'+(h.unread?"unread":"")+'">'+esc(day(h.at))+": "+(h.from?"“"+esc(h.from)+"” → ":"First read: ")+"“"+esc(h.to)+"”"+(h.notice?" — "+esc(h.notice):"")+"</li>";
     }).join("")+"</ul></details>":"";
-    // id="pw-<id>" is the Workspace's door (2026-09-29): its Tracked permits
-    // card and its "Needs you" entries link to /permits#pw-<id>.
+    // id="pw-<id>" is a deep link to one permit (/permits#pw-<id>). The
+    // Workspace linked here from 2026-09-29 until tracked permits came off
+    // it on 2026-09-30; a saved link still lands.
     return '<div class="pw-card" id="pw-'+esc(w.id)+'" data-id="'+esc(w.id)+'">'+
       '<div class="pw-top"><div><span class="pw-name">'+esc(watchName(w))+"</span>"+firmTag(w)+(w.unread?'<span class="pw-new">New</span>':"")+
       '<div class="pw-meta">'+meta.join(" · ")+"</div></div>"+
@@ -451,9 +452,9 @@ function renderPermitsBody(boot) {
     if(MINE.firm){ $("pwFirmSet").className="pw-set"; $("pwFirmText").textContent="Everyone at "+MINE.firm.name;
       $("pwBulkFirmSet").className="pw-set"; $("pwBulkFirmText").textContent="Everyone at "+MINE.firm.name; }
     renderMine();
-    // The Workspace's doors (2026-09-29): ?track=1 opens the add form (its
-    // empty card says "Add a permit number"), and #pw-<id> brings that
-    // permit's card into view — the one whose New notice was clicked.
+    // Two deep links (2026-09-29, made for the Workspace's Tracked permits
+    // card, which came off on 2026-09-30): ?track=1 opens the add form, and
+    // #pw-<id> brings that permit's card into view.
     var hash=String(location.hash||"");
     var target=hash.indexOf("#pw-")===0?document.getElementById(decodeURIComponent(hash.slice(1))):null;
     if(target){ target.className+=" pw-focus"; target.scrollIntoView({block:"center"}); }

@@ -4471,5 +4471,11 @@
     "type": "feature",
     "title": "Permit tracker: add several permits at once",
     "details": "An Add several button on /permits takes a pasted list or a CSV or Excel file of permit numbers (with optional City and Nickname columns), shows which rows will be tracked and why any were left out, then looks each one up on its city’s portal and tracks them all with the same notification settings."
+  },
+  {
+    "date": "2026-09-30",
+    "type": "improvement",
+    "title": "Tracked permits are off the Workspace",
+    "details": "The Tracked permits card and the permit updates under “Needs you” are gone from the Workspace. Your tracked permits live on the Permit tracker page, where nothing has changed, and the dot on Permit tracker in the sidebar still tells you when one reaches a step you asked about. Your permits, the card listing filings at your firm’s own buildings, stays."
   }
 ]

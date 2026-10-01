@@ -10718,9 +10718,8 @@ const DESK_BOOT_HEADER = "x-cn-desk-boot";
 const DESK_BOOT_URLS = [
   "/api/config", "/api/account/me", "/api/portfolio", "/api/org",
   "/api/shares", "/api/hubs", "/api/branding", "/api/recents", "/api/messages/unread",
-  // The Permit tracker's unread dot (2026-09-27), and the Workspace's Tracked
-  // permits card and its Needs-you entries (2026-09-29).
-  "/api/permits/unread", "/api/permits/mine",
+  // The Permit tracker's unread dot (2026-09-27).
+  "/api/permits/unread",
 ];
 const DESK_BOOT_ORG_URLS = (id) => [
   `/api/org/members?id=${id}`, `/api/org/buildings?id=${id}`, "/api/messages",

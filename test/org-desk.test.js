@@ -1805,7 +1805,6 @@ test("the empty state is wired: first in the deck, drawn after the firm read, hi
 // ---------------------------------------------------------------------------
 const DATE_HELPERS_RE = /  function fmtDeskDay\(iso, withYear\) \{[\s\S]*?\n  function leaseWhat\(c\) \{[\s\S]*?\n  \}/;
 const DATES_RE = /  const AGENDA_DAYS = 90;[\s\S]*?\n  function drawDeskHead\(\) \{[\s\S]*?\n  \}/;
-const TRACKED_RE = /  const DESK_TRACKED = 5;[\s\S]*?\n  async function renderTrackedPermits\(\) \{[\s\S]*?\n  \}/;
 // A test clock for the slice: `new Date()` reads `clock.now`, and timers are
 // RECORDED, never scheduled. drawDeskHead arms a timer for the next change
 // of greeting (2026-09-25), and a real one aimed at noon would hold this
@@ -1839,15 +1838,11 @@ function loadDates(o) {
     "let firmBuildings = __buildings;\n" +
     "function decorateBuildingRows() {} function closeDeskFind() { __closed++; }\n" +
     "function shopCopy(kind) { return kind === 'development' ? { label: 'Development shop' } : { label: 'Broker shop' }; }\n" +
-    html.match(DATE_HELPERS_RE)[0] + "\n" +
-    // Tracked permits (2026-09-29): the agenda reads what that card parsed.
-    // The real slice, so trackedName and fmtTrackedDay are the page's own.
-    html.match(TRACKED_RE)[0] + "\ndeskPermitNotices = __permits;",
+    html.match(DATE_HELPERS_RE)[0],
     { fetch, setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
       __user: opts.user === undefined ? { email: "brad@colliers.com" } : opts.user,
       __firm: opts.firm === undefined ? { id: "o1", name: "Foothill Commercial", kind: "broker" } : opts.firm,
       __threads: opts.threads === undefined ? { total: 0, unread: 0, unreadList: [] } : opts.threads,
-      __permits: opts.permits === undefined ? [] : opts.permits,
       __buildings: opts.buildings || [{ id: "b3", address: "3100 S Federal Way, Boise, ID" }] });
   ctx.fetchLog = fetch.log;
   // The strip is what the agenda follows; a populated desk has shown it.
@@ -2695,143 +2690,21 @@ test("the browser can actually reach SKYLINE", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tracked permits on the Workspace (2026-09-29, owner's call: a tracked
-// permit reaching a step the member asked about "shows up in your workspace
-// once it hit"). The card is per member, so unlike the firm cards it draws
-// with no firm at all; its unread notices also join "Needs you". The
-// fixtures come from permit-watch.js's own watchView, so this file tests the
-// card against the shape the server really sends.
+// Tracked permits are OFF the Workspace (2026-09-30, owner's call). The card
+// (#deskTracked) and its "Needs you" entries shipped 2026-09-29 and came off
+// the next day; a member's permits live on /permits, and the rail's Permit
+// tracker dot still says when one reached a step. /api/permits/mine is
+// /permits' read now, so it is not in the workspace's boot list either.
 // ---------------------------------------------------------------------------
-const PERMIT_WATCH = require("../permit-watch");
-const WATCH_ROW = (o) => Object.assign({ id: "w1", user_id: "u1", jurisdiction: "boise", permit_number: "BLD26-02789",
-  label: "Federal Way warehouse", address: "8000 S FEDERAL WAY, BOISE ID", status: "Issued",
-  passed_steps: ["submitted", "review", "approved", "issued"], status_changed_at: "2026-09-20T13:05:00Z" }, o);
-const NOTICE = (o) => Object.assign({ id: "e1", watch_id: "w1", old_status: "Ready to Issue", new_status: "Issued",
-  notice: "Step complete: Issued", kind: "step", app: true, seen_at: null, detected_at: "2026-09-28T13:05:00Z" }, o);
-const MINE = (rows, events) => ({
-  cities: [{ key: "boise", label: "Boise" }, { key: "meridian", label: "Meridian" }],
-  watches: rows.map((r) => PERMIT_WATCH.watchView(r, events || [], { cityOf: (k) => (k === "boise" ? "Boise" : "Meridian") })),
-  unread: PERMIT_WATCH.unreadCount(events || []),
-});
-function loadTracked(o) {
-  const opts = o || {};
-  const fetch = makeFetch([["/api/permits/mine", opts.res || { body: opts.body }]]);
-  const ctx = load(TRACKED_RE,
-    "this.render = renderTrackedPermits; this.notices = () => deskPermitNotices;",
-    "let currentUser = __user;",
-    { fetch, __user: opts.user === undefined ? { email: "brad@colliers.com" } : opts.user });
-  ctx.fetchLog = fetch.log;
-  return ctx;
-}
-
-test("Tracked permits lists the member's permits, the one that just reached a step first and marked New", async () => {
-  const quiet = WATCH_ROW({ id: "w2", permit_number: "BLD26-01111", label: "", address: "1210 N 17TH ST, BOISE ID",
-    status: "In Review", passed_steps: ["submitted", "review"], status_changed_at: "2026-09-27T10:00:00Z" });
-  const ctx = loadTracked({ body: MINE([quiet, WATCH_ROW({})], [NOTICE({})]) });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("deskTracked"), false);
-  assert.equal(ctx.dom.hidden("deskTrackedEmpty"), true);
-  assert.equal(ctx.dom.text("deskTrackedStats"), "2 tracked · 1 new");
-  const rows = ctx.dom.el("deskTrackedRows").children;
-  assert.equal(rows.length, 2);
-  // The permit with news leads, although the other moved more recently.
-  assert.equal(rows[0].children[0].textContent, "● Federal Way warehouse");
-  assert.equal(rows[0].children[0].href, "/permits#pw-w1", "the door is that permit's card on /permits");
-  const pips = rows[0].children[1].children;
-  assert.equal(pips.length, 5, "one pip per step");
-  assert.deepEqual(pips.map((p) => p.className === "done"), [true, true, true, true, false]);
-  assert.match(rows[0].children[2].textContent, /Boise · BLD26-02789 · Issued \(step 4 of 5\)/);
-  assert.match(rows[0].children[3].textContent, /^New: Step complete: Issued · Sep 2[78]/);
-  // No nickname: the street line names it; no news: no note, no dot.
-  assert.equal(rows[1].children[0].textContent, "1210 N 17TH ST");
-  assert.equal(rows[1].children.length, 3, "a permit with nothing new carries no New line");
-  assert.match(rows[1].children[2].textContent, /In review \(step 2 of 5\)/);
-  assert.equal(ctx.notices().length, 1, "the agenda gets the one permit with news");
-  assert.equal(ctx.notices()[0].w.id, "w1");
-  assert.equal(ctx.fetchLog.length, 1);
-  assert.equal(ctx.fetchLog[0].url, "/api/permits/mine");
-});
-
-test("a notice already seen on /permits is not news on the Workspace", async () => {
-  const ctx = loadTracked({ body: MINE([WATCH_ROW({})], [NOTICE({ seen_at: "2026-09-28T14:00:00Z" })]) });
-  await ctx.render();
-  assert.equal(ctx.dom.text("deskTrackedStats"), "1 tracked");
-  assert.equal(ctx.dom.el("deskTrackedRows").children[0].children[0].textContent, "Federal Way warehouse");
-  assert.deepEqual(ctx.notices(), []);
-});
-
-test("with nothing tracked the card invites one, naming the cities the tracker reads", async () => {
-  const ctx = loadTracked({ body: MINE([]) });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("deskTracked"), false);
-  assert.equal(ctx.dom.hidden("deskTrackedEmpty"), false);
-  assert.match(ctx.dom.text("deskTrackedEmptyText"), /^Add a Boise or Meridian permit number and pick the steps/);
-  assert.equal(ctx.dom.el("deskTrackedEmptyText").children[0].href, "/permits?track=1");
-  assert.deepEqual(ctx.notices(), [], "an empty list is a read that came back");
-});
-
-test("a failed read hides the card, and a signed-out page never asks", async () => {
-  let ctx = loadTracked({ res: { status: 503, body: { error: "x" } } });
-  ctx.dom.el("deskTracked").classList.remove("hidden"); // a stale reveal
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("deskTracked"), true, "'could not read' is not 'nothing tracked'");
-  assert.equal(ctx.notices(), null, "and the agenda is told it could not look");
-  ctx = loadTracked({ user: null, body: MINE([WATCH_ROW({})]) });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("deskTracked"), true);
-  assert.equal(ctx.fetchLog.length, 0);
-});
-
-test("Needs you lists a permit that reached a step, between the dates and the messages", () => {
-  const w = PERMIT_WATCH.watchView(WATCH_ROW({}), [NOTICE({})], { cityOf: () => "Boise" });
-  const ctx = loadDates({
-    permits: [{ w, n: w.history[0] }],
-    threads: { total: 1, unread: 1, unreadList: [{ id: "t9", label: "Mike Tran", unread: 2, preview: "Rent roll is in" }] },
-  });
-  ctx.draw([LEASE({})]);
-  const rows = ctx.dom.el("deskAgendaRows").children;
-  assert.equal(rows.length, 3);
-  assert.match(rows[1].textContent, /New.*permit.*Step complete: Issued · Federal Way warehouse/);
-  assert.match(rows[1].textContent, /Boise · BLD26-02789 · now “Issued”/);
-  assert.equal(rows[1].children[2].href, "/permits#pw-w1");
-  assert.equal(rows[1].children[2].textContent, "View permit →");
-  assert.equal(ctx.dom.text("deskHeroSub"), "1 date in the next 90 days, 1 permit update and 1 unread conversation.");
-  // Alone, it still makes the card and the line.
-  const solo = loadDates({ permits: [{ w, n: w.history[0] }] });
-  solo.draw([]);
-  assert.equal(solo.dom.hidden("deskAgenda"), false);
-  assert.equal(solo.dom.text("deskHeroSub"), "1 permit update.");
-});
-
-test("Needs you will not say 'nothing' when the permit read failed", () => {
-  const ctx = loadDates({ permits: null });
-  ctx.draw([]);
-  assert.equal(ctx.dom.hidden("deskHeroSub"), true);
-  assert.equal(ctx.dom.hidden("deskAgenda"), false);
-  assert.match(ctx.dom.text("deskAgendaNote"), /Couldn't read permit updates just now/);
-  const all = loadDates({ permits: null, threads: null });
-  all.draw(null);
-  assert.match(all.dom.text("deskAgendaNote"), /Couldn't read lease dates, permit updates or conversations just now/);
-});
-
-test("the card starts with the desk's reads, is joined before the agenda, sits in the side column, and every id it touches exists", async () => {
-  const at = html.indexOf("async function renderShares()");
-  const fn = html.slice(at, html.indexOf("\n  }\n", at));
-  const start = fn.indexOf("const trackedReady = renderTrackedPermits()");
-  assert.ok(start > 0 && start < fn.indexOf("if (!currentUser) { hideAll(); return; }"),
-    "it starts before the signed-out exit, so a sign-out hides it too");
-  // Joined OUTSIDE the firm batch, whose shape desk-one-paint.test.js pins,
-  // and before the strip and the agenda draw from what it parsed.
-  const joined = fn.indexOf("await trackedReady;\n    drawFirmStrip(await critical);");
-  assert.ok(joined > fn.indexOf("await Promise.all(["), "the one paint waits for it, after the firm batch and before the agenda draws");
-  const card = html.indexOf('id="deskTracked"');
-  assert.ok(card > html.indexOf('id="deckSide"') && card < html.indexOf("<!-- /deckSide -->"),
-    "the card sits in #deckSide, so refreshDeckVisibility shows that column for a member in no firm");
-  const ctx = loadTracked({ body: MINE([WATCH_ROW({})], [NOTICE({})]) });
-  await ctx.render();
-  const empty = loadTracked({ body: MINE([]) });
-  await empty.render();
-  for (const id of new Set([...ctx.dom.asked, ...empty.dom.asked])) {
-    assert.ok(html.includes(`id="${id}"`), `the card reads #${id}, which is not in index.html's markup`);
+test("tracked permits stay off the Workspace: no card, no Needs-you entry, no boot read", () => {
+  for (const gone of ['id="deskTracked', "renderTrackedPermits", "deskPermitNotices", "View permit →"]) {
+    assert.ok(!html.includes(gone), `index.html still carries ${gone}`);
   }
+  const serverSrc = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const list = serverSrc.match(/const DESK_BOOT_URLS = \[[\s\S]*?\n\];/)[0];
+  assert.ok(!list.includes("/api/permits/mine"), "nothing on the Workspace reads it, so the page must not wait on it");
+  assert.ok(list.includes("/api/permits/unread"), "the rail's Permit tracker dot still ships with the page");
+  // Your permits (filings at the firm's own buildings) is a different card
+  // and stays.
+  assert.ok(html.includes('id="deskPermits"'));
 });

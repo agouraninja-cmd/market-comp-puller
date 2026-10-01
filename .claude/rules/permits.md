@@ -221,28 +221,20 @@ stand-in and a stub portal. Eight rules:
   same payload. No file fallback (rule 4): every route is 503 without a
   database.
 
-- **It shows up on the Workspace** (2026-09-29, owner's call: when a step
-  the member asked about is hit it "shows up in your workspace"). Two
-  surfaces in index.html, both drawn from ONE read, `GET /api/permits/mine`
-  (in `DESK_BOOT_URLS`, so it ships with the page): the **Tracked permits**
-  side card (`#deskTracked`, `renderTrackedPermits` its one writer — each
-  permit's five steps as pips from `watchView`'s ledger, the one with an
-  unread notice first and marked New, empty state a door to
-  `/permits?track=1`) and, for a member of a firm, one **Needs you** entry
-  per permit with an unread notice (`deskPermitNotices`, between the lease
-  dates and the messages; the banner line counts them). Four rules. **Per
-  member, so it does not wait for a firm**: the card starts in
-  `renderShares` before the signed-out exit and sits in `#deckSide`, which
-  `refreshDeckVisibility` then shows for a member in no firm. **Looking is
-  not seeing**: nothing on the Workspace posts `/api/permits/seen`; each
-  row links to `/permits#pw-<id>` (the card's own id, scrolled to and
-  highlighted), and that page clears the count as before. **A failed read
-  hides the card and sets `deskPermitNotices` to null**, and the agenda
-  then says "Couldn't read permit updates" rather than "Nothing needs
-  you" — the outage-as-absence trap. **Presentation only**: the steps, the
-  flag and what is unread are `watchView`'s; the Workspace re-decides
-  nothing. `test/org-desk.test.js` runs both surfaces against fixtures
-  built by the real `watchView`.
+- **It is NOT on the Workspace** (2026-09-30, owner's call: "remove
+  tracked permits from the workspace"). For one day from 2026-09-29 the
+  Workspace carried a **Tracked permits** side card (`#deskTracked`,
+  `renderTrackedPermits`) and one **Needs you** entry per permit with an
+  unread notice (`deskPermitNotices`), both off `GET /api/permits/mine` in
+  `DESK_BOOT_URLS`. All of it came off, and that URL left the boot list,
+  since a workspace load that waits on a read nothing draws is pure TTFB.
+  The code is in PR #346's history (fd98bb2) if it is ever wanted back.
+  What stays: the rail's **`#navPermitDot`** (`/api/permits/unread`, still
+  booted) is how a member hears about a step on CompNinja, and `/permits`
+  keeps the **`#pw-<id>`** and **`?track=1`** deep links the card used, so
+  a saved link still lands. **Your permits** (`#deskPermits`, filings at the
+  firm's own buildings, above) is a different card and was not touched.
+  `test/org-desk.test.js` pins the removal.
 
 Not built: tracking a permit in a city the sweep does not read (it would need
 the member to mark steps by hand, and a notice about a step you marked
@@ -304,14 +296,11 @@ older suite through `test/helpers/permit-portal-stub.js`). Seven rules:
   events are still written, with `app` and `email_due` off, so the history
   reads whole if they unmute. **A failed mute read treats every colleague as
   muted for that run** — the member's veto is the one thing not to guess at.
-- **The page and the Workspace say whose permit it is.** `watchView` takes a
+- **The page says whose permit it is.** `watchView` takes a
   `viewerId` and returns `mine`, `firm`, `sharedBy`, `muted`; a colleague's
   card carries the firm tag and "tracked by …" with Mute as its only
-  control. The Workspace's Tracked permits card lists firm permits too
-  (same `/api/permits/mine` read) and hides outright for an account that
-  cannot track and tracks nothing, since its only content would be a door
-  onto a Pro gate — with `deskPermitNotices = []`, never null, because the
-  read succeeded.
+  control. (The Workspace's Tracked permits card did too, until it came off
+  on 2026-09-30.)
 - **The email names the firm.** A permit that reached somebody through their
   firm reads "Tracked for Colliers Boise" and ends with how to mute it; the
   owner's copy reads as their own.

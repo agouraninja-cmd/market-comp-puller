@@ -1757,16 +1757,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-row-act { flex: 0 0 auto; font: inherit; font-size: 11.5px; color: var(--ink-3); background: none; border: 0; padding: 0; cursor: pointer; white-space: nowrap; text-decoration: none; }
     .dk-row-act:hover { color: var(--red); }
     .dk-row-meta { flex-basis: 100%; order: 99; font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; margin-top: 2px; }
-    /* Tracked permits (2026-09-29): five pips, filled through the furthest
-       step the permit has reached — watchView's ledger, drawn, never
-       re-decided here — and the unread notice on its own line under the
-       meta. Still flat children of the .dk-row, placed by ORDER. */
-    .dk-psteps { order: 98; flex-basis: 100%; display: flex; gap: 3px; margin-top: 6px; }
-    .dk-psteps > i { flex: 1 1 0; height: 4px; border-radius: 2px; background: var(--line); }
-    .dk-psteps > i.done { background: var(--ok-text); }
-    .dk-psteps.warn > i.done { background: var(--warn-text); }
-    .dk-pnote { order: 100; flex-basis: 100%; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--ok-text); }
-    .dk-pnote.warn { color: var(--warn-text); }
     /* Workspace copy on tokens (they were hex utilities — the exact light
        values of these tokens, so light mode does not move). */
     .dk-copy { font-size: 12px; color: var(--ink-3); margin-top: 8px; }
@@ -3713,25 +3703,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div id="deskCriticalRows" class="mt-1"></div>
         <div id="deskCriticalEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-red"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="1.3"/><path d="M3 8h14M7 3v3M13 3v3"/><path d="M6.5 11h2M11.5 11h2M6.5 13.6h2"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Nothing due</span><span class="dk-gx">No lease notice or expiry in the next 12 months. Dates appear here once a lease is filed on a building.</span></span></div></div></div>
         <p><a id="deskCriticalMore" href="/buildings" class="dk-more">All lease dates →</a></p>
-      </div>
-      <!-- Tracked permits (2026-09-29, owner's call: when a tracked permit
-           reaches a step the member asked about, it "shows up in your
-           workspace once it hit"). The member's OWN watches from /permits
-           (migration 054) — per member, never firm-scoped, so it renders for
-           a member in no firm too. renderTrackedPermits() is its one writer
-           and /api/permits/mine its one read (in DESK_BOOT_URLS). Unread
-           notices lead, marked New; opening /permits clears them, the nav
-           dot's rule, so looking at the workspace never marks anything seen.
-           A failed read hides the card: "no permits" must never be what an
-           outage looks like. -->
-      <div id="deskTracked" class="hidden mt-8">
-        <div class="dk-rule">
-          <span class="rd-lab"><span class="dk-hico dk-tone-ok"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h10v14.4H5z"/><path d="M7.5 7.2l1.6 1.6 3.4-3.4"/><path d="M7.5 12h5M7.5 14.4h3"/></svg></span>Tracked permits</span>
-          <span id="deskTrackedStats" class="dk-note"></span>
-        </div>
-        <div id="deskTrackedRows" class="mt-1"></div>
-        <div id="deskTrackedEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ok"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h10v14.4H5z"/><path d="M7.5 7.2l1.6 1.6 3.4-3.4"/><path d="M7.5 12h5M7.5 14.4h3"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Track a permit</span><span id="deskTrackedEmptyText" class="dk-gx"><a href="/permits?track=1">Add a permit number</a> and pick the steps you want to hear about — approved, issued, finaled — by email, here, or both.</span></span></div></div></div>
-        <p><a id="deskTrackedMore" href="/permits" class="dk-more">Open the permit tracker →</a></p>
       </div>
       <!-- The deal board (O3): who shared what to the firm, by member, by
            market and by month. Presentation over the shelf and the firm's
@@ -14592,11 +14563,6 @@ async function renderMyDesk() {
       // them — all of it goes on the same signal.
       resetDeskHero();
     };
-    // Tracked permits are the member's own, not the firm's, so they start
-    // before every firm and shares question and hide themselves on a
-    // sign-out (the check inside runs synchronously, before the read). The
-    // agenda below reads what they parsed, so the batch joins them.
-    const trackedReady = renderTrackedPermits().catch(() => {});
     if (!currentUser) { hideAll(); return; }
     // The membership read starts NOW, beside the shares read, not after it
     // (2026-09-03): the two answer different questions and neither needs the
@@ -14656,9 +14622,6 @@ async function renderMyDesk() {
       renderDealBoard(),
       buildings.then(() => Promise.all([renderFirmShelf(), renderContacts()])),
     ]);
-    // The member's tracked permits started at the top and are joined here,
-    // outside the firm batch: the agenda below lists their news.
-    await trackedReady;
     drawFirmStrip(await critical);
     // The agenda, the dates card and the buildings' Next-date column read the
     // same leases answer the strip just drew, after it (the agenda hides with
@@ -15332,118 +15295,6 @@ async function renderMyDesk() {
   }
 
   // ---------------------------------------------------------------------------
-  // Tracked permits (2026-09-29): the permits this member added on /permits,
-  // each with its five steps, and — first, marked New — any whose step the
-  // member asked to hear about on CompNinja has just been reached. Per member,
-  // so unlike every other side card it does not wait for a firm. Presentation
-  // only: permit-watch.js's watchView decided the steps, the flag and what is
-  // unread, and nothing here marks anything seen (opening /permits does).
-  //
-  // deskPermitNotices feeds the "Needs you" agenda: one entry per permit with
-  // an unread notice, null after a failed read so the agenda can say it could
-  // not look rather than that nothing happened.
-  // ---------------------------------------------------------------------------
-  const DESK_TRACKED = 5;
-  let deskPermitNotices = null;
-  // /permits' watchName, restated: the nickname, else the street line, else
-  // the number.
-  const trackedName = (w) => w.label || (w.address ? String(w.address).split(",")[0] : "") || w.permitNumber || "A permit";
-  // The newest unread notice on a watch, or null. history is newest first.
-  const trackedNotice = (w) => (Array.isArray(w.history) ? w.history : []).find((h) => h && h.unread && h.notice) || null;
-  function trackedStepText(w) {
-    const steps = Array.isArray(w.steps) ? w.steps : [];
-    const at = steps.findIndex((s) => s.key === w.step);
-    const parts = [];
-    if (at >= 0) parts.push(`${steps[at].label} (step ${at + 1} of ${steps.length})`);
-    else parts.push(w.status ? "No step yet" : "Not read yet");
-    if (w.flag === "attention") parts.push("needs attention");
-    else if (w.flag === "ended") parts.push("ended");
-    return parts.join(", ");
-  }
-  function fmtTrackedDay(iso) {
-    const d = iso ? new Date(iso) : null;
-    return d && !isNaN(d) ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
-  }
-  async function renderTrackedPermits() {
-    const box = document.getElementById("deskTracked");
-    if (!currentUser) { box.classList.add("hidden"); deskPermitNotices = null; return; }
-    let data = null;
-    try {
-      const res = await bootFetch("/api/permits/mine", { credentials: "same-origin" });
-      if (res.ok) data = await res.json();
-    } catch (_) { /* handled below */ }
-    if (!data || !Array.isArray(data.watches)) { box.classList.add("hidden"); deskPermitNotices = null; return; }
-    // Tracking is Pro (2026-09-29). With nothing tracked and no way to add
-    // one, the card's only content would be a door onto a Pro gate, so it
-    // stays down — and the read DID succeed, so the agenda hears "nothing",
-    // never null ("couldn't read"). A lapsed member with permits still sees
-    // them: `canTrack === false` hides only the empty invitation.
-    if (data.canTrack === false && !data.watches.length) { box.classList.add("hidden"); deskPermitNotices = []; return; }
-    const lastMove = (w) => String(w.statusChangedAt || (w.history && w.history[0] && w.history[0].at) || "");
-    const watches = data.watches.slice().sort((a, b) => {
-      const na = trackedNotice(a) ? 1 : 0, nb = trackedNotice(b) ? 1 : 0;
-      if (na !== nb) return nb - na;
-      return lastMove(b).localeCompare(lastMove(a));
-    });
-    deskPermitNotices = watches.filter(trackedNotice).map((w) => ({ w, n: trackedNotice(w) }));
-    box.classList.remove("hidden");
-    const fresh = deskPermitNotices.length;
-    document.getElementById("deskTrackedStats").textContent = watches.length
-      ? `${watches.length} tracked` + (fresh ? ` · ${fresh} new` : "") : "";
-    const cities = (Array.isArray(data.cities) ? data.cities : []).map((c) => c.label).filter(Boolean);
-    if (cities.length) {
-      const where = cities.length > 1 ? `${cities.slice(0, -1).join(", ")} or ${cities[cities.length - 1]}` : cities[0];
-      const text = document.getElementById("deskTrackedEmptyText");
-      text.innerHTML = "";
-      const a = document.createElement("a");
-      a.href = "/permits?track=1";
-      a.textContent = `Add a ${where} permit number`;
-      text.appendChild(a);
-      text.appendChild(document.createTextNode(" and pick the steps you want to hear about — approved, issued, finaled — by email, here, or both."));
-    }
-    document.getElementById("deskTrackedEmpty").classList.toggle("hidden", watches.length > 0);
-    document.getElementById("deskTrackedMore").textContent = watches.length > DESK_TRACKED
-      ? `All ${watches.length} on the permit tracker →` : "Open the permit tracker →";
-    const wrap = document.getElementById("deskTrackedRows");
-    wrap.innerHTML = "";
-    watches.slice(0, DESK_TRACKED).forEach((w) => {
-      // .dk-row, flat; textContent throughout — the nickname is what the
-      // member typed and every status is what a city portal printed.
-      const note = trackedNotice(w);
-      const warn = w.flag === "attention" || w.flag === "ended";
-      const row = document.createElement("div");
-      row.className = "dk-row";
-      const name = document.createElement("a");
-      name.className = "dk-row-name";
-      name.href = "/permits#pw-" + encodeURIComponent(w.id);
-      name.textContent = (note ? "● " : "") + trackedName(w);
-      row.appendChild(name);
-      const bar = document.createElement("span");
-      bar.className = "dk-psteps" + (warn ? " warn" : "");
-      bar.setAttribute("aria-hidden", "true");
-      (Array.isArray(w.steps) ? w.steps : []).forEach((s) => {
-        const pip = document.createElement("i");
-        if (s.done) pip.className = "done";
-        pip.title = s.label;
-        bar.appendChild(pip);
-      });
-      row.appendChild(bar);
-      const meta = document.createElement("span");
-      meta.className = "dk-row-meta";
-      meta.textContent = [w.city, w.permitNumber, trackedStepText(w),
-        w.checkError ? "portal didn’t answer last check" : ""].filter(Boolean).join(" · ");
-      row.appendChild(meta);
-      if (note) {
-        const n = document.createElement("span");
-        n.className = "dk-pnote" + (note.kind === "attention" || note.kind === "ended" ? " warn" : "");
-        n.textContent = ["New: " + note.notice, fmtTrackedDay(note.at)].filter(Boolean).join(" · ");
-        row.appendChild(n);
-      }
-      wrap.appendChild(row);
-    });
-  }
-
-  // ---------------------------------------------------------------------------
   // Your permits (2026-09-24; it replaced the development shop's New
   // filings). Permits filed, or whose status moved, at the firm's OWN
   // buildings in the last thirty days. The server decides everything — which
@@ -15677,16 +15528,11 @@ async function renderMyDesk() {
     const threads = deskThreadsStat && Array.isArray(deskThreadsStat.unreadList) ? deskThreadsStat.unreadList : [];
     const items = [];
     (crit || []).filter((c) => c.days <= AGENDA_DAYS).forEach((c) => items.push({ c }));
-    // A tracked permit that reached a step the member asked to hear about
-    // (2026-09-29): renderTrackedPermits' list, one entry per permit, between
-    // the dates and the messages — it is news about the member's own work.
-    const permitNews = Array.isArray(deskPermitNotices) ? deskPermitNotices : [];
-    permitNews.forEach((p) => items.push({ p }));
     threads.forEach((t) => items.push({ t }));
 
     const rows = document.getElementById("deskAgendaRows");
     rows.innerHTML = "";
-    items.slice(0, AGENDA_MAX).forEach(({ c, p, t }) => {
+    items.slice(0, AGENDA_MAX).forEach(({ c, t }) => {
       const row = document.createElement("div");
       row.className = "dk-ag-row";
       const when = document.createElement("span");
@@ -15718,18 +15564,6 @@ async function renderMyDesk() {
         // on /buildings for a date whose building we cannot name.
         act.href = c.buildingId ? "/building/" + encodeURIComponent(c.buildingId) : "/buildings";
         act.textContent = "Open lease →";
-      } else if (p) {
-        big.className = "dk-ag-date";
-        big.textContent = "New";
-        small.textContent = "permit";
-        title.textContent = `${p.n.notice} · ${trackedName(p.w)}`;
-        detail.textContent = [
-          p.w.city, p.w.permitNumber,
-          p.n.to ? `now “${p.n.to}”` : "",
-          fmtTrackedDay(p.n.at),
-        ].filter(Boolean).join(" · ");
-        act.href = "/permits#pw-" + encodeURIComponent(p.w.id);
-        act.textContent = "View permit →";
       } else {
         big.className = "dk-ag-date";
         big.textContent = `${t.unread} new`;
@@ -15753,19 +15587,13 @@ async function renderMyDesk() {
     stats.textContent = items.length
       ? (items.length > AGENDA_MAX ? `${AGENDA_MAX} of ${items.length}` : `${items.length} ${items.length === 1 ? "item" : "items"}`)
       : "";
-    // "Both" predates the permit read (2026-09-29): every read the agenda
-    // lists from must have come back before it may say nothing needs you.
-    const bothRead = Array.isArray(crit) && Boolean(deskThreadsStat) && Array.isArray(deskPermitNotices);
+    const bothRead = Array.isArray(crit) && Boolean(deskThreadsStat);
     const due = (crit || []).filter((c) => c.days <= AGENDA_DAYS).length;
-    // "a and b", "a, b and c".
-    const andList = (l) => (l.length > 1 ? `${l.slice(0, -1).join(", ")} and ${l[l.length - 1]}` : l[0] || "");
-    const orList = (l) => (l.length > 1 ? `${l.slice(0, -1).join(", ")} or ${l[l.length - 1]}` : l[0] || "");
     if (items.length) {
-      heroSub(andList([
+      heroSub([
         due ? `${due} ${due === 1 ? "date" : "dates"} in the next ${AGENDA_DAYS} days` : "",
-        permitNews.length ? `${permitNews.length} permit ${permitNews.length === 1 ? "update" : "updates"}` : "",
         threads.length ? `${threads.length} unread ${threads.length === 1 ? "conversation" : "conversations"}` : "",
-      ].filter(Boolean)) + ".");
+      ].filter(Boolean).join(" and ") + ".");
     } else if (bothRead) {
       // An empty board has nothing to be due yet; say where to start rather
       // than reassure somebody about a firm that has no record in it.
@@ -15776,10 +15604,9 @@ async function renderMyDesk() {
     }
     const gaps = [];
     if (!Array.isArray(crit)) gaps.push("lease dates");
-    if (!Array.isArray(deskPermitNotices)) gaps.push("permit updates");
     if (!deskThreadsStat) gaps.push("conversations");
     const note = document.getElementById("deskAgendaNote");
-    note.textContent = gaps.length ? `Couldn't read ${orList(gaps)} just now, so this list may be missing something.` : "";
+    note.textContent = gaps.length ? `Couldn't read ${gaps.join(" or ")} just now, so this list may be missing something.` : "";
     note.classList.toggle("hidden", !gaps.length);
     box.classList.toggle("hidden", bothRead && !items.length);
   }

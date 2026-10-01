@@ -147,7 +147,7 @@ test("permit signals on the building sheet, the buildings strip and the Workspac
     for (const [user, org, b, other] of [[BRAD, BROKER_ORG, B_BROKER, B_DEV], [DANA, DEV_ORG, B_DEV, B_BROKER]]) {
       const r = await getJson(`${srv.base}/api/org/permits?id=${org}`, user);
       assert.equal(r.status, 200, r.text);
-      assert.equal(r.j.cities, "Boise and Meridian", "Nampa is switched off, so it is not named as lit");
+      assert.equal(r.j.cities, "Boise, Meridian and Nampa", "every swept city is named as lit, Nampa from its reports");
       assert.equal(r.j.windowDays, PF.ACTIVITY_WINDOW_DAYS);
       assert.equal(r.j.buildings, 1, "the board in a swept city — Brad's Dallas building is not counted as looked at");
       assert.deepEqual(r.j.permits.map((p) => [p.permitNumber, p.buildingId, p.kind, p.status]),
@@ -169,7 +169,7 @@ test("permit signals on the building sheet, the buildings strip and the Workspac
     assert.equal(r.status, 200, r.text);
     assert.equal(r.j.permits, null, "no section — an empty one would claim we looked");
     assert.equal(r.j.buildings, 0);
-    assert.equal(r.j.cities, "Boise and Meridian");
+    assert.equal(r.j.cities, "Boise, Meridian and Nampa");
     const out = await getJson(`${srv.base}/api/org/permits?id=${DEV_ORG}`, OUT);
     assert.ok(out.status === 403 || out.status === 404, `an outsider is refused (${out.status})`);
     assert.equal(out.text.includes("BLD26-01234"), false);

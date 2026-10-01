@@ -51,11 +51,18 @@ const formField = (init, name) => new URLSearchParams(init.body).get(name);
 // Registry
 // ---------------------------------------------------------------------------
 
-test("registry: three Idaho cities, two platforms, and only the two Accela cities are swept today", () => {
+test("registry: three Idaho cities, all swept; Nampa from its published reports, not its portal", () => {
   assert.deepEqual(P.JURISDICTION_KEYS, ["boise", "meridian", "nampa"]);
-  assert.deepEqual(P.SWEEP_KEYS, ["boise", "meridian"]);
-  assert.equal(P.JURISDICTIONS.nampa.sweep, false);
-  assert.match(P.JURISDICTIONS.nampa.blocked, /403/);
+  assert.deepEqual(P.SWEEP_KEYS, ["boise", "meridian", "nampa"]);
+  // Nampa's portal refuses any agent that is not a browser (2026-09-16,
+  // re-checked 2026-10-01), so it is read from cityofnampa.us's reports.
+  assert.deepEqual(P.REPORT_KEYS, ["nampa"]);
+  assert.deepEqual(P.LOOKUP_KEYS, ["boise", "meridian"], "only a portal can look up one permit to track");
+  assert.equal(P.JURISDICTIONS.nampa.via, "reports");
+  assert.match(P.JURISDICTIONS.nampa.reportsUrl, /^https:\/\/www\.cityofnampa\.us\/427\/Permit-Reports$/);
+  assert.match(P.JURISDICTIONS.nampa.portalBlocked, /403/);
+  assert.equal(P.withOrigin(P.JURISDICTIONS.nampa, "http://127.0.0.1:9").reportsUrl, "http://127.0.0.1:9/427/Permit-Reports",
+    "the test-only redirect re-points the reports page too");
   for (const k of P.JURISDICTION_KEYS) {
     const j = P.JURISDICTIONS[k];
     assert.equal(j.key, k);
@@ -396,7 +403,7 @@ test("discoverFilings(nampa) pages, filters, and enrichFiling merges contacts wi
   const e = await P.enrichFiling("nampa", rows[0].ref, { fetch });
   assert.deepEqual(e, { description: "New 120,000 SF distribution shell", project_name: "Nampa Logistics 3",
     applicant_company: "Dana Lee", contractor_company: "Idaho Builders LLC" });
-  assert.equal(j.sweep, false, "and none of this runs in a sweep until the 403 is resolved");
+  assert.equal(j.via, "reports", "and none of this runs in a sweep until the portal answers a named agent");
 });
 
 test("fetchFilingStatus(nampa): only the exact trimmed number counts; a missing EntityResults is a redesign", async () => {

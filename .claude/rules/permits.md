@@ -1,6 +1,7 @@
 ---
 paths:
   - "permit-*.js"
+  - "pdf-text.js"
   - "migrations/054-permit-watches.sql"
   - "permits-page.js"
   - "scripts/capture-permit-fixtures.js"
@@ -57,7 +58,8 @@ paths:
     first comma, and `market` is the JURISDICTION's "City, ST" through
     `marketOf`, never parsed from the portal string. Miss rather than guess:
     no abbreviation expansion, no proximity.
-  - **Nampa ships switched off** (`sweep: false` in the registry, with the
+  - **Nampa ships switched off** (SUPERSEDED 2026-10-01: Nampa is read from
+    the city’s published reports, see the last section) (`sweep: false` in the registry, with the
     reason). Its Tyler host now sits behind an AWS load balancer that
     answers 403 to any user agent naming a bot and serves a browser string;
     disguising the sweep as a browser to pass a filter the operator chose is
@@ -578,3 +580,99 @@ chart's table view. MARKET_CSS styles every `table`/`th` as the comp table
 (640px floor, washed upper-case `th`), so the page overrides both inside
 `.pc-page`; on a phone the side-by-side table is fixed-layout so every city
 stays on screen.
+
+## Nampa, from the reports the city publishes (2026-10-01)
+
+Owner's call: "Add Nampa to the Permit scraper." Nampa's live portal (Tyler
+EnerGov) still answers 403 to any agent that is not a web browser — re-checked
+2026-10-01 with the sweep's own honest agent, with and without a browser-style
+prefix. **Disguising the sweep as a browser was chosen by the owner and refused
+by the session's permission system; do not reintroduce it.** The owner then
+picked reading the city's own published reports. cityofnampa.us serves them to
+the named agent: its **Permit Reports page**
+(`https://www.cityofnampa.us/427/Permit-Reports`) links a monthly *Commercial
+Permit – Plan Review Status* PDF (every commercial application that month,
+with its date in, the status on the report's date, project, address,
+applicant, scope, value) and weekly and monthly *Permit Activity* PDFs (every
+permit issued, with the companies on it). No migration: the rows are ordinary
+`permit_filings`, with `status_changed_at` carrying the date a status was TRUE
+on and `source_url` the report it came from. Rules in the pure
+**`permit-reports.js`** (`test/permit-reports.test.js`, against reports
+captured 2026-10-01 under `test/fixtures/nampa-reports/`) and the zero-dependency
+**`pdf-text.js`** (positioned text and ruled lines out of a PDF; Node's zlib only;
+throws `pdf-unsupported:` for encrypted files and object streams);
+`sweepReportCity` in server.js; `test/permit-reports-run.test.js` runs it all
+against `test/helpers/nampa-reports.js`, which writes real PDFs in the city's
+layout dated relative to today (the parser suite proves they parse exactly like
+the captured ones), and every portal stub hands Nampa's paths to it, by default
+one empty report, so a suite about Boise reads Nampa cleanly. Eleven rules:
+
+- **The registry says how a city is read.** `nampa` carries `via: "reports"`,
+  `reportsUrl`, `reportsOrigin` and `portalBlocked`; `PERMITS.REPORT_KEYS` is
+  the reports cities, `PERMITS.LOOKUP_KEYS` the portal cities. `SWEEP_KEYS`
+  includes Nampa, so every read of `permit_filings` (feed, market section,
+  compare page, building sheet, Your permits, alerts, the locate step) has it.
+  The EnerGov client and its tests stay: switching back the day the portal
+  answers a named agent is dropping `via` and the reports fields.
+- **Which reports a run reads.** The weekday call (`mode: "newest"`) reads the
+  newest `NEWEST` (6) by DocumentCenter id — the id grows with each upload, so
+  a batch of late weeks posted together still fits, and a posted report never
+  changes. The history call (`"backfill"`) reads every report inside the
+  market section's window only while the table lacks the oldest plan review
+  month there (one index request a day after that); `history: "all"` always
+  re-reads the window. The backfill reads each covered month's monthly activity
+  report instead of its four weeklies.
+- **Stored only from a plan review row**, the one with a filing date. An
+  activity row updates a permit the table holds (issued, its contractor, the
+  full address) and is counted (`issuedUnfiled`) otherwise.
+- **A filing date the city did not record drops the permit.** The January 2026
+  report carries 2025 permits migrated into the new system with a Date In of
+  01/01/2026 (a holiday), some issued months before it: a date in on January 1,
+  or after the issue date, is no filing date (`realDateIn`).
+- **Intake failures are not filings.** As of the report they were refused at
+  intake, and they come back under new numbers (The Highline's March buildings
+  were refiled in April): counting them counts a project twice.
+- **Only the kinds the portal cities count** (`kindOf`). Boise's and Meridian's
+  sweeps read new and added buildings, shells, additions, tenant improvements,
+  racking and modular buildings; Nampa's report lists every commercial permit.
+  A Nampa permit is stored only when its project name and scope NAME one of
+  those kinds, with the portals' own labels ("Tenant Improvement", "New
+  Commercial", "Commercial Addition", "Commercial Modular", "Rack/Shelving"), so
+  permit-pulse.js groups them with no Nampa rule. Left out: re-roofs, fences,
+  solar, carports, pergolas, signs, demolitions, "occupancy only / no work",
+  civil site-only permits (the building has its own permit), and
+  **multi-family** (apartments, 3-/4-plexes, walk-ups, residential care
+  homes), which the registry keeps off in both portal cities on purpose. Of
+  425 plan review rows Jan–Aug 2026, 123 were kept. Under-claim: words that do
+  not say are left out, never guessed into a kind.
+- **A status replaces the stored one only when it should**
+  (`shouldReplaceStatus`, used by the merge and by the sweep): newer wins;
+  an ISSUE in an activity report beats a plan review snapshot that missed it
+  (issued Sep 2, still "In Review" in the Sep 3 report); an issued permit is
+  never walked back to an open step, only ended by a newer void. Events are
+  dated the day the status was true (an issue's own date), never the read.
+- **The address is split for the match key.** The activity report prints
+  "993 S Almond St Nampa, Id 83686"; `situsAddress` makes it
+  "993 S Almond St, Nampa, ID 83686", so the street line is the street alone.
+- **Measured where the data stops.** Nampa's market-section pulse
+  (`reportCityPulse`) runs to the newest month its plan review reports cover
+  and is measured at the newest date any report is true on (`buildPulse`'s
+  `through` and `now`). The section, the compare page and the building sheet
+  name the city's reports and say they run about a month behind; the feed's
+  Nampa window is the last thirty days its reports cover (`trackerFeed`'s
+  `windowFrom`, `reportCities` in the payload) with each permit's true age.
+- **Not trackable by number.** A report cannot look up one permit, so
+  `PERMIT_WATCH_CITIES` is the portal cities: the add form, the bulk upload
+  ("We can't track Nampa permits by number yet…") and the POST all refuse
+  Nampa, and /permits says why.
+- **Alerts wait longer for Nampa.** Its monthly report lands up to a month
+  after a filing, so its permits are news for `REPORT_FRESH_DAYS` (45) instead
+  of 14 (`digestFor`'s `lateCities`).
+
+A Permit Reports page that fails, or every picked report failing, is
+`summary.errors` (the scheduled job goes red, as for a portal redesign); one
+unreadable report among several is a line in `cities.nampa.reportErrors` on the
+weekday call and in `history.errors` on the history call. Not built: the city's
+zoning (Canyon County has no parcel service wired, permit-zoning.js), so
+Nampa's property type comes from the words; and its Census placement rides the
+ordinary locate step.

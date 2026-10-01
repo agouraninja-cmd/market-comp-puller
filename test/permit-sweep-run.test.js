@@ -19,6 +19,7 @@ const http = require("node:http");
 const shared = require("./helpers/boot");
 const fake = require("./helpers/fake-supabase");
 const P = require("../permit-portals");
+const NAMPA = require("./helpers/nampa-reports");
 
 const FIX = path.join(__dirname, "fixtures", "permit-portals");
 const readGz = (f) => zlib.gunzipSync(fs.readFileSync(path.join(FIX, f))).toString("utf8");
@@ -38,14 +39,19 @@ const page2 = (html) => html
 // `monthsOnly`: answer only a search that starts on the 1st of a month, so
 // the history pass (whole calendar months) finds the filings and the short
 // window finds nothing, which is how the two passes are told apart.
-function startPortal({ monthsOnly = false } = {}) {
+// Nampa is swept from its published reports (2026-10-01): its paths go to
+// the reports stand-in, by default one empty plan review report, so the
+// Boise and Meridian figures below are unchanged by it.
+function startPortal({ monthsOnly = false, nampa = NAMPA.quietNampa() } = {}) {
   const hits = [];
+  const nampaRoute = NAMPA.nampaRoutes(nampa);
   const srv = http.createServer((req, res) => {
     let body = "";
     req.on("data", (c) => { body += c; });
     req.on("end", () => {
       const url = new URL(req.url, "http://x");
       hits.push({ method: req.method, path: url.pathname, body });
+      if (nampaRoute(req, res, url)) return;
       const html = (s) => { res.writeHead(200, { "content-type": "text/html" }); res.end(s); };
       if (/Ada_County_Parcels\/FeatureServer\/142\/query$/.test(url.pathname)) {
         res.writeHead(200, { "content-type": "application/json" });
@@ -132,7 +138,9 @@ test("without a database a real sweep is refused (503) but a dry run still reads
   assert.equal(s.added, EXPECTED, "with no table everything is new");
   assert.deepEqual(s.errors, []);
   assert.deepEqual(s.truncated, []);
-  assert.deepEqual(s.skipped, [{ city: "nampa", reason: P.JURISDICTIONS.nampa.blocked }]);
+  assert.deepEqual(s.skipped, [], "no city is switched off: Nampa is read from its published reports");
+  assert.equal(s.cities.nampa.reports, 1, "the quiet Nampa stand-in's one report was read");
+  assert.equal(s.cities.nampa.added, 0);
   assert.ok(portal.hits.some((h) => h.method === "POST" && h.path === "/MERIDIAN/Cap/CapHome.aspx"), "Meridian was searched");
   assert.ok(portal.hits.every((h) => !/Ada_County/.test(h.path) || h.method === "GET"));
   const micron = s.cities.boise.sample.find((x) => x.permit_number === "BLD26-02789");
@@ -234,7 +242,8 @@ test("a real sweep stores every filing once, enriched and zoned; a second sweep 
   assert.equal(stats.permits.filings, EXPECTED);
   assert.equal(stats.permits.byCity.boise, manifest.cities.boise.rows);
   assert.equal(stats.permits.lastRun.statusChanges, 1);
-  assert.ok(stats.permits.cities.find((c) => c.key === "nampa" && !c.swept && /403/.test(c.blocked)));
+  assert.ok(stats.permits.cities.find((c) => c.key === "nampa" && c.swept && c.via === "reports"),
+    "Nampa is swept, from its published reports");
   const admin = await (await fetch(srv.base + "/admin")).text();
   assert.equal(admin.split('"/api/permits/sweep"').length - 1, 1,
     "the sweep route is named exactly once on /admin — inside the click handler, never on load");

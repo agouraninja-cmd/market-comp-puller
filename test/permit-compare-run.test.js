@@ -113,7 +113,7 @@ test("one city with a year of permits is a sentence, not a comparison", async (t
   const srv = await shared.boot({ ACCOUNT_WALL: "off", SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key" });
   t.after(() => srv.stop());
   const html = await get(srv, "/permits/compare", COOKIE);
-  assert.match(html, /Comparing needs two cities with at least six months of permits\. Right now only Boise has that\. Meridian will appear here once enough months are in\./);
+  assert.match(html, /Comparing needs two cities with at least six months of permits\. Right now only Boise has that\. Meridian and Nampa will appear here once enough months are in\./);
   const main = html.slice(html.indexOf("<main class=\"wrap pc-page\""), html.indexOf("</main>"));
   assert.ok(main.length > 100);
   assert.doesNotMatch(main, /<table|0 a month/);

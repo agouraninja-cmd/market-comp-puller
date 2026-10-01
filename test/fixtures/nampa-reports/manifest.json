@@ -1,0 +1,10 @@
+{
+  "captured": "2026-10-01",
+  "source": "https://www.cityofnampa.us/427/Permit-Reports (fetched with the sweep’s own agent, CompNinjaPermitSweep/1.0)",
+  "files": {
+    "permit-reports.html.gz": "the Permit Reports page",
+    "plan-2026-08.pdf.gz": "DocumentCenter/View/20808 — Commercial Permit - Plan Review Status, August 2026 (Date: 9/3/26)",
+    "plan-2026-01.pdf.gz": "DocumentCenter/View/20260 — Plan Review Status, January 2026 (Date: 2/12/26): the 2025 permits migrated in with a Date In of 01/01/2026",
+    "activity-2026-08-31.pdf.gz": "DocumentCenter/View/20813 — Weekly Permit Activity Report, 08/31/2026 to 09/04/2026"
+  }
+}

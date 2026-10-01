@@ -60,6 +60,9 @@ const PERMIT_PULSE_MOD = require("./permit-pulse");
 // The swept cities side by side by their permits (/permits/compare,
 // 2026-10-01). Pure; it reads the pulses above.
 const PERMIT_COMPARE = require("./permit-compare");
+// Nampa's permits, read from the reports the city publishes (2026-10-01; its
+// live portal refuses any agent that is not a web browser). Pure.
+const PERMIT_REPORTS = require("./permit-reports");
 const PERMIT_ALERTS = require("./permit-alerts");
 // Who may read a shared report. Pure and tested for the same reason as the
 // modules above it: this gate protects a broker's private comps, not a comp
@@ -6770,6 +6773,139 @@ function newCityTally() {
   return { rows: 0, fresh: 0, seen: 0, statusChanges: 0, enriched: 0, industrial: 0, added: 0, truncated: false };
 }
 
+// A city read from its published reports (Nampa, 2026-10-01; the rules are
+// permit-reports.js's). The Permit Reports page, then the reports a run asks
+// for, one at a time with the sweep's pause, merged into one record per permit
+// and stored through the same table, key and event log as a portal city:
+//  - "newest": the newest PERMIT_REPORTS.NEWEST reports by upload (the weekday
+//    call). A report never changes once posted, so only new ones carry news.
+//  - "backfill": every report inside the market pages' window, but only while
+//    the table is missing the oldest month those reports cover (the history
+//    call: after the first full read it costs one index request a day).
+//  - "all": every report inside that window, always (history = all).
+// A permit is stored only from a plan review row, the one with a filing date;
+// an issued row updates a permit the table already holds and is counted
+// otherwise. A status replaces the stored one only when its report is newer
+// (status_changed_at carries the date a status was TRUE on, never when we read
+// it), an issued permit is never walked back, and the event is dated that day.
+// One unreadable report is a line in city.reportErrors and the rest still
+// count; every report failing is the city failing, which is loud.
+async function sweepReportCity(key, city, { dryRun, deps, keyDeps, now, mode }) {
+  const j = permitJurisdiction(key);
+  Object.assign(city, { reports: 0, reportErrors: [], droppedDates: 0, intakeFailed: 0, otherWork: 0, issuedUnfiled: 0 });
+  const res = await deps.fetch(j.reportsUrl, { headers: { "User-Agent": PERMITS.UA } });
+  if (!res.ok) throw new Error(`portal-error: ${j.label}'s Permit Reports page returned ${res.status}`);
+  const index = PERMIT_REPORTS.parseReportIndex(await res.text(), j.reportsOrigin);
+  if (!index.some((r) => r.kind === "plan")) {
+    throw new Error(`portal-changed: no plan review report linked on ${j.label}'s Permit Reports page`);
+  }
+  const since = PERMIT_FILINGS.localIsoDate(now - PERMIT_PULSE_MOD.READ_DAYS * 86400000).slice(0, 7);
+  let all = mode === "all";
+  if (mode === "backfill") {
+    const oldest = index.filter((r) => r.kind === "plan" && r.month >= since).map((r) => r.month).sort()[0];
+    const have = DB_CONFIGURED ? ((await sbRequest("GET",
+      `permit_filings?jurisdiction=eq.${encodeURIComponent(key)}&applied_date=gte.1900-01-01` +
+      `&select=applied_date&order=applied_date.asc&limit=1`)) || [])[0] : null;
+    all = Boolean(oldest) && (!have || String(have.applied_date).slice(0, 7) > oldest);
+    city.backfill = all;
+    if (!all) return city;
+  }
+  const picked = PERMIT_REPORTS.pickReports(index, { all, since: all ? since : null });
+  const plans = [], activity = [];
+  for (const r of picked) {
+    await deps.sleep();
+    try {
+      const pr = await deps.fetch(r.url, { headers: { "User-Agent": PERMITS.UA } });
+      if (!pr.ok) throw new Error(`returned ${pr.status}`);
+      const buf = Buffer.from(await pr.arrayBuffer());
+      if (r.kind === "plan") plans.push({ ...PERMIT_REPORTS.parsePlanReview(buf), url: r.url });
+      else activity.push({ ...PERMIT_REPORTS.parseActivityReport(buf), url: r.url });
+      city.reports += 1;
+    } catch (err) {
+      city.reportErrors.push(`${r.label || r.id}: ${err.message}`);
+    }
+  }
+  if (picked.length && !city.reports) {
+    throw new Error(`portal-changed: none of ${j.label}'s ${picked.length} reports could be read (${city.reportErrors[0]})`);
+  }
+  const merged = PERMIT_REPORTS.mergeReports({ plans, activity });
+  Object.assign(city, {
+    droppedDates: merged.tally.droppedDates, intakeFailed: merged.tally.intakeFailed, otherWork: merged.tally.otherWork,
+  });
+  const numbers = [...new Set([...merged.permits, ...merged.issued].map((p) => p.permit_number))];
+  city.rows += numbers.length;
+  const stored = [];
+  for (let k = 0; DB_CONFIGURED && k < numbers.length; k += 150) {
+    stored.push(...((await sbRequest("GET",
+      `permit_filings?jurisdiction=eq.${encodeURIComponent(key)}&permit_number=in.(${pgInList(numbers.slice(k, k + 150))})` +
+      `&select=id,permit_number,status,status_changed_at,applicant_company,contractor_company`)) || []));
+  }
+  const byNo = new Map(stored.map((s) => [String(s.permit_number).toUpperCase(), s]));
+  // Noon in Boise on the day a status was true.
+  const at = (d) => (d ? `${d}T18:00:00.000Z` : null);
+  const toInsert = [], changes = [], fills = [], unchanged = [];
+  const consider = (p, status, asOf) => {
+    const st = byNo.get(p.permit_number);
+    city.seen += 1;
+    const fill = {};
+    if (!st.contractor_company && p.contractor_company) fill.contractor_company = p.contractor_company;
+    if (!st.applicant_company && p.applicant_company) fill.applicant_company = p.applicant_company;
+    if (PERMIT_REPORTS.shouldReplaceStatus({ status: st.status, asOf: st.status_changed_at }, { status, asOf })) {
+      changes.push({ id: st.id, old_status: st.status || null, new_status: status, detected_at: at(asOf), fill });
+    } else if (Object.keys(fill).length) {
+      fills.push({ id: st.id, fill });
+    } else {
+      unchanged.push(st.id);
+    }
+  };
+  for (const p of merged.permits) {
+    if (byNo.has(p.permit_number)) { consider(p, p.status, p.status_as_of); continue; }
+    city.fresh += 1;
+    const row = PERMIT_FILINGS.normalizeFiling({
+      permit_number: p.permit_number, permit_type: p.permit_type, description: p.description,
+      project_name: p.project_name, address: p.address, applied_date: p.applied_date, status: p.status,
+      ref: { detailUrl: p.source_url },
+    }, j, { applicant_company: p.applicant_company, contractor_company: p.contractor_company }, keyDeps);
+    if (row) toInsert.push({ ...row, status_changed_at: at(p.status_as_of) });
+  }
+  for (const r of merged.issued) {
+    if (!byNo.has(r.permit_number)) { city.issuedUnfiled += 1; continue; }
+    consider(r, "Issued", r.issue_date);
+  }
+  city.industrial += toInsert.filter((r) => r.is_industrial).length;
+  city.statusChanges += changes.length;
+  city.enriched += toInsert.filter((r) => r.contractor_company || r.applicant_company).length;
+  if (dryRun) {
+    city.added += toInsert.length;
+    city.sample = toInsert.slice(0, 5);
+    return city;
+  }
+  const stamp = new Date().toISOString();
+  for (let k = 0; k < toInsert.length; k += 200) {
+    const inserted = await sbRequest("POST", "permit_filings?on_conflict=jurisdiction,permit_number",
+      toInsert.slice(k, k + 200).map((r) => ({ ...r, first_seen_at: stamp, last_seen_at: stamp })),
+      { prefer: "resolution=ignore-duplicates,return=representation" });
+    city.added += Array.isArray(inserted) ? inserted.length : 0;
+  }
+  for (const c of changes) {
+    await sbRequest("PATCH", `permit_filings?id=eq.${encodeURIComponent(c.id)}`,
+      { ...c.fill, status: c.new_status, status_changed_at: c.detected_at, last_seen_at: stamp },
+      { prefer: "return=minimal" });
+    await sbRequest("POST", "permit_filing_events",
+      { filing_id: c.id, old_status: c.old_status, new_status: c.new_status, detected_at: c.detected_at },
+      { prefer: "return=minimal" });
+  }
+  for (const f of fills) {
+    await sbRequest("PATCH", `permit_filings?id=eq.${encodeURIComponent(f.id)}`,
+      { ...f.fill, last_seen_at: stamp }, { prefer: "return=minimal" });
+  }
+  for (let k = 0; k < unchanged.length; k += 150) {
+    await sbRequest("PATCH", `permit_filings?id=in.(${pgInList(unchanged.slice(k, k + 150))})`,
+      { last_seen_at: stamp }, { prefer: "return=minimal" });
+  }
+  return city;
+}
+
 // The history pass (2026-10-01, the market pages' permit section): whole
 // calendar months of listings re-read when asked — this month, last month
 // and one older one in rotation (PERMIT_FILINGS.historyWindows), or every
@@ -6788,7 +6924,7 @@ async function sweepPermitHistory({ now, dryRun, deps, keyDeps, all }) {
   const budget = { left: HISTORY_ENRICH_CAP };
   for (const w of PERMIT_FILINGS.historyWindows(now, { all })) {
     out.windows.push(w.month);
-    for (const key of PERMITS.SWEEP_KEYS) {
+    for (const key of PERMITS.LOOKUP_KEYS) {
       const city = newCityTally();
       try {
         await deps.sleep();
@@ -6804,6 +6940,22 @@ async function sweepPermitHistory({ now, dryRun, deps, keyDeps, all }) {
       out.statusChanges += city.statusChanges; out.enriched += city.enriched;
       if (city.truncated) out.truncated.push(`${key} ${w.month}`);
     }
+  }
+  // A city read from its published reports has no month windows: its reports
+  // are read whole, once ("backfill" until the oldest month is in; "all"
+  // re-reads them all). Its errors stay here too, never in summary.errors.
+  for (const key of PERMITS.REPORT_KEYS) {
+    const city = newCityTally();
+    try {
+      await sweepReportCity(key, city, { dryRun, deps, keyDeps, now, mode: all ? "all" : "backfill" });
+    } catch (err) {
+      console.error(`[permit history] ${key} reports: ${err.message}`);
+      out.errors.push(`${key} reports: ${err.message}`);
+    }
+    for (const e of city.reportErrors || []) out.errors.push(`${key} report ${e}`);
+    out.discovered += city.rows; out.added += city.added; out.seen += city.seen;
+    out.statusChanges += city.statusChanges; out.enriched += city.enriched;
+    out.reports = { ...(out.reports || {}), [key]: { read: city.reports || 0, added: city.added, backfill: Boolean(all || city.backfill) } };
   }
   return out;
 }
@@ -6896,7 +7048,8 @@ async function sweepPermitFilings({ days, dryRun = false, history, only } = {}) 
     const city = newCityTally();
     summary.cities[key] = city;
     try {
-      await sweepCityWindow(key, window, city, { dryRun, deps, keyDeps, now, enrich: () => true });
+      if (PERMITS.REPORT_KEYS.includes(key)) await sweepReportCity(key, city, { dryRun, deps, keyDeps, now, mode: "newest" });
+      else await sweepCityWindow(key, window, city, { dryRun, deps, keyDeps, now, enrich: () => true });
     } catch (err) {
       console.error(`[permit sweep] ${key}: ${err.message}`);
       summary.errors.push(`${key}: ${err.message}`);
@@ -6946,6 +7099,7 @@ async function readPermitStats() {
     cities: PERMITS.JURISDICTION_KEYS.map((k) => ({
       key: k, label: PERMITS.JURISDICTIONS[k].label,
       swept: PERMITS.SWEEP_KEYS.includes(k), blocked: PERMITS.JURISDICTIONS[k].blocked || "",
+      via: PERMITS.JURISDICTIONS[k].via || "portal",
     })),
     lastRun: PERMIT_SWEEP.lastSummary ? {
       at: PERMIT_SWEEP.lastSummary.finishedAt, dryRun: PERMIT_SWEEP.lastSummary.dryRun,
@@ -6980,9 +7134,10 @@ async function readPermitStats() {
 // Permit signals, slices 3 and 4 — the READS. The sweep above writes; these
 // show. The rules live in permit-filings.js; this owns only the queries.
 //
-// "Supported" means SWEPT, not "in the registry": Nampa has an entry and a
-// client and is switched off (§3), so a Nampa building gets no Permits
-// section rather than one that claims we looked and found nothing (§7).
+// "Supported" means SWEPT, not "in the registry": a city with an entry that is
+// switched off gets no Permits section rather than one that claims we looked
+// and found nothing (§7). Nampa is swept from its published reports since
+// 2026-10-01 (permit-reports.js), so its buildings get the section.
 // Markets come from the jurisdiction through marketOf — the sweep's own
 // derivation — so this list and the stored `market` column cannot disagree.
 //
@@ -7011,6 +7166,16 @@ const permitCityOf = (key) => {
 // with nothing cached the page simply has no section — never a zero.
 const PERMIT_PULSE = { byCity: {}, fetchedAt: 0, failedAt: 0, refreshing: false };
 const PERMIT_PULSE_TTL_MS = 30 * 60 * 1000;
+// A city read from its published reports (Nampa): its run ends at the newest
+// month its plan review reports cover (the newest filing date stored), and its
+// figures are measured at the newest date any of its reports is true on
+// (status_changed_at), so "issued by now" means issued by the reports' date.
+function reportCityPulse(rows) {
+  const applied = rows.map((r) => String(r.applied_date || "")).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  const asOf = rows.map((r) => Date.parse(String(r.status_changed_at || ""))).filter(Number.isFinite).sort((a, b) => a - b).pop();
+  if (!applied.length || !asOf) return null;
+  return PERMIT_PULSE_MOD.buildPulse(rows, { now: asOf, through: applied[applied.length - 1].slice(0, 7) });
+}
 // The read itself; callers use refreshPermitPulse below.
 async function readPermitPulse() {
   try {
@@ -7020,13 +7185,14 @@ async function readPermitPulse() {
     for (let offset = 0; offset < 50000; offset += 1000) {
       const page = (await sbRequest("GET",
         `permit_filings?jurisdiction=in.(${PERMITS.SWEEP_KEYS.join(",")})&applied_date=gte.${since}` +
-        `&select=id,jurisdiction,permit_type,status,applied_date,last_seen_at&order=id.asc&limit=1000&offset=${offset}`)) || [];
+        `&select=id,jurisdiction,permit_type,status,applied_date,last_seen_at,status_changed_at&order=id.asc&limit=1000&offset=${offset}`)) || [];
       rows.push(...page);
       if (page.length < 1000) break;
     }
     const byCity = {};
     for (const key of PERMITS.SWEEP_KEYS) {
-      byCity[key] = PERMIT_PULSE_MOD.buildPulse(rows.filter((r) => r.jurisdiction === key), { now });
+      const mine = rows.filter((r) => r.jurisdiction === key);
+      byCity[key] = PERMITS.REPORT_KEYS.includes(key) ? reportCityPulse(mine) : PERMIT_PULSE_MOD.buildPulse(mine, { now });
     }
     PERMIT_PULSE.byCity = byCity;
     PERMIT_PULSE.fetchedAt = Date.now();
@@ -7072,6 +7238,7 @@ function permitPulseFor(city, state, propertyType) {
   if (!pulse) return null;
   return {
     city: label, pulse,
+    reports: PERMITS.REPORT_KEYS.includes(key),
     freshness: PERMIT_FILINGS.sweepFreshness(pulse.lastSeenAt, Date.now()),
     others: PERMITS.SWEEP_KEYS.filter((k) => k !== key && PERMIT_PULSE.byCity[k])
       .map((k) => ({ city: PERMITS.JURISDICTIONS[k].label, pulse: PERMIT_PULSE.byCity[k] })),
@@ -7102,6 +7269,9 @@ async function permitComparePayload() {
   const fresh = newest ? PERMIT_FILINGS.sweepFreshness(newest, Date.now()) : null;
   return {
     s: 200, comparison, swept: PERMIT_SWEPT.map((s) => s.label),
+    // The cities whose figures come from published reports, a month behind.
+    reportCities: comparison.cities.filter((c) => PERMITS.REPORT_KEYS.includes(c.key))
+      .map((c) => ({ city: c.city, through: c.pulse.through })),
     stale: fresh && fresh.stale ? { at: newest } : null,
     // Each compared city's own permit section, on its industrial market page
     // where one exists (the section is the same on every type's page).
@@ -7125,6 +7295,13 @@ async function permitLastSweptAt() {
 // answers { unavailable: true } — the page says it could not read them,
 // never "no permits" — and never costs the rest of the sheet.
 async function buildingPermitsFor(building) {
+  const out = await buildingPermitsRead(building);
+  // A building in a city read from its published reports says where its
+  // permits come from, and that they run behind (the sheet draws `source`).
+  const rc = out && PERMIT_SWEPT.find((c) => c.market === String(building.market || "") && PERMITS.REPORT_KEYS.includes(c.key));
+  return rc ? { ...out, source: `From the City of ${rc.label}’s published permit reports, which run about a month behind` } : out;
+}
+async function buildingPermitsRead(building) {
   if (!building || !PERMIT_SWEPT_MARKETS.includes(String(building.market || ""))) return null;
   if (!DB_CONFIGURED) return { unavailable: true };
   try {
@@ -7207,6 +7384,24 @@ async function yourPermitsFor(orgId) {
     ...PERMIT_FILINGS.sweepFreshness(lastSweptAt, now) };
 }
 
+// How far each city read from its published reports is covered: to the end of
+// the month of the newest filing stored for it — a plan review report is a
+// whole month's intake, posted after the month ends, so the month is complete
+// even when its last kept permit was filed on the 21st.
+// [{ key, city, through }] — `through` null when nothing is stored.
+async function reportCityCoverage() {
+  return Promise.all(PERMITS.REPORT_KEYS.map(async (key) => {
+    const rows = (await sbRequest("GET",
+      `permit_filings?jurisdiction=eq.${encodeURIComponent(key)}&applied_date=gte.1900-01-01` +
+      `&select=applied_date&order=applied_date.desc&limit=1`)) || [];
+    const newest = rows[0] ? String(rows[0].applied_date).slice(0, 10) : null;
+    const monthEnd = newest
+      ? new Date(Date.UTC(Number(newest.slice(0, 4)), Number(newest.slice(5, 7)), 0)).toISOString().slice(0, 10)
+      : null;
+    return { key, city: permitCityOf(key), through: monthEnd };
+  }));
+}
+
 // The Permit tracker page's read (/permits, 2026-09-24). Public record, so
 // the filings themselves are not scoped to anybody; the one per-reader fact
 // is which of them sit on the reader's firm board, and that board is read
@@ -7216,10 +7411,23 @@ async function yourPermitsFor(orgId) {
 async function permitTrackerPayload(user) {
   const now = Date.now();
   const since = new Date(now - PERMIT_FILINGS.TRACKER_WINDOW_DAYS * 86400000).toISOString().slice(0, 10);
-  const [rows, lastSweptAt, board] = await Promise.all([
+  // A city read from its published reports is a month behind, so its window is
+  // the last thirty days its reports cover (trackerFeed's windowFrom), read in
+  // a query of its own.
+  const coverage = PERMITS.REPORT_KEYS.length ? await reportCityCoverage() : [];
+  const windowFrom = {};
+  for (const c of coverage) {
+    if (c.through) {
+      windowFrom[c.key] = PERMIT_FILINGS.localIsoDate(Date.parse(c.through + "T12:00:00Z") - PERMIT_FILINGS.TRACKER_WINDOW_DAYS * 86400000);
+    }
+  }
+  const [portalRows, reportRows, lastSweptAt, board] = await Promise.all([
     sbRequest("GET",
-      `permit_filings?jurisdiction=in.(${pgInList(PERMITS.SWEEP_KEYS)})&applied_date=gte.${since}` +
+      `permit_filings?jurisdiction=in.(${pgInList(PERMITS.LOOKUP_KEYS)})&applied_date=gte.${since}` +
       `&order=applied_date.desc&limit=${PERMIT_FILINGS.TRACKER_MAX + 1}`),
+    Promise.all(Object.keys(windowFrom).map((k) => sbRequest("GET",
+      `permit_filings?jurisdiction=eq.${encodeURIComponent(k)}&applied_date=gte.${windowFrom[k]}` +
+      `&order=applied_date.desc&limit=${PERMIT_FILINGS.TRACKER_MAX + 1}`))).then((lists) => lists.flatMap((x) => x || [])),
     permitLastSweptAt(),
     (async () => {
       try {
@@ -7231,8 +7439,9 @@ async function permitTrackerPayload(user) {
       }
     })(),
   ]);
+  const rows = [...(portalRows || []), ...reportRows];
   const filings = PERMIT_FILINGS.trackerFeed({
-    filings: rows || [], now, cityOf: permitCityOf, board: board ? board.rows : [], addressKey: VAULT.addressKey,
+    filings: rows, now, cityOf: permitCityOf, board: board ? board.rows : [], addressKey: VAULT.addressKey, windowFrom,
   });
   // The Property type menu (2026-09-29): read-time, from what each filing
   // already carries — permit-zoning.js owns the rule.
@@ -7243,7 +7452,9 @@ async function permitTrackerPayload(user) {
   return {
     cities: PERMIT_FILINGS.citiesLine(PERMIT_SWEPT.map((c) => c.label)),
     windowDays: PERMIT_FILINGS.TRACKER_WINDOW_DAYS,
-    truncated: (rows || []).length > PERMIT_FILINGS.TRACKER_MAX,
+    truncated: (portalRows || []).length > PERMIT_FILINGS.TRACKER_MAX || reportRows.length > PERMIT_FILINGS.TRACKER_MAX,
+    // Where a city read from its published reports stops, for the page's note.
+    reportCities: coverage.filter((c) => c.through).map((c) => ({ city: c.city, through: c.through })),
     inFirm: Boolean(board),
     filings,
     ...PERMIT_FILINGS.sweepFreshness(lastSweptAt, now),
@@ -7270,7 +7481,10 @@ async function permitTrackerPayload(user) {
 // Only the cities the sweep reads can be watched: a permit in a city we do
 // not read would sit in the list never checked.
 // ---------------------------------------------------------------------------
-const PERMIT_WATCH_CITIES = PERMIT_SWEPT.map((c) => c.key);
+// And only a city whose portal can look up one permit: Nampa is read from its
+// published reports (2026-10-01), which cannot, so it is not trackable yet.
+const PERMIT_WATCHABLE = PERMIT_SWEPT.filter((c) => PERMITS.LOOKUP_KEYS.includes(c.key));
+const PERMIT_WATCH_CITIES = PERMIT_WATCHABLE.map((c) => c.key);
 // How long POST /api/permits/watch/bulk keeps asking portals before it stores
 // the rest of the list unchecked for the weekday sweep. 25 permits at two
 // requests and a two-second pause each would otherwise hold a browser request
@@ -7339,7 +7553,10 @@ async function sendPermitAlertDigests({ now, dryRun }) {
   // permit stored while this runs is the next run's.
   const cutoff = new Date().toISOString();
   const oldest = alerts.map((a) => String(a.notified_through || "")).filter(Boolean).sort()[0] || cutoff;
-  const freshFrom = PERMIT_FILINGS.localIsoDate(now - PERMIT_ALERTS.EMAIL_FRESH_DAYS * 86400000);
+  // The widest window any city needs: a city read from its published reports
+  // stays news longer, and digestFor applies each city's own.
+  const freshFrom = PERMIT_FILINGS.localIsoDate(now -
+    (PERMITS.REPORT_KEYS.length ? PERMIT_ALERTS.REPORT_FRESH_DAYS : PERMIT_ALERTS.EMAIL_FRESH_DAYS) * 86400000);
   const rows = [];
   for (let offset = 0; offset < 20000; offset += 1000) {
     const page = (await sbRequest("GET",
@@ -7362,7 +7579,7 @@ async function sendPermitAlertDigests({ now, dryRun }) {
   }
   const due = new Map();
   for (const [uid, list] of byUser) {
-    const items = PERMIT_ALERTS.digestFor(list, views, { now, cutoff });
+    const items = PERMIT_ALERTS.digestFor(list, views, { now, cutoff, lateCities: PERMITS.REPORT_KEYS });
     if (items.length) due.set(uid, items);
   }
   res.members = due.size;
@@ -7422,7 +7639,7 @@ async function permitWatchesPayload(user, ent) {
     cityOf: permitCityOf, viewerId: user.id, firmName: r.org_id ? firm.nameOf(r.org_id) : "", ...extra,
   });
   return {
-    cities: PERMIT_SWEPT.map((c) => ({ key: c.key, label: c.label })),
+    cities: PERMIT_WATCHABLE.map((c) => ({ key: c.key, label: c.label })),
     // Whether this member may add a permit or change one: Pro. The page
     // shows the list either way and the way to Pro when this is false.
     canTrack,
@@ -17014,7 +17231,7 @@ function renderPermitCard(state){
         (p.industrial?" &middot; "+esc(p.industrial)+" on industrial land":"")+
         (p.lastSeenAt?" &middot; last swept "+esc(new Date(p.lastSeenAt).toLocaleString()):" &middot; <b>never swept</b>")+"</p>"+
         "<div class=muted>"+(p.cities||[]).map(function(c){
-          return esc(c.label)+": "+(c.swept?esc((p.byCity||{})[c.key]||0):"off &mdash; "+esc(c.blocked));
+          return esc(c.label)+": "+(c.swept?esc((p.byCity||{})[c.key]||0)+(c.via==="reports"?" (from the city&rsquo;s reports)":""):"off &mdash; "+esc(c.blocked));
         }).join(" &middot; ")+"</div>";
   }
   el.innerHTML="<div class=card><h2>Permit filings</h2>"+body+
@@ -21840,7 +22057,7 @@ const server = http.createServer((req, res) =>
         const have = (await sbRequest("GET",
           `permit_watches?user_id=eq.${uid}&select=id,jurisdiction,permit_number&limit=${PERMIT_WATCH.MAX_WATCHES_PER_USER + 1}`)) || [];
         const parsed = PERMIT_WATCH.parseBulkPermits(grid, {
-          cities: PERMIT_SWEPT, defaultCity: String(b.jurisdiction || "").toLowerCase(),
+          cities: PERMIT_WATCHABLE, defaultCity: String(b.jurisdiction || "").toLowerCase(),
           otherCities: PERMITS.JURISDICTION_KEYS.filter((k) => !PERMIT_WATCH_CITIES.includes(k)).map(permitCityOf),
           existing: have, room: PERMIT_WATCH.MAX_WATCHES_PER_USER - have.length,
         });
@@ -21914,7 +22131,7 @@ const server = http.createServer((req, res) =>
         if (!user) return;
         if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Permit tracking is unavailable right now." });
         const uid = encodeURIComponent(user.id);
-        const cityLabels = PERMIT_SWEPT.map((c) => c.label);
+        const cityLabels = PERMIT_WATCHABLE.map((c) => c.label);
         const ent = await getEntitlements(user, undefined, isAdminRequest(req));
         const proRequired = () => sendJson(res, 403, {
           error: "Tracking a permit is part of CompNinja Pro.", code: "pro_required",

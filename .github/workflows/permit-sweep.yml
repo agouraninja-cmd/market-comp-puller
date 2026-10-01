@@ -86,6 +86,12 @@ jobs:
             if (s.alerts) console.log(`permit alerts: ${al.alerts || 0} alert(s) · ${al.emailed || 0} emailed${al.pending ? ` · ${al.pending} waiting` : ""}`);
             if (al.errors && al.errors.length) console.log(`::warning::Permit alerts: ${al.errors.join(" | ")}`);
             if (al.mailOff) console.log("::warning::Permit alert emails are waiting: outbound mail (EMAIL_FROM + RESEND_API_KEY) is not configured.");
+            // Nampa, from the reports the city publishes (2026-10-01). One
+            // unreadable report among several WARNS; the page or every report
+            // failing is in s.errors below and fails the job.
+            const na = (s.cities || {}).nampa;
+            if (na) console.log(`nampa (from its reports): ${na.reports || 0} report(s) read · ${na.added || 0} added · ${na.statusChanges || 0} status change(s)`);
+            if (na && na.reportErrors && na.reportErrors.length) console.log(`::warning::Nampa reports: ${na.reportErrors.join(" | ")}`);
             // Placing permits on the map (058). Its problems WARN, never fail.
             const lo = s.located || {};
             if (s.located) console.log(`placed on the map: ${lo.placed || 0} of ${lo.tried || 0} looked up`);

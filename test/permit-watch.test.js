@@ -326,7 +326,7 @@ test("every row left out says why, and nothing is guessed", () => {
   ], { cities: CITIES, defaultCity: "boise", existing: [{ jurisdiction: "boise", permit_number: "BLD26-5" }], room: 2, otherCities: ["Nampa"] });
   assert.deepEqual(out.permits.map((p) => p.permit_number), ["BLD26-1", "BLD26-6"]);
   const why = Object.fromEntries(out.skipped.map((s) => [s.line, s.reason]));
-  assert.match(why[2], /We don't read Nampa's permits\. We read Boise and Meridian/);
+  assert.match(why[2], /We can't track Nampa permits by number yet\. We track permits in Boise and Meridian/);
   assert.match(why[3], /No permit number/);
   assert.match(why[4], /already higher in the list/);
   assert.match(why[5], /already tracking BLD26-5/);

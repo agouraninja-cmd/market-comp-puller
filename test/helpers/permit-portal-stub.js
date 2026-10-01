@@ -13,19 +13,25 @@ const http = require("node:http");
 const FIX = path.join(__dirname, "..", "fixtures", "permit-portals");
 const readGz = (f) => zlib.gunzipSync(fs.readFileSync(path.join(FIX, f))).toString("utf8");
 const NUM_FIELD = "ctl00$PlaceHolderMain$generalSearchForm$txtGSPermitNumber";
+const NAMPA = require("./nampa-reports");
 
 // `statusOf` is what each city's portal reads for a permit number right now;
 // `down` lists numbers whose search the portal answers with a 500.
-function startPortal() {
+// `nampa`: the published-reports stand-in Nampa is swept from (2026-10-01);
+// by default one empty plan review report, so a suite about Boise permits
+// reads Nampa cleanly and stores nothing from it.
+function startPortal({ nampa = NAMPA.quietNampa() } = {}) {
   const statusOf = {};
   const down = new Set();
   const hits = [];
+  const nampaRoute = NAMPA.nampaRoutes(nampa);
   const srv = http.createServer((req, res) => {
     let body = "";
     req.on("data", (c) => { body += c; });
     req.on("end", () => {
       const url = new URL(req.url, "http://x");
       hits.push({ method: req.method, path: url.pathname, body });
+      if (nampaRoute(req, res, url)) return;
       const html = (s) => { res.writeHead(200, { "content-type": "text/html" }); res.end(s); };
       const city = url.pathname.startsWith("/CitizenAccess/") ? "boise"
         : url.pathname.startsWith("/MERIDIAN/") ? "meridian" : null;
@@ -52,7 +58,7 @@ function startPortal() {
     });
   });
   return new Promise((resolve) => srv.listen(0, "127.0.0.1", () => resolve({
-    url: `http://127.0.0.1:${srv.address().port}`, statusOf, down, hits,
+    url: `http://127.0.0.1:${srv.address().port}`, statusOf, down, hits, nampa,
     stop: () => new Promise((r) => srv.close(r)),
   })));
 }

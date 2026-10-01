@@ -363,10 +363,22 @@ function waitsSvg(view, kind, W0, H0, every) {
     s += `<polyline class="pc-line pc-s${cv.c.slot}" points="${cv.pts.map((p) => `${x(p.day).toFixed(1)},${y(p.share).toFixed(1)}`).join(" ")}"/>`;
   }
   const dots = curves.filter((cv) => cv.wait != null && cv.wait <= MAX_WAIT_DAY && cv.pts.length).sort((a, b) => a.wait - b.wait);
-  dots.forEach((cv, i) => {
-    const up = i % 2 === 0;
-    s += `<circle class="pc-dot pc-s${cv.c.slot}" cx="${x(cv.wait).toFixed(1)}" cy="${y(0.5)}" r="4.5"/>` +
-      `<text class="pc-val" x="${(x(cv.wait) + (up ? -7 : 7)).toFixed(1)}" y="${y(0.5) + (up ? -9 : 17)}" text-anchor="${up ? "end" : "start"}">${cv.wait} days</text>`;
+  // Each label takes the first of four spots around its dot that does not
+  // overlap a label already placed (three cities' halfway points can sit
+  // within a few days of each other). Text width is estimated, generously.
+  const placed = [];
+  const spots = [[-7, -9, "end"], [7, 17, "start"], [7, -9, "start"], [-7, 17, "end"], [-7, -23, "end"], [7, 31, "start"]];
+  dots.forEach((cv) => {
+    const cx = x(cv.wait), cy = y(0.5), text = `${cv.wait} days`, wpx = text.length * 6.6;
+    const box = ([dx, dy, anchor]) => {
+      const left = anchor === "end" ? cx + dx - wpx : cx + dx;
+      return { l: left, r: left + wpx, t: cy + dy - 11, b: cy + dy + 2 };
+    };
+    const clear = (b) => placed.every((p) => b.r < p.l || b.l > p.r || b.b < p.t || b.t > p.b);
+    const spot = spots.find((sp) => clear(box(sp))) || spots[placed.length % spots.length];
+    placed.push(box(spot));
+    s += `<circle class="pc-dot pc-s${cv.c.slot}" cx="${cx.toFixed(1)}" cy="${cy}" r="4.5"/>` +
+      `<text class="pc-val" x="${(cx + spot[0]).toFixed(1)}" y="${cy + spot[1]}" text-anchor="${spot[2]}">${text}</text>`;
   });
   const daysSet = [...new Set(curves.flatMap((cv) => cv.pts.map((p) => p.day)))].sort((a, b) => a - b);
   const w = P.BUCKET_DAYS / MAX_WAIT_DAY * iw;
@@ -560,12 +572,19 @@ function renderCompareBody(view) {
     ? `<p class="pc-sub stale">Last read ${esc(new Date(v.stale.at).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: F.PORTAL_TZ }))}, more than a business day ago, so newer permits may be missing.</p>`
     : "";
   const links = (v.marketLinks || []).filter((l) => l && l.href);
+  // A city read from its published reports (Nampa) runs a month behind: its
+  // lines end earlier and its "last three months" are earlier ones. Said once,
+  // under the title, where a reader meets the first number.
+  const late = (v.reportCities || []).filter((c) => c && c.city);
+  const lateLine = late.length
+    ? ` ${esc(words(late.map((c) => c.city)))}’s figures come from ${late.length === 1 ? "the city’s" : "those cities’"} published permit reports, which run about a month behind, so ${late.length === 1 ? "its months end" : "their months end"} ${esc(words(late.map((c) => P.monthLabel(c.through, true))))}.`
+    : "";
   return head(rangeLabel(cmp.from, cmp.through)) +
-    `<p class="pc-sub">Commercial building permits in ${esc(words(cmp.cities.map((c) => c.city)))}, side by side. Every figure is read from each city’s own permit portal, the same way as on its market page.</p>${stale}` +
+    `<p class="pc-sub">Commercial building permits in ${esc(words(cmp.cities.map((c) => c.city)))}, side by side. Every figure is read the same way as on each city’s market page.${lateLine}</p>${stale}` +
     `<section class="card" aria-labelledby="pcSide"><h2 id="pcSide">Side by side</h2>${tableHtml(cmp)}</section>` +
     `<section class="card" aria-labelledby="pcMonths"><h2 id="pcMonths">Month by month</h2>${chartsHtml(cmp)}</section>` +
     `<section class="card" aria-labelledby="pcReads"><h2 id="pcReads">What it says</h2>${readsHtml(cmp)}</section>` +
-    `<p class="pc-disc">From each city’s building permit portal, read every weekday morning: ${esc(rangeLabel(cmp.from, cmp.through))}. ` +
+    `<p class="pc-disc">From each city’s building permit portal${late.length ? ` (${esc(words(late.map((c) => c.city)))}: the city’s published reports)` : ""}, read every weekday morning: ${esc(rangeLabel(cmp.from, cmp.through))}. ` +
     `Every commercial permit, of every property type: a permit’s type comes from its parcel’s zoning, which the older months do not have yet, so splitting by type would invent a trend. ` +
     `A month is counted once it is over. The wait is read from how many permits of each age are issued today, so it assumes each city kept a steady pace.` +
     `${cmp.swing ? ` ${esc(cmp.swing)}` : ""} <a href="/permits">See each permit &rarr;</a>` +

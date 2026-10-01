@@ -44,6 +44,10 @@ const NAME_MAX = 80;
 const WORDS_MAX = 60;
 // A permit filed longer ago than this is not news, however late it was stored.
 const EMAIL_FRESH_DAYS = 14;
+// …except in a city read from its published reports (Nampa, 2026-10-01): its
+// monthly report lands up to a month after a filing, so 14 days would never
+// let one through. Its permits are news for this long after filing instead.
+const REPORT_FRESH_DAYS = 45;
 // One alert's lines in one email; the rest are counted and the page has them.
 const EMAIL_MAX_PER_ALERT = 12;
 const KINDS = Object.freeze({ ti: "Tenant build-outs", new: "New buildings & additions" });
@@ -204,8 +208,13 @@ function alertView(row, { cityOf } = {}) {
 // permits newest first. `views` carry `firstSeenAt` and `appliedDate`.
 // `cutoff` is when the permits were read: nothing stored after it counts, so a
 // permit the sweep stores while this runs is the next run's news.
-function digestFor(alerts, views, { now, cutoff } = {}) {
+// `lateCities`: the jurisdiction keys read from published reports, whose
+// permits stay news for REPORT_FRESH_DAYS (views carry `jurisdiction`).
+function digestFor(alerts, views, { now, cutoff, lateCities } = {}) {
   const freshFrom = F.localIsoDate(now - EMAIL_FRESH_DAYS * 86400000);
+  const lateFrom = F.localIsoDate(now - REPORT_FRESH_DAYS * 86400000);
+  const late = new Set(Array.isArray(lateCities) ? lateCities : []);
+  const fresh = (p) => String(p.appliedDate || "") >= (late.has(p.jurisdiction) ? lateFrom : freshFrom);
   const until = cutoff ? Date.parse(cutoff) : Infinity;
   const out = [];
   for (const a of Array.isArray(alerts) ? alerts : []) {
@@ -214,7 +223,7 @@ function digestFor(alerts, views, { now, cutoff } = {}) {
     const permits = (views || []).filter((p) => {
       const seen = Date.parse(String(p.firstSeenAt || ""));
       return Number.isFinite(seen) && (!Number.isFinite(since) || seen > since) && seen <= until &&
-        String(p.appliedDate || "") >= freshFrom && matches(a, p);
+        fresh(p) && matches(a, p);
     }).sort((x, y) => String(y.appliedDate || "").localeCompare(String(x.appliedDate || ""))
       || String(x.permitNumber || "").localeCompare(String(y.permitNumber || "")));
     if (permits.length) out.push({ alert: a, permits });
@@ -261,7 +270,7 @@ function buildDigestEmail({ items, siteUrl, cityOf } = {}) {
 }
 
 module.exports = {
-  MAX_ALERTS_PER_USER, NAME_MAX, WORDS_MAX, EMAIL_FRESH_DAYS, EMAIL_MAX_PER_ALERT, KINDS, PROPERTY_TYPES,
+  MAX_ALERTS_PER_USER, NAME_MAX, WORDS_MAX, EMAIL_FRESH_DAYS, REPORT_FRESH_DAYS, EMAIL_MAX_PER_ALERT, KINDS, PROPERTY_TYPES,
   AREA_MILES, hasArea, milesBetween, areaRequest, withArea,
   describe, defaultName, validateAlertInput, validateAlertPatch, matches, alertView, digestFor, buildDigestEmail,
   kindOf: PULSE.groupOf,

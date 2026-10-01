@@ -548,7 +548,8 @@ function renderBuildingSheetBody(boot) {
     }
     var list=p.filings||[];
     count("bsPermitsN",list.length,"filing");
-    var src="From the city\u2019s building-permit portal";
+    // A city read from its published reports (Nampa) names them instead.
+    var src=p.source||"From the city\u2019s building-permit portal";
     if(p.never)src+=" \u00b7 not checked yet";
     else if(p.stale)src+=" \u00b7 last checked "+when(p.lastSweptAt)+", more than a business day ago \u2014 newer filings may be missing";
     else src+=" \u00b7 checked "+ago(p.lastSweptAt);

@@ -100,10 +100,11 @@ test("Boise and Meridian get the permit section, Nampa one sentence, Dallas noth
   assert.match(meridian, /<h2>Building permits in Meridian<\/h2>/);
   assert.match(meridian, /Next to Boise/);
 
+  // Nampa is swept from its published reports (2026-10-01): with none of its
+  // permits stored it gets no section at all — never "not read", never a zero.
+  // test/permit-reports-run.test.js draws its section from reports.
   const nampa = await settled(srv, "industrial-nampa-id");
-  assert.match(nampa, /We read commercial building permits in Boise and Meridian so far, not yet in Nampa\./);
-  assert.match(nampa, /href="\/market\/industrial-boise-id">Permits in Boise/);
-  assert.doesNotMatch(nampa, /Tenant build-outs/);
+  assert.doesNotMatch(nampa, /Building permits in Nampa|not yet in Nampa|id="permits"/);
 
   const dallas = await page(srv, "industrial-dallas-tx");
   assert.doesNotMatch(dallas, /Building permits in|id="permits"/, "a city we do not know of says nothing");

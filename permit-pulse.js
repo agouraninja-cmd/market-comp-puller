@@ -153,9 +153,14 @@ function pace(months, key) {
 
 // One swept city's filings -> its pulse, or null when there is too little to
 // say. Rows: { permit_type, status, applied_date, last_seen_at }.
-function buildPulse(rows, { now } = {}) {
+// `through` (YYYY-MM) ends the run earlier than last month: a city read from
+// its published reports (Nampa, permit-reports.js) is complete only up to the
+// last month its reports cover, and `now` is then the date its reports are
+// true on, so ages and "issued by now" are measured where the data stops.
+function buildPulse(rows, { now, through } = {}) {
   const today = F.localIsoDate(now);
   const current = today.slice(0, 7);
+  const last = /^\d{4}-\d{2}$/.test(String(through || "")) && through < current ? through : prevMonth(current);
   const todayNum = dayNumber(today);
   const permits = [];
   let lastSeen = 0;
@@ -175,7 +180,7 @@ function buildPulse(rows, { now } = {}) {
     byMonth.set(p.month, m);
   }
   const months = [];
-  for (let m = prevMonth(current); months.length < PULSE_MONTHS && byMonth.has(m); m = prevMonth(m)) {
+  for (let m = last; months.length < PULSE_MONTHS && byMonth.has(m); m = prevMonth(m)) {
     months.unshift({ month: m, ...byMonth.get(m) });
   }
   if (months.length < MIN_MONTHS) return null;
@@ -193,6 +198,7 @@ function buildPulse(rows, { now } = {}) {
     total, ended, endedShare: total ? ended / total : 0,
     openShare: sum(recent, "total") ? sum(recent, "open") / sum(recent, "total") : 0,
     lastSeenAt: lastSeen ? new Date(lastSeen).toISOString() : null,
+    asOf: today,
   };
 }
 
@@ -375,10 +381,20 @@ function pulseSectionHtml(view) {
   const more = view.signedIn
     ? `<a class="pp-more" href="/permits">See each permit &rarr;</a>`
     : `<a class="pp-more" href="/?auth=signup">See each permit with a free account &rarr;</a>`;
+  const span = `${esc(monthLabel(p.from, true))} through ${esc(monthLabel(p.through, true))}`;
+  // A city read from its published reports (Nampa, permit-reports.js) says so:
+  // where the figures come from, that they run behind, and that its kinds are
+  // read from the words, since its reports carry no permit type.
+  const asOf = p.asOf ? new Date(p.asOf + "T12:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" }) : "";
+  const source = view.reports
+    ? `From the City of ${city}’s published permit reports, checked every weekday morning: ${span}. ` +
+      `They run about a month behind, and they carry no permit type, so build-outs and new buildings are read from each permit’s description. ` +
+      `Every commercial permit, of every property type. The wait is read from how many permits of each age had been issued by ${esc(asOf || "the reports’ latest date")}, so it assumes the city kept a steady pace.`
+    : `From ${city}’s building permit portal, read every weekday morning: ${span}. ` +
+      `Every commercial permit, of every property type. The wait is read from how many permits of each age are issued today, so it assumes the city kept a steady pace.`;
   return `<style>${PULSE_CSS}</style><div class="card pp" id="permits"><h2>Building permits in ${city}</h2>` + figs +
     `<div class="pp-two"><div>${volume}</div><div>${wait}</div></div>` + sigs + table +
-    `<p class="disc">From ${city}’s building permit portal, read every weekday morning: ${esc(monthLabel(p.from, true))} through ${esc(monthLabel(p.through, true))}. ` +
-    `Every commercial permit, of every property type. The wait is read from how many permits of each age are issued today, so it assumes the city kept a steady pace.${stale} ${more}</p></div>`;
+    `<p class="disc">${source}${stale} ${more}</p></div>`;
 }
 
 // A city whose portal we know but do not read (Nampa): say so, and point at

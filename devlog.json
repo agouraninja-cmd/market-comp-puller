@@ -4513,5 +4513,11 @@
     "type": "fix",
     "title": "Market pages: no more floating line on the permit wait chart",
     "details": "When a city has too few recent permits of one kind (Boise’s new buildings, about seven a month), the “How long until they’re issued” chart used to draw a short stray line around day 90 with no halfway point. It now leaves that line out and says so under the chart, e.g. “Too few recent new buildings in Boise to draw its line,” the same rule the Compare cities page already used."
+  },
+  {
+    "date": "2026-10-01",
+    "type": "feature",
+    "title": "Permit tracker: Nampa added, read from the city’s published permit reports",
+    "details": "Nampa’s permits are now in the Permit tracker, its market page, the city comparison and building sheets. Its online portal blocks automated reading, so CompNinja reads the reports the City of Nampa publishes instead: a monthly list of every commercial application and its status, and weekly lists of the permits issued. Only the kinds of permit we count in Boise and Meridian are kept (new buildings, additions, tenant build-outs, racking and modular buildings), so the three cities compare fairly. The reports run about a month behind, and every page that shows Nampa says so. A Nampa permit can’t be tracked by number yet."
   }
 ]

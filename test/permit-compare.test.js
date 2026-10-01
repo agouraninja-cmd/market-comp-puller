@@ -173,6 +173,30 @@ test("a wait line with no young permits to anchor it is said in words, never dra
   assert.doesNotMatch(html, /data-kind="ti"[^>]*>Too few/, "build-outs draw for both");
 });
 
+test("three halfway points a few days apart never print their labels on top of each other", () => {
+  const b = P.buildPulse(year(), { now: NOW });
+  const at = (wait) => ({ ...b, waits: { ...b.waits, ti: wait } });
+  const cmp = C.buildComparison([
+    { key: "boise", city: "Boise", slot: 0, pulse: at(33) },
+    { key: "meridian", city: "Meridian", slot: 1, pulse: at(24) },
+    { key: "nampa", city: "Nampa", slot: 2, pulse: at(35) },
+  ]);
+  const svg = C.waitsSvg(cmp, "ti", 440, 250, 1);
+  const labels = [...svg.matchAll(/<text class="pc-val" x="([\d.]+)" y="([\d.]+)" text-anchor="(start|end)">(\d+ days)<\/text>/g)]
+    .map((m) => {
+      const x = Number(m[1]), y = Number(m[2]), w = m[4].length * 6;
+      const l = m[3] === "end" ? x - w : x;
+      return { l, r: l + w, t: y - 10, b: y + 1, text: m[4] };
+    });
+  assert.equal(labels.length, 3);
+  for (let i = 0; i < labels.length; i++) {
+    for (let j = i + 1; j < labels.length; j++) {
+      const a = labels[i], c = labels[j];
+      assert.ok(a.r < c.l || a.l > c.r || a.b < c.t || a.t > c.b, `${a.text} and ${c.text} overlap`);
+    }
+  }
+});
+
 test("the page: defaults shown, the rest hidden, controls revealed only by the script", () => {
   const b = P.buildPulse(year(), { now: NOW });
   const html = C.renderCompareBody({ s: 200, comparison: two(b, P.buildPulse(year({ perDay: { ti: 1, new: 1 } }), { now: NOW })),

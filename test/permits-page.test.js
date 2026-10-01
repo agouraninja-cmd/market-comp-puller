@@ -117,7 +117,12 @@ test("the /permits route, signed out and signed in", async (t) => {
       fl("1450 W MISSION AVE", { permit_number: "ON-BOARD", applied_date: dayAgo(1), is_industrial: true, zoning: "I-2" }),
       fl("200 N 8TH ST", { permit_number: "OFFICE-TI", applied_date: dayAgo(3) }),
       fl("9 OLD RD", { permit_number: "TOO-OLD", applied_date: dayAgo(45) }),
-      fl("1 NAMPA ST", { permit_number: "NAMPA-OFF", jurisdiction: "nampa", market: "Nampa, ID" }),
+      // Nampa is read from its published reports (2026-10-01), a month
+      // behind: its window is the last thirty days its reports cover, which
+      // end at its newest filing, so a 40-day-old one is in and a 75-day-old
+      // one is not.
+      fl("1 NAMPA ST", { permit_number: "NAMPA-RPT", jurisdiction: "nampa", market: "Nampa, ID", applied_date: dayAgo(40) }),
+      fl("2 NAMPA ST", { permit_number: "NAMPA-OLD", jurisdiction: "nampa", market: "Nampa, ID", applied_date: dayAgo(75) }),
     ],
     permit_filing_events: [], analytics_events: [],
   } });
@@ -140,27 +145,33 @@ test("the /permits route, signed out and signed in", async (t) => {
   await t.test("a firm member: the window, newest first, their building's filing marked", async () => {
     const { html, boot } = await page(BRAD);
     assert.equal(boot.s, 200);
-    assert.deepEqual(boot.j.filings.map((f) => f.permitNumber), ["ON-BOARD", "OFFICE-TI"],
-      "the 45-day-old filing and the switched-off city stay out");
+    assert.deepEqual(boot.j.filings.map((f) => f.permitNumber), ["ON-BOARD", "OFFICE-TI", "NAMPA-RPT"],
+      "the 45-day-old Boise filing stays out; Nampa's window is its reports' last thirty days");
+    const d40 = dayAgo(40);
+    assert.deepEqual(boot.j.reportCities,
+      [{ city: "Nampa", through: new Date(Date.UTC(Number(d40.slice(0, 4)), Number(d40.slice(5, 7)), 0)).toISOString().slice(0, 10) }],
+      "the page is told where Nampa's reports stop, to say so");
+    assert.equal(boot.j.filings[2].daysAgo, 40, "a Nampa filing keeps its true age");
     assert.deepEqual(boot.j.filings[0].onBoard, { id: B1, address: "1450 W Mission Ave, Boise, ID 83705" });
     assert.equal(boot.j.filings[1].onBoard, null);
-    assert.deepEqual(boot.j.filings.map((f) => f.propertyType), ["Industrial", "Other"],
+    assert.deepEqual(boot.j.filings.slice(0, 2).map((f) => f.propertyType), ["Industrial", "Other"],
       "each filing carries its property type for the menu, worked out at read time");
     assert.equal(boot.j.inFirm, true);
-    assert.equal(boot.j.cities, "Boise and Meridian");
+    assert.equal(boot.j.cities, "Boise, Meridian and Nampa");
     assert.equal(boot.j.stale, false);
     assert.ok(html.includes('<a href="/permits" aria-current="page">Permit tracker<span id="navPermitDot" class="navdot" hidden'),
       "the Tools row marks the page, and carries its unread dot hidden until asked");
     assert.equal(boot.mine.s, 200, "Your permits rides the same boot");
     assert.deepEqual(boot.mine.j.watches, []);
-    assert.deepEqual(boot.mine.j.cities, [{ key: "boise", label: "Boise" }, { key: "meridian", label: "Meridian" }]);
+    assert.deepEqual(boot.mine.j.cities, [{ key: "boise", label: "Boise" }, { key: "meridian", label: "Meridian" }],
+      "Nampa cannot be tracked by number: its reports cannot look up one permit");
   });
 
   await t.test("a member with no firm still gets the list, with nothing marked", async () => {
     const { boot } = await page(SOLO);
     assert.equal(boot.s, 200);
     assert.equal(boot.j.inFirm, false);
-    assert.equal(boot.j.filings.length, 2);
+    assert.equal(boot.j.filings.length, 3);
     assert.ok(boot.j.filings.every((f) => f.onBoard === null));
   });
 });

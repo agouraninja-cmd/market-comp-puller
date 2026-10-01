@@ -248,7 +248,8 @@ function bulkHeaderKind(cell) {
 
 function parseBulkPermits(grid, { cities, otherCities, defaultCity, existing, room } = {}) {
   const list = Array.isArray(cities) ? cities.filter((c) => c && c.key) : [];
-  // Cities we know of but do not read (Nampa, switched off): a row naming one
+  // Cities we know of but cannot track by number (Nampa, read from its
+  // published reports, which cannot look up one permit): a row naming one
   // is left out with the reason, never filed under the form's city.
   const others = (Array.isArray(otherCities) ? otherCities : []).map((l) => ({ key: "other:" + l, label: l }));
   const fallback = list.some((c) => c.key === defaultCity) ? defaultCity : null;
@@ -308,7 +309,7 @@ function parseBulkPermits(grid, { cities, otherCities, defaultCity, existing, ro
     if (c.cityCell) {
       jurisdiction = bulkCityOf(c.cityCell, list);
       if (!jurisdiction) {
-        skip(c.line, c.text, `We don't read ${clean(c.cityCell)}'s permits. We read ${list.map((x) => x.label).join(" and ")}.`);
+        skip(c.line, c.text, `We can't track ${clean(c.cityCell)} permits by number yet. We track permits in ${list.map((x) => x.label).join(" and ")}.`);
         continue;
       }
     }

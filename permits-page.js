@@ -344,6 +344,9 @@ function renderPermitsBody(boot) {
     if(j.never)sub+=" The sweep has not run yet.";
     else if(j.stale)sub+=" Last checked "+ago(j.lastSweptAt)+", more than a business day ago \\u2014 newer filings may be missing.";
     else sub+=" Checked "+ago(j.lastSweptAt)+".";
+    // A city read from its published reports (Nampa) is a month behind, so
+    // its window is the last days its reports cover, and the page says so.
+    (j.reportCities||[]).forEach(function(c){ sub+=" "+c.city+"’s permits come from the city’s published reports, which run about a month behind, so its "+(j.windowDays||30)+" days end "+day(c.through)+"."; });
     $("ptSub").textContent=sub;
     $("ptSub").className="pt-sub"+(j.stale&&!j.never?" stale":"");
     $("ptBody").className="";
@@ -495,6 +498,9 @@ function renderPermitsBody(boot) {
     $("pwPro").className=MINE.canTrack?"pw-pro hide":"pw-pro";
     var cities=(MINE.cities||[]).map(function(c){return c.label});
     var firmLine=MINE.firm?" As "+MINE.firm.name+"’s owner, you can track one for everyone at the firm.":"";
+    // Nampa is read from its published reports, which cannot look up one permit.
+    var late=((BOOT&&BOOT.j&&BOOT.j.reportCities)||[]).map(function(c){return c.city});
+    if(late.length)firmLine+=" "+words(late)+" permits can’t be tracked by number yet: we read "+(late.length===1?"that city":"those cities")+" from published reports, which can’t look up one permit.";
     $("pwSub").textContent=!MINE.canTrack
       ? (watches.length?"The permits you track are kept here. You can stop tracking any of them.":"")
       : watches.length

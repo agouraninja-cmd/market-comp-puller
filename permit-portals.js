@@ -95,15 +95,21 @@ const JURISDICTIONS = Object.freeze({
     state: "ID",
     platform: "energov",
     county: "canyon",
-    // NOT SWEPT as of 2026-09-16. The Tyler host now sits behind an AWS load
-    // balancer that answers 403 to any user agent naming a bot (measured: the
-    // tracker's own "AdlerPermitTracker/1.0" is refused, a browser string is
-    // served). Disguising this sweep as a browser to get past a filter the
-    // operator chose is not a call this code makes on its own; the client and
-    // its tests stay so the city can be switched back on the day the owner
-    // decides, or the day the portal answers a named agent again.
-    sweep: false,
-    blocked: "portal answers 403 to a non-browser user agent (awselb, 2026-09-16)",
+    // SWEPT FROM THE CITY'S PUBLISHED REPORTS since 2026-10-01 (`via:
+    // "reports"`, permit-reports.js), not from this portal. The Tyler host
+    // sits behind an AWS load balancer that answers 403 to any agent that is
+    // not a web browser — the old tracker's "AdlerPermitTracker/1.0" on
+    // 2026-09-16, and this sweep's own honest agent, with and without a
+    // browser-style prefix, on 2026-10-01. Disguising the sweep as a browser
+    // was refused. cityofnampa.us serves the same records as monthly plan
+    // review and weekly/monthly issued-permit PDFs to our named agent, a few
+    // weeks late. The EnerGov client below and its tests stay: the day the
+    // portal answers a named agent (the city can allow ours), switching back
+    // is dropping `via` and the reports fields.
+    via: "reports",
+    reportsUrl: "https://www.cityofnampa.us/427/Permit-Reports",
+    reportsOrigin: "https://www.cityofnampa.us",
+    portalBlocked: "portal answers 403 to a non-browser user agent (awselb; 2026-09-16, re-checked 2026-10-01)",
     base: "https://nampaid-energovpub.tylerhost.net",
     tenant: "NampaIDProd",
     tenantId: 1,
@@ -115,6 +121,12 @@ const JURISDICTIONS = Object.freeze({
 const JURISDICTION_KEYS = Object.freeze(Object.keys(JURISDICTIONS));
 // The cities a sweep actually reads: every entry not switched off above.
 const SWEEP_KEYS = Object.freeze(JURISDICTION_KEYS.filter((k) => JURISDICTIONS[k].sweep !== false));
+// Of those, the ones read from the city's published reports (Nampa) rather
+// than its portal: their filings arrive weeks late, and there is no live
+// lookup of one permit, so they cannot be tracked by number.
+const REPORT_KEYS = Object.freeze(SWEEP_KEYS.filter((k) => JURISDICTIONS[k].via === "reports"));
+// The cities whose portal can look up one permit: the tracked-permits list.
+const LOOKUP_KEYS = Object.freeze(SWEEP_KEYS.filter((k) => !REPORT_KEYS.includes(k)));
 
 function getJurisdiction(key) {
   return JURISDICTIONS[String(key || "").toLowerCase()] || null;
@@ -144,7 +156,10 @@ function withOrigin(j, origin) {
   const swap = (url) => {
     try { const u = new URL(url); return o + u.pathname + u.search; } catch (_) { return url; }
   };
-  return Object.freeze({ ...j, base: swap(j.base) });
+  return Object.freeze({
+    ...j, base: swap(j.base),
+    ...(j.reportsUrl ? { reportsUrl: swap(j.reportsUrl), reportsOrigin: o } : {}),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -864,7 +879,7 @@ async function lookupPermit(key, permitNumber, deps) {
 
 module.exports = {
   UA,
-  JURISDICTIONS, JURISDICTION_KEYS, SWEEP_KEYS, getJurisdiction, resolveJurisdiction,
+  JURISDICTIONS, JURISDICTION_KEYS, SWEEP_KEYS, REPORT_KEYS, LOOKUP_KEYS, getJurisdiction, resolveJurisdiction,
   marketLabel, withOrigin,
   // accela
   decodeEntities, decodeNumbered, harvestForm, usToIsoDate, isoToUsDate, accelaSearchUrl, parseAccelaStatus,

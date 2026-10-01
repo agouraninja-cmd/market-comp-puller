@@ -99,7 +99,7 @@ test("tracking several permits at once", async (t) => {
       ["Boise BLD26-00011", "Boise BLD26-00012", "Meridian C-TI-2026-0001", "Boise BLD26-99999", "Boise BLD26-00013"]);
     assert.equal(j.permits[0].label, "Federal Way warehouse");
     assert.deepEqual(j.skipped.map((s) => s.line), [6, 7]);
-    assert.match(j.skipped[0].reason, /don't read Nampa/);
+    assert.match(j.skipped[0].reason, /can't track Nampa permits by number/);
     assert.equal(portal.hits.length, before, "no portal was asked");
     assert.equal(db.tables.permit_watches.length, 0);
   });

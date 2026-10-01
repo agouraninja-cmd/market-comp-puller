@@ -34,11 +34,17 @@ on:
         description: "How many days back to read (1-60)"
         required: false
         default: "4"
+      history:
+        description: "Older months to re-read after the sweep: rotate (this month, last month and one older), all (the whole last year in the background, the one-off backfill), or off"
+        required: false
+        default: "rotate"
+        type: choice
+        options: [rotate, all, off]
 
 jobs:
   sweep:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 50
     steps:
       - name: Run one sweep against the live site
         env:
@@ -76,4 +82,37 @@ jobs:
             if (w.errors && w.errors.length) console.log(`::warning::Tracked permits: ${w.errors.join(" | ")}`);
             if (w.mailOff) console.log("::warning::Permit notice emails are waiting: outbound mail (EMAIL_FROM + RESEND_API_KEY) is not configured.");
             if (s.errors && s.errors.length) { console.log(`::error::${s.errors.join(" | ")}`); process.exit(1); }
+          '
+
+      # The history pass (2026-10-01): whole calendar months re-read, which keeps
+      # every stored permit's status current for the permit section of the
+      # market pages, and on "all" fills in the past year. Its own call, after
+      # the sweep, so each has its own time budget: a month of one city is
+      # about 100 seconds of portal reads. Its problems WARN, never fail the job.
+      - name: Re-read older months
+        if: ${{ (github.event.inputs.history || 'rotate') != 'off' }}
+        env:
+          ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+          SITE: https://compninja.co
+          HISTORY: ${{ github.event.inputs.history || 'rotate' }}
+        run: |
+          status=$(curl -sS -o history.json -w '%{http_code}' --max-time 1500 \
+            -X POST "$SITE/api/permits/sweep" \
+            -H "x-admin-key: $ADMIN_KEY" -H 'content-type: application/json' \
+            -d "{\"only\": \"history\", \"history\": \"$HISTORY\"}") || status=timeout
+          echo "HTTP $status"
+          cat history.json 2>/dev/null; echo
+          if [ "$status" = "202" ]; then
+            echo "::notice::The backfill of the last year started in the background. It takes about 45 minutes; its result shows on /admin."
+            exit 0
+          fi
+          if [ "$status" != "200" ]; then
+            echo "::warning::The history pass answered $status. Older permits keep their last read status until the next run."
+            exit 0
+          fi
+          node -e '
+            const s = JSON.parse(require("fs").readFileSync("history.json", "utf8"));
+            const h = s.history || {};
+            console.log(`history ${(h.windows || []).join(" ")}: ${h.discovered || 0} read, ${h.added || 0} stored, ${h.statusChanges || 0} status change(s)`);
+            if (h.errors && h.errors.length) console.log(`::warning::History pass: ${h.errors.join(" | ")}`);
           '

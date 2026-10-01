@@ -56,6 +56,7 @@ const PERMIT_FILINGS = require("./permit-filings");
 // Tracking your own permit (2026-09-27): the five steps, what a status change
 // announces, the notice email. Pure; the tables are migration 054's.
 const PERMIT_WATCH = require("./permit-watch");
+const PERMIT_PULSE_MOD = require("./permit-pulse");
 // Who may read a shared report. Pure and tested for the same reason as the
 // modules above it: this gate protects a broker's private comps, not a comp
 // count, so it has to be provable rather than reviewed.
@@ -6678,13 +6679,139 @@ function permitDeps() {
   };
 }
 
-// One sweep over every swept city: discover the window, split what the table
-// already holds from what is new, enrich and zone the new rows one at a time
-// (each is a detail-page request, paused), insert them, and record a status
-// change on any row the listing re-showed with a different status. A dry run
-// does everything but write. One city's failure is one city's error line;
-// the others still run.
-async function sweepPermitFilings({ days, dryRun = false } = {}) {
+// One city over one window: discover it, split what the table already holds
+// from what is new, enrich and zone the new rows `enrich` asks for (each a
+// detail-page request, paused), insert them, and record a status change on
+// any row the listing re-showed with a different status. A dry run does
+// everything but write. `city` is filled in as it goes, so a failure part
+// way leaves what was learned for the summary. Shared by the sweep's own
+// short window and the history pass, which differ only in which new rows earn
+// the detail-page reads.
+async function sweepCityWindow(key, window, city, { dryRun, deps, keyDeps, now, enrich, budget }) {
+  const j = permitJurisdiction(key);
+  const { rows, truncated } = await PERMITS.discoverFilings(j, window, deps);
+  city.rows += rows.length;
+  if (truncated) city.truncated = true;
+  const tagged = rows.map((r) => ({ ...r, jurisdiction: key }));
+  const numbers = [...new Set(tagged.map((r) => String(r.permit_number || "").toUpperCase()).filter(Boolean))];
+  const stored = (DB_CONFIGURED && numbers.length)
+    ? (await sbRequest("GET",
+        `permit_filings?jurisdiction=eq.${encodeURIComponent(key)}&permit_number=in.(${pgInList(numbers)})` +
+        `&select=id,jurisdiction,permit_number,status`)) || []
+    : [];
+  const { fresh, seen } = PERMIT_FILINGS.splitKnown(tagged, stored);
+  city.fresh += fresh.length;
+  city.seen += seen.length;
+
+  const toInsert = [];
+  let reads = 0;
+  for (const r of fresh) {
+    const extra = {};
+    if (enrich(r) && (!budget || budget.left > 0)) {
+      if (budget) budget.left -= 1;
+      if (reads > 0) await deps.sleep();
+      reads += 1;
+      Object.assign(extra, await PERMITS.enrichFiling(j, r.ref, deps));
+      if (extra.applicant_company || extra.contractor_company || extra.parcel_number) city.enriched += 1;
+      // Zoning is the real "is this industrial land" signal; the keyword
+      // flag stands only where the parcel layer cannot answer.
+      if (j.county === "ada" && extra.parcel_number) {
+        const z = await PERMIT_ZONING.fetchZoningByParcel(extra.parcel_number, deps);
+        if (z.zoning) extra.zoning = z.zoning;
+      }
+    }
+    const row = PERMIT_FILINGS.normalizeFiling(r, j, extra, keyDeps);
+    if (row) toInsert.push(row);
+  }
+  city.industrial += toInsert.filter((r) => r.is_industrial).length;
+
+  const changes = [];
+  const unchanged = [];
+  for (const { row, stored: st } of seen) {
+    const ch = PERMIT_FILINGS.statusChange(st.status, row.status, now);
+    if (ch) changes.push({ id: st.id, ...ch });
+    else unchanged.push(st.id);
+  }
+  city.statusChanges += changes.length;
+
+  if (dryRun) {
+    city.added += toInsert.length;
+    city.sample = (city.sample || []).concat(toInsert.slice(0, 5)).slice(0, 5);
+    return city;
+  }
+  const stamp = new Date().toISOString();
+  if (toInsert.length) {
+    const inserted = await sbRequest("POST", "permit_filings?on_conflict=jurisdiction,permit_number",
+      toInsert.map((r) => ({ ...r, first_seen_at: stamp, last_seen_at: stamp })),
+      { prefer: "resolution=ignore-duplicates,return=representation" });
+    city.added += Array.isArray(inserted) ? inserted.length : 0;
+  }
+  for (const c of changes) {
+    await sbRequest("PATCH", `permit_filings?id=eq.${encodeURIComponent(c.id)}`,
+      { status: c.new_status, status_changed_at: c.detected_at, last_seen_at: stamp },
+      { prefer: "return=minimal" });
+    await sbRequest("POST", "permit_filing_events",
+      { filing_id: c.id, old_status: c.old_status, new_status: c.new_status, detected_at: c.detected_at },
+      { prefer: "return=minimal" });
+  }
+  if (unchanged.length) {
+    await sbRequest("PATCH", `permit_filings?id=in.(${pgInList(unchanged)})`,
+      { last_seen_at: stamp }, { prefer: "return=minimal" });
+  }
+  return city;
+}
+function newCityTally() {
+  return { rows: 0, fresh: 0, seen: 0, statusChanges: 0, enriched: 0, industrial: 0, added: 0, truncated: false };
+}
+
+// The history pass (2026-10-01, the market pages' permit section): whole
+// calendar months of listings re-read when asked — this month, last month
+// and one older one in rotation (PERMIT_FILINGS.historyWindows), or every
+// month at once with `all`. It keeps each stored permit's status current,
+// which the section's wait and "still in review" figures read, and it is the
+// backfill: a permit it has never seen is stored. Only a new one filed inside
+// the tracker's 30-day window gets the detail-page reads (the feed shows its
+// applicant and zoning), up to HISTORY_ENRICH_CAP a run; older ones are
+// stored from the listing alone. Its errors stay in summary.history, not
+// summary.errors, for the tracked-permits reason: the workflow fails on
+// summary.errors, and a re-read of last March must not turn today's sweep red.
+const HISTORY_ENRICH_CAP = 40;
+async function sweepPermitHistory({ now, dryRun, deps, keyDeps, all }) {
+  const out = { windows: [], discovered: 0, added: 0, seen: 0, statusChanges: 0, enriched: 0, truncated: [], errors: [] };
+  const recentFrom = PERMIT_FILINGS.localIsoDate(now - PERMIT_FILINGS.TRACKER_WINDOW_DAYS * 86400000);
+  const budget = { left: HISTORY_ENRICH_CAP };
+  for (const w of PERMIT_FILINGS.historyWindows(now, { all })) {
+    out.windows.push(w.month);
+    for (const key of PERMITS.SWEEP_KEYS) {
+      const city = newCityTally();
+      try {
+        await deps.sleep();
+        await sweepCityWindow(key, w, city, {
+          dryRun, deps, keyDeps, now, budget,
+          enrich: (r) => String(r.applied_date || "") >= recentFrom,
+        });
+      } catch (err) {
+        console.error(`[permit history] ${key} ${w.month}: ${err.message}`);
+        out.errors.push(`${key} ${w.month}: ${err.message}`);
+      }
+      out.discovered += city.rows; out.added += city.added; out.seen += city.seen;
+      out.statusChanges += city.statusChanges; out.enriched += city.enriched;
+      if (city.truncated) out.truncated.push(`${key} ${w.month}`);
+    }
+  }
+  return out;
+}
+
+// One sweep over every swept city: the last few days, every filing enriched
+// and zoned (sweepCityWindow), then the tracked permits. One city's failure is
+// one city's error line; the others still run.
+// `history` adds the history pass: "rotate" (this month, last month and one
+// older) or "all" (every month: the backfill); anything else, none.
+// `only: "history"` runs the history pass ALONE, with no short window and no
+// tracked permits — the scheduled job's second call, so each gets its own
+// time budget (a month of one city's listings is about 100 seconds of portal
+// reads at the two-second pause).
+async function sweepPermitFilings({ days, dryRun = false, history, only } = {}) {
   const now = Date.now();
   const window = PERMIT_FILINGS.sweepWindow(now, days);
   const deps = permitDeps();
@@ -6699,92 +6826,41 @@ async function sweepPermitFilings({ days, dryRun = false } = {}) {
     skipped: PERMITS.JURISDICTION_KEYS.filter((k) => !PERMITS.SWEEP_KEYS.includes(k))
       .map((k) => ({ city: k, reason: PERMITS.JURISDICTIONS[k].blocked || "switched off" })),
   };
-  for (const key of PERMITS.SWEEP_KEYS) {
-    const j = permitJurisdiction(key);
-    const city = { rows: 0, fresh: 0, seen: 0, statusChanges: 0, enriched: 0, truncated: false };
+  const historyOnly = only === "history";
+  if (historyOnly) summary.only = "history";
+  for (const key of historyOnly ? [] : PERMITS.SWEEP_KEYS) {
+    const city = newCityTally();
     summary.cities[key] = city;
     try {
-      const { rows, truncated } = await PERMITS.discoverFilings(j, window, deps);
-      city.rows = rows.length;
-      city.truncated = truncated;
-      if (truncated) summary.truncated.push(key);
-      summary.discovered += rows.length;
-      const tagged = rows.map((r) => ({ ...r, jurisdiction: key }));
-      const numbers = [...new Set(tagged.map((r) => String(r.permit_number || "").toUpperCase()).filter(Boolean))];
-      const stored = (DB_CONFIGURED && numbers.length)
-        ? (await sbRequest("GET",
-            `permit_filings?jurisdiction=eq.${encodeURIComponent(key)}&permit_number=in.(${pgInList(numbers)})` +
-            `&select=id,jurisdiction,permit_number,status`)) || []
-        : [];
-      const { fresh, seen } = PERMIT_FILINGS.splitKnown(tagged, stored);
-      city.fresh = fresh.length;
-      city.seen = seen.length;
-      summary.seen += seen.length;
-
-      const toInsert = [];
-      for (let i = 0; i < fresh.length; i++) {
-        const r = fresh[i];
-        if (i > 0) await deps.sleep();
-        const extra = await PERMITS.enrichFiling(j, r.ref, deps);
-        if (extra.applicant_company || extra.contractor_company || extra.parcel_number) city.enriched += 1;
-        // Zoning is the real "is this industrial land" signal; the keyword
-        // flag stands only where the parcel layer cannot answer.
-        if (j.county === "ada" && extra.parcel_number) {
-          const z = await PERMIT_ZONING.fetchZoningByParcel(extra.parcel_number, deps);
-          if (z.zoning) extra.zoning = z.zoning;
-        }
-        const row = PERMIT_FILINGS.normalizeFiling(r, j, extra, keyDeps);
-        if (row) toInsert.push(row);
-      }
-      summary.industrial += toInsert.filter((r) => r.is_industrial).length;
-
-      const changes = [];
-      const unchanged = [];
-      for (const { row, stored: s } of seen) {
-        const ch = PERMIT_FILINGS.statusChange(s.status, row.status, now);
-        if (ch) changes.push({ id: s.id, ...ch });
-        else unchanged.push(s.id);
-      }
-      city.statusChanges = changes.length;
-      summary.statusChanges += changes.length;
-
-      if (dryRun) {
-        summary.added += toInsert.length;
-        city.sample = toInsert.slice(0, 5);
-        continue;
-      }
-      const stamp = new Date().toISOString();
-      if (toInsert.length) {
-        const inserted = await sbRequest("POST", "permit_filings?on_conflict=jurisdiction,permit_number",
-          toInsert.map((r) => ({ ...r, first_seen_at: stamp, last_seen_at: stamp })),
-          { prefer: "resolution=ignore-duplicates,return=representation" });
-        summary.added += Array.isArray(inserted) ? inserted.length : 0;
-      }
-      for (const c of changes) {
-        await sbRequest("PATCH", `permit_filings?id=eq.${encodeURIComponent(c.id)}`,
-          { status: c.new_status, status_changed_at: c.detected_at, last_seen_at: stamp },
-          { prefer: "return=minimal" });
-        await sbRequest("POST", "permit_filing_events",
-          { filing_id: c.id, old_status: c.old_status, new_status: c.new_status, detected_at: c.detected_at },
-          { prefer: "return=minimal" });
-      }
-      if (unchanged.length) {
-        await sbRequest("PATCH", `permit_filings?id=in.(${pgInList(unchanged)})`,
-          { last_seen_at: stamp }, { prefer: "return=minimal" });
-      }
+      await sweepCityWindow(key, window, city, { dryRun, deps, keyDeps, now, enrich: () => true });
     } catch (err) {
       console.error(`[permit sweep] ${key}: ${err.message}`);
       summary.errors.push(`${key}: ${err.message}`);
     }
+    summary.discovered += city.rows;
+    summary.seen += city.seen;
+    summary.statusChanges += city.statusChanges;
+    summary.industrial += city.industrial;
+    summary.added += city.added;
+    if (city.truncated) summary.truncated.push(key);
   }
+  if (history === "rotate" || history === "all") {
+    try { summary.history = await sweepPermitHistory({ now, dryRun, deps, keyDeps, all: history === "all" }); }
+    catch (err) { summary.history = { errors: [err.message] }; }
+  }
+  // The market pages' permit section reads this table; a run that wrote to
+  // it makes the next page view refresh rather than wait out the TTL.
+  if (!dryRun) PERMIT_PULSE.fetchedAt = 0;
   // --- tracked permits ride this same run (054) --------------------------
   // ONE trigger, the renewal watch's argument: whatever drives the sweep
   // already drives this, so it cannot be the job somebody forgets to
   // schedule. Its errors stay in summary.watches, NOT summary.errors: those
   // fail the scheduled workflow, and one member's mistyped-then-deleted
   // permit must not turn the city sweep red.
-  try { summary.watches = await checkPermitWatches({ dryRun, deps, now }); }
-  catch (err) { summary.watches = { errors: [err.message] }; }
+  if (!historyOnly) {
+    try { summary.watches = await checkPermitWatches({ dryRun, deps, now }); }
+    catch (err) { summary.watches = { errors: [err.message] }; }
+  }
   summary.finishedAt = new Date().toISOString();
   return summary;
 }
@@ -6803,6 +6879,11 @@ async function readPermitStats() {
       at: PERMIT_SWEEP.lastSummary.finishedAt, dryRun: PERMIT_SWEEP.lastSummary.dryRun,
       added: PERMIT_SWEEP.lastSummary.added, statusChanges: PERMIT_SWEEP.lastSummary.statusChanges,
       errors: PERMIT_SWEEP.lastSummary.errors,
+      only: PERMIT_SWEEP.lastSummary.only || null,
+      history: PERMIT_SWEEP.lastSummary.history ? {
+        windows: PERMIT_SWEEP.lastSummary.history.windows || [], added: PERMIT_SWEEP.lastSummary.history.added || 0,
+        statusChanges: PERMIT_SWEEP.lastSummary.history.statusChanges || 0, errors: PERMIT_SWEEP.lastSummary.history.errors || [],
+      } : null,
     } : null,
   };
   if (!DB_CONFIGURED) return { ...base, filings: 0, industrial: 0, byCity: {}, lastSeenAt: null };
@@ -6846,6 +6927,76 @@ const permitCityOf = (key) => {
   const j = PERMITS.JURISDICTIONS[key];
   return j ? j.label : "";
 };
+
+// The market pages' permit section (2026-10-01, Draft C). A market page
+// renders synchronously and never waits on the database, so this is
+// MARKET_INTEL's stale-while-revalidate: one read of the swept cities' last
+// ~13 months of filings per TTL, turned into each city's pulse by
+// permit-pulse.js, and the page draws from whatever is cached. Filtered by
+// JURISDICTION, never market=in.(…) (permits.md: a market name has a comma).
+// Paged by id, because the table outgrows PostgREST's 1,000-row page within a
+// year. A failed read keeps the previous pulse and waits a minute to retry;
+// with nothing cached the page simply has no section — never a zero.
+const PERMIT_PULSE = { byCity: {}, fetchedAt: 0, failedAt: 0, refreshing: false };
+const PERMIT_PULSE_TTL_MS = 30 * 60 * 1000;
+async function refreshPermitPulse() {
+  if (!DB_CONFIGURED || PERMIT_PULSE.refreshing) return;
+  PERMIT_PULSE.refreshing = true;
+  try {
+    const now = Date.now();
+    const since = PERMIT_FILINGS.localIsoDate(now - PERMIT_PULSE_MOD.READ_DAYS * 86400000);
+    const rows = [];
+    for (let offset = 0; offset < 50000; offset += 1000) {
+      const page = (await sbRequest("GET",
+        `permit_filings?jurisdiction=in.(${PERMITS.SWEEP_KEYS.join(",")})&applied_date=gte.${since}` +
+        `&select=id,jurisdiction,permit_type,status,applied_date,last_seen_at&order=id.asc&limit=1000&offset=${offset}`)) || [];
+      rows.push(...page);
+      if (page.length < 1000) break;
+    }
+    const byCity = {};
+    for (const key of PERMITS.SWEEP_KEYS) {
+      byCity[key] = PERMIT_PULSE_MOD.buildPulse(rows.filter((r) => r.jurisdiction === key), { now });
+    }
+    PERMIT_PULSE.byCity = byCity;
+    PERMIT_PULSE.fetchedAt = Date.now();
+  } catch (err) {
+    PERMIT_PULSE.failedAt = Date.now();
+    console.error("Permit pulse refresh failed; keeping previous:", err.message);
+  } finally {
+    PERMIT_PULSE.refreshing = false;
+  }
+}
+// What a market page in `city, state` shows: the pulse for a city the sweep
+// reads, an "unread" note for a city whose portal we know but do not read
+// (Nampa), or null for everywhere else — a Dallas page says nothing about
+// permits, rather than claiming it looked.
+function permitPulseFor(city, state, propertyType) {
+  if (Date.now() - PERMIT_PULSE.fetchedAt > PERMIT_PULSE_TTL_MS && Date.now() - PERMIT_PULSE.failedAt > 60000) {
+    refreshPermitPulse();
+  }
+  const c = String(city || "").trim().toLowerCase(), st = String(state || "").trim().toUpperCase();
+  const key = PERMITS.JURISDICTION_KEYS.find((k) =>
+    PERMITS.JURISDICTIONS[k].label.toLowerCase() === c && PERMITS.JURISDICTIONS[k].state === st);
+  if (!key) return null;
+  const label = PERMITS.JURISDICTIONS[key].label;
+  if (!PERMITS.SWEEP_KEYS.includes(key)) {
+    return {
+      unread: true, city: label,
+      swept: PERMIT_SWEPT.map((s) => {
+        const slug = slugifyMarket(propertyType, s.label, PERMITS.JURISDICTIONS[s.key].state);
+        return { city: s.label, href: getMarketPage(slug) ? `/market/${slug}` : null };
+      }),
+    };
+  }
+  const pulse = PERMIT_PULSE.byCity[key];
+  if (!pulse) return null;
+  return {
+    city: label, pulse,
+    freshness: PERMIT_FILINGS.sweepFreshness(pulse.lastSeenAt, Date.now()),
+    others: PERMITS.SWEEP_KEYS.filter((k) => k !== key && PERMIT_PULSE.byCity[k])
+      .map((k) => ({ city: PERMITS.JURISDICTIONS[k].label, pulse: PERMIT_PULSE.byCity[k] })),
+  };
+}
 
 // When a sweep last touched the table. The durable answer (the in-memory
 // summary dies with the process); null when nothing has ever been swept.
@@ -13986,6 +14137,16 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       `<ul>${p.value_drivers.map((d) => `<li>${escHtml(d)}</li>`).join("")}</ul></div>`
     : "";
 
+  // Building permits (2026-10-01, Draft C): the full section where the sweep
+  // reads the city, a one-line "not yet" where we know its portal but do not
+  // read it, and nothing anywhere else (permitPulseFor). Sits after the
+  // drivers because permits are one: build-outs are demand, new buildings are
+  // supply, and the wait says how fast either can arrive.
+  const permitView = permitPulseFor(p.city, p.state, p.type);
+  const permitCard = !permitView ? ""
+    : permitView.unread ? PERMIT_PULSE_MOD.unreadCardHtml(permitView)
+    : PERMIT_PULSE_MOD.pulseSectionHtml({ ...permitView, signedIn });
+
   // Market intelligence — the live corpus view (plus this page's own seeded
   // comps, deduped). Under-claim rule: a trend renders only with >=6 dated
   // sale comps across >=2 half-years; thin markets get the tracking line.
@@ -14481,6 +14642,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     auxLedger +
     (p.summary ? `<div class="card"><h2>${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())} market</h2><p>${escHtml(p.summary)}</p></div>` : "") +
     drivers +
+    permitCard +
     intelCard +
     mapCard +
     compsTable +
@@ -21586,17 +21748,40 @@ const server = http.createServer((req, res) =>
         if (!DB_CONFIGURED && !dryRun) {
           return sendJson(res, 503, { error: "The permit sweep needs a database: filings have no file fallback. Use { dryRun: true } to see what a sweep would find." });
         }
+        const history = opts.history === "all" || opts.history === "rotate" ? opts.history : "off";
+        const only = opts.only === "history" ? "history" : null;
+        if (only && history === "off") {
+          return sendJson(res, 400, { error: "only: \"history\" needs history: \"rotate\" or \"all\"." });
+        }
         if (PERMIT_SWEEP.running) return sendJson(res, 409, { error: "A permit sweep is already running." });
         PERMIT_SWEEP.running = true;
+        // The backfill (every month, about 45 minutes of portal reads) runs in
+        // the BACKGROUND: no request, workflow or proxy waits that long. It is
+        // still one route call and one run (rule 12); its summary lands where
+        // every run's does, for /admin and /api/stats.
+        if (history === "all") {
+          const windows = PERMIT_FILINGS.historyWindows(Date.now(), { all: true }).map((w) => w.month);
+          sweepPermitFilings({ days: opts.days, dryRun, history, only })
+            .then((done) => {
+              PERMIT_SWEEP.lastSummary = done;
+              const h = done.history || {};
+              console.log(`🏗  Permit history backfill${dryRun ? " (dry run)" : ""}: ${h.discovered || 0} read, ${h.added || 0} stored, ` +
+                `${h.statusChanges || 0} status change(s), ${(h.errors || []).length} error(s)`);
+            })
+            .catch((err) => console.error("permit history backfill error:", err))
+            .finally(() => { PERMIT_SWEEP.running = false; });
+          return sendJson(res, 202, { started: true, background: true, history, only, windows });
+        }
         let summary;
-        try { summary = await sweepPermitFilings({ days: opts.days, dryRun }); }
+        try { summary = await sweepPermitFilings({ days: opts.days, dryRun, history, only }); }
         finally { PERMIT_SWEEP.running = false; }
         PERMIT_SWEEP.lastSummary = summary;
         const pw = summary.watches || {};
         console.log(`🏗  Permit sweep${dryRun ? " (dry run)" : ""}: ${summary.discovered} discovered, ` +
           `${summary.added} new, ${summary.statusChanges} status change(s), ${summary.errors.length} error(s); ` +
           `tracked permits: ${pw.checked || 0} checked, ${pw.notices || 0} notice(s), ${pw.emailed || 0} emailed` +
-          `${pw.emailsPending ? `, ${pw.emailsPending} email(s) pending` : ""}${(pw.errors || []).length ? `, ${pw.errors.length} error(s)` : ""}`);
+          `${pw.emailsPending ? `, ${pw.emailsPending} email(s) pending` : ""}${(pw.errors || []).length ? `, ${pw.errors.length} error(s)` : ""}` +
+          (summary.history ? `; history ${(summary.history.windows || []).join(" ")}: ${summary.history.added || 0} stored, ${summary.history.statusChanges || 0} status change(s), ${(summary.history.errors || []).length} error(s)` : ""));
         return sendJson(res, 200, summary);
       } catch (err) {
         console.error("permit sweep error:", err);
@@ -30937,6 +31122,7 @@ server.listen(PORT, () => {
   refreshMarketCredit();   // warm the broker-credit cache for market pages
   refreshBrokerProfiles(); // warm the public-profile cache (badge links + sitemap)
   refreshMarketIntel();    // warm the corpus-intelligence cache (market pages + feed)
+  refreshPermitPulse();    // warm the permit section of the Boise and Meridian market pages
   loadDynamicMarketPages().then((n) => {
     console.log(`🧭 Market Explorer: ${n} visitor-generated page(s) loaded (${DB_CONFIGURED ? "Supabase market_pages" : path.basename(DYNAMIC_MARKETS_FILE) + " — EPHEMERAL on most hosts; run the market_pages DDL in Supabase for durable storage"}).`);
   });

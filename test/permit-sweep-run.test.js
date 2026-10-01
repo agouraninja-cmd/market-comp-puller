@@ -35,7 +35,10 @@ const page2 = (html) => html
 
 // One origin, three services. Paths are the real portals' paths because
 // withOrigin() keeps them.
-function startPortal() {
+// `monthsOnly`: answer only a search that starts on the 1st of a month, so
+// the history pass (whole calendar months) finds the filings and the short
+// window finds nothing, which is how the two passes are told apart.
+function startPortal({ monthsOnly = false } = {}) {
   const hits = [];
   const srv = http.createServer((req, res) => {
     let body = "";
@@ -59,6 +62,12 @@ function startPortal() {
       if (/CapHome\.aspx$/.test(url.pathname)) {
         if (req.method === "GET") return html(readGz(`${city}.search.html.gz`));
         const form = new URLSearchParams(body);
+        const startDate = form.get("ctl00$PlaceHolderMain$generalSearchForm$txtGSStartDate") || "";
+        // A pager postback replays the captured page's own form, so it is let
+        // through: the search that led to it already passed this check.
+        if (monthsOnly && !/ctl13\$ctl04/.test(form.get("__EVENTTARGET") || "") && !/^\d{2}\/01\//.test(startDate)) {
+          return html("<html><body><span>Your search returned no results.</span></body></html>");
+        }
         const type = form.get("ctl00$PlaceHolderMain$generalSearchForm$ddlGSPermitType");
         const t = P.JURISDICTIONS[city].discovery.types.find((x) => x.value === type);
         if (!t) { res.writeHead(500); return res.end("unknown type " + type); }
@@ -261,4 +270,70 @@ test("a sweep survives one city's portal failing: the other city's rows still la
   assert.equal(s.cities.boise.fresh, manifest.cities.boise.rows);
   assert.equal(db.tables.permit_filings.length, manifest.cities.boise.rows);
   assert.ok(realHits.length > 0);
+});
+
+// The history pass (2026-10-01, the market pages' permit section). The stub
+// answers only whole-month searches here, so everything stored came from the
+// history pass, and the short window's own count stays at zero.
+test("the history pass re-reads whole months: it stores what the short window never saw, and keeps old statuses current", async (t) => {
+  const F = require("../permit-filings");
+  const portal = await startPortal({ monthsOnly: true });
+  t.after(() => portal.stop());
+  const db = await fake.start({ tables: { permit_filings: [], permit_filing_events: [], analytics_events: [] } });
+  t.after(() => db.stop());
+  const srv = await shared.boot({
+    ACCOUNT_WALL: "off", ADMIN_KEY: KEY,
+    SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key",
+    PERMIT_PORTAL_ORIGIN: portal.url, PERMIT_SWEEP_PAUSE_MS: "0",
+  });
+  t.after(() => srv.stop());
+  // A short window that does not itself start on the 1st.
+  const days = [2, 3, 4, 5, 6].find((d) => !F.sweepWindow(Date.now(), d).from.endsWith("-01"));
+  const lastRun = async () => (await (await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": KEY } })).json()).permits.lastRun;
+
+  // A plain sweep reads no history at all, and asking for history alone
+  // without saying which is refused.
+  const plain = await (await sweep(srv.base, { days })).json();
+  assert.equal(plain.history, undefined);
+  assert.equal(plain.discovered, 0, "the short window found nothing");
+  assert.equal((await sweep(srv.base, { only: "history" })).status, 400);
+
+  // The backfill answers at once and runs in the background.
+  const started = await sweep(srv.base, { only: "history", history: "all" });
+  assert.equal(started.status, 202);
+  const s0 = await started.json();
+  assert.equal(s0.background, true);
+  assert.equal(s0.windows.length, F.HISTORY_MONTHS);
+  let run = null;
+  for (let i = 0; i < 100 && !(run && run.only === "history"); i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    run = await lastRun();
+  }
+  assert.equal(run.only, "history");
+  assert.equal(run.history.windows.length, F.HISTORY_MONTHS, "every month, once");
+  assert.deepEqual(run.history.errors, []);
+  assert.equal(run.history.added, EXPECTED, "each filing stored once, however many months listed it");
+  assert.equal(db.tables.permit_filings.length, EXPECTED);
+  // Only a filing inside the tracker's 30-day window earns the detail page;
+  // an older one is stored from its listing alone.
+  const recentFrom = F.localIsoDate(Date.now() - F.TRACKER_WINDOW_DAYS * 86400000);
+  for (const r of db.tables.permit_filings) {
+    if (r.applied_date && r.applied_date < recentFrom) assert.equal(r.applicant_company, null, r.permit_number);
+  }
+
+  // A permit whose status moved since: the daily rotation reads it again.
+  const row = db.tables.permit_filings.find((r) => r.permit_number === "BLD26-02789");
+  row.status = "Prescreen";
+  const s2 = await (await sweep(srv.base, { only: "history", history: "rotate" })).json();
+  assert.equal(s2.only, "history");
+  assert.equal(s2.discovered, 0, "no short window ran");
+  assert.equal(s2.watches, undefined, "nor the tracked permits");
+  assert.equal(s2.history.windows.length, 2 + F.HISTORY_ROTATE);
+  assert.deepEqual(s2.history.windows, F.historyWindows(Date.now()).map((w) => w.month));
+  assert.equal(s2.history.added, 0);
+  assert.equal(s2.history.statusChanges, 1);
+  assert.equal(row.status, "Applicant Upload");
+  assert.equal(db.tables.permit_filing_events.length, 1);
+  assert.equal(db.tables.permit_filing_events[0].old_status, "Prescreen");
+  assert.equal(db.unparsed.length, 0, JSON.stringify(db.unparsed));
 });

@@ -342,3 +342,81 @@ the route runs against the stand-in and the portal stub in
   OWNED firm to each new permit (`permitFirmContext`, 403 otherwise).
 - **Adding announces nothing** — `newWatchRow` marks the steps so far passed
   without an event, as on the one-permit form.
+
+## The permit section on the market pages (2026-10-01)
+
+Owner's pick of Draft C ("do C") from the Permit Pulse drafts
+(https://claude.ai/artifact/2FXBSapUFj6hbKjMi53oz2): every market page in a
+city the sweep reads gets **Building permits in <City>** after "What's
+driving prices": four figures (filed a month, tenant build-outs, new
+buildings, the typical wait), a 12-month bar chart, a "how long until they're
+issued" chart, four plain-English reads (leasing demand, new supply, how busy
+the city is, voided permits) and the other swept city beside it. Rules and
+HTML in the pure **`permit-pulse.js`** (`test/permit-pulse.test.js`); the
+cached read is `PERMIT_PULSE` / `refreshPermitPulse` / `permitPulseFor` in
+server.js; `test/permit-pulse-run.test.js` runs the pages against the
+stand-in. No migration. Six rules:
+
+- **Three answers, never a zero.** A swept city (Boise, Meridian) gets the
+  section; a city whose portal we know but do not read (Nampa) gets one
+  sentence naming the cities we do read, linked to their same-type market
+  pages where those exist; any other city gets nothing. A failed read, an
+  empty cache or a thin table is no section, never "0 permits" — §7 again.
+- **Only a contiguous run of complete months is drawn.** It ends last month
+  (the current month is partial: it never draws a bar or counts toward the
+  pace, though its permits count toward the wait), goes back at most 12, and
+  stops at the first month with no filing at all, because in these cities
+  that is a month the sweep has not read, not a quiet one. Under six months
+  and `buildPulse` answers null.
+- **The wait is estimated across the year, and the page says so.** The
+  portals list a filing date and today's status, never an issue date, so the
+  wait is the age at which half the permits of that age are issued today,
+  in 14-day buckets, made non-decreasing. A bucket under 5 permits says
+  nothing; a curve whose first usable bucket is past ~5 weeks has no wait
+  (null, shown as a dash with a reason). Voided and withdrawn permits are left
+  out of it. The status words are permit-watch.js's `classifyStatus`, so
+  "issued" means one thing across the tracker and this page. Later:
+  `permit_filing_events` now record real status-change dates for every
+  stored permit, so an exact wait becomes possible once a year of them exists.
+- **Every commercial permit, of every property type,** and the source line
+  says so: the industrial and office pages show the same city figures until
+  permits can be split by type (needs zoning per permit; the backfill rows
+  have none).
+- **Never waited on.** `PERMIT_PULSE` is MARKET_INTEL's stale-while-
+  revalidate: warmed at boot, refreshed after a TTL (30 min) or right after a
+  sweep that wrote, paged by id past PostgREST's 1,000 rows, filtered by
+  JURISDICTION. A failed read keeps the last pulse and retries after a minute.
+- **"See each permit" says it needs an account** for a signed-out reader
+  (`/?auth=signup`); a member goes to `/permits`.
+
+**The history pass** is what feeds it. The sweep's own window is four days,
+so a permit used to be read once and its status never again. The history pass
+re-reads whole calendar months of listings (`historyWindows` in
+permit-filings.js) and is reached three ways:
+
+- **`{ history: "rotate" }`** — this month and last month every time, plus
+  one older month stepping a calendar day at a time over the eleven before
+  (any 22 days reach every one on a weekday). The weekday workflow sends it as
+  a SECOND call, `{ only: "history", history: "rotate" }`, after the short
+  sweep: one month of one city's listings is about 100 seconds of portal reads
+  at the two-second pause, so the two calls each get their own time budget.
+  `only: "history"` skips the short window and the tracked permits.
+- **`{ history: "all" }`** — every month of the last year: **the one-off
+  backfill, run once after this ships** (the workflow's Run workflow button,
+  history = all). About 45 minutes of portal reads, so it answers **202 at
+  once and runs in the background**; no request, workflow or proxy waits that
+  long. The running flag still holds a second sweep off (409), and its summary
+  lands in `lastSummary` like any run (/admin, `/api/stats` →
+  `permits.lastRun.history`). A deploy mid-run cuts it short; run it again,
+  since every write is idempotent.
+- **Nothing** — a plain `POST /api/permits/sweep` (the /admin button, the
+  first workflow call) reads no history, exactly as before.
+
+`sweepCityWindow` is the one per-city routine both passes share. A permit the
+history pass has never seen is stored; only one filed inside the tracker's
+30-day window gets the detail-page and zoning reads (40 a run), so the feed
+keeps its applicants; older ones are stored from the listing alone (no
+applicant, contractor, parcel or zoning; `is_industrial` from the keyword).
+Status moves become `permit_filing_events` exactly as before. Its errors live
+in `summary.history.errors`, which the workflow WARNS on, never in
+`summary.errors`, which fails it.

@@ -122,3 +122,60 @@ test("⚠ the page's copy of the matching rule agrees with this one", () => {
     for (const p of permits) assert.equal(pageMatches(pageShape, p), A.matches(a, p), JSON.stringify([a, p.permitNumber, p.jurisdiction]));
   }
 });
+
+// ---- Areas (2026-10-01, step 2) --------------------------------------------
+const MICRON = { area_address: "8000 S FEDERAL WAY, BOISE, ID, 83716", area_lat: 43.53002, area_lng: -116.15082, area_miles: 1 };
+
+test("an area is an address and one of four distances, and names itself", () => {
+  assert.deepEqual(A.areaRequest({}), { area: null });
+  assert.deepEqual(A.areaRequest({ areaAddress: " 8000 S Federal Way ", areaMiles: "1" }), { area: { address: "8000 S Federal Way", miles: 1 } });
+  assert.match(A.areaRequest({ areaAddress: "x", areaMiles: 3 }).error, /½, 1, 2 or 5 miles/);
+  assert.match(A.areaRequest({ areaAddress: "x".repeat(121), areaMiles: 1 }).error, /under 120/);
+  assert.deepEqual(A.withArea(null), { area_address: null, area_lat: null, area_lng: null, area_miles: null });
+  assert.deepEqual(A.withArea({ address: "8000 S Federal Way", miles: 2 }, { lat: 43.53, lng: -116.15, matchedAddress: "8000 S FEDERAL WAY, BOISE, ID, 83716" }),
+    { area_address: "8000 S FEDERAL WAY, BOISE, ID, 83716", area_lat: 43.53, area_lng: -116.15, area_miles: 2 });
+  const a = { jurisdiction: "boise", ...MICRON };
+  assert.equal(A.describe(a, cityOf), "Every kind · Every property type · Boise · within 1 mile of 8000 S FEDERAL WAY");
+  assert.equal(A.defaultName(a, cityOf), "Every permit within 1 mile of 8000 S FEDERAL WAY");
+  assert.equal(A.defaultName({ ...a, area_miles: 0.5, kind: "ti" }, cityOf), "Tenant build-outs within ½ mile of 8000 S FEDERAL WAY");
+  assert.deepEqual(A.alertView({ id: "x", name: "n", ...a }).area, { address: MICRON.area_address, lat: 43.53002, lng: -116.15082, miles: 1 });
+  assert.equal(A.alertView({ id: "x", name: "n" }).area, null);
+});
+
+test("a permit matches an area when its own place is within the distance, and never when it has none", () => {
+  const a = { jurisdiction: "boise", ...MICRON };
+  assert.equal(A.matches(a, permit({ lat: 43.5293, lng: -116.147 })), true, "Micron's own parcel");
+  assert.equal(A.matches(a, permit({ lat: 43.6154, lng: -116.2019 })), false, "downtown Boise, six miles off");
+  assert.equal(A.matches(a, permit({ lat: null, lng: null })), false, "a permit with no place cannot be inside");
+  assert.equal(A.matches({ ...a, area_miles: 5 }, permit({ lat: 43.58, lng: -116.15 })), true);
+  assert.ok(Math.abs(A.milesBetween(43.53002, -116.15082, 43.61539, -116.20186) - 6.4) < 0.3);
+});
+
+test("moving or widening an area moves the email mark; the same circle keeps it", () => {
+  const row = { jurisdiction: "boise", ...MICRON, name: "Near Micron", notified_through: "2026-09-01T00:00:00Z" };
+  const same = A.validateAlertPatch({ area: A.withArea({ address: "x", miles: 1 }, { lat: 43.53002, lng: -116.15082, matchedAddress: MICRON.area_address }) }, row, { cities: CITIES, now: NOW });
+  assert.equal(same.patch.notified_through, undefined);
+  const wider = A.validateAlertPatch({ area: A.withArea({ address: "x", miles: 2 }, { lat: 43.53002, lng: -116.15082 }) }, row, { cities: CITIES, now: NOW });
+  assert.equal(wider.patch.area_miles, 2);
+  assert.equal(wider.patch.notified_through, new Date(NOW).toISOString());
+  const gone = A.validateAlertPatch({ area: A.withArea(null) }, row, { cities: CITIES, now: NOW });
+  assert.equal(gone.patch.area_lat, null);
+  assert.equal(gone.patch.notified_through, new Date(NOW).toISOString(), "dropping the area widens it to the city");
+});
+
+test("⚠ the page's copy of the matching rule agrees on areas too", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "permits-page.js"), "utf8");
+  const m = src.match(/function alertMatches\(a,p\)\{[\s\S]*?\n  \}\n  function alMiles\([\s\S]*?\n  \}\n/);
+  assert.ok(m, "permits-page.js still defines alertMatches and alMiles side by side");
+  const pageMatches = new Function(`${m[0]}; return alertMatches;`)();
+  const areas = [MICRON, { ...MICRON, area_miles: 0.5 }, { ...MICRON, area_miles: 5 }];
+  const permits = [
+    permit({ lat: 43.5293, lng: -116.147 }), permit({ lat: 43.5384, lng: -116.152 }), permit({ lat: 43.58, lng: -116.15 }),
+    permit({ lat: 43.6154, lng: -116.2019 }), permit({ lat: null, lng: null }),
+  ];
+  for (const ar of areas) {
+    const a = { jurisdiction: "boise", ...ar };
+    const pageShape = { jurisdiction: "boise", propertyType: "", kind: "", words: "", area: { lat: ar.area_lat, lng: ar.area_lng, miles: ar.area_miles } };
+    for (const p of permits) assert.equal(pageMatches(pageShape, p), A.matches(a, p), JSON.stringify([ar.area_miles, p.lat, p.lng]));
+  }
+});

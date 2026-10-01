@@ -4495,5 +4495,11 @@
     "type": "fix",
     "title": "Permit tracker: no more raw “&#160;” codes in permit descriptions",
     "details": "Some permit descriptions from Boise’s portal showed a raw code such as “&#160;” where the city had a space. The portal reader now turns numbered codes back into characters, and permits already stored are cleaned up as the page shows them."
+  },
+  {
+    "date": "2026-10-01",
+    "type": "feature",
+    "title": "Permit alerts: follow an area on a map",
+    "details": "A permit alert can now follow an area within a city: within ½, 1, 2 or 5 miles of an address. The form finds the address on a map and draws the circle with the last month’s permits around it, and a saved area alert can show its map. Every permit now has a place on the map, from its parcel or its address."
   }
 ]

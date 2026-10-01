@@ -50,12 +50,15 @@ test("cleanParcel refuses anything that is not a bare parcel id before it reache
   assert.equal(Z.cleanParcel(""), "");
 });
 
-test("parcelQueryUrl asks the Ada layer for exactly the three fields, no geometry", () => {
+test("parcelQueryUrl asks the Ada layer for exactly the three fields and the center point, no outline", () => {
   const u = new URL(Z.parcelQueryUrl("R2598270010"));
   assert.equal(u.origin + u.pathname, Z.ADA_PARCELS_URL);
   assert.equal(u.searchParams.get("where"), "PARCEL='R2598270010'");
   assert.equal(u.searchParams.get("outFields"), "PARCEL,ZONING,ACRES");
   assert.equal(u.searchParams.get("returnGeometry"), "false");
+  // The parcel's center point rides the same request (2026-10-01, area alerts).
+  assert.equal(u.searchParams.get("returnCentroid"), "true");
+  assert.equal(u.searchParams.get("outSR"), "4326");
   assert.equal(u.searchParams.get("f"), "json");
 });
 
@@ -115,4 +118,16 @@ test("propertyTypeOf: the Permit tracker's property type, read from what a filin
   assert.equal(t({}), "Other");
   assert.equal(t(null), "Other");
   assert.deepEqual([...Z.PROPERTY_TYPES], ["Industrial", "Office", "Retail", "Multifamily", "Mixed use", "Other"]);
+});
+
+// 2026-10-01 (area alerts): the parcel's center point, in latitude and
+// longitude, comes back beside its zoning — and on its own when the county
+// has no zoning on file, since a parcel still has a place on the map.
+test("parseParcelAnswer reads the parcel's center point beside its zoning", () => {
+  const at = (attrs, centroid) => ({ features: [{ attributes: attrs, centroid }] });
+  assert.deepEqual(Z.parseParcelAnswer(at({ ZONING: "I-3", ACRES: 43.16 }, { x: -116.14698710745475, y: 43.529258675810645 })),
+    { zoning: "I-3", zoning_acres: 43.16, lat: 43.529258675810645, lng: -116.14698710745475 });
+  assert.deepEqual(Z.parseParcelAnswer(at({ ZONING: "" }, { x: -116.1, y: 43.5 })), { lat: 43.5, lng: -116.1 });
+  assert.deepEqual(Z.parseParcelAnswer(at({ ZONING: "R-1" }, { x: "nope", y: 43.5 })), { zoning: "R-1", zoning_acres: null }, "a broken point is no point");
+  assert.deepEqual(Z.parseParcelAnswer(at({ ZONING: "R-1" }, { x: 500, y: 43.5 })), { zoning: "R-1", zoning_acres: null });
 });

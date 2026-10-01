@@ -265,3 +265,26 @@ test("a stored row's raw numbered codes are decoded on the way to the page", () 
   assert.equal(v.address, "220 S BROADWAY AVE");
   assert.equal(F.toFilingView({ permit_number: "X" }).description, "", "nothing stays nothing");
 });
+
+// 2026-10-01 (area alerts): a filing's place on the map.
+test("a filing keeps its parcel's center point, marked as from the parcel; without one it is left to be placed", () => {
+  const deps = { addressKey: (s) => String(s).toLowerCase(), marketOf: (s) => s };
+  const boise = { key: "boise", label: "Boise", state: "ID", portalUrl: "https://x" };
+  const placed = F.normalizeFiling({ permit_number: "B1", address: "8000 S FEDERAL WAY", ref: {} }, boise, { lat: 43.53, lng: -116.15 }, deps);
+  assert.equal(placed.lat, 43.53);
+  assert.equal(placed.lng, -116.15);
+  assert.equal(placed.geo_source, "parcel");
+  const bare = F.normalizeFiling({ permit_number: "B2", ref: {} }, boise, {}, deps);
+  assert.equal("lat" in bare, false, "no point is written, so the locate step tries the address");
+  assert.equal("geo_source" in bare, false);
+  assert.deepEqual([F.toFilingView({ permit_number: "x", lat: 43.5, lng: -116.1 }).lat, F.toFilingView({ permit_number: "x" }).lat], [43.5, null]);
+  assert.equal(F.toFilingView({ permit_number: "x", lat: null, lng: null }).lng, null, "a null is not the equator");
+});
+
+test("the geocoder is asked for the street line, with the city the portal left off", () => {
+  assert.equal(F.geocodeLine("3468 CENTREPOINT", "Meridian", "ID"), "3468 CENTREPOINT, Meridian, ID");
+  assert.equal(F.geocodeLine("2206 N EAGLE RD, STE 140, MERIDIAN ID 83646", "Meridian", "ID"), "2206 N EAGLE RD, MERIDIAN, ID 83646");
+  assert.equal(F.geocodeLine("787 E PARKCENTER BLVD, APT, Boise ID 83706", "Boise", "ID"), "787 E PARKCENTER BLVD, Boise, ID 83706");
+  assert.equal(F.geocodeLine("", "Boise", "ID"), "");
+  assert.equal(F.geocodeLine(null, "Boise", "ID"), "");
+});

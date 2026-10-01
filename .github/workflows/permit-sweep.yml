@@ -86,6 +86,10 @@ jobs:
             if (s.alerts) console.log(`permit alerts: ${al.alerts || 0} alert(s) · ${al.emailed || 0} emailed${al.pending ? ` · ${al.pending} waiting` : ""}`);
             if (al.errors && al.errors.length) console.log(`::warning::Permit alerts: ${al.errors.join(" | ")}`);
             if (al.mailOff) console.log("::warning::Permit alert emails are waiting: outbound mail (EMAIL_FROM + RESEND_API_KEY) is not configured.");
+            // Placing permits on the map (058). Its problems WARN, never fail.
+            const lo = s.located || {};
+            if (s.located) console.log(`placed on the map: ${lo.placed || 0} of ${lo.tried || 0} looked up`);
+            if (lo.errors && lo.errors.length) console.log(`::warning::Placing permits: ${lo.errors.join(" | ")}`);
             if (s.errors && s.errors.length) { console.log(`::error::${s.errors.join(" | ")}`); process.exit(1); }
           '
 
@@ -120,4 +124,8 @@ jobs:
             const h = s.history || {};
             console.log(`history ${(h.windows || []).join(" ")}: ${h.discovered || 0} read, ${h.added || 0} stored, ${h.statusChanges || 0} status change(s)`);
             if (h.errors && h.errors.length) console.log(`::warning::History pass: ${h.errors.join(" | ")}`);
+            // Placing permits on the map (058). Its problems WARN, never fail.
+            const lo = s.located || {};
+            if (s.located) console.log(`placed on the map: ${lo.placed || 0} of ${lo.tried || 0} looked up`);
+            if (lo.errors && lo.errors.length) console.log(`::warning::Placing permits: ${lo.errors.join(" | ")}`);
           '

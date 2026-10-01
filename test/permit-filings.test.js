@@ -255,3 +255,13 @@ test("the development shop's market-wide feed is gone from the module (it lives 
   assert.equal("newFilingsFeed" in F, false);
   assert.equal("FEED_MAX" in F, false);
 });
+
+// 2026-10-01: rows stored before the reader learned numbered codes still hold
+// them; the view decodes them so old and new rows read alike.
+test("a stored row's raw numbered codes are decoded on the way to the page", () => {
+  const v = F.toFilingView({ permit_number: "BLD26-02950", description: "full TI project.&#160;There will be", project_name: "A&#38;B", address: "220 S BROADWAY&nbsp;AVE" });
+  assert.equal(v.description, "full TI project. There will be");
+  assert.equal(v.projectName, "A&B");
+  assert.equal(v.address, "220 S BROADWAY AVE");
+  assert.equal(F.toFilingView({ permit_number: "X" }).description, "", "nothing stays nothing");
+});

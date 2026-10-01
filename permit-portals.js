@@ -165,10 +165,21 @@ function cookieHeader(jar) {
   return Object.entries(jar).map(([k, v]) => `${k}=${v}`).join("; ");
 }
 
-function decodeEntities(s) {
+// Portal text -> plain text. NUMBERED codes too (2026-10-01): Boise's grid
+// sends some descriptions double-encoded, "&amp;#160;", which used to land in
+// permit_filings as a literal "&#160;" and show on /permits. &amp; first, so
+// the numbered code it uncovers is decoded after it. A no-break space is a
+// space; a code that is not a real character is dropped.
+function decodeNumbered(s) {
+  const ch = (n) => (n === 160 ? " " : n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : "");
   return String(s || "")
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ");
+    .replace(/&#(\d{1,7});/g, (m, d) => ch(Number(d)))
+    .replace(/&#x([0-9a-f]{1,6});/gi, (m, h) => ch(parseInt(h, 16)));
+}
+function decodeEntities(s) {
+  return decodeNumbered(String(s || "").replace(/&amp;/g, "&"))
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&nbsp;/g, " ");
 }
 
 // Every named <input> and <select> on the page, so the postback can replay
@@ -856,7 +867,7 @@ module.exports = {
   JURISDICTIONS, JURISDICTION_KEYS, SWEEP_KEYS, getJurisdiction, resolveJurisdiction,
   marketLabel, withOrigin,
   // accela
-  harvestForm, usToIsoDate, isoToUsDate, accelaSearchUrl, parseAccelaStatus,
+  decodeEntities, decodeNumbered, harvestForm, usToIsoDate, isoToUsDate, accelaSearchUrl, parseAccelaStatus,
   parseAccelaGrid, parseAccelaDetail, detailSectionText, detailAddress, stripFootnote,
   nextPageTarget, MAX_PAGES, parseParcelNumber,
   parseAccelaCompanies, fetchAccelaStatus, fetchAccelaCompanies, discoverAccela,

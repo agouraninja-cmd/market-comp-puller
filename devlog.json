@@ -4489,5 +4489,11 @@
     "type": "feature",
     "title": "Permit tracker: alerts",
     "details": "Pro members can save the permits they follow on the Permit tracker — a city, a property type, tenant build-outs or new buildings, and optional words — and get the new ones by email each weekday morning. Each alert shows how many permits are new this week, and matching permits in the list carry the alert’s name."
+  },
+  {
+    "date": "2026-10-01",
+    "type": "fix",
+    "title": "Permit tracker: no more raw “&#160;” codes in permit descriptions",
+    "details": "Some permit descriptions from Boise’s portal showed a raw code such as “&#160;” where the city had a space. The portal reader now turns numbered codes back into characters, and permits already stored are cleaned up as the page shows them."
   }
 ]

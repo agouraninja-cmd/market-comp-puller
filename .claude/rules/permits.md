@@ -468,3 +468,49 @@ Not built (step 2 of the owner's ask): an area within a city ("within a mile
 of an address") — needs coordinates per permit; see the conversation's plan:
 parcel location from the Ada County query the sweep already makes, Census for
 the backfilled rows.
+
+## Area alerts (2026-10-01)
+
+Step 2 of permit alerts, the owner's pick of Draft B from the Permit Area
+Drafts (https://claude.ai/artifact/Xkc7kR96LS2ExjdaY1bH5V): an alert may also
+follow a circle — within ½, 1, 2 or 5 miles of an address — and every permit
+gets a place on the map to be inside it. Migration **`058-permit-areas.sql`**
+(`permit_filings.lat/lng/geo_source`, `permit_alerts.area_*`), **deploy order
+HARD**: the sweep's insert names the new columns and its locate step filters
+on one, so an unrun 058 fails every city's sweep. The routes and the email
+are permit alerts' own; `test/permit-areas-run.test.js` runs all of it
+against a Census stand-in. Six rules:
+
+- **One place per permit, and where it came from.** A permit the sweep reads
+  in full gets its parcel's center point from Ada County's parcel layer, on
+  the SAME request as its zoning (`returnCentroid`, `outSR=4326`, no outline:
+  750 bytes; `parseParcelAnswer` returns `lat/lng`, `geo_source "parcel"`).
+  Every other stored permit (the history pass's backfill, a parcel the county
+  could not answer) is placed by `locatePermitFilings` through the Census
+  geocoder (`geo_source "address"`), newest first, 60 on the weekday's first
+  call and 300 on the history-only call. Census placed 99 of the last 111
+  permits when this was drafted; the misses were a new site whose road Census
+  does not have yet and bare Meridian street lines, which is why the parcel
+  point comes first.
+- **A miss is marked; an outage is not.** No match is `geo_source "none"`,
+  never asked again. `censusPlace` calls Census directly rather than through
+  `geocodeCensus`, which answers null for an outage and a miss alike; three
+  failures in a row stop the step and mark nothing more. Its problems live in
+  `summary.located`, which the workflow warns on and never fails on.
+- **The address line** is `geocodeLine` (permit-filings.js): the street line
+  without a suite, with the jurisdiction's city added where the portal left it
+  off. An alert's typed address gets the alert's city the same way, in the
+  route (`placeAlertArea`) and in the page's live preview.
+- **An area is placed once, when the alert is saved** (POST or PATCH; the
+  site's own `geocodeCensus`), stored as the geocoder's matched address and a
+  point. An address it cannot find is a 400 naming it. Moving, widening or
+  dropping the circle moves the email mark to now, like any filter change.
+- **A permit with no place never matches an area**, and the page says how
+  many of the list's permits could not be placed, so a quiet area reads as
+  quiet. The distance rule is in `matches` and in the page's `alertMatches`
+  (with `alMiles`) — the ⚠ pair, pinned on areas too.
+- **Maps load only when opened** — the form's map once an address is found,
+  a saved alert's "Show on map". Leaflet comes from the CDN the market pages
+  use, the tiles from CNBASE (BASEMAP_JS, sent in /permits' head with
+  LEAFLET_DARK_CSS), and several permits at one address (a campus) are one
+  dot with its count. With the CDN blocked the form still works.

@@ -46,6 +46,14 @@
 // The counts, the tags and the form's preview are drawn here from the feed the
 // page already has (alertMatches, a ⚠ pair with permit-alerts.js's matches).
 //
+// AREAS (2026-10-01, step 2, the owner's pick of Draft B). An alert may also
+// follow a circle: within ½, 1, 2 or 5 miles of an address. The form checks
+// the address as it is typed (the site's own /api/geocode, Census behind it)
+// and draws the circle and the list's permits on a map; a saved area alert has
+// "Show on map". Leaflet loads only when a map opens; the tiles are the
+// market pages' (CNBASE, sent in this page's head). A permit with no place on
+// the map can never match an area, and the page says how many there are.
+//
 // The page literal below contains exactly ONE backtick, its own opener, and
 // interpolates the boot JSON alone; test/permits-page.test.js guards both.
 // ---------------------------------------------------------------------------
@@ -175,6 +183,20 @@ function renderPermitsBody(boot) {
 .pa-new{display:inline-block;padding:1px 8px;border-radius:9px;background:var(--red-fill);color:#fff;font-size:11px;font-weight:600}
 .pa-none{display:inline-block;padding:1px 8px;border-radius:9px;border:1px solid var(--edge);color:var(--ink-3);font-size:11px}
 .pa-tag{display:inline-block;margin-left:8px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--red);font-weight:600}
+.pa-area{margin-top:12px;padding-top:10px;border-top:1px solid var(--hair)}
+.pa-area .lab{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px}
+.pa-opts{display:flex;flex-direction:column;gap:8px}
+.pa-opts label{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:13.5px;color:var(--ink-body);cursor:pointer}
+.pa-opts select,.pa-opts input[type=text]{font:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--edge);border-radius:8px;background:var(--card);color:var(--ink);min-width:0}
+.pa-opts input[type=text]{flex:1 1 220px}
+.pa-found{font-size:12px;color:var(--ink-3);margin:6px 0 0}
+.pa-found.ok{color:var(--ok-text)}
+.pa-found.bad{color:var(--err-text)}
+.pa-map{height:260px;border:1px solid var(--edge);border-radius:8px;margin-top:10px;overflow:hidden;background:var(--wash)}
+.pa-mapnote{font-size:12px;color:var(--ink-3);margin:6px 0 4px}
+.leaflet-tooltip.pa-count,[data-theme="dark"] .leaflet-tooltip.pa-count{background:none;border:0;box-shadow:none;color:#fff;font-weight:700;font-size:11px;padding:0}
+.leaflet-tooltip.pa-count:before{display:none}
+@media (max-width:640px){.pa-map{height:220px}}
 .pa-h{margin:0 0 8px;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:16px;color:var(--ink)}
 .hide{display:none}
 </style>
@@ -240,6 +262,12 @@ function renderPermitsBody(boot) {
         <label>Property type <select id="paProp"><option value="">Every type</option></select></label>
         <label>Kind <select id="paKind"><option value="">Every kind</option></select></label>
         <label><span>Words <span class="opt">optional</span></span><input id="paWords" maxlength="60" autocomplete="off" placeholder="a street, applicant or contractor"/></label>
+      </div>
+      <div class="pa-area"><span class="lab">Area</span><div class="pa-opts">
+        <label><input type="radio" name="paWhere" id="paAnywhere" value="" checked/> Anywhere in the city</label>
+        <label><input type="radio" name="paWhere" id="paWithin" value="within"/> Within <select id="paMiles" aria-label="Distance"></select> of <input type="text" id="paAddr" maxlength="120" autocomplete="off" placeholder="an address, e.g. 8000 S Federal Way" aria-label="Address"/></label></div>
+        <p class="pa-found hide" id="paFound" role="status"></p>
+        <div class="pa-map hide" id="paFormMap"></div>
       </div>
       <div class="pw-grid" style="margin-top:10px">
         <label><span>Name <span class="opt">optional</span></span><input id="paName" maxlength="80" autocomplete="off" placeholder="Named from the filters if left blank"/></label>
@@ -723,7 +751,72 @@ function renderPermitsBody(boot) {
   });
 
   // ---- Your alerts (2026-10-01, Draft B) ----------------------------------
-  var AL=null, alerts=[], alEditing=null;
+  var AL=null, alerts=[], alEditing=null, alMapOpen=null, alArea=null, alGeoTimer=null, alMaps={};
+  function alUnplaced(){ return items.filter(function(f){return f.lat==null||f.lng==null}).length; }
+  // ---- Maps (2026-10-01, areas) --------------------------------------------
+  // Leaflet loads once, when the first map opens; with the CDN blocked the
+  // form still works and the map simply stays closed.
+  function withLeaflet(cb){
+    if(window.L)return cb();
+    if(!document.getElementById("paLeafCss")){
+      var l=document.createElement("link"); l.id="paLeafCss"; l.rel="stylesheet"; l.href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(l);
+    }
+    var sc=document.createElement("script"); sc.src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    sc.onload=function(){ if(window.L)cb(); }; document.head.appendChild(sc);
+  }
+  function cssVar(n,fb){ var v=getComputedStyle(document.documentElement).getPropertyValue(n); return (v&&v.trim())||fb; }
+  function drawAreaMap(id,area){
+    var el=$(id); if(!el||!area)return;
+    withLeaflet(function(){
+      if(alMaps[id]){ alMaps[id].remove(); delete alMaps[id]; }
+      var map=L.map(el,{scrollWheelZoom:false}); alMaps[id]=map;
+      // Framed from the point and the distance FIRST: a circle cannot measure
+      // itself on a map that has no view yet.
+      map.fitBounds(L.latLng(area.lat,area.lng).toBounds(area.miles*1609.34*2),{padding:[24,24]});
+      if(window.CNBASE)CNBASE.add(map);
+      var red=cssVar("--red-fill","#B91C1C"), grey=cssVar("--ink-3","#68707E"), card=cssVar("--card","#fff");
+      L.circle([area.lat,area.lng],{radius:area.miles*1609.34,color:red,weight:2,fillColor:red,fillOpacity:0.06}).addTo(map);
+      // Several permits at one address (a campus) are one dot with a count.
+      var spots={};
+      items.forEach(function(f){ if(f.lat==null||f.lng==null)return; var k=f.lat.toFixed(5)+","+f.lng.toFixed(5); (spots[k]=spots[k]||{lat:f.lat,lng:f.lng,n:0}).n++; });
+      Object.keys(spots).forEach(function(k){
+        var sp=spots[k], inside=alMiles(area.lat,area.lng,sp.lat,sp.lng)<=area.miles;
+        var mk=L.circleMarker([sp.lat,sp.lng],{radius:sp.n>1?6+Math.min(6,sp.n):(inside?5:3.5),color:card,weight:1.5,fillColor:inside?red:grey,fillOpacity:inside?0.95:0.55}).addTo(map);
+        if(sp.n>1)mk.bindTooltip(String(sp.n),{permanent:true,direction:"center",className:"pa-count"});
+      });
+    });
+  }
+  function alWithin(){ return $("paWithin").checked; }
+  function alAreaNow(){ return alWithin()&&alArea&&alArea.lat!=null?{lat:alArea.lat,lng:alArea.lng,miles:Number($("paMiles").value)}:null; }
+  function alShowArea(){
+    var within=alWithin();
+    $("paMiles").disabled=!within; $("paAddr").disabled=!within;
+    var area=alAreaNow();
+    $("paFormMap").className=area?"pa-map":"pa-map hide";
+    if(area)drawAreaMap("paFormMap",area);
+    alPreview();
+  }
+  // The address, checked as it is typed: the site's own geocoder, with the
+  // alert's city added to a bare street line (the route does the same).
+  function alLookup(){
+    var text=$("paAddr").value.trim();
+    alArea=null;
+    if(!alWithin()||!text){ $("paFound").className="pa-found hide"; alShowArea(); return; }
+    var city=$("paCity").options[$("paCity").selectedIndex];
+    var line=text.indexOf(",")>-1?text:text+", "+(city&&city.value?city.textContent+", ID":"ID");
+    $("paFound").className="pa-found"; $("paFound").textContent="Looking for it on the map…";
+    fetch("/api/geocode",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({address:line})})
+      .then(asJson).then(function(o){
+        if($("paAddr").value.trim()!==text)return;
+        if(o.s===200&&o.j&&o.j.lat!=null){
+          alArea={lat:o.j.lat,lng:o.j.lng,matched:o.j.matchedAddress||line};
+          $("paFound").className="pa-found ok"; $("paFound").textContent="✓ Found on the map: "+alArea.matched;
+        }else{
+          $("paFound").className="pa-found bad"; $("paFound").textContent="We couldn’t find that address on the map. Try the full street address, with the city.";
+        }
+        alShowArea();
+      }).catch(function(){ $("paFound").className="pa-found bad"; $("paFound").textContent="Couldn’t check that address just now."; });
+  }
   // ⚠ PAIR with permit-alerts.js's matches(): one rule in two places, since
   // the browser cannot require the module. test/permit-alerts.test.js runs the
   // two over the same permits; change both or neither.
@@ -736,7 +829,16 @@ function renderPermitsBody(boot) {
       var hay=[p.address,p.description,p.projectName,p.applicant,p.contractor,p.permitNumber].join(" ").toLowerCase();
       if(hay.indexOf(String(a.words).toLowerCase())<0)return false;
     }
+    if(a.area){
+      if(p.lat==null||p.lng==null)return false;
+      if(alMiles(a.area.lat,a.area.lng,p.lat,p.lng)>a.area.miles)return false;
+    }
     return true;
+  }
+  function alMiles(lat1,lng1,lat2,lng2){
+    var t=function(x){return x*Math.PI/180}, dl=t(lat2-lat1), dn=t(lng2-lng1);
+    var h=Math.pow(Math.sin(dl/2),2)+Math.cos(t(lat1))*Math.cos(t(lat2))*Math.pow(Math.sin(dn/2),2);
+    return 2*3958.8*Math.asin(Math.sqrt(h));
   }
   function alertTag(f){
     for(var i=0;i<alerts.length;i++){ if(alertMatches(alerts[i],f))return '<span class="pa-tag">'+esc(alerts[i].name)+"</span>"; }
@@ -753,8 +855,10 @@ function renderPermitsBody(boot) {
     return '<div class="pa-item"><div class="pa-l"><span class="pa-nm">'+esc(a.name)+'</span><div class="pa-wd">'+esc(a.describe)+"</div></div>"+
       '<div class="pa-rt">'+(c.week?'<span class="pa-new">'+c.week+" new this week</span>":'<span class="pa-none">nothing new this week</span>')+
       "<span>"+esc(how)+"</span>"+
+      (a.area?'<button type="button" class="pt-rm" data-almap="'+esc(a.id)+'">'+(alMapOpen===a.id?"Hide map":"Show on map")+"</button>":"")+
       (AL.canTrack?'<button type="button" class="pt-rm" data-aledit="'+esc(a.id)+'">Change</button>':"")+
-      '<button type="button" class="pt-rm" data-aldel="'+esc(a.id)+'">Delete</button></div></div>';
+      '<button type="button" class="pt-rm" data-aldel="'+esc(a.id)+'">Delete</button></div></div>'+
+      (a.area&&alMapOpen===a.id?'<div><div class="pa-map" id="paLineMap"></div><p class="pa-mapnote">'+c.all+" of the last "+WIN+" days’ permits "+(c.all===1?"is":"are")+" inside this circle."+(alUnplaced()?" "+alUnplaced()+" permits in the list couldn’t be placed on the map.":"")+"</p></div>":"");
   }
   function alFormOpen(){ return $("paForm").className.indexOf("hide")<0; }
   function renderAlerts(){
@@ -768,11 +872,14 @@ function renderPermitsBody(boot) {
       : "Get the new permits that fit what you follow, by email each weekday morning and here. For example, industrial permits in Boise, or tenant build-outs in Meridian.";
     $("paSub").className=$("paSub").textContent?"pw-sub":"pw-sub hide";
     $("paList").innerHTML=alerts.length?'<div class="pa-list">'+alerts.map(alLine).join("")+"</div>":"";
+    // An open map is drawn again into its new box.
+    if(alMapOpen){ var k=alIndex(alMapOpen); if(k>-1&&alerts[k].area)drawAreaMap("paLineMap",alerts[k].area); else alMapOpen=null; }
   }
   function alPreview(){
-    var a={jurisdiction:$("paCity").value,propertyType:$("paProp").value,kind:$("paKind").value,words:$("paWords").value.trim()};
+    if(alWithin()&&!alAreaNow()){ formMsg($("paMsg"),$("paAddr").value.trim()?"":"Type an address to see the area."); return; }
+    var a={jurisdiction:$("paCity").value,propertyType:$("paProp").value,kind:$("paKind").value,words:$("paWords").value.trim(),area:alAreaNow()};
     var n=items.filter(function(f){return alertMatches(a,f)}).length;
-    formMsg($("paMsg"),n+(n===1?" permit":" permits")+" in the last "+WIN+" days "+(n===1?"matches.":"match."));
+    formMsg($("paMsg"),n+(n===1?" permit":" permits")+" in the last "+WIN+" days "+(n===1?"matches.":"match.")+(a.area&&alUnplaced()?" "+alUnplaced()+" couldn’t be placed on the map.":""));
   }
   function openAlertForm(a){
     alEditing=a&&a.id?a.id:null;
@@ -781,8 +888,13 @@ function renderPermitsBody(boot) {
     $("paCity").value=(a&&a.jurisdiction)||""; $("paProp").value=(a&&a.propertyType)||"";
     $("paKind").value=(a&&a.kind)||""; $("paWords").value=(a&&a.words)||"";
     $("paName").value=alEditing?a.name:""; $("paEmail").checked=!a||a.email!==false;
+    var ar=a&&a.area;
+    $("paWithin").checked=Boolean(ar); $("paAnywhere").checked=!ar;
+    $("paMiles").value=String(ar?ar.miles:1); $("paAddr").value=ar?ar.address:"";
+    alArea=ar?{lat:ar.lat,lng:ar.lng,matched:ar.address}:null;
+    $("paFound").className=ar?"pa-found ok":"pa-found hide"; $("paFound").textContent=ar?"✓ Found on the map: "+ar.address:"";
     $("paForm").className="pw-form";
-    renderAlerts(); alPreview();
+    renderAlerts(); alShowArea();
   }
   function closeAlertForm(){ alEditing=null; $("paForm").className="pw-form hide"; formMsg($("paMsg"),""); }
   function asJson(r){ return r.json().catch(function(){return {}}).then(function(j){return {s:r.status,j:j}}); }
@@ -797,6 +909,8 @@ function renderPermitsBody(boot) {
     (AL.cities||[]).forEach(function(c){ var op=document.createElement("option"); op.value=c.key; op.textContent=c.label; $("paCity").appendChild(op); });
     (AL.propertyTypes||[]).forEach(function(t){ var op=document.createElement("option"); op.value=t; op.textContent=t; $("paProp").appendChild(op); });
     (AL.kinds||[]).forEach(function(k){ var op=document.createElement("option"); op.value=k.key; op.textContent=k.label; $("paKind").appendChild(op); });
+    (AL.areaMiles||[0.5,1,2,5]).forEach(function(m){ var op=document.createElement("option"); op.value=String(m); op.textContent=m===0.5?"½ mile":m===1?"1 mile":m+" miles"; $("paMiles").appendChild(op); });
+    $("paMiles").value="1";
     if(MINE&&MINE.email)$("paEmailText").textContent="Email me its new permits each weekday morning ("+MINE.email+")";
     if(MINE&&!MINE.emailLive)$("paFine").textContent="Email isn’t switched on for CompNinja yet, so for now new permits show here on the Permit tracker.";
     renderAlerts();
@@ -808,10 +922,17 @@ function renderPermitsBody(boot) {
   $("paCancel").addEventListener("click",function(){ closeAlertForm(); renderAlerts(); });
   ["paCity","paProp","paKind"].forEach(function(id){ $(id).addEventListener("change",alPreview); });
   $("paWords").addEventListener("input",alPreview);
+  $("paAnywhere").addEventListener("change",function(){ alShowArea(); });
+  $("paWithin").addEventListener("change",function(){ if($("paAddr").value.trim()&&!alArea)alLookup(); else alShowArea(); $("paAddr").focus(); });
+  $("paMiles").addEventListener("change",alShowArea);
+  $("paAddr").addEventListener("input",function(){ clearTimeout(alGeoTimer); alGeoTimer=setTimeout(alLookup,700); });
+  $("paCity").addEventListener("change",function(){ if(alWithin()&&$("paAddr").value.trim()&&$("paAddr").value.indexOf(",")<0)alLookup(); });
   $("paForm").addEventListener("submit",function(e){
     e.preventDefault();
     var body={jurisdiction:$("paCity").value,propertyType:$("paProp").value,kind:$("paKind").value,
-      words:$("paWords").value,name:$("paName").value,email:$("paEmail").checked};
+      words:$("paWords").value,name:$("paName").value,email:$("paEmail").checked,
+      areaAddress:alWithin()?$("paAddr").value.trim():"",areaMiles:Number($("paMiles").value)};
+    if(alWithin()&&!$("paAddr").value.trim()){ formMsg($("paMsg"),"Type the address the area is around, or pick Anywhere in the city.","bad"); $("paAddr").focus(); return; }
     var url="/api/permits/alerts"+(alEditing?"?id="+encodeURIComponent(alEditing):"");
     $("paSave").disabled=true; formMsg($("paMsg"),"Saving…");
     fetch(url,{method:alEditing?"PATCH":"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(body)})
@@ -826,7 +947,11 @@ function renderPermitsBody(boot) {
   });
   $("paList").addEventListener("click",function(e){
     var t=e.target; if(!t||!t.getAttribute)return;
-    var ed=t.getAttribute("data-aledit"), del=t.getAttribute("data-aldel");
+    var ed=t.getAttribute("data-aledit"), del=t.getAttribute("data-aldel"), mp=t.getAttribute("data-almap");
+    if(mp){
+      alMapOpen=alMapOpen===mp?null:mp; renderAlerts();
+      return;
+    }
     if(ed){ var i=alIndex(ed); if(i>-1){ openAlertForm(alerts[i]); $("paForm").scrollIntoView({block:"nearest"}); } return; }
     if(del){
       var k=alIndex(del); if(k<0)return;

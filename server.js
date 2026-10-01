@@ -6719,6 +6719,8 @@ async function sweepCityWindow(key, window, city, { dryRun, deps, keyDeps, now, 
       if (j.county === "ada" && extra.parcel_number) {
         const z = await PERMIT_ZONING.fetchZoningByParcel(extra.parcel_number, deps);
         if (z.zoning) extra.zoning = z.zoning;
+        // Its place on a map, from the same answer (2026-10-01, area alerts).
+        if (Number.isFinite(z.lat) && Number.isFinite(z.lng)) { extra.lat = z.lat; extra.lng = z.lng; }
       }
     }
     const row = PERMIT_FILINGS.normalizeFiling(r, j, extra, keyDeps);
@@ -6803,6 +6805,64 @@ async function sweepPermitHistory({ now, dryRun, deps, keyDeps, all }) {
   return out;
 }
 
+// Placing permits on the map (2026-10-01, area alerts; migration 058). A
+// permit the sweep read in full has its parcel's center point already
+// (geo_source "parcel"); every other stored permit — the history pass's
+// backfill, a parcel the county could not answer — is placed here by its
+// address through the Census geocoder (geo_source "address"), or marked
+// "none" when Census has no match, so it is not asked again. Newest first and
+// capped per run: the weekday's first call places a few (the alert email
+// right after it reads them), the history-only call many.
+//
+// Census is called directly rather than through geocodeCensus, because that
+// answers null for an outage and a miss alike, and an outage must never mark
+// a permit unplaceable for good: three failures in a row stop the step and
+// mark nothing more. Permits are public record, so an address going to
+// Census here is not rule 7's private-comp case.
+const LOCATE_MAIN_CAP = 60;
+const LOCATE_HISTORY_CAP = 300;
+const LOCATE_PAUSE_MS = Math.min(250, PERMIT_SWEEP_PAUSE_MS);
+async function censusPlace(line) {
+  try {
+    const r = await fetch(CENSUS_API_URL + "?benchmark=Public_AR_Current&format=json&address=" + encodeURIComponent(String(line).slice(0, 200)),
+      { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return { error: `Census answered ${r.status}` };
+    const ll = parseCensusMatch(await r.json());
+    return ll ? { ll } : { miss: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+async function locatePermitFilings({ limit, dryRun }) {
+  const out = { tried: 0, placed: 0, missed: 0, errors: [] };
+  const rows = (await sbRequest("GET",
+    `permit_filings?jurisdiction=in.(${pgInList(PERMITS.SWEEP_KEYS)})&geo_source=is.null` +
+    `&select=id,jurisdiction,address&order=applied_date.desc&limit=${limit}`)) || [];
+  let failures = 0;
+  for (const r of rows) {
+    const j = PERMITS.JURISDICTIONS[r.jurisdiction] || {};
+    const line = PERMIT_FILINGS.geocodeLine(r.address, j.label, j.state);
+    let patch = { geo_source: "none" };
+    if (line) {
+      if (out.tried) await new Promise((res) => setTimeout(res, LOCATE_PAUSE_MS));
+      out.tried += 1;
+      const g = await censusPlace(line);
+      if (g.error) {
+        failures += 1;
+        if (failures >= 3) { out.errors.push(`stopped after ${failures} geocoder failures in a row: ${g.error}`); break; }
+        continue;
+      }
+      failures = 0;
+      if (g.ll) patch = { lat: g.ll.lat, lng: g.ll.lng, geo_source: "address" };
+    }
+    if (patch.lat != null) out.placed += 1; else out.missed += 1;
+    if (!dryRun) {
+      await sbRequest("PATCH", `permit_filings?id=eq.${encodeURIComponent(r.id)}&geo_source=is.null`, patch, { prefer: "return=minimal" });
+    }
+  }
+  return out;
+}
+
 // One sweep over every swept city: the last few days, every filing enriched
 // and zoned (sweepCityWindow), then the tracked permits. One city's failure is
 // one city's error line; the others still run.
@@ -6852,6 +6912,10 @@ async function sweepPermitFilings({ days, dryRun = false, history, only } = {}) 
   // The market pages' permit section reads this table; a run that wrote to
   // it makes the next page view refresh rather than wait out the TTL.
   if (!dryRun) PERMIT_PULSE.fetchedAt = 0;
+  // Place the permits that have no spot on the map yet (058), before the
+  // alert email reads them. Its errors stay in summary.located.
+  try { summary.located = await locatePermitFilings({ limit: historyOnly ? LOCATE_HISTORY_CAP : LOCATE_MAIN_CAP, dryRun }); }
+  catch (err) { summary.located = { errors: [err.message] }; }
   // --- tracked permits ride this same run (054) --------------------------
   // ONE trigger, the renewal watch's argument: whatever drives the sweep
   // already drives this, so it cannot be the job somebody forgets to
@@ -7209,6 +7273,7 @@ async function permitAlertsPayload(user, ent) {
     cities: PERMIT_SWEPT.map((c) => ({ key: c.key, label: c.label })),
     propertyTypes: PERMIT_ALERTS.PROPERTY_TYPES,
     kinds: Object.entries(PERMIT_ALERTS.KINDS).map(([key, label]) => ({ key, label })),
+    areaMiles: PERMIT_ALERTS.AREA_MILES,
   };
 }
 
@@ -21611,6 +21676,20 @@ const server = http.createServer((req, res) =>
   // Same gates as the one-permit POST: Pro (canTrackPermits), the 25 cap,
   // the swept cities, the account's own rows. `firm: true` attaches the
   // member's owned firm to each new permit (owners only, canShareWithFirm).
+  // An alert's area (2026-10-01, step 2; migration 058): the address placed
+  // on the map through the site's own Census geocoder. A street line with no
+  // city gets the alert's city (or Idaho), as the page's "Found on the map"
+  // preview does. { columns } for the alert row, or { error } to say back.
+  async function placeAlertArea(input, jurisdiction) {
+    const ar = PERMIT_ALERTS.areaRequest(input);
+    if (ar.error) return { error: ar.error };
+    if (!ar.area) return { columns: PERMIT_ALERTS.withArea(null) };
+    const j = PERMITS.JURISDICTIONS[jurisdiction] || null;
+    const line = /,/.test(ar.area.address) ? ar.area.address : `${ar.area.address}, ${j ? j.label + ", " + j.state : "ID"}`;
+    const placed = await geocodeCensus(line);
+    if (!placed) return { error: `We couldn't find “${ar.area.address}” on the map. Try the full street address, with the city.` };
+    return { columns: PERMIT_ALERTS.withArea(ar.area, placed) };
+  }
   // Permit alerts (2026-10-01, Draft B; migration 057). POST adds one, PATCH
   // changes it, DELETE removes it. Every read and write is `user_id=eq.` the
   // signed-in member. Adding and changing are Pro (canTrackPermits, the
@@ -21634,8 +21713,13 @@ const server = http.createServer((req, res) =>
           if (rateLimited("permit-alert:" + user.id, 30, 60 * 60 * 1000)) {
             return sendJson(res, 429, { error: "That's a lot of alerts in one go. Try again in a little while." });
           }
-          const v = PERMIT_ALERTS.validateAlertInput(JSON.parse(body || "{}"), opts);
+          const input = JSON.parse(body || "{}");
+          const v = PERMIT_ALERTS.validateAlertInput(input, opts);
           if (!v.ok) return sendJson(res, 400, { error: v.error });
+          const placedArea = await placeAlertArea(input, v.value.jurisdiction);
+          if (placedArea.error) return sendJson(res, 400, { error: placedArea.error });
+          Object.assign(v.value, placedArea.columns);
+          if (!String(input.name || "").trim()) v.value.name = PERMIT_ALERTS.defaultName(v.value, permitCityOf);
           const have = (await sbRequest("GET", `permit_alerts?user_id=eq.${uid}&select=id&limit=${PERMIT_ALERTS.MAX_ALERTS_PER_USER + 1}`)) || [];
           if (have.length >= PERMIT_ALERTS.MAX_ALERTS_PER_USER) {
             return sendJson(res, 400, { error: `You can keep up to ${PERMIT_ALERTS.MAX_ALERTS_PER_USER} alerts. Delete one to add another.` });
@@ -21658,7 +21742,16 @@ const server = http.createServer((req, res) =>
         }
         const ent = await getEntitlements(user, undefined, isAdminRequest(req));
         if (!ent.canTrackPermits) return proRequired();
-        const v = PERMIT_ALERTS.validateAlertPatch(JSON.parse(body || "{}"), rows[0], opts);
+        const input = JSON.parse(body || "{}");
+        if (Object.prototype.hasOwnProperty.call(input, "areaAddress")) {
+          const j = Object.prototype.hasOwnProperty.call(input, "jurisdiction") ? String(input.jurisdiction || "").toLowerCase() : rows[0].jurisdiction;
+          const placedArea = await placeAlertArea(input, j);
+          if (placedArea.error) return sendJson(res, 400, { error: placedArea.error });
+          input.area = placedArea.columns;
+        } else {
+          delete input.area;
+        }
+        const v = PERMIT_ALERTS.validateAlertPatch(input, rows[0], opts);
         if (!v.ok) return sendJson(res, 400, { error: v.error });
         const updated = (await sbRequest("PATCH", `permit_alerts?${scoped}`, v.patch, { prefer: "return=representation" })) || [];
         return sendJson(res, 200, { alert: PERMIT_ALERTS.alertView(updated[0] || { ...rows[0], ...v.patch }, { cityOf: permitCityOf }) });
@@ -31001,12 +31094,14 @@ const server = http.createServer((req, res) =>
       });
       res.end(marketShell({
         title: "Permit tracker \u00b7 CompNinja",
+        // The shared basemap and its dark styles (area alerts' maps); Leaflet
+        // itself loads only when a map is opened.
         description: "Commercial building permits filed in the cities CompNinja reads.",
         canonical: `${SITE_URL}/permits`,
         noindex: true,
         signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
         current: "/permits",
-        head: INTER_FONT_HEAD,
+        head: INTER_FONT_HEAD + `<style>${LEAFLET_DARK_CSS}</style><script>${BASEMAP_JS}</script>`,
         testerBadge: true,
         body: renderPermitsBody(boot) + visitTag,
       }));

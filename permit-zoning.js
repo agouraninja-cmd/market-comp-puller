@@ -73,18 +73,31 @@ function parcelQueryUrl(parcel, url = ADA_PARCELS_URL) {
     where: `PARCEL='${parcel}'`,
     outFields: "PARCEL,ZONING,ACRES",
     returnGeometry: "false",
+    // The parcel's center point, for the permit's place on a map (2026-10-01,
+    // area alerts). The outline stays off: the centroid comes back without it
+    // (measured: 750 bytes against 1,519 with the polygon).
+    returnCentroid: "true",
+    outSR: "4326",
     f: "json",
   });
   return `${url}?${q}`;
 }
 
-// { zoning, zoning_acres } for a parcel number, or {} when unknown.
+// { zoning, zoning_acres, lat, lng } for a parcel number — each part only
+// when the county answered it — or {} when unknown. The center point is its
+// own answer: a parcel with no zoning on file still has a place on the map.
 function parseParcelAnswer(data) {
-  const a = data && Array.isArray(data.features) && data.features[0] && data.features[0].attributes;
+  const f = data && Array.isArray(data.features) && data.features[0];
+  const a = f && f.attributes;
   if (!a) return {};
+  const out = {};
   const zoning = String(a.ZONING || "").trim();
-  if (!zoning) return {};
-  return { zoning, zoning_acres: typeof a.ACRES === "number" ? a.ACRES : null };
+  if (zoning) Object.assign(out, { zoning, zoning_acres: typeof a.ACRES === "number" ? a.ACRES : null });
+  const c = f.centroid;
+  if (c && Number.isFinite(c.x) && Number.isFinite(c.y) && Math.abs(c.y) <= 90 && Math.abs(c.x) <= 180) {
+    out.lat = c.y; out.lng = c.x;
+  }
+  return out;
 }
 
 async function fetchZoningByParcel(parcelNumber, deps) {

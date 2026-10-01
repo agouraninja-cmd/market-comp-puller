@@ -166,13 +166,15 @@ function buildPulse(rows, { now } = {}) {
   if (months.length < MIN_MONTHS) return null;
   const from = months[0].month;
   const live = permits.filter((p) => p.month >= from && p.state !== "ended");
-  const curves = { ti: curve(live.filter((p) => p.group === "ti")), new: curve(live.filter((p) => p.group === "new")) };
+  // `all` is every live permit, the other kinds too: the compare page reads
+  // it (permit-compare.js); this section draws the two kinds only.
+  const curves = { ti: curve(live.filter((p) => p.group === "ti")), new: curve(live.filter((p) => p.group === "new")), all: curve(live) };
   const recent = months.slice(-2);
   const total = sum(months, "total"), ended = sum(months, "ended");
   return {
     months, from, through: months[months.length - 1].month,
     pace: { all: pace(months, "total"), ti: pace(months, "ti"), new: pace(months, "new") },
-    curves, waits: { ti: halfwayDays(curves.ti), new: halfwayDays(curves.new) },
+    curves, waits: { ti: halfwayDays(curves.ti), new: halfwayDays(curves.new), all: halfwayDays(curves.all) },
     total, ended, endedShare: total ? ended / total : 0,
     openShare: sum(recent, "total") ? sum(recent, "open") / sum(recent, "total") : 0,
     lastSeenAt: lastSeen ? new Date(lastSeen).toISOString() : null,
@@ -298,6 +300,7 @@ const PULSE_CSS =
   ".pp tr.me td{color:var(--ink);font-weight:600}" +
   ".pp a.pp-more{color:var(--ink-2);text-decoration:underline;text-decoration-color:var(--edge);text-underline-offset:3px}" +
   ".pp .pp-stale{color:var(--warn-text)}" +
+  ".pp p.pp-cmp{margin:8px 0 0;font-size:13.5px}" +
   // .card p (margin 0 0 10px) outranks .disc, so the small print says its own.
   ".pp p.disc{margin:14px 0 0}" +
   "@media (max-width:640px){.pp .pp-figs{flex-wrap:wrap}.pp .pp-fig{flex:1 1 45%;border-bottom:1px solid var(--hair)}" +
@@ -341,7 +344,10 @@ function pulseSectionHtml(view) {
   const table = others.length
     ? `<h3 style="margin-top:18px">Next to ${esc(others.map((o) => o.city).join(" and "))}</h3><div class="pp-tbl"><table>` +
       `<thead><tr><th>City</th><th>A month</th><th>Build-out wait</th><th>New-building wait</th></tr></thead><tbody>` +
-      row(view.city, p, true) + others.map((o) => row(o.city, o.pulse, false)).join("") + `</tbody></table></div>`
+      row(view.city, p, true) + others.map((o) => row(o.city, o.pulse, false)).join("") + `</tbody></table></div>` +
+      // The whole comparison is the tracker's (/permits/compare), so a member
+      // only; a signed-out reader already has the section's one sign-up door.
+      (view.signedIn ? `<p class="pp-cmp"><a class="pp-more" href="/permits/compare">Compare the cities in full &rarr;</a></p>` : "")
     : "";
   const stale = view.freshness && view.freshness.stale && p.lastSeenAt
     ? ` <span class="pp-stale">Last read ${esc(new Date(p.lastSeenAt).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: F.PORTAL_TZ }))}, more than a business day ago, so newer permits may be missing.</span>`

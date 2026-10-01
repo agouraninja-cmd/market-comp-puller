@@ -57,6 +57,9 @@ const PERMIT_FILINGS = require("./permit-filings");
 // announces, the notice email. Pure; the tables are migration 054's.
 const PERMIT_WATCH = require("./permit-watch");
 const PERMIT_PULSE_MOD = require("./permit-pulse");
+// The swept cities side by side by their permits (/permits/compare,
+// 2026-10-01). Pure; it reads the pulses above.
+const PERMIT_COMPARE = require("./permit-compare");
 const PERMIT_ALERTS = require("./permit-alerts");
 // Who may read a shared report. Pure and tested for the same reason as the
 // modules above it: this gate protects a broker's private comps, not a comp
@@ -7008,9 +7011,8 @@ const permitCityOf = (key) => {
 // with nothing cached the page simply has no section — never a zero.
 const PERMIT_PULSE = { byCity: {}, fetchedAt: 0, failedAt: 0, refreshing: false };
 const PERMIT_PULSE_TTL_MS = 30 * 60 * 1000;
-async function refreshPermitPulse() {
-  if (!DB_CONFIGURED || PERMIT_PULSE.refreshing) return;
-  PERMIT_PULSE.refreshing = true;
+// The read itself; callers use refreshPermitPulse below.
+async function readPermitPulse() {
   try {
     const now = Date.now();
     const since = PERMIT_FILINGS.localIsoDate(now - PERMIT_PULSE_MOD.READ_DAYS * 86400000);
@@ -7031,9 +7033,18 @@ async function refreshPermitPulse() {
   } catch (err) {
     PERMIT_PULSE.failedAt = Date.now();
     console.error("Permit pulse refresh failed; keeping previous:", err.message);
-  } finally {
-    PERMIT_PULSE.refreshing = false;
   }
+}
+// One read at a time, and it answers the read in flight, so the compare page
+// (which may wait on a cold cache, unlike a market page) and a second caller
+// share one. The flag clears in a promise callback, which always runs after
+// the assignment, so even a read that fails at once cannot leave it stuck.
+function refreshPermitPulse() {
+  if (!DB_CONFIGURED) return Promise.resolve();
+  if (!PERMIT_PULSE.refreshing) {
+    PERMIT_PULSE.refreshing = readPermitPulse().finally(() => { PERMIT_PULSE.refreshing = null; });
+  }
+  return PERMIT_PULSE.refreshing;
 }
 // What a market page in `city, state` shows: the pulse for a city the sweep
 // reads, an "unread" note for a city whose portal we know but do not read
@@ -7064,6 +7075,40 @@ function permitPulseFor(city, state, propertyType) {
     freshness: PERMIT_FILINGS.sweepFreshness(pulse.lastSeenAt, Date.now()),
     others: PERMITS.SWEEP_KEYS.filter((k) => k !== key && PERMIT_PULSE.byCity[k])
       .map((k) => ({ city: PERMITS.JURISDICTIONS[k].label, pulse: PERMIT_PULSE.byCity[k] })),
+  };
+}
+
+// The compare page (/permits/compare): every swept city with its pulse, in
+// registry order with its colour slot (the city's place in the registry, so a
+// colour never moves when another city is switched on). A member page may
+// wait, so a cold cache (the first seconds after a deploy) is waited on for a
+// few seconds rather than shown as "unavailable"; a stale one is refreshed
+// behind the answer, as on the market pages. "Cold" is nothing ever read, not
+// fetchedAt 0: a sweep that wrote zeroes fetchedAt to force a re-read, and the
+// pulse already cached is the right answer while that runs.
+const PERMIT_COMPARE_WAIT_MS = 8000;
+async function permitComparePayload() {
+  if (!Object.keys(PERMIT_PULSE.byCity).length) {
+    await Promise.race([refreshPermitPulse(), new Promise((r) => setTimeout(r, PERMIT_COMPARE_WAIT_MS))]);
+  } else if (Date.now() - PERMIT_PULSE.fetchedAt > PERMIT_PULSE_TTL_MS && Date.now() - PERMIT_PULSE.failedAt > 60000) {
+    refreshPermitPulse();
+  }
+  const cities = PERMIT_SWEPT.map((s) => ({
+    key: s.key, city: s.label, slot: PERMITS.JURISDICTION_KEYS.indexOf(s.key), pulse: PERMIT_PULSE.byCity[s.key] || null,
+  }));
+  const comparison = PERMIT_COMPARE.buildComparison(cities);
+  const seen = comparison.cities.map((c) => c.pulse.lastSeenAt).filter(Boolean).sort();
+  const newest = seen[seen.length - 1] || null;
+  const fresh = newest ? PERMIT_FILINGS.sweepFreshness(newest, Date.now()) : null;
+  return {
+    s: 200, comparison, swept: PERMIT_SWEPT.map((s) => s.label),
+    stale: fresh && fresh.stale ? { at: newest } : null,
+    // Each compared city's own permit section, on its industrial market page
+    // where one exists (the section is the same on every type's page).
+    marketLinks: comparison.cities.map((c) => {
+      const slug = slugifyMarket("industrial", c.city, PERMITS.JURISDICTIONS[c.key].state);
+      return { city: c.city, href: getMarketPage(slug) ? `/market/${slug}#permits` : null };
+    }),
   };
 }
 
@@ -12420,7 +12465,7 @@ function nextMarketExample() {
 // /bulk is where the CTA POINTS (since the evening of 2026-09-04), so it is in
 // the list for the plainest reason of all: a button offering to take you where
 // you already are is a button that does nothing.
-const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/bulk", "/buildings", "/building", "/permits"]);
+const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/bulk", "/buildings", "/building", "/permits", "/permits/compare"]);
 
 const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
@@ -31104,6 +31149,45 @@ const server = http.createServer((req, res) =>
         head: INTER_FONT_HEAD + `<style>${LEAFLET_DARK_CSS}</style><script>${BASEMAP_JS}</script>`,
         testerBadge: true,
         body: renderPermitsBody(boot) + visitTag,
+      }));
+    })();
+    return;
+  }
+
+  // --- GET /permits/compare — the swept cities side by side (2026-10-01) ---
+  //
+  // The Permit tracker's own page, so the same door: any signed-in account.
+  // Every figure is the market pages' cached pulse (permitComparePayload),
+  // so nothing here reads a table per request.
+  if (req.method === "GET" && pagePath === "/permits/compare") {
+    (async () => {
+      let boot = null;
+      try {
+        const user = await getSessionUser(req);
+        if (!user) boot = { s: 401 };
+        else if (!DB_CONFIGURED) boot = { s: 503, error: "The permit tracker is unavailable right now." };
+        else boot = await permitComparePayload();
+      } catch (err) {
+        console.error("permit compare boot failed:", err.message);
+      }
+      const visitTag = logPageVisit(req, "permits_compare_visit", { source:
+        !boot ? "error" : boot.s === 200 ? (boot.comparison.ready ? "ok" : "thin") : boot.s === 401 ? "signin" : "nodb" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        vary: "cookie",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      res.end(marketShell({
+        title: "Compare cities by their permits \u00b7 CompNinja",
+        description: "The cities CompNinja reads, side by side by their commercial building permits.",
+        canonical: `${SITE_URL}/permits/compare`,
+        noindex: true,
+        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+        current: "/permits",
+        head: INTER_FONT_HEAD,
+        testerBadge: true,
+        body: PERMIT_COMPARE.renderCompareBody(boot) + visitTag,
       }));
     })();
     return;

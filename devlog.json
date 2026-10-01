@@ -4501,5 +4501,11 @@
     "type": "feature",
     "title": "Permit alerts: follow an area on a map",
     "details": "A permit alert can now follow an area within a city: within ½, 1, 2 or 5 miles of an address. The form finds the address on a map and draws the circle with the last month’s permits around it, and a saved area alert can show its map. Every permit now has a place on the map, from its parcel or its address."
+  },
+  {
+    "date": "2026-10-01",
+    "type": "feature",
+    "title": "Permit tracker: compare cities by their permits",
+    "details": "A new Compare cities page under the Permit tracker puts Boise and Meridian side by side: permits filed a month, tenant build-outs, new buildings, how long each city takes to issue them, how many are still in review and how many were voided, each with its trend. Month-by-month charts can show each kind of permit, as counts or against each city’s own average, and a short plain-English read says what the differences mean. Reach it from the Permit tracker’s header, or from the permit table on a Boise or Meridian market page."
   }
 ]

@@ -514,3 +514,66 @@ against a Census stand-in. Six rules:
   use, the tiles from CNBASE (BASEMAP_JS, sent in /permits' head with
   LEAFLET_DARK_CSS), and several permits at one address (a campus) are one
   dot with its count. With the CDN blocked the form still works.
+
+## Comparing cities (2026-10-01)
+
+Owner's call: "add a way to compare cities or markets by the permit
+information for the permit scraper." **`GET /permits/compare`**, linked from
+the /permits header ("Compare cities →") and, for a signed-in member, from
+under the market-page section's "Next to …" table ("Compare the cities in
+full →"; a signed-out reader keeps that section's one sign-up door). Rules and
+HTML in the pure **`permit-compare.js`** (`test/permit-compare.test.js`); the
+read is `permitComparePayload` in server.js; `test/permit-compare-run.test.js`
+runs the page, its two doors and the thin case against the stand-in. No
+migration. Seven rules:
+
+- **The market pages' pulse, not a second read.** Every figure is
+  `PERMIT_PULSE.byCity` (permit-pulse.js's `buildPulse`), so a number here and
+  the same number on a city's market page are one number. `buildPulse` now
+  also carries `curves.all` / `waits.all` (every live permit) for this page's
+  "All permits" wait; the market section still draws only its two kinds.
+- **A member page may wait; a market page never does.** `refreshPermitPulse`
+  now returns its in-flight promise (the flag clears in a promise callback, so
+  a read that fails at once cannot leave it stuck), and a cold cache (nothing
+  read yet: the first seconds after a deploy) is waited on for up to 8 s rather
+  than called unavailable. A sweep that wrote zeroes fetchedAt, which is NOT
+  cold: the cached pulse answers while the re-read runs behind it.
+- **The tracker's door.** Signed in, like /permits; no database is "the permit
+  tracker is unavailable"; no plan gate (public record). `permits_compare_visit`
+  goes through `logPageVisit` (rule 15; `test/instant-nav.test.js` counts it).
+- **Two cities or a sentence.** Only a city with a pulse (six complete
+  months) is compared; one city, or none, is a sentence naming what is
+  missing, never a column of zeros. Every swept city with a pulse is a column,
+  so switching Nampa on adds it with no code change.
+- **Cities, not property types.** Every commercial permit, and the page says
+  why: a permit's type comes from its parcel's zoning, which the history
+  pass's backfill does not have, so a per-type count would rise month by month
+  as zoned permits replaced unzoned ones — a trend made by the sweep. Split by
+  type once the backfill is zoned (the permit-pulse section's own "Later").
+- **Colour follows the city.** A city's slot is its index in
+  `JURISDICTION_KEYS` (Boise blue, Meridian orange, Nampa aqua), never its
+  place on the page; the three hues were run through the dataviz validator
+  all-pairs against `--card` in light and dark. Text stays ink; the colour is
+  on the line, the dot and the small key beside a city's name. One axis:
+  "Against its own average" indexes each city to 100 = its own monthly mean.
+- **The words claim only what the numbers carry.** Counts within 15% are
+  "about the same", trends within five points get no verdict, waits within
+  five days are "about the same time", shares within three points are
+  "similar"; a city filing under two-thirds of the busiest gets "its
+  percentages swing more". A wait line is drawn only when its first usable
+  point is within ~5 weeks (halfwayDays' anchor); otherwise the chart says
+  "Too few recent … in <city> to draw its line" instead of floating a stub.
+
+The toggles (kind: all / build-outs / new buildings; scale: count / own
+average) are progressive: the server draws every variant at both widths and
+marks all but the defaults `hidden`; the script only flips `hidden`, reveals
+the buttons, and draws the hover tooltip. "Each month's numbers" is the line
+chart's table view. MARKET_CSS styles every `table`/`th` as the comp table
+(640px floor, washed upper-case `th`), so the page overrides both inside
+`.pc-page`; on a phone the side-by-side table is fixed-layout so every city
+stays on screen.
+
+Found while building it, not fixed here: the market section's own wait chart
+(`waitSvg` in permit-pulse.js) draws a curve with no anchor near day zero,
+which shows as a short stroke floating around day 90 for a kind with few
+young permits (Boise's new buildings, in the synthetic year).

@@ -67,6 +67,8 @@ function renderPermitsBody(boot) {
 .pt-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
   border-bottom:1.5px solid var(--ink);padding-bottom:6px;margin-bottom:10px}
 .pt-head h1{margin:0;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:24px;color:var(--ink)}
+.pt-cmp{font-size:13px;color:var(--ink-2);white-space:nowrap;text-decoration:underline;text-decoration-color:var(--edge);text-underline-offset:3px}
+.pt-cmp:hover{color:var(--ink)}
 .pt-count{font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .pt-sub{font-size:13px;color:var(--ink-2);margin:0 0 14px}
 .pt-sub.stale{color:var(--err-text)}
@@ -204,6 +206,7 @@ function renderPermitsBody(boot) {
   <div class="kicker">Tools</div>
   <div class="pt-head">
     <h1>Permit tracker</h1>
+    <a class="pt-cmp" href="/permits/compare">Compare cities &rarr;</a>
   </div>
   <section class="pw hide" id="pwSec" aria-labelledby="pwTitle">
     <div class="pw-head">

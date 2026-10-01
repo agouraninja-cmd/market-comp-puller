@@ -416,3 +416,12 @@ test("flagIndustrial: the keyword fallback, word-bounded", () => {
   assert.equal(P.flagIndustrial({ description: "Shellfish restaurant" }), false, "word boundary");
   assert.equal(P.flagIndustrial({}), false);
 });
+
+// 2026-10-01: Boise's grid sends some descriptions double-encoded
+// ("&amp;#160;"), which reached /permits as a literal "&#160;".
+test("portal text decodes numbered codes, including a double-encoded one", () => {
+  assert.equal(P.decodeEntities("full TI project. &amp;#160;There will be"), "full TI project.  There will be");
+  assert.equal(P.decodeEntities("O&#39;Brien &#x2019;s &#8217; &amp; &lt;b&gt; &nbsp;x"), "O'Brien ’s ’ & <b>  x");
+  assert.equal(P.decodeEntities("bad &#0; &#xD800; code"), "bad   code", "a code that is no character is dropped");
+  assert.equal(P.decodeEntities(null), "");
+});

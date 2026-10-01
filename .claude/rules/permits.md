@@ -420,3 +420,51 @@ applicant, contractor, parcel or zoning; `is_industrial` from the keyword).
 Status moves become `permit_filing_events` exactly as before. Its errors live
 in `summary.history.errors`, which the workflow WARNS on, never in
 `summary.errors`, which fails it.
+
+## Permit alerts (2026-10-01)
+
+Owner's pick of Draft B from the Permit Alerts drafts
+(https://claude.ai/artifact/BnbuAaxmGu5xKyYPieiC3i): **Your alerts** on
+/permits, under Your permits. A member saves what they follow — a city (or
+every city we read), a property type, a kind (tenant build-outs or new
+buildings, permit-pulse.js's grouping) and optional words — and gets the new
+permits that fit it by email each weekday morning. Migration
+**`057-permit-alerts.sql`** (`permit_alerts`), run before deploying (the
+order is soft: the section says it is unavailable and the sweep carries a
+named line until it runs). Rules in the pure **`permit-alerts.js`**
+(`test/permit-alerts.test.js`); routes `POST|PATCH|DELETE
+/api/permits/alerts`; the email is `sendPermitAlertDigests` at the end of
+the sweep; `test/permit-alerts-run.test.js` runs all of it. Seven rules:
+
+- **Per member.** Every route is `user_id=eq.` the signed-in member (a
+  second member's PATCH/DELETE is a 404, pinned). 10 alerts each.
+- **Pro to add or change, never to delete** — `canTrackPermits`, the tracked
+  permits' gate and reasoning. The feed itself stays free.
+- **Only the cities the sweep reads**, and only the property types the form
+  offers (permit-zoning.js's list less "Other", which is the absence of a
+  type). A blank name is made from the filters (`defaultName`).
+- **"New" means STORED after the alert's `notified_through` and FILED within
+  `EMAIL_FRESH_DAYS` (14).** Stored, because the sweep reads a portal a day or
+  more late and a late read is still news; filed recently, because the history
+  pass stores old permits it never saw. The mark starts at the alert's
+  creation and moves to now when its filters change, so neither saving nor
+  widening an alert ever mails the past.
+- **One email per member, marked after the send** (rule 12). It rides the
+  sweep's FIRST call (never the history-only one), after the short window has
+  stored today's permits; `cutoff` is taken before the read, so a permit
+  stored meanwhile is the next run's. Mail off: nothing sent, nothing marked,
+  `mailOff` in `summary.alerts`, which the workflow warns on and never fails
+  on. Like tracked permits, a lapsed member's alerts keep being sent (the
+  comped-team cookie is invisible to the sweep); revisit beside that rule.
+- **The page draws the counts and the tags itself**, from the feed it already
+  has: "N new this week" is the alert's permits filed in the last seven days,
+  and a permit in the list carries the first alert it fits. That uses
+  `alertMatches` in permits-page.js, a **⚠ pair** with `matches` here,
+  pinned by a test that runs both over the same permits.
+- **Each feed permit now carries `kind`** (`permitTrackerPayload`), so the
+  page matches on the same word the server does.
+
+Not built (step 2 of the owner's ask): an area within a city ("within a mile
+of an address") — needs coordinates per permit; see the conversation's plan:
+parcel location from the Ada County query the sweep already makes, Census for
+the backfilled rows.

@@ -91,6 +91,7 @@ const TABLES = [
   ["permit_watches",      "054-permit-watches.sql"],
   ["permit_watch_events", "054-permit-watches.sql"],
   ["permit_watch_mutes",  "055-permit-watch-firm.sql"],
+  ["permit_alerts",       "057-permit-alerts.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -280,6 +281,7 @@ const COLUMNS = [
   // A missing org_id leaves the firm switch answering "unavailable" and every
   // firm permit reaching its owner alone.
   ["permit_watches",    ["org_id"],                                  "055-permit-watch-firm.sql"],
+  ["permit_alerts",     ["notified_through", "last_emailed_at", "notify_email"], "057-permit-alerts.sql"],
   // The profile card's title. Its absence degrades (the roster retries the
   // read without it) but every title save answers "couldn't save".
   ["users",             ["title"],                                   "056-user-title.sql"],

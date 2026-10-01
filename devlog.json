@@ -4507,5 +4507,11 @@
     "type": "feature",
     "title": "Permit tracker: compare cities by their permits",
     "details": "A new Compare cities page under the Permit tracker puts Boise and Meridian side by side: permits filed a month, tenant build-outs, new buildings, how long each city takes to issue them, how many are still in review and how many were voided, each with its trend. Month-by-month charts can show each kind of permit, as counts or against each city’s own average, and a short plain-English read says what the differences mean. Reach it from the Permit tracker’s header, or from the permit table on a Boise or Meridian market page."
+  },
+  {
+    "date": "2026-10-01",
+    "type": "fix",
+    "title": "Market pages: no more floating line on the permit wait chart",
+    "details": "When a city has too few recent permits of one kind (Boise’s new buildings, about seven a month), the “How long until they’re issued” chart used to draw a short stray line around day 90 with no halfway point. It now leaves that line out and says so under the chart, e.g. “Too few recent new buildings in Boise to draw its line,” the same rule the Compare cities page already used."
   }
 ]

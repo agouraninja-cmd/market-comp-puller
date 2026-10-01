@@ -4,7 +4,8 @@
 // hole ends it, the partial current month never counts toward the bars or the
 // pace); too few months is no section at all; the wait is the age at which
 // half the permits are issued, and with no young permits to anchor it there is
-// no wait; voided permits never count toward it; and the section says where
+// no wait and no line, only a caption saying why; voided permits never count
+// toward it; and the section says where
 // the figures come from, links a signed-out reader to a free account, and
 // never prints a number it does not have.
 
@@ -93,6 +94,35 @@ test("with no young permits of a kind there is no wait for it, rather than a lin
   const p = P.buildPulse(sparseNew(), { now: NOW });
   assert.ok(p.waits.ti != null, "build-outs still have one");
   assert.equal(p.waits.new, null);
+});
+
+// Build-outs every day, but new buildings only filed 84 to 111 days ago: the
+// Boise shape, two usable buckets around day 90-105 and nothing young.
+const lateNew = () => year().filter((r) => {
+  const age = Math.round((NOW - Date.parse(r.applied_date)) / DAY);
+  return r.permit_type === "Tenant Improvement" || (age >= 84 && age <= 111);
+});
+
+test("a kind with no young permits draws no line, and the chart says so instead of floating a stub", () => {
+  const p = P.buildPulse(lateNew(), { now: NOW });
+  const stub = P.curvePoints(p.curves.new);
+  assert.ok(stub.length >= 2 && stub[0].day > P.ANCHOR_DAY, `the curve has points, but none young (${stub.map((x) => x.day)})`);
+  assert.deepEqual(P.drawablePoints(p.curves.new), [], "too far from day zero to draw");
+  assert.ok(P.drawablePoints(p.curves.ti).length >= 2, "build-outs still draw");
+  assert.equal(p.waits.new, null, "and no halfway dot");
+
+  const out = P.pulseSectionHtml({ city: "Boise", pulse: p, others: [], signedIn: false, freshness: {} });
+  assert.equal((out.match(/class="pp-line-ti"/g) || []).length, 2, "build-outs at both widths");
+  assert.doesNotMatch(out, /class="pp-line-new"/, "no new-building stroke at either width");
+  assert.match(out, /<p class="disc" style="margin-top:6px">Too few recent new buildings in Boise to draw its line\.<\/p>/);
+
+  // A full year draws both and says nothing; neither kind names both.
+  const full = P.pulseSectionHtml({ city: "Boise", pulse: P.buildPulse(year(), { now: NOW }), others: [], signedIn: false, freshness: {} });
+  assert.equal((full.match(/class="pp-line-new"/g) || []).length, 2);
+  assert.doesNotMatch(full, /Too few recent/);
+  const neither = P.pulseSectionHtml({ city: "Boise", pulse: { ...p, curves: { ...p.curves, ti: p.curves.new } }, others: [], signedIn: false, freshness: {} });
+  assert.doesNotMatch(neither, /<polyline/);
+  assert.match(neither, /Too few recent tenant build-outs and new buildings in Boise to draw their lines\./);
 });
 
 test("the pace is the last three months a month against the months before, worded by how many there were", () => {

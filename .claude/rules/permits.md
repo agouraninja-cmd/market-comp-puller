@@ -372,8 +372,12 @@ stand-in. No migration. Six rules:
   portals list a filing date and today's status, never an issue date, so the
   wait is the age at which half the permits of that age are issued today,
   in 14-day buckets, made non-decreasing. A bucket under 5 permits says
-  nothing; a curve whose first usable bucket is past ~5 weeks has no wait
-  (null, shown as a dash with a reason). Voided and withdrawn permits are left
+  nothing; a curve whose first usable bucket is past ~5 weeks (`ANCHOR_DAY`)
+  has no wait (null, shown as a dash with a reason) and draws no line: the
+  chart says "Too few recent <kind> in <city> to draw its line" under it
+  instead (`drawablePoints`, the one rule this section and /permits/compare
+  both draw by; it used to float a short stroke around day 90 for Boise's new
+  buildings, fixed 2026-10-01). Voided and withdrawn permits are left
   out of it. The status words are permit-watch.js's `classifyStatus`, so
   "issued" means one thing across the tracker and this page. Later:
   `permit_filing_events` now record real status-change dates for every
@@ -563,6 +567,8 @@ migration. Seven rules:
   percentages swing more". A wait line is drawn only when its first usable
   point is within ~5 weeks (halfwayDays' anchor); otherwise the chart says
   "Too few recent … in <city> to draw its line" instead of floating a stub.
+  The rule is permit-pulse.js's `drawablePoints` (with `ANCHOR_DAY` and
+  `WAIT_MAX_DAY`), shared with the market section's chart.
 
 The toggles (kind: all / build-outs / new buildings; scale: count / own
 average) are progressive: the server draws every variant at both widths and
@@ -572,8 +578,3 @@ chart's table view. MARKET_CSS styles every `table`/`th` as the comp table
 (640px floor, washed upper-case `th`), so the page overrides both inside
 `.pc-page`; on a phone the side-by-side table is fixed-layout so every city
 stays on screen.
-
-Found while building it, not fixed here: the market section's own wait chart
-(`waitSvg` in permit-pulse.js) draws a curve with no anchor near day zero,
-which shows as a short stroke floating around day 90 for a kind with few
-young permits (Boise's new buildings, in the synthetic year).

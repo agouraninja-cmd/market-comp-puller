@@ -53,7 +53,7 @@ const SAME_RATIO = 1.15;
 const TREND_POINTS = 5;
 const WAIT_DAYS = 5;
 const SHARE_POINTS = 3;
-const MAX_WAIT_DAY = 210;
+const MAX_WAIT_DAY = P.WAIT_MAX_DAY;
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -337,12 +337,11 @@ function linesSvg(view, kind, scale, W0, H0, every) {
   return s;
 }
 
-// A city's wait curve as drawn, or [] when it cannot be: under two usable
-// points, or a first point past halfwayDays' anchor (~5 weeks).
-const ANCHOR_DAY = 35;
+// A city's wait curve as drawn, or [] when it cannot be: permit-pulse.js's
+// drawablePoints, the market section's own rule (under two usable points, or
+// a first point past halfwayDays' anchor, ~5 weeks).
 function drawablePoints(c, kind) {
-  const pts = P.curvePoints(c.pulse.curves && c.pulse.curves[kind]).filter((p) => p.day <= MAX_WAIT_DAY);
-  return pts.length >= 2 && pts[0].day <= ANCHOR_DAY ? pts : [];
+  return P.drawablePoints(c.pulse.curves && c.pulse.curves[kind], MAX_WAIT_DAY);
 }
 
 // Share issued by days since filing, one line per city, each halfway dot in

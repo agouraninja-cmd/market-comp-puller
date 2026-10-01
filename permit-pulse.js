@@ -22,7 +22,9 @@
 // so on (`curve`, `halfwayDays`). It assumes the city's pace was steady over
 // the window, and the page says so. Voided and withdrawn permits are left out
 // of it, since they will never be issued. A curve whose youngest usable
-// bucket is not near day zero has no honest halfway point and answers null.
+// bucket is not near day zero (ANCHOR_DAY) has no honest halfway point and
+// answers null, and is not drawn either: a short stroke floating at day 90
+// reads as a wait the numbers do not carry, so the chart says why instead.
 //
 // NOTHING IS SHOWN FROM A THIN TABLE. The months drawn are the CONTIGUOUS run
 // of complete months ending last month: a month with no filing at all is a
@@ -47,6 +49,11 @@ const BUCKET_DAYS = 14;
 const CURVE_DAYS = 364;
 // Fewer permits than this of one age and that age says nothing.
 const MIN_BUCKET = 5;
+// A curve's first usable point must be this young (days) to anchor a halfway
+// point, or a line, back to day zero: ~5 weeks, the third bucket's middle.
+const ANCHOR_DAY = 35;
+// The wait charts' x axis ends here (this section's and the compare page's).
+const WAIT_MAX_DAY = 210;
 // How far back the market page's read goes: the full run plus this month.
 const READ_DAYS = 400;
 
@@ -115,7 +122,7 @@ function curvePoints(c) {
 function halfwayDays(c) {
   const pts = curvePoints(c);
   // A curve that starts late has no honest line back to day zero.
-  if (!pts.length || pts[0].day > 35) return null;
+  if (!pts.length || pts[0].day > ANCHOR_DAY) return null;
   let prev = { day: 0, share: 0 };
   for (const p of pts) {
     if (p.share >= 0.5) {
@@ -125,6 +132,14 @@ function halfwayDays(c) {
     prev = p;
   }
   return null;
+}
+
+// A curve's points as a wait chart draws them, or [] when it cannot be:
+// under two usable points up to `maxDay`, or a first point past ANCHOR_DAY
+// (halfwayDays' anchor). One rule for the market section and /permits/compare.
+function drawablePoints(c, maxDay = WAIT_MAX_DAY) {
+  const pts = curvePoints(c).filter((p) => p.day <= maxDay);
+  return pts.length >= 2 && pts[0].day <= ANCHOR_DAY ? pts : [];
 }
 
 // Last PACE_MONTHS months a month, against the months before them.
@@ -238,9 +253,11 @@ function volumeSvg(months, W0, H0, every) {
 }
 
 // Share issued by days since filing, one line per kind, the halfway point red.
+// A kind with no young permits to anchor it draws no line (drawablePoints);
+// pulseSectionHtml says so under the chart.
 function waitSvg(pulse, W0, H0, every) {
   const pad = { l: 34, r: 10, t: 14, b: 24 }, iw = W0 - pad.l - pad.r, ih = H0 - pad.t - pad.b;
-  const maxD = 210;
+  const maxD = WAIT_MAX_DAY;
   const x = (d) => pad.l + Math.min(d, maxD) / maxD * iw, y = (p) => pad.t + ih - p * ih;
   let s = "";
   [0, 0.5, 1].forEach((p) => {
@@ -252,8 +269,8 @@ function waitSvg(pulse, W0, H0, every) {
     s += `<text class="pp-tick" x="${x(d)}" y="${H0 - 6}" text-anchor="middle">${d}</text>`;
   }
   [["ti", "pp-line-ti"], ["new", "pp-line-new"]].forEach(([k, cls]) => {
-    const pts = curvePoints(pulse.curves[k]).filter((p) => p.day <= maxD);
-    if (pts.length < 2) return;
+    const pts = drawablePoints(pulse.curves[k], maxD);
+    if (!pts.length) return;
     s += `<polyline class="${cls}" points="${pts.map((p) => `${x(p.day).toFixed(1)},${y(p.share).toFixed(1)}`).join(" ")}"/>`;
     const d = pulse.waits[k];
     if (d == null || d > maxD) return;
@@ -327,9 +344,12 @@ function pulseSectionHtml(view) {
     `<svg class="pp-wide" viewBox="0 0 620 230" role="img" aria-label="${aria}">${volumeSvg(p.months, 620, 230, 1)}</svg>` +
     `<svg class="pp-narrow" viewBox="0 0 340 190" role="img" aria-label="${aria}">${volumeSvg(p.months, 340, 190, 2)}</svg>`;
   const waitAria = `Share of permits issued by days since filing in ${city}`;
+  // The kinds waitSvg could not draw, named rather than left as a gap.
+  const undrawn = [["ti", "tenant build-outs"], ["new", "new buildings"]].filter(([k]) => !drawablePoints(p.curves[k]).length).map(([, noun]) => noun);
   const wait = `<h3>How long until they’re issued</h3><div class="pp-lg"><span><i class="ln pp-k-ti"></i>Tenant build-outs</span><span><i class="ln pp-k-new"></i>New buildings</span></div>` +
     `<svg class="pp-wide" viewBox="0 0 440 230" role="img" aria-label="${waitAria}">${waitSvg(p, 440, 230, 1)}</svg>` +
     `<svg class="pp-narrow" viewBox="0 0 340 190" role="img" aria-label="${waitAria}">${waitSvg(p, 340, 190, 2)}</svg>` +
+    (undrawn.length ? `<p class="disc" style="margin-top:6px">Too few recent ${undrawn.join(" and ")} in ${city} to draw ${undrawn.length === 1 ? "its line" : "their lines"}.</p>` : "") +
     `<p class="disc" style="margin-top:6px">Share of permits issued by days since filing. The red dot is where half are issued.</p>`;
   const sig = (t, s) => `<div class="pp-sig"><b>${t}</b><span>${s}</span></div>`;
   const sigs = `<h3 style="margin-top:18px">What it says</h3><div class="pp-sigs">` +
@@ -375,8 +395,8 @@ function unreadCardHtml(view) {
 }
 
 module.exports = {
-  PULSE_MONTHS, MIN_MONTHS, PACE_MONTHS, BUCKET_DAYS, CURVE_DAYS, MIN_BUCKET, READ_DAYS,
+  PULSE_MONTHS, MIN_MONTHS, PACE_MONTHS, BUCKET_DAYS, CURVE_DAYS, MIN_BUCKET, READ_DAYS, ANCHOR_DAY, WAIT_MAX_DAY,
   NEW_TYPES, TI_TYPES, PULSE_CSS,
-  groupOf, stateOf, prevMonth, monthLabel, curve, curvePoints, halfwayDays, pace, buildPulse,
+  groupOf, stateOf, prevMonth, monthLabel, curve, curvePoints, halfwayDays, drawablePoints, pace, buildPulse,
   changeHtml, pulseSectionHtml, unreadCardHtml,
 };

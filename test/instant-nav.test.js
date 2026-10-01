@@ -707,7 +707,7 @@ test("every page writes through fetch, the one channel the prerender guard holds
 });
 
 test("no page visit is logged around logPageVisit", () => {
-  const kinds = ["bulk_visit", "messages_visit", "building_visit", "permits_visit", "buildings_visit", "vault_visit"];
+  const kinds = ["bulk_visit", "messages_visit", "building_visit", "permits_visit", "permits_compare_visit", "buildings_visit", "vault_visit"];
   for (const k of kinds) {
     assert.ok(!serverSrc.includes(`logEvent("${k}"`), `${k} is logged on a speculative GET`);
     assert.ok(serverSrc.includes(`logPageVisit(req, "${k}"`), `${k} lost its logPageVisit`);

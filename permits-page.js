@@ -12,47 +12,61 @@
 // its rules win on equal specificity. server.js owns the route, the gate and
 // the read (permitTrackerPayload); this file only decides how it is drawn.
 //
+// THREE TABS (2026-10-02, the owner's pick of Draft C from the Permit Tracker
+// Drafts, https://claude.ai/artifact/762RCzFWGbnb7PrwcshtkA). The page had
+// grown one feature at a time into three stacked boxes; it is now Filings,
+// Your permits and Alerts, each its own view, and it opens on Your permits
+// when one of them has unread news, on Filings otherwise. A bare hash names a
+// tab (#filings, #your-permits, #alerts) and a tab click keeps it there, so a
+// reload stays put.
+//  - FILINGS: filters down the left, each with its count for the whole window
+//    (city, property type, work, status, permit type, your firm's buildings;
+//    OR within a group, AND across groups), and the list grouped by the day
+//    each permit was filed. On a phone the groups are buttons that open.
+//  - YOUR PERMITS: each tracked permit as a timeline of its five steps with
+//    the day we saw it reach each one (permit-watch.js's stepSeenAt; a step it
+//    had reached before we were watching has no date), its unread news under
+//    it, and one Manage box for everything else.
+//  - ALERTS: each alert with the newest permits it found, and "See all N in
+//    Filings" to filter the list to it.
+//
 // ONE READ, FILTERED HERE. The boot carries the whole window (capped, and it
-// says so), and the search box, property type, city and permit type filter
-// it in the browser. The header count describes the whole window, never the
-// filtered view — the shelf's rule.
+// says so), and the search box and filters work in the browser. The counts
+// describe the whole window, never the filtered view — the shelf's rule.
 //
 // HONESTY (spec §7): the page names the cities it reads and when the sweep
 // last ran, and says so when that run is more than a business day old. It
 // never implies a city it does not read was checked.
 //
-// YOUR PERMITS (2026-09-27, owner's call). Above the public feed, a member's
-// own tracked permits: add one by city and number (looked up on the city's
-// portal as it is added, so a typo is caught on the spot), pick which of the
-// five steps to hear about and how — email, CompNinja, or both — and read
-// each permit's steps, status and history. The rules live in permit-watch.js;
-// the boot carries them as `mine` beside the feed, read on its own so an
-// unavailable section never costs the list. The page CLEARS the unread count
-// with a POST once shown (a fetch, which instant-nav holds until the page is
-// visible — CLAUDE.md rule 15), never in the server render.
+// YOUR PERMITS (2026-09-27, owner's call). A member's own tracked permits:
+// add one by city and number (looked up on the city's portal as it is added,
+// so a typo is caught on the spot), pick which of the five steps to hear
+// about and how — email, CompNinja, or both — and read each permit's steps,
+// status and history. The rules live in permit-watch.js; the boot carries
+// them as `mine` beside the feed, read on its own so an unavailable section
+// never costs the list. The page CLEARS the unread count with a POST once the
+// Your permits tab is shown (a fetch, which instant-nav holds until the page
+// is visible — CLAUDE.md rule 15), never in the server render.
 //
-// PROPERTY TYPE (2026-09-29, the owner's pick of Draft A): a menu in place of
-// the old "Industrial only" box. Each filing arrives with its propertyType
-// (permit-zoning.js owns the rule, read-time, nothing stored), the menu shows
-// each type's count for the window, and a type with nothing in it says so in
-// words rather than as a bare "no match".
+// PROPERTY TYPE (2026-09-29). Each filing arrives with its propertyType
+// (permit-zoning.js owns the rule, read-time, nothing stored); every type is
+// offered with its count, a zero included, and a type with nothing in it says
+// so in words rather than as a bare "no match".
 //
-// YOUR ALERTS (2026-10-01, the owner's pick of Draft B; migration 057; rules
-// in permit-alerts.js). Under Your permits: a member saves what they follow —
-// a city, a property type, a kind and optional words — and gets the new
-// permits that fit it by email each weekday morning. Each alert's line says
-// how many of the list's permits are new this week, and a permit in the list
-// that fits an alert carries its name. Pro to add or change; deleting is open.
-// The counts, the tags and the form's preview are drawn here from the feed the
-// page already has (alertMatches, a ⚠ pair with permit-alerts.js's matches).
+// YOUR ALERTS (2026-10-01; migration 057; rules in permit-alerts.js). A
+// member saves what they follow — a city, a property type, a kind and
+// optional words — and gets the new permits that fit it by email each weekday
+// morning. Pro to add or change; deleting is open. The counts, the tags and
+// the form's preview are drawn here from the feed the page already has
+// (alertMatches, a ⚠ pair with permit-alerts.js's matches).
 //
-// AREAS (2026-10-01, step 2, the owner's pick of Draft B). An alert may also
-// follow a circle: within ½, 1, 2 or 5 miles of an address. The form checks
-// the address as it is typed (the site's own /api/geocode, Census behind it)
-// and draws the circle and the list's permits on a map; a saved area alert has
-// "Show on map". Leaflet loads only when a map opens; the tiles are the
-// market pages' (CNBASE, sent in this page's head). A permit with no place on
-// the map can never match an area, and the page says how many there are.
+// AREAS (2026-10-01). An alert may also follow a circle: within ½, 1, 2 or 5
+// miles of an address. The form checks the address as it is typed (the site's
+// own /api/geocode, Census behind it) and draws the circle and the list's
+// permits on a map; a saved area alert has "Show on map". Leaflet loads only
+// when a map opens; the tiles are the market pages' (CNBASE, sent in this
+// page's head). A permit with no place on the map can never match an area,
+// and the page says how many there are.
 //
 // The page literal below contains exactly ONE backtick, its own opener, and
 // interpolates the boot JSON alone; test/permits-page.test.js guards both.
@@ -64,108 +78,136 @@ function renderPermitsBody(boot) {
 .pt-page,.pt-page *{box-sizing:border-box}
 .pt-page{margin:24px 0 48px}
 .pt-page .kicker{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
-.pt-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
-  border-bottom:1.5px solid var(--ink);padding-bottom:6px;margin-bottom:10px}
-.pt-head h1{margin:0;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:24px;color:var(--ink)}
-.pt-cmp{font-size:13px;color:var(--ink-2);white-space:nowrap;text-decoration:underline;text-decoration-color:var(--edge);text-underline-offset:3px}
+.pt-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1.5px solid var(--ink);padding-bottom:8px;margin-top:4px}
+.pt-head h1{margin:0;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:28px;line-height:1.15;color:var(--ink)}
+.pt-cmp{font-size:13px;color:var(--ink-2);white-space:nowrap}
 .pt-cmp:hover{color:var(--ink)}
-.pt-count{font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
-.pt-sub{font-size:13px;color:var(--ink-2);margin:0 0 14px}
+.pt-sub{font-size:13px;color:var(--ink-3);margin:10px 0 0;max-width:88ch}
 .pt-sub.stale{color:var(--err-text)}
-.pt-strip{display:flex;border:1px solid var(--edge);border-radius:8px;background:var(--card);margin:0 0 16px}
-.pt-cell{flex:1 1 0;padding:10px 14px;border-right:1px solid var(--hair);min-width:0}
-.pt-cell:last-child{border-right:0}
-.pt-cell .n{font-family:Georgia,"Times New Roman",serif;font-size:22px;color:var(--ink);font-variant-numeric:tabular-nums}
-.pt-cell .l{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
-.pt-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 12px}
-.pt-tools input[type=search],.pt-tools select{font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--edge);
-  border-radius:8px;background:var(--card);color:var(--ink)}
-.pt-tools input[type=search]{flex:1 1 220px;min-width:0}
-.pt-tools label.chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-2);cursor:pointer}
-.pt-shown{font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums}
-.pt-row{display:flex;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1px solid var(--hair);font-size:13px}
-.pt-row:last-child{border-bottom:0}
-.pt-date{flex:0 0 6.5rem;font-variant-numeric:tabular-nums;color:var(--ink-3);font-size:12px}
-.pt-main{flex:1 1 auto;min-width:0}
-.pt-addr{color:var(--ink);font-family:Georgia,"Times New Roman",serif;font-size:14px}
-.pt-meta{font-size:11.5px;color:var(--ink-3);margin-top:2px}
-.pt-meta .ind{color:var(--ink-2);font-weight:600}
-.pt-empty2{font-size:13px;color:var(--ink-2);margin:10px 0 0;padding:12px 14px;border:1px solid var(--hair);border-radius:8px;background:var(--wash)}
-.pt-desc{font-size:11.5px;color:var(--ink-3);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.pt-board{display:inline-block;margin-left:8px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
-  color:var(--ok-text);text-decoration:none;font-family:inherit}
-.pt-board:hover{text-decoration:underline}
-.pt-num{flex:0 0 auto;font-size:11.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
-.pt-num a{color:var(--red);text-decoration:none}
-.pt-num a:hover{text-decoration:underline}
-.pt-note{font-size:12.5px;color:var(--ink-3);margin:10px 0 0}
 .pt-wall{border:1px solid var(--edge);border-radius:8px;background:var(--card);padding:18px 20px;margin:18px 0}
 .pt-wall p{margin:0 0 8px;font-size:14px;color:var(--ink-body)}
 .pt-wall a{color:var(--red);text-decoration:underline}
-.pt-rm{appearance:none;border:0;background:none;padding:0;font:inherit;font-size:12px;color:var(--ink-3);text-decoration:underline;cursor:pointer}
-.pt-head2{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:26px 0 6px}
-.pt-head2 h2{margin:0;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:18px;color:var(--ink)}
-.pw{border:1px solid var(--edge);border-radius:8px;background:var(--card);padding:16px 18px;margin:0 0 8px}
-.pw-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.pw-head h2{margin:0;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:18px;color:var(--ink)}
-.pw-sub{font-size:13px;color:var(--ink-2);margin:4px 0 12px}
-.pw-btn{appearance:none;font:inherit;font-size:13px;padding:7px 12px;border-radius:8px;border:1px solid var(--edge);
-  background:var(--card);color:var(--ink);cursor:pointer}
-.pw-btn:hover{border-color:var(--ink)}
+.pt-rm{appearance:none;border:0;background:none;padding:0;font:inherit;font-size:13px;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.pt-rm:hover{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.pt-rm:focus-visible,.pt-tab:focus-visible,.pt-fgh:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+/* The three tabs. The underline is an inset shadow, so the row can scroll on a phone without clipping it. */
+.pt-tabs{display:flex;gap:28px;margin-top:20px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+.pt-tab{appearance:none;border:0;background:none;font:inherit;padding:10px 0 11px;font-size:14.5px;color:var(--ink-2);cursor:pointer;display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.pt-tab:hover{color:var(--ink)}
+.pt-tab[aria-selected="true"]{color:var(--ink);font-weight:600;box-shadow:inset 0 -2px 0 var(--ink)}
+.pt-tab .n{font-size:12.5px;font-weight:400;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.pt-badge{align-self:center;font-size:11.5px;font-weight:600;color:#fff;background:var(--red-fill);border-radius:4px;padding:2px 6px}
+.pt-protag{align-self:center;font-size:11px;font-weight:500;color:var(--ink-3);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+.pt-panel{padding-top:22px}
+/* A status tag: the portal's own words, coloured by what they mean (permit-watch.js's stageOf). */
+.st{display:inline-block;font-size:12px;line-height:1;padding:5px 8px;border-radius:4px;white-space:nowrap;font-weight:500;background:var(--wash);color:var(--ink-2)}
+.st.approved{background:none;color:var(--ok-text);box-shadow:inset 0 0 0 1px var(--ok-rule)}
+.st.issued{background:var(--ok-bg);color:var(--ok-text)}
+.st.attention{background:var(--warn-bg);color:var(--warn-text)}
+.st.ended{background:var(--err-bg);color:var(--err-text)}
+.st.none{background:none;color:var(--ink-3);box-shadow:inset 0 0 0 1px var(--line)}
+/* Filings */
+.pt-two{display:grid;grid-template-columns:200px minmax(0,1fr);gap:40px;align-items:start}
+.pt-fac{display:flex;flex-direction:column;gap:20px;font-size:13px;min-width:0}
+.pt-fgh{appearance:none;border:0;background:none;padding:0;font:inherit;font-size:12.5px;font-weight:600;color:var(--ink);margin:0 0 6px;cursor:default;display:flex;align-items:baseline;gap:6px;text-align:left}
+.pt-fgh .c{font-weight:600;color:var(--red)}
+.pt-fgl label{display:flex;align-items:center;gap:8px;padding:3px 0;color:var(--ink-body);cursor:pointer}
+.pt-fgl label.zero{color:var(--ink-3)}
+.pt-fgl input{margin:0;width:14px;height:14px;flex:0 0 14px;accent-color:var(--ink)}
+.pt-fgl .t{flex:1;min-width:0}
+.pt-fgl .n{color:var(--ink-3);font-variant-numeric:tabular-nums}
+.pt-list{min-width:0}
+.pt-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;margin:0 0 4px}
+.pt-tools input[type=search]{flex:1 1 260px;min-width:0;font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--edge);border-radius:6px;background:var(--card);color:var(--ink)}
+.pt-shown{font-size:13px;color:var(--ink-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.pt-shown b{color:var(--ink);font-weight:600}
+.pt-chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0}
+.pt-chip{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink);background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:4px 6px 4px 10px}
+.pt-chip button{appearance:none;border:0;background:none;padding:0 4px;font:inherit;font-size:14px;line-height:1;color:var(--ink-3);cursor:pointer}
+.pt-chip button:hover{color:var(--ink)}
+.pt-day h3{display:flex;justify-content:space-between;gap:12px;margin:18px 0 0;padding:0 0 6px;border-bottom:1px solid var(--line);font-family:inherit;font-size:12.5px;font-weight:600;color:var(--ink)}
+.pt-day h3 span{font-weight:400;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.pt-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start;padding:10px 0;border-bottom:1px solid var(--hair)}
+.pt-main{min-width:0}
+.pt-addr{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;font-size:14px}
+.pt-addr .a{font-weight:500;color:var(--ink)}
+.pt-addr .c{font-size:13px;color:var(--ink-3)}
+.pt-board{font-size:12px;font-weight:500;color:var(--ok-text)}
+.pt-board:hover{color:var(--ok-text);text-decoration:underline;text-underline-offset:3px}
+.pt-hit{display:inline-flex;align-items:baseline;gap:5px;font-size:12px;color:var(--ink-2)}
+.pt-hit::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ink-4);transform:translateY(-1px)}
+.pt-l2{font-size:12.5px;color:var(--ink-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pt-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.pt-num{font-size:12.5px;color:var(--ink-2);white-space:nowrap}
+a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.pt-note{font-size:12.5px;color:var(--ink-3);margin:12px 0 0}
+.pt-empty2{font-size:13px;color:var(--ink-2);margin:12px 0 0;padding:12px 14px;border:1px solid var(--hair);border-radius:8px;background:var(--wash)}
+.pt-foot{font-size:12px;color:var(--ink-3);margin:22px 0 0;max-width:100ch}
+/* Your permits and Your alerts */
+.pw-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:0 0 8px}
+.pw-sub{flex:1 1 320px;margin:0;font-size:13.5px;color:var(--ink-2)}
+.pw-btns{display:flex;gap:8px}
+.pw-btn{appearance:none;font:inherit;font-size:13px;line-height:1.2;padding:7px 12px;border-radius:6px;border:1px solid var(--edge);background:var(--card);color:var(--ink);cursor:pointer;white-space:nowrap;display:inline-block}
+.pw-btn:hover{border-color:var(--ink-3)}
 .pw-btn.pri{background:var(--red-fill);border-color:var(--red-fill);color:#fff}
-.pw-btn.pri:hover{background:var(--red-fill-hover)}
+.pw-btn.pri:hover{background:var(--red-fill-hover);border-color:var(--red-fill-hover);color:#fff}
 .pw-btn[disabled]{opacity:.6;cursor:default}
-.pw-form{border-top:1px solid var(--hair);padding-top:12px;margin:0 0 12px}
+.pw-pro{max-width:560px;padding:4px 0 16px}
+.pw-pro h2{margin:0;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:20px;color:var(--ink)}
+.pw-pro p{margin:6px 0 14px;font-size:14px;color:var(--ink-2)}
+.pw-form{border-top:1px solid var(--line);padding:16px 0 18px}
 .pw-grid{display:flex;flex-wrap:wrap;gap:10px}
 .pw-grid label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink-2);flex:1 1 160px;min-width:0}
-.pw-grid input,.pw-grid select{font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--edge);border-radius:8px;background:var(--card);color:var(--ink);min-width:0}
+.pw-grid input,.pw-grid select{font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--edge);border-radius:6px;background:var(--card);color:var(--ink);min-width:0}
 .pw-grid .opt{color:var(--ink-3)}
-.pw-set{border:0;margin:12px 0 0;padding:0;min-width:0}
-.pw-set legend{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding:0;margin:0 0 6px}
+.pw-set{border:0;margin:14px 0 0;padding:0;min-width:0}
+.pw-set legend{font-size:12.5px;font-weight:600;color:var(--ink);padding:0;margin:0 0 6px}
 .pw-opts{display:flex;flex-wrap:wrap;gap:6px 16px}
 .pw-set label.chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-body);cursor:pointer}
 .pw-fine{font-size:12px;color:var(--ink-3);margin:6px 0 0}
-.pw-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:14px}
+.pw-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:16px}
 .pw-msg{font-size:12.5px;color:var(--ink-2)}
 .pw-msg.bad{color:var(--err-text)}
 .pw-msg.ok{color:var(--ok-text)}
-.pw-card{border-top:1px solid var(--hair);padding:12px 0}
-.pw-card:first-child{border-top:0}
-.pw-card.pw-focus{background:var(--wash);box-shadow:0 0 0 8px var(--wash);border-radius:2px}
-.pw-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
-.pw-name{font-family:Georgia,"Times New Roman",serif;font-size:15px;color:var(--ink)}
-.pw-new{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:9px;background:var(--red-fill);color:#fff;font-size:10.5px;font-weight:600;letter-spacing:.04em;vertical-align:2px}
-.pw-meta{font-size:11.5px;color:var(--ink-3);margin-top:2px}
-.pw-meta a{color:var(--red);text-decoration:none}
-.pw-meta a:hover{text-decoration:underline}
-.pw-status{font-size:12px;color:var(--ink-2);white-space:nowrap}
-.pw-status.attention{color:var(--warn-text)}
-.pw-status.ended{color:var(--err-text)}
-.pw-steps{display:flex;list-style:none;margin:10px 0 6px;padding:0;gap:4px}
-.pw-steps li{flex:1 1 0;min-width:0;font-size:11px;color:var(--ink-3);padding-top:8px;border-top:3px solid var(--hair);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pw-steps li.done{border-top-color:var(--ok-text);color:var(--ink-2)}
-.pw-steps li.now{color:var(--ink);font-weight:600}
-.pw-latest{font-size:12.5px;color:var(--ink-body);margin:6px 0 0}
-.pw-latest.unread{background:var(--ok-bg);border-radius:6px;padding:6px 9px}
-.pw-latest.unread.warn{background:var(--warn-bg)}
-.pw-latest b{font-weight:600}
-.pw-foot{font-size:11.5px;color:var(--ink-3);margin-top:6px}
+.pw-card,.pa-item{padding:18px 0 20px;border-top:1px solid var(--line)}
+.pw-card.pw-focus{background:var(--wash);box-shadow:0 0 0 12px var(--wash);border-radius:2px}
+.pw-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.pw-id{min-width:0}
+.pw-name{margin:0;font-family:inherit;font-size:16px;font-weight:600;color:var(--ink)}
+.pw-meta{margin:2px 0 0;font-size:12.5px;color:var(--ink-3)}
+.pw-meta a{color:var(--ink-2)}
+.pw-meta a:hover{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.pw-right{display:flex;align-items:center;gap:14px;flex-shrink:0}
+/* The five steps, as a line: done steps green, the furthest ringed, each dated by the day we saw it. */
+.pw-tl{list-style:none;margin:16px 0 0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));max-width:760px}
+.pw-tl li{position:relative;padding-top:20px;font-size:12.5px;color:var(--ink-3);min-width:0}
+.pw-tl li::before{content:"";position:absolute;left:0;top:3px;width:11px;height:11px;border-radius:50%;background:var(--paper);box-shadow:inset 0 0 0 2px var(--ink-4);z-index:1}
+.pw-tl li::after{content:"";position:absolute;left:11px;right:0;top:8px;height:2px;background:var(--line)}
+.pw-tl li:last-child::after{display:none}
+.pw-tl li.done::before{background:var(--ok-text);box-shadow:none}
+.pw-tl li.done::after{background:var(--ok-text)}
+.pw-tl li.now::after{background:var(--line)}
+.pw-tl li.now::before{box-shadow:0 0 0 3px var(--ok-bg)}
+.pw-tl b{display:block;font-weight:500;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pw-tl li.done b{color:var(--ink)}
+.pw-tl li.now b{font-weight:600}
+.pw-tl time{display:block;font-size:12px;color:var(--ink-3)}
+.pw-latest{margin:14px 0 0;max-width:760px;padding:8px 12px;border-radius:6px;background:var(--ok-bg);font-size:13px;color:var(--ink-body)}
+.pw-latest.warn{background:var(--warn-bg)}
+.pw-latest.err{background:none;padding:0;color:var(--warn-text)}
+.pw-latest b{font-weight:600;color:var(--ink)}
+.pw-box{margin-top:14px;max-width:760px;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.pw-foot{margin:0;font-size:12.5px;color:var(--ink-3)}
 .pw-foot .err{color:var(--warn-text)}
-.pw-hist{margin-top:6px;font-size:12px;color:var(--ink-2)}
-.pw-hist summary{cursor:pointer;color:var(--ink-3);font-size:11.5px}
-.pw-hist ul{margin:6px 0 0;padding-left:18px}
+.pw-acts{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px}
+.pw-box .pw-form{border-top:1px solid var(--hair);margin-top:12px;padding-bottom:4px}
+.pw-hist{margin:12px 0 0;font-size:12.5px;color:var(--ink-2)}
+.pw-hist b{display:block;font-weight:600;color:var(--ink);margin-bottom:2px}
+.pw-hist ul{margin:0;padding-left:18px}
 .pw-hist li{margin:2px 0}
 .pw-hist li.unread{font-weight:600;color:var(--ink)}
-.pw-empty{font-size:13px;color:var(--ink-3);margin:0}
-.pw-pro{font-size:13px;color:var(--ink-body);background:var(--wash);border-radius:8px;padding:10px 12px;margin:0 0 12px}
-.pw-pro a{color:var(--red);text-decoration:none;font-weight:600}
-.pw-pro a:hover{text-decoration:underline}
-.pw-firm{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:9px;border:1px solid var(--edge);color:var(--ink-2);font-size:10.5px;letter-spacing:.02em;vertical-align:2px}
-.pw-firm.muted{color:var(--ink-3);border-style:dashed}
-@media (max-width:640px){.pt-row{flex-wrap:wrap}.pt-date{flex:1 1 100%}.pt-strip{flex-wrap:wrap}.pt-cell{flex:1 1 45%}
-  .pw-steps li{font-size:10px}}
 .pw-bulk textarea{display:block;width:100%;margin:10px 0 0;font:inherit;font-size:13px;font-family:ui-monospace,Menlo,Consolas,monospace;
-  padding:8px 10px;border:1px solid var(--edge);border-radius:8px;background:var(--card);color:var(--ink);resize:vertical;min-height:110px}
+  padding:8px 10px;border:1px solid var(--edge);border-radius:6px;background:var(--card);color:var(--ink);resize:vertical;min-height:110px}
 .pw-bulk input[type=file]{font-size:12.5px;padding:6px 0;border:0;background:none}
 .pw-review{margin:12px 0 0;font-size:12.5px;color:var(--ink-body)}
 .pw-review ul,.pw-done ul{margin:4px 0 8px;padding-left:18px}
@@ -174,33 +216,49 @@ function renderPermitsBody(boot) {
 .pw-review b,.pw-done b{font-weight:600}
 .pw-done{font-size:12.5px;color:var(--ink-body);background:var(--ok-bg);border-radius:6px;padding:8px 10px;margin:0 0 10px}
 .pw-done.warn{background:var(--warn-bg)}
-.pw-btns{display:flex;gap:8px;flex-wrap:wrap}
-.pa-list{border-top:1px solid var(--hair)}
-.pa-item{display:flex;justify-content:space-between;align-items:baseline;gap:8px 12px;flex-wrap:wrap;padding:11px 0;border-bottom:1px solid var(--hair)}
-.pa-item:last-child{border-bottom:0}
-.pa-l{min-width:0}
-.pa-nm{font-family:Georgia,"Times New Roman",serif;font-size:15px;color:var(--ink)}
-.pa-wd{font-size:12px;color:var(--ink-3);margin-top:2px}
-.pa-rt{display:flex;align-items:baseline;gap:6px 10px;font-size:12px;color:var(--ink-3);flex-wrap:wrap}
-.pa-new{display:inline-block;padding:1px 8px;border-radius:9px;background:var(--red-fill);color:#fff;font-size:11px;font-weight:600}
-.pa-none{display:inline-block;padding:1px 8px;border-radius:9px;border:1px solid var(--edge);color:var(--ink-3);font-size:11px}
-.pa-tag{display:inline-block;margin-left:8px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--red);font-weight:600}
-.pa-area{margin-top:12px;padding-top:10px;border-top:1px solid var(--hair)}
-.pa-area .lab{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px}
+.pa-week{font-size:13px;color:var(--ink-3);white-space:nowrap}
+.pa-week b{color:var(--ink);font-weight:600}
+.pa-mini{list-style:none;margin:12px 0 0;padding:0;max-width:860px}
+.pa-mini li{display:grid;grid-template-columns:52px minmax(0,200px) minmax(0,1fr) auto;gap:14px;align-items:center;padding:7px 0;border-top:1px solid var(--hair);font-size:13px}
+.pa-mini time{font-size:12.5px;color:var(--ink-3)}
+.pa-mini .a{font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pa-mini .w{color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pa-all{margin-top:8px}
+.pa-none{margin:10px 0 0;font-size:13px;color:var(--ink-3)}
+.pa-area{margin-top:14px}
+.pa-area .lab{display:block;font-size:12.5px;font-weight:600;color:var(--ink);margin:0 0 6px}
 .pa-opts{display:flex;flex-direction:column;gap:8px}
 .pa-opts label{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:13.5px;color:var(--ink-body);cursor:pointer}
-.pa-opts select,.pa-opts input[type=text]{font:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--edge);border-radius:8px;background:var(--card);color:var(--ink);min-width:0}
+.pa-opts select,.pa-opts input[type=text]{font:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--edge);border-radius:6px;background:var(--card);color:var(--ink);min-width:0}
 .pa-opts input[type=text]{flex:1 1 220px}
 .pa-found{font-size:12px;color:var(--ink-3);margin:6px 0 0}
 .pa-found.ok{color:var(--ok-text)}
 .pa-found.bad{color:var(--err-text)}
-.pa-map{height:260px;border:1px solid var(--edge);border-radius:8px;margin-top:10px;overflow:hidden;background:var(--wash)}
+.pa-map{height:260px;border:1px solid var(--edge);border-radius:8px;margin-top:12px;overflow:hidden;background:var(--wash);max-width:860px}
 .pa-mapnote{font-size:12px;color:var(--ink-3);margin:6px 0 4px}
 .leaflet-tooltip.pa-count,[data-theme="dark"] .leaflet-tooltip.pa-count{background:none;border:0;box-shadow:none;color:#fff;font-weight:700;font-size:11px;padding:0}
 .leaflet-tooltip.pa-count:before{display:none}
-@media (max-width:640px){.pa-map{height:220px}}
-.pa-h{margin:0 0 8px;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:16px;color:var(--ink)}
+.pa-h{margin:0 0 10px;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:18px;color:var(--ink)}
 .hide{display:none}
+@media (max-width:760px){
+  .pt-tabs{gap:20px}
+  .pt-tab{font-size:14px}
+  .pt-two{grid-template-columns:minmax(0,1fr);gap:14px}
+  /* On a phone each filter group is a button that opens its list. */
+  .pt-fac{flex-direction:row;flex-wrap:wrap;gap:8px}
+  .pt-fg{border:1px solid var(--edge);border-radius:6px;background:var(--card)}
+  .pt-fgh{margin:0;padding:6px 10px;font-weight:500;cursor:pointer}
+  .pt-fgl{display:none;padding:0 10px 6px}
+  .pt-fg.open{flex-basis:100%}
+  .pt-fg.open .pt-fgl{display:block}
+  .pt-shown{width:100%}
+  .pw-top{flex-direction:column;gap:8px}
+  .pw-tl li,.pw-tl time{font-size:11px}
+  .pw-btns{flex-wrap:wrap}
+  .pa-mini li{grid-template-columns:44px minmax(0,1fr) auto}
+  .pa-mini .w{display:none}
+  .pa-map{height:220px}
+}
 </style>
 <main class="wrap pt-page">
   <div class="kicker">Tools</div>
@@ -208,105 +266,123 @@ function renderPermitsBody(boot) {
     <h1>Permit tracker</h1>
     <a class="pt-cmp" href="/permits/compare">Compare cities &rarr;</a>
   </div>
-  <section class="pw hide" id="pwSec" aria-labelledby="pwTitle">
-    <div class="pw-head">
-      <h2 id="pwTitle">Your permits</h2>
-      <span class="pw-btns"><button type="button" class="pw-btn hide" id="pwBulkBtn">Add several</button><button type="button" class="pw-btn hide" id="pwAddBtn">Track a permit</button></span>
-    </div>
-    <p class="pw-sub" id="pwSub"></p>
-    <p class="pw-pro hide" id="pwPro">Tracking a permit is part of CompNinja Pro: add a permit number, pick the steps you care about, and hear about them by email each weekday morning and here on CompNinja. <a href="/?pricing=1">See Pro →</a></p>
-    <form class="pw-form hide" id="pwForm" novalidate>
-      <div class="pw-grid">
-        <label>City <select id="pwCity"></select></label>
-        <label>Permit number <input id="pwNum" maxlength="40" autocomplete="off" placeholder="e.g. BLD26-02789"/></label>
-        <label><span>Nickname <span class="opt">optional</span></span><input id="pwLabel" maxlength="80" autocomplete="off" placeholder="e.g. Federal Way warehouse"/></label>
-      </div>
-      <div id="pwFormNotify"></div>
-      <fieldset class="pw-set hide" id="pwFirmSet"><legend>Who</legend><div class="pw-opts">
-        <label class="chk"><input type="checkbox" id="pwFirm"/> <span id="pwFirmText">Everyone at your firm</span></label></div>
-        <p class="pw-fine">Everyone at the firm on Pro gets this permit’s notices, the way you set them above. Each of them can mute it.</p></fieldset>
-      <div class="pw-actions">
-        <button type="submit" class="pw-btn pri" id="pwSave">Track this permit</button>
-        <button type="button" class="pt-rm" id="pwCancel">Cancel</button>
-        <span class="pw-msg" id="pwMsg" role="status"></span>
-      </div>
-    </form>
-    <form class="pw-form pw-bulk hide" id="pwBulk" novalidate>
-      <p class="pw-fine" style="margin:0 0 10px">Paste permit numbers, one per line, or choose a CSV or Excel file. A sheet can have City, Permit number and Nickname columns; a row without a city uses the city picked here. Each permit is looked up on its city’s portal as it is added.</p>
-      <div class="pw-grid">
-        <label>City, when a row doesn’t say <select id="pwBulkCity"></select></label>
-        <label><span>Or choose a file <span class="opt">CSV or Excel</span></span><input type="file" id="pwBulkFile" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/plain"/></label>
-      </div>
-      <textarea id="pwBulkText" rows="6" spellcheck="false" aria-label="Permit numbers" placeholder="BLD26-02789&#10;BLD26-02790, Federal Way warehouse&#10;Meridian, C-NEW-2026-0052"></textarea>
-      <div id="pwBulkNotify"></div>
-      <fieldset class="pw-set hide" id="pwBulkFirmSet"><legend>Who</legend><div class="pw-opts">
-        <label class="chk"><input type="checkbox" id="pwBulkFirm"/> <span id="pwBulkFirmText">Everyone at your firm</span></label></div></fieldset>
-      <div class="pw-review hide" id="pwBulkReview"></div>
-      <div class="pw-actions">
-        <button type="submit" class="pw-btn pri" id="pwBulkGo">Check the list</button>
-        <button type="button" class="pt-rm" id="pwBulkCancel">Cancel</button>
-        <span class="pw-msg" id="pwBulkMsg" role="status"></span>
-      </div>
-    </form>
-    <div class="pw-done hide" id="pwBulkDone" role="status"></div>
-    <div id="pwList"></div>
-  </section>
-  <section class="pw hide" id="paSec" aria-labelledby="paTitle">
-    <div class="pw-head">
-      <h2 id="paTitle">Your alerts</h2>
-      <button type="button" class="pw-btn hide" id="paAdd">New alert</button>
-    </div>
-    <p class="pw-sub" id="paSub"></p>
-    <p class="pw-pro hide" id="paPro">Permit alerts are part of CompNinja Pro: save the permits you follow, like industrial in Boise or tenant build-outs in Meridian, and get the new ones by email each weekday morning. <a href="/?pricing=1">See Pro →</a></p>
-    <form class="pw-form hide" id="paForm" novalidate>
-      <h3 class="pa-h" id="paFormTitle">New alert</h3>
-      <div class="pw-grid">
-        <label>City <select id="paCity"><option value="">Every city we read</option></select></label>
-        <label>Property type <select id="paProp"><option value="">Every type</option></select></label>
-        <label>Kind <select id="paKind"><option value="">Every kind</option></select></label>
-        <label><span>Words <span class="opt">optional</span></span><input id="paWords" maxlength="60" autocomplete="off" placeholder="a street, applicant or contractor"/></label>
-      </div>
-      <div class="pa-area"><span class="lab">Area</span><div class="pa-opts">
-        <label><input type="radio" name="paWhere" id="paAnywhere" value="" checked/> Anywhere in the city</label>
-        <label><input type="radio" name="paWhere" id="paWithin" value="within"/> Within <select id="paMiles" aria-label="Distance"></select> of <input type="text" id="paAddr" maxlength="120" autocomplete="off" placeholder="an address, e.g. 8000 S Federal Way" aria-label="Address"/></label></div>
-        <p class="pa-found hide" id="paFound" role="status"></p>
-        <div class="pa-map hide" id="paFormMap"></div>
-      </div>
-      <div class="pw-grid" style="margin-top:10px">
-        <label><span>Name <span class="opt">optional</span></span><input id="paName" maxlength="80" autocomplete="off" placeholder="Named from the filters if left blank"/></label>
-      </div>
-      <fieldset class="pw-set"><legend>How</legend><div class="pw-opts">
-        <label class="chk"><input type="checkbox" id="paEmail" checked/> <span id="paEmailText">Email me its new permits each weekday morning</span></label></div>
-        <p class="pw-fine" id="paFine">It is always listed here, and its permits are marked in the list below.</p></fieldset>
-      <div class="pw-actions">
-        <button type="submit" class="pw-btn pri" id="paSave">Save alert</button>
-        <button type="button" class="pt-rm" id="paCancel">Cancel</button>
-        <span class="pw-msg" id="paMsg" role="status"></span>
-      </div>
-    </form>
-    <div id="paList"></div>
-  </section>
-  <div class="pt-head2 hide" id="ptFeedHead">
-    <h2>Every commercial filing</h2>
-    <span class="pt-count" id="ptCount"></span>
-  </div>
   <p class="pt-sub" id="ptSub"></p>
   <div class="pt-wall hide" id="ptWall"></div>
-  <div id="ptBody" class="hide">
-    <div class="pt-strip" id="ptStrip"></div>
-    <div class="pt-tools">
-      <input type="search" id="ptSearch" placeholder="Search address, applicant, contractor or description" aria-label="Search permits" autocomplete="off"/>
-      <select id="ptProp" aria-label="Filter by property type"><option value="">All property types</option></select>
-      <select id="ptCity" aria-label="Filter by city"><option value="">All cities</option></select>
-      <select id="ptType" aria-label="Filter by permit type"><option value="">All permit types</option></select>
-      <span class="pt-shown" id="ptShown"></span>
+  <div id="ptApp" class="hide">
+    <div class="pt-tabs" role="tablist" aria-label="Permit tracker" id="ptTabs">
+      <button type="button" role="tab" class="pt-tab" id="tabFilings" aria-controls="ptFilings" aria-selected="true">Filings <span class="n" id="tabFilingsN"></span></button>
+      <button type="button" role="tab" class="pt-tab" id="tabMine" aria-controls="pwSec" aria-selected="false" tabindex="-1">Your permits <span class="n" id="tabMineN"></span><span class="pt-badge hide" id="tabMineNew"></span><span class="pt-protag hide" id="tabMinePro">Pro</span></button>
+      <button type="button" role="tab" class="pt-tab" id="tabAlerts" aria-controls="paSec" aria-selected="false" tabindex="-1">Alerts <span class="n" id="tabAlertsN"></span><span class="pt-protag hide" id="tabAlertsPro">Pro</span></button>
     </div>
-    <div id="ptRows"></div>
-    <p class="pt-empty2 hide" id="ptTypeNone"><span id="ptTypeNoneText"></span> <button type="button" class="pt-rm" id="ptTypeAll">Show every type</button></p>
-    <p class="pt-note hide" id="ptNone">No permit matches. <button type="button" class="pt-rm" id="ptClear">Clear filters</button></p>
-    <p class="pt-note hide" id="ptEmpty"></p>
-    <p class="pt-note hide" id="ptTrunc"></p>
-    <p class="pt-note">Public record, read from each city’s own permit portal on weekday mornings. A permit’s property type comes from how Ada County zones its parcel and what the permit says it is for. Industrial means the parcel is zoned industrial, or, where the county could not answer, the permit describes industrial work. Where the zoning allows several uses, the permit’s own words decide, and a permit that does not say is listed under Other.</p>
+
+    <section class="pt-panel" id="ptFilings" role="tabpanel" aria-labelledby="tabFilings">
+      <div class="pt-two">
+        <aside class="pt-fac" id="ptFac" aria-label="Filter the list"></aside>
+        <div class="pt-list">
+          <div class="pt-tools">
+            <input type="search" id="ptSearch" placeholder="Search address, applicant, contractor or work" aria-label="Search permits" autocomplete="off"/>
+            <span class="pt-shown" id="ptShown"></span>
+            <button type="button" class="pt-rm hide" id="ptClearAll">Clear filters</button>
+          </div>
+          <div class="pt-chips hide" id="ptChips"></div>
+          <div id="ptRows"></div>
+          <p class="pt-empty2 hide" id="ptTypeNone"><span id="ptTypeNoneText"></span> <button type="button" class="pt-rm" id="ptTypeAll">Show every type</button></p>
+          <p class="pt-note hide" id="ptNone">No permit matches. <button type="button" class="pt-rm" id="ptClear">Clear filters</button></p>
+          <p class="pt-note hide" id="ptEmpty"></p>
+          <p class="pt-note hide" id="ptTrunc"></p>
+          <p class="pt-foot">Public record, read from each city’s own permit portal on weekday mornings. A permit’s property type comes from how Ada County zones its parcel and what the permit says it is for. Industrial means the parcel is zoned industrial, or, where the county could not answer, the permit describes industrial work. Where the zoning allows several uses, the permit’s own words decide, and a permit that does not say is listed under Other.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="pt-panel hide" id="pwSec" role="tabpanel" aria-labelledby="tabMine">
+      <div class="pw-bar">
+        <p class="pw-sub hide" id="pwSub"></p>
+        <span class="pw-btns"><button type="button" class="pw-btn hide" id="pwBulkBtn">Add several</button><button type="button" class="pw-btn pri hide" id="pwAddBtn">Track a permit</button></span>
+      </div>
+      <div class="pw-pro hide" id="pwPro">
+        <h2>Track the permits you filed</h2>
+        <p id="pwProText">Tracking a permit is part of CompNinja Pro. Add a permit number and we read it from the city’s portal every weekday morning, then tell you, by email and here, when it reaches the steps you pick.</p>
+        <a class="pw-btn pri" href="/?pricing=1">See Pro</a>
+      </div>
+      <form class="pw-form hide" id="pwForm" novalidate>
+        <h3 class="pa-h">Track a permit</h3>
+        <div class="pw-grid">
+          <label>City <select id="pwCity"></select></label>
+          <label>Permit number <input id="pwNum" maxlength="40" autocomplete="off" placeholder="e.g. BLD26-02789"/></label>
+          <label><span>Nickname <span class="opt">optional</span></span><input id="pwLabel" maxlength="80" autocomplete="off" placeholder="e.g. Federal Way warehouse"/></label>
+        </div>
+        <p class="pw-fine hide" id="pwLate"></p>
+        <div id="pwFormNotify"></div>
+        <fieldset class="pw-set hide" id="pwFirmSet"><legend>Who</legend><div class="pw-opts">
+          <label class="chk"><input type="checkbox" id="pwFirm"/> <span id="pwFirmText">Everyone at your firm</span></label></div>
+          <p class="pw-fine">Everyone at the firm on Pro gets this permit’s notices, the way you set them above. Each of them can mute it.</p></fieldset>
+        <div class="pw-actions">
+          <button type="submit" class="pw-btn pri" id="pwSave">Track this permit</button>
+          <button type="button" class="pt-rm" id="pwCancel">Cancel</button>
+          <span class="pw-msg" id="pwMsg" role="status"></span>
+        </div>
+      </form>
+      <form class="pw-form pw-bulk hide" id="pwBulk" novalidate>
+        <h3 class="pa-h">Add several permits</h3>
+        <p class="pw-fine" style="margin:0 0 10px">Paste permit numbers, one per line, or choose a CSV or Excel file. A sheet can have City, Permit number and Nickname columns; a row without a city uses the city picked here. Each permit is looked up on its city’s portal as it is added.</p>
+        <div class="pw-grid">
+          <label>City, when a row doesn’t say <select id="pwBulkCity"></select></label>
+          <label><span>Or choose a file <span class="opt">CSV or Excel</span></span><input type="file" id="pwBulkFile" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/plain"/></label>
+        </div>
+        <textarea id="pwBulkText" rows="6" spellcheck="false" aria-label="Permit numbers" placeholder="BLD26-02789&#10;BLD26-02790, Federal Way warehouse&#10;Meridian, C-NEW-2026-0052"></textarea>
+        <div id="pwBulkNotify"></div>
+        <fieldset class="pw-set hide" id="pwBulkFirmSet"><legend>Who</legend><div class="pw-opts">
+          <label class="chk"><input type="checkbox" id="pwBulkFirm"/> <span id="pwBulkFirmText">Everyone at your firm</span></label></div></fieldset>
+        <div class="pw-review hide" id="pwBulkReview"></div>
+        <div class="pw-actions">
+          <button type="submit" class="pw-btn pri" id="pwBulkGo">Check the list</button>
+          <button type="button" class="pt-rm" id="pwBulkCancel">Cancel</button>
+          <span class="pw-msg" id="pwBulkMsg" role="status"></span>
+        </div>
+      </form>
+      <div class="pw-done hide" id="pwBulkDone" role="status"></div>
+      <div id="pwList"></div>
+    </section>
+
+    <section class="pt-panel hide" id="paSec" role="tabpanel" aria-labelledby="tabAlerts">
+      <div class="pw-bar">
+        <p class="pw-sub hide" id="paSub"></p>
+        <button type="button" class="pw-btn pri hide" id="paAdd">New alert</button>
+      </div>
+      <div class="pw-pro hide" id="paPro">
+        <h2>Get new permits by email</h2>
+        <p>Permit alerts are part of CompNinja Pro. Save what you follow, like industrial in Boise or tenant build-outs in Meridian, and get its new permits by email each weekday morning.</p>
+        <a class="pw-btn pri" href="/?pricing=1">See Pro</a>
+      </div>
+      <form class="pw-form hide" id="paForm" novalidate>
+        <h3 class="pa-h" id="paFormTitle">New alert</h3>
+        <div class="pw-grid">
+          <label>City <select id="paCity"><option value="">Every city we read</option></select></label>
+          <label>Property type <select id="paProp"><option value="">Every type</option></select></label>
+          <label>Kind <select id="paKind"><option value="">Every kind</option></select></label>
+          <label><span>Words <span class="opt">optional</span></span><input id="paWords" maxlength="60" autocomplete="off" placeholder="a street, applicant or contractor"/></label>
+        </div>
+        <div class="pa-area"><span class="lab">Area</span><div class="pa-opts">
+          <label><input type="radio" name="paWhere" id="paAnywhere" value="" checked/> Anywhere in the city</label>
+          <label><input type="radio" name="paWhere" id="paWithin" value="within"/> Within <select id="paMiles" aria-label="Distance"></select> of <input type="text" id="paAddr" maxlength="120" autocomplete="off" placeholder="an address, e.g. 8000 S Federal Way" aria-label="Address"/></label></div>
+          <p class="pa-found hide" id="paFound" role="status"></p>
+          <div class="pa-map hide" id="paFormMap"></div>
+        </div>
+        <div class="pw-grid" style="margin-top:12px">
+          <label><span>Name <span class="opt">optional</span></span><input id="paName" maxlength="80" autocomplete="off" placeholder="Named from the filters if left blank"/></label>
+        </div>
+        <fieldset class="pw-set"><legend>How</legend><div class="pw-opts">
+          <label class="chk"><input type="checkbox" id="paEmail" checked/> <span id="paEmailText">Email me its new permits each weekday morning</span></label></div>
+          <p class="pw-fine" id="paFine">It is always listed here, and its permits are marked in the Filings list.</p></fieldset>
+        <div class="pw-actions">
+          <button type="submit" class="pw-btn pri" id="paSave">Save alert</button>
+          <button type="button" class="pt-rm" id="paCancel">Cancel</button>
+          <span class="pw-msg" id="paMsg" role="status"></span>
+        </div>
+      </form>
+      <div id="paList"></div>
+    </section>
   </div>
 </main>
 <script>
@@ -316,12 +392,21 @@ function renderPermitsBody(boot) {
   function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
   var items=[], CITY_LINE="these cities", WIN=30;
   var PROP_TYPES=["Industrial","Office","Retail","Multifamily","Mixed use","Other"];
-  function wall(html){ var w=$("ptWall"); w.innerHTML=html; w.className="pt-wall"; $("ptBody").className="hide"; $("ptFeedHead").className="pt-head2 hide"; }
+  var KIND_NAMES={ti:"Tenant build-outs","new":"New buildings & additions",other:"Other work"};
+  var STAGE_NAMES={open:"Open",attention:"Needs attention",approved:"Approved",issued:"Issued or finaled",ended:"Ended"};
+  var LONG_DAYS=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  function wall(html){ var w=$("ptWall"); w.innerHTML=html; w.className="pt-wall"; $("ptApp").className="hide"; }
   function day(iso){
     if(!iso)return "";
     var m=/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(iso));
     if(!m)return String(iso);
     return new Date(Number(m[1]),Number(m[2])-1,Number(m[3])).toLocaleDateString("en-US",{month:"short",day:"numeric"});
+  }
+  function longDay(iso){
+    var m=/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(iso||""));
+    if(!m)return "No date on the permit";
+    var d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));
+    return LONG_DAYS[d.getDay()]+", "+d.toLocaleDateString("en-US",{month:"long",day:"numeric"});
   }
   function ago(ts){
     var t=Date.parse(ts); if(isNaN(t))return "";
@@ -330,87 +415,207 @@ function renderPermitsBody(boot) {
     var h=Math.round(mins/60); if(h<48)return h+(h===1?" hour ago":" hours ago");
     return Math.round(h/24)+" days ago";
   }
-  function opts(sel,values){
-    values.forEach(function(v){ var o=document.createElement("option"); o.value=v; o.textContent=v; sel.appendChild(o); });
+  // The portals and the map lookup print some addresses in capitals
+  // ("8000 S FEDERAL WAY"). Shown in ordinary case; directions, the state and
+  // anything with a digit in it (83716, 5TH) keep their own form.
+  function tidy(s){
+    s=String(s==null?"":s);
+    if(!s||/[a-z]/.test(s))return s;
+    return s.replace(/[A-Z0-9][A-Z0-9'.&-]*/g,function(w){
+      if(/^(N|S|E|W|NE|NW|SE|SW|ID|PO|US)$/.test(w))return w;
+      if(/[0-9]/.test(w))return w.toLowerCase();
+      return w.charAt(0)+w.slice(1).toLowerCase();
+    });
   }
+  function street(addr){ return tidy(String(addr||"").split(",")[0].trim()); }
+  function stTag(status,stage){
+    return status?'<span class="st '+esc(stage||"open")+'">'+esc(status)+"</span>":'<span class="st none">Not read yet</span>';
+  }
+  function words(list){ if(list.length<=1)return list[0]||""; return list.slice(0,-1).join(", ")+" and "+list[list.length-1]; }
+
+  // ---- The tabs (2026-10-02, Draft C) --------------------------------------
+  var TABS={filings:{tab:"tabFilings",panel:"ptFilings",hash:"filings"},mine:{tab:"tabMine",panel:"pwSec",hash:"your-permits"},alerts:{tab:"tabAlerts",panel:"paSec",hash:"alerts"}};
+  var TAB_ORDER=["filings","mine","alerts"], current="filings";
+  function showTab(name,remember){
+    current=name;
+    TAB_ORDER.forEach(function(k){
+      var on=k===name;
+      $(TABS[k].tab).setAttribute("aria-selected",String(on));
+      $(TABS[k].tab).tabIndex=on?0:-1;
+      $(TABS[k].panel).className=on?"pt-panel":"pt-panel hide";
+    });
+    if(remember){ try{ history.replaceState(null,"",location.pathname+location.search+"#"+TABS[name].hash); }catch(e){} }
+    if(name==="mine")markSeen();
+    // A map drawn into a hidden panel has no size: draw it again once shown.
+    if(name==="alerts"&&AL){ if(alMapOpen)renderAlerts(); if(alFormOpen())alShowArea(); }
+  }
+  $("ptTabs").addEventListener("click",function(e){
+    var b=e.target.closest?e.target.closest(".pt-tab"):null; if(!b)return;
+    for(var k in TABS){ if(TABS[k].tab===b.id){ showTab(k,true); return; } }
+  });
+  $("ptTabs").addEventListener("keydown",function(e){
+    if(e.key!=="ArrowRight"&&e.key!=="ArrowLeft")return;
+    var i=TAB_ORDER.indexOf(current), n=TAB_ORDER[(i+(e.key==="ArrowRight"?1:TAB_ORDER.length-1))%TAB_ORDER.length];
+    showTab(n,true); $(TABS[n].tab).focus(); e.preventDefault();
+  });
+  function tabCounts(){
+    $("tabFilingsN").textContent=String(items.length);
+    var mt=!!(MINE&&(MINE.canTrack||watches.length));
+    $("tabMineN").textContent=mt?String(watches.length):"";
+    $("tabMinePro").className=MINE&&!mt?"pt-protag":"pt-protag hide";
+    var un=MINE&&MINE.unread>0?MINE.unread:0;
+    $("tabMineNew").textContent=un?un+" new":"";
+    $("tabMineNew").className=un?"pt-badge":"pt-badge hide";
+    var at=!!(AL&&(AL.canTrack||alerts.length));
+    $("tabAlertsN").textContent=at?String(alerts.length):"";
+    $("tabAlertsPro").className=AL&&!at?"pt-protag":"pt-protag hide";
+  }
+  // Seen: clears the count on the nav dot, once the Your permits tab is shown.
+  // A fetch, so a prerendered copy of this page does not send it until the
+  // page is actually shown (rule 15).
+  var seenSent=false;
+  function markSeen(){
+    if(seenSent||!MINE||!(MINE.unread>0))return;
+    seenSent=true;
+    fetch("/api/permits/seen",{method:"POST",credentials:"same-origin"}).then(function(r){
+      if(r.ok){ var d=$("navPermitDot"); if(d)d.hidden=true; }
+    }).catch(function(){});
+  }
+
+  // ---- Filings --------------------------------------------------------------
+  // Each filter group's values and counts are for the whole window; ticking
+  // several in one group shows any of them, and the groups narrow each other.
+  var GROUPS=[
+    {g:"city",label:"City",val:function(f){return f.city||"Other"}},
+    {g:"prop",label:"Property type",val:function(f){return f.propertyType},order:PROP_TYPES,zeros:true},
+    {g:"kind",label:"Work",val:function(f){return f.kind==="ti"||f.kind==="new"?f.kind:"other"},names:KIND_NAMES,order:["ti","new","other"]},
+    {g:"stage",label:"Status",val:function(f){return f.stage||"open"},names:STAGE_NAMES,order:["open","attention","approved","issued","ended"]},
+    {g:"type",label:"Permit type",val:function(f){return f.type||"Other"}}
+  ];
+  var SEL={}, BOARD=false, ALERT=null;
+  GROUPS.forEach(function(G){ SEL[G.g]={}; });
+  function picked(g){ return Object.keys(SEL[g]).filter(function(k){return SEL[g][k]}); }
+  function filtering(){
+    if(BOARD||ALERT||$("ptSearch").value.trim())return true;
+    return GROUPS.some(function(G){return picked(G.g).length>0});
+  }
+  function facetGroup(g,label,rows){
+    return '<div class="pt-fg" data-g="'+g+'"><button type="button" class="pt-fgh" aria-expanded="false">'+esc(label)+'<span class="c"></span></button><div class="pt-fgl">'+rows+"</div></div>";
+  }
+  function facetRow(g,value,text,n){
+    return "<label"+(n?"":' class="zero"')+'><input type="checkbox" data-g="'+g+'" value="'+esc(value)+'"/> <span class="t">'+esc(text)+'</span><span class="n">'+n+"</span></label>";
+  }
+  function buildFacets(j){
+    var html=GROUPS.map(function(G){
+      var counts={};
+      items.forEach(function(f){ var v=G.val(f); counts[v]=(counts[v]||0)+1; });
+      // Every property type is offered with its count, a zero included, so an
+      // empty type is visible before it is picked.
+      var keys=G.order?G.order.filter(function(k){return G.zeros||counts[k]})
+        :Object.keys(counts).sort(function(a,b){return counts[b]-counts[a]||a.localeCompare(b)});
+      if(!keys.length)return "";
+      return facetGroup(G.g,G.label,keys.map(function(k){ return facetRow(G.g,k,G.names?G.names[k]:k,counts[k]||0); }).join(""));
+    }).join("");
+    if(j.inFirm){
+      var nb=items.filter(function(f){return f.onBoard}).length;
+      html+=facetGroup("board","Yours",facetRow("board","1","On your firm’s buildings",nb));
+    }
+    $("ptFac").innerHTML=html;
+  }
+  function facetMarks(){
+    [].forEach.call($("ptFac").querySelectorAll(".pt-fg"),function(el){
+      var g=el.getAttribute("data-g"), n=g==="board"?(BOARD?1:0):picked(g).length;
+      el.querySelector(".pt-fgh .c").textContent=n?String(n):"";
+    });
+  }
+  function clearFilters(){
+    GROUPS.forEach(function(G){ SEL[G.g]={}; });
+    BOARD=false; ALERT=null; $("ptSearch").value="";
+    [].forEach.call($("ptFac").querySelectorAll("input[type=checkbox]"),function(i){ i.checked=false; });
+    facetMarks();
+  }
+  $("ptFac").addEventListener("change",function(e){
+    var i=e.target; if(!i||!i.getAttribute||!i.getAttribute("data-g"))return;
+    var g=i.getAttribute("data-g");
+    if(g==="board")BOARD=i.checked; else SEL[g][i.value]=i.checked;
+    facetMarks(); render();
+  });
+  $("ptFac").addEventListener("click",function(e){
+    var h=e.target.closest?e.target.closest(".pt-fgh"):null; if(!h)return;
+    var fg=h.parentNode, open=fg.className.indexOf(" open")<0;
+    fg.className=open?"pt-fg open":"pt-fg";
+    h.setAttribute("aria-expanded",String(open));
+  });
   function apply(o){
-    if(!o||o.s===503){ wall("<p>Couldn\\u2019t load the permit tracker just now. Refresh in a moment.</p>"); return; }
+    if(!o||o.s===503){ wall("<p>Couldn’t load the permit tracker just now. Refresh in a moment.</p>"); return; }
     if(o.s===401){ wall('<p>Sign in to see the permit tracker.</p><p><a href="/?auth=signin">Sign in</a></p>'); return; }
-    if(o.s!==200||!o.j){ wall("<p>Couldn\\u2019t load the permit tracker just now. Refresh in a moment.</p>"); return; }
+    if(o.s!==200||!o.j){ wall("<p>Couldn’t load the permit tracker just now. Refresh in a moment.</p>"); return; }
     var j=o.j;
     items=Array.isArray(j.filings)?j.filings:[];
     CITY_LINE=j.cities||"these cities"; WIN=j.windowDays||30;
-    var sub="Commercial building permits filed in "+(j.cities||"no city")+" in the last "+(j.windowDays||30)+" days \\u2014 the cities we read today.";
+    items.forEach(function(f){ if(PROP_TYPES.indexOf(f.propertyType)<0)f.propertyType="Other"; });
+    var sub="Commercial building permits filed in "+(j.cities||"no city")+" in the last "+WIN+" days, read from each city’s portal on weekday mornings.";
     if(j.never)sub+=" The sweep has not run yet.";
-    else if(j.stale)sub+=" Last checked "+ago(j.lastSweptAt)+", more than a business day ago \\u2014 newer filings may be missing.";
+    else if(j.stale)sub+=" Last checked "+ago(j.lastSweptAt)+", more than a business day ago, so newer filings may be missing.";
     else sub+=" Checked "+ago(j.lastSweptAt)+".";
     // A city read from its published reports (Nampa) is a month behind, so
     // its window is the last days its reports cover, and the page says so.
-    (j.reportCities||[]).forEach(function(c){ sub+=" "+c.city+"’s permits come from the city’s published reports, which run about a month behind, so its "+(j.windowDays||30)+" days end "+day(c.through)+"."; });
+    (j.reportCities||[]).forEach(function(c){ sub+=" "+c.city+"’s permits come from the city’s published reports, which run about a month behind, so its "+WIN+" days end "+day(c.through)+"."; });
     $("ptSub").textContent=sub;
     $("ptSub").className="pt-sub"+(j.stale&&!j.never?" stale":"");
-    $("ptBody").className="";
-    $("ptFeedHead").className="pt-head2";
-    $("ptCount").textContent=items.length+(items.length===1?" permit":" permits");
-    var ind=items.filter(function(f){return f.isIndustrial}).length;
-    var mine=items.filter(function(f){return f.onBoard}).length;
-    var week=items.filter(function(f){return f.daysAgo!=null&&f.daysAgo<=7}).length;
-    $("ptStrip").innerHTML=[[items.length,"filed, "+(j.windowDays||30)+" days"],[week,"in the last 7 days"],[ind,"on industrial land"],[j.inFirm?mine:"\\u2014",j.inFirm?"on your firm\\u2019s buildings":"no firm board"]]
-      .map(function(c){return '<div class="pt-cell"><div class="n">'+esc(c[0])+'</div><div class="l">'+esc(c[1])+"</div></div>"}).join("");
-    var cities={},types={};
-    items.forEach(function(f){ if(f.city)cities[f.city]=1; if(f.type)types[f.type]=1; });
-    opts($("ptCity"),Object.keys(cities).sort()); opts($("ptType"),Object.keys(types).sort());
-    // Every type is offered with its count, a zero included, so an empty
-    // type is visible before it is picked.
-    var counts={}; PROP_TYPES.forEach(function(t){counts[t]=0});
-    items.forEach(function(f){ var t=PROP_TYPES.indexOf(f.propertyType)>-1?f.propertyType:"Other"; f.propertyType=t; counts[t]++; });
-    PROP_TYPES.forEach(function(t){ var o=document.createElement("option"); o.value=t; o.textContent=t+" ("+counts[t]+")"; $("ptProp").appendChild(o); });
-    $("ptEmpty").textContent="No commercial permit filed in "+(j.cities||"these cities")+" in the last "+(j.windowDays||30)+" days"+(j.never?" \\u2014 the sweep has not run yet.":".");
+    $("ptApp").className="";
+    buildFacets(j);
+    $("ptEmpty").textContent="No commercial permit filed in "+CITY_LINE+" in the last "+WIN+" days"+(j.never?". The sweep has not run yet.":".");
     $("ptEmpty").className=items.length?"pt-note hide":"pt-note";
     $("ptTrunc").textContent=j.truncated?"Showing the "+items.length+" most recent filings; older ones in the window are not listed.":"";
     $("ptTrunc").className=j.truncated?"pt-note":"pt-note hide";
     render();
   }
+  function row(f){
+    var addr=f.address?street(f.address):"(no address on the permit)";
+    var work=f.description||f.projectName||f.type||"";
+    var bits=[work,f.propertyType,f.applicant,f.contractor&&f.contractor!==f.applicant?f.contractor:""].filter(Boolean);
+    var num=f.sourceUrl?'<a class="pt-num" href="'+esc(f.sourceUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(f.permitNumber)+"</a>":'<span class="pt-num">'+esc(f.permitNumber)+"</span>";
+    return '<div class="pt-row"><div class="pt-main"><div class="pt-addr"><span class="a">'+esc(addr)+'</span><span class="c">'+esc(f.city)+"</span>"+
+      (f.onBoard?'<a class="pt-board" href="/building/'+esc(encodeURIComponent(f.onBoard.id))+'">Your firm’s building →</a>':"")+alertTag(f)+"</div>"+
+      // Boise's descriptions run to whole paragraphs: one line here, the
+      // full text on hover.
+      '<div class="pt-l2"'+(f.description?' title="'+esc(f.description)+'"':"")+">"+esc(bits.join(" · "))+"</div></div>"+
+      '<div class="pt-right">'+stTag(f.status,f.stage)+num+"</div></div>";
+  }
   function render(){
     var q=$("ptSearch").value.toLowerCase().split(/\\s+/).filter(Boolean);
-    var city=$("ptCity").value, type=$("ptType").value, prop=$("ptProp").value;
     var list=items.filter(function(f){
-      if(city&&f.city!==city)return false;
-      if(type&&f.type!==type)return false;
-      if(prop&&f.propertyType!==prop)return false;
+      for(var i=0;i<GROUPS.length;i++){ var G=GROUPS[i]; if(picked(G.g).length&&!SEL[G.g][G.val(f)])return false; }
+      if(BOARD&&!f.onBoard)return false;
+      if(ALERT&&!alertMatches(ALERT,f))return false;
       if(!q.length)return true;
       var hay=[f.address,f.applicant,f.contractor,f.description,f.projectName,f.permitNumber,f.type,f.status,f.zoning].join(" ").toLowerCase();
       return q.every(function(t){return hay.indexOf(t)>-1});
     });
-    var filtered=list.length!==items.length;
-    $("ptShown").textContent=filtered?list.length+" of "+items.length+" shown":"";
-    // A type with nothing in the window, and no other filter: say it in words.
-    var typeEmpty=!!(prop&&!list.length&&items.length&&!q.length&&!city&&!type);
-    $("ptTypeNoneText").textContent=typeEmpty?"No "+(prop==="Other"?"other":prop.toLowerCase())+" permit filed in "+CITY_LINE+" in the last "+WIN+" days.":"";
+    var filtered=filtering();
+    $("ptShown").innerHTML=filtered?"<b>"+list.length+"</b> of "+items.length+" permits":"<b>"+items.length+"</b> "+(items.length===1?"permit":"permits")+", newest first";
+    $("ptClearAll").className=filtered?"pt-rm":"pt-rm hide";
+    $("ptChips").innerHTML=ALERT?'<span class="pt-chip">Fits your alert “'+esc(alName(ALERT))+'” <button type="button" id="ptAlertOff" aria-label="Show every permit">×</button></span>':"";
+    $("ptChips").className=ALERT?"pt-chips":"pt-chips hide";
+    // One property type picked and nothing else: say it in words.
+    var props=picked("prop");
+    var onlyProp=props.length===1&&!q.length&&!BOARD&&!ALERT&&GROUPS.every(function(G){return G.g==="prop"||!picked(G.g).length});
+    var typeEmpty=!!(onlyProp&&!list.length&&items.length);
+    $("ptTypeNoneText").textContent=typeEmpty?"No "+(props[0]==="Other"?"other":props[0].toLowerCase())+" permit filed in "+CITY_LINE+" in the last "+WIN+" days.":"";
     $("ptTypeNone").className=typeEmpty?"pt-empty2":"pt-empty2 hide";
     $("ptNone").className=(items.length&&!list.length&&!typeEmpty)?"pt-note":"pt-note hide";
-    $("ptRows").innerHTML=list.map(function(f){
-      var addr=f.address||"(no address on the permit)";
-      if(f.city&&addr.toLowerCase().indexOf(f.city.toLowerCase())<0)addr+=", "+f.city;
-      var bits=[f.type,f.status,f.zoning?'zoned '+f.zoning:""].filter(Boolean).map(esc);
-      bits.unshift('<span class="ind">'+esc(f.propertyType)+"</span>");
-      var who=[f.applicant?"applicant "+f.applicant:"",f.contractor&&f.contractor!==f.applicant?"contractor "+f.contractor:""].filter(Boolean);
-      var num=f.sourceUrl?'<a href="'+esc(f.sourceUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(f.permitNumber)+"</a>":esc(f.permitNumber);
-      return '<div class="pt-row"><span class="pt-date">'+esc(day(f.appliedDate))+"</span>"+
-        '<div class="pt-main"><span class="pt-addr">'+esc(addr)+"</span>"+alertTag(f)+
-        (f.onBoard?'<a class="pt-board" href="/building/'+esc(encodeURIComponent(f.onBoard.id))+'">on your board \\u2192</a>':"")+
-        '<div class="pt-meta">'+bits.join(" \\u00b7 ")+"</div>"+
-        // Boise's descriptions run to whole paragraphs (seen on the first
-        // live sweep): two lines here, the full text on hover.
-        (f.description?'<div class="pt-desc" title="'+esc(f.description)+'">'+esc(f.description)+"</div>":"")+
-        (who.length?'<div class="pt-meta">'+esc(who.join(" \\u00b7 "))+"</div>":"")+
-        '</div><span class="pt-num">'+num+"</span></div>";
-    }).join("");
+    // The list by the day each permit was filed, newest first.
+    var html="", last=null, group=[];
+    function flush(){ if(group.length)html+='<section class="pt-day"><h3>'+esc(longDay(last))+"<span>"+group.length+"</span></h3>"+group.join("")+"</section>"; group=[]; }
+    list.forEach(function(f){ if(f.appliedDate!==last){ flush(); last=f.appliedDate; } group.push(row(f)); });
+    flush();
+    $("ptRows").innerHTML=html;
   }
+
   // ---- Your permits (2026-09-27) ------------------------------------------
-  var MINE=null, watches=[];
+  var MINE=null, watches=[], OPEN={}, EDITING={};
   function stepName(k){ var l=(MINE&&MINE.steps)||[]; for(var i=0;i<l.length;i++){ if(l[i].key===k)return l[i].label; } return k; }
-  function words(list){ if(list.length<=1)return list[0]||""; return list.slice(0,-1).join(", ")+" and "+list[list.length-1]; }
   function notifyText(n){
     var what=(n.steps||[]).map(stepName);
     if(n.alerts)what.push("problems");
@@ -439,81 +644,83 @@ function renderPermitsBody(boot) {
     [].forEach.call(root.querySelectorAll("input[data-opt]"),function(i){ n[i.getAttribute("data-opt")]=!!i.checked; });
     return n;
   }
-  function watchName(w){ return w.label||(w.address?w.address.split(",")[0]:"")||w.permitNumber; }
-  // The foot's controls depend on whose permit it is (2026-09-29, 055): your
-  // own gets Change, the firm switch (owners) and Stop tracking; a permit a
-  // colleague tracks for the firm gets Mute; and without Pro your own keeps
-  // only Stop tracking, so a lapse never takes away the way out.
-  function footControls(w){
-    var b=function(attr,id,text){ return ' · <button type="button" class="pt-rm" '+attr+'="'+esc(id)+'">'+esc(text)+"</button>"; };
-    if(!w.mine) return b("data-mute",w.id,w.muted?"Unmute":"Mute");
+  function watchName(w){ return w.label||street(w.address)||w.permitNumber; }
+  // The Manage box's controls depend on whose permit it is (2026-09-29, 055):
+  // your own gets Change, the firm switch (owners) and Stop tracking, and
+  // without Pro only Stop tracking, so a lapse never takes away the way out.
+  // A permit a colleague tracks for the firm gets Mute beside its status.
+  function manageActions(w){
+    if(!w.mine)return "";
+    var b=function(attr,text){ return '<button type="button" class="pt-rm" '+attr+'="'+esc(w.id)+'">'+esc(text)+"</button>"; };
     var out="";
-    if(MINE.canTrack) out+=b("data-edit",w.id,"Change");
-    if(MINE.canTrack&&w.firmId) out+=b("data-firmoff",w.id,"Just me");
-    else if(MINE.canTrack&&MINE.firm) out+=b("data-firmon",w.id,"Track for "+MINE.firm.name);
-    return out+b("data-rm",w.id,"Stop tracking");
+    if(MINE.canTrack)out+=b("data-edit","Change notifications");
+    if(MINE.canTrack&&w.firmId)out+=b("data-firmoff","Just me");
+    else if(MINE.canTrack&&MINE.firm)out+=b("data-firmon","Track for "+MINE.firm.name);
+    return out+b("data-rm","Stop tracking");
   }
-  function firmTag(w){
-    if(!w.firm) return "";
-    var text=w.mine?"For "+w.firm:(w.muted?"Muted · ":"")+w.firm;
-    return '<span class="pw-firm'+(w.muted?" muted":"")+'">'+esc(text)+"</span>";
+  function timeline(w){
+    return '<ol class="pw-tl" aria-label="Permit steps">'+w.steps.map(function(s){
+      return '<li class="'+(s.done?"done":"")+(s.key===w.step?" now":"")+'"><b>'+esc(s.label)+"</b>"+
+        (s.at?'<time datetime="'+esc(s.at)+'" title="Seen on the portal '+esc(day(s.at))+'">'+esc(day(s.at))+"</time>":"")+"</li>";
+    }).join("")+"</ol>";
   }
   function card(w){
     var num=w.sourceUrl?'<a href="'+esc(w.sourceUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(w.permitNumber)+"</a>":esc(w.permitNumber);
-    var meta=[esc(w.city),num];
-    if(w.label&&w.address)meta.push(esc(w.address));
-    if(!w.mine&&w.sharedBy)meta.push("tracked by "+esc(w.sharedBy));
-    var steps=w.steps.map(function(s){
-      return '<li class="'+(s.done?"done":"")+(s.key===w.step?" now":"")+'">'+esc(s.label)+"</li>";
-    }).join("");
-    var latest=w.history.filter(function(h){return h.notice})[0];
-    var warn=latest&&(latest.kind==="attention"||latest.kind==="ended");
-    var latestHtml=latest?'<p class="pw-latest'+(latest.unread?" unread":"")+(warn?" warn":"")+'"><b>'+esc(latest.notice)+"</b> — now “"+esc(latest.to)+"”"+(latest.from?", was “"+esc(latest.from)+"”":"")+" · "+esc(day(latest.at))+"</p>":"";
-    var checked=w.checkError?'<span class="err">'+esc(w.checkError)+"</span>":(w.lastCheckedAt?"Checked "+esc(ago(w.lastCheckedAt)):"Not checked yet");
-    var hist=w.history.length?'<details class="pw-hist"><summary>Status history ('+w.history.length+")</summary><ul>"+w.history.map(function(h){
+    var meta=[w.label&&w.address?esc(street(w.address))+", "+esc(w.city):esc(w.city),num];
+    if(w.firm)meta.push(w.mine?"for "+esc(w.firm):"tracked by "+esc(w.sharedBy||"a colleague")+" for "+esc(w.firm)+(w.muted?" · muted":""));
+    var latest=w.history.filter(function(h){return h.notice})[0], news="";
+    if(w.checkError)news='<p class="pw-latest err">'+esc(w.checkError)+"</p>";
+    else if(latest&&latest.unread){
+      var warn=latest.kind==="attention"||latest.kind==="ended";
+      news='<p class="pw-latest'+(warn?" warn":"")+'"><b>'+esc(latest.notice)+"</b> on "+esc(day(latest.at))+"."+(latest.from?" The portal said “"+esc(latest.from)+"” before.":"")+"</p>";
+    }
+    var right=stTag(w.status,w.stage)+
+      (w.mine?'<button type="button" class="pt-rm" data-manage="'+esc(w.id)+'" aria-expanded="'+(OPEN[w.id]?"true":"false")+'">Manage</button>'
+        :'<button type="button" class="pt-rm" data-mute="'+esc(w.id)+'">'+(w.muted?"Unmute":"Mute")+"</button>"+
+          (w.history.length?'<button type="button" class="pt-rm" data-manage="'+esc(w.id)+'" aria-expanded="'+(OPEN[w.id]?"true":"false")+'">History</button>':""));
+    var checked=w.checkError?'<span class="err">Not read yet</span>':(w.lastCheckedAt?"Checked "+esc(ago(w.lastCheckedAt)):"Not checked yet");
+    var hist=w.history.length?'<div class="pw-hist"><b>Status history</b><ul>'+w.history.map(function(h){
       return '<li class="'+(h.unread?"unread":"")+'">'+esc(day(h.at))+": "+(h.from?"“"+esc(h.from)+"” → ":"First read: ")+"“"+esc(h.to)+"”"+(h.notice?" — "+esc(h.notice):"")+"</li>";
-    }).join("")+"</ul></details>":"";
-    // id="pw-<id>" is a deep link to one permit (/permits#pw-<id>). The
-    // Workspace linked here from 2026-09-29 until tracked permits came off
-    // it on 2026-09-30; a saved link still lands.
-    return '<div class="pw-card" id="pw-'+esc(w.id)+'" data-id="'+esc(w.id)+'">'+
-      '<div class="pw-top"><div><span class="pw-name">'+esc(watchName(w))+"</span>"+firmTag(w)+(w.unread?'<span class="pw-new">New</span>':"")+
-      '<div class="pw-meta">'+meta.join(" · ")+"</div></div>"+
-      '<span class="pw-status'+(w.flag?" "+esc(w.flag):"")+'">'+(w.status?"“"+esc(w.status)+"”":"Status not read yet")+"</span></div>"+
-      '<ol class="pw-steps" aria-label="Permit steps">'+steps+"</ol>"+latestHtml+
-      '<div class="pw-foot">'+checked+" · "+esc(w.mine||!w.muted?notifyText(w.notify):"Muted: nothing from this permit reaches you")+footControls(w)+"</div>"+
-      (w.mine&&MINE.canTrack?'<form class="pw-form hide" data-editform="'+esc(w.id)+'" style="margin-top:10px">'+
+    }).join("")+"</ul></div>":"";
+    var acts=manageActions(w);
+    var edit=w.mine&&MINE.canTrack?'<form class="pw-form'+(EDITING[w.id]?"":" hide")+'" data-editform="'+esc(w.id)+'">'+
       '<div class="pw-grid"><label><span>Nickname <span class="opt">optional</span></span><input data-label maxlength="80" value="'+esc(w.label)+'"/></label></div>'+
       notifyFields(w.notify)+
-      '<div class="pw-actions"><button type="submit" class="pw-btn pri">Save</button> <button type="button" class="pt-rm" data-cancel>Cancel</button> <span class="pw-msg" role="status"></span></div></form>':"")+
-      hist+"</div>";
+      '<div class="pw-actions"><button type="submit" class="pw-btn pri">Save</button> <button type="button" class="pt-rm" data-cancel="'+esc(w.id)+'">Cancel</button> <span class="pw-msg" role="status"></span></div></form>':"";
+    var box='<div class="pw-box'+(OPEN[w.id]?"":" hide")+'">'+
+      '<p class="pw-foot">'+checked+" · "+esc(w.mine||!w.muted?notifyText(w.notify):"Muted: nothing from this permit reaches you")+"</p>"+
+      (acts?'<div class="pw-acts">'+acts+"</div>":"")+edit+hist+"</div>";
+    // id="pw-<id>" is a deep link to one permit (/permits#pw-<id>). The
+    // Workspace linked here from 2026-09-29 until tracked permits came off
+    // it on 2026-09-30; a saved link still lands, on this tab.
+    return '<article class="pw-card" id="pw-'+esc(w.id)+'" data-id="'+esc(w.id)+'">'+
+      '<div class="pw-top"><div class="pw-id"><h3 class="pw-name">'+esc(watchName(w))+'</h3><p class="pw-meta">'+meta.join(" · ")+"</p></div>"+
+      '<div class="pw-right">'+right+"</div></div>"+timeline(w)+news+box+"</article>";
   }
   function ownCount(){ return watches.filter(function(w){return w.mine}).length; }
   function renderMine(){
     var list=$("pwList");
     var roomy=MINE.canTrack&&ownCount()<(MINE.max||25);
     var formOpen=$("pwForm").className.indexOf("hide")<0||$("pwBulk").className.indexOf("hide")<0;
-    $("pwAddBtn").className=roomy&&!formOpen?"pw-btn":"pw-btn hide";
+    $("pwAddBtn").className=roomy&&!formOpen?"pw-btn pri":"pw-btn pri hide";
     $("pwBulkBtn").className=roomy&&!formOpen?"pw-btn":"pw-btn hide";
     $("pwPro").className=MINE.canTrack?"pw-pro hide":"pw-pro";
     var cities=(MINE.cities||[]).map(function(c){return c.label});
-    var firmLine=MINE.firm?" As "+MINE.firm.name+"’s owner, you can track one for everyone at the firm.":"";
-    // Nampa is read from its published reports, which cannot look up one permit.
-    var late=((BOOT&&BOOT.j&&BOOT.j.reportCities)||[]).map(function(c){return c.city});
-    if(late.length)firmLine+=" "+words(late)+" permits can’t be tracked by number yet: we read "+(late.length===1?"that city":"those cities")+" from published reports, which can’t look up one permit.";
+    var n=watches.length;
     $("pwSub").textContent=!MINE.canTrack
-      ? (watches.length?"The permits you track are kept here. You can stop tracking any of them.":"")
-      : watches.length
-      ? "Read from each city’s own permit portal every weekday morning. You’re told when a permit reaches the steps you picked."+firmLine
-      : "Filed a permit in "+words(cities)+"? Track it here: we read its status from the city’s portal every weekday morning and tell you — by email, here on CompNinja, or both — when it reaches the steps you pick."+firmLine;
+      ? (n?"The permits you track are kept here. You can stop tracking any of them.":"")
+      : n
+      ? n+(n===1?" permit, read from its city’s portal every weekday morning.":" permits, read from each city’s portal every weekday morning.")
+      : "Track a permit you filed in "+words(cities)+". We read it from the city’s portal every weekday morning and tell you, by email, here, or both, when it reaches the steps you pick.";
     $("pwSub").className=$("pwSub").textContent?"pw-sub":"pw-sub hide";
-    list.innerHTML=watches.length?watches.map(card).join(""):"";
+    list.innerHTML=n?watches.map(card).join(""):"";
+    if(AL)tabCounts();
   }
   function formMsg(el,text,kind){ el.textContent=text||""; el.className="pw-msg"+(kind?" "+kind:""); }
   function openAdd(){
     closeBulk();
     $("pwForm").className="pw-form";
-    $("pwAddBtn").className="pw-btn hide"; $("pwBulkBtn").className="pw-btn hide";
+    $("pwAddBtn").className="pw-btn pri hide"; $("pwBulkBtn").className="pw-btn hide";
     $("pwNum").focus();
   }
   function closeAdd(){
@@ -523,35 +730,26 @@ function renderPermitsBody(boot) {
   }
   function applyMine(o){
     if(!o){ return; }
-    $("pwSec").className="pw";
     if(o.s!==200||!o.j){
       $("pwSub").textContent="Your tracked permits couldn’t be loaded just now. Refresh in a moment.";
+      $("pwSub").className="pw-sub";
       return;
     }
     MINE=o.j;
     watches=Array.isArray(MINE.watches)?MINE.watches:[];
-    var sel=$("pwCity");
-    (MINE.cities||[]).forEach(function(c){ var op=document.createElement("option"); op.value=c.key; op.textContent=c.label; sel.appendChild(op); });
+    var cities=(MINE.cities||[]).map(function(c){return c.label});
+    (MINE.cities||[]).forEach(function(c){ var op=document.createElement("option"); op.value=c.key; op.textContent=c.label; $("pwCity").appendChild(op); });
+    (MINE.cities||[]).forEach(function(c){ var op=document.createElement("option"); op.value=c.key; op.textContent=c.label; $("pwBulkCity").appendChild(op); });
+    if(cities.length)$("pwProText").textContent="Tracking a permit is part of CompNinja Pro. Add a permit number from "+words(cities).replace(/ and /," or ")+" and we read it from the city’s portal every weekday morning, then tell you, by email and here, when it reaches the steps you pick.";
     $("pwFormNotify").innerHTML=notifyFields(MINE.defaults||{});
     $("pwBulkNotify").innerHTML=notifyFields(MINE.defaults||{});
-    (MINE.cities||[]).forEach(function(c){ var op=document.createElement("option"); op.value=c.key; op.textContent=c.label; $("pwBulkCity").appendChild(op); });
     if(MINE.firm){ $("pwFirmSet").className="pw-set"; $("pwFirmText").textContent="Everyone at "+MINE.firm.name;
       $("pwBulkFirmSet").className="pw-set"; $("pwBulkFirmText").textContent="Everyone at "+MINE.firm.name; }
+    // Nampa is read from its published reports, which cannot look up one
+    // permit: the form says so where the city is picked.
+    var late=((BOOT&&BOOT.j&&BOOT.j.reportCities)||[]).map(function(c){return c.city});
+    if(late.length){ $("pwLate").textContent=words(late)+" permits can’t be tracked by number yet: we read "+(late.length===1?"that city":"those cities")+" from published reports, which can’t look up one permit."; $("pwLate").className="pw-fine"; }
     renderMine();
-    // Two deep links (2026-09-29, made for the Workspace's Tracked permits
-    // card, which came off on 2026-09-30): ?track=1 opens the add form, and
-    // #pw-<id> brings that permit's card into view.
-    var hash=String(location.hash||"");
-    var target=hash.indexOf("#pw-")===0?document.getElementById(decodeURIComponent(hash.slice(1))):null;
-    if(target){ target.className+=" pw-focus"; target.scrollIntoView({block:"center"}); }
-    else if(/(^|[?&])track=1(&|$)/.test(String(location.search||""))&&MINE.canTrack&&ownCount()<(MINE.max||25)){ openAdd(); }
-    // Seen: clears the count on the nav dot. A fetch, so a prerendered copy
-    // of this page does not send it until the page is actually shown.
-    if(MINE.unread>0){
-      fetch("/api/permits/seen",{method:"POST",credentials:"same-origin"}).then(function(r){
-        if(r.ok){ var d=$("navPermitDot"); if(d)d.hidden=true; }
-      }).catch(function(){});
-    }
   }
   $("pwAddBtn").addEventListener("click",openAdd);
   // ---- Adding several at once (2026-09-30) ---------------------------------
@@ -564,7 +762,7 @@ function renderPermitsBody(boot) {
   function openBulk(){
     $("pwForm").className="pw-form hide"; formMsg($("pwMsg"),"");
     $("pwBulk").className="pw-form pw-bulk";
-    $("pwAddBtn").className="pw-btn hide"; $("pwBulkBtn").className="pw-btn hide";
+    $("pwAddBtn").className="pw-btn pri hide"; $("pwBulkBtn").className="pw-btn hide";
     $("pwBulkDone").className="pw-done hide";
     $("pwBulkText").focus();
   }
@@ -578,7 +776,7 @@ function renderPermitsBody(boot) {
     $("pwBulkText").value=""; $("pwBulkFile").value=""; $("pwBulkFirm").checked=false;
     formMsg($("pwBulkMsg"),""); bulkReset();
   }
-  function lineList(items,fn){ return "<ul>"+items.map(fn).join("")+"</ul>"; }
+  function lineList(list,fn){ return "<ul>"+list.map(fn).join("")+"</ul>"; }
   function skippedHtml(sk){
     if(!sk||!sk.length)return "";
     return "<b>Left out ("+sk.length+")</b>"+lineList(sk,function(x){
@@ -704,10 +902,13 @@ function renderPermitsBody(boot) {
       .catch(function(){ alert("That didn’t reach the server. Nothing was changed."); });
   }
   $("pwList").addEventListener("click",function(e){
-    var t=e.target;
-    if(!t||!t.getAttribute)return;
-    var ed=t.getAttribute("data-edit"), rm=t.getAttribute("data-rm");
+    var t=e.target&&e.target.closest?e.target.closest("button"):null;
+    if(!t)return;
+    var mg=t.getAttribute("data-manage"), ed=t.getAttribute("data-edit"), rm=t.getAttribute("data-rm"), cn=t.getAttribute("data-cancel");
     var fon=t.getAttribute("data-firmon"), foff=t.getAttribute("data-firmoff"), mu=t.getAttribute("data-mute");
+    if(mg){ OPEN[mg]=!OPEN[mg]; if(!OPEN[mg])EDITING[mg]=false; renderMine(); return; }
+    if(ed){ EDITING[ed]=!EDITING[ed]; renderMine(); return; }
+    if(cn){ EDITING[cn]=false; renderMine(); return; }
     if(fon){
       if(!confirm("Track this permit for everyone at "+MINE.firm.name+"? Everyone there on Pro gets its notices the way you set them, and each can mute it."))return;
       setFirm(fon,true); return;
@@ -721,12 +922,6 @@ function renderPermitsBody(boot) {
         .catch(function(){ alert("Couldn’t change that just now. Please try again."); });
       return;
     }
-    if(ed){
-      var f=document.querySelector('form[data-editform="'+ed+'"]');
-      if(f)f.className=f.className.indexOf("hide")>-1?"pw-form":"pw-form hide";
-      return;
-    }
-    if(t.hasAttribute&&t.hasAttribute("data-cancel")){ renderMine(); return; }
     if(rm){
       var i=watchIndex(rm); if(i<0)return;
       if(!confirm("Stop tracking "+watches[i].permitNumber+"? Its status history goes with it."))return;
@@ -751,15 +946,16 @@ function renderPermitsBody(boot) {
       .then(function(r){return r.json().catch(function(){return {}}).then(function(j){return {s:r.status,j:j}})})
       .then(function(o){
         if(o.s!==200||!o.j.watch){ formMsg(msg,(o.j&&o.j.error)||"Couldn’t save that. Please try again.","bad"); return; }
-        // Keep this page view's "New" marks: the server's copy was read after
+        // Keep this page view's "new" marks: the server's copy was read after
         // the page cleared them.
         keepMarks(id,o.j.watch);
+        EDITING[id]=false;
         renderMine();
       })
       .catch(function(){ formMsg(msg,"That didn’t reach the server. Nothing was changed.","bad"); });
   });
 
-  // ---- Your alerts (2026-10-01, Draft B) ----------------------------------
+  // ---- Your alerts (2026-10-01) -------------------------------------------
   var AL=null, alerts=[], alEditing=null, alMapOpen=null, alArea=null, alGeoTimer=null, alMaps={};
   function alUnplaced(){ return items.filter(function(f){return f.lat==null||f.lng==null}).length; }
   // ---- Maps (2026-10-01, areas) --------------------------------------------
@@ -819,7 +1015,7 @@ function renderPermitsBody(boot) {
         if($("paAddr").value.trim()!==text)return;
         if(o.s===200&&o.j&&o.j.lat!=null){
           alArea={lat:o.j.lat,lng:o.j.lng,matched:o.j.matchedAddress||line};
-          $("paFound").className="pa-found ok"; $("paFound").textContent="✓ Found on the map: "+alArea.matched;
+          $("paFound").className="pa-found ok"; $("paFound").textContent="✓ Found on the map: "+tidy(alArea.matched);
         }else{
           $("paFound").className="pa-found bad"; $("paFound").textContent="We couldn’t find that address on the map. Try the full street address, with the city.";
         }
@@ -849,40 +1045,50 @@ function renderPermitsBody(boot) {
     var h=Math.pow(Math.sin(dl/2),2)+Math.cos(t(lat1))*Math.cos(t(lat2))*Math.pow(Math.sin(dn/2),2);
     return 2*3958.8*Math.asin(Math.sqrt(h));
   }
+  // An area alert's name and summary carry the map lookup's capitals
+  // ("8000 S FEDERAL WAY"); shown in ordinary case.
+  function alCaps(a,s){
+    s=String(s||"");
+    var raw=a&&a.area&&a.area.address?String(a.area.address).split(",")[0].trim():"";
+    return raw?s.split(raw).join(tidy(raw)):s;
+  }
+  function alName(a){ return alCaps(a,a.name); }
   function alertTag(f){
-    for(var i=0;i<alerts.length;i++){ if(alertMatches(alerts[i],f))return '<span class="pa-tag">'+esc(alerts[i].name)+"</span>"; }
+    for(var i=0;i<alerts.length;i++){ if(alertMatches(alerts[i],f))return '<span class="pt-hit">'+esc(alName(alerts[i]))+"</span>"; }
     return "";
   }
-  function alCounts(a){
-    var all=items.filter(function(f){return alertMatches(a,f)});
-    return {all:all.length,week:all.filter(function(f){return f.daysAgo!=null&&f.daysAgo<=6}).length};
-  }
+  function alMatching(a){ return items.filter(function(f){return alertMatches(a,f)}); }
   function alIndex(id){ for(var i=0;i<alerts.length;i++){ if(String(alerts[i].id)===String(id))return i; } return -1; }
+  // Each alert with the newest permits it found: what its email will hold.
   function alLine(a){
-    var c=alCounts(a);
-    var how=a.email?"Emailed each weekday"+(a.lastEmailedAt?" · last sent "+day(a.lastEmailedAt):""):"On CompNinja only";
-    return '<div class="pa-item"><div class="pa-l"><span class="pa-nm">'+esc(a.name)+'</span><div class="pa-wd">'+esc(a.describe)+"</div></div>"+
-      '<div class="pa-rt">'+(c.week?'<span class="pa-new">'+c.week+" new this week</span>":'<span class="pa-none">nothing new this week</span>')+
-      "<span>"+esc(how)+"</span>"+
+    var all=alMatching(a), week=all.filter(function(f){return f.daysAgo!=null&&f.daysAgo<=6}).length;
+    var how=a.email?"emailed each weekday"+(a.lastEmailedAt?", last sent "+day(a.lastEmailedAt):""):"shown here only";
+    var top=all.slice(0,3);
+    return '<article class="pa-item"><div class="pw-top"><div class="pw-id"><h3 class="pw-name">'+esc(alName(a))+'</h3><p class="pw-meta">'+esc(alCaps(a,a.describe))+" · "+esc(how)+"</p></div>"+
+      '<div class="pw-right"><span class="pa-week">'+(week?"<b>"+week+"</b> new this week":"Nothing new this week")+"</span>"+
       (a.area?'<button type="button" class="pt-rm" data-almap="'+esc(a.id)+'">'+(alMapOpen===a.id?"Hide map":"Show on map")+"</button>":"")+
       (AL.canTrack?'<button type="button" class="pt-rm" data-aledit="'+esc(a.id)+'">Change</button>':"")+
       '<button type="button" class="pt-rm" data-aldel="'+esc(a.id)+'">Delete</button></div></div>'+
-      (a.area&&alMapOpen===a.id?'<div><div class="pa-map" id="paLineMap"></div><p class="pa-mapnote">'+c.all+" of the last "+WIN+" days’ permits "+(c.all===1?"is":"are")+" inside this circle."+(alUnplaced()?" "+alUnplaced()+" permits in the list couldn’t be placed on the map.":"")+"</p></div>":"");
+      (a.area&&alMapOpen===a.id?'<div class="pa-map" id="paLineMap"></div><p class="pa-mapnote">'+all.length+" of the last "+WIN+" days’ permits "+(all.length===1?"is":"are")+" inside this circle."+(alUnplaced()?" "+alUnplaced()+" permits in the list couldn’t be placed on the map.":"")+"</p>":"")+
+      (top.length?'<ul class="pa-mini">'+top.map(function(f){
+        return "<li><time>"+esc(day(f.appliedDate))+'</time><span class="a">'+esc(f.address?street(f.address):f.permitNumber)+'</span><span class="w">'+esc(f.description||f.projectName||f.type)+"</span>"+stTag(f.status,f.stage)+"</li>";
+      }).join("")+"</ul>"+(all.length>3?'<button type="button" class="pt-rm pa-all" data-alshow="'+esc(a.id)+'">See all '+all.length+" in Filings →</button>":"")
+        :'<p class="pa-none">No permit in the last '+WIN+" days fits this alert.</p>")+"</article>";
   }
   function alFormOpen(){ return $("paForm").className.indexOf("hide")<0; }
   function renderAlerts(){
-    $("paSec").className="pw";
-    $("paAdd").className=AL.canTrack&&alerts.length<(AL.max||10)&&!alFormOpen()?"pw-btn":"pw-btn hide";
+    $("paAdd").className=AL.canTrack&&alerts.length<(AL.max||10)&&!alFormOpen()?"pw-btn pri":"pw-btn pri hide";
     $("paPro").className=AL.canTrack?"pw-pro hide":"pw-pro";
     $("paSub").textContent=!AL.canTrack
       ? (alerts.length?"Your alerts are kept here. You can delete any of them.":"")
       : alerts.length
-      ? "New permits that fit each alert come by email each weekday morning, after the city portals are read. Nothing is sent on a day with no match."
-      : "Get the new permits that fit what you follow, by email each weekday morning and here. For example, industrial permits in Boise, or tenant build-outs in Meridian.";
+      ? "New permits that fit an alert come by email each weekday morning, after the city portals are read. Nothing is sent on a day with no match."
+      : "Save what you follow, like industrial permits in Boise or tenant build-outs in Meridian, and get its new permits by email each weekday morning and here.";
     $("paSub").className=$("paSub").textContent?"pw-sub":"pw-sub hide";
-    $("paList").innerHTML=alerts.length?'<div class="pa-list">'+alerts.map(alLine).join("")+"</div>":"";
+    $("paList").innerHTML=alerts.map(alLine).join("");
     // An open map is drawn again into its new box.
     if(alMapOpen){ var k=alIndex(alMapOpen); if(k>-1&&alerts[k].area)drawAreaMap("paLineMap",alerts[k].area); else alMapOpen=null; }
+    tabCounts();
   }
   function alPreview(){
     if(alWithin()&&!alAreaNow()){ formMsg($("paMsg"),$("paAddr").value.trim()?"":"Type an address to see the area."); return; }
@@ -899,9 +1105,9 @@ function renderPermitsBody(boot) {
     $("paName").value=alEditing?a.name:""; $("paEmail").checked=!a||a.email!==false;
     var ar=a&&a.area;
     $("paWithin").checked=Boolean(ar); $("paAnywhere").checked=!ar;
-    $("paMiles").value=String(ar?ar.miles:1); $("paAddr").value=ar?ar.address:"";
+    $("paMiles").value=String(ar?ar.miles:1); $("paAddr").value=ar?tidy(ar.address):"";
     alArea=ar?{lat:ar.lat,lng:ar.lng,matched:ar.address}:null;
-    $("paFound").className=ar?"pa-found ok":"pa-found hide"; $("paFound").textContent=ar?"✓ Found on the map: "+ar.address:"";
+    $("paFound").className=ar?"pa-found ok":"pa-found hide"; $("paFound").textContent=ar?"✓ Found on the map: "+tidy(ar.address):"";
     $("paForm").className="pw-form";
     renderAlerts(); alShowArea();
   }
@@ -909,9 +1115,9 @@ function renderPermitsBody(boot) {
   function asJson(r){ return r.json().catch(function(){return {}}).then(function(j){return {s:r.status,j:j}}); }
   function applyAlerts(o){
     if(!o)return;
-    $("paSec").className="pw";
     if(o.s!==200||!o.j){
       $("paSub").textContent="Your alerts couldn’t be loaded just now. Refresh in a moment.";
+      $("paSub").className="pw-sub";
       return;
     }
     AL=o.j; alerts=Array.isArray(AL.alerts)?AL.alerts:[];
@@ -923,9 +1129,13 @@ function renderPermitsBody(boot) {
     if(MINE&&MINE.email)$("paEmailText").textContent="Email me its new permits each weekday morning ("+MINE.email+")";
     if(MINE&&!MINE.emailLive)$("paFine").textContent="Email isn’t switched on for CompNinja yet, so for now new permits show here on the Permit tracker.";
     renderAlerts();
-    // A member with Pro and no alert yet finds the form open with an example.
-    if(AL.canTrack&&!alerts.length)openAlertForm({jurisdiction:"boise",propertyType:"Industrial",email:true});
     render();
+  }
+  // "See all N in Filings": the list, filtered to that alert alone.
+  function showAlertInList(a){
+    clearFilters(); ALERT=a; render();
+    showTab("filings",true);
+    var t=$("ptTabs"); if(t&&t.scrollIntoView)t.scrollIntoView({block:"start"});
   }
   $("paAdd").addEventListener("click",function(){ openAlertForm(null); });
   $("paCancel").addEventListener("click",function(){ closeAlertForm(); renderAlerts(); });
@@ -950,36 +1160,55 @@ function renderPermitsBody(boot) {
         $("paSave").disabled=false;
         if(o.s!==200||!o.j.alert){ formMsg($("paMsg"),(o.j&&o.j.error)||"Couldn’t save that alert. Please try again.","bad"); return; }
         var i=alIndex(o.j.alert.id); if(i>-1)alerts[i]=o.j.alert; else alerts.push(o.j.alert);
+        if(ALERT&&String(ALERT.id)===String(o.j.alert.id))ALERT=o.j.alert;
         closeAlertForm(); renderAlerts(); render();
       })
       .catch(function(){ $("paSave").disabled=false; formMsg($("paMsg"),"That didn’t reach the server. Nothing was saved.","bad"); });
   });
   $("paList").addEventListener("click",function(e){
-    var t=e.target; if(!t||!t.getAttribute)return;
-    var ed=t.getAttribute("data-aledit"), del=t.getAttribute("data-aldel"), mp=t.getAttribute("data-almap");
+    var t=e.target&&e.target.closest?e.target.closest("button"):null; if(!t)return;
+    var ed=t.getAttribute("data-aledit"), del=t.getAttribute("data-aldel"), mp=t.getAttribute("data-almap"), sh=t.getAttribute("data-alshow");
     if(mp){
       alMapOpen=alMapOpen===mp?null:mp; renderAlerts();
       return;
     }
+    if(sh){ var s=alIndex(sh); if(s>-1)showAlertInList(alerts[s]); return; }
     if(ed){ var i=alIndex(ed); if(i>-1){ openAlertForm(alerts[i]); $("paForm").scrollIntoView({block:"nearest"}); } return; }
     if(del){
       var k=alIndex(del); if(k<0)return;
-      if(!confirm("Delete the alert “"+alerts[k].name+"”? Its emails stop."))return;
+      if(!confirm("Delete the alert “"+alName(alerts[k])+"”? Its emails stop."))return;
       fetch("/api/permits/alerts?id="+encodeURIComponent(del),{method:"DELETE",credentials:"same-origin"})
-        .then(function(r){ if(!r.ok)throw new Error("x"); var j=alIndex(del); if(j>-1)alerts.splice(j,1); if(alEditing===del)closeAlertForm(); renderAlerts(); render(); })
+        .then(function(r){ if(!r.ok)throw new Error("x"); var j=alIndex(del); if(j>-1)alerts.splice(j,1); if(alEditing===del)closeAlertForm(); if(ALERT&&String(ALERT.id)===String(del))ALERT=null; renderAlerts(); render(); })
         .catch(function(){ alert("Couldn’t delete that alert just now. Please try again."); });
     }
   });
 
   $("ptSearch").addEventListener("input",render);
-  $("ptCity").addEventListener("change",render);
-  $("ptType").addEventListener("change",render);
-  $("ptProp").addEventListener("change",render);
-  $("ptTypeAll").addEventListener("click",function(){ $("ptProp").value=""; render(); });
-  $("ptClear").addEventListener("click",function(){ $("ptSearch").value=""; $("ptCity").value=""; $("ptType").value=""; $("ptProp").value=""; render(); });
+  $("ptTypeAll").addEventListener("click",function(){ SEL.prop={}; [].forEach.call($("ptFac").querySelectorAll('input[data-g="prop"]'),function(i){ i.checked=false; }); facetMarks(); render(); });
+  $("ptClear").addEventListener("click",function(){ clearFilters(); render(); });
+  $("ptClearAll").addEventListener("click",function(){ clearFilters(); render(); });
+  $("ptChips").addEventListener("click",function(e){ if(e.target&&e.target.id==="ptAlertOff"){ ALERT=null; render(); } });
+
+  // Which tab the page opens on. Two deep links come first (made for the
+  // Workspace's Tracked permits card, which came off on 2026-09-30, and kept so
+  // a saved link still lands): #pw-<id> brings that permit's card into view,
+  // and ?track=1 opens the add form. Then a tab named in the hash; then Your
+  // permits when one has unread news, Filings otherwise.
+  function startTab(){
+    var hash=String(location.hash||"");
+    var target=hash.indexOf("#pw-")===0?document.getElementById(decodeURIComponent(hash.slice(1))):null;
+    if(target){ showTab("mine"); target.className+=" pw-focus"; target.scrollIntoView({block:"center"}); return; }
+    if(/(^|[?&])track=1(&|$)/.test(String(location.search||""))&&MINE&&MINE.canTrack&&ownCount()<(MINE.max||25)){ showTab("mine"); openAdd(); return; }
+    for(var i=0;i<TAB_ORDER.length;i++){ if(hash==="#"+TABS[TAB_ORDER[i]].hash){ showTab(TAB_ORDER[i]); return; } }
+    showTab(MINE&&MINE.unread>0?"mine":"filings");
+  }
   apply(BOOT);
-  if(BOOT&&BOOT.s===200)applyMine(BOOT.mine);
-  if(BOOT&&BOOT.s===200)applyAlerts(BOOT.alerts);
+  if(BOOT&&BOOT.s===200){
+    applyMine(BOOT.mine);
+    applyAlerts(BOOT.alerts);
+    tabCounts();
+    startTab();
+  }
 })();
 </script>`;
 }

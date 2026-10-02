@@ -43,32 +43,108 @@ test("the page's script compiles, and the literal interpolates the boot alone", 
     "the boot escapes < so a portal string cannot close the script");
 });
 
+// The page's own script, run against a stand-in DOM: every element the markup
+// names, with the class it starts with, and just enough of document, location
+// and fetch for the boot to draw every tab. What it proves is which tab opens
+// and when the unread count is cleared: the first thing a person sees, and the
+// one write the page makes on its own.
+function runPage(boot, { hash = "", search = "" } = {}) {
+  const html = renderPermitsBody(boot);
+  const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
+  const els = {};
+  const posts = [];
+  const el = (id) => els[id] || (els[id] = {
+    id, className: "", textContent: "", innerHTML: "", value: "", checked: false, disabled: false, hidden: false, tabIndex: 0,
+    attrs: {}, options: [], selectedIndex: 0, firstChild: null,
+    setAttribute(k, v) { this.attrs[k] = String(v); }, getAttribute(k) { return this.attrs[k]; },
+    addEventListener() {}, appendChild(c) { this.options.push(c); }, focus() {}, scrollIntoView() {},
+    querySelectorAll() { return []; }, querySelector() { return null; },
+  });
+  for (const m of html.split("<script>")[0].matchAll(/<[a-z0-9]+\b([^>]*)>/gi)) {
+    const id = /\sid="([^"]+)"/.exec(m[1]);
+    const cls = /\sclass="([^"]*)"/.exec(m[1]);
+    if (id) el(id[1]).className = cls ? cls[1] : "";
+  }
+  const document = { getElementById: el, createElement: () => ({}), querySelector: () => null, querySelectorAll: () => [], head: { appendChild() {} }, documentElement: {} };
+  const location = { hash, search, pathname: "/permits" };
+  const fetch = (url, opts) => { posts.push([opts && opts.method, url]); return { then: () => ({ catch() {} }) }; };
+  const history = { replaceState() {} };
+  new Function("document", "location", "fetch", "history", "window", "getComputedStyle", script)(
+    document, location, fetch, history, {}, () => ({ getPropertyValue: () => "" }));
+  const selected = ["tabFilings", "tabMine", "tabAlerts"].find((id) => els[id].attrs["aria-selected"] === "true");
+  return { els, posts, selected };
+}
+
+const STEPS5 = ["submitted", "review", "approved", "issued", "final"].map((key) => ({ key, label: key, done: false, at: null }));
+const watchOf = (id, unread) => ({ id, mine: true, permitNumber: id, city: "Boise", label: "", address: "", status: "In Review", stage: "open",
+  steps: STEPS5, step: "review", notify: { steps: [] }, history: [], unread, firm: "", firmId: "", checkError: "" });
+const bootWith = (unread) => ({
+  s: 200, j: { filings: [], cities: "Boise", windowDays: 30 },
+  mine: { s: 200, j: { canTrack: true, cities: [{ key: "boise", label: "Boise" }], watches: [watchOf("w1", unread)], unread, max: 25, steps: [], notifySteps: [] } },
+  alerts: { s: 200, j: { canTrack: true, alerts: [], cities: [], propertyTypes: [], kinds: [], areaMiles: [1] } },
+});
+
+test("three tabs: it opens on Your permits when one has news, on Filings otherwise", () => {
+  // Draft C (2026-10-02). The unread count is cleared only once Your permits
+  // is shown, by a POST from the page — never by opening another tab.
+  const news = runPage(bootWith(1));
+  assert.equal(news.selected, "tabMine");
+  assert.deepEqual(news.posts, [["POST", "/api/permits/seen"]]);
+  assert.equal(news.els.tabMineNew.textContent, "1 new");
+  assert.equal(news.els.pwSec.className, "pt-panel", "the tab's panel is the one shown");
+  assert.equal(news.els.ptFilings.className, "pt-panel hide");
+  const quiet = runPage(bootWith(0));
+  assert.equal(quiet.selected, "tabFilings");
+  assert.deepEqual(quiet.posts, [], "nothing to clear, nothing sent");
+  const named = runPage(bootWith(1), { hash: "#alerts" });
+  assert.equal(named.selected, "tabAlerts", "a tab named in the hash wins");
+  assert.deepEqual(named.posts, [], "news on a tab not shown stays unread");
+  const free = runPage({ ...bootWith(0), mine: { s: 200, j: { canTrack: false, cities: [], watches: [], unread: 0 } },
+    alerts: { s: 200, j: { canTrack: false, alerts: [] } } });
+  assert.equal(free.selected, "tabFilings");
+  assert.equal(free.els.tabMinePro.className, "pt-protag", "a free account sees Pro on Your permits");
+  assert.equal(free.els.tabAlertsPro.className, "pt-protag", "and on Alerts");
+  assert.equal(free.els.pwPro.className, "pw-pro");
+  assert.equal(free.els.paPro.className, "pw-pro");
+  const out = runPage({ s: 401, j: {} });
+  assert.equal(out.els.ptApp.className, "hide", "signed out: the wall, and no tabs");
+  assert.equal(out.els.ptWall.className, "pt-wall");
+});
+
 test("the two deep links land: #pw-<id> on each permit's card, ?track=1 on the add form", () => {
   // Made for the Workspace's Tracked permits card (2026-09-29), which came
-  // off on 2026-09-30; a saved link to either still lands.
+  // off on 2026-09-30; a saved link to either still lands, on Your permits.
   const body = renderPermitsBody({ s: 200, j: { filings: [] } });
   const script = body.match(/<script>([\s\S]*)<\/script>/)[1];
   assert.match(script, /class="pw-card" id="pw-'\+esc\(w\.id\)\+'"/, "each card carries the id the Workspace links to");
-  const apply = script.slice(script.indexOf("function applyMine(o){"), script.indexOf('$("pwAddBtn").addEventListener'));
-  assert.ok(apply.indexOf('hash.indexOf("#pw-")===0') > apply.indexOf("renderMine();"),
-    "the card is looked for after the list is drawn");
-  assert.match(apply, /track=1/);
-  assert.match(apply, /MINE\.canTrack&&ownCount\(\)<\(MINE\.max\|\|25\)\)\{ openAdd\(\); \}/,
+  const start = script.slice(script.indexOf("function startTab(){"), script.lastIndexOf("apply(BOOT);"));
+  assert.ok(start.indexOf('hash.indexOf("#pw-")===0') > -1);
+  assert.ok(start.includes('MINE&&MINE.canTrack&&ownCount()<(MINE.max||25)){ showTab("mine"); openAdd(); return; }'),
     "the form opens only for a member who may track (Pro), and only while there is room to add");
-  // The door must not also clear the count before the page is shown: the
-  // seen POST stays the fetch it was, after the doors.
-  assert.ok(apply.indexOf('fetch("/api/permits/seen"') > apply.indexOf("openAdd()"));
+  const boot = script.slice(script.lastIndexOf("apply(BOOT);"));
+  assert.ok(boot.indexOf("startTab();") > boot.indexOf("applyMine(BOOT.mine);"), "the card is looked for after the list is drawn");
+  const linked = runPage(bootWith(0), { search: "?track=1" });
+  assert.equal(linked.selected, "tabMine");
+  assert.equal(linked.els.pwForm.className, "pw-form", "?track=1 opens the add form");
+  const card = runPage(bootWith(0), { hash: "#pw-w1" });
+  assert.equal(card.selected, "tabMine", "#pw-<id> opens the tab its card is on");
+  assert.match(card.els["pw-w1"].className, /pw-focus/);
+  // One seen POST in the whole script, reached only through the Your permits tab.
+  assert.equal((script.match(/fetch\("\/api\/permits\/seen"/g) || []).length, 1);
+  assert.ok(script.includes('if(name==="mine")markSeen();'));
 });
 
-test("the Property type menu replaced the Industrial only box, and the permit-type menu kept its name", () => {
+test("the filters: every property type with its count, zero included, and a type with nothing says so", () => {
+  // The Property type menu (2026-09-29) became one group of the Filings tab's
+  // filters (2026-10-02); the rules it carried came with it.
   const html = renderPermitsBody({ s: 200, j: { filings: [] } });
-  assert.ok(html.includes('<select id="ptProp" aria-label="Filter by property type"><option value="">All property types</option>'));
-  assert.equal(html.includes("ptInd"), false, "the box is gone");
-  assert.equal(html.includes("Industrial only"), false);
-  assert.ok(html.includes('<option value="">All permit types</option>'), "owner kept this label (2026-09-29)");
   const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
-  assert.ok(script.includes("if(prop&&f.propertyType!==prop)return false;"));
-  assert.ok(script.includes('$("ptProp").value=""; render();'), "Clear filters resets the menu");
+  assert.ok(script.includes('{g:"prop",label:"Property type",val:function(f){return f.propertyType},order:PROP_TYPES,zeros:true}'));
+  assert.ok(script.includes('{g:"type",label:"Permit type"'), "the permit-type filter stays");
+  assert.ok(script.includes('"No "+(props[0]==="Other"?"other":props[0].toLowerCase())+" permit filed in "'), "an empty type says so in words");
+  assert.ok(script.includes("function clearFilters(){"), "Clear filters resets every group");
+  assert.equal(html.includes("ptInd"), false, "the old Industrial only box stays gone");
+  assert.equal(html.includes('id="ptStrip"'), false, "the four number tiles are gone (their week counted eight days)");
 });
 
 test("Tools reads Market explorer, Comp report, Permit tracker on both nav authors", () => {
@@ -156,6 +232,8 @@ test("the /permits route, signed out and signed in", async (t) => {
     assert.equal(boot.j.filings[1].onBoard, null);
     assert.deepEqual(boot.j.filings.slice(0, 2).map((f) => f.propertyType), ["Industrial", "Other"],
       "each filing carries its property type for the menu, worked out at read time");
+    assert.ok(boot.j.filings.every((f) => f.stage === "open"),
+      "and its stage, the colour of its status and the Status filter (\"Received\" is open)");
     assert.equal(boot.j.inFirm, true);
     assert.equal(boot.j.cities, "Boise, Meridian and Nampa");
     assert.equal(boot.j.stale, false);

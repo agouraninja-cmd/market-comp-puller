@@ -215,6 +215,45 @@ test("the page view lights the ledger's furthest step and counts the unread noti
   assert.deepEqual(v.history.map((h) => [h.id, h.unread]), [["e1", true], ["e2", false]]);
   assert.equal(v.city, "Boise");
   assert.equal(W.unreadCount([{ app: true }, { app: true, seen_at: "x" }, { app: false }]), 1);
+  // The timeline's dates (2026-10-02): approved was SEEN on the 26th; the
+  // two steps it had passed before we watched have none; returning it after
+  // approval dates nothing.
+  assert.deepEqual(v.steps.map((s) => s.at), [null, null, "2026-09-26T13:00:00Z", null, null]);
+  assert.equal(v.stage, "attention");
+  assert.equal(W.watchView(watchAt(""), []).stage, "none", "no status read yet");
+});
+
+test("a status's stage is one word for its colour and the page's Status filter", () => {
+  const cases = {
+    "Received": "open", "In Review": "open", "Plan Review": "open", "": "open", "Something new": "open",
+    "Corrections Required": "attention", "On Hold": "attention",
+    "Approved": "approved", "Ready to Issue": "approved",
+    "Issued": "issued", "Final Inspection Scheduled": "issued", "Finaled": "issued",
+    "Void": "ended", "Expired": "ended", "Withdrawn": "ended",
+  };
+  for (const [status, stage] of Object.entries(cases)) assert.equal(W.stageOf(status), stage, status);
+  assert.deepEqual(W.STAGES, ["open", "attention", "approved", "issued", "ended"]);
+});
+
+test("a step is dated by the change we saw reach it, never by one we did not see", () => {
+  const e = (old_status, new_status, detected_at) => ({ old_status, new_status, detected_at });
+  // Added while In Review; seen approved, then issued two steps at once later.
+  assert.deepEqual(W.stepSeenAt([
+    e("Approved", "Final Inspection Scheduled", "2026-10-01T13:00:00Z"),
+    e("In Review", "Approved", "2026-09-21T13:00:00Z"),
+  ]), { approved: "2026-09-21T13:00:00Z", issued: "2026-10-01T13:00:00Z" }, "oldest first, whatever order they arrive in");
+  // A jump completes every step it passes, on the day of the jump.
+  assert.deepEqual(W.stepSeenAt([e("Received", "Issued", "2026-09-30T13:00:00Z")]),
+    { review: "2026-09-30T13:00:00Z", approved: "2026-09-30T13:00:00Z", issued: "2026-09-30T13:00:00Z" });
+  // Returned and approved again: the second approval does not move the date.
+  assert.deepEqual(W.stepSeenAt([
+    e("In Review", "Approved", "2026-09-10T13:00:00Z"),
+    e("Approved", "Corrections Required", "2026-09-12T13:00:00Z"),
+    e("Corrections Required", "Approved", "2026-09-20T13:00:00Z"),
+  ]), { approved: "2026-09-10T13:00:00Z" });
+  // A first read (nothing before it) dates nothing: we did not see it happen.
+  assert.deepEqual(W.stepSeenAt([e(null, "Issued", "2026-09-30T13:00:00Z")]), {});
+  assert.deepEqual(W.stepSeenAt(null), {});
 });
 
 // --- A permit tracked for the whole firm (2026-09-29; migration 055) --------

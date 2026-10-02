@@ -115,6 +115,20 @@ function classifyStatus(status) {
   return { step: null, flag: null };
 }
 
+// One word for what a status means at a glance (the tabbed Permit tracker,
+// 2026-10-02): the colour of its tag and the page's Status filter. The five
+// steps and two flags fold into five words; a status whose words do not say
+// is "open", never a guess at a later step (the badge rule).
+const STAGES = Object.freeze(["open", "attention", "approved", "issued", "ended"]);
+function stageOf(status) {
+  const c = classifyStatus(status);
+  if (c.flag === "ended") return "ended";
+  if (c.flag === "attention") return "attention";
+  if (c.step === "issued" || c.step === "final") return "issued";
+  if (c.step === "approved") return "approved";
+  return "open";
+}
+
 // Every step up to and including `key`, in order.
 function stepsThrough(key) {
   const i = stepIndex(key);
@@ -572,6 +586,31 @@ function buildNoticeEmail({ items, siteUrl, cityOf, recipientId, firmNameOf } = 
   return { subject, text };
 }
 
+// When CompNinja SAW a permit reach each step (2026-10-02, the page's
+// timeline): its status changes, oldest first; a step is dated by the first
+// change whose new status reaches it when its old status had not. A step the
+// permit had already reached when it was added, or when its first status was
+// read (a "first" event, old status null), has no date: we did not see it
+// happen. Read from the statuses with classifyStatus, the ledger's own rule,
+// never from an event's `steps`, which hold only the steps the member asked
+// to hear about. key -> detected_at.
+function stepSeenAt(events) {
+  const out = {};
+  const reached = new Set();
+  const list = (events || [])
+    .filter((e) => e && clean(e.old_status) && clean(e.new_status))
+    .sort((a, b) => String(a.detected_at || "").localeCompare(String(b.detected_at || "")));
+  for (const e of list) {
+    for (const k of stepsThrough(classifyStatus(e.old_status).step)) reached.add(k);
+    for (const k of stepsThrough(classifyStatus(e.new_status).step)) {
+      if (reached.has(k)) continue;
+      reached.add(k);
+      if (e.detected_at) out[k] = e.detected_at;
+    }
+  }
+  return out;
+}
+
 // One stored watch + its events -> what the page draws. camelCase, nothing
 // the page does not use.
 // `viewerId` makes the view relative to who is reading: their own watch, or a
@@ -585,6 +624,7 @@ function watchView(row, events, { cityOf, viewerId, firmName, sharedBy, muted } 
   const mine = (events || [])
     .filter((e) => e && String(e.watch_id) === String(r.id))
     .sort((a, b) => String(b.detected_at || "").localeCompare(String(a.detected_at || "")));
+  const seenAt = stepSeenAt(mine);
   return {
     id: r.id,
     jurisdiction: String(r.jurisdiction || ""),
@@ -600,7 +640,9 @@ function watchView(row, events, { cityOf, viewerId, firmName, sharedBy, muted } 
     // status's: a permit returned for corrections after approval has still
     // been approved.
     step: furthestStep(passed),
-    steps: STEPS.map((s) => ({ key: s.key, label: s.label, done: passed.includes(s.key) })),
+    // `at`: when we saw it reach the step, on a step the ledger has passed.
+    steps: STEPS.map((s) => ({ key: s.key, label: s.label, done: passed.includes(s.key), at: passed.includes(s.key) ? seenAt[s.key] || null : null })),
+    stage: r.status ? stageOf(r.status) : "none",
     statusChangedAt: r.status_changed_at || null,
     lastCheckedAt: r.last_checked_at || null,
     checkError: String(r.check_error || ""),
@@ -631,7 +673,7 @@ function unreadCount(events) {
 module.exports = {
   STEPS, STEP_KEYS, NOTIFY_STEP_KEYS, DEFAULT_NOTIFY,
   MAX_WATCHES_PER_USER, LABEL_MAX, EMAIL_WINDOW_DAYS, SWEEP_CHECK_CAP,
-  stepIndex, stepLabel, classifyStatus, stepsThrough, furthestStep,
+  stepIndex, stepLabel, classifyStatus, stepsThrough, furthestStep, STAGES, stageOf, stepSeenAt,
   normalizePermitNumber, normalizeNotify, notifyColumns, notifyOfRow,
   validateWatchInput, validateWatchPatch, newWatchRow, displayName, headlineFor,
   decideCheck, dueChecks, buildNoticeEmail, watchView, unreadCount,

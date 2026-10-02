@@ -7449,6 +7449,10 @@ async function permitTrackerPayload(user) {
   // Its kind (2026-10-01, permit alerts): build-out or new building, the
   // market pages' grouping, so an alert's "kind" is one word on both.
   for (const f of filings) f.kind = PERMIT_ALERTS.kindOf(f.type);
+  // Its stage (2026-10-02, the tabbed page): open, needs attention, approved,
+  // issued or ended, from permit-watch.js's classifyStatus, so a tag's colour
+  // and the Status filter read the portal's words the way a tracked permit does.
+  for (const f of filings) f.stage = PERMIT_WATCH.stageOf(f.status);
   return {
     cities: PERMIT_FILINGS.citiesLine(PERMIT_SWEPT.map((c) => c.label)),
     windowDays: PERMIT_FILINGS.TRACKER_WINDOW_DAYS,

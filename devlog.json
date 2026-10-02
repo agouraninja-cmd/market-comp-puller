@@ -4519,5 +4519,11 @@
     "type": "feature",
     "title": "Permit tracker: Nampa added, read from the city’s published permit reports",
     "details": "Nampa’s permits are now in the Permit tracker, its market page, the city comparison and building sheets. Its online portal blocks automated reading, so CompNinja reads the reports the City of Nampa publishes instead: a monthly list of every commercial application and its status, and weekly lists of the permits issued. Only the kinds of permit we count in Boise and Meridian are kept (new buildings, additions, tenant build-outs, racking and modular buildings), so the three cities compare fairly. The reports run about a month behind, and every page that shows Nampa says so. A Nampa permit can’t be tracked by number yet."
+  },
+  {
+    "date": "2026-10-02",
+    "type": "improvement",
+    "title": "Permit tracker: redesigned as three tabs",
+    "details": "The Permit tracker is now three tabs: Filings, Your permits and Alerts. It opens on Your permits when one of them has news, and on Filings otherwise. Filings has filters down the side with counts (city, property type, kind of work, status, permit type and your firm’s buildings) and lists permits by the day they were filed. Each tracked permit is a timeline of its five steps with the day we saw it reach each one. Each alert shows the newest permits it found, with a link that filters the list to them. Addresses the portals print in capitals now read normally, and the old “in the last 7 days” figure, which counted eight days, is gone."
   }
 ]

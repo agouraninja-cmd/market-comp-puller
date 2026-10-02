@@ -676,3 +676,55 @@ weekday call and in `history.errors` on the history call. Not built: the city's
 zoning (Canyon County has no parcel service wired, permit-zoning.js), so
 Nampa's property type comes from the words; and its Census placement rides the
 ordinary locate step.
+
+## The tabbed page (2026-10-02)
+
+Owner's pick of Draft C ("do C") from the Permit Tracker Drafts
+(https://claude.ai/artifact/762RCzFWGbnb7PrwcshtkA), asked for as making the
+page "look less vibecoded". /permits had grown one feature at a time into three
+stacked boxes (Your permits, Your alerts, Every commercial filing), each opening
+with a paragraph, four number tiles, and Georgia addresses whose old-style
+digits drop below the line. It is now three tabs in `permits-page.js`, same
+routes, same boot, no migration. Where an older section above says "under Your
+permits" or "the list below", read "on its own tab". Seven rules:
+
+- **Which tab opens.** `startTab()`, in order: `#pw-<id>` (that permit's card,
+  on Your permits), `?track=1` (Your permits with the add form, for a member
+  who may track and has room), a tab named in the hash (`#filings`,
+  `#your-permits`, `#alerts`; a tab click writes it with `replaceState`, so a
+  reload stays put), then Your permits when `mine.unread > 0`, Filings
+  otherwise. Both deep links are the Workspace's old ones and still land.
+- **Seen is sent only when Your permits is shown** (`markSeen`, from
+  `showTab("mine")`): news on a tab nobody opened stays unread. Still the one
+  fetch POST (rule 15). `test/permits-page.test.js` runs the page's own script
+  against a stand-in DOM to pin which tab opens and when the POST goes.
+- **Filters, not menus.** The Filings tab's groups: city, property type (all
+  six with counts, zero included, the 2026-09-29 rule), work (`kind`), status
+  (`stage`), permit type (the portal's own type, the menu the owner kept), and
+  your firm's buildings. OR within a group, AND across; counts are the whole
+  window's. On a phone each group is a button that opens its list. The four
+  number tiles are gone, and with them their "in the last 7 days", which
+  counted `daysAgo <= 7` (eight days) while alerts' "new this week" counts
+  `<= 6`.
+- **A status's stage** is `stageOf` in permit-watch.js (open / attention /
+  approved / issued / ended, from `classifyStatus`): the colour of every status
+  tag and the Status filter. `permitTrackerPayload` puts it on each filing and
+  `watchView` on each watch, so the page never reads portal words itself. The
+  tag always shows the portal's raw status.
+- **The timeline's dates are when we SAW a step**, `stepSeenAt` in
+  permit-watch.js on `watchView`'s `steps[].at`: the first status change whose
+  new status reaches the step when its old status had not. A step passed
+  before the permit was tracked, or at a `first` read, has no date. Read from
+  the statuses, never from an event's `steps`, which hold only the steps the
+  member asked to hear about.
+- **Alerts show what they found.** Each alert lists its three newest matches;
+  "See all N in Filings" clears the filters and filters the list to that alert
+  (`ALERT`, a removable chip). Filing rows still carry the first alert they fit
+  (the ⚠ pair `alertMatches`, unchanged). The Pro member's first visit no
+  longer opens the New alert form with Boise and Industrial filled in; New
+  alert is a button.
+- **Capitals read normally.** `tidy()` puts an all-capitals portal or geocoder
+  address ("8000 S FEDERAL WAY") in ordinary case for display, keeping
+  directions, the state and anything with a digit; an area alert's stored name
+  and summary are tidied the same way on the page (`alCaps`). Nothing stored
+  changes, and search still reads the raw text.

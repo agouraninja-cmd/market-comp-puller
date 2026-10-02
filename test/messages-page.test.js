@@ -292,21 +292,25 @@ test("the emitted script carries no collapsed backslash escape", () => {
 // Deleting a conversation (2026-09-26)
 // ---------------------------------------------------------------------------
 
-test("delete asks first, on firm conversations only, and Escape backs out without leaving the page", () => {
+test("delete asks first, for both kinds of chat, and Escape backs out without leaving the page", () => {
   const script = scriptOf(renderMessagesBody(null));
   // ONE caller of the route, reached only from the question's own Delete
-  // button — neither door deletes on its first press.
+  // button — no door deletes on its first press.
   assert.equal((script.match(/\/api\/messages\/delete/g) || []).length, 1,
     "the delete route is called from more than one place");
   const fn = script.slice(script.indexOf("function deleteThread("));
   assert.ok(fn.indexOf('api("POST", "/api/messages/delete"') > 0);
-  assert.equal((script.match(/deleteThread\(yes\.getAttribute\("data-del-yes"\)\)/g) || []).length, 2,
+  // A deal room is deleted by its own id (2026-10-02), and the question
+  // carries which kind it is, so a room id is never sent as a thread id.
+  assert.match(fn, /room \? \{ roomId: id \} : \{ threadId: id \}/);
+  assert.equal((script.match(/deleteThread\(yes\.getAttribute\("data-del-yes"\), yes\.getAttribute\("data-kind"\)\)/g) || []).length, 2,
     "the row and the header must both delete only from the question's Delete button");
   assert.doesNotMatch(fn.slice(0, fn.indexOf("function externalMatches(")), /window\.confirm/,
     "the delete question is a browser dialog again, which covers the chat on a phone");
-  // Deal rooms never get a bin: their row is built by threadRowHtml alone.
-  assert.match(script, /threadRowHtml\(x, "data-external"/,
-    "an External row is built through something that may now carry a bin");
+  // The deal room's question says what is true of a deal room: it comes back
+  // WITH its history, unlike a firm chat (messaging.js, roomListed).
+  const ask = script.slice(script.indexOf("function confirmHtml("), script.indexOf("function renameHtml("));
+  assert.match(ask, /it comes back, with everything in it, if anyone writes in it again/);
   // The shared header's Escape listener goes BACK a page. The page's own
   // listener must run first (capture) and stop it, or cancelling the question
   // also leaves Messages.
@@ -346,12 +350,101 @@ test("the header's question is asked once, and a list read from before a delete 
   const script = scriptOf(renderMessagesBody(null));
   // Bugbot, PR #339: the header bin set confirmId, and the row drew the same
   // question too — twice on a desktop, where both panes show.
-  assert.match(script, /if \(state\.confirmId === t\.id && !state\.delBar\) return confirmHtml\(t, "row"\);/,
+  assert.match(script, /function askingHere\(kind, t\)\{ return state\.confirmId === t\.id && state\.confirmKind === kind && !state\.delBar; \}/,
     "a question asked from the header is drawn on the list row as well");
+  assert.match(script, /if \(askingHere\("internal", t\)\) return confirmHtml\(t, "row", "internal"\);/);
+  assert.match(script, /if \(askingHere\("external", x\)\) return confirmHtml\(x, "row", "external"\);/);
   // Bugbot, PR #339: a poll sent before the delete finished landed after it
   // and put the deleted conversation back.
   assert.match(script, /var seq = \+\+state\.listSeq;\s*return api\("GET", "\/api\/messages"\)\.then\(function\(o\)\{\s*if \(seq <= state\.staleBefore\) return;/,
     "a list read issued before a delete finished is applied after it");
   const del = script.slice(script.indexOf("function deleteThread("), script.indexOf("function externalMatches("));
   assert.match(del, /state\.staleBefore = state\.listSeq;/, "a finished delete no longer marks older list reads stale");
+});
+
+// ---------------------------------------------------------------------------
+// Who a chat is with, and the More menu (2026-10-02)
+// ---------------------------------------------------------------------------
+// The owner's pick of the drafts at
+// https://claude.ai/artifact/3sk3nK5VLG43d73TxEuZJA: Draft A with Draft C's
+// private names. Reported as "Jacob Adler is myself": a room another account
+// started is named after that account, and the row said nothing else.
+
+test("a deal room's row says which deal, and a room somebody else started says so", () => {
+  const script = scriptOf(renderMessagesBody(null));
+  const fn = script.slice(script.indexOf("function externalRowHtml("), script.indexOf("function confirmHtml("));
+  assert.match(fn, /dealLine\(x\), x\.owner \? "" : "Invited you"/,
+    "a guest's row no longer says it was shared with them, or no longer names the deal");
+  // The header says who invited whom too, which is the answer when two
+  // accounts share a name.
+  assert.match(script, /x\.label \+ " invited you"/);
+});
+
+test("every chat has one More menu, from its button, a right-click or the header", () => {
+  const html = renderMessagesBody(null);
+  const script = scriptOf(html);
+  assert.match(html, /id="msgMoreBtn"/, "the open chat's More button is gone");
+  assert.doesNotMatch(html, /id="msgDelBtn"/, "the old header bin is back beside the More menu");
+  // Both kinds of row are wrapped with the same More button.
+  const wrap = script.slice(script.indexOf("function rowWrap("), script.indexOf("function askingHere("));
+  assert.match(wrap, /data-more="' \+ esc\(key\) \+ '"/);
+  assert.match(script, /return rowWrap\("internal", t,/);
+  assert.match(script, /return rowWrap\("external", x,/);
+  // Right-click opens the same menu, and keeps the browser's own off the row.
+  const ctx = script.slice(script.indexOf('$("msgThreads").addEventListener("contextmenu"'));
+  assert.ok(ctx.length > 0, "right-clicking a chat no longer opens its menu");
+  assert.match(ctx.slice(0, 400), /e\.preventDefault\(\);\s*openMenu\(k\.kind, k\.id, "row"/);
+  // The menu's three choices, and nothing deletes or renames from the menu
+  // itself: each one opens the question or the box first.
+  const menu = script.slice(script.indexOf("function openMenu("), script.indexOf("function closeMenu("));
+  assert.match(menu, /About this chat/);
+  assert.match(menu, /Rename<\/span><small>only you see it/);
+  assert.match(menu, /Delete for me/);
+  const pick = script.slice(script.indexOf("function menuPick("), script.indexOf("function fmtDay("));
+  assert.doesNotMatch(pick, /api\(/, "a menu choice acted without asking first");
+  // A phone gets a sheet, because it has no right-click and a pointer-sized
+  // menu is a missed tap.
+  assert.match(script, /matchMedia\("\(hover: none\), \(max-width: 900px\)"\)/);
+});
+
+test("About this chat reads only what the list already holds, and marks nothing read", () => {
+  const script = scriptOf(renderMessagesBody(null));
+  const info = script.slice(script.indexOf("function infoHtml("), script.indexOf("function closeInfo("));
+  assert.doesNotMatch(info, /api\(|fetch\(/, "opening About this chat fetches something (GET /api/hub would mark the room read)");
+  // Names AND addresses, so two accounts with one name can be told apart.
+  assert.match(script.slice(script.indexOf("function personHtml("), script.indexOf("function infoHtml(")), /msg-info-mail/);
+  // Whether a guest opened the room is the owner's to see.
+  assert.match(info, /if \(t\.owner\) \{\s*extra = /);
+});
+
+test("a private name is only ever the reader's, and saved only from its own box", () => {
+  const script = scriptOf(renderMessagesBody(null));
+  assert.equal((script.match(/"\/api\/messages\/name"/g) || []).length, 1,
+    "the name route is called from more than one place");
+  const save = script.slice(script.indexOf("function saveRename("));
+  assert.match(save.slice(0, 1600), /body\[k\.kind === "external" \? "roomId" : "threadId"\] = k\.id;/);
+  const box = script.slice(script.indexOf("function renameHtml("), script.indexOf("function findThread("));
+  assert.match(box, /Only you see this name\./);
+  // A row is called by the reader's own name for it, falling back to who it
+  // is with — the people-first rule every row followed before.
+  assert.match(script, /function chatName\(t\)\{ return \(t && \(t\.nickname \|\| t\.label\)\) \|\| "Conversation"; \}/);
+  // The poll redraws the list every 15 seconds; a half-typed name survives it.
+  const render = script.slice(script.indexOf("function renderThreads("), script.indexOf("function compCard("));
+  assert.match(render, /var typed = live \? live\.value : null/);
+});
+
+test("closed deal rooms fold under one heading, and a search unfolds it", () => {
+  const script = scriptOf(renderMessagesBody(null));
+  const render = script.slice(script.indexOf("function renderThreads("), script.indexOf("function compCard("));
+  assert.match(render, /var unfold = state\.showClosed \|\| !!q;/,
+    "a search can find a match hidden behind the Closed heading");
+  assert.match(render, /data-fold="1" aria-expanded="/);
+});
+
+test("the menu, the About card and the rename box all back out on Escape, before the header's go-back", () => {
+  const script = scriptOf(renderMessagesBody(null));
+  const at = script.search(/document\.addEventListener\("keydown", function\(e\)\{\s*if \(e\.key !== "Escape"\) return;/);
+  const block = script.slice(at, script.indexOf("}, true);", at) + 9);
+  assert.match(block, /if \(state\.menu \|\| state\.info\) \{[\s\S]{0,80}e\.stopPropagation\(\);/);
+  assert.match(block, /if \(state\.renameKey\) \{[\s\S]{0,80}e\.stopPropagation\(\);/);
 });

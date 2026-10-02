@@ -915,3 +915,138 @@ test("unsending a message takes it off everybody's screen, for fifteen minutes",
     assert.equal(mine.unsendUntil, undefined, "a message past its window still offers Unsend");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Your own name for a chat, and deleting a deal room for yourself (059)
+// ---------------------------------------------------------------------------
+// The owner's pick of the "who am I messaging" drafts (2026-10-02): Draft A
+// with Draft C's private names. Two promises, both only true if they run: a
+// name one person gives a chat never reaches anybody else, and deleting a deal
+// room takes it off one list, nobody else's, until somebody writes in it.
+test("your own name for a chat, and deleting a deal room, are yours alone", async (t) => {
+  const tables = seedTables();
+  // Jason has an account and no firm, and his address is already on Brad's
+  // room: the client who signed up (the 2026-09-02 report's person).
+  const JASON = { id: "u-jason", email: "jason@client.com", name: "Jason Reed" };
+  tables.users.push({ ...JASON, pro_tester: false, vault_beta: false, digest_optout: false });
+  tables.sessions.push({ token_hash: sha256("tok-" + JASON.id), user_id: JASON.id, expires_at: YEAR_OUT });
+  const ctx = await bootWithDb(tables);
+  t.after(() => ctx.stop());
+  const B = ctx.srv.base;
+  const tick = () => new Promise((r) => setTimeout(r, 15));
+  const get = async (user, url) => {
+    const r = await fetch(B + url, as(user));
+    return { s: r.status, j: await r.json().catch(() => ({})) };
+  };
+  const post = async (user, url, body) => {
+    const r = await fetch(B + url, as(user, { method: "POST", body: JSON.stringify(body || {}) }));
+    return { s: r.status, j: await r.json().catch(() => ({})) };
+  };
+  const listed = async (user, id) => (await get(user, "/api/messages")).j.threads.filter((x) => x.id === id)[0];
+  const room = async (user) => ((await get(user, "/api/messages")).j.external || []).filter((x) => x.id === "hubAAA111")[0];
+
+  const opened = await post(BRAD, "/api/messages/thread", { memberIds: [MIKE.id] });
+  assert.equal(opened.s, 201);
+  const id = opened.j.thread.id;
+  assert.equal((await post(BRAD, "/api/messages/send", { threadId: id, body: "Kanan Rd, have a look" })).s, 201);
+
+  await t.test("a name on a firm chat is the namer's alone", async () => {
+    const o = await post(BRAD, "/api/messages/name", { threadId: id, name: "  Kanan \n  deal  " });
+    assert.equal(o.s, 200, JSON.stringify(o.j));
+    assert.equal(o.j.nickname, "Kanan deal", "the name was not trimmed and folded to one line");
+    const mine = await listed(BRAD, id);
+    assert.equal(mine.nickname, "Kanan deal");
+    assert.equal(mine.label, "Mike", "naming a chat changed who it is shown as being with");
+    const his = await listed(MIKE, id);
+    assert.equal(his.nickname, "", "Brad's name for the chat reached Mike's list");
+    assert.ok(JSON.stringify((await get(MIKE, "/api/messages")).j).indexOf("Kanan deal") < 0,
+      "Brad's private name appears somewhere in Mike's list payload");
+    // The open chat's header reads it on the first read, and only the namer's.
+    assert.equal((await get(BRAD, "/api/messages/thread?id=" + encodeURIComponent(id))).j.thread.nickname, "Kanan deal");
+    const mikeRead = await get(MIKE, "/api/messages/thread?id=" + encodeURIComponent(id));
+    assert.equal(mikeRead.j.thread.nickname, "");
+    assert.ok(JSON.stringify(mikeRead.j).indexOf("Kanan deal") < 0, "Brad's private name reached Mike's thread read");
+  });
+
+  await t.test("nobody outside the chat can name it, and a name over 80 characters is refused", async () => {
+    assert.equal((await post(DANA, "/api/messages/name", { threadId: id, name: "Mine now" })).s, 404);
+    assert.equal((await post(RIVAL, "/api/messages/name", { threadId: id, name: "Mine now" })).s, 404);
+    assert.equal((await post(BRAD, "/api/messages/name", { name: "Which?" })).s, 400);
+    const long = await post(BRAD, "/api/messages/name", { threadId: id, name: "x".repeat(81) });
+    assert.equal(long.s, 400);
+    assert.match(long.j.error, /80 characters/);
+    assert.equal((await listed(BRAD, id)).nickname, "Kanan deal", "a refused name replaced the saved one");
+  });
+
+  await t.test("an empty name goes back to who the chat is with", async () => {
+    assert.equal((await post(BRAD, "/api/messages/name", { threadId: id, name: "   " })).s, 200);
+    assert.equal((await listed(BRAD, id)).nickname, "");
+    const row = ctx.tables.msg_thread_members.find((m) => m.thread_id === id && m.user_id === BRAD.id);
+    assert.equal(row.nickname, null, "clearing a name stored an empty string rather than nothing");
+  });
+
+  await t.test("a deal room's name is the namer's alone, for a client with no firm and for its owner", async () => {
+    const j = await post(JASON, "/api/messages/name", { roomId: "hubAAA111", name: "Airport warehouse" });
+    assert.equal(j.s, 200, "a client with no firm could not name his own room: " + JSON.stringify(j.j));
+    const b = await post(BRAD, "/api/messages/name", { roomId: "hubAAA111", name: "Jason, airport" });
+    assert.equal(b.s, 200);
+    assert.equal((await room(JASON)).nickname, "Airport warehouse");
+    assert.equal((await room(BRAD)).nickname, "Jason, airport");
+    assert.ok(JSON.stringify((await get(JASON, "/api/messages")).j).indexOf("Jason, airport") < 0,
+      "the owner's private name reached his client");
+    assert.ok(JSON.stringify((await get(BRAD, "/api/messages")).j).indexOf("Airport warehouse") < 0,
+      "the client's private name reached the owner");
+  });
+
+  await t.test("nobody outside the room can name it or delete it", async () => {
+    for (const who of [DANA, RIVAL, MIKE]) {
+      assert.equal((await post(who, "/api/messages/name", { roomId: "hubAAA111", name: "x" })).s, 404,
+        who.name + " named a room he is not in");
+      assert.equal((await post(who, "/api/messages/delete", { roomId: "hubAAA111" })).s, 404,
+        who.name + " deleted a room he is not in");
+    }
+    assert.equal((await post(JASON, "/api/messages/name", { roomId: "../x", name: "x" })).s, 404);
+    assert.equal(ctx.tables.hub_notify.filter((n) => n.hidden_at).length, 0,
+      "a refused delete still hid the room for somebody");
+  });
+
+  await t.test("the About card's facts ride the list, and a guest still gets only the broker", async () => {
+    const mine = await room(BRAD);
+    assert.equal(mine.market, "Boise, ID");
+    assert.equal(mine.propertyType, "Industrial");
+    assert.equal(mine.createdAt, "2026-08-30T00:00:00.000Z");
+    assert.equal(mine.invitedAt, null, "the owner was not invited into his own room");
+    assert.deepEqual(mine.people.map((p) => [p.email, p.opened, p.hasAccount]), [["jason@client.com", false, true]]);
+    const his = await room(JASON);
+    assert.equal(his.invitedAt, "2026-08-30T00:00:00.000Z", "the client's row does not say when he was invited");
+    assert.deepEqual(his.people.map((p) => p.email), [BRAD.email]);
+    assert.equal(his.people[0].opened, undefined, "a guest was told whether people have opened the room");
+  });
+
+  await t.test("a client deletes the room from his list; Brad's list is untouched", async () => {
+    const before = ctx.tables.hub_messages.length;
+    assert.equal((await post(JASON, "/api/messages/delete", { roomId: "hubAAA111" })).s, 200);
+    const list = await get(JASON, "/api/messages");
+    assert.equal(list.s, 200, "a client who deleted his only room was walled out as having no firm");
+    assert.deepEqual(list.j.external, [], "the deleted room is still on his list");
+    assert.equal((await get(JASON, "/api/messages/unread")).j.count, 0, "a deleted room still lights his dot");
+    assert.ok(await room(BRAD), "the client deleting his copy took the room off its owner's list");
+    assert.equal(ctx.tables.hub_messages.length, before, "deleting removed messages from the room");
+    const own = ctx.tables.hub_notify.find((n) => n.email === "jason@client.com");
+    assert.equal(own.nickname, "Airport warehouse", "deleting the room threw away his name for it");
+  });
+
+  await t.test("a new message brings it back, with everything in it", async () => {
+    await tick();
+    const sent = await post(BRAD, "/api/hub/message", { id: "hubAAA111", body: "Found two more near the airport" });
+    assert.equal(sent.s, 201, JSON.stringify(sent.j));
+    const back = await room(JASON);
+    assert.ok(back, "a new message did not bring the room back");
+    assert.equal(back.preview, "Found two more near the airport");
+    assert.ok(back.unread >= 1, "what brought it back is not marked new");
+    const read = await get(JASON, "/api/hub?id=hubAAA111");
+    assert.equal(read.s, 200);
+    assert.ok(read.j.messages.some((m) => /near the airport\?/.test(m.body)),
+      "the room came back without what was said before it was deleted");
+  });
+});

@@ -212,11 +212,11 @@ paths:
   a visible message (the Workspace's `#deskThreads` reads the same route).
   **Not `left_at`**: a leaver is shown as gone to everybody else and refused
   by `canReadThread`, so deleting your copy of a DM would rename it "A
-  colleague" on the other person's screen. On the page: a bin on each firm
-  row (hover/focus on a mouse, always drawn under `(hover:none)`) and one in
-  the open chat's header; both open the same in-place question, never a
-  browser dialog. Deal rooms (External) get no bin — they have Close
-  conversation, and hiding one per person would need a column. The page's
+  colleague" on the other person's screen. On the page: the in-place
+  question, never a browser dialog, asked from a row or under the open chat's
+  header. (The doors were a bin on each firm row and one in the header until
+  2026-10-02, when both became Delete for me in the More menu, and deal rooms
+  got it too through 059's `hub_notify.hidden_at` — see below.) The page's
   Escape listener runs in the CAPTURE phase and stops propagation while the
   question is open, because the shared header's Escape goes back a page.
   Proven in `test/messages-run.test.js` ("deleting a conversation is for the
@@ -249,6 +249,54 @@ paths:
   Postgres does not — the unsend poll found it. Proven in
   `test/messages-run.test.js` ("unsending a message takes it off everybody's
   screen, for fifteen minutes").
+  **Who a chat is with, your own names, deleting a deal room** (2026-10-02,
+  migration **`059-chat-names.sql`, deploy order HARD**; the owner's pick of
+  https://claude.ai/artifact/3sk3nK5VLG43d73TxEuZJA: Draft A with Draft C's
+  private names). Reported as "Jacob Adler is myself": a guest's room is
+  named after the broker who started it, and the row said nothing else, so two
+  rooms from one person (or an account that shares your name) read as
+  identical rows. Now a deal room's row carries its deal (`dealLine`) and a
+  guest's row says **Invited you**; the open room's subtitle says "Brad Keller
+  invited you · <deal>". **The More menu** replaced the firm rows' delete bin:
+  a ⋯ button on every row (hover/focus on a mouse, always under
+  `(hover:none)`), right-clicking the row (`contextmenu`), and `#msgMoreBtn`
+  in the open chat's header all open ONE menu, `#msgMenu`: About this chat,
+  Rename, Delete for me. A sheet from the bottom when `sheetMode()` (hover:none
+  or ≤900px). It closes on a press elsewhere (capture `pointerdown`), Escape
+  (the capture-phase listener, before the header's go-back), a list scroll,
+  and a resize on a mouse only (a phone resizes when its address bar hides).
+  **About this chat** (`#msgInfo`) is built from the list row alone and never
+  fetches: GET /api/hub stamps seen_at, so a fetch would mark the room read.
+  It shows names AND addresses, how the reader got here ("You started this on
+  …" / "Brad invited you on …"), the deal (title, type, market, open or
+  closed), and to the OWNER only whether each guest has opened it and has an
+  account — the list route now sends `market`, `propertyType`, `createdAt`,
+  `invitedAt` (a guest's own invite) and, on owner rows, per-person
+  `invitedAt`/`opened`/`hasAccount`. A guest row still carries the broker and
+  nobody else. **Rename is a private name** (`nickname`): POST
+  `/api/messages/name {threadId|roomId, name}`, firm optional, written to the
+  caller's own `msg_thread_members` row (both walls) or their own `hub_notify`
+  row (040's per-person table, keyed by email, upserted on the full key with
+  merge-duplicates so seen_at and the email ledger keep theirs). Read back only
+  by the caller: the list reads it off the caller's own membership rows
+  (`msgThreadIdsFor(..., { withNames: true })`) and the thread read's first
+  read off `msgNicknameFor`; another member's name is never selected.
+  `validateNickname` trims, folds to one line, strips control characters,
+  refuses over 80; empty clears it (NULL). This does not undo 2026-09-01's
+  no-shared-names rule: nobody else ever sees it. **Deleting a deal room**:
+  POST `/api/messages/delete {roomId}` stamps the caller's own
+  `hub_notify.hidden_at` (and seen_at). Off their list until somebody writes
+  after that moment (`roomListed`), and it comes back WITH its history — a
+  room is a shared record of a deal, unlike a firm chat, whose history is
+  cleared for the deleter. Both routes take a room only through `myRoom`:
+  `canReadHub` answering `owner` or `participant` for the SIGNED-IN caller, so
+  a forwarded link (token) can never leave a name or a deletion on somebody's
+  row. A firmless client who deleted every room gets an empty list, never the
+  no_firm wall (`hasExternalRooms` is asked before refusing). **Closed rooms**
+  fold under a "Closed" heading at the foot of the list; a search unfolds it,
+  and opening a closed room from a link does too. Proven in
+  `test/messages-run.test.js` ("your own name for a chat, and deleting a deal
+  room, are yours alone") and pinned in `test/messages-page.test.js`.
   **Contacts attach to buildings (2026-09-02).** The write half of
   `org_contacts.building_id`: slice 5 shipped the sheet's read
   (`buildingContacts`) with nothing filling it, so every sheet's Contacts

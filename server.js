@@ -29293,7 +29293,8 @@ const server = http.createServer((req, res) =>
         } else {
           return sendJson(res, 400, { error: "Which conversation?" });
         }
-        logEvent("message_chat_named", { source: roomId ? "room" : "thread", cleared: !v.name });
+        // Clearing is its own event: logEvent records a fixed set of dimensions.
+        logEvent(v.name ? "message_chat_named" : "message_chat_name_cleared", { source: roomId ? "room" : "thread" });
         return sendJson(res, 200, { ok: true, nickname: v.name });
       })().catch((err) => {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });

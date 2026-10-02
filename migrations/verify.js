@@ -287,6 +287,10 @@ const COLUMNS = [
   // The profile card's title. Its absence degrades (the roster retries the
   // read without it) but every title save answers "couldn't save".
   ["users",             ["title"],                                   "056-user-title.sql"],
+  // A missing nickname 400s the caller's own membership read, so the whole
+  // Messages list answers "Couldn't load your messages" (deploy order HARD).
+  ["msg_thread_members", ["nickname"],                               "059-chat-names.sql"],
+  ["hub_notify",        ["nickname", "hidden_at"],                   "059-chat-names.sql"],
 ];
 
 // What this tool deliberately CANNOT see: 037-org-shop-kind-tenant-rep.sql

@@ -523,8 +523,52 @@ function externalUnread(messages, { seenAt, email } = {}) {
   return n;
 }
 
+// ---------------------------------------------------------------------------
+// Your own name for a chat, and deleting a deal room for yourself
+// (2026-10-02, migration 059; the owner's pick: Draft A with Draft C's
+// private names, https://claude.ai/artifact/3sk3nK5VLG43d73TxEuZJA)
+// ---------------------------------------------------------------------------
+
+// A name ONE person gives a chat, on their own copy. Nobody else ever reads it,
+// which is what keeps it clear of the 2026-09-01 rule that chats have no
+// shared names: that rule exists because a typed name would sit on everybody
+// else's screen, and this one sits on nobody else's.
+//
+// The same ceiling as a channel title, for the same reason: it is drawn in the
+// same one-line row.
+const MAX_NICKNAME = MAX_TITLE;
+
+// Trims, folds every run of whitespace (a newline included) into one space,
+// and strips control characters rather than refusing them, cleanText's rule.
+// An EMPTY result is not an error: it means "go back to the chat's own name",
+// and the route stores NULL for it. Over the ceiling is refused rather than
+// cut, so nobody saves a name that is not the one they typed.
+function validateNickname(raw) {
+  const name = cleanText(raw).replace(/\s+/g, " ").trim();
+  if (name.length > MAX_NICKNAME) {
+    return { ok: false, error: `Keep the name under ${MAX_NICKNAME} characters.` };
+  }
+  return { ok: true, name };
+}
+
+// Is a deal room on this person's list?
+//
+// "Delete for me" on a deal room stamps hidden_at on the caller's own
+// hub_notify row. The room stays off their list until somebody WRITES in it
+// after that moment, and then it comes back with its history: a deal room is
+// a shared record of a deal, so unlike a firm chat (historyStart) nothing in
+// it is cleared for the person who hid it. A message at the same instant as
+// the hide is not newer, so the hide's own moment cannot undo itself.
+function roomListed({ hiddenAt, latestAt } = {}) {
+  const hid = Date.parse(str(hiddenAt));
+  if (!Number.isFinite(hid)) return true;
+  const last = Date.parse(str(latestAt));
+  return Number.isFinite(last) && last > hid;
+}
+
 module.exports = {
   KINDS, MAX_BODY, MAX_TITLE, MAX_COMPS_PER_MESSAGE, MAX_THREAD_MEMBERS, PAGE_SIZE,
+  MAX_NICKNAME, validateNickname, roomListed,
   normalizeEmail, cleanText, kindOf, displayName,
   participantKey,
   inThread, activeMembers, memberRowOf,

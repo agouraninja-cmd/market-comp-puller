@@ -5439,12 +5439,28 @@ async function msgThreadMemberRows(threadIds) {
 // The thread ids this member is actually in. The starting point for the list
 // read: everything else is filtered from here, so a thread nobody added them
 // to can never enter the payload even before the org filter runs.
-async function msgThreadIdsFor(userId) {
+//
+// `withNames` adds the caller's OWN private name for each chat (059). Only the
+// list route asks for it: it is read off this member's own rows and nowhere
+// else, so another member's name for a chat never enters this process, and
+// the unread count (which rides every page) does not name a column it has no
+// use for.
+async function msgThreadIdsFor(userId, opts) {
   if (!DB_CONFIGURED || !userId) return [];
   const rows = await sbRequest("GET",
     `msg_thread_members?user_id=eq.${encodeURIComponent(userId)}` +
-    `&left_at=is.null&select=thread_id,last_read_at,added_at&limit=500`);
+    `&left_at=is.null&select=thread_id,last_read_at,added_at${opts && opts.withNames ? ",nickname" : ""}&limit=500`);
   return rows || [];
+}
+
+// The caller's own private name for ONE chat, for the thread read's header.
+// Scoped by their own user_id, so it can only ever be theirs.
+async function msgNicknameFor(threadId, userId) {
+  if (!DB_CONFIGURED || !threadId || !userId) return "";
+  const rows = await sbRequest("GET",
+    `msg_thread_members?thread_id=eq.${encodeURIComponent(threadId)}` +
+    `&user_id=eq.${encodeURIComponent(userId)}&select=nickname&limit=1`);
+  return String((rows && rows[0] && rows[0].nickname) || "");
 }
 
 async function msgThreadRowsByIds(ids, orgId) {
@@ -5586,9 +5602,9 @@ async function externalThreadsFor(user) {
   // resolve: proving the recipient's row lands in the inbox matters more
   // here than saving a request on a page-load path that already fans out.
   const ownedQ = `hubs?owner_user_id=eq.${encodeURIComponent(user.id)}` +
-    `&select=id,owner_user_id,title,status,closed_at,updated_at&order=updated_at.desc&limit=50`;
+    `&select=id,owner_user_id,title,market,property_type,status,closed_at,created_at,updated_at&order=updated_at.desc&limit=50`;
   const guestQ = `hub_participants?email=eq.${encodeURIComponent(me)}` +
-    `&removed_at=is.null&select=hub_id&order=invited_at.desc&limit=200`;
+    `&removed_at=is.null&select=hub_id,invited_at&order=invited_at.desc&limit=200`;
 
   // One side failing must not take the other down with it: a broker's own
   // rooms are still theirs when the participant read blows up, and a client's
@@ -5618,7 +5634,7 @@ async function externalThreadsFor(user) {
     try {
       guests = (await sbRequest("GET",
         `hubs?id=in.(${pgInList(invitedIds)})` +
-        `&select=id,owner_user_id,title,status,closed_at,updated_at` +
+        `&select=id,owner_user_id,title,market,property_type,status,closed_at,created_at,updated_at` +
         `&order=updated_at.desc&limit=50`)) || [];
     } catch (err) {
       console.error("External shared-room read failed (their own rooms still list):", err.message);
@@ -5653,14 +5669,17 @@ async function externalThreadsFor(user) {
       mineIds.length
         ? sbRequest("GET",
           `hub_participants?hub_id=in.(${pgInList(mineIds)})` +
-          `&select=hub_id,email,removed_at&limit=1000`)
+          `&select=hub_id,email,invited_at,first_viewed_at,removed_at&limit=1000`)
         : Promise.resolve([]),
       // The reader's own seen stamps (040) — the hub's read mark, which is why
       // opening a conversation from the inbox clears its badge: GET /api/hub
-      // stamps this on every read, for a guest and for the owner alike.
+      // stamps this on every read, for a guest and for the owner alike. The
+      // same row carries the reader's own name for the room and whether they
+      // deleted it from their list (059), and it is filtered to the READER'S
+      // email, so nobody else's name for a room is ever read here.
       sbRequest("GET",
         `hub_notify?hub_id=in.(${pgInList(ids)})` +
-        `&email=eq.${encodeURIComponent(me)}&select=hub_id,seen_at`),
+        `&email=eq.${encodeURIComponent(me)}&select=hub_id,seen_at,nickname,hidden_at`),
     ]);
   } catch (err) {
     console.error("External conversation context read failed (rows degrade):", err.message);
@@ -5701,6 +5720,9 @@ async function externalThreadsFor(user) {
   }
 
   const seenBy = new Map(notify.map((n) => [String(n.hub_id), n.seen_at]));
+  const mineBy = new Map(notify.map((n) => [String(n.hub_id), n]));
+  // When the reader was invited, for "Brad Keller invited you on Sep 12".
+  const invitedAtBy = new Map((invitedRows || []).map((r) => [String(r.hub_id || ""), r.invited_at || null]));
   const out = [];
   for (const room of rooms) {
     const h = room.hub;
@@ -5717,13 +5739,25 @@ async function externalThreadsFor(user) {
       console.error("External preview read failed (the row stays):", err.message);
     }
     const latest = msgs[0] || null;
+    // Deleted from this reader's list, and nobody has written since: off the
+    // list (messaging.js, roomListed). Everybody else's list is untouched.
+    const own = mineBy.get(String(h.id)) || {};
+    if (!MSG.roomListed({ hiddenAt: own.hidden_at, latestAt: latest && latest.created_at })) continue;
     let people;
     if (room.owner) {
+      // Whether each guest has opened it is the owner's to see (GET /api/hub
+      // sends the owner the same answer); a guest row never carries this list.
       people = parts
         .filter((p) => String(p.hub_id) === String(h.id) && !p.removed_at)
         .map((p) => {
           const e = MSG.normalizeEmail(p.email);
-          return { email: e, name: MSG.displayName({ name: byEmail.get(e), email: e }) };
+          return {
+            email: e,
+            name: MSG.displayName({ name: byEmail.get(e), email: e }),
+            hasAccount: byEmail.has(e),
+            invitedAt: p.invited_at || null,
+            opened: Boolean(p.first_viewed_at),
+          };
         });
     } else {
       // The broker, alone. It is not a guest list, it is who this room is
@@ -5748,6 +5782,14 @@ async function externalThreadsFor(user) {
         String(h.title || "").trim() ||
         (room.owner ? "No one invited yet" : "Shared with you"),
       title: String(h.title || ""),
+      // The reader's own name for the room (059). Theirs alone: it came off
+      // their own hub_notify row and is never sent to anybody else.
+      nickname: String(own.nickname || ""),
+      // What the About card says about the deal and how the reader got here.
+      market: String(h.market || ""),
+      propertyType: String(h.property_type || ""),
+      createdAt: h.created_at || null,
+      invitedAt: room.owner ? null : (invitedAtBy.get(String(h.id)) || null),
       closed: h.status === "closed" || Boolean(h.closed_at),
       lastMessageAt: (latest && latest.created_at) || h.updated_at || null,
       preview: latest ? MSG.previewOf({ body: latest.body }) : "",
@@ -28438,6 +28480,23 @@ const server = http.createServer((req, res) =>
       return { user, orgId: firm.orgId, membership: firm.membership };
     };
 
+    // A deal room the CALLER is in, by their own account (059: naming a room
+    // and deleting it from your own list). The room's own rule decides —
+    // hub-access.js canReadHub, the gate GET /api/hub uses — and only its two
+    // ACCOUNT answers count: the owner, or a guest matched by their signed-in
+    // email. A forwarded link (a token) reads a room but is nobody in
+    // particular, so it can never leave a name or a deletion on somebody's
+    // row. One 404 for every refusal, the thread routes' rule.
+    const myRoom = async (roomId, user) => {
+      if (!/^[A-Za-z0-9_-]{6,32}$/.test(roomId)) return null;
+      const ctx = await resolveHubCaller(req, roomId);
+      if (!ctx.user || String(ctx.user.id) !== String(user.id)) return null;
+      const d = HUB.canReadHub(ctx);
+      if (!d.ok || (d.reason !== "owner" && d.reason !== "participant")) return null;
+      const email = MSG.normalizeEmail(user.email);
+      return email ? { hub: ctx.hub, email } : null;
+    };
+
     // The firm's people, with the user ids thread membership is keyed on.
     //
     // org_members carries a user_id (acceptOrgInvite writes it) but it is
@@ -28506,10 +28565,14 @@ const server = http.createServer((req, res) =>
     // One thread as the page reads it. `members` carries every member INCLUDING
     // leavers, because a leaver's name still has to render beside the messages
     // they wrote.
-    const threadPayload = (thread, memberRows, me, latest, unread, names) => ({
+    const threadPayload = (thread, memberRows, me, latest, unread, names, nickname) => ({
       id: String(thread.id),
       kind: MSG.kindOf(thread),
       title: String(thread.title || ""),
+      // The reader's OWN name for this chat (059), read off their own member
+      // row and nobody else's. Empty means none: the page shows `label`.
+      nickname: String(nickname || ""),
+      createdAt: thread.created_at || null,
       // The label is computed from rows carrying the resolved name, so a DM is
       // headed by a person rather than by half of their email address.
       label: MSG.threadLabel(
@@ -28560,7 +28623,10 @@ const server = http.createServer((req, res) =>
             console.error("External conversations read failed (no firm):", err.message);
             return sendJson(res, 503, { error: "Couldn't load your messages. Please try again in a minute." });
           }
-          if (!external.length) return sendJson(res, 403, NO_FIRM);
+          // Rooms they deleted from their list are still rooms they are in: a
+          // client who deleted every one of theirs gets an empty list, never
+          // the "Messages are for your firm" wall.
+          if (!external.length && !(await hasExternalRooms(g.user))) return sendJson(res, 403, NO_FIRM);
           return sendJson(res, 200, {
             ok: true,
             firm: null,
@@ -28573,13 +28639,14 @@ const server = http.createServer((req, res) =>
         }
 
         const [mine, people, org] = await Promise.all([
-          msgThreadIdsFor(g.user.id),
+          msgThreadIdsFor(g.user.id, { withNames: true }),
           rosterFor(g.orgId),
           findOrg(g.orgId),
         ]);
         // The org filter is the SECOND wall: a member row is what selects the
         // ids, and the firm is what proves they belong here.
         const threads = await msgThreadRowsByIds(mine.map((r) => r.thread_id), g.orgId);
+        const nicknames = new Map(mine.map((r) => [String(r.thread_id), r.nickname || ""]));
         const memberRows = await msgThreadMemberRows(threads.map((t) => t.id));
         // ONE name lookup for every member of every thread, not one per
         // thread: this route already loops, and a per-thread read would turn a
@@ -28622,7 +28689,7 @@ const server = http.createServer((req, res) =>
             lastReadAt: mineRow && mineRow.last_read_at,
             userId: g.user.id,
           });
-          return threadPayload(t, rows, g.user.id, latest, unread, names);
+          return threadPayload(t, rows, g.user.id, latest, unread, names, nicknames.get(String(t.id)));
         }).filter(Boolean);
         // The deal rooms this member owns, as External conversations. Its own
         // try: a hub read failing must cost the External section and never
@@ -28841,7 +28908,10 @@ const server = http.createServer((req, res) =>
         const nowMs = Date.now();
         return sendJson(res, 200, {
           ok: true,
-          thread: threadPayload(thread, rows, String(g.user.id), null, 0, names),
+          // The reader's own name for it on the FIRST read only: the page heads
+          // the conversation from that read, and a poll never re-heads it.
+          thread: threadPayload(thread, rows, String(g.user.id), null, 0, names,
+            q.get("since") ? "" : await msgNicknameFor(id, g.user.id)),
           messages: messages.map((m) => {
             const mine = String(m.user_id || "") === String(g.user.id);
             const base = {
@@ -29133,11 +29203,31 @@ const server = http.createServer((req, res) =>
     //
     // Idempotent: deleting twice moves the start to the later press, which is
     // what the second press meant.
+    //
+    // A DEAL ROOM too, since 059 ({roomId} instead of {threadId}). Firm
+    // optional, because a client with no firm deletes their rooms the same
+    // way. The write is the caller's own hub_notify row: hidden_at, and
+    // seen_at with it for the reason added_at and last_read_at move together
+    // above. It is off their list until somebody writes in it again, when it
+    // comes back WITH its history (messaging.js, roomListed). Nobody else's
+    // list, and nothing in the room, changes.
     if (req.method === "POST" && msgPath === "/api/messages/delete") {
       (async () => {
-        const g = await openMessaging();
+        const g = await openMessaging({ firmOptional: true });
         if (!g) return;
         const body = await readMsgBody(2e3);
+        const roomId = String((body && body.roomId) || "").trim();
+        if (roomId) {
+          const room = await myRoom(roomId, g.user);
+          if (!room) return sendJson(res, 404, { error: "That conversation isn't yours." });
+          const now = new Date().toISOString();
+          await sbRequest("POST", "hub_notify?on_conflict=hub_id,email",
+            [{ hub_id: room.hub.id, email: room.email, hidden_at: now, seen_at: now }],
+            { prefer: "resolution=merge-duplicates,return=minimal" });
+          logEvent("message_thread_deleted", { source: "room" });
+          return sendJson(res, 200, { ok: true });
+        }
+        if (!g.orgId) return sendJson(res, 403, NO_FIRM);
         const id = String((body && body.threadId) || "").trim();
         if (!id) return sendJson(res, 400, { error: "Which conversation?" });
         const thread = await msgThreadRow(id, g.orgId);
@@ -29157,6 +29247,58 @@ const server = http.createServer((req, res) =>
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Message thread delete failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't delete that conversation. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- POST /api/messages/name — your own name for a chat (059) -----------
+    //
+    // {threadId | roomId, name}. A name ONLY THE CALLER SEES (messaging.js,
+    // validateNickname): it is written to the caller's own row, scoped by
+    // their own user_id (a firm chat) or their own email (a deal room), and
+    // read back only by the caller's own list. An empty name clears it, and
+    // the chat is called after its people again.
+    //
+    // Firm optional, like delete: a client with no firm names their rooms
+    // too. A firm chat still needs a firm, and both walls (canReadThread).
+    if (req.method === "POST" && msgPath === "/api/messages/name") {
+      (async () => {
+        const g = await openMessaging({ firmOptional: true });
+        if (!g) return;
+        const body = await readMsgBody(2e3);
+        const v = MSG.validateNickname(body && body.name);
+        if (!v.ok) return sendJson(res, 400, { error: v.error });
+        const roomId = String((body && body.roomId) || "").trim();
+        const threadId = String((body && body.threadId) || "").trim();
+        if (roomId) {
+          const room = await myRoom(roomId, g.user);
+          if (!room) return sendJson(res, 404, { error: "That conversation isn't yours." });
+          // The full key, 040's rule for this table; merge-duplicates writes
+          // only the name, so the seen stamp and the email ledger keep theirs.
+          await sbRequest("POST", "hub_notify?on_conflict=hub_id,email",
+            [{ hub_id: room.hub.id, email: room.email, nickname: v.name || null }],
+            { prefer: "resolution=merge-duplicates,return=minimal" });
+        } else if (threadId) {
+          if (!g.orgId) return sendJson(res, 403, NO_FIRM);
+          const thread = await msgThreadRow(threadId, g.orgId);
+          const rows = await msgThreadMemberRows([threadId]);
+          const verdict = MSG.canReadThread({
+            thread, orgId: g.orgId, memberRow: MSG.memberRowOf(rows, g.user.id),
+          });
+          if (!verdict.ok) return sendJson(res, 404, { error: "That conversation isn't yours." });
+          await sbRequest("PATCH",
+            `msg_thread_members?thread_id=eq.${encodeURIComponent(threadId)}` +
+            `&user_id=eq.${encodeURIComponent(g.user.id)}`,
+            { nickname: v.name || null }, { prefer: "return=minimal" });
+        } else {
+          return sendJson(res, 400, { error: "Which conversation?" });
+        }
+        logEvent("message_chat_named", { source: roomId ? "room" : "thread", cleared: !v.name });
+        return sendJson(res, 200, { ok: true, nickname: v.name });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Chat name failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save that name. Please try again in a minute." });
       });
       return;
     }

@@ -439,3 +439,45 @@ test("the line an unsent message leaves says who, by first name", () => {
   assert.equal(MSG.unsentLine({ mine: false, name: "Brad Keller" }), "Brad unsent a message");
   assert.equal(MSG.unsentLine({ mine: false, name: "" }), "Someone unsent a message");
 });
+
+// ---------------------------------------------------------------------------
+// Your own name for a chat, and deleting a deal room for yourself (059)
+// ---------------------------------------------------------------------------
+
+test("validateNickname: trimmed, one line, control characters stripped", () => {
+  assert.deepEqual(MSG.validateNickname("  Kanan \n\t deal  "), { ok: true, name: "Kanan deal" });
+  assert.deepEqual(MSG.validateNickname("Airport\u0007 warehouse"), { ok: true, name: "Airport warehouse" });
+});
+
+test("validateNickname: empty means go back to the chat's own name, never an error", () => {
+  for (const blank of ["", "   ", null, undefined, "\n"]) {
+    assert.deepEqual(MSG.validateNickname(blank), { ok: true, name: "" }, JSON.stringify(blank));
+  }
+});
+
+test("validateNickname: refuses over 80 characters rather than cutting the name", () => {
+  assert.equal(MSG.MAX_NICKNAME, 80);
+  assert.equal(MSG.validateNickname("x".repeat(80)).ok, true);
+  const long = MSG.validateNickname("x".repeat(81));
+  assert.equal(long.ok, false);
+  assert.match(long.error, /80 characters/);
+  // Whitespace that folds away does not count against it.
+  assert.equal(MSG.validateNickname("  " + "x".repeat(80) + "  ").ok, true);
+});
+
+test("roomListed: a room nobody deleted is always listed", () => {
+  assert.equal(MSG.roomListed({}), true);
+  assert.equal(MSG.roomListed({ hiddenAt: null, latestAt: null }), true);
+  assert.equal(MSG.roomListed({ hiddenAt: "", latestAt: "2026-10-01T00:00:00Z" }), true);
+});
+
+test("roomListed: a deleted room stays off the list until somebody writes after the delete", () => {
+  const hid = "2026-10-01T12:00:00.000Z";
+  assert.equal(MSG.roomListed({ hiddenAt: hid, latestAt: null }), false, "an empty deleted room came back");
+  assert.equal(MSG.roomListed({ hiddenAt: hid, latestAt: "2026-10-01T11:59:59.000Z" }), false);
+  // The same instant is not newer, so the delete's own moment cannot undo it.
+  assert.equal(MSG.roomListed({ hiddenAt: hid, latestAt: hid }), false);
+  assert.equal(MSG.roomListed({ hiddenAt: hid, latestAt: "2026-10-01T12:00:01.000Z" }), true);
+  // An unreadable message time never brings a room back.
+  assert.equal(MSG.roomListed({ hiddenAt: hid, latestAt: "not a date" }), false);
+});

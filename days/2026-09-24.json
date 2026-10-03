@@ -1,0 +1,167 @@
+{
+  "day": "2026-09-24",
+  "updatedAt": "2026-09-25T17:30:24.994Z",
+  "period": {
+    "start": "2026-09-24",
+    "end": "2026-10-07",
+    "index": 1,
+    "length": 14,
+    "days": [
+      "2026-09-24",
+      "2026-09-25",
+      "2026-09-26",
+      "2026-09-27",
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30",
+      "2026-10-01",
+      "2026-10-02",
+      "2026-10-03",
+      "2026-10-04",
+      "2026-10-05",
+      "2026-10-06",
+      "2026-10-07"
+    ]
+  },
+  "resetsOn": "2026-10-08",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 11,
+        "prs": 9
+      },
+      "periodTotal": 11,
+      "points": [
+        11,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "points": [
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "points": [
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 313,
+      "title": "Permit tracker page under Tools",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 314,
+      "title": "Permit tracker: two-line descriptions",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 317,
+      "title": "Tools: Permit tracker third, after Comp report",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 316,
+      "title": "Workspace: drop the header's Run a report button",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 318,
+      "title": "Workspace: New filings becomes Your permits",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 315,
+      "title": "Home page: plain wording instead of \"comp book\" talk",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 319,
+      "title": "Workspace: two columns that open on what needs you (Draft 1)",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 321,
+      "title": "Design drafts: one format, as a skill and a template",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 320,
+      "title": "Workspace: open on a picture of the firm's city (Draft C)",
+      "login": "agouraninja-cmd",
+      "commits": 3
+    }
+  ]
+}

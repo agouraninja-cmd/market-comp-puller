@@ -45,6 +45,20 @@ const BIN_SVG = '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" str
   '<path d="M3.5 5.5h13"/><path d="M8 5.5V4h4v1.5"/><path d="M5.5 5.5l.8 10.5h7.4l.8-10.5"/>' +
   '<path d="M8.5 8.5v5M11.5 8.5v5"/></svg>';
 
+// The More button on every chat and in the open chat's header, and the menu's
+// own icons. One copy each, like the bin.
+const DOTS_SVG = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">' +
+  '<circle cx="3.5" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/>' +
+  '<circle cx="12.5" cy="8" r="1.4" fill="currentColor"/></svg>';
+const INFO_SVG = '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="10" r="7.25"/><path d="M10 9v5" stroke-linecap="round"/>' +
+  '<circle cx="10" cy="6.4" r=".9" fill="currentColor" stroke="none"/></svg>';
+const PEN_SVG = '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.5" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M4 16l.8-3.2L13.3 4.3a1.5 1.5 0 012.1 0l.3.3a1.5 1.5 0 010 2.1l-8.5 8.5L4 16z"/></svg>';
+const CHEV_SVG = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>';
+
 function renderMessagesBody(boot) {
   // </script> can never appear in the payload: every "<" is escaped, which is
   // also what keeps a comp note like "<img onerror=…>" inert inside the tag.
@@ -127,29 +141,96 @@ function renderMessagesBody(boot) {
 .msg-row.is-unread .msg-name{font-weight:700}
 .msg-row.is-unread .msg-prev{color:var(--ink-body)}
 
-/* --- deleting a conversation (2026-09-26) -------------------------------- */
-/* Two doors to one question: a bin on each firm row, and one in the open
-   conversation's header. The row is a <button>, and a button cannot hold
-   another, so the bin is the row's SIBLING inside a wrapper and sits over its
-   right edge. On a mouse it appears on hover, where the time was; keyboard
-   focus shows it too, so Tab reaches it. A touch screen has no hover, so there
-   it is always drawn and the row keeps room for it. */
+/* --- who a chat is with (2026-10-02, Draft A with Draft C's names) -------- */
+/* A deal room says which deal it is, on its own line under the person, and a
+   room somebody else started says so. A chat you named shows your name, with
+   who it is with underneath. */
+.msg-deal{display:flex;align-items:center;gap:6px;min-width:0;margin-top:1px}
+.msg-dealname{font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.msg-from{flex:0 0 auto;font-size:10.5px;font-weight:600;color:var(--ink-3);border:1px solid var(--edge);
+  border-radius:4px;padding:0 5px;line-height:16px;background:var(--card)}
+/* Closed deal rooms, folded under one heading at the foot of the list. */
+.msg-fold{display:flex;align-items:center;gap:6px;width:100%;padding:12px 14px 10px;border:0;
+  border-top:1px solid var(--hair);background:none;font:inherit;font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-faint);font-weight:600;cursor:pointer;text-align:left}
+.msg-fold:hover{color:var(--ink-2)}
+.msg-fold .msg-count{letter-spacing:0;color:var(--ink-3);background:var(--wash);border-radius:9px;padding:0 6px;line-height:16px}
+.msg-fold svg{margin-left:auto;color:var(--ink-3);transition:transform .12s}
+.msg-fold[aria-expanded="true"] svg{transform:rotate(90deg)}
+
+/* --- the More button on every chat (was the delete bin, 2026-09-26) ------- */
+/* One door per row to one menu (About this chat, Rename, Delete for me), and
+   right-clicking the row opens the same menu. The row is a <button>, and a
+   button cannot hold another, so the More button is the row's SIBLING inside
+   a wrapper and sits over its right edge. On a mouse it appears on hover,
+   where the time was; keyboard focus shows it too, so Tab reaches it. A touch
+   screen has no hover and no right-click, so there it is always drawn and the
+   row keeps room for it. */
 .msg-rowwrap{position:relative}
 .msg-sect+.msg-rowwrap>.msg-row,.msg-sect+.msg-confirm{border-top:1px solid var(--hair)}
-.msg-del{position:absolute;right:10px;top:50%;margin-top:-15px;width:30px;height:30px;
+.msg-more{position:absolute;right:10px;top:50%;margin-top:-15px;width:30px;height:30px;
   display:flex;align-items:center;justify-content:center;padding:0;border:1px solid transparent;
   border-radius:6px;background:transparent;color:var(--ink-3);cursor:pointer;
   opacity:0;pointer-events:none}
-.msg-del svg,.msg-btn.icon svg{display:block}
-.msg-del:hover{color:var(--red);border-color:var(--edge);background:var(--card)}
-.msg-rowwrap:hover .msg-del,.msg-row:focus-visible+.msg-del,.msg-del:focus-visible{opacity:1;pointer-events:auto}
-.msg-rowwrap:hover .msg-when,.msg-rowwrap:hover .msg-unread,
+.msg-more svg,.msg-btn.icon svg{display:block}
+.msg-more:hover,.msg-rowwrap.is-menu .msg-more{color:var(--ink);border-color:var(--edge);background:var(--card)}
+.msg-rowwrap:hover .msg-more,.msg-row:focus-visible+.msg-more,.msg-more:focus-visible,
+.msg-rowwrap.is-menu .msg-more{opacity:1;pointer-events:auto}
+.msg-rowwrap.is-menu>.msg-row{background:var(--wash)}
+.msg-rowwrap:hover .msg-when,.msg-rowwrap:hover .msg-unread,.msg-rowwrap.is-menu .msg-when,.msg-rowwrap.is-menu .msg-unread,
 .msg-rowwrap:has(:focus-visible) .msg-when,.msg-rowwrap:has(:focus-visible) .msg-unread{visibility:hidden}
 @media (hover:none){
-  .msg-del{opacity:1;pointer-events:auto}
+  .msg-more{opacity:1;pointer-events:auto}
   .msg-rowwrap .msg-row{padding-right:48px}
   .msg-rowwrap:hover .msg-when,.msg-rowwrap:hover .msg-unread{visibility:visible}
 }
+
+/* The menu, beside the pointer on a mouse and a sheet from the bottom on a
+   phone. Fixed, so it is placed against the window it opened in. */
+.msg-menu{position:fixed;z-index:60;width:236px;background:var(--card);border:1px solid var(--edge);
+  border-radius:8px;box-shadow:0 14px 34px -12px rgba(15,23,42,.45);padding:5px}
+.msg-mhead{padding:6px 10px 8px;font-size:11.5px;line-height:1.4;color:var(--ink-3);
+  border-bottom:1px solid var(--hair);margin-bottom:4px;overflow-wrap:anywhere}
+.msg-mi{display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:0;background:none;
+  border-radius:5px;font:inherit;font-size:13px;color:var(--ink);text-align:left;cursor:pointer}
+.msg-mi:hover,.msg-mi:focus-visible{background:var(--wash);outline:none}
+.msg-mi svg{flex:0 0 auto;color:var(--ink-3);display:block}
+.msg-mi small{margin-left:auto;color:var(--ink-faint);font-size:11px}
+.msg-mi.danger,.msg-mi.danger svg{color:var(--red)}
+.msg-msep{height:1px;background:var(--hair);margin:4px 2px}
+.msg-scrim{position:fixed;inset:0;background:rgba(15,23,42,.42);z-index:59}
+.msg-menu.is-sheet,.msg-info.is-sheet{left:0!important;right:0;top:auto!important;bottom:0;width:auto;
+  border-radius:16px 16px 0 0;padding:8px 14px calc(18px + env(safe-area-inset-bottom,0px));
+  box-shadow:0 -10px 30px rgba(0,0,0,.22);max-height:80vh;overflow-y:auto}
+.msg-menu.is-sheet:before,.msg-info.is-sheet:before{content:"";display:block;width:38px;height:4px;
+  border-radius:2px;background:var(--edge);margin:2px auto 10px}
+.msg-menu.is-sheet .msg-mhead{font-size:13px;padding:4px 6px 10px}
+.msg-menu.is-sheet .msg-mi{padding:13px 6px;font-size:15px}
+
+/* About this chat: who it is with, how you got here, and the deal. */
+.msg-info{position:fixed;z-index:60;width:318px;background:var(--card);border:1px solid var(--edge);
+  border-radius:10px;box-shadow:0 18px 40px -14px rgba(15,23,42,.45);padding:16px 16px 14px;
+  max-height:min(80vh,560px);overflow-y:auto}
+.msg-info-pp{display:flex;gap:12px;align-items:center;min-width:0}
+.msg-info-pp+.msg-info-pp{margin-top:10px}
+.msg-info-av{flex:0 0 42px;width:42px;height:42px;border-radius:50%;background:var(--slab);color:#fff;
+  font-weight:600;font-size:16px;display:flex;align-items:center;justify-content:center;text-transform:uppercase}
+.msg-info-pt{min-width:0}
+.msg-info-name{font-weight:600;font-size:15px;color:var(--ink)}
+.msg-info-mail{font-size:12.5px;color:var(--ink-3);overflow-wrap:anywhere}
+.msg-info-state{font-size:11.5px;color:var(--ink-3);margin-top:1px}
+.msg-info-state.ok{color:var(--ok-text)}
+.msg-info-who{margin:10px 0 0;font-size:12.5px;line-height:1.5;color:var(--ink-2)}
+.msg-info-lab{display:block;margin:16px 0 5px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-faint);font-weight:600}
+.msg-info-deal{font-size:14px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.msg-info-meta{font-size:12.5px;color:var(--ink-3);margin-top:1px}
+.msg-info-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.msg-btn.danger{color:var(--red)}
+/* The rename box, in place of the row or under the header like the delete
+   question. */
+.msg-rename-in{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;
+  padding:7px 10px;font:inherit;font-size:13.5px;background:var(--card);color:var(--ink);margin:6px 0 0}
 .msg-btn.icon{display:inline-flex;align-items:center;justify-content:center;padding:4px 6px;color:var(--ink-3)}
 .msg-btn.icon:hover{color:var(--red)}
 /* The question, asked where it was raised: in place of the row, or under the
@@ -363,11 +444,11 @@ function renderMessagesBody(boot) {
       <button class="msg-btn sm" id="msgTabChat" type="button" aria-pressed="true">Conversation</button>
       <button class="msg-btn sm" id="msgTabComps" type="button" aria-pressed="false">Comps</button>
       <button class="msg-btn sm msg-hide" id="msgPeopleBtn" type="button">People</button>
-      <!-- Firm conversations only. A deal room is a client relationship with
-           its own ending (Close conversation, in its People panel) and is not
-           the reader's to delete. -->
-      <button class="msg-btn sm icon msg-hide" id="msgDelBtn" type="button"
-        aria-label="Delete this conversation" title="Delete conversation">${BIN_SVG}</button>
+      <!-- The open chat's More menu: the same three things as a row's (About
+           this chat, Rename, Delete for me), for both kinds of chat since
+           2026-10-02. It replaced a delete bin that firm chats alone had. -->
+      <button class="msg-btn sm icon msg-hide" id="msgMoreBtn" type="button" aria-haspopup="menu"
+        aria-label="More for this conversation" title="More">${DOTS_SVG}</button>
     </div>
     <div class="msg-delbar msg-hide" id="msgDelBar" role="group" aria-label="Delete this conversation"></div>
     <div class="msg-note msg-hide" id="msgNote"></div>
@@ -412,6 +493,13 @@ function renderMessagesBody(boot) {
   </div>
 </div>
 
+<!-- One menu and one About card for the whole page, placed by the script
+     beside whatever opened them (2026-10-02). Outside the grid on purpose: they
+     float over both panes. -->
+<div class="msg-scrim msg-hide" id="msgScrim"></div>
+<div class="msg-menu msg-hide" id="msgMenu" role="menu" aria-label="Conversation"></div>
+<div class="msg-info msg-hide" id="msgInfo" role="dialog" aria-label="About this chat"></div>
+
 <div id="msgGate" class="msg-empty" style="margin:40px auto">Loading your messages…</div>
 
 <script>
@@ -441,9 +529,26 @@ function renderMessagesBody(boot) {
     // put it straight back on the list; staleBefore is the last number that
     // can have done that, and such an answer is dropped (the next poll is
     // already correct).
-    listSeq: 0, staleBefore: 0
+    listSeq: 0, staleBefore: 0,
+    // Which kind of chat the delete question is about (2026-10-02): a deal
+    // room can be deleted for yourself too now, and its id is a different
+    // kind of id read by a different route.
+    confirmKind: "internal",
+    // The More menu and the About card: { kind, id, from } while open, where
+    // from is "row" or "head" (which door opened it).
+    menu: null, info: null,
+    // Renaming: "kind:id" of the chat being renamed, whether the box is under
+    // the header (renameBar) or in place of its row, the save in flight, and
+    // what went wrong with the last one.
+    renameKey: "", renameBar: false, renaming: "", renErr: "",
+    // Closed deal rooms are folded under one heading until this is true.
+    showClosed: false
   };
   var BIN = ${JSON.stringify(BIN_SVG)};
+  var DOTS = ${JSON.stringify(DOTS_SVG)};
+  var ICON_INFO = ${JSON.stringify(INFO_SVG)};
+  var ICON_PEN = ${JSON.stringify(PEN_SVG)};
+  var CHEV = ${JSON.stringify(CHEV_SVG)};
 
   // --- small helpers ------------------------------------------------------
   function esc(s){
@@ -511,6 +616,7 @@ function renderMessagesBody(boot) {
     if (!q) return true;
     q = q.toLowerCase();
     if (String(t.label || "").toLowerCase().indexOf(q) >= 0) return true;
+    if (String(t.nickname || "").toLowerCase().indexOf(q) >= 0) return true;
     for (var i = 0; i < (t.members || []).length; i++) {
       if (String(t.members[i].email || "").toLowerCase().indexOf(q) >= 0) return true;
     }
@@ -541,6 +647,9 @@ function renderMessagesBody(boot) {
     closeDelBar();
     state.openKind = "external";
     state.openId = id;
+    // A closed room opened from a link is drawn on the list, not folded away.
+    var was = findRoom(id);
+    if (was && was.closed) state.showClosed = true;
     state.cursor = "";
     state.messages = [];
     state.unsendId = "";
@@ -558,8 +667,8 @@ function renderMessagesBody(boot) {
       try { history.replaceState({}, "", "/messages?x=" + encodeURIComponent(id)); } catch (e) {}
     }
     var row = extRow();
-    $("msgTitle").textContent = row ? row.label : "Conversation";
-    $("msgSub").textContent = row ? (row.title + (row.closed ? " · closed" : "")) : "";
+    $("msgTitle").textContent = row ? (row.nickname || row.label) : "Conversation";
+    $("msgSub").textContent = row ? extSub(row) : "";
     $("msgStream").innerHTML = '<div class="msg-empty">Loading…</div>';
     applyComposerMode();
     readExternal(true);
@@ -813,56 +922,147 @@ function renderMessagesBody(boot) {
     // the room are the broker's client relationships and none of theirs: the
     // same wall GET /api/hub draws, which simply sends them no people.
     $("msgPeopleBtn").className = mine ? "msg-btn sm" : "msg-btn sm msg-hide";
-    $("msgDelBtn").className = !external && state.openId ? "msg-btn sm icon" : "msg-btn sm icon msg-hide";
+    // Every open chat has the More menu, a deal room included (2026-10-02).
+    $("msgMoreBtn").className = state.openId ? "msg-btn sm icon" : "msg-btn sm icon msg-hide";
     if (!mine) $("msgPeoplePanel").className = "msg-panel msg-hide";
     if (closed) { $("msgPicker").className = "msg-panel msg-hide"; }
   }
 
-  function threadRowHtml(t, attr, current, sub){
+  // --- what a chat is called, for this reader (2026-10-02) -----------------
+  // Their own name for it if they gave it one (only they see it), otherwise
+  // who it is with — the people-first rule every row followed before.
+  function chatName(t){ return (t && (t.nickname || t.label)) || "Conversation"; }
+  // A deal room's second line, shared by its row and the open chat's header:
+  // the deal, and — once the reader has named the room — who it is with.
+  function dealLine(x){
+    var title = String(x.title || "").trim();
+    if (title === x.label) title = "";
+    if (x.nickname) return x.label + (title ? " \\u00b7 " + title : "");
+    return title;
+  }
+  // The open deal room's subtitle. A room somebody else started says so,
+  // which is the whole answer to "is that me?" when two accounts share a name.
+  function extSub(x){
+    var line = dealLine(x);
+    var s = x.owner || x.nickname ? line : x.label + " invited you" + (line ? " \\u00b7 " + line : "");
+    return s + (x.closed ? " \\u00b7 closed" : "");
+  }
+  // The open firm chat's subtitle: a direct message's address, a group's
+  // headcount, and who it is with once the reader has named it.
+  function threadSub(t){
+    var members = (t.members || []).filter(function(m){ return !m.left; });
+    var base = t.kind === "channel"
+      ? members.length + (members.length === 1 ? " person" : " people")
+      : ((members.filter(function(m){ return m.userId !== state.me; })[0] || {}).email || "");
+    if (!t.nickname) return base;
+    return t.label + (t.kind === "channel" || !base ? "" : " \\u00b7 " + base);
+  }
+  // The open chat's heading, after its name changed.
+  function refreshHeader(){
+    var t = state.openKind === "external" ? extRow() : findThread(state.openId);
+    if (!t) return;
+    $("msgTitle").textContent = chatName(t);
+    $("msgSub").textContent = state.openKind === "external" ? extSub(t) : threadSub(t);
+  }
+
+  function threadRowHtml(t, attr, current, sub, line, side){
     var chan = t.kind === "channel";
     return '<button class="msg-row' + (t.unread ? " is-unread" : "") + '" type="button"' +
       ' ' + attr + '="' + esc(t.id) + '"' + (current ? ' aria-current="true"' : "") + '>' +
       '<span class="msg-av' + (chan ? " chan" : "") + '">' + esc(chan ? "#" : initial(t.label)) + '</span>' +
       '<span class="msg-rowbody">' +
         '<span class="msg-rowtop">' +
-          '<span class="msg-name">' + esc(t.label) + '</span>' +
+          '<span class="msg-name">' + esc(chatName(t)) + '</span>' +
           '<span class="msg-when">' + esc(when(t.lastMessageAt)) + '</span>' +
         '</span>' +
+        (line || side
+          ? '<span class="msg-deal"><span class="msg-dealname">' + esc(line || "") + '</span>' +
+            (side ? '<span class="msg-from">' + esc(side) + '</span>' : "") + '</span>'
+          : "") +
         '<span class="msg-prev">' + esc(sub) + '</span>' +
       '</span>' +
       (t.unread ? '<span class="msg-unread">' + (t.unread > 99 ? "99+" : t.unread) + '</span>' : "") +
       '</button>';
   }
-  // A firm row: the row itself, and the bin beside it. Deal rooms never get
-  // one (see the header button's comment).
-  function internalRowHtml(t, current){
-    // Only when the question came from THIS row's bin. Asked from the header,
-    // it lives under the header alone; drawn here too it would be the same
-    // question twice on a desktop, where both panes show.
-    if (state.confirmId === t.id && !state.delBar) return confirmHtml(t, "row");
-    return '<div class="msg-rowwrap">' +
-      threadRowHtml(t, "data-thread", current, t.preview || "No messages yet") +
-      '<button class="msg-del" type="button" data-del="' + esc(t.id) + '"' +
-        ' aria-label="Delete conversation with ' + esc(t.label) + '" title="Delete">' + BIN + '</button>' +
+  // Every row is the row itself and its More button, as siblings in a
+  // wrapper (a button cannot hold another). The key says which kind of chat
+  // it is, because the two kinds are read and written by different routes.
+  function rowWrap(kind, t, inner){
+    var key = kind + ":" + t.id;
+    var open = state.menu && state.menu.from === "row" && state.menu.kind === kind && state.menu.id === t.id;
+    return '<div class="msg-rowwrap' + (open ? " is-menu" : "") + '" data-key="' + esc(key) + '">' + inner +
+      '<button class="msg-more" type="button" data-more="' + esc(key) + '" aria-haspopup="menu"' +
+        ' aria-label="More for ' + esc(chatName(t)) + '" title="More">' + DOTS + '</button>' +
       '</div>';
   }
-  // The one question both doors ask. It says whose copy goes, because that
+  // Only when the question came from THIS row. Asked from the header, it
+  // lives under the header alone; drawn here too it would be the same
+  // question twice on a desktop, where both panes show.
+  function askingHere(kind, t){ return state.confirmId === t.id && state.confirmKind === kind && !state.delBar; }
+  function renamingHere(kind, t){ return state.renameKey === kind + ":" + t.id && !state.renameBar; }
+  // A firm row. Its More button replaced the delete bin (2026-10-02).
+  function internalRowHtml(t, current){
+    if (askingHere("internal", t)) return confirmHtml(t, "row", "internal");
+    if (renamingHere("internal", t)) return renameHtml(t, "row", "internal");
+    return rowWrap("internal", t, threadRowHtml(t, "data-thread", current,
+      t.preview || "No messages yet", t.nickname ? t.label : "", ""));
+  }
+  // A deal room. It says which deal it is, and a room somebody else started
+  // says "Invited you" (the owner's report, 2026-10-02: two rooms from the
+  // same person read as two identical rows).
+  function externalRowHtml(x, current){
+    if (askingHere("external", x)) return confirmHtml(x, "row", "external");
+    if (renamingHere("external", x)) return renameHtml(x, "row", "external");
+    return rowWrap("external", x, threadRowHtml(x, "data-external", current,
+      x.preview || "No messages yet", dealLine(x), x.owner ? "" : "Invited you"));
+  }
+  // The one question every door asks. It says whose copy goes, because that
   // is the thing a person pressing Delete on a shared conversation cannot
   // otherwise know: only theirs.
-  function confirmHtml(t, where){
+  function confirmHtml(t, where, kind){
     var busy = state.deleting === t.id;
-    var others = t.kind === "channel"
-      ? "Everyone else still has it, and a new message brings it back."
-      : esc(t.label) + " still has it, and a new message from them brings it back.";
+    var name = chatName(t);
+    var others;
+    if (kind === "external") {
+      // A deal room comes back WITH its history (messaging.js, roomListed):
+      // it is a shared record of a deal, so nothing in it is cleared.
+      var n = (t.people || []).length;
+      others = n
+        ? esc(t.label) + (n > 1 ? " still have" : " still has") +
+          " it, and it comes back, with everything in it, if anyone writes in it again."
+        : "It comes back, with everything in it, if anyone writes in it again.";
+    } else {
+      others = t.kind === "channel"
+        ? "Everyone else still has it, and a new message brings it back."
+        : esc(t.label) + " still has it, and a new message from them brings it back.";
+    }
     return '<div class="' + (where === "row" ? "msg-confirm" : "") + '"' +
-        (where === "row" ? ' role="group" aria-label="Delete conversation with ' + esc(t.label) + '"' : "") + '>' +
+        (where === "row" ? ' role="group" aria-label="Delete conversation with ' + esc(name) + '"' : "") + '>' +
       '<div class="msg-confirm-q">Delete this conversation?</div>' +
       '<div class="msg-confirm-sub">It\\'s deleted for you only. ' + others + '</div>' +
       '<div class="msg-confirm-go">' +
-        '<button class="msg-btn primary sm" type="button" data-del-yes="' + esc(t.id) + '"' + (busy ? " disabled" : "") + '>' +
-          (busy ? "Deleting\\u2026" : "Delete") + '</button>' +
+        '<button class="msg-btn primary sm" type="button" data-del-yes="' + esc(t.id) + '" data-kind="' + kind + '"' +
+          (busy ? " disabled" : "") + '>' + (busy ? "Deleting\\u2026" : "Delete") + '</button>' +
         '<button class="msg-btn sm" type="button" data-del-no="1"' + (busy ? " disabled" : "") + '>Cancel</button>' +
         (state.delErr && state.confirmId === t.id ? '<span class="msg-hint">' + esc(state.delErr) + '</span>' : "") +
+      '</div>' +
+    '</div>';
+  }
+  // Renaming, asked where it was raised like the delete question. The name is
+  // the reader's alone (migration 059): it never reaches anybody else's list,
+  // which is what keeps it clear of the 2026-09-01 rule that chats have no
+  // shared names. Empty, or Remove your name, goes back to who it is with.
+  function renameHtml(t, where, kind){
+    return '<div class="' + (where === "row" ? "msg-confirm" : "") + '" role="group" aria-label="Rename this chat">' +
+      '<div class="msg-confirm-q">Rename this chat</div>' +
+      '<input class="msg-rename-in" type="text" maxlength="80" autocomplete="off" aria-label="Your name for this chat"' +
+        ' value="' + esc(t.nickname || "") + '" placeholder="' + esc(t.label) + '">' +
+      '<div class="msg-confirm-sub" style="margin-top:6px">Only you see this name. Nobody else\\'s list changes.</div>' +
+      '<div class="msg-confirm-go">' +
+        '<button class="msg-btn primary sm" type="button" data-ren-yes="1">Save</button>' +
+        '<button class="msg-btn sm" type="button" data-ren-no="1">Cancel</button>' +
+        (t.nickname ? '<button class="msg-btn sm" type="button" data-ren-clear="1">Remove your name</button>' : "") +
+        '<span class="msg-hint msg-ren-err">' + esc(state.renErr || "") + '</span>' +
       '</div>' +
     '</div>';
   }
@@ -870,25 +1070,47 @@ function renderMessagesBody(boot) {
     for (var i = 0; i < state.threads.length; i++) if (state.threads[i].id === id) return state.threads[i];
     return state.openRow && state.openRow.id === id ? state.openRow : null;
   }
-  // The header's door. The question opens UNDER the header, where the eye
-  // already is, rather than over in the list — which a phone is not showing.
+  function findRoom(id){
+    for (var i = 0; i < state.external.length; i++) if (state.external[i].id === id) return state.external[i];
+    return null;
+  }
+  function rowOf(kind, id){ return kind === "external" ? findRoom(id) : findThread(id); }
+  // The bar under the open chat's header: the delete question or the rename
+  // box, when either was raised from the header's More menu. The question
+  // opens where the eye already is, rather than over in the list, which a
+  // phone is not showing.
   function renderDelBar(){
     var bar = $("msgDelBar");
-    var t = state.confirmId && state.confirmId === state.openId && state.openKind === "internal"
-      ? findThread(state.openId) : null;
-    if (!t || !state.delBar) { bar.className = "msg-delbar msg-hide"; bar.innerHTML = ""; return; }
-    bar.innerHTML = confirmHtml(t, "bar");
+    var live = bar.querySelector(".msg-rename-in");
+    var typed = live ? live.value : null;
+    var html = "";
+    if (state.delBar && state.confirmId && state.confirmId === state.openId && state.confirmKind === state.openKind) {
+      var t = rowOf(state.openKind, state.openId);
+      if (t) html = confirmHtml(t, "bar", state.openKind);
+    } else if (state.renameBar && state.renameKey === state.openKind + ":" + state.openId) {
+      var r = rowOf(state.openKind, state.openId);
+      if (r) html = renameHtml(r, "bar", state.openKind);
+    }
+    if (!html) { bar.className = "msg-delbar msg-hide"; bar.innerHTML = ""; return; }
+    bar.innerHTML = html;
     bar.className = "msg-delbar";
+    var again = bar.querySelector(".msg-rename-in");
+    if (again && typed !== null) again.value = typed;
   }
   function closeDelBar(){
-    if (!state.delBar) return;
-    state.delBar = false;
-    state.confirmId = "";
-    state.delErr = "";
+    if (!state.delBar && !state.renameBar) return;
+    if (state.delBar) { state.delBar = false; state.confirmId = ""; state.delErr = ""; }
+    if (state.renameBar) { state.renameBar = false; state.renameKey = ""; state.renErr = ""; }
     renderDelBar();
   }
-  function askDelete(id, fromBar){
+  function askDelete(id, fromBar, kind){
+    closeMenu();
+    closeInfo();
+    state.renameKey = "";
+    state.renameBar = false;
+    state.renErr = "";
     state.confirmId = id;
+    state.confirmKind = kind === "external" ? "external" : "internal";
     state.delBar = !!fromBar;
     state.delErr = "";
     renderThreads();
@@ -897,7 +1119,7 @@ function renderMessagesBody(boot) {
     try { if (yes) yes.focus(); } catch (e) {}
   }
   function cancelDelete(){
-    var id = state.confirmId;
+    var id = state.confirmId, kind = state.confirmKind;
     var fromBar = state.delBar;
     state.confirmId = "";
     state.delBar = false;
@@ -906,16 +1128,17 @@ function renderMessagesBody(boot) {
     renderDelBar();
     // Focus goes back to the door it came from, so a keyboard user is not
     // dropped at the top of the page.
-    var back = id && !fromBar ? document.querySelector('[data-del="' + id.replace(/"/g, "") + '"]') : null;
-    try { (back || $("msgDelBtn")).focus(); } catch (e) {}
+    var back = id && !fromBar ? document.querySelector('[data-more="' + (kind + ":" + id).replace(/"/g, "") + '"]') : null;
+    try { (back || $("msgMoreBtn")).focus(); } catch (e) {}
   }
-  function deleteThread(id){
+  function deleteThread(id, kind){
     if (state.deleting) return;
+    var room = kind === "external";
     state.deleting = id;
     state.delErr = "";
     renderThreads();
     renderDelBar();
-    api("POST", "/api/messages/delete", { threadId: id }).then(function(o){
+    api("POST", "/api/messages/delete", room ? { roomId: id } : { threadId: id }).then(function(o){
       state.deleting = "";
       if (o.s !== 200) {
         state.delErr = (o.j && o.j.error) || "Couldn't delete that. Please try again.";
@@ -926,15 +1149,18 @@ function renderMessagesBody(boot) {
       state.confirmId = "";
       state.delBar = false;
       state.staleBefore = state.listSeq;
-      state.threads = state.threads.filter(function(t){ return t.id !== id; });
-      if (state.openKind === "internal" && state.openId === id) {
+      if (room) state.external = state.external.filter(function(x){ return x.id !== id; });
+      else state.threads = state.threads.filter(function(t){ return t.id !== id; });
+      if (state.openKind === (room ? "external" : "internal") && state.openId === id) {
         // The open conversation went, so the pane goes back to empty and a
         // phone goes back to the list, exactly as the Back button does.
         state.openId = "";
+        state.openKind = "internal";
         state.openRow = null;
         state.messages = [];
         state.attach = [];
         renderTray();
+        $("msgPeoplePanel").className = "msg-panel msg-hide";
         $("msgPage").className = "msg-page";
         $("msgTitle").textContent = "Select a conversation";
         $("msgSub").textContent = "";
@@ -946,10 +1172,251 @@ function renderMessagesBody(boot) {
       renderDelBar();
     });
   }
+
+  // --- the More menu (2026-10-02) ---------------------------------------------
+  // One menu for every chat, opened from its row's More button, by
+  // right-clicking the row, or from the open chat's header. On a mouse it
+  // opens beside whatever opened it; on a touch screen or a phone-width
+  // window it is a sheet from the bottom, because a pointer-sized menu is a
+  // missed tap there (and a phone has no right-click at all).
+  function sheetMode(){
+    try { return window.matchMedia("(hover: none), (max-width: 900px)").matches; } catch (e) { return false; }
+  }
+  function splitKey(key){
+    var s = String(key || ""), i = s.indexOf(":");
+    return i > 0 ? { kind: s.slice(0, i), id: s.slice(i + 1) } : null;
+  }
+  function showScrim(){
+    $("msgScrim").className = sheetMode() && (state.menu || state.info) ? "msg-scrim" : "msg-scrim msg-hide";
+  }
+  // Placed against the window: beside a point (a right-click) or under an
+  // element (a More button), and pulled back inside the window either way.
+  function place(el, at){
+    if (sheetMode() || !at) { el.style.left = ""; el.style.top = ""; return; }
+    var w = el.offsetWidth, h = el.offsetHeight;
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var x, y;
+    if (at.getBoundingClientRect) {
+      var r = at.getBoundingClientRect();
+      x = r.right - w;
+      y = r.bottom + 4;
+      if (y + h > vh - 8) y = r.top - h - 4;
+    } else {
+      x = at.x;
+      y = at.y;
+      if (x + w > vw - 8) x = at.x - w;
+      if (y + h > vh - 8) y = at.y - h;
+    }
+    el.style.left = Math.max(8, Math.min(x, vw - w - 8)) + "px";
+    el.style.top = Math.max(8, Math.min(y, vh - h - 8)) + "px";
+  }
+  function openMenu(kind, id, from, at){
+    var t = rowOf(kind, id);
+    if (!t) return;
+    closeInfo();
+    state.menu = { kind: kind, id: id, from: from };
+    var line = kind === "external" ? dealLine(t) : (t.nickname ? t.label : "");
+    var el = $("msgMenu");
+    el.innerHTML = '<div class="msg-mhead">' + esc(chatName(t)) + (line ? " \\u00b7 " + esc(line) : "") + '</div>' +
+      '<button class="msg-mi" type="button" role="menuitem" data-mi="about">' + ICON_INFO + '<span>About this chat</span></button>' +
+      '<button class="msg-mi" type="button" role="menuitem" data-mi="rename">' + ICON_PEN +
+        '<span>Rename</span><small>only you see it</small></button>' +
+      '<div class="msg-msep" role="separator"></div>' +
+      '<button class="msg-mi danger" type="button" role="menuitem" data-mi="delete">' + BIN + '<span>Delete for me</span></button>';
+    el.className = "msg-menu" + (sheetMode() ? " is-sheet" : "");
+    place(el, at);
+    showScrim();
+    // Marks the row the menu belongs to; the anchor was measured above, so
+    // the re-render cannot move the menu.
+    if (from === "row") renderThreads();
+    var first = el.querySelector(".msg-mi");
+    try { if (first) first.focus(); } catch (e) {}
+  }
+  function closeMenu(){
+    if (!state.menu) return;
+    var was = state.menu;
+    state.menu = null;
+    $("msgMenu").className = "msg-menu msg-hide";
+    $("msgMenu").innerHTML = "";
+    showScrim();
+    if (was.from === "row") renderThreads();
+  }
+  function rowEl(kind, id){
+    return document.querySelector('#msgThreads [data-key="' + (kind + ":" + id).replace(/"/g, "") + '"]');
+  }
+  function menuPick(what){
+    var m = state.menu;
+    if (!m) return;
+    closeMenu();
+    if (what === "about") openInfo(m.kind, m.id, m.from);
+    else if (what === "rename") startRename(m.kind, m.id, m.from === "head");
+    else if (what === "delete") askDelete(m.id, m.from === "head", m.kind);
+  }
+
+  // --- About this chat ----------------------------------------------------------
+  // Who it is with (name AND address, so two accounts with one name can be
+  // told apart), how the reader got here, and the deal. Everything in it was
+  // already on the list row the page holds: nothing is fetched to open it,
+  // and opening it marks nothing as read.
+  function fmtDay(iso){
+    var t = Date.parse(iso || "");
+    if (!isFinite(t)) return "";
+    var d = new Date(t), now = new Date();
+    return d.toLocaleDateString([], d.getFullYear() === now.getFullYear()
+      ? { month: "short", day: "numeric" } : { year: "numeric", month: "short", day: "numeric" });
+  }
+  function personHtml(p, extra){
+    var name = p.name || p.email || "Somebody";
+    return '<div class="msg-info-pp"><span class="msg-info-av">' + esc(initial(name)) + '</span>' +
+      '<div class="msg-info-pt"><div class="msg-info-name">' + esc(name) + '</div>' +
+      (p.email ? '<div class="msg-info-mail">' + esc(p.email) + '</div>' : "") +
+      (extra || "") + '</div></div>';
+  }
+  function infoHtml(kind, t){
+    var html = "";
+    if (kind === "external") {
+      var people = t.people || [];
+      for (var i = 0; i < people.length; i++) {
+        var p = people[i], extra = "";
+        // Whether each guest has opened the room is sent to the owner alone,
+        // the same answer the room's own People panel gives.
+        if (t.owner) {
+          extra = '<div class="msg-info-state' + (p.opened ? " ok" : "") + '">' +
+            (p.opened ? "Has opened it" : "Hasn\\'t opened it yet") +
+            (p.hasAccount === false ? " \\u00b7 no account yet" : "") + '</div>';
+        }
+        html += personHtml(p, extra);
+      }
+      if (!people.length) {
+        html += '<p class="msg-info-who" style="margin-top:0">' +
+          (t.owner ? "Nobody has been invited yet." : "The person who shared this no longer has an account.") + '</p>';
+      }
+      var who = t.owner
+        ? "You started this" + (t.createdAt ? " on " + fmtDay(t.createdAt) : "") + "."
+        : (people[0] ? people[0].name : "Somebody") + " invited you" + (t.invitedAt ? " on " + fmtDay(t.invitedAt) : "") + ".";
+      var meta = [t.propertyType, t.market].filter(Boolean).join(" \\u00b7 ");
+      html += '<p class="msg-info-who">' + esc(who) + '</p>' +
+        '<span class="msg-info-lab">The deal</span>' +
+        '<div class="msg-info-deal">' + esc(t.title || "No deal name") + '</div>' +
+        '<div class="msg-info-meta">' + esc((meta ? meta + " \\u00b7 " : "") + (t.closed ? "Closed" : "Open")) + '</div>';
+    } else {
+      var others = (t.members || []).filter(function(m){ return m.userId !== state.me && !m.left; });
+      for (var k = 0; k < others.length; k++) html += personHtml(others[k], "");
+      if (!others.length) html += '<p class="msg-info-who" style="margin-top:0">Everyone else has left this chat.</p>';
+      var firm = (state.firm && state.firm.name) || "your firm";
+      html += '<p class="msg-info-who">' + esc((t.kind === "channel" ? "A group chat at " : "A chat at ") + firm +
+        (t.createdAt ? ", started " + fmtDay(t.createdAt) : "") + ".") + '</p>';
+    }
+    if (t.nickname) {
+      html += '<span class="msg-info-lab">Your name for it</span>' +
+        '<div class="msg-info-deal">' + esc(t.nickname) + '</div>' +
+        '<div class="msg-info-meta">Only you see this name.</div>';
+    }
+    return html + '<div class="msg-info-acts">' +
+      '<button class="msg-btn sm" type="button" data-info="rename">Rename</button>' +
+      '<button class="msg-btn sm danger" type="button" data-info="delete">Delete for me</button>' +
+      '</div>';
+  }
+  function openInfo(kind, id, from){
+    var t = rowOf(kind, id);
+    if (!t) return;
+    state.info = { kind: kind, id: id, from: from };
+    var el = $("msgInfo");
+    el.innerHTML = infoHtml(kind, t);
+    el.className = "msg-info" + (sheetMode() ? " is-sheet" : "");
+    var row = from === "row" ? rowEl(kind, id) : null;
+    if (sheetMode()) {
+      place(el, null);
+    } else if (row) {
+      // Beside the row it is about, over the conversation pane.
+      var r = row.getBoundingClientRect();
+      el.style.left = Math.max(8, Math.min(r.right + 10, window.innerWidth - el.offsetWidth - 8)) + "px";
+      el.style.top = Math.max(8, Math.min(r.top - 6, window.innerHeight - el.offsetHeight - 8)) + "px";
+    } else {
+      place(el, $("msgMoreBtn"));
+    }
+    showScrim();
+    var b = el.querySelector("button");
+    try { if (b) b.focus(); } catch (e) {}
+  }
+  function closeInfo(){
+    if (!state.info) return;
+    state.info = null;
+    $("msgInfo").className = "msg-info msg-hide";
+    $("msgInfo").innerHTML = "";
+    showScrim();
+  }
+
+  // --- renaming -------------------------------------------------------------------
+  function renameInput(){
+    return document.querySelector((state.renameBar ? "#msgDelBar" : "#msgThreads") + " .msg-rename-in");
+  }
+  function startRename(kind, id, fromBar){
+    closeMenu();
+    closeInfo();
+    state.confirmId = "";
+    state.delBar = false;
+    state.delErr = "";
+    state.renameKey = kind + ":" + id;
+    state.renameBar = !!fromBar;
+    state.renErr = "";
+    renderThreads();
+    renderDelBar();
+    var inp = renameInput();
+    try { if (inp) { inp.focus(); inp.select(); } } catch (e) {}
+  }
+  function cancelRename(){
+    var k = splitKey(state.renameKey), fromBar = state.renameBar;
+    state.renameKey = "";
+    state.renameBar = false;
+    state.renErr = "";
+    renderThreads();
+    renderDelBar();
+    var back = k && !fromBar ? document.querySelector('[data-more="' + (k.kind + ":" + k.id).replace(/"/g, "") + '"]') : null;
+    try { (back || $("msgMoreBtn")).focus(); } catch (e) {}
+  }
+  function saveRename(clear){
+    var k = splitKey(state.renameKey);
+    if (!k || state.renaming) return;
+    var inp = renameInput();
+    var name = clear ? "" : String((inp && inp.value) || "").replace(/\\s+/g, " ").trim();
+    var box = inp ? inp.closest('[role="group"]') : null;
+    var lock = function(on){
+      if (box) box.querySelectorAll("button, input").forEach(function(b){ b.disabled = on; });
+    };
+    state.renaming = state.renameKey;
+    state.renErr = "";
+    lock(true);
+    var body = { name: name };
+    body[k.kind === "external" ? "roomId" : "threadId"] = k.id;
+    api("POST", "/api/messages/name", body).then(function(o){
+      state.renaming = "";
+      if (o.s !== 200) {
+        state.renErr = (o.j && o.j.error) || "Couldn't save that name. Please try again.";
+        lock(false);
+        var hint = box && box.querySelector(".msg-ren-err");
+        if (hint) hint.textContent = state.renErr;
+        return;
+      }
+      var saved = o.j && typeof o.j.nickname === "string" ? o.j.nickname : name;
+      var t = rowOf(k.kind, k.id);
+      if (t) t.nickname = saved;
+      if (k.kind === "internal" && state.openRow && state.openRow.id === k.id) state.openRow.nickname = saved;
+      state.renameKey = "";
+      state.renameBar = false;
+      state.renErr = "";
+      // A list read sent before this save must not put the old name back.
+      state.staleBefore = state.listSeq;
+      if (state.openId === k.id && state.openKind === k.kind) refreshHeader();
+      renderThreads();
+      renderDelBar();
+    });
+  }
   function externalMatches(t, q){
     if (!q) return true;
     q = q.toLowerCase();
     if (String(t.label || "").toLowerCase().indexOf(q) >= 0) return true;
+    if (String(t.nickname || "").toLowerCase().indexOf(q) >= 0) return true;
     if (String(t.title || "").toLowerCase().indexOf(q) >= 0) return true;
     for (var i = 0; i < (t.people || []).length; i++) {
       if (String(t.people[i].email || "").toLowerCase().indexOf(q) >= 0) return true;
@@ -976,15 +1443,12 @@ function renderMessagesBody(boot) {
       return;
     }
     var html = "";
-    // The group labels exist only once there are two groups: a member with no
-    // deal rooms sees exactly the list they saw yesterday, and the labels are
-    // what says which side of the wall a row is on. Internal is the firm;
-    // External is the people outside it that this member shares comps with.
-    // The group labels exist only once there are two groups to tell apart,
-    // and that is judged on what is actually being drawn: a reader whose
-    // only conversations are deal rooms (a client, now that a guest's rooms
-    // list) would otherwise get a lone "External" heading over the whole
-    // list, external to a firm they are not in.
+    // The Internal / External labels say which side of the wall a row is on,
+    // and they exist only once there are two groups to tell apart, judged on
+    // what is actually being drawn: a member with no deal rooms sees the list
+    // they always saw, and a reader whose only conversations are deal rooms
+    // (a client) does not get a lone "External" heading over a firm they are
+    // not in.
     var both = list.length > 0 && ext.length > 0;
     if (both) html += '<div class="msg-sect">Internal</div>';
     for (var i = 0; i < list.length; i++) {
@@ -992,15 +1456,32 @@ function renderMessagesBody(boot) {
       html += internalRowHtml(t, state.openKind === "internal" && t.id === state.openId);
     }
     if (both) html += '<div class="msg-sect">External</div>';
-    for (var k = 0; k < ext.length; k++) {
-      var x = ext[k];
-      // The deal's title is the second line when nothing has been said yet;
-      // once there is a conversation, the conversation wins the row.
-      html += threadRowHtml(x, "data-external",
-        state.openKind === "external" && x.id === state.openId,
-        x.preview || x.title || "No messages yet");
+    // CLOSED deal rooms fold under one heading at the foot of the list
+    // (2026-10-02). They used to look exactly like open ones until opened.
+    // A search unfolds it, so a match is never hidden behind it.
+    var shown = ext.filter(function(x){ return !x.closed; });
+    var closed = ext.filter(function(x){ return x.closed; });
+    var unfold = state.showClosed || !!q;
+    for (var k = 0; k < shown.length; k++) {
+      html += externalRowHtml(shown[k], state.openKind === "external" && shown[k].id === state.openId);
     }
+    if (closed.length) {
+      html += '<button class="msg-fold" type="button" data-fold="1" aria-expanded="' + (unfold ? "true" : "false") + '">' +
+        'Closed <span class="msg-count">' + closed.length + '</span>' + CHEV + '</button>';
+      for (var c = 0; unfold && c < closed.length; c++) {
+        html += externalRowHtml(closed[c], state.openKind === "external" && closed[c].id === state.openId);
+      }
+    }
+    // A rename box in a row keeps what was typed through a re-render (the
+    // poll redraws this list every 15 seconds).
+    var live = $("msgThreads").querySelector(".msg-rename-in");
+    var typed = live ? live.value : null, focused = !!live && document.activeElement === live;
     $("msgThreads").innerHTML = html;
+    var again = typed === null ? null : $("msgThreads").querySelector(".msg-rename-in");
+    if (again) {
+      again.value = typed;
+      if (focused) { try { again.focus(); } catch (e) {} }
+    }
   }
 
   // --- one comp card ------------------------------------------------------
@@ -1336,11 +1817,10 @@ function renderMessagesBody(boot) {
       var j = o.j || {};
       if (first) {
         if (j.thread && j.thread.id === state.openId) { state.openRow = j.thread; renderThreads(); }
-        $("msgTitle").textContent = (j.thread && j.thread.label) || "Conversation";
-        var members = ((j.thread && j.thread.members) || []).filter(function(m){ return !m.left; });
-        $("msgSub").textContent = j.thread && j.thread.kind === "channel"
-          ? members.length + (members.length === 1 ? " person" : " people")
-          : ((members.filter(function(m){ return m.userId !== state.me; })[0] || {}).email || "");
+        // The reader's own name for it when they gave it one, with who it is
+        // with underneath (2026-10-02).
+        $("msgTitle").textContent = j.thread ? chatName(j.thread) : "Conversation";
+        $("msgSub").textContent = j.thread ? threadSub(j.thread) : "";
       }
       var fresh = j.messages || [];
       // Messages their author took back since the last read: the poll only
@@ -1766,11 +2246,22 @@ function renderMessagesBody(boot) {
 
   // --- wiring -------------------------------------------------------------
   $("msgThreads").addEventListener("click", function(e){
-    var del = e.target.closest("[data-del]");
-    if (del) { askDelete(del.getAttribute("data-del"), false); return; }
+    // A row's More button opens its menu, and a second press closes it.
+    var more = e.target.closest("[data-more]");
+    if (more) {
+      var mk = splitKey(more.getAttribute("data-more"));
+      if (!mk) return;
+      if (state.menu && state.menu.from === "row" && state.menu.kind === mk.kind && state.menu.id === mk.id) { closeMenu(); return; }
+      openMenu(mk.kind, mk.id, "row", more);
+      return;
+    }
+    if (e.target.closest("[data-fold]")) { state.showClosed = !state.showClosed; renderThreads(); return; }
     var yes = e.target.closest("[data-del-yes]");
-    if (yes) { deleteThread(yes.getAttribute("data-del-yes")); return; }
+    if (yes) { deleteThread(yes.getAttribute("data-del-yes"), yes.getAttribute("data-kind")); return; }
     if (e.target.closest("[data-del-no]")) { cancelDelete(); return; }
+    if (e.target.closest("[data-ren-yes]")) { saveRename(false); return; }
+    if (e.target.closest("[data-ren-clear]")) { saveRename(true); return; }
+    if (e.target.closest("[data-ren-no]")) { if (!state.renaming) cancelRename(); return; }
     // A click anywhere else inside an open question does nothing, rather than
     // falling through to "open this conversation" underneath it.
     if (e.target.closest(".msg-confirm")) return;
@@ -1836,15 +2327,70 @@ function renderMessagesBody(boot) {
     openPeoplePanel();
   });
   $("msgPeopleDone").addEventListener("click", function(){ $("msgPeoplePanel").className = "msg-panel msg-hide"; });
-  $("msgDelBtn").addEventListener("click", function(){
-    if (!state.openId || state.openKind !== "internal") return;
-    if (state.delBar) { cancelDelete(); return; }
-    askDelete(state.openId, true);
+  // Right-clicking a chat opens the same menu as its More button (2026-10-02),
+  // beside the pointer. A keyboard's menu key reports no pointer position, so
+  // the menu then opens from the row's own More button.
+  $("msgThreads").addEventListener("contextmenu", function(e){
+    var w = e.target.closest("[data-key]");
+    var k = w ? splitKey(w.getAttribute("data-key")) : null;
+    if (!k) return;
+    e.preventDefault();
+    openMenu(k.kind, k.id, "row", (e.clientX || e.clientY) ? { x: e.clientX, y: e.clientY } : w.querySelector("[data-more]"));
   });
+  // A menu placed against the window would float away from its row.
+  $("msgThreads").addEventListener("scroll", function(){ closeMenu(); closeInfo(); });
+  // Only on a mouse: a phone resizes the window whenever its address bar
+  // hides on scroll, and a sheet is not placed against the window anyway.
+  window.addEventListener("resize", function(){ if (!sheetMode()) { closeMenu(); closeInfo(); } });
+  $("msgMoreBtn").addEventListener("click", function(){
+    if (!state.openId) return;
+    if (state.menu && state.menu.from === "head") { closeMenu(); return; }
+    openMenu(state.openKind, state.openId, "head", $("msgMoreBtn"));
+  });
+  $("msgMenu").addEventListener("click", function(e){
+    var b = e.target.closest("[data-mi]");
+    if (b) menuPick(b.getAttribute("data-mi"));
+  });
+  // Up and down move between the menu's three choices.
+  $("msgMenu").addEventListener("keydown", function(e){
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    var items = [].slice.call($("msgMenu").querySelectorAll(".msg-mi"));
+    var i = items.indexOf(document.activeElement);
+    var next = items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length];
+    try { if (next) next.focus(); } catch (err) {}
+  });
+  $("msgInfo").addEventListener("click", function(e){
+    var b = e.target.closest("[data-info]");
+    if (!b || !state.info) return;
+    var i = state.info;
+    closeInfo();
+    if (b.getAttribute("data-info") === "rename") startRename(i.kind, i.id, i.from === "head");
+    else askDelete(i.id, i.from === "head", i.kind);
+  });
+  $("msgScrim").addEventListener("click", function(){ closeMenu(); closeInfo(); });
+  // A press anywhere else closes the menu and the card, the way every menu
+  // does. Capture, so it runs before whatever that press then opens.
+  document.addEventListener("pointerdown", function(e){
+    if (!e.target.closest) return;
+    if (state.menu && !e.target.closest("#msgMenu, [data-more], #msgMoreBtn")) closeMenu();
+    if (state.info && !e.target.closest("#msgInfo")) closeInfo();
+  }, true);
   $("msgDelBar").addEventListener("click", function(e){
     var yes = e.target.closest("[data-del-yes]");
-    if (yes) { deleteThread(yes.getAttribute("data-del-yes")); return; }
-    if (e.target.closest("[data-del-no]")) cancelDelete();
+    if (yes) { deleteThread(yes.getAttribute("data-del-yes"), yes.getAttribute("data-kind")); return; }
+    if (e.target.closest("[data-del-no]")) { cancelDelete(); return; }
+    if (e.target.closest("[data-ren-yes]")) { saveRename(false); return; }
+    if (e.target.closest("[data-ren-clear]")) { saveRename(true); return; }
+    if (e.target.closest("[data-ren-no]")) { if (!state.renaming) cancelRename(); }
+  });
+  // Enter in a rename box saves it, wherever the box is.
+  ["msgThreads", "msgDelBar"].forEach(function(id){
+    $(id).addEventListener("keydown", function(e){
+      if (e.key !== "Enter" || !e.target.classList || !e.target.classList.contains("msg-rename-in")) return;
+      e.preventDefault();
+      saveRename(false);
+    });
   });
   // Escape backs out of the question. In the CAPTURE phase and stopped there,
   // because the shared header's own Escape listener (server.js) goes back to
@@ -1852,6 +2398,25 @@ function renderMessagesBody(boot) {
   // Messages altogether.
   document.addEventListener("keydown", function(e){
     if (e.key !== "Escape") return;
+    // The menu, the About card and the rename box back out the same way, for
+    // the same reason (2026-10-02).
+    if (state.menu || state.info) {
+      e.preventDefault();
+      e.stopPropagation();
+      var back = state.menu || state.info;
+      closeMenu();
+      closeInfo();
+      var door = back.from === "head" ? $("msgMoreBtn")
+        : document.querySelector('[data-more="' + (back.kind + ":" + back.id).replace(/"/g, "") + '"]');
+      try { if (door) door.focus(); } catch (err) {}
+      return;
+    }
+    if (state.renameKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!state.renaming) cancelRename();
+      return;
+    }
     // The Unsend question backs out the same way, for the same reason.
     if (state.unsendId) {
       e.preventDefault();

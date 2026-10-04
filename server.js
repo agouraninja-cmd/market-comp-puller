@@ -19104,7 +19104,9 @@ async function vaultReadPayload(req, params) {
       const membership = ORG.membershipOf(rows, user.email);
       if (!membership) return null;
       const org = (await orgsByIds([membership.org_id])).get(String(membership.org_id));
-      return { id: membership.org_id, name: (org && org.name) || "your firm" };
+      // `kind` picks the header's nouns (a development shop reads its own
+      // work, not a broker's); ORG.kindOf reads anything unknown as broker.
+      return { id: membership.org_id, name: (org && org.name) || "your firm", kind: ORG.kindOf(org) };
     })(),
     // Ids, not a flag on each comp: the comps array is the vault API's own
     // contract (vault-api.js's allowlist) and a shelf membership is not a

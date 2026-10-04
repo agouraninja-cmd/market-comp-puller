@@ -3460,6 +3460,20 @@ test("sharing one comp corrects the promise rather than leaving it false", () =>
   assert.match(els.deckSub.textContent, /1 shared with Colliers Boise; the rest visible only to you/);
 });
 
+test("a development shop's header names its own work, and the promise still holds", () => {
+  const DEV = { ...FIRM, name: "Ridgeline Development", kind: "development" };
+  let els = runFirmPrivacy(DEV, 0);
+  assert.equal(els.deckSub.textContent,
+    "Your comps, absorption rates, and feasibility calculations in one place. Visible only to you.");
+  els = runFirmPrivacy(DEV, 2);
+  assert.match(els.deckSub.textContent,
+    /^Your comps, absorption rates, and feasibility calculations in one place. 2 shared with Ridgeline Development; the rest visible only to you.$/);
+  // A broker shop, and a firm whose kind is missing, keep today's line.
+  for (const firm of [FIRM, { ...FIRM, kind: "broker" }]) {
+    assert.match(runFirmPrivacy(firm, 0).deckSub.textContent, /^Closed deals, leads, and BOVs./);
+  }
+});
+
 test("the corrected promise counts in plural", () => {
   const els = runFirmPrivacy(FIRM, 3);
   assert.match(els.trustNote.innerHTML, /^3 comps are shared with Colliers Boise\./);

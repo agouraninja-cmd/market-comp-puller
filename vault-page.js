@@ -5297,9 +5297,14 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
         ". Everything else is visible only to you, and nothing here is ever read "+
         "into CompNinja\u2019s public records unless you publish it."
       : null;
+    // What the vault holds, in the shop's own words: a development shop keeps
+    // site work, not a broker's deals and BOVs (owner's copy, 2026-10-04).
+    var holds=myFirm&&myFirm.kind==="development"
+      ? "Your comps, absorption rates, and feasibility calculations in one place. "
+      : "Closed deals, leads, and BOVs. ";
     if(deck)deck.textContent=sharedLine
-      ? "Closed deals, leads, and BOVs. "+n+" shared with "+myFirm.name+"; the rest visible only to you."
-      : "Closed deals, leads, and BOVs. Visible only to you.";
+      ? holds+n+" shared with "+myFirm.name+"; the rest visible only to you."
+      : holds+"Visible only to you.";
     if(trust)trust.innerHTML=sharedLine
       ? esc(sharedLine)
       : "Visible only to you. Nothing here is ever read into CompNinja\u2019s "+

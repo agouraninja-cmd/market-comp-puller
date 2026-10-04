@@ -4531,5 +4531,11 @@
     "type": "feature",
     "title": "Messages: see who each chat is with, name it for yourself, and delete deal rooms",
     "details": "Every deal room in your Messages list now shows which deal it is, and a room somebody else started says “Invited you”, so two rooms with the same person no longer look identical. Each chat has a ⋯ button, and right-clicking a chat opens the same menu: About this chat (who it’s with, their email, who invited whom and when, and the deal), Rename and Delete for me. Rename gives a chat a name only you see; nobody else’s list changes. Deal rooms can now be deleted from your own list too: everyone else keeps theirs, and the room comes back, with everything in it, if anyone writes in it again. Closed deal rooms now sit under a Closed heading at the bottom of the list. On a phone the menu and About open as a sheet from the bottom of the screen."
+  },
+  {
+    "date": "2026-10-04",
+    "type": "improvement",
+    "title": "Vault subtitle speaks to development shops",
+    "details": "A member of a development shop now reads “Your comps, absorption rates, and feasibility calculations in one place. Visible only to you.” under the Vault heading, instead of a broker’s “Closed deals, leads, and BOVs.” Broker shops and solo accounts keep today’s line, and the shared-with-your-firm version still corrects itself."
   }
 ]

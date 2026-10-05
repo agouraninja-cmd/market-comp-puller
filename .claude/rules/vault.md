@@ -19,6 +19,10 @@ paths:
   - "test/bov-log.test.js"
   - "test/blend-comps.test.js"
   - "test/xlsx.test.js"
+  - "sites.js"
+  - "sites-tab.js"
+  - "test/sites.test.js"
+  - "test/sites-run.test.js"
 ---
 # The broker vault and lead inbox
 
@@ -1151,3 +1155,63 @@ paths:
   of the vault's `openVault` gate (same three refusals, same order: 401 not
   signed in, 403 not a broker, 503 no database) — `test/routes.test.js`
   exists specifically to catch drift between the two copies.
+
+## Sites, for a development firm (2026-10-05)
+
+The owner's pick "M2" of the Sites drafts
+(https://claude.ai/artifact/BMeJY9d3vegjmDxcAPtxzR, rounds 1-3). Migration
+`060-user-sites.sql` (**run before deploying**; deploy-first costs only the
+Sites tab, whose reads answer 503 until it runs, never another surface).
+
+- **Who sees it.** A member of a firm whose kind is `development`
+  (`ORG.kindOf`, on `/api/vault`'s firm block) gets one **Sites** tab in place
+  of **Pipeline** and **Properties**: a developer writes no BOVs, and every
+  property they hold is inside Sites with Properties' own features.
+  `applyShop()` in vault-page.js is the ONE place that decides it, called from
+  `apply()` once `myFirm` is known, and a link to `#pipeline` or `#properties`
+  lands on Sites for them. Broker firms and people in no firm keep exactly the
+  tabs they had. Without `window.SITESTAB`/`window.SITES` (a stale or failed
+  script) nothing changes, so the failure costs the new tab, never the old
+  ones. myFirm is only set on the 200 path, so a non-Pro development member
+  still sees today's locked Pipeline and Properties; Sites is Pro, like the
+  Pipeline it replaces.
+- **Three files.** `sites.js` is PURE and dual-exported (`SITES` in the
+  browser, served at `/sites.js` with `max-age: 0`): stages, the five-step
+  tracker, field validation, `nextDeadline`, and the stage-date stamping.
+  `sites-tab.js` is BROWSER-only (`SITESTAB`, `/sites-tab.js`, `max-age: 0`):
+  it draws everything inside `#sitesRoot` and decides nothing it can read from
+  `SITES`. It lives outside the page's template literal on purpose, so it is
+  not subject to the one-backslash trap and is not executed by
+  `test/vault-page.test.js`'s stub DOM; that suite hands in a recording
+  `SITESTAB` through `runPage`'s `opts.window` instead. The CSS is in the
+  page's stylesheet, every rule under `#sitesSec` with `st-` names.
+- **The data.** One private table, `user_sites`, vault-class exactly like
+  `broker_bovs`: read and written only by `/api/sites` (GET, POST, DELETE
+  `?id=`) and `POST /api/sites/update`, every call scoped by `user_id`, DB-only,
+  gated by **`requireSites`** (401, then 403 without `canUseVault`, then 503
+  with no database: `requireBroker`'s order with its own words). Two kinds of
+  row: a **deal** (`portfolio_item_id` null; stage prospect, loi, contract,
+  entitle or passed) and a **status** on a property already in
+  `portfolio_items` (`portfolio_item_id` set; stage owned or tracking).
+  **`portfolio_items` is not altered**: `listPortfolio` names its columns, and
+  a column added there would 400 every Properties read on a deploy that ran
+  ahead of its migration. Owned is the default; only Tracking needs a row.
+  A row naming a held property is checked against the CALLER's portfolio
+  (`getPortfolioItem(user.id, …)`) before it is written, and a second status
+  row for one property answers the existing one (`existed: true`).
+- **Closing a deal** ("Move to Owned") is two ordinary writes from the
+  browser: `POST /api/portfolio` by address (its own caps and refusals; a
+  parcel with no street number is refused there, by name), then the deal row
+  becomes that property's status, keeping `stage_dates` as its history ("How
+  you bought it"). A stage move stamps the server's today and keeps the
+  earlier stages' days; transitions are not policed (the BOV log's rule).
+- **Owned value counts Owned only.** Properties adds every row into its
+  combined value; Sites leaves Tracking buildings out of it, because a
+  building you watch is not part of what you own.
+- **Run a land report** links to `/?type=<type>&address=<address>`.
+  index.html's `?address=` (added with this) fills an EMPTY address field and
+  runs nothing.
+- Tests: `test/sites.test.js` (the rules, and that 060's CHECK matches
+  `SITES.STAGES` and destroys nothing), `test/sites-run.test.js` (the routes
+  against the stand-in PostgREST, including an unrun migration), and the
+  Sites block in `test/vault-page.test.js`.

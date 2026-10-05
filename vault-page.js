@@ -812,6 +812,176 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   #compSheet tr{break-inside:avoid}
   #compSheet .vd-sh-foot{margin-top:14px;font-size:8pt;color:dimgray}
 }
+/* ---- Sites (2026-10-05, migration 060) ---------------------------------------
+   A development firm's one tab for the land and buildings it is buying, owns
+   or tracks: the owner's pick "M2" of the Sites drafts. Drawn by
+   /sites-tab.js into #sitesRoot. Every rule is scoped under #sitesSec, which
+   both outranks this page's own bare table/th/td/section rules and keeps the
+   st- names out of MARKET_CSS's way (test/vault-shell.test.js). Tokens only:
+   the same rules hold in both themes. */
+#sitesSec{margin-top:var(--s5)}
+#sitesSec .st-intro{margin:0 0 var(--s5);color:var(--ink-2);font-size:15px;max-width:62ch}
+#sitesSec .st-mute{color:var(--ink-3);font-size:12.5px}
+#sitesSec .st-hot{color:var(--err-text)}
+#sitesSec .st-none{margin:0;padding:18px 16px;border:1px dashed var(--edge);border-radius:8px;color:var(--ink-2);font-size:13.5px}
+#sitesSec .st-sec{margin:28px 0 0;padding:0;border:0}
+#sitesSec .st-sec:first-of-type{margin-top:0}
+#sitesSec .st-sh{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px 16px;padding:0 2px 10px;border-bottom:2px solid var(--ink);margin-bottom:12px}
+#sitesSec .st-sh h2{margin:0;font-family:var(--serif);font-weight:500;font-size:21px;color:var(--ink)}
+#sitesSec .st-sf{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+#sitesSec .st-sf b{color:var(--ink);font-weight:600}
+#sitesSec .st-attn{margin:0 0 10px;font-size:13px;color:var(--warn-text);background:var(--warn-bg);border:1px solid var(--warn-rule);border-radius:8px;padding:9px 12px}
+#sitesSec .st-tw{border:1px solid var(--edge);border-radius:8px;background:var(--card);overflow-x:auto;box-shadow:var(--shadow),var(--lift)}
+#sitesSec .st-tbl{width:100%;min-width:760px;border-collapse:collapse;font-size:13px}
+#sitesSec .st-tbl th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;
+  padding:11px 16px;border-bottom:1px solid var(--edge);background:var(--wash);white-space:nowrap;text-align:left}
+#sitesSec .st-tbl th.n,#sitesSec .st-tbl td.n{text-align:right}
+#sitesSec .st-tbl td{padding:13px 16px;border-top:0;border-bottom:1px solid var(--hair);vertical-align:middle;color:var(--ink-body);background:none}
+#sitesSec .st-tbl td.n{font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ink)}
+#sitesSec .st-tbl tr.st-row{cursor:pointer}
+#sitesSec .st-tbl tr.st-row:hover td,#sitesSec .st-tbl tr.st-row.on td{background:var(--wash)}
+#sitesSec .st-tbl tr.st-row.on td:first-child{box-shadow:inset 3px 0 0 var(--red-fill)}
+#sitesSec .st-tbl tr.st-row:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
+#sitesSec .st-tbl tfoot td{padding:13px 16px;border-top:1px solid var(--ink);border-bottom:3px double var(--ink);font-weight:600;color:var(--ink);background:var(--card);font-variant-numeric:tabular-nums}
+#sitesSec .st-tbl tr.st-open td{padding:0 16px 16px;background:var(--wash);cursor:default}
+#sitesSec .st-a{display:block;color:var(--ink);font-weight:600;font-size:13.5px}
+#sitesSec .st-s{display:block;color:var(--ink-3);font-size:12px;margin-top:2px}
+#sitesSec .st-mv{max-width:52ch;margin-top:4px;font-size:11.5px}
+#sitesSec .st-cv{width:28px;padding-left:0}
+#sitesSec .st-chev{display:block;color:var(--ink-4)}
+#sitesSec tr.on .st-chev{color:var(--ink)}
+#sitesSec .st-stage{display:inline-flex;flex-direction:column;gap:5px;min-width:96px}
+#sitesSec .st-sn{font-size:12.5px;font-weight:600;color:var(--ink);white-space:nowrap}
+#sitesSec .st-meter{display:inline-flex;gap:3px}
+#sitesSec .st-meter i{display:block;width:14px;height:4px;border-radius:2px;background:var(--line)}
+#sitesSec .st-meter i.on{background:var(--ink)}
+#sitesSec .st-owned .st-meter i.on{background:var(--green)}
+#sitesSec .st-owned .st-sn{color:var(--ok-text)}
+#sitesSec .st-passed .st-sn{color:var(--ink-3)}
+#sitesSec .st-tracking .st-meter i{background:none;border:1px dashed var(--ink-4);box-sizing:border-box}
+#sitesSec .st-dl{display:flex;flex-direction:column;gap:3px}
+#sitesSec .st-dl1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#sitesSec .st-dl1 b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+#sitesSec .st-dl span{color:var(--ink-3);font-size:12px}
+#sitesSec .st-chip{display:inline-block;font-size:11px;font-weight:600;line-height:1;padding:3px 7px;border-radius:999px;background:var(--wash);
+  color:var(--ink-2);border:1px solid var(--line);font-variant-numeric:tabular-nums;white-space:nowrap}
+#sitesSec .st-chip.hot{background:var(--err-bg);color:var(--err-text);border-color:var(--err-rule)}
+#sitesSec .st-chip.warn{background:var(--warn-bg);color:var(--warn-text);border-color:var(--warn-rule)}
+#sitesSec .st-pct{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+#sitesSec .st-up{color:var(--green)}
+#sitesSec .st-dn{color:var(--red)}
+#sitesSec .st-spark{display:block}
+#sitesSec .st-pane{background:var(--card);border:1px solid var(--edge);border-radius:8px;padding:22px 24px}
+#sitesSec .st-pt{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+#sitesSec .st-top{display:flex;align-items:center;gap:10px}
+#sitesSec .st-x{background:none;border:0;font-size:22px;line-height:1;color:var(--ink-3);cursor:pointer;padding:0 2px}
+#sitesSec .st-move{font:inherit;font-size:12.5px;font-weight:600;color:var(--ink-2);background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:5px 10px;cursor:pointer}
+#sitesSec .st-addr{font-family:var(--serif);font-weight:500;font-size:24px;line-height:1.2;letter-spacing:-.015em;margin:12px 0 4px;color:var(--ink)}
+#sitesSec .st-sub{margin:0;color:var(--ink-3);font-size:13px}
+#sitesSec .st-steps{list-style:none;margin:20px 0 0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));max-width:720px}
+#sitesSec .st-steps li{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:5px;padding-right:6px;min-width:0}
+#sitesSec .st-steps li::before{content:"";position:absolute;top:8px;left:18px;right:0;height:2px;background:var(--line)}
+#sitesSec .st-steps li:last-child::before{display:none}
+#sitesSec .st-steps li.done::before{background:var(--ink)}
+#sitesSec .st-dot{position:relative;z-index:1;width:18px;height:18px;border-radius:50%;border:2px solid var(--ink-4);background:var(--card);
+  display:flex;align-items:center;justify-content:center;color:var(--card);box-sizing:border-box}
+#sitesSec li.done .st-dot{background:var(--ink);border-color:var(--ink)}
+#sitesSec li.now .st-dot{border-color:var(--red-fill);box-shadow:0 0 0 3px var(--err-bg)}
+#sitesSec li.now .st-dot::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--red-fill)}
+#sitesSec .st-sl{font-size:12px;font-weight:600;color:var(--ink-2);line-height:1.25;overflow-wrap:anywhere}
+#sitesSec li.now .st-sl{color:var(--ink)}
+#sitesSec .st-steps li:not(.done):not(.now) .st-sl{color:var(--ink-3);font-weight:500}
+#sitesSec .st-sd{font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+#sitesSec .st-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 28px;margin-top:20px}
+#sitesSec .st-blk{padding-top:16px;border-top:1px solid var(--hair);min-width:0}
+#sitesSec .st-wideblk{grid-column:1/-1}
+#sitesSec .st-blk h4{margin:0 0 10px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+#sitesSec .st-terms{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;margin:0}
+#sitesSec .st-terms dt{font-size:12px;color:var(--ink-3)}
+#sitesSec .st-terms dd{margin:2px 0 0;font-size:14px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+#sitesSec .st-dates{list-style:none;margin:0;padding:0}
+#sitesSec .st-dates li{display:grid;grid-template-columns:56px minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:7px 0;font-size:13px;color:var(--ink)}
+#sitesSec .st-dates li+li{border-top:1px dashed var(--line)}
+#sitesSec .st-dates li.past{color:var(--ink-3)}
+#sitesSec .st-dd{font-weight:600;font-variant-numeric:tabular-nums}
+#sitesSec .st-xs{background:none;border:0;color:var(--ink-4);cursor:pointer;font-size:16px;line-height:1;padding:0 2px}
+#sitesSec .st-xs:hover{color:var(--red)}
+#sitesSec .st-add{background:none;border:0;padding:6px 0 0;font:inherit;font-size:13px;font-weight:600;color:var(--red);cursor:pointer}
+#sitesSec .st-notes{margin:0;font-size:13.5px;color:var(--ink-body);line-height:1.55;overflow-wrap:anywhere}
+#sitesSec .st-acts{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:22px;padding-top:18px;border-top:1px solid var(--hair)}
+#sitesSec .st-actnote{font-size:12px}
+#sitesSec .st-rm{margin-left:auto;background:none;border:0;font:inherit;font-size:13px;color:var(--ink-3);cursor:pointer}
+#sitesSec .st-rm:hover{color:var(--red)}
+#sitesSec .st-val{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px;margin-top:18px;padding:16px 18px;background:var(--wash);border:1px solid var(--line);border-radius:8px}
+#sitesSec .st-vl{display:block;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--ink-3)}
+#sitesSec .st-vb{display:block;font-family:var(--serif);font-weight:500;font-size:30px;line-height:1.15;color:var(--ink);margin:4px 0 2px;font-variant-numeric:tabular-nums}
+#sitesSec .st-vc{display:block;font-size:15px;font-weight:600;color:var(--ink);margin:8px 0 4px}
+#sitesSec .st-vs{display:block;font-size:12.5px;color:var(--ink-3)}
+#sitesSec .st-chart{display:block;width:100%;max-width:560px;height:auto;overflow:visible}
+#sitesSec .st-cv text,#sitesSec text.st-cv{font:600 11px Inter,system-ui,sans-serif;fill:var(--ink)}
+#sitesSec text.st-cd{font:500 10.5px Inter,system-ui,sans-serif;fill:var(--ink-3)}
+#sitesSec .st-fold{margin-top:16px}
+#sitesSec .st-fold>summary{cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink-2);list-style-position:inside;margin-bottom:10px}
+#sitesSec .st-fold>summary b{color:var(--ink-3);margin-left:4px}
+#sitesSec .st-addwrap{margin:0 0 var(--s5);padding:20px;border:1px solid var(--edge);border-radius:8px;background:var(--card);box-shadow:var(--shadow),var(--lift)}
+#sitesSec .st-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px;align-content:start}
+#sitesSec .st-addwrap .st-form{grid-template-columns:repeat(4,minmax(0,1fr))}
+#sitesSec .st-form label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:var(--ink-2);min-width:0}
+#sitesSec .st-form label.hide{display:none}   /* the .hide note at the top of this sheet */
+#sitesSec .st-form input,#sitesSec .st-form select{width:100%;min-width:0}
+#sitesSec .st-wide{grid-column:1/-1}
+#sitesSec .st-fa{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#sitesSec .st-fh{grid-column:1/-1;margin:0 0 2px;font-family:var(--serif);font-weight:500;font-size:19px;color:var(--ink)}
+#sitesSec .st-edit{margin-top:18px}
+#sitesSec .st-kind{display:flex;gap:4px;padding:3px;border:1px solid var(--edge);border-radius:8px;background:var(--wash)}
+#sitesSec .st-kind button{flex:1;font:inherit;font-size:13px;color:var(--ink-2);background:none;border:0;border-radius:6px;padding:7px 8px;cursor:pointer;white-space:nowrap}
+#sitesSec .st-kind button.on{background:var(--card);color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--edge)}
+#sitesSec .st-dform{display:grid;grid-template-columns:150px minmax(0,1fr) auto auto;gap:8px;align-items:center;margin-top:8px}
+#sitesSec .st-empty{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border:1px solid var(--edge);border-radius:8px;background:var(--card);overflow:hidden;box-shadow:var(--shadow),var(--lift)}
+#sitesSec .st-ei{padding:34px 34px 30px;background:var(--wash);border-right:1px solid var(--edge)}
+#sitesSec .st-ei .st-dot{background:var(--wash)}
+#sitesSec .st-empty>.st-form{padding:30px 32px}
+#sitesSec .st-k{margin:0;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;color:var(--red)}
+#sitesSec .st-eh{font-family:var(--serif);font-weight:500;font-size:26px;line-height:1.2;letter-spacing:-.015em;margin:8px 0 12px;color:var(--ink);text-wrap:balance}
+#sitesSec .st-ei>p{margin:0;color:var(--ink-2);font-size:14px;line-height:1.6;max-width:44ch}
+#sitesSec .st-ways{list-style:none;margin:26px 0 0;padding:0;display:grid;gap:10px}
+#sitesSec .st-ways li{font-size:13px;color:var(--ink-2);padding:10px 12px;background:var(--card);border:1px solid var(--line);border-radius:8px}
+#sitesSec .st-ways b{display:block;color:var(--ink);font-size:13px;margin-bottom:2px}
+@media (max-width:900px){
+  #sitesSec .st-grid{grid-template-columns:minmax(0,1fr)}
+  #sitesSec .st-addwrap .st-form{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:640px){
+  #sitesSec .st-empty,#sitesSec .st-form,#sitesSec .st-addwrap .st-form{grid-template-columns:minmax(0,1fr)}
+  #sitesSec .st-ei{border-right:0;border-bottom:1px solid var(--edge);padding:24px 20px}
+  #sitesSec .st-empty>.st-form{padding:22px 20px}
+  #sitesSec .st-eh{font-size:22px}
+  #sitesSec .st-pane{padding:18px 16px}
+  #sitesSec .st-val{grid-template-columns:minmax(0,1fr)}
+  #sitesSec .st-sl{font-size:11px}
+  #sitesSec .st-sd{font-size:10.5px}
+  #sitesSec .st-dform{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  #sitesSec .st-kind button{font-size:12px;padding:7px 4px}
+  /* On a phone each row is a card: the address across the top, then the
+     figures two to a line, each carrying its own label. */
+  #sitesSec .st-tw{overflow:visible}
+  #sitesSec .st-tbl{min-width:0}
+  #sitesSec .st-tbl thead{display:none}
+  #sitesSec .st-tbl,#sitesSec .st-tbl tbody,#sitesSec .st-tbl tfoot{display:block}
+  #sitesSec .st-tbl tr.st-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 14px;padding:14px 16px;border-bottom:1px solid var(--hair)}
+  #sitesSec .st-tbl tr.st-row td{display:block;padding:0;border:0;text-align:left}
+  #sitesSec .st-tbl tr.st-row td:first-child{grid-column:1/-1}
+  #sitesSec .st-tbl tr.st-row td.st-cv,#sitesSec .st-tbl tr.st-row td:empty{display:none}
+  #sitesSec .st-tbl td[data-l]::before{content:attr(data-l);display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:2px}
+  #sitesSec .st-tbl tr.st-row.on td:first-child{box-shadow:none}
+  #sitesSec .st-tbl tr.st-row:hover td,#sitesSec .st-tbl tr.st-row.on td{background:none}
+  #sitesSec .st-tbl tr.st-row.on{background:var(--wash);box-shadow:inset 3px 0 0 var(--red-fill)}
+  #sitesSec .st-tbl tr.st-open{display:block}
+  #sitesSec .st-tbl tr.st-open td{display:block;padding:0 8px 12px}
+  #sitesSec .st-tbl tfoot tr{display:flex;justify-content:space-between;gap:10px}
+  #sitesSec .st-tbl tfoot td{border:0;padding:12px 16px}
+  #sitesSec .st-tbl tfoot td:empty{display:none}
+}
 </style>
   <p class="kicker">Private to you</p>
   <h1 class="h">Data</h1>
@@ -863,6 +1033,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     <div class="vt-wrap" id="vtWrap">
     <div class="vt-tabs" id="vaultTabs" role="tablist" aria-label="Your Data">
       <button type="button" role="tab" class="vt-tab on" id="tab-book" data-tab="book" aria-selected="true" aria-controls="panelBook">Book <b id="tabBookN"></b></button>
+      <button type="button" role="tab" class="vt-tab vt-off" id="tab-sites" data-tab="sites" aria-selected="false" aria-controls="panelSites">Sites <b id="tabSitesN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-pipe" data-tab="pipe" aria-selected="false" aria-controls="panelPipe">Pipeline <b id="tabPipeN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-props" data-tab="props" aria-selected="false" aria-controls="panelProps">Properties <b id="tabPropsN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-watch" data-tab="watch" aria-selected="false" aria-controls="panelWatch">Watchlist <b id="tabWatchN"></b></button>
@@ -1309,6 +1480,22 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     <p id="trunc" class="note hide" style="margin-top:var(--s3)">Showing the most recent 1,000 comps.
       The figures below are drawn from those, so your full book may be larger.</p>
     </div>
+    <div class="vt-panel" id="panelSites" data-panel="sites" role="tabpanel" aria-labelledby="tab-sites">
+    <!-- ------------------------------------------------------------------
+         Sites (2026-10-05, migration 060): a development firm's one tab for
+         the land and buildings it is buying, owns or tracks, in place of the
+         broker's Pipeline and Properties tabs (the owner's pick "M2" of the
+         Sites drafts). /sites-tab.js draws everything inside #sitesRoot;
+         applyShop() is the one place that decides a member sees it, and
+         only a development firm's member does. Everyone else's Data page is
+         exactly what it was.
+         ------------------------------------------------------------------ -->
+    <div class="deck" id="deckSites">
+      <span class="dlab">Your sites</span><span class="dln"></span>
+      <button class="dact" id="sitesAddToggle" aria-expanded="false" aria-controls="sitesRoot">+ Add a site</button>
+    </div>
+    <section id="sitesSec"><div id="sitesRoot"></div></section>
+    </div>
     <div class="vt-panel" id="panelPipe" data-panel="pipe" role="tabpanel" aria-labelledby="tab-pipe">
     <!-- ------------------------------------------------------------------
          The pipeline deck: work coming IN, rather than work already done.
@@ -1580,6 +1767,8 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 <script>window.__VAULT_BOOT__=${bootJson};</script>
 <script src="/gut-check.js"></script>
 <script src="/building-facts.js"></script>
+<script src="/sites.js"></script>
+<script src="/sites-tab.js"></script>
 <script>
 (function(){
   var $=function(id){return document.getElementById(id)};
@@ -1820,7 +2009,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     $("vaultLocked").className="invite";
     // Nothing in the Book or Pipeline tab can show, so the page opens on the
     // first tab that is the member's either way.
-    if(curTab==="book"||curTab==="pipe")setTab("props",true);
+    if(curTab==="book"||curTab==="pipe"||curTab==="sites")setTab("props",true);
     // The page subtitle describes the book and the pipeline. With both
     // locked it would be describing a page that is not on screen.
     $("deckSub").textContent="Your properties and your watchlist. Only you can see this.";
@@ -1934,6 +2123,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     uploads=o.j.uploads||[];
     myFirm=o.j.firm||null;
     loadFirmBuildings();
+    applyShop();
     sharedIds={};
     (o.j.sharedWithFirm||[]).forEach(function(id){sharedIds[id]=true});
     // The firm filter is furniture for a broker in no firm, so it is not
@@ -3414,11 +3604,11 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // hash (#pipeline, #properties...), so a link can open the vault on one;
   // the old section ids are read too, since that is what a link would have
   // named before there were tabs.
-  var TABS=["book","pipe","props","watch","contrib"];
-  var PANEL={book:"panelBook",pipe:"panelPipe",props:"panelProps",watch:"panelWatch",contrib:"panelContrib"};
-  var HASH_OF_TAB={book:"book",pipe:"pipeline",props:"properties",watch:"watchlist",contrib:"contributions"};
-  var TAB_OF_HASH={book:"book",pipeline:"pipe",properties:"props",watchlist:"watch",contributions:"contrib",
-    compsSec:"book",pipeSec:"pipe",propsSec:"props",mktSec:"watch",contribSec:"contrib"};
+  var TABS=["book","sites","pipe","props","watch","contrib"];
+  var PANEL={book:"panelBook",sites:"panelSites",pipe:"panelPipe",props:"panelProps",watch:"panelWatch",contrib:"panelContrib"};
+  var HASH_OF_TAB={book:"book",sites:"sites",pipe:"pipeline",props:"properties",watch:"watchlist",contrib:"contributions"};
+  var TAB_OF_HASH={book:"book",sites:"sites",pipeline:"pipe",properties:"props",watchlist:"watch",contributions:"contrib",
+    compsSec:"book",sitesSec:"sites",pipeSec:"pipe",propsSec:"props",mktSec:"watch",contribSec:"contrib"};
   var curTab="book";
   function tabCount(id,text,hot){
     var el=$(id);
@@ -3457,6 +3647,33 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     setTab(next); $("tab-"+next).focus();
     e.preventDefault();
   });
+
+  // ---- Sites, for a development firm (2026-10-05, migration 060) ----------------
+  // The one place that decides who sees the Sites tab: a member of a firm
+  // whose kind is "development" (ORG.kindOf, carried on /api/vault's firm
+  // block). For them Sites takes the place of Pipeline and Properties -- a
+  // developer does not write BOVs, and every property they hold is in Sites
+  // with Properties' own features -- and a link to either old tab lands on
+  // Sites. Everyone else, broker firms and people in no firm, keeps exactly
+  // the tabs they had. The drawing lives in /sites-tab.js (the global
+  // SITESTAB); without it, or without SITES, nothing changes, so a stale or
+  // failed script costs the new tab and never the old ones.
+  var sitesView=null;
+  function applyShop(){
+    var dev=!!(myFirm&&myFirm.kind==="development"&&window.SITESTAB&&window.SITES);
+    $("tab-sites").classList.toggle("vt-off",!dev);
+    $("tab-pipe").classList.toggle("vt-off",dev);
+    $("tab-props").classList.toggle("vt-off",dev);
+    if(!dev){ if(curTab==="sites")setTab("book",true); return; }
+    if(curTab==="pipe"||curTab==="props")setTab("sites",true);
+    if(!sitesView){
+      sitesView=window.SITESTAB.mount({
+        root:$("sitesRoot"),addToggle:$("sitesAddToggle"),esc:esc,escA:escA,
+        firm:myFirm,showValues:showValues,propTypes:PROP_TYPES,
+        setCount:function(text,hot){tabCount("tabSitesN",text,hot)}
+      });
+    }
+  }
 
   // ---- The book, as a ledger under a map band, with a comp set -----------------
   // Draft C (2026-10-04), which replaced Draft B's list beside a map. "map"

@@ -92,6 +92,7 @@ const TABLES = [
   ["permit_watch_events", "054-permit-watches.sql"],
   ["permit_watch_mutes",  "055-permit-watch-firm.sql"],
   ["permit_alerts",       "057-permit-alerts.sql"],
+  ["user_sites",          "060-user-sites.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -291,6 +292,10 @@ const COLUMNS = [
   // Messages list answers "Couldn't load your messages" (deploy order HARD).
   ["msg_thread_members", ["nickname"],                               "059-chat-names.sql"],
   ["hub_notify",        ["nickname", "hidden_at"],                   "059-chat-names.sql"],
+  // Every column the /api/sites select names: one missing and the Sites tab
+  // answers "Couldn't load your sites" for everybody.
+  ["user_sites",        ["stage", "stage_dates", "dates", "portfolio_item_id", "asking_price",
+                         "earnest_money", "seller", "acres", "zoning", "market", "updated_at"], "060-user-sites.sql"],
 ];
 
 // What this tool deliberately CANNOT see: 037-org-shop-kind-tenant-rep.sql

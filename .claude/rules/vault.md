@@ -419,7 +419,66 @@ paths:
       CSV guards formula cells like the server's export.
     The privacy ledger (`#trustLine`) moved to the foot of the Book tab: B's
     pictures dropped it, but it is the "0 published" proof and the home of
-    the credit identity form, so it stays on the page.
+    the credit identity form, so it stays on the page. (Its four figures
+    moved again, to the top of the Book, with Draft C below. B's list, chips
+    and whole-view batch buttons are gone; the rules above that name them
+    describe Draft C's ledger now.)
+  - **Draft C of the Book: one ledger under a map band (2026-10-04; the
+    owner's pick of the Book drafts at
+    https://claude.ai/artifact/MKtaf6giRJGjASeL3mUmhf).** It replaced Draft
+    B's list beside a map, which strained at 30 comps (three rows of filter
+    chips, a toolbar wrapping onto two lines) and broke down at 425. The tabs,
+    the comp set, the sheet and the map's no-geocoding rule above all stand.
+    Eight rules, test-pinned in `test/vault-page.test.js` (the last block,
+    plus the rewritten Bulk publish and push blocks):
+    - **The figures sit at the top (`#bookStrip`), whole-book.** Comps (with
+      its markets and states), Sales and Leases (each a count, then the
+      dominant type's median from `psfStats` / `rentStats`' `dominant`: the
+      old tile's narrow-don't-decline rule, with the coverage said when the
+      book spans types, and "mixed lease types" disclosed), Published (still
+      green, still the zero-staying-zero proof) and, for a broker in a firm, a
+      fifth cell for the shelf, placed last so the phone's 2x2 wrap still
+      places dividers by position. It is outside `#compsSec`, so an empty
+      vault still shows its zeros; it is in `VAULT_DECKS`, and `.ledger.hide`
+      is restated because the ledger is a deck now rather than a child of
+      one. The trust line keeps the promise and the credit name. The imports
+      count moved to the Imports summary (`#upsN`).
+    - **One ledger, grouped** by market (default), type or nothing
+      (`#bmGroup`, remembered per browser as `vaultLedgerGroup`). Markets
+      holding one comp each fold into one "N other markets" group once there
+      are two of them. Past `LEDGER_FOLD` (60) rows, every group after the
+      first starts folded and an open group shows `LEDGER_CAP` (10) rows with
+      "Show all N in X"; a search opens everything, because a match folded
+      away is one nobody can see. A group header's box ticks the whole group
+      into the set. A pin opens its row whatever folded or capped it.
+    - **Quick views are settings of the selects**, never filters of their
+      own (All, Sales, Leases, Last 90 days, and Not shared yet for a firm),
+      and the one that is on is read back from them (`quickOn`). The 90-day
+      window is the one new filter: `recentDays`, a clause in `view()`, and
+      reset by `clearFilters()`, which is now the ONE place every filter is
+      reset (Clear, the empty result's Clear, opening an import, the Edit
+      link). A filter no view describes (a rollup card's market, the Table
+      view's dropdowns) shows beside them as a pill with a ×.
+    - **No whole-view Publish or Share.** `#pubAll` and `#firmAll` are gone:
+      "Publish 412 comps" sat one click from the Find box, acting on whatever
+      the filter happened to show. A batch starts from the comp set (tick
+      rows, a market header, or the select-all), and the set's buttons call
+      `publishList` / `shareListWithFirm` with the same confirms. The line
+      under an import result still runs `shareAllWithFirm` over
+      `firmCandidates` (the current view, computed in `render()`), through
+      the same confirm.
+    - **The map is a band** across the top (`#bmBand`), drawing the same
+      `view()`, hideable (`vaultLedgerMap`). `#bmNoLoc` hides with it.
+    - **The Table view and the spreadsheet are behind More** (`#ledMore`,
+      `#ledMenu`, its open state a variable rather than read off the class).
+      The Ledger | Table switch shows only in the Table view, as the way
+      back. The "map" names (`bookView` "map", `#bookMap`, `.vd-map`,
+      `body.vd-mapview`, the `vaultBookView` value) are the ledger's; they
+      were not renamed, because every rule above already names them.
+    - **The comp set bar is sticky** at the foot of the window once it holds
+      something, because the ledger can be a page long.
+    - **A rate cell says what is missing**: "rent not entered", "no size",
+      "undisclosed", never a lone dash, which read as lost data.
   - **TWO DECKS, not ten peer sections** (Vault Direction U, approved and
     shipped 2026-08-10; card `vault/direction-u-two-decks.html`). The page is
     two products sharing one scroll, so it carries exactly two deck rules —
@@ -499,8 +558,10 @@ paths:
     - **Bulk publish** (`POST /api/vault/publish-many`, 2026-08-17). Publishing
       is how the public corpus grows and it was one button plus one identical
       confirm per comp, so in practice nobody published a book — they published
-      a comp. The button counts the UNPUBLISHED comps in the current view and
-      deliberately does not decide eligibility: `VAULT.canPublish` is the rule,
+      a comp. Since Draft C (2026-10-04) a batch starts from the comp set,
+      not a button counting the current view; the set's Publish counts the
+      UNPUBLISHED comps the broker ticked and deliberately does not decide
+      eligibility: `VAULT.canPublish` is the rule,
       a browser copy would be a second one, and the route reports what it
       skipped and why (naming the first reason, since they repeat). Its own
       route rather than an `ids` array on the single one — that contract's
@@ -621,7 +682,9 @@ paths:
       their work having been thrown away. Pipeline empty is independent: a
       waiting lead must show even when the book is empty.
     - **The trust line shows zeros.** It exists to let a broker watch
-      "0 published" stay at zero. Hidden until 2026-08-13 because it sat over
+      "0 published" stay at zero. (Since 2026-10-04 its figures are
+      `#bookStrip` at the top of the Book, outside `#compsSec`, so the
+      zeros still show for an empty vault.) Hidden until 2026-08-13 because it sat over
       numbered onboarding cards; with the workspace showing, the zeros are
       the honest empty state. Privacy copy still lives in `#bookEmpty`'s
       collapsed "Required columns & privacy details" disclosure, is restated

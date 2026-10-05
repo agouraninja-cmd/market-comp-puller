@@ -4543,5 +4543,11 @@
     "type": "improvement",
     "title": "Vault subtitle speaks to development shops",
     "details": "A member of a development shop now reads “Your comps, absorption rates, and feasibility calculations in one place. Visible only to you.” under the Vault heading, instead of a broker’s “Closed deals, leads, and BOVs.” Broker shops and solo accounts keep today’s line, and the shared-with-your-firm version still corrects itself."
+  },
+  {
+    "date": "2026-10-04",
+    "type": "feature",
+    "title": "The Book is now a ledger grouped by market",
+    "details": "The Book is now one table grouped by market, so a busy book reads as a list of markets you open one at a time: past 60 comps, every market after the first starts folded, and markets with one comp each share a single line. The book’s figures moved from the foot to the top (comps and markets, sales and leases with their medians, published, and the firm’s shelf for a firm member). Quick views (All, Sales, Leases, Last 90 days, Not shared yet) replace the rows of filter chips, the map is a band across the top you can hide, and the table and spreadsheet are behind More. There is no more “Publish 412 comps” button beside the search box: publishing and sharing a batch start from the comps you tick, and ticking a market’s header ticks the whole market. A lease with no rent now says “rent not entered” instead of a dash."
   }
 ]

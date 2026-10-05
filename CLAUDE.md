@@ -14,7 +14,11 @@ records when not entered), a plain-English market summary, a "What's Driving
 Prices Here" card (model-supplied `value_drivers` + `market_trend`), a market
 position chart, a comp map, and the full sortable comp table with per-comp
 source-confidence badges (Verified / Public record / Listing / News /
-Estimate). There is deliberately **no mode toggle** — an earlier owner-mode /
+Estimate). Signed-in members move between **Home** (the firm's shared space, `/desk`)
+and **Data** (their own private comps, `/vault`) — the customer-facing names
+since 2026-10-04; code, routes and the rules files still say "desk"/"workspace"
+and "vault", and copy must never say "Workspace" or "Vault" again.
+There is deliberately **no mode toggle** — an earlier owner-mode /
 comps-mode split was merged (commit 87095aa); `#owner` survives only as a
 deep link that pre-opens the property-details section. The hero carries a
 "Get a free Broker Opinion of Value" button — the site's lead funnel; those

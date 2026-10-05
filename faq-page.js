@@ -145,7 +145,7 @@ function faqEntries(pricing = {}) {
     // "$/SF, size and date only" as the universal answer under-describes the
     // first case and is simply wrong about the third.
     ["Who can see my numbers?",
-     "Your price and NOI never leave your browser. Vault comps you upload are visible only to you " +
+     "Your price and NOI never leave your browser. Comps you upload to your Data are visible only to you " +
      "until you deliberately publish one or share it with your firm, and either can be withdrawn. " +
      "On a report you share it depends on the door: on a public link they are removed entirely; on " +
      "a share with a named client or with your firm they appear as $/SF, size and date only — no " +
@@ -170,7 +170,7 @@ function faqEntries(pricing = {}) {
      (Number.isInteger(pricing.freeReports) && pricing.freeReports > 0
        ? `A free account runs ${pricing.freeReports} full report${pricing.freeReports === 1 ? "" : "s"} a month on any commercial address, three years back, with no card. `
        : "A free account runs a full report on any commercial address, three years back, with no card. ") +
-     `Individual Pro is $${monthly} a month${pricing.annual ? ` (or $${pricing.annual} a year)` : ""} and adds the vault, Address Explorer, a ten-year ` +
+     `Individual Pro is $${monthly} a month${pricing.annual ? ` (or $${pricing.annual} a year)` : ""} and adds Data for your own comps, Address Explorer, a ten-year ` +
      `lookback, unlimited exports and your branding. Firms are $${seat} a seat with a ${minSeats}-seat ` +
      "minimum, and every seat is a Pro seat."],
   ];
@@ -295,7 +295,7 @@ function renderFaqPageBody({ signedIn = false, pricing = {}, esc = (s) => s } = 
   // "Create an ACCOUNT", not "Create a FREE account" — the owner rejected the
   // longer string across the site (2026-09-02). pricing-page.js's buyLabel
   // moved with it.
-  const startLabel = signedIn ? "Open your workspace" : "Create an account";
+  const startLabel = signedIn ? "Go to Home" : "Create an account";
 
   // The first drawer ships open so the page is never a wall of closed rows.
   const blocks = faqEntries(pricing).map(([q, a], i) =>

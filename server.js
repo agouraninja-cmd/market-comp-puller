@@ -11466,7 +11466,7 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
   // /?settings=1 URL the wall exempts, and nothing in the chrome points at
   // it. Discoverable dark mode is a member feature now.
   return (desk
-    ? `<a id="navDesk" href="/desk" hidden>Workspace</a>` +
+    ? `<a id="navDesk" href="/desk" hidden>Home</a>` +
       `<a id="navSignIn" href="/?auth=signin" hidden>Sign in</a>`
     : "") +
     `<details id="navAcct" class="acct" hidden>` +
@@ -12831,7 +12831,7 @@ const marketBar = (signedIn = false, current = "") =>
   // the owner's order. A signed-out visitor simply reads the two public rows
   // with nothing around them.
   (signedIn
-    ? `<a href="/desk">Workspace</a>` +
+    ? `<a href="/desk">Home</a>` +
       // Messages, its own tab (owner's, 2026-09-01). Deliberately NOT hidden
       // and hydrated the way #navVault and #navBulk are: those two ask an
       // ENTITLEMENT question, which is a database read this synchronous render
@@ -12843,7 +12843,7 @@ const marketBar = (signedIn = false, current = "") =>
       // account slots are — its entitlement is a database read this
       // synchronous render must never make, so it ships hidden. Same for
       // bulk, below the public pair.
-      `<a id="navVault" href="/vault"${current === "/vault" ? ' aria-current="page"' : ""} hidden>Vault</a>` +
+      `<a id="navVault" href="/vault"${current === "/vault" ? ' aria-current="page"' : ""} hidden>Data</a>` +
       // BELOW the vault (owner's, 2026-09-01). It shipped above it for one
       // afternoon; this is the placement.
       //
@@ -14182,7 +14182,7 @@ const MARKET_RESEARCH_JS = `(function(){
     var type = watch.getAttribute("data-type") || "";
     function setWatching() {
       watch.disabled = true;
-      watch.textContent = "Watching — see your workspace";
+      watch.textContent = "Watching — see it on Home";
     }
     fetch("/api/watchlist", { cache: "no-store" }).then(function (r) {
       return r.ok ? r.json() : null;
@@ -15075,7 +15075,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     `<button class="btn" type="submit">${btnLabel}</button></form>`;
   const cta = signedIn
     ? `<div class="cta"><h2>Use this ${escHtml(p.type.toLowerCase())} market in your work</h2>` +
-      `<p>Watch it on your workspace, or take these comps with you. Automated estimates, not an appraisal.</p>` +
+      `<p>Watch it on your Home page, or take these comps with you. Automated estimates, not an appraisal.</p>` +
       `<button type="button" class="btn" id="mktWatch" data-market="${escHtml(p.city + ", " + p.state)}" data-type="${escHtml(p.type)}">Watch this market</button>` +
       (compRows
         ? `<p style="margin:14px 0 0"><button type="button" class="alt" id="mktCsv" data-slug="${escHtml(slug)}">Download these comps as CSV</button></p>`
@@ -15921,7 +15921,7 @@ function renderPrivacyPageHTML(signedIn) {
 
     `<h2>7. Data Retention and Deletion</h2>` +
     `<p>We retain information for as long as it is needed to provide the Service. You may delete your ` +
-    `account at any time from within the application (Workspace, Delete account); doing so removes the ` +
+    `account at any time from within the application (Settings, Delete account); doing so removes the ` +
     `account and its saved data. To request deletion of lead or submission data, contact us at ` +
     `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
 
@@ -15969,7 +15969,7 @@ function renderHomeHTML({ signedIn = false } = {}) {
   // is spelled out here.
   const title = "Commercial Real Estate Comps & Valuations | CompNinja";
   const description =
-    "Commercial real estate comps with a private vault behind them. Your own closed " +
+    "Commercial real estate comps with your own private data behind them. Your own closed " +
     "deals sit inside your reports, with a cited source on every comp.";
   const canonical = `${SITE_URL}/`;
 
@@ -15994,13 +15994,13 @@ function renderHomeHTML({ signedIn = false } = {}) {
         applicationCategory: "BusinessApplication",
         operatingSystem: "Web",
         description: "Free reports of recent comparable sales and lease transactions for any commercial property, " +
-          "with maps, price per square foot, and PDF export. Members can keep a private vault of their own " +
-          "closed deals, which appears only in their own reports.",
+          "with maps, price per square foot, and PDF export. Members can keep their own " +
+          "closed deals as private data, which appears only in their own reports.",
         featureList: [
           "Comparable sales and lease comps",
           "Estimated value range",
           "Source badge on every comp",
-          "Private comp vault",
+          "Private comp data",
           "CSV, XLSX and PowerPoint export",
           "PDF report export",
         ],
@@ -19005,7 +19005,7 @@ async function vaultReadPayload(req, params) {
   const ent = entR.status === "fulfilled" ? entR.value : null;
   if (!ent || !ent.canUseVault) {
     return { status: 403, body: {
-      error: "The private vault is part of Pro.",
+      error: "Keeping your own private comps in Data is part of Pro.",
       code: "broker_required",
       // Not every deck on /vault is behind this refusal, and that is the
       // whole point of it being a per-deck gate (2026-09-01, "Three
@@ -19024,7 +19024,7 @@ async function vaultReadPayload(req, params) {
   }
   if (!DB_CONFIGURED) {
     return { status: 503, body: {
-      error: "The vault is unavailable right now — nothing was saved. Please try again in a minute.",
+      error: "Data is unavailable right now — nothing was saved. Please try again in a minute.",
       // Carried for the reason above. The personal decks read from their own
       // endpoints, which keep their file fallback, so they can still render
       // against a database this page refuses without.
@@ -21731,7 +21731,7 @@ const server = http.createServer((req, res) =>
           noindex: true,
           body: `<div class="wrap"><h1>This link is not recognized</h1>` +
             `<p>It may have been truncated by an email client, or the site's keys may have been rotated since it was sent. ` +
-            `You can turn the emails off from your workspace, or reply to any CompNinja email and we will do it for you.</p></div>`,
+            `You can turn the emails off from your Home page, or reply to any CompNinja email and we will do it for you.</p></div>`,
         }));
       }
       if (req.method === "POST") {
@@ -21747,7 +21747,7 @@ const server = http.createServer((req, res) =>
               ? "You will get a digest again when a market you watch has new comps."
               : "You will not get another watchlist digest. Your watchlist itself is untouched, and the same markets are still on your desk."}</p>` +
             `<p><a href="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "" : "&amp;on=1"}">` +
-            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/desk">Go to your workspace</a></p></div>`,
+            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/desk">Go to Home</a></p></div>`,
         }));
       }
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
@@ -21758,7 +21758,7 @@ const server = http.createServer((req, res) =>
         body: `<div class="wrap"><h1>${resubscribe ? "Turn these emails back on?" : "Turn off watchlist emails?"}</h1>` +
           `<p>${resubscribe
             ? "You will get an email when a market you watch has new comps."
-            : "You will stop getting the digest when markets you watch have new comps. Your watchlist stays exactly as it is, and you can still see it on your workspace."}</p>` +
+            : "You will stop getting the digest when markets you watch have new comps. Your watchlist stays exactly as it is, and you can still see it on your Home page."}</p>` +
           `<form method="POST" action="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "&amp;on=1" : ""}">` +
           `<button type="submit" style="background:#1A2433;color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:600;cursor:pointer">` +
           `${resubscribe ? "Yes, turn them on" : "Yes, turn them off"}</button></form></div>`,
@@ -21840,7 +21840,7 @@ const server = http.createServer((req, res) =>
               : "You will not get another email about notes. Nothing else changes: every hub you were invited to is still open to you, " +
                 "the notes are all still there, and you can read and reply any time."}</p>` +
             `<p><a href="${link(!resubscribe)}">${resubscribe ? "Turn them off again" : "Turn them back on"}</a>` +
-            ` &middot; <a href="/desk">Go to your workspace</a></p></div>`,
+            ` &middot; <a href="/desk">Go to Home</a></p></div>`,
         }));
       }
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
@@ -23894,14 +23894,14 @@ const server = http.createServer((req, res) =>
       const ent = await entitlementsFor(req);
       if (!ent.canUseVault) {
         sendJson(res, 403, {
-          error: "The private vault is part of Pro.",
+          error: "Keeping your own private comps in Data is part of Pro.",
           code: "broker_required",
         });
         return null;
       }
       if (!DB_CONFIGURED) {
         sendJson(res, 503, {
-          error: "The vault is unavailable right now — nothing was saved. Please try again in a minute.",
+          error: "Data is unavailable right now — nothing was saved. Please try again in a minute.",
         });
         return null;
       }
@@ -24447,7 +24447,7 @@ const server = http.createServer((req, res) =>
         sendJson(res, p.status, p.body);
       })().catch((err) => {
         console.error("vault read failed:", err.message);
-        sendJson(res, 502, { error: "Could not load your vault. Please try again." });
+        sendJson(res, 502, { error: "Could not load your Data. Please try again." });
       });
       return;
     }
@@ -24514,7 +24514,7 @@ const server = http.createServer((req, res) =>
             `broker_comps?id=eq.${encodeURIComponent(id)}` +
             `&user_id=eq.${encodeURIComponent(user.id)}&limit=1`);
           const comp = rows && rows[0];
-          if (!comp) return sendJson(res, 404, { error: "That comp isn't in your vault." });
+          if (!comp) return sendJson(res, 404, { error: "That comp isn't in your Data." });
 
           // --- unpublish ---
           if (publish === false) {
@@ -24900,13 +24900,13 @@ const server = http.createServer((req, res) =>
           // the caller's side a malformed id and someone else's id are the
           // same "not in your vault", and treating them alike is also what
           // stops this route confirming which ids are real by status code.
-          if (!VAULT.isUuid(id)) return sendJson(res, 404, { error: "That comp isn't in your vault." });
+          if (!VAULT.isUuid(id)) return sendJson(res, 404, { error: "That comp isn't in your Data." });
 
           const rows = await sbRequest("GET",
             `broker_comps?id=eq.${encodeURIComponent(id)}` +
             `&user_id=eq.${encodeURIComponent(user.id)}&limit=1`);
           const comp = rows && rows[0];
-          if (!comp) return sendJson(res, 404, { error: "That comp isn't in your vault." });
+          if (!comp) return sendJson(res, 404, { error: "That comp isn't in your Data." });
 
           if (req.method === "DELETE") {
             // Retract-first is correct here: a delete has no validation step
@@ -25193,7 +25193,7 @@ const server = http.createServer((req, res) =>
         // work. 404 matches the sibling routes (/api/vault/comp, publish-many,
         // firm, bulk) and, as there, treats a malformed id and someone else's id
         // as the same "not in your vault" rather than confirming which ids exist.
-        if (!VAULT.isUuid(id)) return sendJson(res, 404, { error: "That import isn't in your vault." });
+        if (!VAULT.isUuid(id)) return sendJson(res, 404, { error: "That import isn't in your Data." });
         // user_id in the filter, not just the id: without it, knowing another
         // broker's upload id would be enough to delete their data.
         await sbRequest("DELETE",
@@ -26572,7 +26572,7 @@ const server = http.createServer((req, res) =>
         // on every attempt by luck.
         if (visibility === "org" && includePrivate) {
           return sendJson(res, 400, {
-            error: "Private vault comps can't be shared with a firm yet. They will be counted in the valuation without their details.",
+            error: "Your private comps can't be shared with a firm yet. They will be counted in the valuation without their details.",
           });
         }
 
@@ -29026,7 +29026,7 @@ const server = http.createServer((req, res) =>
           const ent = await entitlementsFor(req);
           if (!ent.canUseVault) {
             return sendJson(res, 403, {
-              error: "Sending comps from your vault is part of Pro.",
+              error: "Sending comps from your Data is part of Pro.",
               code: "vault_required",
             });
           }
@@ -29038,7 +29038,7 @@ const server = http.createServer((req, res) =>
             if (built) compRows.push({ raw: r, built });
           }
           if (!compRows.length && !want.body) {
-            return sendJson(res, 400, { error: "Those comps aren't in your vault." });
+            return sendJson(res, 400, { error: "Those comps aren't in your Data." });
           }
         }
 
@@ -29393,7 +29393,7 @@ const server = http.createServer((req, res) =>
         if (!g) return;
         const ent = await entitlementsFor(req);
         if (!ent.canUseVault) {
-          return sendJson(res, 403, { error: "Saving a comp needs a vault, which is part of Pro.", code: "vault_required" });
+          return sendJson(res, 403, { error: "Saving a comp to your Data is part of Pro.", code: "vault_required" });
         }
         const body = await readMsgBody(2e3);
         const compId = String((body && body.compId) || "").trim();
@@ -29921,7 +29921,7 @@ const server = http.createServer((req, res) =>
             private: true,
             added_by_email: HUB.normalizeEmail(g.user.email),
           }));
-          if (!rows.length) return sendJson(res, 404, { error: "Those comps were not found in your vault." });
+          if (!rows.length) return sendJson(res, 404, { error: "Those comps were not found in your Data." });
 
           // Duplicates are filtered HERE rather than by ON CONFLICT, and the
           // reason is a bug this route shipped with: it asked PostgREST for
@@ -31667,8 +31667,8 @@ const server = http.createServer((req, res) =>
       // could rebuild the head, the header and the footer by hand; all of that
       // is the shell's now, and the page renders a body.
       res.end(marketShell({
-        title: "Vault · CompNinja",
-        description: "Your private comp workspace.",
+        title: "Data · CompNinja",
+        description: "Your own comps and deal data, private until you share them.",
         canonical: `${SITE_URL}/vault`,
         noindex: true,
         // Cookie PRESENCE, the wall's own cheap rule and what every other

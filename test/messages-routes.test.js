@@ -213,9 +213,9 @@ test("Messages is a row on both rails, in the same place", () => {
   // a member navigates between the app and a server-rendered page. Asserted as
   // a SEQUENCE rather than by position, because the vault row above it ships
   // hidden and closes up for a member without the entitlement.
-  const shared_ = SERVER_JS.slice(SERVER_JS.indexOf('<a href="/desk">Workspace</a>'));
+  const shared_ = SERVER_JS.slice(SERVER_JS.indexOf('<a href="/desk">Home</a>'));
   assert.ok(shared_.indexOf('id="navVault"') < shared_.indexOf("/messages"),
-    "Messages must sit below Vault on the shared rail");
+    "Messages must sit below Data on the shared rail");
   assert.ok(shared_.indexOf("/messages") < shared_.indexOf('href="/markets"'),
     "Messages must sit above Market explorer on the shared rail");
   const app = INDEX_HTML.slice(INDEX_HTML.indexOf('id="myDeskLink"'));

@@ -128,14 +128,14 @@ test("the tools group is labelled on both rails, and shows on neither bar", () =
   }
 });
 
-test("the vault row is called the same thing on both sides of the click", () => {
+test("the Data row is called the same thing on both sides of the click", () => {
   // It read "Your vault" in the app and "Vault" everywhere else, so the row a
   // member was looking at renamed itself the moment they clicked it.
-  assert.match(INDEX_HTML, /id="menuVaultLink"[^>]*>Vault</,
+  assert.match(INDEX_HTML, /id="menuVaultLink"[^>]*>Data</,
     "the app's vault row does not use the shared label");
-  assert.ok(!/>Your vault</.test(INDEX_HTML),
+  assert.ok(!/>Your vault<|>Vault</.test(INDEX_HTML),
     "the old label is still rendered somewhere in the app");
-  assert.match(SERVER_JS, /id="navVault"[^>]*>Vault</,
+  assert.match(SERVER_JS, /id="navVault"[^>]*>Data</,
     "the shared rail's label moved; the app's copy now disagrees with it");
 });
 

@@ -2616,7 +2616,7 @@ test("a re-uploaded book says what was stored, not what was read", async () => {
   await chooseFile(doc, CLEAN_CSV);
   const html = doc.getElementById("res").innerHTML;
   assert.match(html, /Imported 0 comps/);
-  assert.match(html, /16 were already in your vault/);
+  assert.match(html, /16 were already in your Data/);
 });
 
 test("a partly-new book counts both halves separately", async () => {
@@ -2627,7 +2627,7 @@ test("a partly-new book counts both halves separately", async () => {
   await chooseFile(doc, CLEAN_CSV);
   const html = doc.getElementById("res").innerHTML;
   assert.match(html, /Imported 4 comps/);
-  assert.match(html, /1 was already in your vault/, "singular reads correctly");
+  assert.match(html, /1 was already in your Data/, "singular reads correctly");
   // `already` (the vault had it) and `duplicates` (the file repeated it) are
   // different facts and must not be collapsed into one number.
   assert.match(html, /2 duplicates in the file/);
@@ -4197,7 +4197,7 @@ test("a clean template with bare addresses opens the mapper with the one questio
   assert.deepEqual(optionValues(opts), ["", "Meridian, ID", "Boise, ID", "Nampa, ID", "__other"],
     "this file first, then the vault, then coverage, then a free-text door");
   assert.match(opts, /<option value="" selected>/, "nothing is pre-selected");
-  assert.match(opts, /Elsewhere in this file[\s\S]*In your vault[\s\S]*Markets you cover/);
+  assert.match(opts, /Elsewhere in this file[\s\S]*In your Data[\s\S]*Markets you cover/);
   assert.equal(doc.getElementById("mapGo").disabled, false,
     "Import is not held hostage: blank means those rows are left out, as they always were");
 });

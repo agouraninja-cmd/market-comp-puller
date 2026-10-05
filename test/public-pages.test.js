@@ -545,7 +545,7 @@ test("the home page follows the owner's band order", async (t) => {
 
   await t.test("the vault chip is ownership, never provenance", async () => {
     const html = await (await fetch(srv.base + "/")).text();
-    assert.match(html, /class="badge bv">Your vault</,
+    assert.match(html, /class="badge bv">Your Data</,
       "the home page should show the chip a broker meets inside their own report");
     // "Verified" is a word the SERVER awards when a named broker vouches.
     // A private row has not earned it, and the two must never be conflated

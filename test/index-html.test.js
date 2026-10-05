@@ -2954,13 +2954,13 @@ test("the static map's pins are measured from the LOGICAL origin, not the double
 // list or the public-profile switch, and the submit form's thank-you points at
 // the place that has them.
 // ----------------------------------------------------------------------------
-test("the public-profile switch has one home, the Vault, and the thank-you points there", () => {
+test("the public-profile switch has one home, Data (the /vault page), and the thank-you points there", () => {
   assert.ok(!html.includes('id="settingsBrokerRow"'), "the Settings panel grew the public-profile switch back");
   assert.ok(!html.includes('id="brokerProfileToggle"'), "a second public-profile toggle in the app");
   assert.ok(!html.includes("/api/broker/profile"), "the app posts the profile route — the Vault's deck owns that switch");
   // Two tips, one per sign-in state, both naming the Vault.
   assert.match(html, /id="compTipIn" class="hidden [^"]*"[^>]*>[^<]*<a href="\/vault"/, "the signed-in tip does not link the Vault");
-  assert.match(html, /id="compTipOut"[^>]*>[^<]*Vault/, "the signed-out tip does not name the Vault");
+  assert.match(html, /id="compTipOut"[^>]*>[^<]*your Data/, "the signed-out tip does not name Data");
   const at = html.indexOf('document.getElementById("compSuccess").classList.remove("hidden");');
   const before = html.slice(at - 400, at);
   assert.match(before, /compTipIn"\)\.classList\.toggle\("hidden", !currentUser\)/, "the success handler does not pick the tip by sign-in state");

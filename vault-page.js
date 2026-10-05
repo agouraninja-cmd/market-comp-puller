@@ -117,6 +117,9 @@ h1.h{font-family:var(--serif);font-weight:500;margin:0;font-size:var(--t1);line-
 .ledger{border:1px solid var(--edge);border-top:2px solid var(--ink);border-radius:var(--r);
   background:var(--card);display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden;
   margin:0;box-shadow:var(--shadow),var(--lift)}
+/* The display above beats .hide, and since 2026-10-04 the ledger is a deck the
+   lock hides (#bookStrip, in VAULT_DECKS) rather than a child of one. */
+.ledger.hide{display:none}
 .lcell{padding:18px 20px;border-left:1px solid var(--hair);border-right:0;flex:0 1 auto;min-width:auto}
 .lcell:first-child{border-left:0}
 /* #F7FBF8 is the redesign's published-cell green wash; folded to --ok-bg
@@ -165,8 +168,8 @@ section > .sub{margin-top:0;margin-bottom:var(--s5)}
 .btn.ghost{background:var(--card);color:var(--ink-2);border:1px solid var(--edge)}
 .btn.ghost:hover{background:var(--wash);color:var(--ink);border-color:var(--ink-4)}
 /* The display above beats .hide (see the note on .hide), which left the
-   filter row's Clear showing with no filter set and #pubAll/#firmAll as empty
-   outlined boxes. Also outranks a.btn's display further down. */
+   filter row's Clear showing with no filter set and two empty publish buttons
+   (since removed) as outlined boxes. Also outranks a.btn's display further down. */
 .btn.hide{display:none}
 .row{display:flex;flex-wrap:wrap;gap:12px 14px;align-items:flex-end}
 .form{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px 16px;align-items:end}
@@ -612,21 +615,46 @@ a.btn.ghost:hover{color:var(--ink)}
 .vd-pv button:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
 .filters .vd-bv{align-self:flex-end}
 .filters .vd-bv button{min-height:38px;padding:6px 14px;font-size:13px}
-/* In the map view the chips below stand in for the four dropdowns, and the
-   Find box takes the room they leave. */
-.filters.vb-chips>label{display:none}
-.filters.vb-chips>label.vb-find{display:flex;flex:1 1 280px}
-.filters.vb-chips>label.vb-find input{width:100%;min-width:0}
-.vd-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 12px}
-.vd-chip{font:inherit;font-size:12.5px;color:var(--ink-2);background:var(--card);border:1px solid var(--edge);
-  border-radius:999px;padding:5px 11px;cursor:pointer;white-space:nowrap}
-.vd-chip span{color:var(--ink-3);margin-left:2px}
-.vd-chip:hover{border-color:var(--ink-3);color:var(--ink)}
-.vd-chip.on{background:var(--slab);border-color:var(--slab);color:#fff}
-.vd-chip.on span{color:rgba(255,255,255,.72)}
-.vd-chip:focus-visible{outline:2px solid var(--red);outline-offset:2px}
-.vd-csep{display:inline-block;width:1px;height:18px;background:var(--edge);margin:0 4px}
 .vd-more{font-size:12px;margin:2px 0 0 2px}
+/* The ledger's controls (Draft C, 2026-10-04): in the ledger the filter row is
+   quick views on the left, then Find, Group by and More, ruled straight onto
+   the ledger below it. The four dropdowns stay in the DOM, hidden, as the one
+   place the filter values live; the Table view shows them as it always did,
+   and hides the ledger's own controls instead. */
+.filters.vb-ledger{padding:0;margin-top:var(--s5);background:none;border:0;border-bottom:1px solid var(--edge);
+  border-radius:0;align-items:center;gap:6px 10px}
+.filters.vb-ledger>label{display:none}
+.filters.vb-ledger>label.vb-find,.filters.vb-ledger>label.vd-grp{display:flex;flex-direction:row;align-items:center;gap:8px;margin-bottom:7px}
+.filters.vb-ledger>label.vb-find input{min-width:0;width:200px;min-height:36px;padding:6px 10px}
+.filters.vb-ledger>label.vd-grp select{min-height:36px;padding:5px 8px;font-size:14px}
+.filters.vb-ledger .btn{min-height:36px;padding:7px 12px;margin-bottom:7px}
+.filters.vb-ledger>.vd-bv,.filters.vb-ledger>#shown,.filters.vb-ledger>#sheetToggle,.filters.vb-ledger>.exp{display:none}
+.filters:not(.vb-ledger)>.vd-qv,.filters:not(.vb-ledger)>label.vd-grp,.filters:not(.vb-ledger)>.vd-morew{display:none}
+.vd-qv{display:flex;flex-wrap:wrap;align-items:flex-end;gap:2px 4px;flex:1 1 auto;min-width:0;align-self:flex-end;margin-bottom:-1px}
+.vd-qb{font:inherit;font-size:13.5px;color:var(--ink-2);background:none;border:0;border-bottom:2px solid transparent;
+  padding:9px 10px 10px;cursor:pointer;white-space:nowrap}
+.vd-qb i{font-style:normal;font-size:12px;color:var(--ink-3);margin-left:2px;font-variant-numeric:tabular-nums}
+.vd-qb:hover{color:var(--ink)}
+.vd-qb.on{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+.vd-qb:focus-visible,.vd-pill:focus-visible,.vd-gn:focus-visible,.vd-menu>*:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
+.vd-pill{font:inherit;font-size:12.5px;color:#fff;background:var(--slab);border:0;border-radius:999px;padding:4px 10px;
+  margin:0 0 7px 6px;align-self:center;cursor:pointer;white-space:nowrap}
+.vd-pill span{opacity:.7;margin-left:2px}
+.vd-morew{position:relative;margin-bottom:0}
+/* The menu sets display, so .hide is restated directly under it. */
+.vd-menu{position:absolute;right:0;top:calc(100% - 2px);z-index:900;display:flex;flex-direction:column;min-width:290px;
+  padding:6px;background:var(--card);border:1px solid var(--edge);border-radius:8px;
+  box-shadow:0 18px 40px -16px rgba(15,23,42,.35),0 2px 6px rgba(15,23,42,.08)}
+.vd-menu.hide{display:none}
+.vd-menu>button,.vd-menu>a{width:100%;padding:8px 10px;border:0;background:none;border-radius:5px;
+  font:inherit;font-size:13.5px;color:var(--ink);text-align:left;text-decoration:none;cursor:pointer}
+.vd-menu>button:hover,.vd-menu>a:hover{background:var(--wash)}
+.vd-menu small{display:block;font-size:12px;color:var(--ink-3);margin-top:1px}
+/* The map band: the same view() the ledger lists, across the top. */
+.vd-band{position:relative;height:230px;margin-top:var(--s5);border:1px solid var(--edge);border-radius:var(--r);
+  overflow:hidden;background:var(--wash)}
+.vd-mapx{position:absolute;z-index:500;top:10px;right:10px;padding:5px 10px;font-size:12.5px;font-weight:500}
+#bmNoLoc{margin:8px 0 0}
 /* The empty book: the country on a map, with the way in laid over it. */
 #bookEmpty.invite{position:relative;max-width:none;height:520px;margin:var(--s5) 0 var(--s6);border:1px solid var(--edge);
   border-radius:var(--r);overflow:hidden;background:var(--wash)}
@@ -637,48 +665,70 @@ a.btn.ghost:hover{color:var(--ink)}
 .vd-drop>p.vd-drop-k{margin:0;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--red);font-weight:600}
 .vd-drop-h{margin:6px 0 8px;font-size:21px;line-height:1.25}
 .vd-drop .row{margin-top:var(--s4)}
-/* The book: Map or Table. The class lives on #bookViews because applyFirstRun
-   writes #compsSec's whole className. */
+/* The book: Ledger or Table. The class lives on #bookViews because
+   applyFirstRun writes #compsSec's whole className. */
 .vd-views{margin-top:var(--s4)}
+.vd-views.vd-map{margin-top:0}
 .vd-views.vd-map #bookTable{display:none}
 .vd-views:not(.vd-map) #bookMap{display:none}
 body.vd-mapview #rollupSec{display:none}
 /* ...and, hidden that way rather than by .hide, it would still hand #compsSec
    the divider the rule above strips. */
 body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
-.vd-split{display:grid;grid-template-columns:minmax(0,46fr) minmax(0,54fr);border:1px solid var(--edge);
-  border-radius:var(--r);overflow:hidden;background:var(--card);height:640px;box-shadow:var(--shadow),var(--lift)}
-.vd-list{display:flex;flex-direction:column;border-right:1px solid var(--edge);min-height:0}
-.vd-lhead{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;
+/* The book's figures, at the top of the Book. Five cells for a broker in a
+   firm (the shelf is the fifth), four for everybody else. */
+.vd-strip{margin:var(--s5) 0 0;grid-template-columns:minmax(0,.9fr) minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,.9fr)}
+/* Sales and Leases get the room: their lines name a type, a median and how
+   much of the book it covers. */
+.vd-strip.five{grid-template-columns:minmax(0,.85fr) minmax(0,1.25fr) minmax(0,1.25fr) minmax(0,.85fr) minmax(0,.85fr)}
+.vd-strip .lcell{padding:14px 18px;min-width:0}
+.vd-strip .lfig{font-size:26px}
+.vd-strip .lsub{line-height:1.4}
+/* The ledger: one table, grouped, under its own select-all line. */
+.vd-led{border:1px solid var(--edge);border-top:0;border-radius:0 0 var(--r) var(--r);background:var(--card);
+  box-shadow:var(--shadow),var(--lift)}
+.vd-lhead{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 14px;
   border-bottom:1px solid var(--line);font-size:12px;color:var(--ink-3)}
 .vd-lhead .note{font-size:12px}
 .vd-all{display:flex;gap:8px;align-items:center;cursor:pointer}
-.vd-all input,.vd-row input{margin:0;width:16px;height:16px;accent-color:var(--red-fill);cursor:pointer}
-.vd-rows{overflow:auto;flex:1}
-.vd-row{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 14px;
-  border-bottom:1px solid var(--hair);cursor:pointer}
-.vd-row:hover,.vd-row.on,.vd-row.open{background:var(--wash)}
-.vd-row:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
-.vd-main{min-width:0}
+.vd-all input,.vd-lt input{margin:0;width:15px;height:15px;accent-color:var(--red-fill);cursor:pointer;vertical-align:middle}
+.vd-ltw{overflow-x:auto}
+.vd-lt{min-width:760px}
+.vd-lt th{padding:9px 10px}
+.vd-lt td{padding:7px 10px;color:var(--ink-2);white-space:nowrap;vertical-align:middle}
+.vd-lt td.vd-lc,.vd-lt th:first-child{width:36px;padding-left:14px;padding-right:0}
+.vd-la{max-width:340px;overflow:hidden;text-overflow:ellipsis}
 .vd-name{background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--ink);font-size:13.5px;
   cursor:pointer;text-align:left}
 .vd-name:hover{text-decoration:underline;text-underline-offset:3px}
 .vd-name:focus-visible{outline:2px solid var(--red);outline-offset:2px}
-.vd-main span{display:block;color:var(--ink-3);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vd-lcity{color:var(--ink-3);margin-left:8px}
+.vd-ld{color:var(--ink-3)}
+.vd-lmeta,.vd-lsub{display:none}
+.vd-lrate b{font-family:var(--serif);font-weight:500;font-size:14.5px;color:var(--ink)}
+.vd-na{font-family:inherit;font-style:italic;font-size:12px;font-weight:400;color:var(--ink-3)}
+.vd-lr{cursor:pointer}
+.vd-lr.on td,.vd-lr.open td{background:var(--wash)}
 .vd-b{font-style:normal;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;margin-left:8px;
   padding:1px 6px;border-radius:3px;vertical-align:1px;background:var(--wash);color:var(--ink-2);border:1px solid var(--edge)}
 .vd-b.ok{background:var(--ok-bg);color:var(--ok-text);border-color:transparent}
-.vd-fig{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.vd-fig b{display:block;font-family:var(--serif);font-weight:500;font-size:16px;color:var(--ink)}
-.vd-fig span{font-size:11.5px;color:var(--ink-3)}
-.vd-detail{background:var(--wash);padding:2px 14px 14px 42px;border-bottom:1px solid var(--hair)}
+.vd-lg td{background:var(--wash);border-bottom:1px solid var(--line);padding-top:8px;padding-bottom:8px}
+.vd-lg.shut td{background:var(--card)}
+.vd-lt tbody tr.vd-lg:hover td{background:var(--wash)}
+.vd-gn{display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:0;font:inherit;font-weight:600;
+  font-size:13.5px;color:var(--ink);cursor:pointer}
+.vd-gn svg{color:var(--ink-3);transform:rotate(90deg)}
+.vd-lg.shut .vd-gn svg{transform:none}
+.vd-gs{margin-left:12px;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.vd-lmore td{padding-top:6px;padding-bottom:6px}
+.vd-ldet td{padding:0;background:var(--wash);white-space:normal}
+.vd-detail{background:var(--wash);padding:2px 14px 14px 46px;border-bottom:1px solid var(--hair)}
 .vd-detail dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 16px;margin:0;padding:10px 12px;
   background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
 .vd-detail dt{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
 .vd-detail dd{margin:0;font-size:13px;color:var(--ink);overflow-wrap:anywhere}
 .vd-dnote{margin:10px 0 0;font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}
 .vd-dact{display:flex;gap:16px;margin:10px 0 0;font-size:13px;flex-wrap:wrap}
-.vd-mapwrap{position:relative;min-height:0}
 .vd-mapc{position:absolute;inset:0;background:var(--wash);z-index:0}
 .vd-legend{position:absolute;left:12px;bottom:12px;z-index:500;display:flex;gap:12px;background:var(--card);
   border:1px solid var(--edge);border-radius:var(--r);padding:6px 10px;font-size:12px;color:var(--ink-2)}
@@ -689,13 +739,14 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 .vd-maperr{position:absolute;left:0;right:0;top:42%;z-index:600;margin:0;text-align:center;color:var(--ink-3);font-size:13px;padding:0 24px}
 .vd-maperr:empty{display:none}
 /* The comp set. Dashed and quiet while empty (it says how to fill it), then
-   the dark slab once something is in it, directly under the list and the
-   map (not docked over them, where it covered the map's legend). --slab is
-   dark in BOTH themes, so the text on
-   it is literal white: FOOTER_DARK_CSS's reason. */
+   the dark slab once something is in it. With a ledger a page long, the slab
+   stays in view at the foot of the window while comps are being ticked,
+   rather than waiting below the last row. --slab is dark in BOTH themes, so
+   the text on it is literal white: FOOTER_DARK_CSS's reason. */
 .vd-tray{display:flex;align-items:center;gap:16px;margin-top:var(--s4);padding:14px 18px;border-radius:var(--r);
   border:1px dashed var(--edge);background:var(--card)}
-.vd-tray.on{background:var(--slab);border:1px solid var(--slab);box-shadow:0 12px 30px -12px rgba(0,0,0,.35)}
+.vd-tray.on{position:sticky;bottom:12px;z-index:700;background:var(--slab);border:1px solid var(--slab);
+  box-shadow:0 12px 30px -12px rgba(0,0,0,.35)}
 .vd-tk{flex:1;min-width:0;margin:0}
 .vd-tk b{display:block;font-family:var(--serif);font-weight:500;font-size:17px;color:var(--ink)}
 .vd-tk span{display:block;font-size:13px;color:var(--ink-3)}
@@ -711,17 +762,34 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   .vt-tabs{overflow-x:auto;scrollbar-width:none;padding-right:0}
   .vt-panel.on>.deck{position:static;height:auto;margin:var(--s4) 0 0;justify-content:flex-end}
   #bookEmpty.invite{height:620px}
-  .vd-legend{bottom:auto;top:10px;left:auto;right:10px}
   .vd-drop{padding:18px 18px}
+  /* Five cells wrap 2, 2, 1: the shelf takes the last row whole. */
+  .vd-strip,.vd-strip.five{grid-template-columns:1fr 1fr}
+  .vd-strip.five .lcell:last-child{grid-column:1/-1;border-left:0;border-top:1px solid var(--hair)}
+  .vd-strip .lfig{font-size:22px}
+  /* The ledger becomes two-line rows: the meta line and the figure's
+     sub-line stand in for the columns a phone has no room for. */
+  .vd-lt{min-width:0}
+  .vd-lt thead,.vd-lt .vd-lx{display:none}
+  .vd-lt td{padding:8px 10px}
+  .vd-lt td.vd-lc{width:30px;padding-left:12px}
+  .vd-la{max-width:none;white-space:normal}
+  .vd-lmeta,.vd-lsub{display:block;font-size:12px;color:var(--ink-3);font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .vd-lcity{display:none}
+  .vd-lrate b{display:block}
+  .vd-gs{display:block;margin:2px 0 0 18px}
+  .vd-band{height:180px}
+  /* Beside the zoom buttons, clear of Hide map and of the credits along the foot. */
+  .vd-band .vd-legend{top:10px;bottom:auto;left:52px;gap:8px;padding:5px 8px;font-size:11px}
+  .filters.vb-ledger>label.vb-find{flex:1 1 100%;order:-1;margin-bottom:0}
+  .filters.vb-ledger>label.vb-find input{width:100%;font-size:16px}
+  .vd-qv{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;flex:1 1 100%;order:1}
 }
 @media (max-width:900px){
-  .vd-split{display:flex;flex-direction:column-reverse;height:auto}
-  .vd-mapwrap{flex:0 0 260px;height:260px}
-  .vd-list{border-right:0;border-top:1px solid var(--edge)}
-  .vd-rows{max-height:560px}
   .vd-detail{padding-left:14px}
   .vd-detail dl{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   .vd-tray{flex-direction:column;align-items:stretch}
+  .vd-strip.five .lcell{padding:12px 14px}
 }
 /* The comp sheet is paper, so it is black on white in either theme, and its
    colours are named rather than tokens: a token would print the dark theme's
@@ -1018,8 +1086,45 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       <div class="cards" id="rollup"></div>
     </section>
 
+    <!-- The book's figures, at the top of the Book since Draft C (2026-10-04).
+         They sat in the trust line at the foot until then, where a broker with
+         400 comps had to scroll past the whole book to read them. Whole-book,
+         always: a filter never narrows them, so they cannot be mistaken for
+         the slice on screen. Published stays green and stays here: zero
+         staying zero is still the number this page exists to prove, so it is
+         on screen for an empty vault too (this strip is not inside #compsSec,
+         which applyFirstRun hides). The firm cell exists only for a broker in
+         a firm, and goes LAST so the phone's 2x2 wrap can still place its
+         dividers by position for everybody else. -->
+    <div class="ledger vd-strip" id="bookStrip">
+      <div class="lcell"><span class="llab">Comps</span>
+        <div class="lfig" id="cCount">0</div><div class="lsub" id="cMarkets"></div></div>
+      <div class="lcell"><span class="llab">Sales</span>
+        <div class="lfig" id="cSales">0</div><div class="lsub" id="cMedSub">none yet</div></div>
+      <div class="lcell"><span class="llab">Leases</span>
+        <div class="lfig" id="cLeases">0</div><div class="lsub" id="cRentSub">none yet</div></div>
+      <div class="lcell mid"><span class="llab">Published</span>
+        <div class="lfig" id="cPub">0</div><div class="lsub" id="cPubSub">only if you choose it</div></div>
+      <div class="lcell hide" id="cSharedCell"><span class="llab">Shared with firm</span>
+        <div class="lfig" id="cShared">0</div><div class="lsub" id="cSharedSub"></div></div>
+    </div>
+
     <section id="compsSec">
       <h2>Your comps</h2>
+      <!-- The map, as a band across the top of the ledger (Draft C). It draws
+           the same view() the ledger lists, so a pin can never be for a comp
+           the filter has taken out, and it places a pin only from coordinates
+           the book already holds (typed in the spreadsheet, or located at
+           import on our own server). It never asks anyone where an address
+           is: GUARD 2 of the private-comp contract, which the report map keeps
+           too. Hidden in the Table view, and by the broker's own choice. -->
+      <div class="vd-band" id="bmBand">
+        <div class="vd-mapc" id="bmMap" aria-label="Map of the comps in this view"></div>
+        <div class="vd-legend" aria-hidden="true"><span><i class="s"></i>Sale</span><span><i class="l"></i>Lease</span><span><i class="p"></i>In your comp set</span></div>
+        <button type="button" class="btn ghost vd-mapx" id="mapHide">Hide map</button>
+        <p class="vd-maperr" id="bmMapErr"></p>
+      </div>
+      <p class="note" id="bmNoLoc"></p>
       <!-- One filter row above everything it scopes: the chart, the repeat-
            property list and the table all read the same slice, so they can
            never disagree about which comps are on screen. The export sits
@@ -1030,8 +1135,15 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
            not: it always exports everything. It is a plain href, not a
            fetch, so the session cookie rides along and the download still
            works even if the page's own script has failed. -->
-      <div class="row filters vb-chips" id="filterRow">
-        <span class="vd-pv vd-bv" id="bookViewSeg" role="group" aria-label="Show your book as"><button type="button" data-bv="map" aria-pressed="true">Map</button><button type="button" data-bv="table" aria-pressed="false">Table</button></span>
+      <div class="row filters vb-ledger" id="filterRow">
+        <!-- The ledger's quick views (Draft C): each one a setting of the SAME
+             Deal and Firm selects below (plus the last-90-days window), so the
+             ledger and the Table view can never be filtered differently. Drawn
+             by renderViews(), counted over the whole book. -->
+        <nav class="vd-qv" id="bmViews" aria-label="Quick views"></nav>
+        <!-- The way back from the Table view. The ledger has no switch of its
+             own: the table and the spreadsheet are behind More. -->
+        <span class="vd-pv vd-bv" id="bookViewSeg" role="group" aria-label="Show your book as"><button type="button" data-bv="map" aria-pressed="true">Ledger</button><button type="button" data-bv="table" aria-pressed="false">Table</button></span>
         <label>Market <select id="fMarket"><option value="">All</option></select></label>
         <label>Type <select id="fType"><option value="">All</option></select></label>
         <!-- Static options, unlike Market and Type: the vocabulary is the two
@@ -1056,23 +1168,28 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
              tenant name or the "sold with the adjacent parcel" detail lives. -->
         <label class="vb-find">Find <input type="search" id="fText" placeholder="address or note" autocomplete="off"/></label>
         <button class="btn ghost hide" id="fClear">Clear</button>
+        <!-- How the ledger is grouped. Market by default: a busy book reads as
+             a list of markets you open one at a time. -->
+        <label class="vd-grp">Group by <select id="bmGroup"><option value="market">Market</option><option value="type">Type</option><option value="">Nothing</option></select></label>
+        <button class="btn ghost hide" type="button" id="mapShow">Show map</button>
         <span class="note" id="shown"></span>
         <button class="btn ghost" type="button" id="sheetToggle">Open spreadsheet</button>
-        <!-- Counts the UNPUBLISHED comps in the current view, and deliberately
-             does not try to work out which of them are publishable: that rule
-             is VAULT.canPublish on the server, and a second copy here is
-             exactly the kind of pair this repo already carries warnings about.
-             The server reports what it skipped and why. -->
-        <button class="btn ghost hide" type="button" id="pubAll"></button>
-        <!-- The push. refreshPublishAll's three rules verbatim: it counts the
-             comps in the CURRENT VIEW that are not on the firm's shelf, it
-             does not decide eligibility (firmCompPayload in blend-comps.js
-             is the rule, and the route reports what it skipped and why), and
-             it is hidden at zero rather than disabled. Only for a broker in a
-             firm, and the label names the firm, because this is the one
-             control whose entire meaning is who sees it. -->
-        <button class="btn ghost hide" type="button" id="firmAll"></button>
+        <!-- There is no whole-view Publish or Share button any more (Draft C,
+             2026-10-04). "Publish 412 comps" sat one click from the Find box,
+             acting on whatever the filter happened to show. Both acts now go
+             through the comp set: tick the comps (a market's header, or the
+             ledger's own select-all, ticks a whole slice), and the set's
+             Publish and Share carry the same confirm they always did. -->
         <a class="btn ghost exp" href="/api/vault/export.csv">Export all comps (CSV)</a>
+        <!-- More: the Table view, the spreadsheet and the export, out of the
+             ledger's way. The export is a plain href here too, for the reason
+             the one above is. -->
+        <span class="vd-morew"><button type="button" class="btn ghost" id="ledMore" aria-haspopup="true" aria-expanded="false">More</button>
+          <span class="vd-menu hide" id="ledMenu" role="menu">
+            <button type="button" role="menuitem" data-act="table">Edit as a table<small>Type into any cell to change it</small></button>
+            <button type="button" role="menuitem" data-act="sheet">Open spreadsheet<small>Every column, including notes</small></button>
+            <a role="menuitem" href="/api/vault/export.csv">Export all comps (CSV)<small>The whole book, whatever is filtered</small></a>
+          </span></span>
       </div>
       <!-- #res, the obvious message target for a row action, lives inside
            #addSec, a panel that ships CLOSED — a message written there is
@@ -1081,33 +1198,21 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
            (2026-09-25), because the comp set's Publish and Share write here
            too, from the map view. -->
       <p id="compMsg" class="msg hide" aria-live="polite"></p>
-      <!-- The book, two ways (2026-09-25). MAP is the list beside a map of the
-           broker's own buildings, with a comp set they tick rows into; TABLE is
-           the editable table this deck has always been. Both draw view(), the
-           one filtered slice, from the one render() -- so the filter row above
-           scopes them identically and a comp cannot be in one and not the
-           other. The map places a pin only from coordinates the book already
-           holds (typed in the spreadsheet, or located at import on our own
-           server), and never asks anyone where an address is: GUARD 2 of the
-           private-comp contract, which the report map keeps too. -->
+      <!-- The book, two ways. The LEDGER (Draft C, 2026-10-04; it replaced
+           Draft B's list beside a map) is one full-width table grouped by
+           market under the map band, with a comp set the broker ticks rows
+           into; TABLE is the editable table this deck has always been, behind
+           More. Both draw view(), the one filtered slice, from the one
+           render() -- so the filter row above scopes them identically and a
+           comp cannot be in one and not the other. The "map" names that
+           survive (bookView, #bookMap, vd-map) are the ledger's: renaming
+           them would touch every rule that already holds. -->
       <div class="vd-views vd-map" id="bookViews">
         <div id="bookMap">
-          <!-- Draft B's chips: the Market, Type, Deal and Firm filters as one
-               row, each a toggle over the SAME select the Table view reads, so
-               the two views can never be filtered differently. -->
-          <div class="vd-chips" id="bmChips"></div>
-          <div class="vd-split">
-            <div class="vd-list">
-              <div class="vd-lhead"><label class="vd-all"><input type="checkbox" id="bmAll"/> <span id="bmCount"></span></label><span class="note" id="bmSort">Newest first</span></div>
-              <div class="vd-rows" id="bmRows"></div>
-            </div>
-            <div class="vd-mapwrap">
-              <div class="vd-mapc" id="bmMap" aria-label="Map of the comps in this view"></div>
-              <div class="vd-legend" aria-hidden="true"><span><i class="s"></i>Sale</span><span><i class="l"></i>Lease</span><span><i class="p"></i>In your comp set</span></div>
-              <p class="vd-maperr" id="bmMapErr"></p>
-            </div>
+          <div class="vd-led" id="bmLed">
+            <div class="vd-lhead"><label class="vd-all"><input type="checkbox" id="bmAll"/> <span id="bmCount"></span></label><span class="note" id="bmSort">Newest first</span></div>
+            <div class="vd-ltw"><table class="vd-lt"><thead id="bmHead"></thead><tbody id="bmRows"></tbody></table></div>
           </div>
-          <p class="note" id="bmNoLoc"></p>
           <!-- The comp set. Held in this page's memory only: a set is built for
                one client conversation, and nothing about it is stored or sent
                anywhere until the broker presses one of its buttons. -->
@@ -1150,10 +1255,10 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       <!-- Imports is provenance for the table it now sits under, not a tenth
            peer section at the foot of the page. Collapsed, because the one
            thing a broker does here (remove an import) is rare and destructive,
-           and the one thing it told them at a glance (how many files) is
-           already on the ledger's Comps cell. -->
+           and the one thing it told them at a glance (how many files) is on
+           its own summary line. -->
       <details class="dbox" id="importsSec">
-        <summary>Imports</summary>
+        <summary>Imports <span id="upsN"></span></summary>
         <div id="ups"></div>
       </details>
     </section>
@@ -1163,18 +1268,10 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
          numbered onboarding cards read as broken; the empty vault is now
          the real workspace, so the zeros are the honest empty state.
          Privacy copy is restated here AND in #bookEmpty's disclosure AND
-         at publish. See applyFirstRun(). -->
+         at publish. See applyFirstRun(). Its four figures moved to the top of
+         the Book on 2026-10-04 (#bookStrip); the promise and the credit name
+         stay here, at the foot, where they always were. -->
     <div class="trust" id="trustLine">
-      <div class="ledger">
-        <div class="lcell"><span class="llab">Comps</span>
-          <div class="lfig" id="cCount">0</div><div class="lsub" id="cImports"></div></div>
-        <div class="lcell"><span class="llab">Priced sales</span>
-          <div class="lfig" id="cPriced">0</div><div class="lsub" id="cPricedPct"></div></div>
-        <div class="lcell"><span class="llab">Median $/SF</span>
-          <div class="lfig" id="cMed">&mdash;</div><div class="lsub" id="cMedSub">sales only</div></div>
-        <div class="lcell mid"><span class="llab">Published</span>
-          <div class="lfig" id="cPub">0</div><div class="lsub" id="cPubSub">only if you choose it</div></div>
-      </div>
       <!-- Rewritten by renderFirmPrivacy() the moment a comp is shared with a
            firm (migration 032). The default text is the promise this whole
            tier rests on, so it is in the markup rather than built in JS: a
@@ -1544,11 +1641,24 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     return String(($("fText")&&$("fText").value)||"").toLowerCase().split(" ")
       .filter(function(w){return w});
   }
+  // The ledger's "Last 90 days" view: a window on deal_date, kept here beside
+  // the selects it composes with. Zero is off. An undated comp is outside
+  // every window, which is what "undated" means.
+  var recentDays=0;
+  function sinceDay(days){ return new Date(Date.now()-days*864e5).toISOString().slice(0,10); }
+  // Every filter at once, and the one place that list lives: Clear, an empty
+  // result's Clear link, opening one import, and the ledger's Edit link all
+  // reset the same set, so a new filter cannot be left behind by one of them.
+  function clearFilters(){
+    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fFirm").value=""; $("fText").value="";
+    recentDays=0;
+  }
   function view(){
     var m=$("fMarket").value,t=$("fType").value,x=$("fTrans").value,q=searchTerms();
-    var f=$("fFirm").value;
+    var f=$("fFirm").value,since=recentDays?sinceDay(recentDays):"";
     return comps.filter(function(c){
       if(sheetUploadId&&String(c.upload_id)!==String(sheetUploadId))return false;
+      if(since&&!(String(c.deal_date||"")>=since))return false;
       // "shared" keeps what is on the firm's shelf, "unshared" what is not;
       // an empty value is every comp. sharedIds is the lookup the Firm
       // column already reads, so the filter and the column cannot disagree.
@@ -1639,7 +1749,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // $28.50 net and one paying $28.50 gross are different deals, and a broker
   // reading one median over both should know that is what they are looking at.
   var rentStats=function(list){
-    var vals=[],byType={},types=0,st={},structures=0;
+    var vals=[],byType={},types=0,st={},structures=0,kinds={};
     (list||[]).forEach(function(c){
       var v=rentOf(c);
       if(v==null)return;
@@ -1648,10 +1758,18 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       if(!st[k]){st[k]=1;structures++;}
       var t=c&&c.property_type;
       if(!t)return;
-      if(!byType[t]){byType[t]=[];types++;}
+      if(!byType[t]){byType[t]=[];types++;kinds[t]={};}
       byType[t].push(v);
+      kinds[t][k]=1;
     });
-    return {values:vals,types:types,mixed:types>1,structures:structures};
+    // The dominant type, psfStats' rule and tie-break, for the Leases cell at
+    // the top of the Book. It carries its OWN structure count, because the
+    // figure that cell quotes is that one type's median.
+    var dom=null;
+    Object.keys(byType).sort().forEach(function(t){
+      if(!dom||byType[t].length>dom.values.length)dom={type:t,values:byType[t],structures:Object.keys(kinds[t]).length};
+    });
+    return {values:vals,types:types,mixed:types>1,structures:structures,dominant:dom};
   };
   // Which unit the rows on screen are priced in. A view holding both priced
   // sales and rents has no single median — they are different measures, not a
@@ -1688,7 +1806,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // 2026-09-04: the hubs deck came out, because every job it did had moved to
   // /messages (External conversations) and two doors onto one room is one
   // door too many. A broker's deal rooms are read through /api/messages now.
-  var VAULT_DECKS=["trustLine","deckBook","bookEmpty","addSec","rollupSec","compsSec",
+  var VAULT_DECKS=["trustLine","bookStrip","deckBook","bookEmpty","addSec","rollupSec","compsSec",
     "deckPipe","pipeSec"];
 
   function lockVaultDecks(msg){
@@ -1708,6 +1826,56 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     $("deckSub").textContent="Your properties and your watchlist. Only you can see this.";
     if(msg) $("vaultLocked").insertAdjacentHTML("afterbegin",
       '<p class="note">'+esc(msg)+"</p>");
+  }
+
+  // The figures at the top of the Book (#bookStrip). Whole-book, always.
+  //
+  // The Sales and Leases cells NARROW rather than decline: a book spanning
+  // several property types has no single $/SF (or rent), so each cell quotes
+  // the median of the type most of its priced deals are in, names that type,
+  // and says how much of the book it covers when it is not all of it. The
+  // reading strip and the table footer decline the same figure outright, and
+  // the difference is deliberate (owner's call, 2026-08-12): those two seal
+  // the ROWS ON SCREEN, so a dominant-type median under a mixed table would
+  // describe a subset the reader can see they did not filter to, while these
+  // cells describe the BOOK, and most real books span types. All of them read
+  // the one psfStats / rentStats pair, so none can quote a figure another
+  // contradicts. Sales and leases are never one figure: different measures.
+  function stripLine(stats,count,fmt,noun,none){
+    var dom=stats.dominant,all=stats.values;
+    if(!all.length)return count?none:"none yet";
+    var m=dom?median(dom.values):median(all);
+    var line=(dom?dom.type+" median ":"median ")+fmt(m);
+    if(stats.mixed)line+=" \\u00b7 "+dom.values.length+" of "+all.length+" "+noun;
+    return line;
+  }
+  function renderStripFigures(){
+    var sales=comps.filter(function(c){return c.transaction!=="lease"});
+    var leases=comps.filter(function(c){return c.transaction==="lease"});
+    var mk={},sts={};
+    comps.forEach(function(c){
+      if(!c.market)return;
+      mk[c.market]=1;
+      var s=/,\\s*([A-Z]{2})$/.exec(c.market); if(s)sts[s[1]]=1;
+    });
+    var nm=Object.keys(mk).length,ns=Object.keys(sts).length;
+    $("cMarkets").textContent=!nm?"":nm===1?"in "+Object.keys(mk)[0]
+      : "in "+nm+" markets"+(ns>1?" \\u00b7 "+ns+" states":"");
+    $("cSales").textContent=num(sales.length);
+    $("cMedSub").textContent=stripLine(psfStats(sales),sales.length,
+      function(v){return psf0(v)+"/SF"},"priced sales","none priced yet");
+    $("cLeases").textContent=num(leases.length);
+    var rs=rentStats(leases),rline=stripLine(rs,leases.length,rentLabel,"rents","no rents entered yet");
+    // A mixed lease structure weakens a rent median rather than invalidating
+    // it (see rentStats), so it is disclosed, the footer's rule.
+    if(rs.dominant&&rs.dominant.structures>1)rline+=" \\u00b7 mixed lease types";
+    $("cRentSub").textContent=rline;
+    // The firm cell: what is on the shelf, out of the book on this page.
+    var shared=myFirm?comps.filter(function(c){return sharedIds[c.id]}).length:0;
+    $("cSharedCell").className=myFirm?"lcell":"lcell hide";
+    $("bookStrip").className=myFirm?"ledger vd-strip five":"ledger vd-strip";
+    $("cShared").textContent=num(shared);
+    $("cSharedSub").textContent=myFirm?num(comps.length-shared)+" not shared yet":"";
   }
 
   function apply(o){
@@ -1755,40 +1923,10 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     $("cPubSub").textContent=cites
       ? cites+" report citation"+(cites===1?"":"s")
       : "only if you choose it";
-    // The ledger's other figures come from the returned rows — the same book
-    // the rollup and chart read, so the strip can never disagree with the
-    // panels below it. Whole-book always; the filter never narrows it.
+    // The strip's other figures need the firm and the shelf, which arrive
+    // below, so they are drawn by renderStripFigures() once those are set.
     var ups=o.j.uploads||[];
-    var st=psfStats(comps),ps=st.values,med=median(ps);
-    $("cImports").textContent=ups.length?ups.length+" import"+(ups.length===1?"":"s"):"";
-    $("cPriced").textContent=ps.length;
-    $("cPricedPct").textContent=comps.length?Math.round(ps.length*100/comps.length)+"% of book":"";
-    // A book spanning several property types has no single $/SF — industrial,
-    // office and retail are priced in what amount to different units. This
-    // tile NARROWS rather than declining: the figure is the median of the type
-    // most of the priced sales are in, and the sub-line names that type and
-    // how much of the book it covers.
-    //
-    // The reading strip and the table footer decline the same figure outright,
-    // and the difference is deliberate (owner's call, 2026-08-12). Those two
-    // seal the ROWS ON SCREEN, so a dominant-type median under a mixed table
-    // would describe a subset the reader can see they did not filter to. This
-    // tile describes the BOOK, is the page's headline number, and most real
-    // books span types — so declining here would leave a permanent dash in the
-    // largest slot on the page rather than answering a narrower question
-    // honestly. Both surfaces still come from the one psfStats helper, so
-    // neither can quote a figure the other contradicts.
-    var dom=st.dominant,domMed=dom?median(dom.values):null;
-    if(st.mixed&&domMed!=null){
-      $("cMed").textContent=psf0(domMed);
-      $("cMedSub").textContent=dom.type+" \\u00b7 "+dom.values.length+" of "+ps.length+" sales";
-    }else{
-      $("cMed").textContent=med!=null?psf0(med):"\\u2014";
-      // Naming the type on a single-type book too, so the figure never sits
-      // there unqualified — and so the mixed case reads as the same tile
-      // answering a narrower question, not as a different tile.
-      $("cMedSub").textContent=(dom&&med!=null)?dom.type+" \\u00b7 sales only":"sales only";
-    }
+    $("upsN").textContent=ups.length?"\\u00b7 "+ups.length:"";
     fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
     // Also the pipeline's market suggestions: a broker's next BOV is usually in
     // a market they already hold comps in, and this is where that list arrives.
@@ -1804,6 +1942,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     $("fFirmLab").className=myFirm?"":"hide";
     if(!myFirm)$("fFirm").value="";
     renderFirmPrivacy();
+    renderStripFigures();
     identitySuggest=o.j.identitySuggest||null;
     renderIdentity(o.j.identity);
     renderRollup();
@@ -2080,7 +2219,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   function openSheet(uploadId){
     sheetMode=true;
     sheetUploadId=uploadId||null;
-    if(uploadId){ $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fFirm").value=""; $("fText").value=""; }
+    if(uploadId){ clearFilters(); }
     render();
     $("tbl").scrollIntoView({behavior:"smooth",block:"start"});
   }
@@ -2134,13 +2273,12 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     if(sheetMode&&bookView==="map")setBookView("table");
     renderBookMap(rows);
     setSheetChrome();
-    // The two batch buttons count the CURRENT VIEW, and the spreadsheet is a
-    // view too — an import opens as one. They sit above the sheet branch
-    // because that branch returns early, and below it they went stale the
-    // moment a broker opened the spreadsheet: the push offered under an
-    // import result counted the compact table from before the upload.
-    refreshPublishAll(rows);
-    refreshFirmAll(rows);
+    // What "share this import" pushes: the comps in the CURRENT VIEW not yet
+    // on the firm's shelf. The spreadsheet is a view too (an import opens as
+    // one), so this sits above the sheet branch, which returns early; below
+    // it, the push offered under an import result counted the view from
+    // before the upload.
+    firmCandidates=myFirm?rows.filter(function(c){return !sharedIds[c.id]}):[];
     if(sheetMode){
       renderSheet(rows);
       // The strip summarises whatever is on screen, in whichever unit that
@@ -2258,35 +2396,11 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
         (st.structures>1?" \\u00b7 mixed lease types":"")};
   }
 
-  // The unpublished comps in the current view, in view order, which is what
-  // "publish these" means to the person looking at the screen.
-  var pubCandidates=[];
-  function refreshPublishAll(rows){
-    pubCandidates=(rows||[]).filter(function(c){return !c.published});
-    var b=$("pubAll");
-    if(!b)return;
-    // Hidden rather than disabled at zero: a permanently greyed control on a
-    // fully-published book is a thing to wonder about, not an affordance.
-    if(!pubCandidates.length){ b.className="btn ghost hide"; b.textContent=""; return; }
-    b.className="btn ghost";
-    b.textContent="Publish "+pubCandidates.length+" comp"+(pubCandidates.length===1?"":"s");
-  }
-
-  // The push's candidates: what is on screen and not yet on the firm's
-  // shelf. refreshPublishAll's three rules, for the same reasons, plus a
-  // fourth: for a broker in no firm the control does not exist at all,
-  // since a control that can only fail is worse than no control. The label
-  // names the firm — this is the one button whose whole meaning is who sees
-  // the comps.
+  // The import push's candidates (see render()). There is no whole-view
+  // Publish or Share button any more (Draft C, 2026-10-04): both acts go
+  // through the comp set, so they act on what the broker ticked rather than
+  // on whatever the filter happened to show.
   var firmCandidates=[];
-  function refreshFirmAll(rows){
-    var b=$("firmAll");
-    if(!b)return;
-    firmCandidates=myFirm?(rows||[]).filter(function(c){return !sharedIds[c.id]}):[];
-    if(!firmCandidates.length){ b.className="btn ghost hide"; b.textContent=""; return; }
-    b.className="btn ghost";
-    b.textContent="Share "+firmCandidates.length+" with "+myFirm.name;
-  }
 
   function renderSheet(rows){
     var keys=sheetKeys(rows);
@@ -3344,31 +3458,92 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     e.preventDefault();
   });
 
-  // ---- The book, as a list beside a map, with a comp set ---------------------
+  // ---- The book, as a ledger under a map band, with a comp set -----------------
+  // Draft C (2026-10-04), which replaced Draft B's list beside a map. "map"
+  // is still the ledger view's name (bookView, the stored choice, #bookMap,
+  // .vd-map): renaming it would touch every rule that already holds.
   var bookView="map";
   try{ if(window.localStorage&&window.localStorage.getItem("vaultBookView")==="table")bookView="table"; }catch(e){}
   var bmRows=[],bmLimit=150,setIds={},bmOpen=null;
   var bmMap=null,bmLayer=null,bmPins={},bmFitKey=null;
+  // How the ledger groups, and whether the band is hidden: per browser, like
+  // the view itself. "" groups by nothing.
+  var bmGroup="market",mapHidden=false;
+  try{
+    var g0=window.localStorage&&window.localStorage.getItem("vaultLedgerGroup");
+    if(g0==="type")bmGroup="type"; else if(g0==="none")bmGroup="";
+    mapHidden=!!(window.localStorage&&window.localStorage.getItem("vaultLedgerMap")==="hidden");
+  }catch(e){}
+  $("bmGroup").value=bmGroup;
   function setBookView(v){
     bookView=v==="table"?"table":"map";
     $("bookViews").className=bookView==="map"?"vd-views vd-map":"vd-views";
-    // In the map view the chips stand in for the four dropdowns, which stay
-    // in the DOM (hidden) as the one place the filter values live.
-    $("filterRow").classList.toggle("vb-chips",bookView==="map");
+    // In the ledger the quick views stand in for the four dropdowns, which
+    // stay in the DOM (hidden) as the one place the filter values live.
+    $("filterRow").classList.toggle("vb-ledger",bookView==="map");
     pressSeg("bookViewSeg","data-bv",bookView);
     if(document.body&&document.body.classList)document.body.classList.toggle("vd-mapview",bookView==="map");
     try{ window.localStorage.setItem("vaultBookView",bookView); }catch(e){}
+    syncBand();
     if(bookView==="map")drawPins(bmRows,true);
   }
+  // The band, its Show button, and the line that speaks about it, written
+  // together so none of them can describe a map that is not there.
+  function syncBand(){
+    var on=bookView==="map";
+    $("bmBand").className=on&&!mapHidden?"vd-band":"vd-band hide";
+    $("mapShow").className=on&&mapHidden?"btn ghost":"btn ghost hide";
+    $("bmNoLoc").className=on&&!mapHidden?"note":"note hide";
+  }
+  function setMapHidden(h){
+    mapHidden=!!h;
+    try{ window.localStorage.setItem("vaultLedgerMap",mapHidden?"hidden":"shown"); }catch(e){}
+    syncBand();
+    if(!mapHidden)drawPins(bmRows,true);
+  }
+  $("mapHide").addEventListener("click",function(){ setMapHidden(true); });
+  $("mapShow").addEventListener("click",function(){ setMapHidden(false); });
   $("bookViewSeg").addEventListener("click",function(e){
     var b=e.target&&e.target.closest?e.target.closest("button[data-bv]"):null; if(!b)return;
     var v=b.getAttribute("data-bv");
-    // The spreadsheet belongs to the Table view; leaving for the map closes it
-    // rather than leaving a grid open behind a view that is not showing it.
+    // The spreadsheet belongs to the Table view; leaving for the ledger closes
+    // it rather than leaving a grid open behind a view that is not showing it.
     if(v==="map"&&sheetMode){ sheetMode=false; sheetUploadId=null; }
     setBookView(v);
     render();
   });
+  $("bmGroup").addEventListener("change",function(){
+    bmGroup=$("bmGroup").value||"";
+    try{ window.localStorage.setItem("vaultLedgerGroup",bmGroup||"none"); }catch(e){}
+    // What was opened or folded belonged to the old groups.
+    gOpen={}; gAll={};
+    renderBmList();
+  });
+  // More: the Table view, the spreadsheet and the export, out of the ledger's
+  // way. Its open state is a variable rather than read back off the class, so
+  // the first click always opens it.
+  var menuOpen=false;
+  function setMenu(open){
+    menuOpen=!!open;
+    $("ledMenu").className=menuOpen?"vd-menu":"vd-menu hide";
+    $("ledMore").setAttribute("aria-expanded",menuOpen?"true":"false");
+  }
+  $("ledMore").addEventListener("click",function(e){
+    setMenu(!menuOpen);
+    if(e&&e.stopPropagation)e.stopPropagation();
+  });
+  $("ledMenu").addEventListener("click",function(e){
+    var b=e.target&&e.target.closest?e.target.closest("[data-act]"):null; if(!b)return;
+    var a=b.getAttribute("data-act");
+    setMenu(false);
+    if(a==="table"){ setBookView("table"); render(); }
+    else if(a==="sheet"){ openSheet(null); }
+  });
+  document.addEventListener("click",function(e){
+    var t=e&&e.target;
+    if(menuOpen&&!(t&&t.closest&&t.closest(".vd-morew")))setMenu(false);
+  });
+  document.addEventListener("keydown",function(e){ if(menuOpen&&e&&e.key==="Escape")setMenu(false); });
   function hasLoc(c){
     return c.lat!=null&&c.lng!=null&&c.lat!==""&&c.lng!==""&&isFinite(Number(c.lat))&&isFinite(Number(c.lng));
   }
@@ -3408,38 +3583,177 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       (c.notes?'<p class="vd-dnote">'+esc(c.notes)+"</p>":"")+
       '<p class="vd-dact"><button type="button" class="lnk" data-bmedit="'+escA(streetOf(c.address))+'">Edit in the table</button></p></div>';
   }
-  function bmRow(c){
-    var id=String(c.id),on=!!setIds[id],open=bmOpen===id,street=streetOf(c.address);
-    var meta=[cityOf(c.market),c.property_type,c.transaction==="lease"?"Lease":"Sale",monthLabel(c.deal_date),
-      c.size_sqft?num(c.size_sqft)+" SF":""].filter(function(x){return x}).join(" \\u00b7 ");
-    var badges=(c.published?'<em class="vd-b ok">Published</em>':"")+(myFirm&&sharedIds[id]?'<em class="vd-b">Firm</em>':"");
-    return '<div class="vd-row'+(on?" on":"")+(open?" open":"")+'" data-bm="'+escA(id)+'">'+
-      '<input type="checkbox" data-set="'+escA(id)+'"'+(on?" checked":"")+' aria-label="Add '+escA(street)+' to your comp set"/>'+
-      '<div class="vd-main"><button type="button" class="vd-name" aria-expanded="'+(open?"true":"false")+'">'+esc(street)+"</button>"+badges+
-      "<span>"+esc(meta)+"</span></div>"+
-      '<div class="vd-fig"><b>'+(esc(rowFigure(c))||"&mdash;")+"</b><span>"+esc(rowSub(c))+"</span></div></div>"+
-      (open?bmDetail(c):"");
+  // ---- The ledger ----------------------------------------------------------------
+  // Grouped by market (or type, or nothing). Markets holding one comp each
+  // fold into a single "other markets" group once there are two of them, so a
+  // book with fourteen one-off cities reads as one line, not fourteen. A busy
+  // view (over LEDGER_FOLD rows) opens with every group after the first folded
+  // and each open group showing LEDGER_CAP rows, so 425 comps read as a list of
+  // markets to open one at a time. A search opens everything, because a match
+  // folded away is a match the broker cannot see. What the broker opens or
+  // folds is remembered until the grouping changes.
+  var LEDGER_FOLD=60,LEDGER_CAP=10,OTHER_KEY="~other";
+  var gOpen={},gAll={},gLast={},gIds={},rowGroup={};
+  function ledgerGroups(rows){
+    if(!bmGroup)return [{key:"",label:"",rows:rows,flat:true}];
+    var by={},order=[];
+    rows.forEach(function(c){
+      var k=bmGroup==="type"?(c.property_type||"No type"):(c.market||"No market");
+      if(!by[k]){by[k]=[];order.push(k);}
+      by[k].push(c);
+    });
+    order.sort(function(a,b){return (by[b].length-by[a].length)||a.localeCompare(b)});
+    var out=[],singles=[];
+    order.forEach(function(k){
+      if(bmGroup==="market"&&by[k].length===1)singles.push(by[k][0]);
+      else out.push({key:k,label:k,rows:by[k]});
+    });
+    if(singles.length===1){
+      var k1=singles[0].market||"No market";
+      out.push({key:k1,label:k1,rows:singles});
+    }else if(singles.length){
+      // Back in the view's own order, which the sort set.
+      var pos={}; rows.forEach(function(c,i){pos[String(c.id)]=i});
+      singles.sort(function(a,b){return pos[String(a.id)]-pos[String(b.id)]});
+      out.push({key:OTHER_KEY,label:singles.length+(out.length?" other markets":" markets"),rows:singles,other:true});
+    }
+    return out;
   }
+  // A group's header line: how many, sales and leases apart, and how recent.
+  function groupSub(g){
+    if(g.other)return "one comp each";
+    var s=0,l=0,last="";
+    g.rows.forEach(function(c){
+      if(c.transaction==="lease")l++; else s++;
+      if(String(c.deal_date||"")>last)last=String(c.deal_date||"");
+    });
+    var n=g.rows.length,bits=[];
+    if(s&&l)bits.push(n+" comps",s+" sale"+(s===1?"":"s"),l+" lease"+(l===1?"":"s"));
+    else bits.push(n+(l?" lease":" sale")+(n===1?"":"s"));
+    if(last)bits.push("latest "+monthLabel(last));
+    return bits.join(" \\u00b7 ");
+  }
+  // The rate cell says what is missing rather than leaving a dash: a lone
+  // dash read as lost data, when it meant "you have not typed the rent yet".
+  function ledRate(c){
+    var f=rowFigure(c);
+    if(f)return esc(f);
+    if(c.transaction==="lease")return '<em class="vd-na">rent not entered</em>';
+    return '<em class="vd-na">'+((c.price!=null&&c.price!=="")?"no size":"undisclosed")+"</em>";
+  }
+  var CHEV='<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M4.5 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  // One row. The meta line and the figure's sub-line are what a phone shows in
+  // place of the columns it has no room for; on a desktop the columns carry
+  // them and the two spans are hidden.
+  function bmRow(c,withCity){
+    var id=String(c.id),on=!!setIds[id],open=bmOpen===id,street=streetOf(c.address);
+    var lease=c.transaction==="lease";
+    var meta=[withCity?cityOf(c.market):"",c.property_type,lease?"Lease":"Sale",monthLabel(c.deal_date)]
+      .filter(function(x){return x}).join(" \\u00b7 ");
+    var badges=(c.published?'<em class="vd-b ok">Published</em>':"")+(myFirm&&sharedIds[id]?'<em class="vd-b">Firm</em>':"");
+    return '<tr class="vd-lr'+(on?" on":"")+(open?" open":"")+'" data-bm="'+escA(id)+'">'+
+      '<td class="vd-lc"><input type="checkbox" data-set="'+escA(id)+'"'+(on?" checked":"")+' aria-label="Add '+escA(street)+' to your comp set"/></td>'+
+      '<td class="vd-la"><button type="button" class="vd-name" aria-expanded="'+(open?"true":"false")+'">'+esc(street)+"</button>"+
+        (withCity?'<span class="vd-lcity">'+esc(cityOf(c.market))+"</span>":"")+badges+
+        '<span class="vd-lmeta">'+esc(meta)+"</span></td>"+
+      '<td class="vd-lx">'+esc(c.property_type||"")+"</td>"+
+      '<td class="vd-lx">'+(lease?"Lease"+(c.lease_type?" \\u00b7 "+esc(c.lease_type):""):"Sale")+"</td>"+
+      '<td class="vd-lx vd-ld">'+esc(monthLabel(c.deal_date))+"</td>"+
+      '<td class="vd-lx num">'+(c.size_sqft?esc(num(c.size_sqft)):"")+"</td>"+
+      '<td class="vd-lx num">'+(lease||c.price==null||c.price===""?"":esc(shortMoney(c.price)))+"</td>"+
+      '<td class="num vd-lrate"><b>'+ledRate(c)+'</b><span class="vd-lsub">'+esc(rowSub(c))+"</span></td></tr>"+
+      (open?'<tr class="vd-ldet"><td></td><td colspan="7">'+bmDetail(c)+"</td></tr>":"");
+  }
+  var SORT_NAMES={address:"address",property_type:"type",transaction:"deal",size_sqft:"size",price:"price",
+    price_per_sqft:"$/SF or rent",market:"market",cap_rate:"cap rate",published:"public"};
   function renderBmList(){
-    var rows=bmRows,shown=rows.slice(0,bmLimit);
+    var rows=bmRows,groups=ledgerGroups(rows);
+    var folding=!!bmGroup&&rows.length>LEDGER_FOLD&&groups.length>1&&!searchTerms().length;
     $("bmCount").textContent=rows.length===comps.length
       ? num(rows.length)+" comp"+(rows.length===1?"":"s")
       : num(rows.length)+" of "+num(comps.length)+" comps";
-    $("bmRows").innerHTML=shown.map(bmRow).join("")+
-      (rows.length>shown.length?'<button type="button" class="lnk vd-more" id="bmMore">Show all '+num(rows.length)+"</button>":"");
+    $("bmHead").innerHTML="<tr><th></th>"+headCell("address","Address")+headCell("property_type","Type")+
+      headCell("transaction","Deal")+headCell("deal_date","Date")+headCell("size_sqft","Size (SF)",true)+
+      headCell("price","Price",true)+headCell("price_per_sqft","$/SF or rent",true)+"</tr>";
+    gLast={}; gIds={}; rowGroup={};
+    var h="";
+    groups.forEach(function(g,i){
+      var ids=g.rows.map(function(c){return String(c.id)});
+      gIds[g.key]=ids;
+      ids.forEach(function(id){rowGroup[id]=g.key});
+      var withCity=!!g.other||bmGroup!=="market";
+      if(g.flat){
+        var some=g.rows.slice(0,bmLimit);
+        h+=some.map(function(c){return bmRow(c,withCity)}).join("")+
+          (g.rows.length>some.length?'<tr class="vd-lmore"><td></td><td colspan="7"><button type="button" class="lnk vd-more" id="bmMore">Show all '+num(g.rows.length)+"</button></td></tr>":"");
+        return;
+      }
+      var open=gOpen[g.key]!==undefined?gOpen[g.key]:(!folding||i===0);
+      gLast[g.key]=open;
+      var all=ids.length>0&&ids.every(function(id){return setIds[id]});
+      h+='<tr class="vd-lg'+(open?"":" shut")+'"><td class="vd-lc"><input type="checkbox" data-setg="'+escA(g.key)+'"'+(all?" checked":"")+
+        ' aria-label="Add every comp in '+escA(g.label)+' to your comp set"/></td><td colspan="7">'+
+        '<button type="button" class="vd-gn" data-gk="'+escA(g.key)+'" aria-expanded="'+(open?"true":"false")+'">'+CHEV+esc(g.label)+"</button>"+
+        '<span class="vd-gs">'+esc(groupSub(g))+"</span></td></tr>";
+      if(!open)return;
+      var take=g.rows.slice(0,folding&&!gAll[g.key]?LEDGER_CAP:g.rows.length);
+      h+=take.map(function(c){return bmRow(c,withCity)}).join("")+
+        (take.length<g.rows.length?'<tr class="vd-lmore"><td></td><td colspan="7"><button type="button" class="lnk" data-gall="'+escA(g.key)+'">Show all '+
+          num(g.rows.length)+(g.other?"":" in "+esc(bmGroup==="market"?cityOf(g.label):g.label))+"</button></td></tr>":"");
+    });
+    $("bmRows").innerHTML=h;
+    $("bmLed").className=rows.length?"vd-led":"vd-led hide";
     $("bmAll").checked=rows.length>0&&rows.every(function(c){return setIds[String(c.id)]});
-    // The list keeps the table's sort, so it says which one that is.
-    $("bmSort").textContent=sortK==="deal_date"&&!sortAsc?"Newest first":sortK==="deal_date"?"Oldest first":"In the table's order";
+    // The ledger keeps the table's sort, so it says which one that is.
+    $("bmSort").textContent=sortK==="deal_date"?(sortAsc?"Oldest first":"Newest first")
+      : "Sorted by "+(SORT_NAMES[sortK]||sortK);
+  }
+  // The ledger's quick views. Each is a setting of the selects (and the
+  // 90-day window), never a filter of its own, and the one that is on is read
+  // back from them. Anything set that no view describes (a market from a
+  // rollup card, the Table view's dropdowns) shows beside them as a pill with
+  // a way out, rather than narrowing the ledger from behind a hidden control.
+  var QV=[["all","All"],["sale","Sales"],["lease","Leases"],["recent","Last 90 days"],["unshared","Not shared yet"]];
+  function quickOn(){
+    var x=$("fTrans").value,f=$("fFirm").value;
+    if(f==="shared")return "";
+    if(recentDays)return (!x&&!f)?"recent":"";
+    if(f==="unshared")return x?"":"unshared";
+    return x||"all";
+  }
+  function renderViews(){
+    var since=sinceDay(90),n={all:comps.length,sale:0,lease:0,recent:0,unshared:0};
+    comps.forEach(function(c){
+      if(c.transaction==="lease")n.lease++; else n.sale++;
+      if(String(c.deal_date||"")>=since)n.recent++;
+      if(myFirm&&!sharedIds[c.id])n.unshared++;
+    });
+    var on=quickOn();
+    var h=QV.filter(function(q){return q[0]!=="unshared"||myFirm}).map(function(q){
+      return '<button type="button" class="vd-qb'+(on===q[0]?" on":"")+'" data-qv="'+q[0]+'" aria-pressed="'+(on===q[0]?"true":"false")+'">'+
+        q[1]+" <i>"+num(n[q[0]])+"</i></button>";
+    }).join("");
+    var x=$("fTrans").value,f=$("fFirm").value,pills=[];
+    if($("fMarket").value)pills.push(["fMarket",$("fMarket").value]);
+    if($("fType").value)pills.push(["fType",$("fType").value]);
+    if(x&&on!==x)pills.push(["fTrans",x==="lease"?"Leases":"Sales"]);
+    if(f&&on!=="unshared")pills.push(["fFirm",f==="shared"?"Shared with firm":"Not shared yet"]);
+    if(recentDays&&on!=="recent")pills.push(["recent","Last 90 days"]);
+    h+=pills.map(function(p){
+      return '<button type="button" class="vd-pill" data-clr="'+p[0]+'" aria-label="Stop filtering by '+escA(p[1])+'">'+
+        esc(p[1])+' <span aria-hidden="true">\\u00d7</span></button>';
+    }).join("");
+    $("bmViews").innerHTML=h;
   }
   function renderBookMap(rows){
     bmRows=rows;
-    renderChips();
+    renderViews();
     renderBmList();
     var noLoc=0; rows.forEach(function(c){ if(!hasLoc(c))noLoc++; });
     $("bmNoLoc").textContent=!noLoc||!rows.length?""
       : noLoc===rows.length
         ? "None of these comps has a map location yet, so the map is empty. Locations are added as your vault finds them; latitude and longitude in the spreadsheet pin one straight away."
-        : noLoc+" of these "+(noLoc===1?"has":"have")+" no map location yet, so "+(noLoc===1?"it is":"they are")+" in the list but not on the map.";
+        : noLoc+" of these "+(noLoc===1?"has":"have")+" no map location yet, so "+(noLoc===1?"it is":"they are")+" in the ledger but not on the map.";
     drawPins(rows,false);
     renderTray();
   }
@@ -3473,7 +3787,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       fillColor:c.transaction==="lease"?pal.lease:pal.sale,fillOpacity:on?1:.85};
   }
   function drawPins(rows,force){
-    if(bookView!=="map"||!mapReady())return;
+    if(bookView!=="map"||mapHidden||!mapReady())return;
     bmMap.invalidateSize();
     bmLayer.clearLayers(); bmPins={};
     var pal=pinPalette(),pts=[];
@@ -3497,6 +3811,9 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   function openRow(id,fromPin){
     bmOpen=(bmOpen===id&&!fromPin)?null:id;
     if(bmOpen){
+      // A row opened from a pin is shown whatever folded or capped it.
+      var k=rowGroup[id];
+      if(k!==undefined){ gOpen[k]=true; gAll[k]=true; }
       for(var i=0;i<bmRows.length;i++){ if(String(bmRows[i].id)===id){ if(i>=bmLimit)bmLimit=i+1; break; } }
     }
     renderBmList();
@@ -3512,18 +3829,39 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     var m=bmPins[id],c=compById(id);
     if(m&&c){ m.setStyle(pinStyle(c,pinPalette())); if(on&&m.bringToFront)m.bringToFront(); }
     $("bmAll").checked=bmRows.length>0&&bmRows.every(function(x){return setIds[String(x.id)]});
+    // The row's group header ticks when its last comp does. Matched by
+    // reading the attribute rather than building a selector from a market
+    // name, which can hold characters a selector would choke on.
+    var k=rowGroup[id],ids=gIds[k];
+    if(ids){
+      var all=ids.every(function(x){return setIds[x]});
+      [].forEach.call(document.querySelectorAll("[data-setg]"),function(b){
+        if(b.getAttribute("data-setg")===k)b.checked=all;
+      });
+    }
     renderTray();
   }
   $("bmRows").addEventListener("change",function(e){
-    var id=e.target&&e.target.getAttribute?e.target.getAttribute("data-set"):null;
-    if(id)toggleSet(id,!!e.target.checked);
+    var t=e.target; if(!t||!t.getAttribute)return;
+    var id=t.getAttribute("data-set");
+    if(id){ toggleSet(id,!!t.checked); return; }
+    // A group's own box ticks (or unticks) the whole group into the set.
+    var g=t.getAttribute("data-setg");
+    if(g!=null&&gIds[g]){
+      gIds[g].forEach(function(x){ if(t.checked)setIds[x]=true; else delete setIds[x]; });
+      renderBookMap(bmRows);
+    }
   });
   $("bmRows").addEventListener("click",function(e){
     var t=e.target; if(!t||!t.closest)return;
     if(t.closest("input"))return;
+    var gk=t.closest("[data-gk]");
+    if(gk){ var k=gk.getAttribute("data-gk"); gOpen[k]=!gLast[k]; renderBmList(); return; }
+    var ga=t.closest("[data-gall]");
+    if(ga){ gAll[ga.getAttribute("data-gall")]=true; renderBmList(); return; }
     var ed=t.closest("[data-bmedit]");
     if(ed){
-      $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fFirm").value="";
+      clearFilters();
       $("fText").value=ed.getAttribute("data-bmedit");
       setBookView("table"); redraw();
       $("tbl").scrollIntoView({behavior:"smooth",block:"start"});
@@ -3538,6 +3876,24 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     var on=!!$("bmAll").checked;
     bmRows.forEach(function(c){ if(on)setIds[String(c.id)]=true; else delete setIds[String(c.id)]; });
     renderBookMap(bmRows);
+  });
+  // The ledger's headers sort the same way the table's do, by the same sortK.
+  $("bmHead").addEventListener("click",function(e){
+    var th=e.target&&e.target.closest?e.target.closest("th[data-k]"):null; if(!th)return;
+    var k=th.getAttribute("data-k");
+    if(k===sortK)sortAsc=!sortAsc; else{sortK=k;sortAsc=false;}
+    render();
+  });
+  $("bmViews").addEventListener("click",function(e){
+    var b=e.target&&e.target.closest?e.target.closest("button"):null; if(!b)return;
+    var clr=b.getAttribute("data-clr");
+    if(clr){ if(clr==="recent")recentDays=0; else $(clr).value=""; redraw(); return; }
+    var q=b.getAttribute("data-qv"); if(!q)return;
+    if(q==="all"){ $("fMarket").value=""; $("fType").value=""; }
+    $("fTrans").value=q==="sale"||q==="lease"?q:"";
+    $("fFirm").value=q==="unshared"?"unshared":"";
+    recentDays=q==="recent"?90:0;
+    redraw();
   });
 
   // ---- The comp set -----------------------------------------------------------
@@ -3669,44 +4025,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
         window.print();
       });
   }
-
-  // ---- Draft B's chips ---------------------------------------------------------
-  // One row of toggles over the Market, Type, Deal and Firm selects. Counted
-  // over the whole book, so a chip never says 0 because another chip is on.
-  function chipBtn(field,val,label,on){
-    return '<button type="button" class="vd-chip'+(on?" on":"")+'" data-cf="'+field+'" data-cv="'+escA(val)+
-      '" aria-pressed="'+(on?"true":"false")+'">'+label+"</button>";
-  }
-  function renderChips(){
-    var el=$("bmChips");
-    if(!comps.length){ el.innerHTML=""; return; }
-    var m=$("fMarket").value,t=$("fType").value,x=$("fTrans").value,f=$("fFirm").value;
-    var mk={},ty={},city={};
-    comps.forEach(function(c){
-      if(c.market)mk[c.market]=(mk[c.market]||0)+1;
-      if(c.property_type)ty[c.property_type]=(ty[c.property_type]||0)+1;
-    });
-    var mks=Object.keys(mk).sort(function(a,b){return (mk[b]-mk[a])||a.localeCompare(b)});
-    var tys=Object.keys(ty).sort(function(a,b){return (ty[b]-ty[a])||a.localeCompare(b)});
-    // A city name alone is the label unless two markets share it.
-    mks.forEach(function(k){ var n=cityOf(k); city[n]=(city[n]||0)+1; });
-    var sep='<i class="vd-csep" aria-hidden="true"></i>';
-    var h=chipBtn("fMarket","","All markets",!m)+mks.map(function(k){
-      var name=city[cityOf(k)]>1?k:cityOf(k);
-      return chipBtn("fMarket",k,esc(name)+" <span>"+num(mk[k])+"</span>",m===k);
-    }).join("");
-    if(tys.length>1)h+=sep+tys.map(function(k){return chipBtn("fType",k,esc(k),t===k)}).join("");
-    h+=sep+chipBtn("fTrans","sale","Sales",x==="sale")+chipBtn("fTrans","lease","Leases",x==="lease");
-    if(myFirm)h+=sep+chipBtn("fFirm","shared","Shared with "+esc(myFirm.name),f==="shared")+
-      chipBtn("fFirm","unshared","Not shared",f==="unshared");
-    el.innerHTML=h;
-  }
-  $("bmChips").addEventListener("click",function(e){
-    var b=e.target&&e.target.closest?e.target.closest("button[data-cf]"):null; if(!b)return;
-    var sel=$(b.getAttribute("data-cf")),v=b.getAttribute("data-cv");
-    sel.value=(v===""||sel.value===v)?"":v;
-    redraw();
-  });
 
   // The empty book's map: the country, until the first import puts pins on
   // the book's own map. Never a pin and never an address here.
@@ -5125,7 +5443,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // is included only to move the selected ring; its numbers are whole-book and
   // do not change with the filter.
   function redraw(){
-    $("fClear").className=($("fMarket").value||$("fType").value||$("fTrans").value||$("fFirm").value||$("fText").value)?"btn ghost":"btn ghost hide";
+    $("fClear").className=($("fMarket").value||$("fType").value||$("fTrans").value||$("fFirm").value||$("fText").value||recentDays)?"btn ghost":"btn ghost hide";
     renderRollup();
     render();
   }
@@ -5141,24 +5459,24 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // bound to the button itself would be lost on the next draw.
   $("none").addEventListener("click",function(e){
     if(!e.target||e.target.id!=="noneClear")return;
-    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fFirm").value=""; $("fText").value="";
+    clearFilters();
     redraw();
   });
   $("fText").addEventListener("keydown",function(e){
     if(e.key==="Escape"&&$("fText").value){ $("fText").value=""; redraw(); }
   });
   $("fClear").addEventListener("click",function(){
-    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fFirm").value=""; $("fText").value=""; redraw();
+    clearFilters(); redraw();
   });
   // Bulk publish. The confirm is the single-comp one's promise, scaled: it
   // names the count, the credit, and the one thing that cannot be taken back.
   // Publishing is a public act on somebody else's behalf as much as the
   // broker's, so the dialog stays specific rather than becoming "Publish 23
   // comps?" now that it covers more of them.
-  $("pubAll").addEventListener("click",function(){ publishList(pubCandidates,$("pubAll")); });
-  // ONE publish path for a list of comps, reached from the filter row's button
-  // (the unpublished comps in view) and from the comp set's (the unpublished
-  // comps in the set), so both carry the same confirm and the same refusals.
+  // ONE publish path for a list of comps, reached from the comp set (the
+  // unpublished comps in the set). Until 2026-10-04 the filter row had a
+  // button too, publishing every unpublished comp in view; it went with
+  // Draft C, so a public act always starts from comps the broker ticked.
   function publishList(list,b){
     var ids=list.map(function(c){return c.id}),n=ids.length;
     if(!n)return;
@@ -5196,14 +5514,14 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
         compMsg("That didn't reach the server. Nothing was changed.",true);
       });
   }
-  // Bulk firm share — the push. ONE function, reached from the button in
-  // the filter row and from the line under an import result, so there is
-  // exactly one confirm on the way to the route and no second path. The
+  // Bulk firm share — the push. ONE function, reached from the comp set and
+  // from the line under an import result, so there is exactly one confirm on
+  // the way to the route and no second path. The
   // confirm is the single-comp one scaled, and it says four things. The
   // third is what makes this a push rather than a release: unlike
   // publishing, whose dialog rightly says reports keep what they used,
   // every one of these can be taken back.
-  function shareAllWithFirm(){ shareListWithFirm(firmCandidates,$("firmAll")); }
+  function shareAllWithFirm(){ shareListWithFirm(firmCandidates,$("resFirm")); }
   // The comp set's Share reaches the same function with the set's unshared
   // comps, so there is still exactly one confirm on the way to the route.
   function shareListWithFirm(list,b){
@@ -5224,7 +5542,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
         var parts=[o.j.shared+" shared"];
         if(o.j.skippedCount)parts.push(o.j.skippedCount+" skipped");
         if(o.j.remaining)parts.push(o.j.remaining+" left \\u2014 run it again");
-        // The first reason, not a bare count, pubAll's rule: the reasons
+        // The first reason, not a bare count, publishList's rule: the reasons
         // repeat, so one example usually explains all of them.
         var why=(o.j.skipped&&o.j.skipped.length)?o.j.skipped[0].reason:"";
         compMsg(parts.join(" \\u00b7 ")+(why?" \\u00b7 "+why:""),!o.j.shared);
@@ -5239,7 +5557,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
         render();
       });
   }
-  $("firmAll").addEventListener("click",shareAllWithFirm);
   // The follow-on line under an import result. It sets the view to that
   // import and runs the button's own function — confirm included — and it
   // never calls the route itself. The moment somebody has just poured their
@@ -5250,7 +5567,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     if(!t||t.id!=="resFirm"||!myFirm)return;
     sheetMode=true;
     sheetUploadId=t.getAttribute("data-upload")||null;
-    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fFirm").value=""; $("fText").value="";
+    clearFilters();
     render();
     shareAllWithFirm();
   });

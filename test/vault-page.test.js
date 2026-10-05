@@ -2638,8 +2638,10 @@ test("a partly-new book counts both halves separately", async () => {
 //
 // A book holding industrial (~$78/SF), office (~$157) and retail (~$230)
 // blended into a headline "$117/SF" — the largest number on the page, and one
-// that describes no building in the book. The ledger tile, the reading strip
-// and the table footer all read one psfStats helper so they cannot disagree.
+// that describes no building in the book. The Sales figure at the top of the
+// Book (#cMedSub; until Draft C a tile of its own at the foot), the reading
+// strip and the table footer all read one psfStats helper so they cannot
+// disagree.
 // ---------------------------------------------------------------------------
 
 const MIXED_BOOK = [
@@ -2657,10 +2659,8 @@ test("a mixed-type book narrows the headline median to its dominant type", async
   const { doc } = await runPage(MIXED_BOOK);
   // Industrial holds 2 of the 4 priced sales, so the tile answers for
   // Industrial ($78 and $80 -> $79) rather than blending in office and retail.
-  assert.equal(doc.getElementById("cMed").textContent, "$79",
-    "the figure must be a median of ONE type, never the blend");
-  assert.equal(doc.getElementById("cMedSub").textContent, "Industrial · 2 of 4 sales",
-    "a narrowed figure has to say what it narrowed to, and how much it covers");
+  assert.equal(doc.getElementById("cMedSub").textContent, "Industrial median $79/SF · 2 of 4 priced sales",
+    "the figure must be a median of ONE type, never the blend, and say what it narrowed to and how much it covers");
 });
 
 test("the tile narrows where the strip and footer decline", async () => {
@@ -2668,7 +2668,7 @@ test("the tile narrows where the strip and footer decline", async () => {
   // the BOOK and leads with a real number; the strip and footer seal the ROWS
   // ON SCREEN and must not quote a subset the reader did not filter to.
   const { doc } = await runPage(MIXED_BOOK);
-  assert.equal(doc.getElementById("cMed").textContent, "$79");
+  assert.match(doc.getElementById("cMedSub").textContent, /\$79\/SF/);
   const strip = doc.getElementById("readStrip").innerHTML;
   assert.match(strip, /3 property types/,
     "the strip still declines on a mixed view");
@@ -2684,7 +2684,7 @@ test("the dominant type breaks ties on name, not on row order", async () => {
     comp({ id: "o1", property_type: "Office", price_per_sqft: 157, address: "2 Off St" }),
   ];
   const { doc } = await runPage(book);
-  assert.match(doc.getElementById("cMedSub").textContent, /^Office · /,
+  assert.match(doc.getElementById("cMedSub").textContent, /^Office median /,
     "one sale each: Office wins on name, whichever row came first");
   const { doc: reversed } = await runPage(book.slice().reverse());
   assert.equal(reversed.getElementById("cMedSub").textContent,
@@ -2694,18 +2694,17 @@ test("the dominant type breaks ties on name, not on row order", async () => {
 
 test("a single-type book still gets its median, and names the type", async () => {
   const { doc } = await runPage(ONE_TYPE_BOOK);
-  assert.notEqual(doc.getElementById("cMed").textContent, "—",
+  assert.equal(doc.getElementById("cMedSub").textContent, "Industrial median $79/SF",
     "suppressing a median that IS comparable would be the opposite mistake");
-  assert.equal(doc.getElementById("cMedSub").textContent, "Industrial · sales only");
 });
 
 test("a book with no priced sales at all quotes nothing", async () => {
   const { doc } = await runPage([
     comp({ id: "l1", property_type: "Office", transaction: "lease", price: null, price_per_sqft: null, address: "9 Lease Rd" }),
+    comp({ id: "s1", property_type: "Land", price: null, price_per_sqft: null, address: "10 Quiet Rd" }),
   ]);
-  assert.equal(doc.getElementById("cMed").textContent, "—");
-  assert.equal(doc.getElementById("cMedSub").textContent, "sales only",
-    "with nothing to be a median of, the tile names no type either");
+  assert.equal(doc.getElementById("cMedSub").textContent, "none priced yet",
+    "with nothing to be a median of, the figure names no type either");
 });
 
 test("the table footer refuses the same figure the tile refuses", async () => {
@@ -2729,8 +2728,7 @@ test("an unpriced comp in a second type cannot suppress the median", async () =>
   const { doc } = await runPage(ONE_TYPE_BOOK.concat([
     comp({ id: "l1", property_type: "Office", transaction: "lease", price: null, price_per_sqft: null, address: "9 Lease Rd" }),
   ]));
-  assert.notEqual(doc.getElementById("cMed").textContent, "—");
-  assert.equal(doc.getElementById("cMedSub").textContent, "Industrial · sales only");
+  assert.equal(doc.getElementById("cMedSub").textContent, "Industrial median $79/SF");
 });
 
 // ---------------------------------------------------------------------------
@@ -3107,53 +3105,55 @@ test("opening an import clears a stale search", async () => {
 //
 // Publishing is how the public corpus grows, and it was one button plus one
 // identical confirm per comp — so in practice nobody published a book, they
-// published a comp. The button counts what is in the current view and lets the
-// SERVER decide eligibility: VAULT.canPublish is the rule, and a second copy
-// in the browser is the kind of pair this repo already carries warnings about.
+// published a comp. Since Draft C (2026-10-04) a batch starts from the comp
+// set, not from a button beside the Find box counting whatever the filter
+// happened to show: tick the comps (a market's header ticks a whole market),
+// and the set's Publish lets the SERVER decide eligibility. VAULT.canPublish
+// is the rule, and a second copy in the browser is the kind of pair this repo
+// already carries warnings about.
 // ---------------------------------------------------------------------------
 
-test("the publish-all button counts the unpublished comps in view", async () => {
+// Ticks a comp into the set, and presses one of the set's own buttons, the
+// way the browser would. Function declarations, so they are there whichever
+// test reaches them first.
+function tickInto(doc, id, on) {
+  doc.getElementById("bmRows").fire("change", {
+    target: { checked: on !== false, getAttribute: (a) => (a === "data-set" ? id : null) },
+  });
+}
+function pressSet(doc, id) {
+  const b = { id, disabled: false, textContent: "" };
+  doc.getElementById("setTray").fire("click", { target: { closest: () => b } });
+  return b;
+}
+
+test("there is no whole-view Publish or Share button: the comp set is the way in", async () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.doesNotMatch(html, /id="pubAll"|id="firmAll"/,
+    "a whole-view publish button is back beside the Find box, acting on whatever the filter shows");
   const { doc } = await runPage([
-    comp({ id: "c1", published: false }),
-    comp({ id: "c2", published: false }),
-    comp({ id: "c3", published: true }),
+    comp({ id: "c1" }), comp({ id: "c2", address: "200 Oak Ave" }), comp({ id: "c3", address: "300 Elm St", published: true }),
   ]);
-  assert.equal(doc.getElementById("pubAll").textContent, "Publish 2 comps");
-  assert.ok(!doc.getElementById("pubAll").classList.contains("hide"));
+  tickInto(doc, "c1"); tickInto(doc, "c2"); tickInto(doc, "c3");
+  assert.match(doc.getElementById("setTray").innerHTML, /id="setPub">Publish 2</,
+    "the set counts its unpublished comps, and only those");
 });
 
-test("it follows the filter, so it always means what is on screen", async () => {
-  const { doc } = await runPage([
-    comp({ id: "c1", address: "100 Main St", published: false }),
-    comp({ id: "c2", address: "200 Oak Ave", published: false }),
-  ]);
-  doc.getElementById("fText").value = "main";
-  doc.getElementById("fText").fire("input", {});
-  await tick();
-  assert.equal(doc.getElementById("pubAll").textContent, "Publish 1 comp");
-});
-
-// Hidden, not greyed: a permanently disabled control on a fully-published book
-// is a thing to wonder about rather than an affordance.
-test("a fully published book hides the button rather than greying it", async () => {
-  const { doc } = await runPage([comp({ id: "c1", published: true })]);
-  assert.ok(doc.getElementById("pubAll").classList.contains("hide"));
-});
-
-test("it posts every unpublished id in view, once confirmed", async () => {
+test("it posts every unpublished id in the set, once confirmed", async () => {
   let sent = null;
   const realConfirm = global.confirm;
   global.confirm = () => true;
   try {
     const { doc } = await runPage([
-      comp({ id: "c1", published: false }), comp({ id: "c2", published: false }),
+      comp({ id: "c1", published: false }), comp({ id: "c2", published: false, address: "200 Oak Ave" }),
     ], null, {
       publishMany: (init) => {
         sent = JSON.parse(init.body);
         return Promise.resolve(jsonResponse(200, { ok: true, published: 2, skippedCount: 0, remaining: 0 }));
       },
     });
-    doc.getElementById("pubAll").fire("click", {});
+    tickInto(doc, "c1"); tickInto(doc, "c2");
+    pressSet(doc, "setPub");
     await tick();
     assert.deepEqual(sent, { ids: ["c1", "c2"] });
     assert.match(doc.getElementById("compMsg").textContent, /2 published/);
@@ -3168,7 +3168,8 @@ test("declining the confirm publishes nothing", async () => {
     const { doc } = await runPage([comp({ id: "c1", published: false })], null, {
       publishMany: () => { called += 1; return Promise.resolve(jsonResponse(200, { ok: true })); },
     });
-    doc.getElementById("pubAll").fire("click", {});
+    tickInto(doc, "c1");
+    pressSet(doc, "setPub");
     await tick();
     assert.equal(called, 0);
   } finally { global.confirm = realConfirm; }
@@ -3186,7 +3187,8 @@ test("skips are reported with a reason, not just a count", async () => {
         skipped: [{ id: "c9", reason: "A published comp needs a price — an unpriced comp cannot support a valuation." }],
       })),
     });
-    doc.getElementById("pubAll").fire("click", {});
+    tickInto(doc, "c1");
+    pressSet(doc, "setPub");
     await tick();
     const msg = doc.getElementById("compMsg").textContent;
     assert.match(msg, /3 published/);
@@ -3204,7 +3206,8 @@ test("a batch over the cap says how many are left rather than failing", async ()
         ok: true, published: 100, skippedCount: 0, remaining: 40,
       })),
     });
-    doc.getElementById("pubAll").fire("click", {});
+    tickInto(doc, "c1");
+    pressSet(doc, "setPub");
     await tick();
     assert.match(doc.getElementById("compMsg").textContent, /40 left/);
   } finally { global.confirm = realConfirm; }
@@ -3222,7 +3225,8 @@ test("a missing credit name opens the identity form", async () => {
         code: "needs_credit_name",
       })),
     });
-    doc.getElementById("pubAll").fire("click", {});
+    tickInto(doc, "c1");
+    pressSet(doc, "setPub");
     await tick();
     assert.match(doc.getElementById("compMsg").textContent, /Add your firm/);
     assert.ok(!doc.getElementById("idForm").classList.contains("hide"),
@@ -3554,29 +3558,29 @@ test("a broker in no firm gets no firm toggle at all", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The push — bulk firm share (2026-09-01)
+// The push — bulk firm share (2026-09-01; through the comp set since Draft C)
 //
 // The vault is "your space, pushed to the firm when you are comfortable", and
-// the push was one click and one confirm per comp. #firmAll follows
-// refreshPublishAll's three rules: it counts the CURRENT VIEW, it does not
-// decide eligibility (firmCompPayload is the rule; the route reports what it
-// skipped), and it is hidden at zero. #fFirm is the question the Firm column
-// could not answer — what have I not pushed yet.
+// the push was one click and one confirm per comp. The set's Share counts the
+// ticked comps not yet on the shelf, does not decide eligibility
+// (firmCompPayload is the rule; the route reports what it skipped), and is
+// not there at zero or for a broker in no firm. #fFirm is the question the
+// Firm column could not answer — what have I not pushed yet.
 // ---------------------------------------------------------------------------
 
-test("the push button counts the unshared comps in view and names the firm", async () => {
+test("the set's Share counts the ticked comps not on the shelf, and names the firm", async () => {
   const { doc } = await runPage([
     comp({ id: "c1" }), comp({ id: "c2", address: "200 Oak Ave" }), comp({ id: "c3", address: "300 Elm St" }),
   ], null, { firm: FIRM, sharedIds: ["c1"] });
-  const b = doc.getElementById("firmAll");
-  assert.equal(b.textContent, "Share 2 with Colliers Boise",
+  tickInto(doc, "c1"); tickInto(doc, "c2"); tickInto(doc, "c3");
+  assert.match(doc.getElementById("setTray").innerHTML, /id="setFirm">Share 2 with Colliers Boise</,
     "the label names the firm — this is the one control whose whole meaning is who sees it");
-  assert.ok(!b.classList.contains("hide"));
 });
 
-test("a broker in no firm gets neither the button nor the filter", async () => {
+test("a broker in no firm gets neither the set's Share nor the filter", async () => {
   const { doc } = await runPage([comp({ id: "c1" })]);
-  assert.ok(doc.getElementById("firmAll").classList.contains("hide"));
+  tickInto(doc, "c1");
+  assert.doesNotMatch(doc.getElementById("setTray").innerHTML, /setFirm/);
   assert.ok(doc.getElementById("fFirmLab").classList.contains("hide"),
     "a filter over a relationship the broker does not have is furniture");
 });
@@ -3603,8 +3607,6 @@ test("the Firm filter answers what have I not pushed yet", async () => {
   await tick();
   assert.match(doc.getElementById("tbody").innerHTML, /100 Main St/);
   assert.doesNotMatch(doc.getElementById("tbody").innerHTML, /200 Oak Ave/);
-  // A view of already-shared comps has nothing to push: hidden, not greyed.
-  assert.ok(doc.getElementById("firmAll").classList.contains("hide"));
 });
 
 test("Clear filters puts the Firm filter back too", async () => {
@@ -3619,17 +3621,7 @@ test("Clear filters puts the Firm filter back too", async () => {
   assert.equal(doc.getElementById("shown").textContent, "2 shown");
 });
 
-test("the push follows every other filter, so it means what is on screen", async () => {
-  const { doc } = await runPage([
-    comp({ id: "c1", address: "100 Main St" }), comp({ id: "c2", address: "200 Oak Ave" }),
-  ], null, { firm: FIRM });
-  doc.getElementById("fText").value = "main";
-  doc.getElementById("fText").fire("input", {});
-  await tick();
-  assert.equal(doc.getElementById("firmAll").textContent, "Share 1 with Colliers Boise");
-});
-
-test("it posts every unshared id in view with the firm, once confirmed", async () => {
+test("it posts every unshared id in the set with the firm, once confirmed", async () => {
   let sent = null;
   const realConfirm = global.confirm;
   global.confirm = () => true;
@@ -3643,7 +3635,8 @@ test("it posts every unshared id in view with the firm, once confirmed", async (
         return Promise.resolve(jsonResponse(200, { ok: true, shared: 2, firm: "Colliers Boise", skipped: [], skippedCount: 0, remaining: 0 }));
       },
     });
-    doc.getElementById("firmAll").fire("click", {});
+    tickInto(doc, "c1"); tickInto(doc, "c2"); tickInto(doc, "c3");
+    pressSet(doc, "setFirm");
     await tick();
     assert.deepEqual(sent, { orgId: "o1", ids: ["c2", "c3"] },
       "the shared comp is not re-sent; the firm is the one the page was booted with");
@@ -3660,7 +3653,8 @@ test("the confirm makes the four promises, and the third is what makes it a push
     const { doc } = await runPage([comp({ id: "c1" }), comp({ id: "c2", address: "200 Oak Ave" })], null, {
       firm: FIRM, firmMany: () => { called += 1; return Promise.resolve(jsonResponse(200, { ok: true })); },
     });
-    doc.getElementById("firmAll").fire("click", {});
+    tickInto(doc, "c1"); tickInto(doc, "c2");
+    pressSet(doc, "setFirm");
     await tick();
     assert.equal(called, 0, "declining the confirm shares nothing");
     assert.match(text, /^Share 2 comps with Colliers Boise\?/);
@@ -3688,7 +3682,8 @@ test("skips are reported with the first reason, and leftovers with the advice", 
         skipped: [{ id: "c8", address: "8 Undated Ln", reason: "no deal date" }, { id: "c9", address: "", reason: "no address" }],
       })),
     });
-    doc.getElementById("firmAll").fire("click", {});
+    tickInto(doc, "c1");
+    pressSet(doc, "setFirm");
     await tick();
     const msg = doc.getElementById("compMsg").textContent;
     assert.match(msg, /23 shared/);
@@ -3699,7 +3694,7 @@ test("skips are reported with the first reason, and leftovers with the advice", 
   } finally { global.confirm = realConfirm; }
 });
 
-test("a refusal is shown and the button comes back", async () => {
+test("a refusal is shown and the set's Share comes back", async () => {
   const realConfirm = global.confirm;
   global.confirm = () => true;
   try {
@@ -3707,12 +3702,13 @@ test("a refusal is shown and the button comes back", async () => {
       firm: FIRM,
       firmMany: () => Promise.resolve(jsonResponse(403, { error: "You are not a member of that firm." })),
     });
-    doc.getElementById("firmAll").fire("click", {});
+    tickInto(doc, "c1");
+    const b = pressSet(doc, "setFirm");
     await tick();
     assert.match(doc.getElementById("compMsg").textContent, /not a member/);
-    const b = doc.getElementById("firmAll");
     assert.equal(b.disabled, false);
-    assert.equal(b.textContent, "Share 1 with Colliers Boise", "re-rendered, not left reading Sharing…");
+    assert.match(doc.getElementById("setTray").innerHTML, /id="setFirm">Share 1 with Colliers Boise</,
+      "re-rendered, not left reading Sharing…");
   } finally { global.confirm = realConfirm; }
 });
 
@@ -4743,7 +4739,7 @@ test("the vault's five parts are tabs, and each panel holds its own sections", (
       "the " + tab + " tab does not control #" + pid);
   }
   const book = panel("panelBook");
-  for (const id of ["deckBook", "bookEmpty", "addSec", "compsSec", "trustLine", "bookMap", "setTray"]) {
+  for (const id of ["deckBook", "bookEmpty", "addSec", "bookStrip", "compsSec", "bmBand", "trustLine", "bookMap", "setTray"]) {
     assert.ok(book.includes('id="' + id + '"'), "#" + id + " left the Book tab");
   }
   assert.ok(panel("panelPipe").includes('id="pipeSec"') && panel("panelPipe").includes('id="deckPipe"'));
@@ -4789,26 +4785,60 @@ test("the tabs count what is in them, and new owner requests are red", async () 
   assert.equal(quiet.doc.getElementById("tabPipeN").className, "");
 });
 
-test("the chips are toggles over the same selects the table reads", async () => {
+// Presses one of the ledger's quick views (or a pill's ×) the way a click would.
+function pressView(doc, attr, val) {
+  doc.getElementById("bmViews").fire("click", { target: { closest: () => ({
+    getAttribute: (a) => (a === attr ? val : null) }) } });
+}
+
+test("the quick views are settings of the same selects the table reads", async () => {
   const comps = [
-    comp({ id: "a" }),
-    comp({ id: "b", market: "Meridian, ID", address: "2 B St, Meridian, ID" }),
-    comp({ id: "c", property_type: "Office", address: "3 C St, Boise, ID" }),
+    comp({ id: "a", deal_date: isoIn(-10) }),
+    comp({ id: "b", market: "Meridian, ID", address: "2 B St, Meridian, ID", deal_date: isoIn(-200) }),
+    comp({ id: "c", transaction: "lease", price: null, price_per_sqft: null, rent_psf_yr: 9.5,
+      address: "3 C St, Boise, ID", deal_date: isoIn(-20) }),
   ];
   const { doc } = await runPage(comps, null, {});
-  const chips = doc.getElementById("bmChips").innerHTML;
-  assert.match(chips, /data-cf="fMarket" data-cv="Boise, ID"/);
-  assert.match(chips, /data-cf="fMarket" data-cv="Meridian, ID"/);
-  assert.match(chips, /data-cf="fType" data-cv="Office"/, "two types in the book: the type chips show");
-  assert.match(chips, /data-cf="fTrans" data-cv="lease"/);
-  const press = (cf, cv) => doc.getElementById("bmChips").fire("click", { target: { closest: () => ({
-    getAttribute: (a) => (a === "data-cf" ? cf : a === "data-cv" ? cv : null) }) } });
-  press("fMarket", "Boise, ID");
-  assert.equal(doc.getElementById("fMarket").value, "Boise, ID", "the chip sets the Market select itself");
-  assert.equal(doc.getElementById("bmCount").textContent, "2 of 3 comps");
-  press("fMarket", "Boise, ID");
-  assert.equal(doc.getElementById("fMarket").value, "", "pressing an on chip turns it off");
+  const views = doc.getElementById("bmViews").innerHTML;
+  assert.match(views, /data-qv="all" aria-pressed="true">All <i>3<\/i>/);
+  assert.match(views, /data-qv="sale"[^>]*>Sales <i>2<\/i>/, "counted over the whole book");
+  assert.match(views, /data-qv="lease"[^>]*>Leases <i>1<\/i>/);
+  assert.match(views, /data-qv="recent"[^>]*>Last 90 days <i>2<\/i>/);
+  assert.doesNotMatch(views, /data-qv="unshared"/, "a broker in no firm has nothing to share");
+
+  pressView(doc, "data-qv", "lease");
+  assert.equal(doc.getElementById("fTrans").value, "lease", "the view sets the Deal select itself");
+  assert.equal(doc.getElementById("bmCount").textContent, "1 of 3 comps");
+  assert.match(doc.getElementById("bmViews").innerHTML, /data-qv="lease" aria-pressed="true"/);
+
+  pressView(doc, "data-qv", "recent");
+  assert.equal(doc.getElementById("fTrans").value, "", "views replace each other rather than stacking");
+  assert.equal(doc.getElementById("bmCount").textContent, "2 of 3 comps", "the 200-day-old deal is outside the window");
+  assert.ok(!doc.getElementById("fClear").classList.contains("hide"), "Clear knows about the window");
+
+  pressView(doc, "data-qv", "all");
   assert.equal(doc.getElementById("bmCount").textContent, "3 comps");
+});
+
+test("a filter no quick view describes shows as a pill with a way out", async () => {
+  const { doc } = await runPage([comp({ id: "a" }), comp({ id: "b", market: "Meridian, ID", address: "2 B St, Meridian, ID" })]);
+  doc.getElementById("fMarket").value = "Meridian, ID";
+  doc.getElementById("fMarket").fire("change", {});
+  await tick();
+  assert.match(doc.getElementById("bmViews").innerHTML, /data-clr="fMarket"[^>]*>Meridian, ID/);
+  assert.equal(doc.getElementById("bmCount").textContent, "1 of 2 comps");
+  pressView(doc, "data-clr", "fMarket");
+  assert.equal(doc.getElementById("fMarket").value, "");
+  assert.equal(doc.getElementById("bmCount").textContent, "2 comps");
+});
+
+test("Not shared yet is a quick view only for a broker in a firm", async () => {
+  const { doc } = await runPage([comp({ id: "c1" }), comp({ id: "c2", address: "200 Oak Ave" })],
+    null, { firm: FIRM, sharedIds: ["c1"] });
+  assert.match(doc.getElementById("bmViews").innerHTML, /data-qv="unshared"[^>]*>Not shared yet <i>1<\/i>/);
+  pressView(doc, "data-qv", "unshared");
+  assert.equal(doc.getElementById("fFirm").value, "unshared");
+  assert.equal(doc.getElementById("bmCount").textContent, "1 of 2 comps");
 });
 
 test("an empty book is its map with the way in laid over it", () => {
@@ -4825,7 +4855,7 @@ test("an empty book is its map with the way in laid over it", () => {
   assert.ok(!/circleMarker|address/.test(fn), "the empty map is drawing something about the book");
 });
 
-test("the map view lists the filtered book and says which comps it cannot pin", async () => {
+test("the ledger lists the filtered book and says which comps the map cannot pin", async () => {
   const comps = [
     comp({ id: "a", address: "1 Pinned St, Boise, ID", lat: 43.6, lng: -116.2 }),
     comp({ id: "b", address: "2 Nowhere Rd, Boise, ID" }),
@@ -4883,12 +4913,13 @@ test("the comp set summarises honestly: sales and leases apart, and never across
   assert.match(tray().innerHTML, /Build a comp set/);
 });
 
-test("the comp set's Publish and Share go through the same confirm as the filter row's", () => {
+test("the comp set's Publish and Share are the one way to a batch, through the one confirm", () => {
   const js = pageScript(renderVaultHTML(boot([comp({})]), CHROME));
-  assert.match(js, /\$\("pubAll"\)\.addEventListener\("click",function\(\)\{ publishList\(pubCandidates,\$\("pubAll"\)\); \}\);/);
-  assert.match(js, /function shareAllWithFirm\(\)\{ shareListWithFirm\(firmCandidates,\$\("firmAll"\)\); \}/);
+  assert.doesNotMatch(js, /pubAll|firmAll|pubCandidates/, "a whole-view batch button is back");
   assert.match(js, /if\(b\.id==="setPub"\)\{ publishList\(/, "the set publishes through publishList");
   assert.match(js, /if\(b\.id==="setFirm"\)\{ shareListWithFirm\(/, "the set shares through shareListWithFirm");
+  // The import result's push is the same function, not a second path.
+  assert.match(js, /function shareAllWithFirm\(\)\{ shareListWithFirm\(firmCandidates,\$\("resFirm"\)\); \}/);
   // One confirm each, and neither route is called from anywhere else.
   assert.equal((js.match(/"\/api\/vault\/publish-many"/g) || []).length, 1);
   assert.equal((js.match(/"\/api\/vault\/firm-many"/g) || []).length, 1);
@@ -4919,4 +4950,152 @@ test("the set's CSV writes a would-be formula as text", () => {
   assert.equal(cell('say "hi"'), '"say ""hi"""');
   assert.equal(cell(1250000), "1250000");
   assert.equal(cell(null), "");
+});
+
+// ----------------------------------------------------------------------------
+// The Book as a ledger (Draft C, 2026-10-04): the owner's pick of the Book
+// drafts. One full-width table grouped by market under a map band, the book's
+// figures across the top, quick views over the same selects, and the table and
+// spreadsheet behind More. Publishing and sharing a batch start from the comp
+// set (see "Bulk publish" above).
+// ----------------------------------------------------------------------------
+const at = (o) => comp(o);
+const groupRows = (html) => [...html.matchAll(/data-gk="([^"]*)"/g)].map((m) => m[1]);
+
+test("the ledger groups by market, biggest first, and folds the one-comp markets together", async () => {
+  const { doc } = await runPage([
+    at({ id: "b1", address: "1 A St, Boise, ID" }), at({ id: "b2", address: "2 B St, Boise, ID" }),
+    at({ id: "m1", market: "Meridian, ID", address: "3 C St, Meridian, ID" }),
+    at({ id: "n1", market: "Nampa, ID", address: "4 D St, Nampa, ID" }),
+  ]);
+  const rows = doc.getElementById("bmRows").innerHTML;
+  assert.deepEqual(groupRows(rows), ["Boise, ID", "~other"]);
+  assert.match(rows, /2 other markets/);
+  assert.match(rows, /one comp each/);
+  assert.match(rows, /class="vd-lcity">Meridian</, "a folded row names its own city");
+  for (const id of ["b1", "b2", "m1", "n1"]) assert.match(rows, new RegExp('data-bm="' + id + '"'));
+});
+
+test("a single one-comp market is its own group, not 'one other market'", async () => {
+  const { doc } = await runPage([at({ id: "b1" }), at({ id: "b2", address: "2 B St" }),
+    at({ id: "m1", market: "Meridian, ID", address: "3 C St, Meridian, ID" })]);
+  assert.deepEqual(groupRows(doc.getElementById("bmRows").innerHTML), ["Boise, ID", "Meridian, ID"]);
+});
+
+test("a busy ledger folds every market after the first, and a search opens them all", async () => {
+  const book = [];
+  const add = (n, market, city) => { for (let i = 0; i < n; i++) book.push(at({ id: city + i, market, address: i + " Main St, " + market })); };
+  add(40, "Boise, ID", "b"); add(20, "Meridian, ID", "m"); add(10, "Nampa, ID", "n");
+  const { doc } = await runPage(book);
+  let rows = doc.getElementById("bmRows").innerHTML;
+  assert.equal((rows.match(/class="vd-lg shut"/g) || []).length, 2, "Meridian and Nampa start folded");
+  assert.equal((rows.match(/data-bm="/g) || []).length, 10, "the open group shows ten rows");
+  assert.match(rows, /data-gall="Boise, ID">Show all 40 in Boise</);
+  assert.match(rows, /40 sales · latest/);
+
+  // Opening a folded group shows it (capped too, the view is still busy).
+  doc.getElementById("bmRows").fire("click", { target: {
+    closest: (sel) => (sel === "[data-gk]" ? { getAttribute: () => "Meridian, ID" } : null) } });
+  rows = doc.getElementById("bmRows").innerHTML;
+  assert.equal((rows.match(/class="vd-lg shut"/g) || []).length, 1);
+  assert.equal((rows.match(/data-bm="/g) || []).length, 20);
+
+  // A search: a match folded away is a match nobody can see.
+  doc.getElementById("fText").value = "main";
+  doc.getElementById("fText").fire("input", {});
+  await tick();
+  rows = doc.getElementById("bmRows").innerHTML;
+  assert.doesNotMatch(rows, /vd-lg shut/);
+  assert.equal((rows.match(/data-bm="/g) || []).length, 70);
+});
+
+test("the ledger can group by type, or not at all", async () => {
+  const { doc } = await runPage([at({ id: "i1" }), at({ id: "o1", property_type: "Office", address: "2 Off St" })]);
+  doc.getElementById("bmGroup").value = "type";
+  doc.getElementById("bmGroup").fire("change", {});
+  assert.deepEqual(groupRows(doc.getElementById("bmRows").innerHTML).sort(), ["Industrial", "Office"]);
+  doc.getElementById("bmGroup").value = "";
+  doc.getElementById("bmGroup").fire("change", {});
+  const rows = doc.getElementById("bmRows").innerHTML;
+  assert.deepEqual(groupRows(rows), [], "grouped by nothing: no headers");
+  assert.match(rows, /data-bm="i1"/);
+});
+
+test("a market's header ticks the whole market into the comp set", async () => {
+  const { doc } = await runPage([at({ id: "b1" }), at({ id: "b2", address: "2 B St" }),
+    at({ id: "m1", market: "Meridian, ID", address: "3 C St, Meridian, ID" })]);
+  doc.getElementById("bmRows").fire("change", { target: { checked: true,
+    getAttribute: (a) => (a === "data-setg" ? "Boise, ID" : null) } });
+  assert.match(doc.getElementById("setTray").innerHTML, /2 comps in your set/);
+  assert.match(doc.getElementById("bmRows").innerHTML, /data-setg="Boise, ID" checked/);
+});
+
+test("a lease with no rent says so instead of a dash", async () => {
+  const { doc } = await runPage([at({ id: "l1", transaction: "lease", price: null, price_per_sqft: null }),
+    at({ id: "s1", price: 875000, size_sqft: null, price_per_sqft: null, address: "2 Land Rd" })]);
+  const rows = doc.getElementById("bmRows").innerHTML;
+  assert.match(rows, /rent not entered/);
+  assert.match(rows, /no size/, "a priced sale with no size says what is missing");
+});
+
+test("the book's figures sit at the top: sales and leases apart, each median for one type", async () => {
+  const { doc } = await runPage([
+    at({ id: "i1", price_per_sqft: 78, address: "1 Ind St" }),
+    at({ id: "i2", price_per_sqft: 80, address: "2 Ind St" }),
+    at({ id: "o1", property_type: "Office", price_per_sqft: 157, address: "3 Off St" }),
+    at({ id: "l1", transaction: "lease", price: null, price_per_sqft: null, rent_psf_yr: 9.5, lease_type: "NNN", address: "4 Lease Ln" }),
+    at({ id: "l2", transaction: "lease", price: null, price_per_sqft: null, rent_psf_yr: 10.5, lease_type: "Gross",
+      market: "Meridian, ID", address: "5 Lease Ln, Meridian, ID" }),
+  ]);
+  assert.equal(String(doc.getElementById("cSales").textContent), "3");
+  assert.equal(doc.getElementById("cMedSub").textContent, "Industrial median $79/SF · 2 of 3 priced sales");
+  assert.equal(String(doc.getElementById("cLeases").textContent), "2");
+  assert.equal(doc.getElementById("cRentSub").textContent, "Industrial median $10.00/SF/yr · mixed lease types",
+    "a mixed lease structure is disclosed, not refused");
+  assert.equal(doc.getElementById("cMarkets").textContent, "in 2 markets");
+  assert.equal(doc.getElementById("cSharedCell").className, "lcell hide", "no firm, no shelf cell");
+  const html = renderVaultHTML(boot([at({})]), CHROME);
+  assert.ok(html.indexOf('id="bookStrip"') < html.indexOf('id="compsSec"'),
+    "the figures are above the book, not at its foot");
+  assert.ok(html.indexOf('id="bookStrip"') > 0 && !/<div class="trust" id="trustLine">\s*<div class="ledger">/.test(html),
+    "the foot keeps the promise and the credit name, not a second copy of the figures");
+});
+
+test("a broker in a firm gets the shelf as a fifth figure", async () => {
+  const { doc } = await runPage([at({ id: "c1" }), at({ id: "c2", address: "200 Oak Ave" }), at({ id: "c3", address: "300 Elm St" })],
+    null, { firm: FIRM, sharedIds: ["c1"] });
+  assert.equal(doc.getElementById("cSharedCell").className, "lcell");
+  assert.equal(doc.getElementById("bookStrip").className, "ledger vd-strip five");
+  assert.equal(String(doc.getElementById("cShared").textContent), "1");
+  assert.equal(doc.getElementById("cSharedSub").textContent, "2 not shared yet");
+});
+
+test("More holds the table and the spreadsheet; the ledger has no switch of its own", async () => {
+  const { doc } = await runPage([at({ id: "c1" })]);
+  assert.equal(doc.getElementById("bookViews").className, "vd-views vd-map", "the ledger is where the Book opens");
+  doc.getElementById("ledMore").fire("click", {});
+  assert.equal(doc.getElementById("ledMenu").className, "vd-menu");
+  const act = (a) => doc.getElementById("ledMenu").fire("click", { target: { closest: () => ({ getAttribute: () => a }) } });
+  act("table");
+  assert.equal(doc.getElementById("bookViews").className, "vd-views");
+  assert.equal(doc.getElementById("ledMenu").className, "vd-menu hide", "choosing closes the menu");
+  const { doc: d2 } = await runPage([at({ id: "c1" })]);
+  d2.getElementById("ledMore").fire("click", {});
+  d2.getElementById("ledMenu").fire("click", { target: { closest: () => ({ getAttribute: () => "sheet" }) } });
+  assert.equal(d2.getElementById("sheetToggle").textContent, "Done", "the spreadsheet opens");
+  assert.equal(d2.getElementById("bookViews").className, "vd-views", "in the Table view it belongs to");
+  const html = renderVaultHTML(boot([at({})]), CHROME);
+  assert.match(html, /<a role="menuitem" href="\/api\/vault\/export\.csv">/, "the export in More is a plain href too");
+});
+
+test("the map band can be hidden and brought back", async () => {
+  const { doc } = await runPage([at({ id: "c1" })]);
+  assert.equal(doc.getElementById("bmBand").className, "vd-band");
+  assert.equal(doc.getElementById("mapShow").className, "btn ghost hide");
+  doc.getElementById("mapHide").fire("click", {});
+  assert.equal(doc.getElementById("bmBand").className, "vd-band hide");
+  assert.equal(doc.getElementById("mapShow").className, "btn ghost");
+  assert.equal(doc.getElementById("bmNoLoc").className, "note hide", "the line about the map goes with it");
+  doc.getElementById("mapShow").fire("click", {});
+  assert.equal(doc.getElementById("bmBand").className, "vd-band");
 });

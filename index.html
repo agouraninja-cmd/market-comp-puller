@@ -18857,6 +18857,16 @@ async function renderMyDesk() {
       }
     }
   } catch (_) { /* private mode etc. — a nicety, not a requirement */ }
+  // ?address= fills the address field and runs nothing (2026-10-05): the
+  // Data page's Sites tab links "Run a land report" here with the site's
+  // address and ?type=Land, so the member presses Search instead of retyping
+  // it. Only an EMPTY field is filled, so a restored report or a shared one
+  // that already set the address keeps it; capped like every address input.
+  try {
+    const urlAddr = String(new URLSearchParams(location.search).get("address") || "").trim().slice(0, 300);
+    const addrInput = document.getElementById("address");
+    if (urlAddr && addrInput && !addrInput.value) addrInput.value = urlAddr;
+  } catch (_) { /* malformed query string — the app must still boot */ }
   // After the restore so the line never paints blank, and deliberately after a
   // restore that leaves `typeResolution` null: last session's asset class is a
   // hint about this visitor, not a decision about this address.

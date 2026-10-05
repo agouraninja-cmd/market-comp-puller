@@ -204,6 +204,10 @@ const BFACTS = require("./building-facts");
 const DIRECTORY = require("./broker-directory");
 const LEADSVC = require("./broker-leads");
 const BOVSVC = require("./bov-log");
+// The Sites tab's rules (migration 060): stages, the tracker, and the field
+// validation every /api/sites write goes through. Dual-exported; the browser
+// reads the same copy at /sites.js.
+const SITES = require("./sites");
 // Corpus audit — the structural integrity rules for the comp corpus. It also
 // owns the source_type badge rule (enforcedSourceType + isAggregateAddress),
 // which USED to live inline below: the audit has to detect rows that predate a
@@ -2105,6 +2109,27 @@ async function requireBroker(req, res, area) {
   }
   if (!DB_CONFIGURED) {
     sendJson(res, 503, { error: "The lead inbox is unavailable right now. Please try again in a minute." });
+    return null;
+  }
+  return user;
+}
+
+// The Sites tab's gate (migration 060). The same three refusals as
+// requireBroker, in the same order (401, then 403 without canUseVault, then
+// 503 with no database), with its own words: Sites replaces the Pipeline for
+// a development firm, and the Pipeline was part of Pro. DB-only on purpose,
+// the vault's rule: a member's deals in a file Render erases on deploy would
+// be lost without anyone being told.
+async function requireSites(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  const ent = await entitlementsFor(req);
+  if (!ent.canUseVault) {
+    sendJson(res, 403, { error: "Tracking the sites you're buying is part of Pro.", code: "pro_required" });
+    return null;
+  }
+  if (!DB_CONFIGURED) {
+    sendJson(res, 503, { error: "Your sites are unavailable right now. Please try again in a minute." });
     return null;
   }
   return user;
@@ -23063,6 +23088,151 @@ const server = http.createServer((req, res) =>
     return sendJson(res, 404, { error: "Not found." });
   }
 
+  // ---- Sites (migration 060) -------------------------------------------------
+  // A development firm's member's deals (Prospect through Entitlements, or
+  // Passed) and the status, Owned or Tracking, of the properties they already
+  // hold in portfolio_items. Vault-class private, the BOV log's shape exactly:
+  // DB-only, every read and write scoped by user_id, read by no owner or
+  // public surface. Rules in sites.js (pure, tested); requireSites is the gate.
+  // A row naming a held property is checked against the CALLER's portfolio
+  // before it is written, so nobody can attach a status to somebody else's
+  // building by guessing its id.
+  const SITES_SELECT = "id,address,market,property_type,acres,zoning,asking_price,earnest_money,seller," +
+    "stage,stage_dates,dates,notes,portfolio_item_id,created_at,updated_at";
+  const sitesToday = () => new Date().toISOString().slice(0, 10);
+  const sitesOpts = () => ({ isPropertyType: (t) => VAULT.PROPERTY_TYPES.includes(t), today: sitesToday() });
+  const sitesMarket = (address) => {
+    const m = marketOf(String(address || ""));
+    return LEADSVC.isCanonicalMarket(m) ? m : null;
+  };
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/sites/update") {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (c) => { body += c; if (body.length > 2e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (rateLimited("sites:" + clientIp(req), 120)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await requireSites(req, res);
+        if (!user) return;
+        const parsed = JSON.parse(body || "{}");
+        const id = String(parsed.id || "");
+        if (!isUuidish(id)) return sendJson(res, 400, { error: "Missing or malformed id." });
+        const scope = `user_sites?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`;
+        const existing = ((await sbRequest("GET", `${scope}&select=${SITES_SELECT}&limit=1`)) || [])[0];
+        if (!existing) return sendJson(res, 404, { error: "That site is not in your list." });
+        const v = SITES.validatePatch(existing, parsed, sitesOpts());
+        if (!v.ok) return sendJson(res, 400, { error: v.error });
+        if (v.patch.portfolio_item_id && !(await getPortfolioItem(user.id, v.patch.portfolio_item_id))) {
+          return sendJson(res, 404, { error: "That property is not in your list." });
+        }
+        if (v.patch.address !== undefined) v.patch.market = sitesMarket(v.patch.address);
+        v.patch.updated_at = new Date().toISOString();
+        const rows = await sbRequest("PATCH", scope, v.patch, { prefer: "return=representation" });
+        if (v.patch.stage && v.patch.stage !== existing.stage) {
+          logEvent("site_stage", { prop_type: existing.property_type, market: existing.market || "", source: v.patch.stage });
+        }
+        return sendJson(res, 200, { site: (rows && rows[0]) || { ...existing, ...v.patch } });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("site update failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save that change. Please try again in a minute." });
+      }
+    });
+    return;
+  }
+
+  if (req.url.split("?")[0] === "/api/sites") {
+    if (req.method === "GET") {
+      (async () => {
+        if (rateLimited("sites:" + clientIp(req), 120)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await requireSites(req, res);
+        if (!user) return;
+        try {
+          const rows = await sbRequest("GET", `user_sites?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&select=${SITES_SELECT}&order=created_at.desc&limit=${SITES.MAX_ROWS}`);
+          // `today` is the server's, so the page's countdowns and the stage
+          // stamps a write makes agree on what day it is.
+          return sendJson(res, 200, { sites: rows || [], today: sitesToday() });
+        } catch (err) {
+          console.error("sites read failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load your sites. Please try again in a minute." });
+        }
+      })().catch((err) => { console.error("sites error:", err); sendJson(res, 500, { error: "Sites failed." }); });
+      return;
+    }
+    if (req.method === "POST") {
+      let body = "";
+      req.setEncoding("utf8");
+      req.on("data", (c) => { body += c; if (body.length > 2e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          if (rateLimited("sites:" + clientIp(req), 120)) {
+            return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+          }
+          const user = await requireSites(req, res);
+          if (!user) return;
+          const v = SITES.validateNew(JSON.parse(body || "{}"), sitesOpts());
+          if (!v.ok) return sendJson(res, 400, { error: v.error });
+          const row = v.row;
+          const pid = row.portfolio_item_id;
+          if (pid) {
+            const item = await getPortfolioItem(user.id, pid);
+            if (!item) return sendJson(res, 404, { error: "That property is not in your list." });
+            // One status row per held property: a second "mark as Tracking"
+            // answers the row that already exists instead of adding another.
+            const already = ((await sbRequest("GET", `user_sites?user_id=eq.${encodeURIComponent(user.id)}` +
+              `&portfolio_item_id=eq.${encodeURIComponent(pid)}&select=${SITES_SELECT}&limit=1`)) || [])[0];
+            if (already) return sendJson(res, 200, { site: already, existed: true });
+          }
+          // Refuse past the read cap, so nobody owns rows the list truncates.
+          const count = ((await sbRequest("GET",
+            `user_sites?user_id=eq.${encodeURIComponent(user.id)}&select=id&limit=${SITES.MAX_ROWS + 1}`)) || []).length;
+          if (count >= SITES.MAX_ROWS) {
+            return sendJson(res, 400, { error: `Your list holds ${SITES.MAX_ROWS} sites. Remove one to add another.` });
+          }
+          const rows = await sbRequest("POST", "user_sites", [{
+            ...row, user_id: user.id, market: sitesMarket(row.address),
+          }], { prefer: "return=representation" });
+          // PII-free, like every analytics event: market and type only.
+          logEvent("site_add", { prop_type: row.property_type, market: sitesMarket(row.address) || "", source: row.stage });
+          return sendJson(res, 200, { site: (rows && rows[0]) || null });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("site add failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that site. Please try again in a minute." });
+        }
+      });
+      return;
+    }
+    if (req.method === "DELETE") {
+      (async () => {
+        if (rateLimited("sites:" + clientIp(req), 120)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await requireSites(req, res);
+        if (!user) return;
+        const id = String(new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        if (!isUuidish(id)) return sendJson(res, 400, { error: "Missing or malformed id." });
+        try {
+          // Scoped by user_id, and { ok: true } for a wrong or foreign id
+          // alike: no existence oracle across users (the BOV log's rule).
+          await sbRequest("DELETE",
+            `user_sites?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`);
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          console.error("site delete failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't remove that site. Please try again in a minute." });
+        }
+      })().catch((err) => { console.error("sites error:", err); sendJson(res, 500, { error: "Sites failed." }); });
+      return;
+    }
+    return sendJson(res, 404, { error: "Not found." });
+  }
+
   // A broker raising a hand. Emails the owner (who already holds the lead's
   // PII) naming the broker; nothing is sent to the property owner and no
   // broker PII goes anywhere it does not already go. Owner-mediated, same as
@@ -30520,6 +30690,11 @@ const server = http.createServer((req, res) =>
     // the global BFACTS, the one copy of "which fields inherit" the server
     // also fills with, so it must never be stale relative to the page.
     "/building-facts.js": { file: "building-facts.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // The Sites tab (migration 060): its rules (the global SITES) and its
+    // drawing (the global SITESTAB), both called from /vault's inline script,
+    // so the same maxAge: 0 rule holds for the same reason.
+    "/sites.js": { file: "sites.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    "/sites-tab.js": { file: "sites-tab.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },

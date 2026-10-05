@@ -636,7 +636,10 @@ async function runPage(comps, benchResult, opts, identity) {
   const html = renderVaultHTML(bootPayload, CHROME);
   const script = pageScript(html);
   const doc = stubDocument();
-  const win = { __VAULT_BOOT__: bootPayload };
+  // opts.window adds globals the page reads off window: the Sites tests hand
+  // in SITES and a recording SITESTAB here, standing in for /sites.js and
+  // /sites-tab.js, which load as their own scripts and are not in this one.
+  const win = Object.assign({ __VAULT_BOOT__: bootPayload }, opts.window || {});
   const fakeFetch = (url, init) => {
     const u = String(url);
     calls.push({ url: u, body: init && init.body ? JSON.parse(init.body) : null });
@@ -4762,13 +4765,81 @@ test("the vault's five parts are tabs, and each panel holds its own sections", (
 test("setTab is the one writer of which panel shows, and the locked vault opens on Properties", async () => {
   const { doc } = await runPage([comp({})], null, {});
   assert.equal(doc.getElementById("panelBook").className, "vt-panel on");
-  for (const id of ["panelPipe", "panelProps", "panelWatch", "panelContrib"]) {
+  for (const id of ["panelSites", "panelPipe", "panelProps", "panelWatch", "panelContrib"]) {
     assert.equal(doc.getElementById(id).className, "vt-panel", "#" + id + " is showing on first paint");
   }
   const js = pageScript(renderVaultHTML(boot([comp({})]), CHROME));
   assert.equal((js.match(/\.className=on\?"vt-panel on":"vt-panel"/g) || []).length, 1, "a second writer of the panels");
-  assert.match(js, /if\(curTab==="book"\|\|curTab==="pipe"\)setTab\("props",true\);/,
+  // Sites joined the list on 2026-10-05: it is Pro too, so a locked page that
+  // a #sites link opened must not be left showing an empty panel.
+  assert.match(js, /if\(curTab==="book"\|\|curTab==="pipe"\|\|curTab==="sites"\)setTab\("props",true\);/,
     "a Pro-locked vault must open on a tab that is the member's either way");
+});
+
+// ---------------------------------------------------------------------------
+// Sites, for a development firm (2026-10-05, migration 060)
+// ---------------------------------------------------------------------------
+
+test("the Sites tab ships hidden, with its panel, its action and both of its scripts", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /<button type="button" role="tab" class="vt-tab vt-off" id="tab-sites" data-tab="sites"/,
+    "a broker would see a Sites tab before the page decided anything");
+  assert.match(html, /<div class="vt-panel" id="panelSites" data-panel="sites"/);
+  assert.match(html, /<button class="dact" id="sitesAddToggle"[^>]*>\+ Add a site<\/button>/);
+  assert.match(html, /<section id="sitesSec"><div id="sitesRoot"><\/div><\/section>/);
+  // Both before the inline script that mounts them.
+  const inline = html.indexOf("<script>\n(function(){");
+  for (const src of ["/sites.js", "/sites-tab.js"]) {
+    const at = html.indexOf('<script src="' + src + '"></script>');
+    assert.ok(at > 0 && at < inline, src + " must load before the page's own script");
+  }
+  // A link to the old section id still lands somewhere real.
+  assert.match(pageScript(html), /sitesSec:"sites"/);
+});
+
+const SITES_RULES = require("../sites");
+function sitesWindow(mounted) {
+  return { SITES: SITES_RULES, SITESTAB: { mount: (ctx) => { mounted.push(ctx); return { reload() {} }; } } };
+}
+
+test("a development firm's member gets Sites in place of Pipeline and Properties", async () => {
+  const mounted = [];
+  const { doc } = await runPage([comp({})], null, {
+    firm: { id: "f1", name: "Ridgeline Development", kind: "development" },
+    window: sitesWindow(mounted),
+  });
+  assert.ok(!doc.getElementById("tab-sites").classList.contains("vt-off"), "the Sites tab stayed hidden");
+  assert.ok(doc.getElementById("tab-pipe").classList.contains("vt-off"), "a developer still sees the BOV pipeline");
+  assert.ok(doc.getElementById("tab-props").classList.contains("vt-off"), "Properties shows beside Sites, which holds it");
+  assert.equal(mounted.length, 1, "Sites was mounted " + mounted.length + " times");
+  const ctx = mounted[0];
+  assert.equal(ctx.root, doc.getElementById("sitesRoot"));
+  assert.equal(ctx.addToggle, doc.getElementById("sitesAddToggle"));
+  assert.equal(ctx.firm.kind, "development");
+  assert.ok(Array.isArray(ctx.propTypes) && ctx.propTypes.includes("Land"));
+  ctx.setCount("2 due this week", true);
+  assert.equal(String(doc.getElementById("tabSitesN").textContent), "2 due this week");
+  assert.equal(doc.getElementById("tabSitesN").className, "hot");
+});
+
+test("a broker firm, and a member in no firm, keep exactly the tabs they had", async () => {
+  for (const firm of [{ id: "f2", name: "Colliers Boise", kind: "broker" }, null]) {
+    const mounted = [];
+    const { doc } = await runPage([comp({})], null, { firm: firm || undefined, window: sitesWindow(mounted) });
+    assert.ok(doc.getElementById("tab-sites").classList.contains("vt-off"), "Sites showed for " + JSON.stringify(firm));
+    assert.ok(!doc.getElementById("tab-pipe").classList.contains("vt-off"), "Pipeline went missing");
+    assert.ok(!doc.getElementById("tab-props").classList.contains("vt-off"), "Properties went missing");
+    assert.equal(mounted.length, 0);
+  }
+});
+
+test("without its script, a development firm keeps the old tabs rather than an empty one", async () => {
+  const { doc } = await runPage([comp({})], null, {
+    firm: { id: "f1", name: "Ridgeline Development", kind: "development" },
+  });
+  assert.ok(doc.getElementById("tab-sites").classList.contains("vt-off"));
+  assert.ok(!doc.getElementById("tab-pipe").classList.contains("vt-off"));
+  assert.ok(!doc.getElementById("tab-props").classList.contains("vt-off"));
 });
 
 test("the tabs count what is in them, and new owner requests are red", async () => {

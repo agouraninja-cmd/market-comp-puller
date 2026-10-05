@@ -345,7 +345,7 @@ test("a refused vault read says so instead of showing an empty book", () => {
   const js = pageScript(html);
   const fn = js.match(/el\("vaultToggle"\)\.addEventListener[\s\S]*?\n  \}\);/);
   assert.ok(fn, "the toggle handler must exist");
-  assert.match(fn[0], /Your vault could not be loaded/);
+  assert.match(fn[0], /Your Data could not be loaded/);
 });
 
 test("the send reports what actually landed, not what was asked for", () => {

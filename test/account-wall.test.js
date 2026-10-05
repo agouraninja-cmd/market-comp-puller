@@ -204,7 +204,7 @@ test("the wall serves the landing page at the root", async (t) => {
     const member = await (await get("/brokers-firms", FAKE_SESSION)).text();
     assert.ok(!member.includes(`<a href="/">Home</a>`),
       "a member's / is the workspace, and the nav carries Workspace instead");
-    assert.match(member, /<a href="\/desk">Workspace<\/a>/,
+    assert.match(member, /<a href="\/desk">Home<\/a>/,
       "the member is not left without a way back — that was the 2026-08-28 bug");
   });
 

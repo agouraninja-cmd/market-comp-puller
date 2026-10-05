@@ -262,7 +262,7 @@ test("the page draws its own bands rather than borrowing the wrong ones", async 
   assert.deepEqual(eyebrows, [
     "For brokers &amp; firms",
     "One &middot; your book",
-    "Two &middot; your vault",
+    "Two &middot; your Data",
     "Three &middot; your firm",
   ], "the page lost a section, or they are out of the design's order");
 });

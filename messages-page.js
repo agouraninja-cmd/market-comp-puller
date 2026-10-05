@@ -471,7 +471,7 @@ function renderMessagesBody(boot) {
       <div id="msgLinks"></div>
     </div>
     <div class="msg-panel msg-hide" id="msgPicker">
-      <h3>Send a comp from your vault</h3>
+      <h3>Send a comp from your Data</h3>
       <input id="msgPickFilter" type="text" placeholder="Filter by address, market or type" autocomplete="off">
       <div id="msgPickList"></div>
       <div class="msg-panelfoot">
@@ -721,7 +721,7 @@ function renderMessagesBody(boot) {
     else if (s.rent_psf_yr) facts.push('<span>' + esc(money(s.rent_psf_yr)) + '/SF/yr</span>');
     var who = extName(item.addedBy);
     var foot = who === "You"
-      ? '<span class="msg-hint">You sent this from your vault</span>'
+      ? '<span class="msg-hint">You sent this from your Data</span>'
       : '<span class="msg-hint">Added by ' + esc(who) + '</span>';
     return '<div class="msg-comp">' +
       '<h4>' + esc(s.address || "Untitled comp") + '</h4>' +
@@ -1499,12 +1499,12 @@ function renderMessagesBody(boot) {
     // only be a no-op. It says so instead, and drops the "Sent by" line, which
     // would otherwise be your own name repeated back at you.
     var foot = c.mine
-      ? '<span class="msg-hint">You sent this from your vault</span>'
+      ? '<span class="msg-hint">You sent this from your Data</span>'
       : (c.savedByMe
-          ? '<span class="msg-saved">In your vault</span>'
+          ? '<span class="msg-saved">In your Data</span>'
           : (state.canAttach
-              ? '<button class="msg-btn sm" type="button" data-save="' + esc(c.id) + '">Save to my vault</button>'
-              : '<span class="msg-hint">A vault is part of Pro.</span>'));
+              ? '<button class="msg-btn sm" type="button" data-save="' + esc(c.id) + '">Save to my Data</button>'
+              : '<span class="msg-hint">Saving comps to Data is part of Pro.</span>'));
     return '<div class="msg-comp">' +
       '<h4>' + esc(c.address || "Untitled comp") + '</h4>' +
       '<div class="facts">' +
@@ -1693,7 +1693,7 @@ function renderMessagesBody(boot) {
   function renderComps(rows){
     if (!rows.length) {
       $("msgStream").innerHTML = '<div class="msg-empty"><h3>No comps in this conversation</h3>' +
-        '<p>Anything sent from a vault is kept here for good.</p></div>';
+        '<p>Comps sent here from anyone’s Data are kept for good.</p></div>';
       return;
     }
     var html = '<div class="msg-note">' + rows.length + (rows.length === 1 ? " comp has" : " comps have") +
@@ -1763,7 +1763,7 @@ function renderMessagesBody(boot) {
     if (d.compId && state.canAttach) {
       var seed = function(){
         var comp = (state.vault || []).filter(function(c){ return String(c.id) === d.compId; })[0];
-        if (!comp) { $("msgSendMsg").textContent = "That comp isn't in your vault, so it wasn't attached."; return; }
+        if (!comp) { $("msgSendMsg").textContent = "That comp isn't in your Data, so it wasn't attached."; return; }
         if (!state.attach.some(function(c){ return c.id === String(comp.id); })) {
           state.attach.push({ id: String(comp.id), address: comp.address });
         }
@@ -1886,10 +1886,10 @@ function renderMessagesBody(boot) {
     var seq = ++state.listSeq;
     return api("GET", "/api/messages").then(function(o){
       if (seq <= state.staleBefore) return;
-      if (o.s === 401) { gate('<h3>Please sign in</h3><p>Messages are part of your firm\\'s workspace.</p>' +
+      if (o.s === 401) { gate('<h3>Please sign in</h3><p>Messages are part of your firm\\'s account.</p>' +
         '<p><a class="msg-btn" href="/?auth=signin">Sign in</a></p>'); return; }
       if (o.s === 403) { gate('<h3>Messages are for your firm</h3><p>' + esc((o.j && o.j.error) || "") + '</p>' +
-        '<p><a class="msg-btn" href="/desk">Go to your workspace</a> <a class="msg-btn" href="/brokers-firms">How firms work</a></p>'); return; }
+        '<p><a class="msg-btn" href="/desk">Go to Home</a> <a class="msg-btn" href="/brokers-firms">How firms work</a></p>'); return; }
       if (o.s !== 200) {
         if (!quiet) gate('<h3>Messages are unavailable</h3><p>' + esc((o.j && o.j.error) || "Please try again in a minute.") + '</p>');
         return;
@@ -2015,7 +2015,7 @@ function renderMessagesBody(boot) {
     var q = ($("msgPickFilter").value || "").trim().toLowerCase();
     var rows = state.vault || [];
     if (!rows.length) {
-      $("msgPickList").innerHTML = '<div class="msg-hint">Your vault is empty. ' +
+      $("msgPickList").innerHTML = '<div class="msg-hint">Your Data has no comps yet. ' +
         '<a href="/vault">Add comps</a> and they will show up here.</div>';
       return;
     }
@@ -2042,10 +2042,10 @@ function renderMessagesBody(boot) {
   function openPicker(){
     $("msgPicker").className = "msg-panel";
     if (state.vault) { renderPicker(); return; }
-    $("msgPickList").innerHTML = '<div class="msg-hint">Loading your vault…</div>';
+    $("msgPickList").innerHTML = '<div class="msg-hint">Loading your Data…</div>';
     api("GET", "/api/vault?limit=1000").then(function(o){
       if (o.s !== 200) {
-        $("msgPickList").innerHTML = '<div class="msg-hint">' + esc((o.j && o.j.error) || "Couldn't read your vault.") + '</div>';
+        $("msgPickList").innerHTML = '<div class="msg-hint">' + esc((o.j && o.j.error) || "Couldn't read your Data.") + '</div>';
         return;
       }
       state.vault = (o.j && o.j.comps) || [];
@@ -2170,7 +2170,7 @@ function renderMessagesBody(boot) {
       // the door has to open here too. The sentence stays, as the list's
       // stand-in; the door is decided above, the same way for everyone.
       html = '<div class="msg-hint">Nobody else has joined your firm yet. ' +
-        'Invitations to colleagues are managed on your <a href="/desk">workspace</a>.</div>';
+        'Invitations to colleagues are managed on <a href="/desk">Home</a>.</div>';
     } else if (!html) {
       html = '<div class="msg-hint">Nobody in your firm matches that.' +
         (state.canAttach ? ' A full email address invites somebody outside it.' : '') + '</div>';
@@ -2285,7 +2285,7 @@ function renderMessagesBody(boot) {
     btn.disabled = true;
     btn.textContent = "Saving…";
     api("POST", "/api/messages/comp/save", { compId: btn.getAttribute("data-save") }).then(function(o){
-      if (o.s !== 200) { btn.disabled = false; btn.textContent = "Save to my vault"; note((o.j && o.j.error) || "Couldn't save that comp.", true); return; }
+      if (o.s !== 200) { btn.disabled = false; btn.textContent = "Save to my Data"; note((o.j && o.j.error) || "Couldn't save that comp.", true); return; }
       // The vault list this page may already be holding is now stale.
       state.vault = null;
       if (state.tab === "comps") setTab("comps");
@@ -2611,11 +2611,11 @@ function renderMessagesBody(boot) {
     // A refusal the server already knows about, rendered before any fetch —
     // so somebody with no firm is told so immediately rather than watching a
     // spinner resolve into a wall.
-    if (BOOT.s === 401) gate('<h3>Please sign in</h3><p>Messages are part of your firm\\'s workspace.</p>' +
+    if (BOOT.s === 401) gate('<h3>Please sign in</h3><p>Messages are part of your firm\\'s account.</p>' +
       '<p><a class="msg-btn" href="/?auth=signin">Sign in</a></p>');
     else if (BOOT.s === 403) gate('<h3>Messages are for your firm</h3>' +
       '<p>' + esc((BOOT.j && BOOT.j.error) || "") + '</p>' +
-      '<p><a class="msg-btn" href="/desk">Go to your workspace</a> <a class="msg-btn" href="/brokers-firms">How firms work</a></p>');
+      '<p><a class="msg-btn" href="/desk">Go to Home</a> <a class="msg-btn" href="/brokers-firms">How firms work</a></p>');
     else gate('<h3>Messages are unavailable</h3><p>' + esc((BOOT.j && BOOT.j.error) || "Please try again in a minute.") + '</p>');
   } else {
     start();

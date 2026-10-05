@@ -87,10 +87,10 @@ function buildNotice(kind, { name = "", trialEndsAt, monthly, annual = 0, freeRe
         `Your account has CompNinja Pro until ${endDate}. There's nothing to pay and no card on file.\n\n` +
         "While it lasts you can:\n" +
         "- run as many comp reports as you like, looking back up to ten years\n" +
-        "- keep your own closed deals in a private vault that feeds your reports\n" +
+        "- keep your own closed deals in your private Data, which feeds your reports\n" +
         "- value a whole list of addresses at once\n" +
         "- put your firm's name on every report you download\n\n" +
-        `Open your workspace: ${deskUrl}\n\n` +
+        `Go to Home: ${deskUrl}\n\n` +
         `When the trial ends your account moves to ${freePlan}. Everything you saved stays in your account. ` +
         `To keep Pro, it's ${price}: ${pricingUrl}` +
         footer,
@@ -101,7 +101,7 @@ function buildNotice(kind, { name = "", trialEndsAt, monthly, annual = 0, freeRe
       subject: `Your CompNinja Pro trial ends on ${endDate}`,
       text: `${hello}\n\n` +
         `Your Pro trial ends on ${endDate}. After that your account moves to ${freePlan}. ` +
-        "Anything you saved or uploaded stays in your account, and the vault reopens whenever Pro does.\n\n" +
+        "Anything you saved or uploaded stays in your account, and your Data reopens whenever Pro does.\n\n" +
         `To keep Pro, it's ${price}: ${pricingUrl}` +
         footer,
     };

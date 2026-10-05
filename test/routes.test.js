@@ -528,7 +528,7 @@ test("bare environment", async (t) => {
     })).text();
     assert.ok(!html.includes(`<a href="/">Home</a>`),
       "a member's / IS their workspace, so Home duplicates the Workspace row");
-    assert.match(html, /<a href="\/desk">Workspace<\/a>/,
+    assert.match(html, /<a href="\/desk">Home<\/a>/,
       "suppressing Home is only safe because Workspace is the way back; without it "
       + "a member is left with the wordmark and a CTA, which is the 2026-08-28 bug");
     assert.match(html, /Run a report/,
@@ -556,7 +556,7 @@ test("bare environment", async (t) => {
         p + " still carries the Run a report CTA in its header");
       // Dropping it is only safe because the way back is still a row, not a
       // button — the same argument that let Home go for members.
-      assert.match(nav, /<a href="\/desk">Workspace<\/a>/,
+      assert.match(nav, /<a href="\/desk">Home<\/a>/,
         p + " lost the CTA and has no Workspace row either — that strands the member");
     }
   });
@@ -629,7 +629,7 @@ test("bare environment", async (t) => {
     // because it is a link on the server-rendered pages and a button in the
     // app, where it opens a panel instead of navigating.
     const ROWS = [
-      ["Workspace", />Workspace</],
+      ["Home", />Home</],
       ["the vault", /<a [^>]*href="\/vault"/],
       ["Market explorer", /<a [^>]*href="\/markets"/],
       ["Comp report", /<a [^>]*href="\/bulk"/],
@@ -1045,7 +1045,7 @@ test("bare environment", async (t) => {
     })).text();
     // Renamed 2026-08-28: the label is "Workspace" everywhere a person
     // reads it. The invariant is unchanged — one link, not two.
-    const desks = (html.match(/>Workspace</g) || []).length;
+    const desks = (html.match(/>Home</g) || []).length;
     assert.equal(desks, 1, "a signed-in member should see exactly one workspace link");
     assert.ok(!/id="navDesk"/.test(html),
       "this page renders its own workspace link — the hydrated one must stay off it");
@@ -1055,7 +1055,7 @@ test("bare environment", async (t) => {
     const html = await (await fetch(srv.base + "/vault", {
       headers: { cookie: "cn_session=irrelevant-presence-only" },
     })).text();
-    const desks = (html.match(/>Workspace</g) || []).length;
+    const desks = (html.match(/>Home</g) || []).length;
     assert.equal(desks, 1, "a signed-in member should see exactly one workspace link");
     assert.ok(!/id="navDesk"/.test(html),
       "the vault renders its own workspace link — the hydrated one must stay off it");

@@ -218,7 +218,7 @@ function renderBulkRunMarkup(opts) {
       <button type="button" class="lnk hide" id="bkCancel">Cancel the rest</button>
       <a class="lnk" id="bkDl" href="#" style="display:none">Download CSV</a>
       <a class="lnk hide" id="bkAddAll" href="#">Add valued rows to portfolio</a>
-      <a class="lnk" href="/desk">Open your workspace</a>${past ? "" : `
+      <a class="lnk" href="/desk">Go to Home</a>${past ? "" : `
       <a class="lnk" href="/bulk">Earlier runs &rarr;</a>`}
     </p>
     <div style="overflow-x:auto"><table id="bkRows"></table></div>
@@ -1083,7 +1083,7 @@ function run(){
     singleJob=one?d.job.id:null;
     BULKRUN.msg(one
       ? "Running. The comp report opens here when it finishes; if you leave, the row below keeps its link."
-      : "Running. You can close this tab \\u2014 the valuations keep going and land on your workspace.",false);
+      : "Running. You can close this tab \\u2014 the valuations keep going and land on Home.",false);
     BULKRUN.showNotes(d);
     BULKRUN.showRun(d);BULKRUN.poll(d.job.id);
   }).catch(function(e){

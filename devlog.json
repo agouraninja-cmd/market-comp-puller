@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-10-04",
+    "type": "improvement",
+    "title": "Workspace is now Home, and the Vault is now Data",
+    "details": "The two signed-in spaces have plainer names. Home is your company’s shared page (what opens when you sign in); Data is where you bring in and work with your own sales, leases and buildings, private until you share them. The sidebar now reads Home · Data · Messages, and every page, message, email and the pricing and marketing pages use the new names. Links and bookmarks keep working: the addresses are unchanged."
+  },
+  {
     "date": "2026-09-30",
     "type": "fix",
     "title": "Nightly shipped post: the right day, with merges",

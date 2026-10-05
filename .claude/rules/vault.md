@@ -22,6 +22,14 @@ paths:
 ---
 # The broker vault and lead inbox
 
+> **Customer-facing names (owner's call, 2026-10-04): "Home" and "Data".**
+> The firm space (`/desk`, and `/` for a member) is labelled **Home**, and the
+> personal space (`/vault`) is labelled **Data**; the rail reads Home · Data ·
+> Messages. Only the words a customer reads changed: URLs, routes, ids
+> (`navVault`, `menuVaultLink`, `deskGreeting`), tables (`broker_comps`) and
+> module names keep "desk"/"vault", and these notes still say "workspace" and
+> "vault" for the two spaces. Never put "Workspace" or "Vault" back in copy.
+
 > Moved verbatim from CLAUDE.md on 2026-09-25. Claude Code loads this file
 > when it opens a file matching `paths` above; read it by hand before changing
 > this area's code in `server.js`. The never-break rules stay in CLAUDE.md.

@@ -1750,7 +1750,7 @@ test("a member who can create a firm is told what one gives and offered the door
   assert.equal(ctx.dom.text("deskFirmEmptyLab"), "Not in a firm yet");
   assert.equal(ctx.dom.text("deskFirmEmptyBtn"), "Create a firm");
   assert.match(ctx.dom.text("deskFirmEmptyCopy"), /board of buildings, a shelf of shared reports, a contact list and conversations/);
-  assert.match(ctx.dom.text("deskFirmEmptyCopy"), /keeps your own reports and vault/, "the privacy half of the promise travels with it");
+  assert.match(ctx.dom.text("deskFirmEmptyCopy"), /keeps your own reports and Data/, "the privacy half of the promise travels with it");
 });
 
 test("a pending invitation names the firm and points at it instead of at creating one", () => {
@@ -1975,7 +1975,7 @@ test("the find box searches the whole board, shelf and contact list in the brows
   assert.equal(hit.href, "/building/b2", "a contact attached to a building opens that building's sheet");
   ctx.dom.el("deskFind").value = "zzzz";
   ctx.find();
-  assert.match(ctx.dom.text("deskFindResults"), /Nothing in your workspace matches/);
+  assert.match(ctx.dom.text("deskFindResults"), /Nothing on Home matches/);
 });
 
 test("the new desk pieces reach only ids that exist, and are hidden with the firm sections", () => {
@@ -2136,7 +2136,7 @@ test("the banner greets a member by first name, on this browser's clock, and say
   assert.match(ctx.dom.text("deskToday"), /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), [A-Z][a-z]+ \d{1,2}$/);
   const out = loadGreeting(null);
   out.head();
-  assert.equal(out.dom.text("deskGreeting"), "Workspace");
+  assert.equal(out.dom.text("deskGreeting"), "Home");
 });
 
 test("a workspace left open turns to Good afternoon at noon, Good evening at 5, and a new day at midnight", () => {
@@ -2170,7 +2170,7 @@ test("a sign-out puts the banner back: no name, no status line, no city", () => 
   const fn = html.slice(at, html.indexOf("\n  }\n", at));
   assert.ok(fn.includes("resetDeskHero();"), "hideAll resets the banner with the rest of the firm surfaces");
   const reset = html.slice(html.indexOf("  function resetDeskHero() {"), html.indexOf("\n  }\n", html.indexOf("  function resetDeskHero() {")));
-  assert.ok(reset.includes('getElementById("deskGreeting").textContent = "Workspace"'));
+  assert.ok(reset.includes('getElementById("deskGreeting").textContent = "Home"'));
   assert.ok(reset.includes("clearTimeout(deskClockTimer);"),
     "and stops the greeting's timer, or it would greet the signed-out banner at the next hour mark");
   assert.ok(html.includes('if (!document.hidden && deskClockTimer) drawDeskClock();'),

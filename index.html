@@ -2316,7 +2316,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                It passes the sell-only-what-ships test that keeps report
                branding off this list: /vault is live, it has a UI, and a
                broker's own comps really do appear in their own reports. -->
-          <p class="pr-sum">Every comp itemized with sources, the 10-year window, unlimited exports, the vault, Address Explorer, your branding, a portfolio with estimated values.</p>
+          <p class="pr-sum">Every comp itemized with sources, the 10-year window, unlimited exports, Data for your own comps, Address Explorer, your branding, a portfolio with estimated values.</p>
           <button type="button" data-plan="pro_monthly"
             class="pricing-buy btn-live mt-3 w-full bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
             Upgrade to Pro
@@ -2353,7 +2353,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div class="flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-3 border-t border-[#ECEAE3] text-xs text-[#4C5665]">
         <span>10-year lookback</span>
         <span>Unlimited exports</span>
-        <span>Private comp vault</span>
+        <span>Private Data for your own comps</span>
         <span>Address Explorer</span>
         <span>Report branding</span>
         <span>Portfolio with estimated values</span>
@@ -2384,7 +2384,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <tr><td>Comps itemized, with sources</td><td class="c">All found</td><td class="c">All found</td></tr>
             <tr><td>Sales history window</td><td class="c">3 yrs</td><td class="c">10 yrs</td></tr>
             <tr><td>CSV, image, PDF, Excel and PowerPoint exports</td><td class="c">5 / month</td><td class="c">Unlimited</td></tr>
-            <tr><td>Private vault for your own comps</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
+            <tr><td>Private Data for your own comps</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
             <tr><td>Address Explorer</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
             <tr><td>Your firm's branding on reports</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
             <tr><td>Portfolio</td><td class="c">Saved reports, address list</td><td class="c">Saved reports, with estimated values</td></tr>
@@ -2490,8 +2490,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- Two tips, one shown (the submit handler picks by currentUser).
              Both point at the Vault's contributions deck (2026-09-04), which
              is where a submission's review status and citations live now. -->
-        <p id="compTipIn" class="hidden text-xs text-[#9AA2AD] mt-2">Track its review and see when reports cite it under Your contributions in <a href="/vault" class="underline">your Vault</a>.</p>
-        <p id="compTipOut" class="text-xs text-[#9AA2AD] mt-2">Tip: create a free CompNinja account with this same email, and your submissions show up in your Vault with their review status and citations.</p>
+        <p id="compTipIn" class="hidden text-xs text-[#9AA2AD] mt-2">Track its review and see when reports cite it under Your contributions in <a href="/vault" class="underline">your Data</a>.</p>
+        <p id="compTipOut" class="text-xs text-[#9AA2AD] mt-2">Tip: create a free CompNinja account with this same email, and your submissions show up in your Data with their review status and citations.</p>
         <div class="mt-4 flex justify-center gap-3">
           <button id="compAnotherBtn" type="button" class="btn-live text-sm font-semibold text-[#374253] bg-white hover:bg-[#F5F4EF] border border-[#D8D4C9] rounded-lg px-4 py-2">Submit another</button>
           <button id="compDoneBtn" type="button" class="btn-live text-sm font-semibold text-[#374253] bg-white hover:bg-[#F5F4EF] border border-[#D8D4C9] rounded-lg px-4 py-2">Done</button>
@@ -2714,7 +2714,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </div>
         <p id="settingsAvatarMsg" class="hidden text-sm mt-2"></p>
         <div id="settingsDeleteConfirm" class="hidden mt-3 border border-[#D8D4C9] rounded-lg p-3">
-          <p class="text-sm text-[#1A2433]">This deletes your account, portfolio, watchlist, and everything in your vault. It can't be undone.</p>
+          <p class="text-sm text-[#1A2433]">This deletes your account, portfolio, watchlist, and everything in your Data. It can't be undone.</p>
           <div class="mt-3 flex flex-wrap items-center gap-2">
             <button id="settingsDeleteGo" type="button"
               class="btn-live text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Permanently delete</button>
@@ -2760,7 +2760,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <div id="firmModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
     <div class="mcard bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-2xl p-6">
       <div class="rd-lab">Firm &amp; branding</div>
-      <p class="text-sm text-[#5A6473] mt-1">Who is in your firm, how it shares, and the branding your reports carry. The firm's buildings, conversations and shelf stay on your workspace.</p>
+      <p class="text-sm text-[#5A6473] mt-1">Who is in your firm, how it shares, and the branding your reports carry. The firm's buildings, conversations and shelf stay on Home.</p>
       <p id="firmModalErr" class="hidden text-sm text-red-600 mt-4">Couldn't load your firm just now. Nothing has changed. Close this and try again in a moment.</p>
       <!-- The fourth state. renderFirm() hides #deskFirm for an account that
            is in no firm, holds no invitation and could not create one (the
@@ -2768,7 +2768,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            that read as nothing; here it has to say so. The pricing door
            obeys settingsUpgradeBtn's rule, live && !pro, applied on open. -->
       <div id="firmModalNone" class="hidden mt-4">
-        <p class="text-sm text-[#4C5665]">You're not part of a firm yet. A firm is a shared shelf: reports colleagues share with it land on everyone's workspace, while each person's own reports, vault and watchlist stay theirs. Ask a colleague who has one to invite you, or start one on a Pro plan.</p>
+        <p class="text-sm text-[#4C5665]">You're not part of a firm yet. A firm is a shared shelf: reports colleagues share with it land on everyone's Home, while each person's own reports, Data and watchlist stay theirs. Ask a colleague who has one to invite you, or start one on a Pro plan.</p>
         <button id="firmModalPricing" type="button"
           class="hidden btn-live mt-3 text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">See pricing</button>
       </div>
@@ -2873,7 +2873,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               class="hidden text-sm text-[#5A6473] hover:text-[#1A2433] underline">Manage firm billing</button>
             <span id="firmBillingMsg" class="text-xs text-[#68707E]"></span>
           </div>
-          <p class="text-xs text-[#68707E] mt-1.5">Colleagues see only what someone shares with the firm. Your own reports, portfolio, watchlist and private vault stay yours. Automatic sharing never applies to reports you have already run.</p>
+          <p class="text-xs text-[#68707E] mt-1.5">Colleagues see only what someone shares with the firm. Your own reports, portfolio, watchlist and private Data stay yours. Automatic sharing never applies to reports you have already run.</p>
         </div>
       </div>
       <!-- Report branding — the panel's second section (moved here from the
@@ -2969,7 +2969,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <!-- Shown only when fillBrandForm() poured a suggestion into an
                empty field (2026-09-02, "one profile"): the member must know
                these came from somewhere, are not saved, and will print. -->
-          <p id="brandSeedNote" class="hidden text-xs text-[#68707E] mt-2">Filled in from your account and vault details. Nothing is saved until you press Save, and these details print on your reports.</p>
+          <p id="brandSeedNote" class="hidden text-xs text-[#68707E] mt-2">Filled in from your account and Data details. Nothing is saved until you press Save, and these details print on your reports.</p>
           <p id="brandMsg" class="text-sm text-[#5A6473] mt-2"></p>
 
           <div class="mt-2 flex flex-wrap items-center gap-3">
@@ -3087,7 +3087,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              invented for the markup. The handler below still swaps the view in
              place for a plain left-click, and stands aside for a modified or
              middle click, so nothing navigates that did not navigate before. -->
-        <a id="myDeskLink" href="/desk" class="hover:text-[#1A2433] font-medium">Workspace</a>
+        <a id="myDeskLink" href="/desk" class="hover:text-[#1A2433] font-medium">Home</a>
         <!-- The vault's only entrance. It lived inside the account dropdown
              until 2026-08-29; in rail mode that buried a daily workspace two
              clicks down a menu pinned to the foot of the sidebar, so it is a
@@ -3103,7 +3103,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              header and every server-rendered rail call the same destination
              Vault, so the app was the one surface where the row a member is
              looking at renamed itself the moment they clicked it. -->
-        <a id="menuVaultLink" href="/vault" class="hidden hover:text-[#1A2433] font-medium">Vault</a>
+        <a id="menuVaultLink" href="/vault" class="hidden hover:text-[#1A2433] font-medium">Data</a>
         <!-- Messages, its own page and its own tab (owner's, 2026-09-01) —
              firm messaging, deliberately NOT a panel on /vault and not a deck
              on this desk. The vault is a broker's private book; this is the
@@ -3309,14 +3309,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <div id="deskFindWrap" class="hidden dk-find" role="search">
             <svg class="dk-find-ico" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"></circle><path d="M13 13l4.5 4.5"></path></svg>
             <input id="deskFind" type="search" autocomplete="off" spellcheck="false" maxlength="120"
-              placeholder="Find a building, report or contact" aria-label="Find a building, report or contact in your workspace"
+              placeholder="Find a building, report or contact" aria-label="Find a building, report or contact on Home"
               aria-controls="deskFindResults" aria-expanded="false" />
             <div id="deskFindResults" class="hidden dk-find-res"></div>
           </div>
           <input type="file" accept="image/png,image/jpeg" class="hidden" id="deskAvatarFile" />
         </div>
         </div>
-        <h2 id="deskGreeting" class="dk-title">Workspace</h2>
+        <h2 id="deskGreeting" class="dk-title">Home</h2>
         <p id="deskHeroSub" class="hidden dk-hero-sub"></p>
         <span id="deskHeroWhereWrap" class="hidden dk-hero-where"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17.2s-5-4.6-5-8.7a5 5 0 0 1 10 0c0 4.1-5 8.7-5 8.7z"/><circle cx="10" cy="8.5" r="1.8"/></svg><span id="deskHeroWhere"></span></span>
         </div>
@@ -3575,7 +3575,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              only past eight — one control to the whole list. Under it the
              control does not render at all, the Buy-button rule. -->
         <p id="buildingsMore" class="hidden"><a id="buildingsMoreLink" href="/buildings" class="dk-more"></a></p>
-        <div id="buildingsEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ink"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Your board starts here</span><span class="dk-gx">No buildings yet. Add one by address, from a report on the shelf, or from a property in your Vault.</span></span><button type="button" id="buildingsEmptyAdd" class="dk-gbtn">+ Add a building</button></div></div></div>
+        <div id="buildingsEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ink"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Your board starts here</span><span class="dk-gx">No buildings yet. Add one by address, from a report on the shelf, or from a property in your Data.</span></span><button type="button" id="buildingsEmptyAdd" class="dk-gbtn">+ Add a building</button></div></div></div>
       </div>
       <!-- Reports a colleague shared with the whole firm (migration 030).
            Rendered ONLY for a member of a firm — the same rule the hub list
@@ -3718,7 +3718,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              who is closing what; this counts what people SHARE, and a reader
              who assumes otherwise would be reading a wrong number that looks
              exactly like a right one. -->
-        <p class="dk-copy" title="Counts what your firm's members shared with the firm: reports on the shelf, and comps opted in from a vault. It is not a record of closings: a member's own book and their won and lost log stay private to them.">Counts what members shared with the firm — not a record of closings.</p>
+        <p class="dk-copy" title="Counts what your firm's members shared with the firm: reports on the shelf, and comps opted in from someone&#39;s Data. It is not a record of closings: a member's own book and their won and lost log stay private to them.">Counts what members shared with the firm — not a record of closings.</p>
         <p id="dealBoardTruncated" class="hidden dk-copy">Showing the most recent 1,000 reports and 1,000 comps. Older shares are not counted here.</p>
 
         <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -15693,7 +15693,7 @@ async function renderMyDesk() {
     const now = new Date();
     document.getElementById("deskToday").textContent =
       now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-    document.getElementById("deskGreeting").textContent = currentUser ? deskGreetingFor(now, currentUser) : "Workspace";
+    document.getElementById("deskGreeting").textContent = currentUser ? deskGreetingFor(now, currentUser) : "Home";
     clearTimeout(deskClockTimer);
     deskClockTimer = currentUser ? setTimeout(drawDeskClock, msToNextDeskBoundary(now)) : null;
     // The skyline's sky turns with the greeting (noon, five, midnight).
@@ -15718,7 +15718,7 @@ async function renderMyDesk() {
   function resetDeskHero() {
     clearTimeout(deskClockTimer);
     deskClockTimer = null;
-    document.getElementById("deskGreeting").textContent = "Workspace";
+    document.getElementById("deskGreeting").textContent = "Home";
     heroSub("");
     drawDeskHome(null);
     clearDeskSky();
@@ -16362,7 +16362,7 @@ async function renderMyDesk() {
   function contactDiscussHref(c) {
     const who = [String((c && c.name) || "").trim(), String((c && c.company) || "").trim()].filter(Boolean).join(" \u00b7 ");
     if (!who) return "";
-    return "/messages?say=" + encodeURIComponent("Contact: " + who + " \u2014 see the firm\u2019s contacts on the Workspace.");
+    return "/messages?say=" + encodeURIComponent("Contact: " + who + " \u2014 see the firm\u2019s contacts on Home.");
   }
 
   function contactsMsg(text, bad) {
@@ -16715,7 +16715,7 @@ async function renderMyDesk() {
     if (!m.buildings.length && !m.reports.length && !m.contacts.length) {
       const none = document.createElement("div");
       none.className = "dk-find-none";
-      none.textContent = `Nothing in your workspace matches “${input.value.trim()}”.`;
+      none.textContent = `Nothing on Home matches “${input.value.trim()}”.`;
       res.appendChild(none);
     }
     res.classList.remove("hidden");
@@ -16855,7 +16855,7 @@ async function renderMyDesk() {
     const lab = document.getElementById("deskFirmEmptyLab");
     const btn = document.getElementById("deskFirmEmptyBtn");
     const copy = document.getElementById("deskFirmEmptyCopy");
-    const gives = "A firm gives your office one board of buildings, a shelf of shared reports, a contact list and conversations \u2014 each of you keeps your own reports and vault.";
+    const gives = "A firm gives your office one board of buildings, a shelf of shared reports, a contact list and conversations \u2014 each of you keeps your own reports and Data.";
     if (firmState.invites.length) {
       const inv = firmState.invites[0];
       lab.textContent = "You've been invited";
@@ -19096,7 +19096,7 @@ async function renderMyDesk() {
     document.getElementById("hero").classList.remove("hidden");
     // Samples and shared reports aren't saved to this browser, so no note.
     if (currentMeta && !currentMeta.sample && !currentMeta.shared) {
-      showStatus("Report closed. Reopen it any time from <strong>your workspace</strong>, at no cost.", "info");
+      showStatus("Report closed. Reopen it any time from <strong>Home</strong>, at no cost.", "info");
     } else {
       hideStatus();
     }
@@ -19828,7 +19828,7 @@ async function renderMyDesk() {
     if (p.tester) {
       return {
         title: "Pro — comped (beta tester)",
-        detail: "Full Pro access as a beta tester — vault, firms and comp reports included. Nothing is billed, and there's no subscription behind it.",
+        detail: "Full Pro access as a beta tester — Data, firms and comp reports included. Nothing is billed, and there's no subscription behind it.",
       };
     }
     // Before the Stripe states, like the two comped branches above it and for
@@ -19882,7 +19882,7 @@ async function renderMyDesk() {
         // member has one (`const broker = pro` in entitlements.js), and a
         // paying member who never learns they have it is the clearest way to
         // still be running two products after deciding to run one.
-        detail: "Unlimited comps, a lookback of up to 10 years, unlimited exports, your own private comp vault, and your firm's branding on every report.",
+        detail: "Unlimited comps, a lookback of up to 10 years, unlimited exports, private Data for your own comps, and your firm's branding on every report.",
       };
     }
     if (p.status === "expired") {
@@ -19892,7 +19892,7 @@ async function renderMyDesk() {
       // Nothing deletes vault rows on lapse — the only delete paths are the
       // broker's own "remove this import" and account deletion — so saying so
       // is a statement of fact, not a reassurance we cannot keep.
-      return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 10 itemized comps and a 3-year lookback, and your vault is closed until you resubscribe. Nothing in it has been deleted." };
+      return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 10 itemized comps and a 3-year lookback, and your Data is closed until you resubscribe. Nothing in it has been deleted." };
     }
     return { title: "Free", detail: "Reports itemize every comparable we find and look back 3 years. Pro widens the window to ten years." };
   }
@@ -20304,7 +20304,7 @@ async function renderMyDesk() {
       // A vault code still names its destination: it lands somebody on a
       // workspace they have never seen and were not looking for.
       if (Array.isArray(data.granted) && data.granted.indexOf("vault") !== -1) {
-        msg.innerHTML = 'Your comp vault is open. <a href="/vault" class="underline font-semibold">Go to the vault</a>.';
+        msg.innerHTML = 'Your Data is open. <a href="/vault" class="underline font-semibold">Go to Data</a>.';
         msg.className = "mt-2 text-sm text-emerald-700";
         msg.classList.remove("hidden");
         return;
@@ -20467,7 +20467,7 @@ async function renderMyDesk() {
     news:          { label: "News",          cls: "n",  legend: "from a news article or press release" },
     estimate:      { label: "Estimate",      cls: "e",  legend: "not tied to a single source; verify before relying on it" },
     user:          { label: "Added by you",  cls: "u",  legend: "entered manually; not from CompNinja's sources" },
-    broker_vault:  { label: "From your vault", cls: "bv", legend: "your own comp, from your private vault, visible only to you" },
+    broker_vault:  { label: "From your Data", cls: "bv", legend: "your own comp, from your private Data, visible only to you" },
   };
   // One source of truth for a comp's tier: valuation.js owns the vocabulary
   // (it has to, since compWeight keys off it). SOURCE_TIERS above keeps only
@@ -20801,13 +20801,13 @@ async function renderMyDesk() {
         const firms = [...new Set(visibleComps().map(firmOfComp).filter(Boolean))];
         el.textContent =
           `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from private records ` +
-          `— your own vault or ${firms.join(" and ")} — and ${one ? "is" : "are"} left out of ` +
+          `— your own Data or ${firms.join(" and ")} — and ${one ? "is" : "are"} left out of ` +
           `downloads and shared links. The valuation still counts ${one ? "it" : "them"}.`;
       } else {
         el.textContent =
-          `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from your private vault, ` +
+          `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from your private Data, ` +
           `and ${one ? "it is" : "they are"} counted in the valuation above. ` +
-          `Vault comps are visible only to you: they are left out of downloads, saved images, printed copies and shared links.`;
+          `Comps from your Data are visible only to you: they are left out of downloads, saved images, printed copies and shared links.`;
       }
       return;
     }
@@ -21861,7 +21861,7 @@ async function renderMyDesk() {
       // review, item 4).
       curationBits.push(currentMeta && currentMeta.shared
         ? `${privOut} comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed below, from the sender's own records`
-        : `${privOut} private vault comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed below, visible only to the report owner`);
+        : `${privOut} private comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed below, visible only to the report owner`);
     }
     const title = currentMeta
       ? esc(`${currentMeta.address} | ${metaLine(currentMeta)} | Generated ${new Date(currentMeta.generatedAt || Date.now()).toLocaleDateString()}`
@@ -21996,7 +21996,7 @@ async function renderMyDesk() {
         // in the table on screen — same reader-vs-owner split as
         // renderPrivateNotice() (2026-08-06 review, item 4).
         ...(privateIncludedCount() > 0 ? [[
-          currentMeta && currentMeta.shared ? "Sender's private comps" : "Private vault comps",
+          currentMeta && currentMeta.shared ? "Sender's private comps" : "Your private comps",
           currentMeta && currentMeta.shared
             ? `${privateIncludedCount()} counted in the valuation, not listed on the Comps sheet (from the sender's own records)`
             : `${privateIncludedCount()} counted in the valuation, not listed on the Comps sheet (visible only to the report owner)`,
@@ -22367,7 +22367,7 @@ async function renderMyDesk() {
         if (privOut > 0) {
           bits.push(meta.shared
             ? `${privOut} comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed here, from the sender's own records`
-            : `${privOut} private vault comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed here, visible only to the report owner`);
+            : `${privOut} private comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed here, visible only to the report owner`);
         }
         const PER = 10;
         const pages = Math.max(1, Math.ceil(body.length / PER));
@@ -22928,8 +22928,8 @@ async function renderMyDesk() {
   // account, and whether that is allowed depends on a licence we do not hold.
   const SHARE_PRIVATE_CONFIRM =
     "Include your private comps in full?\n\n" +
-    "The people you invite will see the full address and price of the comps from your vault. " +
-    "Everything else in your vault stays private, and this applies only to this link.\n\n" +
+    "The people you invite will see the full address and price of the comps from your Data. " +
+    "Everything else in your Data stays private, and this applies only to this link.\n\n" +
     "Sharing MLS-sourced data is subject to your own licence terms.";
 
   // Publish the current report under a share id and return { url, invited,
@@ -23595,7 +23595,7 @@ async function renderMyDesk() {
       });
       showBulkRun();
       window.BULKRUN.showNotes(d);
-      window.BULKRUN.msg("Running. You can leave this page — the valuations keep going and land on your workspace.", false);
+      window.BULKRUN.msg("Running. You can leave this page — the valuations keep going and land on Home.", false);
       window.BULKRUN.showRun(d);
       window.BULKRUN.poll(d.job.id);
     } catch (err) {

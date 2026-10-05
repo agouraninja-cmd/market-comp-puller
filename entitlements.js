@@ -721,13 +721,13 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
 function reasonFor({ state, pro, broker, reportUnlocked, user }) {
   if (pro && state === "grace") return "Pro access continues during the payment grace period.";
   if (pro && state === "cancelling") return "Pro access continues until the end of the paid period.";
-  if (pro) return "Active subscription — every Pro capability, including the private vault.";
+  if (pro) return "Active subscription — every Pro capability, including your private Data.";
   if (pro) return "Active Pro subscription.";
   if (reportUnlocked) return "This report was unlocked with a single-report purchase.";
   // Named before the expired line on purpose: a lapsed subscriber who holds
   // the beta grant still has their vault, and saying "access has ended" over
   // an open vault reads as a bug.
-  if (broker) return "Free account with vault access (broker beta).";
+  if (broker) return "Free account with Data access (broker beta).";
   if (state === "expired") return "Pro access has ended.";
   return user ? "Free account." : "Not signed in.";
 }

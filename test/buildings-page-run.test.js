@@ -55,7 +55,7 @@ test("/buildings, served", async (t) => {
     // works IN), and the way back is the Workspace row.
     const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
     assert.doesNotMatch(nav, /Run a report/);
-    assert.match(nav, /<a href="\/desk">Workspace<\/a>/);
+    assert.match(nav, /<a href="\/desk">Home<\/a>/);
   });
 
   await t.test("a tagged link still reaches the page — pagePath, never req.url", async () => {

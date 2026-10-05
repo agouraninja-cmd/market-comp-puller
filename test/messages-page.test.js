@@ -138,7 +138,7 @@ test("a discovery door seeds the composer through the URL, and nothing is posted
   const apply = js.slice(js.indexOf("function applyDraft(){"), js.indexOf("function openThread("));
   assert.match(apply, /\$\("msgInput"\)\.value = d\.text/);
   assert.match(apply, /state\.canAttach/);
-  assert.match(apply, /That comp isn't in your vault, so it wasn't attached\./);
+  assert.match(apply, /That comp isn't in your Data, so it wasn't attached\./);
   assert.doesNotMatch(apply, /\/api\/messages\/send/, "arriving with a draft must never send it");
   // With nobody to say it to yet, the New panel opens first — and only for
   // a reader who HAS a firm, since the picker searches one and a client in a

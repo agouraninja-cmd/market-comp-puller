@@ -83,7 +83,7 @@ function renderBuildingsBody(boot) {
     <h1 id="blTitle">Buildings</h1>
     <span class="bl-count" id="blCount"></span>
   </div>
-  <p class="bl-sub" id="blSub">The buildings your firm works on, shared with everyone in it. Add one from the <a href="/desk">Workspace</a>, from a property in your <a href="/vault">Vault</a>, or from a report on the shelf.</p>
+  <p class="bl-sub" id="blSub">The buildings your firm works on, shared with everyone in it. Add one from <a href="/desk">Home</a>, from a property in your <a href="/vault">Data</a>, or from a report on the shelf.</p>
   <div class="bl-wall hide" id="blWall"></div>
   <!-- Critical dates (slice 6): the firm's leases with a date to act on in
        the next twelve months, soonest first, the earlier of option notice
@@ -108,7 +108,7 @@ function renderBuildingsBody(boot) {
   </div>
   <div id="blRows"></div>
   <p class="bl-note hide" id="blNone">No buildings match. <button type="button" class="bl-rm" id="blClear">Clear filters</button></p>
-  <p class="bl-note hide" id="blEmpty">No buildings yet. Add one from the Workspace, from a property in your Vault, or from a report on the shelf.</p>
+  <p class="bl-note hide" id="blEmpty">No buildings yet. Add one from Home, from a property in your Data, or from a report on the shelf.</p>
   <p class="bl-note hide" id="blTrunc">Showing the 1,000 most recently touched buildings. Older ones are not in this list.</p>
   <p class="bl-msg hide" id="blMsg" aria-live="polite"></p>
 </main>
@@ -132,7 +132,7 @@ function renderBuildingsBody(boot) {
   function apply(o){
     if(!o||o.s===503){ wall("<p>Couldn't load your firm's buildings just now. Nothing has been lost. Refresh in a moment.</p>"); return; }
     if(o.s===401){ wall('<p>Sign in to see your firm\\u2019s buildings.</p><p><a href="/?auth=signin">Sign in</a></p>'); return; }
-    if(o.s!==200||!o.j){ wall('<p>Buildings belong to a firm, and this account is not in one yet.</p><p><a href="/desk">Create a firm or accept an invitation on the Workspace</a>.</p>'); return; }
+    if(o.s!==200||!o.j){ wall('<p>Buildings belong to a firm, and this account is not in one yet.</p><p><a href="/desk">Create a firm or accept an invitation on Home</a>.</p>'); return; }
     $("blWall").className="bl-wall hide";
     firm=o.j.firm||null; items=Array.isArray(o.j.buildings)?o.j.buildings:[];
     truncated=Boolean(o.j.truncated); summary=o.j.summary||"";
@@ -328,7 +328,7 @@ function renderBuildingSheetBody(boot) {
     <section class="bs-sec" id="bsTxMine">
       <div class="bs-rule"><span class="lab">Transactions \u00b7 yours</span><span class="n" id="bsTxMineN"></span></div>
       <div id="bsTxMineRows"></div>
-      <p class="bs-note hide" id="bsTxMineNone">Nothing in your vault on this building. Comps you add to your vault at this address show up here, and you can share each one with the firm from here.</p>
+      <p class="bs-note hide" id="bsTxMineNone">Nothing in your Data on this building. Comps you add to your Data at this address show up here, and you can share each one with the firm from here.</p>
     </section>
 
     <section class="bs-sec" id="bsReports">
@@ -429,7 +429,7 @@ function renderBuildingSheetBody(boot) {
     if(!o||o.s===503){ wall("<p>Couldn't load this building just now. Nothing has been lost. Refresh in a moment.</p>"); return; }
     if(o.s===401){ wall('<p>Sign in to see this building.</p><p><a href="/?auth=signin">Sign in</a></p>'); return; }
     if(o.s===404){ wall('<p>That building is not on your firm\u2019s list \u2014 it may have been removed, or it belongs to another firm.</p><p><a href="/buildings">Back to your firm\u2019s buildings</a></p>'); return; }
-    if(o.s!==200||!o.j||!o.j.building){ wall('<p>Buildings belong to a firm, and this account is not in one yet.</p><p><a href="/desk">Create a firm or accept an invitation on the Workspace</a>.</p>'); return; }
+    if(o.s!==200||!o.j||!o.j.building){ wall('<p>Buildings belong to a firm, and this account is not in one yet.</p><p><a href="/desk">Create a firm or accept an invitation on Home</a>.</p>'); return; }
     $("bsWall").className="bs-wall hide"; $("bsSheet").className="";
     org=o.j.org||null; sheet=o.j; building=o.j.building;
     render();
@@ -469,7 +469,7 @@ function renderBuildingSheetBody(boot) {
         (c.rentPsfYr!=null?' \u00b7 $'+esc(Number(c.rentPsfYr).toFixed(2))+"/SF/yr":"")+
         (c.sizeSqft?' \u00b7 '+esc(num(c.sizeSqft))+" SF":"")+
         (c.pricePerSqft!=null?' \u00b7 $'+esc(Number(c.pricePerSqft).toFixed(2))+"/SF":"")+
-        '</span><span class="m">'+(c.published?"published \u00b7 ":"")+'from your vault \u00b7 '+
+        '</span><span class="m">'+(c.published?"published \u00b7 ":"")+'from your Data \u00b7 '+
         '<button type="button" class="bs-lnk'+(c.shared?" on":"")+'" data-firm="'+esc(c.id)+'" data-on="'+(c.shared?"1":"0")+'">'+
         (c.shared?"Shared with the firm":"Share with the firm")+"</button></span></div>";
     }).join("");
@@ -708,7 +708,7 @@ function renderBuildingSheetBody(boot) {
         var all=(o.j.contacts||[]).filter(function(c){return !here[String(c.id)]});
         var likely=all.filter(function(c){return !!(c.company&&tenants[String(c.company).trim().toLowerCase()])});
         var rest=all.filter(function(c){return likely.indexOf(c)<0});
-        if(!all.length){ msg(o.j.contacts&&o.j.contacts.length?"Every contact on the firm\u2019s list is already attached here.":"The firm\u2019s contact list is empty. Add contacts on the Workspace first.",true); return; }
+        if(!all.length){ msg(o.j.contacts&&o.j.contacts.length?"Every contact on the firm\u2019s list is already attached here.":"The firm\u2019s contact list is empty. Add contacts on Home first.",true); return; }
         var opt=function(c){return '<option value="'+esc(c.id)+'">'+esc(c.name+(c.company?" \u00b7 "+c.company:""))+"</option>"};
         $("bsAttachPick").innerHTML='<option value="">Choose a contact</option>'+
           (likely.length?'<optgroup label="Tenants on this building\u2019s leases">'+likely.map(opt).join("")+"</optgroup>":"")+

@@ -750,6 +750,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 .vd-tk{flex:1;min-width:0;margin:0}
 .vd-tk b{display:block;font-family:var(--serif);font-weight:500;font-size:17px;color:var(--ink)}
 .vd-tk span{display:block;font-size:13px;color:var(--ink-3)}
+.vd-tk span.hide{display:none}
 .vd-tray.on .vd-tk b{color:#fff}
 .vd-tray.on .vd-tk span{color:rgba(255,255,255,.78)}
 .vd-tact{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -766,6 +767,9 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   /* Five cells wrap 2, 2, 1: the shelf takes the last row whole. */
   .vd-strip,.vd-strip.five{grid-template-columns:1fr 1fr}
   .vd-strip.five .lcell:last-child{grid-column:1/-1;border-left:0;border-top:1px solid var(--hair)}
+  /* Four cells with Published hidden (a development firm, applyShop): the
+     shelf is the FIFTH child, so the even-child divider misses it. */
+  .vd-strip.nopub #cSharedCell{border-left:1px solid var(--hair)}
   .vd-strip .lfig{font-size:22px}
   /* The ledger becomes two-line rows: the meta line and the figure's
      sub-line stand in for the columns a phone has no room for. */
@@ -1032,7 +1036,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
          ------------------------------------------------------------------ -->
     <div class="vt-wrap" id="vtWrap">
     <div class="vt-tabs" id="vaultTabs" role="tablist" aria-label="Your Data">
-      <button type="button" role="tab" class="vt-tab on" id="tab-book" data-tab="book" aria-selected="true" aria-controls="panelBook">Book <b id="tabBookN"></b></button>
+      <button type="button" role="tab" class="vt-tab on" id="tab-book" data-tab="book" aria-selected="true" aria-controls="panelBook"><span id="tabBookL">Book</span> <b id="tabBookN"></b></button>
       <button type="button" role="tab" class="vt-tab vt-off" id="tab-sites" data-tab="sites" aria-selected="false" aria-controls="panelSites">Sites <b id="tabSitesN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-pipe" data-tab="pipe" aria-selected="false" aria-controls="panelPipe">Pipeline <b id="tabPipeN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-props" data-tab="props" aria-selected="false" aria-controls="panelProps">Properties <b id="tabPropsN"></b></button>
@@ -1063,7 +1067,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     <div id="bookEmpty" class="invite">
       <div class="vd-emap" id="bmEmptyMap" aria-hidden="true"></div>
       <div class="vd-drop">
-      <p class="vd-drop-k">Your book, on one map</p>
+      <p class="vd-drop-k" id="bookEmptyK">Your book, on one map</p>
       <h2 class="vd-drop-h">Drop a spreadsheet, PDF or screenshot anywhere on this page</h2>
       <p>Upload closed deals. They appear in your reports and stay private, and they land here as pins you can search, filter and pull into a comp set.</p>
       <details>
@@ -1274,7 +1278,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
         <div class="lfig" id="cSales">0</div><div class="lsub" id="cMedSub">none yet</div></div>
       <div class="lcell"><span class="llab">Leases</span>
         <div class="lfig" id="cLeases">0</div><div class="lsub" id="cRentSub">none yet</div></div>
-      <div class="lcell mid"><span class="llab">Published</span>
+      <div class="lcell mid" id="cPubCell"><span class="llab">Published</span>
         <div class="lfig" id="cPub">0</div><div class="lsub" id="cPubSub">only if you choose it</div></div>
       <div class="lcell hide" id="cSharedCell"><span class="llab">Shared with firm</span>
         <div class="lfig" id="cShared">0</div><div class="lsub" id="cSharedSub"></div></div>
@@ -1760,7 +1764,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
        the page rather than leaving with the footer that happened to hold it.
        MARKET_FOOTER's own disclaimer is about valuations and says nothing
        about a broker's book. -->
-  <p class="vfoot">Private to you. Your comps are never read into CompNinja's public records unless you choose to publish them.</p>
+  <p class="vfoot">Private to you. Your comps are never read into CompNinja's public records<span id="vFootPub"> unless you choose to publish them</span>.</p>
   <!-- The comp sheet, filled and moved under body only at the moment it is
        printed (printSheet). Never on screen. -->
   <div class="vd-sheet" id="compSheet"></div>
@@ -1793,6 +1797,12 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // membership is a property of the RELATIONSHIP, not of the comp — and
   // because vault-api.js's allowlist is a contract this page must not widen.
   var myFirm=null,sharedIds={};
+  // Whether this member is offered publishing at all. Set by applyShop: a
+  // development firm's member is not, while nothing of theirs is published
+  // (pubCount, the read's own count), because the Verified badge a published
+  // comp earns says a licensed broker vouched for it. Every surface that
+  // offers it reads this one flag.
+  var pubCount=0,noPublish=false;
 
   var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
   var num=function(n){return n==null?"":Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
@@ -2062,7 +2072,11 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // The firm cell: what is on the shelf, out of the book on this page.
     var shared=myFirm?comps.filter(function(c){return sharedIds[c.id]}).length:0;
     $("cSharedCell").className=myFirm?"lcell":"lcell hide";
-    $("bookStrip").className=myFirm?"ledger vd-strip five":"ledger vd-strip";
+    // Published is not a cell for a firm that cannot publish (applyShop), so
+    // a development firm's strip is four cells, the shelf among them.
+    $("cPubCell").className=noPublish?"lcell mid hide":"lcell mid";
+    $("bookStrip").className=noPublish?"ledger vd-strip nopub"
+      : myFirm?"ledger vd-strip five":"ledger vd-strip";
     $("cShared").textContent=num(shared);
     $("cSharedSub").textContent=myFirm?num(comps.length-shared)+" not shared yet":"";
   }
@@ -2098,7 +2112,8 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     comps=o.j.comps||[];
     $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
     tabCount("tabBookN",comps.length?num(comps.length):"",false);
-    $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
+    pubCount=(o.j.counts&&o.j.counts.published)||0;
+    $("cPub").textContent=pubCount;
     // What publishing gave back. Until now a broker published a comp, saw a
     // green chip, and learned nothing further — while the very same figure was
     // already on their public profile page, if they had one, under "Report
@@ -2494,7 +2509,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       headCell("deal_date","Date")+headCell("price","Price",true)+
       headCell("size_sqft","Size",true)+headCell("price_per_sqft",rateHead,true)+
       headCell("cap_rate","Cap rate",true)+
-      headCell("published","Public")+(myFirm?"<th>Firm</th>":"")+"<th></th></tr>";
+      (noPublish?"":headCell("published","Public"))+(myFirm?"<th>Firm</th>":"")+"<th></th></tr>";
     $("tbody").innerHTML=rows.map(function(c){
       // Published state is a two-way toggle, never a checkbox that could be
       // flipped by a stray click: publishing is a one-way-ish public act, so
@@ -2531,7 +2546,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
         '</td><td class="num">'+cellInput(c,"size_sqft")+"</td>"+
         roCell(c,"price_per_sqft",rateCell(c)+flag,true)+
         '<td class="num">'+cellInput(c,"cap_rate")+"</td>"+
-        "<td>"+pub+"</td>"+firm+'<td class="rowact">'+trashBtn(c.id)+"</td></tr>";
+        (noPublish?"":"<td>"+pub+"</td>")+firm+'<td class="rowact">'+trashBtn(c.id)+"</td></tr>";
     }).join("");
     // The statement's closing rule: the median of the priced sales in the
     // current view, sealed under a double rule — the same figure the market
@@ -2597,7 +2612,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     var numK={price:1,size_sqft:1,cap_rate:1,units:1,price_per_unit:1,lot_acres:1,price_per_acre:1};
     $("tblHead").innerHTML="<tr>"+keys.map(function(k){
       return headCell(k,sheetLabel(k),!!numK[k]);
-    }).join("")+headCell("published","Public")+'<th></th></tr>';
+    }).join("")+(noPublish?"":headCell("published","Public"))+'<th></th></tr>';
     $("tbody").innerHTML=rows.map(function(c){
       var pub=publishCell(c);
       var cells=keys.map(function(k){
@@ -2615,7 +2630,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
           (inh?' class="inh" placeholder="'+escA(v)+'" title="'+escA(INH_TITLE)+'"':"")+
           ' style="min-width:'+cellWidth(k,v)+'ch"/></td>';
       }).join("");
-      return "<tr>"+cells+"<td>"+pub+'</td><td class="rowact">'+trashBtn(c.id)+"</td></tr>";
+      return "<tr>"+cells+(noPublish?"":"<td>"+pub+"</td>")+'<td class="rowact">'+trashBtn(c.id)+"</td></tr>";
     }).join("");
   }
 
@@ -3094,6 +3109,9 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 
   function renderIdentity(idn){
     identity=idn||{display_name:"",company:"",license_number:"",creditedTo:"",canPublish:false};
+    // A credit for comps nobody here can publish would be a form to fill in
+    // for nothing (noPublish, applyShop).
+    $("creditLine").className=noPublish?"note hide":"note";
     var to=identity.creditedTo||"";
     // Three states, not two. A broker with a credit name but no license is
     // ready in every way the old copy could describe and would still be
@@ -3610,6 +3628,16 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   var TAB_OF_HASH={book:"book",sites:"sites",pipeline:"pipe",properties:"props",watchlist:"watch",contributions:"contrib",
     compsSec:"book",sitesSec:"sites",pipeSec:"pipe",propsSec:"props",mktSec:"watch",contribSec:"contrib"};
   var curTab="book";
+  // The tab the page opens on, and the one whose address is the bare path:
+  // Sites for a development firm, the Book for everybody else (applyShop).
+  // tabSettled is true once the opening tab has been decided -- by a link
+  // naming one, or by the first read that knows the firm -- so a later read
+  // (after an import, say) never pulls a member off the tab they chose.
+  var homeTab="book",tabSettled=false;
+  // The tabs in the order the bar shows them; applyShop moves Sites first.
+  function tabOrder(){
+    return homeTab==="sites"?["sites"].concat(TABS.filter(function(k){return k!=="sites"})):TABS;
+  }
   function tabCount(id,text,hot){
     var el=$(id);
     el.textContent=text==null?"":String(text);
@@ -3631,7 +3659,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       if(emptyMap)emptyMap.invalidateSize();
     }
     if(!quiet&&window.history&&window.history.replaceState&&window.location){
-      try{ window.history.replaceState(null,"",t==="book"?window.location.pathname:"#"+HASH_OF_TAB[t]); }catch(e){}
+      try{ window.history.replaceState(null,"",t===homeTab?window.location.pathname:"#"+HASH_OF_TAB[t]); }catch(e){}
     }
   }
   $("vaultTabs").addEventListener("click",function(e){
@@ -3641,7 +3669,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // Arrow keys move between the tabs that are showing, the tablist pattern.
   $("vaultTabs").addEventListener("keydown",function(e){
     if(e.key!=="ArrowRight"&&e.key!=="ArrowLeft")return;
-    var live=TABS.filter(function(k){return !$("tab-"+k).classList.contains("vt-off")});
+    var live=tabOrder().filter(function(k){return !$("tab-"+k).classList.contains("vt-off")});
     var i=live.indexOf(curTab); if(i<0)return;
     var next=live[(i+(e.key==="ArrowRight"?1:live.length-1))%live.length];
     setTab(next); $("tab-"+next).focus();
@@ -3658,14 +3686,31 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // the tabs they had. The drawing lives in /sites-tab.js (the global
   // SITESTAB); without it, or without SITES, nothing changes, so a stale or
   // failed script costs the new tab and never the old ones.
+  //
+  // It also decides three things about the Book for that firm (owner's call,
+  // 2026-10-06). The tab is "Comps", a developer's word; "book" is a
+  // broker's book of business. Publishing is not offered (noPublish), since
+  // the Verified badge it earns says a licensed broker vouched for the deal;
+  // a member with something already published keeps every control, so a
+  // public comp never looks private and can always be taken back. And Sites
+  // leads the bar and is where the page opens, unless a link named a tab.
+  // These two need no Sites script: only the third does.
   var sitesView=null;
   function applyShop(){
-    var dev=!!(myFirm&&myFirm.kind==="development"&&window.SITESTAB&&window.SITES);
+    var shop=!!(myFirm&&myFirm.kind==="development");
+    var dev=shop&&!!(window.SITESTAB&&window.SITES);
+    var first=!tabSettled; tabSettled=true;
+    noPublish=shop&&!pubCount;
+    $("tabBookL").textContent=shop?"Comps":"Book";
+    $("bookEmptyK").textContent=shop?"Your comps, on one map":"Your book, on one map";
+    $("vFootPub").className=noPublish?"hide":"";
+    homeTab=dev?"sites":"book";
+    $("vaultTabs").insertBefore($("tab-sites"),dev?$("tab-book"):$("tab-pipe"));
     $("tab-sites").classList.toggle("vt-off",!dev);
     $("tab-pipe").classList.toggle("vt-off",dev);
     $("tab-props").classList.toggle("vt-off",dev);
     if(!dev){ if(curTab==="sites")setTab("book",true); return; }
-    if(curTab==="pipe"||curTab==="props")setTab("sites",true);
+    if(curTab==="pipe"||curTab==="props"||(first&&curTab==="book"))setTab("sites",true);
     if(!sitesView){
       sitesView=window.SITESTAB.mount({
         root:$("sitesRoot"),addToggle:$("sitesAddToggle"),esc:esc,escA:escA,
@@ -4150,7 +4195,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       '<div class="vd-tact"><button type="button" class="btn" id="setSheet">Comp sheet</button>'+
       '<button type="button" class="btn ghost" id="setCsv">Download CSV</button>'+
       (unshared.length?'<button type="button" class="btn ghost" id="setFirm">Share '+unshared.length+" with "+esc(myFirm.name)+"</button>":"")+
-      (unpub.length?'<button type="button" class="btn ghost" id="setPub">Publish '+unpub.length+"</button>":"")+
+      (unpub.length&&!noPublish?'<button type="button" class="btn ghost" id="setPub">Publish '+unpub.length+"</button>":"")+
       '<button type="button" class="lnk" id="setClear">Clear</button></div>';
   }
   $("setTray").addEventListener("click",function(e){
@@ -4260,6 +4305,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   (function(){
     var h="";
     try{ h=String((window.location&&window.location.hash)||"").replace("#",""); }catch(e){}
+    tabSettled=!!TAB_OF_HASH[h];
     setTab(TAB_OF_HASH[h]||"book",true);
   })();
 
@@ -5826,10 +5872,12 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   function renderFirmPrivacy(){
     var n=Object.keys(sharedIds).length;
     var deck=$("deckSub"),trust=$("trustNote");
+    // Where publishing is not offered (noPublish), the promise drops the
+    // clause about it rather than naming an act the page has no button for.
     var sharedLine=myFirm&&n
       ? n+" "+(n===1?"comp is":"comps are")+" shared with "+myFirm.name+
         ". Everything else is visible only to you, and nothing here is ever read "+
-        "into CompNinja\u2019s public records unless you publish it."
+        "into CompNinja\u2019s public records"+(noPublish?".":" unless you publish it.")
       : null;
     // What the vault holds, in the shop's own words: a development shop keeps
     // site work, not a broker's deals and BOVs (owner's copy, 2026-10-04).
@@ -5842,7 +5890,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     if(trust)trust.innerHTML=sharedLine
       ? esc(sharedLine)
       : "Visible only to you. Nothing here is ever read into CompNinja\u2019s "+
-        "public records, and nothing is published unless you choose it.";
+        "public records"+(noPublish?".":", and nothing is published unless you choose it.");
   }
 
   // The firm toggle. A SEPARATE handler from Publish, deliberately: the two
@@ -6667,7 +6715,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     $("contribSec").className=show?"":"hide";
     // The tab exists only for a member who has contributed, like the deck.
     $("tab-contrib").classList.toggle("vt-off",!show);
-    if(!show){ if(curTab==="contrib")setTab("book"); return; }
+    if(!show){ if(curTab==="contrib")setTab(homeTab); return; }
     var st=d.stats||{};
     tabCount("tabContribN",st.total||"",false);
     $("contribStats").textContent=(st.approved||0)+" approved of "+(st.total||0)+

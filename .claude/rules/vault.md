@@ -1211,7 +1211,34 @@ Sites tab, whose reads answer 503 until it runs, never another surface).
 - **Run a land report** links to `/?type=<type>&address=<address>`.
   index.html's `?address=` (added with this) fills an EMPTY address field and
   runs nothing.
+- **The Book, for the same member (2026-10-06, owner's call).** `applyShop()`
+  decides three more things, keyed on the firm's kind alone (`shop`), not on
+  the Sites script:
+  - **The tab reads "Comps"** (`#tabBookL`, and the empty book's kicker
+    `#bookEmptyK`): "book" is a broker's book of business. Its address is
+    still `#book`, and the panel, ids and handlers are unchanged.
+  - **Publishing is not offered** (`noPublish`), because the Verified badge a
+    published comp earns says a licensed broker vouched for the deal. One
+    flag, read by every surface that offers it: the strip's Published cell
+    (`#cPubCell`; the strip goes to four cells as `.nopub`, and a phone rule
+    restores the shelf cell's divider), the Public column in the table and
+    the spreadsheet, the comp set's Publish, the credit line, and the
+    publishing clause in the trust note and the page foot (`#vFootPub`).
+    Sharing with the firm is a different act and stays. **Only while nothing
+    is published** (`pubCount`, the read's own count): a member with a
+    published comp keeps every control, so a public comp never looks private
+    and can always be taken back. Server-side nothing changed —
+    `/api/vault/publish` still refuses without a license.
+  - **Sites leads the bar and is where the page opens** (`homeTab`). The tab
+    node is moved in front of Comps, `tabOrder()` gives the arrow keys the
+    same order, and the home tab is the one whose address is the bare path.
+    A link naming a tab (`#book`) wins, and the opening tab is decided once
+    (`tabSettled`): a later read, after an import, never moves the member.
+    This one needs the Sites script; without it the Book stays home.
+  A non-Pro member is unaffected, as with Sites: `myFirm` is only set on the
+  200 path.
 - Tests: `test/sites.test.js` (the rules, and that 060's CHECK matches
   `SITES.STAGES` and destroys nothing), `test/sites-run.test.js` (the routes
   against the stand-in PostgREST, including an unrun migration), and the
-  Sites block in `test/vault-page.test.js`.
+  Sites block in `test/vault-page.test.js` (with the Book's three rules after
+  it).

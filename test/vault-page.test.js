@@ -3427,7 +3427,9 @@ function firmBoot(comps, firm, sharedIds) {
 
 // renderFirmPrivacy, executed. It writes two elements and reads two module
 // variables, so a four-line stand-in DOM is the whole harness.
-function runFirmPrivacy(firm, sharedCount) {
+// noPublish is applyShop's flag; it defaults to what applyShop decides for a
+// firm with nothing published (a development firm is not offered publishing).
+function runFirmPrivacy(firm, sharedCount, noPublish = !!(firm && firm.kind === "development")) {
   const js = pageScript(renderVaultHTML(firmBoot([comp({})], firm), CHROME));
   const src = js.match(/function renderFirmPrivacy\(\)\{[\s\S]*?\n  \}/);
   assert.ok(src, "renderFirmPrivacy is gone from the emitted page");
@@ -3437,9 +3439,9 @@ function runFirmPrivacy(firm, sharedCount) {
   };
   const sharedIds = {};
   for (let i = 0; i < sharedCount; i++) sharedIds["c" + i] = true;
-  const fn = new Function("$", "esc", "myFirm", "sharedIds",
+  const fn = new Function("$", "esc", "myFirm", "sharedIds", "noPublish",
     src[0] + "\nreturn renderFirmPrivacy;")(
-    (id) => els[id], (s) => String(s), firm, sharedIds);
+    (id) => els[id], (s) => String(s), firm, sharedIds, noPublish);
   fn();
   return els;
 }
@@ -4830,7 +4832,85 @@ test("a broker firm, and a member in no firm, keep exactly the tabs they had", a
     assert.ok(!doc.getElementById("tab-pipe").classList.contains("vt-off"), "Pipeline went missing");
     assert.ok(!doc.getElementById("tab-props").classList.contains("vt-off"), "Properties went missing");
     assert.equal(mounted.length, 0);
+    // And the Book as it was: its name, the tab it opens on, and publishing.
+    assert.equal(String(doc.getElementById("tabBookL").textContent), "Book");
+    assert.equal(doc.getElementById("panelBook").className, "vt-panel on");
+    assert.ok(!doc.getElementById("cPubCell").classList.contains("hide"), "the Published cell went missing");
+    assert.ok(!doc.getElementById("creditLine").classList.contains("hide"), "the credit line went missing");
+    assert.match(doc.getElementById("tblHead").innerHTML, />Public</);
   }
+});
+
+// ---------------------------------------------------------------------------
+// The Book, for a development firm (2026-10-06, owner's call): the tab reads
+// "Comps", publishing is not offered while nothing is published (its badge
+// says a licensed broker vouched for the deal), and Sites leads the bar and
+// is where the page opens. applyShop decides all three.
+// ---------------------------------------------------------------------------
+
+const DEV_FIRM = { id: "f1", name: "Ridgeline Development", kind: "development" };
+
+test("a development firm's member reads Comps, opens on Sites, and is not offered publishing", async () => {
+  const { doc } = await runPage([comp({ id: "c1" }), comp({ id: "c2", address: "200 Oak Ave" })], null, {
+    firm: DEV_FIRM, window: sitesWindow([]),
+  });
+  assert.equal(String(doc.getElementById("tabBookL").textContent), "Comps");
+  assert.equal(String(doc.getElementById("bookEmptyK").textContent), "Your comps, on one map");
+  assert.equal(doc.getElementById("panelSites").className, "vt-panel on", "the page did not open on Sites");
+  assert.equal(doc.getElementById("panelBook").className, "vt-panel");
+  // Every surface that offers publishing.
+  assert.ok(doc.getElementById("cPubCell").classList.contains("hide"), "the strip still counts Published");
+  assert.equal(doc.getElementById("bookStrip").className, "ledger vd-strip nopub");
+  assert.doesNotMatch(doc.getElementById("tblHead").innerHTML, />Public</);
+  assert.doesNotMatch(doc.getElementById("tbody").innerHTML, /data-pub=/);
+  assert.ok(doc.getElementById("creditLine").classList.contains("hide"), "the credit line still asks for a license");
+  assert.ok(doc.getElementById("vFootPub").classList.contains("hide"));
+  tickInto(doc, "c1"); tickInto(doc, "c2");
+  assert.doesNotMatch(doc.getElementById("setTray").innerHTML, /setPub/);
+  assert.match(doc.getElementById("setTray").innerHTML, /id="setFirm">Share 2 with Ridgeline Development</,
+    "sharing with the firm is not publishing, and stays");
+  // The promise, without naming an act there is no button for.
+  assert.match(doc.getElementById("trustNote").innerHTML,
+    /^Visible only to you\. Nothing here is ever read into CompNinja.s public records\.$/);
+  const shared = runFirmPrivacy(DEV_FIRM, 2);
+  assert.match(shared.trustNote.innerHTML, /public records\.$/);
+  assert.doesNotMatch(shared.trustNote.innerHTML, /publish/);
+});
+
+test("a development firm with something published keeps every publishing control", async () => {
+  // A public comp must never look private, and must always be possible to take back.
+  const { doc } = await runPage([comp({ id: "c1", published: true }), comp({ id: "c2", address: "200 Oak Ave" })], null, {
+    firm: DEV_FIRM, window: sitesWindow([]),
+  });
+  assert.equal(String(doc.getElementById("tabBookL").textContent), "Comps");
+  assert.ok(!doc.getElementById("cPubCell").classList.contains("hide"));
+  assert.match(doc.getElementById("tblHead").innerHTML, />Public</);
+  assert.match(doc.getElementById("tbody").innerHTML, /data-pub="c1" data-on="1"/);
+  assert.ok(!doc.getElementById("creditLine").classList.contains("hide"));
+  tickInto(doc, "c2");
+  assert.match(doc.getElementById("setTray").innerHTML, /id="setPub">Publish 1</);
+  assert.match(runFirmPrivacy(DEV_FIRM, 0, false).trustNote.innerHTML, /nothing is published unless you choose it/);
+});
+
+test("Sites leads a development firm's bar, and a link that names a tab still wins", async () => {
+  const js = pageScript(renderVaultHTML(boot([comp({})]), CHROME));
+  assert.match(js, /\$\("vaultTabs"\)\.insertBefore\(\$\("tab-sites"\),dev\?\$\("tab-book"\):\$\("tab-pipe"\)\)/,
+    "Sites no longer moves to the front of the bar");
+  // The arrow keys walk the bar in the order it shows: Comps sits beside Sites.
+  let { doc } = await runPage([comp({})], null, { firm: DEV_FIRM, window: sitesWindow([]) });
+  doc.getElementById("vaultTabs").fire("keydown", { key: "ArrowRight", preventDefault() {} });
+  assert.equal(doc.getElementById("panelBook").className, "vt-panel on", "the arrow key skipped Comps");
+  // A link to the Comps tab opens there; Sites, the home tab, is the bare path.
+  const replaced = [];
+  ({ doc } = await runPage([comp({})], null, { firm: DEV_FIRM, window: Object.assign(sitesWindow([]), {
+    location: { hash: "#book", pathname: "/vault" }, history: { replaceState: (s, t, u) => replaced.push(u) },
+  }) }));
+  assert.equal(doc.getElementById("panelBook").className, "vt-panel on", "a #book link was overridden");
+  const press = (tab) => doc.getElementById("vaultTabs").fire("click", { target: { closest: () => ({ getAttribute: () => tab }) } });
+  press("sites"); assert.equal(replaced.pop(), "/vault");
+  press("book"); assert.equal(replaced.pop(), "#book");
+  // Decided once: a later read (after an import) never moves the member.
+  assert.match(js, /var first=!tabSettled; tabSettled=true;/);
 });
 
 test("without its script, a development firm keeps the old tabs rather than an empty one", async () => {

@@ -5250,3 +5250,129 @@ test("the map band can be hidden and brought back", async () => {
   doc.getElementById("mapShow").fire("click", {});
   assert.equal(doc.getElementById("bmBand").className, "vd-band");
 });
+
+// ---------------------------------------------------------------------------
+// Land is priced per acre (2026-10-06). A land sale has a price and an acreage
+// and no building size, so read in $/SF a development firm's thirty priced
+// land sales were "none priced yet" and every row said "no size". Land is
+// read per acre and never in $/SF, so one type is one unit and the mixed-type
+// rule keeps the two units out of one median.
+// ---------------------------------------------------------------------------
+
+const land = (o) => comp({
+  property_type: "Land", size_sqft: null, price_per_sqft: null,
+  price: 2000000, lot_acres: 10, price_per_acre: 200000, ...o,
+});
+
+test("a land book is priced per acre: the strip, the ledger, the table and the cards", async () => {
+  const { doc } = await runPage([
+    land({ id: "a" }),
+    land({ id: "b", address: "2 Farm Rd", price: 3000000, lot_acres: 20, price_per_acre: 150000 }),
+    // No $/acre typed: the sale's own price over its own acreage.
+    land({ id: "c", address: "3 Farm Rd", price: 1000000, lot_acres: 4, price_per_acre: null }),
+  ]);
+  assert.equal(doc.getElementById("cMedSub").textContent, "Land median $200K/acre");
+  const rows = doc.getElementById("bmRows").innerHTML;
+  for (const f of ["$200K/acre", "$150K/acre", "$250K/acre"]) assert.ok(rows.includes(f), f + " is not in the ledger");
+  assert.match(rows, />10 ac</, "a land comp's size is its acreage");
+  assert.doesNotMatch(rows, /no size/);
+  const head = doc.getElementById("bmHead").innerHTML;
+  assert.match(head, />Size</);
+  assert.match(head, />\$\/acre or rent</);
+  assert.match(doc.getElementById("tblHead").innerHTML, />\$\/acre</);
+  assert.match(doc.getElementById("tblFoot").innerHTML, /Median of 3 priced sales[\s\S]*\$200,000</);
+  assert.match(doc.getElementById("rollup").innerHTML, /\$200K<span>\/acre median/);
+});
+
+test("land with no acreage says so, and a ground lease is never priced per acre", async () => {
+  const { doc } = await runPage([
+    land({ id: "a", lot_acres: null, price_per_acre: null }),
+    land({ id: "g", address: "5 Ground Lease Rd", transaction: "lease", price: 900000, price_per_acre: null,
+      rent_psf: null, rent_basis: null, rent_psf_yr: null }),
+  ]);
+  const rows = doc.getElementById("bmRows").innerHTML;
+  assert.match(rows, /no acreage/);
+  assert.doesNotMatch(rows, /\/acre/, "a lease's price over its acres is not a sale figure");
+  assert.equal(doc.getElementById("cMedSub").textContent, "none priced yet");
+});
+
+test("land beside buildings never shares a median", async () => {
+  const { doc } = await runPage([
+    land({ id: "a" }), land({ id: "b", address: "2 Farm Rd" }), land({ id: "c", address: "3 Farm Rd" }),
+    comp({ id: "i1", address: "1 Dock St", price_per_sqft: 120 }),
+  ]);
+  // The book's strip narrows to the larger type and quotes it in its own unit.
+  assert.equal(doc.getElementById("cMedSub").textContent, "Land median $200K/acre · 3 of 4 priced sales");
+  assert.match(doc.getElementById("tblFoot").innerHTML, /No single median across 2 property types/);
+  assert.match(doc.getElementById("tblHead").innerHTML, />\$\/SF or \$\/acre</);
+  assert.match(doc.getElementById("bmHead").innerHTML, />\$\/SF, \$\/acre or rent</);
+  assert.equal(doc.getElementById("chartTitle").textContent, "Median $/SF by year",
+    "a mixed view charts the buildings, as it always did");
+});
+
+test("a book without land reads exactly as it did", async () => {
+  const { doc } = await runPage([comp({ id: "i1" }), comp({ id: "i2", address: "2 Dock St" })]);
+  const head = doc.getElementById("bmHead").innerHTML;
+  assert.match(head, />Size \(SF\)</);
+  assert.match(head, />\$\/SF or rent</);
+  assert.equal(doc.getElementById("cMedSub").textContent, "Industrial median $100/SF");
+});
+
+test("a land view charts $/acre by year", async () => {
+  const { doc } = await runPage([
+    land({ id: "a", deal_date: "2024-03-01" }),
+    land({ id: "b", address: "2 Farm Rd", deal_date: "2025-03-01" }),
+    land({ id: "c", address: "3 Farm Rd", deal_date: "2026-03-01", price_per_acre: 260000 }),
+  ]);
+  assert.match(doc.getElementById("chartTitle").textContent, /^Median \$\/acre by year/);
+  const svg = doc.getElementById("chartWrap").innerHTML;
+  assert.match(svg, /median \$260K\/acre/);
+  assert.match(svg, /aria-label="Median price per acre by year"/);
+});
+
+test("the rate column sorts land on its $/acre", async () => {
+  const { doc } = await runPage([
+    land({ id: "a", address: "1 Mid Rd", price_per_acre: 200000 }),
+    land({ id: "b", address: "2 High Rd", price_per_acre: 300000 }),
+    land({ id: "c", address: "3 Low Rd", price_per_acre: 100000 }),
+  ]);
+  doc.getElementById("bmHead").fire("click", { target: { closest: () => ({ getAttribute: () => "price_per_sqft" }) } });
+  const rows = doc.getElementById("bmRows").innerHTML;
+  const at = ["2 High Rd", "1 Mid Rd", "3 Low Rd"].map((a) => rows.indexOf(a));
+  assert.ok(at[0] >= 0 && at[0] < at[1] && at[1] < at[2], "not sorted by $/acre: " + at);
+});
+
+test("a comp set of land is summarised, printed and downloaded per acre", async () => {
+  const { doc } = await runPage([
+    land({ id: "a", address: "1 Farm Rd, Star, ID" }),
+    land({ id: "b", address: "2 Farm Rd, Star, ID", price_per_acre: 150000 }),
+  ]);
+  tick_(doc, "a", true); tick_(doc, "b", true);
+  const tray = doc.getElementById("setTray").innerHTML;
+  assert.match(tray, /sales median \$175K\/acre \(range \$150K–\$200K\)/);
+  assert.doesNotMatch(tray, /without a price or rent/);
+  doc.getElementById("setTray").fire("click", { target: { closest: () => ({ id: "setSheet" }) } });
+  await tick();
+  const sheet = doc.getElementById("compSheet").innerHTML;
+  assert.match(sheet, />10 ac</);
+  assert.match(sheet, /\$200,000\/acre/);
+  assert.match(sheet, />\$\/acre or rent</);
+  assert.doesNotMatch(sheet, /Size \(SF\)/);
+});
+
+test("the set's CSV carries acreage and $/acre only when the set holds land", async () => {
+  const csvOf = async (comps) => {
+    const { doc } = await runPage(comps);
+    comps.forEach((c) => tick_(doc, c.id, true));
+    let text = null;
+    const orig = global.Blob;
+    global.Blob = class { constructor(parts) { text = parts.join(""); } };
+    try { doc.getElementById("setTray").fire("click", { target: { closest: () => ({ id: "setCsv" }) } }); }
+    finally { global.Blob = orig; }
+    return text;
+  };
+  const withLand = await csvOf([land({ id: "a", price_per_acre: null })]);
+  assert.match(withLand, /Price \$\/SF,Lot acres,Price \$\/acre,Rent/);
+  assert.match(withLand, /,10,200000,/, "the derived $/acre, the figure the page shows");
+  assert.doesNotMatch(await csvOf([comp({ id: "i" })]), /acre/i);
+});

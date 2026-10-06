@@ -411,7 +411,7 @@ paths:
       never a copy in this file (`test/vault-shell.test.js`).
     - **The comp set is memory only** and summarises by the book's rules:
       sales and leases apart, no single figure across property types
-      (`setSummary` over `psfStats`/`rentStats`). Its Publish and Share are
+      (`setSummary` over `saleStats`/`rentStats`). Its Publish and Share are
       `publishList` and `shareListWithFirm`, which the filter row's buttons
       call too, so there is still one confirm per route.
     - **The comp sheet and the set's CSV are files for the broker**, the
@@ -437,7 +437,7 @@ paths:
     plus the rewritten Bulk publish and push blocks):
     - **The figures sit at the top (`#bookStrip`), whole-book.** Comps (with
       its markets and states), Sales and Leases (each a count, then the
-      dominant type's median from `psfStats` / `rentStats`' `dominant`: the
+      dominant type's median from `saleStats` / `rentStats`' `dominant`: the
       old tile's narrow-don't-decline rule, with the coverage said when the
       book spans types, and "mixed lease types" disclosed), Published (still
       green, still the zero-staying-zero proof) and, for a broker in a firm, a
@@ -529,7 +529,7 @@ paths:
     reading strip** (`renderStrip`), not three bordered panels in front of the
     table: measured on a seeded book the comps table moved from 4363px down
     the document to 1101px. Two rules for the strip. Its median comes from the
-    same `psfList`/`median` pair that seals the table's own footer, so the two
+    same `saleStats`/`median` pair that seals the table's own footer, so the two
     can never quote different figures. And a cell is a `<button>` **only** when
     the panel behind it is actually showing — an affordance over a hidden panel
     is a control that does nothing. `renderGutCheck` and `renderRepeats` feed it
@@ -1242,3 +1242,45 @@ Sites tab, whose reads answer 503 until it runs, never another surface).
   against the stand-in PostgREST, including an unrun migration), and the
   Sites block in `test/vault-page.test.js` (with the Book's three rules after
   it).
+
+## Land is priced per acre (2026-10-06)
+
+A land sale has a price and an acreage and, as a rule, no building size, so
+the Book read in $/SF told a development firm with thirty priced land sales
+"none priced yet", and every row said "no size". The report already quoted
+land per acre (`ALT_BASIS` in index.html); the Book now does too. Browser
+only: nothing about storage or import changed.
+
+- **One type, one unit.** `isLand(c)` is `property_type === "Land"`. Land is
+  read per acre and never in $/SF, everything else the other way round, via
+  `saleOf(c)` / `saleUnit(c)`. `psfStats` became **`saleStats`**: same type
+  rule, plus `unit` ("sf", "acre", or null when both are present). Since land
+  is a type of its own, the existing mixed-type rule is what keeps $/acre and
+  $/SF out of one median; a typeless row is $/SF and still counts as mixed
+  beside land. `psfOf` is unchanged and still $/SF alone, so the gut check
+  (sale $/SF benchmarks) abstains on land by construction.
+- **`acreOf(c)`**: the stored `price_per_acre` as typed (what a report
+  blending the comp reads), else `price / lot_acres`, which is exact. A sale
+  only, for `psfOf`'s reason: a ground lease's price over its acres is not a
+  sale figure.
+- **Where it shows.** The strip's Sales cell ("Land median $188K/acre"); the
+  ledger's rate column, its phone sub-line ("$1.6M · 9.8 ac") and Size column
+  (acres, "no acreage" in place of "no size"); the map tooltip; the market
+  cards ("/acre median"); the table's rate column, heading, footer and reading
+  strip; the year chart when the view's sales are all land (a view mixing
+  land with buildings charts the buildings' $/SF, as before); repeat
+  properties; the comp set's summary; the comp sheet; and the set's CSV,
+  which gains Lot acres and Price $/acre columns only when the set holds land.
+- **Short and exact.** `saleLabel` writes "$188K/acre" where space is short
+  (ledger, strip, cards, set summary); `saleCell` writes "$188,192" where the
+  heading names the unit (table, footer, reading strip); the comp sheet a
+  client reads writes it in full.
+- **Headings name acres only when land is on screen**, so a book without any
+  reads exactly as it did ("Size (SF)", "$/SF or rent").
+- **Sorting** the rate or size column sorts land on its $/acre or acres. In a
+  view of both units they sort apart, each in its own order.
+- Not done: the compact table's Size cell is the editable `size_sqft`, so
+  land's acreage is edited in the spreadsheet (Open spreadsheet), where
+  `lot_acres` is a column.
+- Tests: the "Land is priced per acre" block at the end of
+  `test/vault-page.test.js`.

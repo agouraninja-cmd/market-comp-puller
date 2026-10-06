@@ -4561,5 +4561,11 @@
     "type": "improvement",
     "title": "Data page speaks to development firms: Comps, no publishing, opens on Sites",
     "details": "For members of a development firm, the Data page now opens on Sites, which moves to the front of the tabs. The Book tab is called Comps, a developer’s word rather than a broker’s book of business. Publishing is no longer offered there: the Published figure, the Public column, Publish in the comp set and the license-number credit line are gone, and the privacy line drops its mention of publishing, because a published comp’s Verified badge means a licensed broker vouched for it. Sharing comps with your firm is unchanged. Anyone who already has a published comp keeps every publishing control, so a public comp never looks private. Broker firms and people without a firm see no change."
+  },
+  {
+    "date": "2026-10-06",
+    "type": "fix",
+    "title": "Land comps on the Data page are priced per acre",
+    "details": "Land sales on the Comps tab were read in dollars per square foot, which land almost never has, so a book of priced land sales said “none priced yet” and every row said “no size”. Land is now priced per acre everywhere the tab states a sale figure: the Sales figure at the top (“Land median $188K/acre”), each row’s rate and acreage, the market cards, the table and its footer, the year chart, the comp set’s summary, the printed comp sheet and the comp set’s CSV. The $/acre is the one you imported, or the price over the acreage when there isn’t one. Land and buildings never share a median, and a book with no land looks exactly as it did."
   }
 ]

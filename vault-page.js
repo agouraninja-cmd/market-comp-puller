@@ -1882,11 +1882,36 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     var v=c.price_per_sqft;
     return (v==null||!isFinite(Number(v)))?null:Number(v);
   };
-  var psfList=function(list){
-    return list.map(psfOf).filter(function(v){return v!=null});
+  // LAND IS PRICED PER ACRE (2026-10-06): the unit its market quotes, and the
+  // report's own rule (ALT_BASIS in index.html, where Land leads per acre). A
+  // land sale has a price and an acreage and, as a rule, no building size, so
+  // read in $/SF every land comp in a book said "no size" and a developer's
+  // thirty priced sales were "none priced yet". The stored price_per_acre is
+  // read first, as typed (it is what a report blending this comp reads); with
+  // none, the sale's own price over its own acreage, which is exact. A SALE
+  // only, for psfOf's reason: a ground lease's rent is not a price.
+  //
+  // Land is read per acre and never in $/SF, everything else the other way
+  // round, so one property type is one unit and saleStats' type rule is what
+  // keeps $/acre and $/SF out of one median. psfOf stays $/SF alone: the gut
+  // check's benchmarks are sale $/SF, so land abstains there by construction.
+  var isLand=function(c){ return !!c&&c.property_type==="Land"; };
+  var acreOf=function(c){
+    if(!c||c.transaction==="lease")return null;
+    var t=c.price_per_acre,v=Number(t);
+    if(t!=null&&t!==""&&isFinite(v)&&v>0)return v;
+    var p=Number(c.price),a=Number(c.lot_acres);
+    return (c.price!=null&&c.price!==""&&p>0&&isFinite(a)&&a>0)?Math.round(p/a):null;
   };
-  // The $/SF values a median would be taken over, AND how many property types
-  // they span.
+  // A sale's figure in its own unit, and that unit.
+  var saleOf=function(c){ return isLand(c)?acreOf(c):psfOf(c); };
+  var saleUnit=function(c){ return isLand(c)?"acre":"sf"; };
+  var saleList=function(list){
+    return list.map(saleOf).filter(function(v){return v!=null});
+  };
+  // The sale figures a median would be taken over, AND how many property types
+  // they span. unit is the one unit they are all in ("sf" or "acre"), or null
+  // when they are in both, which takes two types and is therefore mixed.
   //
   // $/SF IS NOT COMPARABLE ACROSS PROPERTY TYPES, so a median that mixes them
   // is an artifact rather than a statistic: on the first realistic test book
@@ -1907,12 +1932,13 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // why that one surface narrows where the other two decline. (No backticks
   // anywhere in this file, comments included: the whole page is one template
   // literal, and a pair of them around a word closes it.)
-  var psfStats=function(list){
-    var vals=[],byType={},types=0;
+  var saleStats=function(list){
+    var vals=[],byType={},types=0,units={};
     (list||[]).forEach(function(c){
-      var v=psfOf(c);
+      var v=saleOf(c);
       if(v==null)return;
       vals.push(v);
+      units[saleUnit(c)]=1;
       var t=c&&c.property_type;
       if(!t)return;
       if(!byType[t]){byType[t]=[];types++;}
@@ -1924,10 +1950,21 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // changing its mind.
     var dom=null;
     Object.keys(byType).sort().forEach(function(t){
-      if(!dom||byType[t].length>dom.values.length)dom={type:t,values:byType[t]};
+      if(!dom||byType[t].length>dom.values.length)dom={type:t,values:byType[t],unit:t==="Land"?"acre":"sf"};
     });
-    return {values:vals,types:types,mixed:types>1,dominant:dom};
+    // Two units is mixed even with one type counted: a type is required on
+    // import, but a row without one is $/SF and must not join a land median.
+    var us=Object.keys(units);
+    return {values:vals,types:types,mixed:types>1||us.length>1,
+      unit:us.length>1?null:(us[0]||"sf"),dominant:dom};
   };
+  // A sale figure with its unit: short in the ledger, the strip and the cards
+  // (land runs to six figures an acre), and the column's own precision where
+  // the heading already names the unit.
+  function saleLabel(v,unit){ return v==null?"":unit==="acre"?shortMoney(v)+"/acre":psf0(v)+"/SF"; }
+  function saleCell(v,unit){ return v==null?"":unit==="acre"?money(v):psf(v); }
+  // What a column of sale figures is in.
+  function saleHead(st){ return st.unit==="acre"?"$/acre":st.unit==null?"$/SF or $/acre":"$/SF"; }
   // The lease half, and the exact mirror of psfOf above: the stored, canonical
   // ANNUAL figure, never rent_psf itself. rent_psf is what the broker typed
   // and means nothing without rent_basis beside it — a Californian 1.35/mo and
@@ -1939,7 +1976,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     var v=c.rent_psf_yr;
     return (v==null||!isFinite(Number(v)))?null:Number(v);
   };
-  // Same shape as psfStats, and same property-type rule: office at $28/SF/yr
+  // Same shape as saleStats, and same property-type rule: office at $28/SF/yr
   // and industrial at $9 are no more averageable than their sale prices are.
   // The extra field is structures: how many distinct lease_types the values
   // span, counting "not stated" as one of them. Mixing NNN with full-service
@@ -1961,7 +1998,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       byType[t].push(v);
       kinds[t][k]=1;
     });
-    // The dominant type, psfStats' rule and tie-break, for the Leases cell at
+    // The dominant type, saleStats' rule and tie-break, for the Leases cell at
     // the top of the Book. It carries its OWN structure count, because the
     // figure that cell quotes is that one type's median.
     var dom=null;
@@ -1974,10 +2011,10 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // sales and rents has no single median — they are different measures, not a
   // wider spread of one — so it reports "both" and every surface says to filter
   // rather than sealing the table with a figure that means nothing. This is
-  // the same instinct as psfStats' own mixed-types rule one level up: where a number
+  // the same instinct as saleStats' own mixed-types rule one level up: where a number
   // would be fabricated, say what is true instead.
   var unitOf=function(rows){
-    var s=psfStats(rows),r=rentStats(rows);
+    var s=saleStats(rows),r=rentStats(rows);
     if(s.values.length&&r.values.length)return {kind:"both",sale:s,rent:r};
     if(r.values.length)return {kind:"lease",sale:s,rent:r};
     return {kind:"sale",sale:s,rent:r};
@@ -2038,13 +2075,15 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // the ROWS ON SCREEN, so a dominant-type median under a mixed table would
   // describe a subset the reader can see they did not filter to, while these
   // cells describe the BOOK, and most real books span types. All of them read
-  // the one psfStats / rentStats pair, so none can quote a figure another
+  // the one saleStats / rentStats pair, so none can quote a figure another
   // contradicts. Sales and leases are never one figure: different measures.
   function stripLine(stats,count,fmt,noun,none){
     var dom=stats.dominant,all=stats.values;
     if(!all.length)return count?none:"none yet";
     var m=dom?median(dom.values):median(all);
-    var line=(dom?dom.type+" median ":"median ")+fmt(m);
+    // The unit rides along for a sale figure (land is per acre); rentLabel
+    // ignores it.
+    var line=(dom?dom.type+" median ":"median ")+fmt(m,dom?dom.unit:stats.unit);
     if(stats.mixed)line+=" \\u00b7 "+dom.values.length+" of "+all.length+" "+noun;
     return line;
   }
@@ -2061,8 +2100,8 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     $("cMarkets").textContent=!nm?"":nm===1?"in "+Object.keys(mk)[0]
       : "in "+nm+" markets"+(ns>1?" \\u00b7 "+ns+" states":"");
     $("cSales").textContent=num(sales.length);
-    $("cMedSub").textContent=stripLine(psfStats(sales),sales.length,
-      function(v){return psf0(v)+"/SF"},"priced sales","none priced yet");
+    $("cMedSub").textContent=stripLine(saleStats(sales),sales.length,
+      saleLabel,"priced sales","none priced yet");
     $("cLeases").textContent=num(leases.length);
     var rs=rentStats(leases),rline=stripLine(rs,leases.length,rentLabel,"rents","no rents entered yet");
     // A mixed lease structure weakens a rent median rather than invalidating
@@ -2349,6 +2388,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 
   function rateCell(c){
     if(c.transaction==="lease")return psf(c.rent_psf_yr);
+    if(isLand(c))return saleCell(acreOf(c),"acre");
     return psf(c.price_per_sqft);
   }
   function roCell(c,k,html,isNum){
@@ -2442,9 +2482,19 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       '" aria-label="Delete this comp" title="Delete">'+TRASH_SVG+'</button>';
   }
 
+  // The rate and size columns show a land comp's $/acre and acreage, so they
+  // sort on them. In a view of both, the units sort apart (an acre runs to six
+  // figures, a foot to three), each in its own order.
+  function sortVal(c){
+    if(isLand(c)){
+      if(sortK==="price_per_sqft")return acreOf(c);
+      if(sortK==="size_sqft"&&!c.size_sqft)return acresOf(c);
+    }
+    return c[sortK];
+  }
   function render(){
     var rows=view().slice().sort(function(a,b){
-      var x=a[sortK],y=b[sortK];
+      var x=sortVal(a),y=sortVal(b);
       if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1;
       if(typeof x==="number"&&typeof y==="number")return sortAsc?x-y:y-x;
       return sortAsc?String(x).localeCompare(String(y)):String(y).localeCompare(String(x));
@@ -2499,10 +2549,12 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // figure, which is worse than no column: $28.50 under a "$/SF" heading
     // reads as a building worth twenty-eight dollars a foot. In a mixed view
     // each row still shows its own measure and the heading says so, which the
-    // Deal column beside it disambiguates row by row.
+    // Deal column beside it disambiguates row by row (and the Type column a
+    // land row's $/acre).
     var unit=unitOf(rows);
     var rateHead=unit.kind==="lease"?"Rent $/SF/yr"
-      :unit.kind==="both"?"$/SF or rent/yr":"$/SF";
+      :unit.kind==="both"?(unit.sale.unit==null?"$/SF, $/acre or rent/yr":saleHead(unit.sale)+" or rent/yr")
+      :saleHead(unit.sale);
     $("tblHead").innerHTML="<tr>"+
       headCell("address","Address")+headCell("market","Market")+
       headCell("property_type","Type")+headCell("transaction","Deal")+
@@ -2567,7 +2619,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     $("tblFoot").innerHTML=!foot.show ? "" :
       '<tr><td class="lab" colspan="7">'+foot.label+
       (foot.value==null||rows.length===comps.length?"":" in this view")+
-      '</td><td class="num">'+(foot.value==null?"\\u2014":psf(foot.value))+
+      '</td><td class="num">'+(foot.value==null?"\\u2014":saleCell(foot.value,foot.unit))+
       "</td><td></td><td></td><td></td></tr>";
   }
 
@@ -2577,7 +2629,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // Four outcomes, and three of them decline to state a median. A view holding
   // both sales and leases has two different measures in it rather than a wider
   // spread of one, and a view spanning property types has the artifact
-  // psfStats' own note describes. In both cases the honest thing is to name
+  // saleStats' own note describes. In both cases the honest thing is to name
   // the filter that resolves it — the reason the Deal filter exists at all.
   function footFigure(unit){
     if(unit.kind==="both"){
@@ -2590,8 +2642,10 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       return {show:true,value:null,
         label:"No single median across "+st.types+" property types \\u2014 filter by type to compare"};
     }
+    // unit says how to print the figure: a land view's median is $/acre. A
+    // rent leaves it unset, which prints as a rate per foot.
     if(!lease){
-      return {show:true,value:median(vals),
+      return {show:true,value:median(vals),unit:st.unit,
         label:"Median of "+vals.length+" priced sale"+(vals.length===1?"":"s")};
     }
     // Stated, never refused: see rentStats on why a mixed lease structure
@@ -2649,7 +2703,8 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     });
     return order.map(function(k){
       var g=by[k],dates=g.comps.map(function(c){return c.deal_date}).filter(Boolean).sort();
-      var ps=psfList(g.comps);
+      // One bucket is one type, so one unit: a land bucket's median is $/acre.
+      var ps=saleList(g.comps);
       // A leasing bucket has no priced sales and led with its comp count,
       // which is how a book of 200 leases showed no figure anywhere. It has a
       // median, just in a different unit — so the card carries the unit rather
@@ -2658,7 +2713,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       // benchmarks are denominated in.
       var rents=g.comps.map(rentOf).filter(function(v){return v!=null});
       return {market:g.market,type:g.type,n:g.comps.length,pub:g.pub,
-        med:median(ps),psfN:ps.length,
+        med:median(ps),psfN:ps.length,acre:g.type==="Land",
         rentMed:median(rents),rentN:rents.length,
         first:dates[0]||"",last:dates[dates.length-1]||""};
     }).sort(function(a,b){return b.n-a.n});
@@ -2676,7 +2731,9 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       // count where it is neither. A leasing bucket used to fall straight to
       // the count and read "no priced sales yet" — true, and useless, since the
       // median it does have was simply in another unit.
-      var head=g.med!=null
+      var head=g.med!=null&&g.acre
+        ? '<div class="big">'+shortMoney(g.med)+'<span>/acre median</span></div>'
+        : g.med!=null
         ? '<div class="big">'+psf0(g.med)+'<span>/SF median</span></div>'
         : g.rentMed!=null
         ? '<div class="big">'+psf0(g.rentMed)+'<span>/SF/yr rent</span></div>'
@@ -2804,8 +2861,13 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // rents as a collapse in prices, and an axis tall enough for both makes
     // the rents a flat line along the bottom. Filtering to Leases charts the
     // rents on their own axis, which is the whole point of the filter.
-    var lease=unitOf(rows).kind==="lease";
-    var valOf=lease?rentOf:psfOf;
+    var u=unitOf(rows),lease=u.kind==="lease";
+    // Land charts per acre when the view's sales are all land. A view mixing
+    // land with buildings charts the buildings' $/SF, as it did before land
+    // had a unit: one axis, one measure.
+    var acre=!lease&&u.sale.unit==="acre";
+    var valOf=lease?rentOf:acre?acreOf:psfOf;
+    var fig=function(v){return acre?(v>0?shortMoney(v):"$0"):psf0(v)};
     rows.forEach(function(c){
       var y=yearOf(c),v=valOf(c);
       if(!y||v==null)return;
@@ -2819,7 +2881,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // trend. Below it the honest thing is to say so, not to draw one column
     // and let it imply a direction. Silence would read as a broken panel.
     var noun=lease?"lease":"priced sale";
-    var title=lease?"Median rent $/SF/yr by year":"Median $/SF by year";
+    var title=lease?"Median rent $/SF/yr by year":acre?"Median $/acre by year":"Median $/SF by year";
     if(pts.length<2||total<3){
       box.className="dbox chart";
       $("chartTitle").textContent=title;
@@ -2841,7 +2903,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     var bw=Math.min(24,Math.max(6,band-10));          // capped; the leftover is air
     var y=function(v){return T+plotH-(v/max)*plotH};
 
-    var s='<svg viewBox="0 0 '+W+" "+H+'" role="img" aria-label="Median price per square foot by year">';
+    var s='<svg viewBox="0 0 '+W+" "+H+'" role="img" aria-label="'+(acre?"Median price per acre by year":"Median price per square foot by year")+'">';
     // Recessive hairline grid, solid (never dashed), one step off the surface.
     // Colours ride on CSS classes (.chart-grid / .chart-axis / .chart-bar /
     // .chart-endpoint, declared in the <style> block above), not inline
@@ -2854,12 +2916,12 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       s+='<line class="chart-grid" x1="'+L+'" y1="'+y(v).toFixed(1)+'" x2="'+(W-R)+'" y2="'+y(v).toFixed(1)+
         '" stroke-width="1"/>';
       s+='<text class="chart-axis" x="'+(L-8)+'" y="'+(y(v)+4).toFixed(1)+'" text-anchor="end" font-size="11" '+
-        'font-family="Inter, sans-serif" style="font-variant-numeric:tabular-nums">'+psf0(v)+"</text>";
+        'font-family="Inter, sans-serif" style="font-variant-numeric:tabular-nums">'+fig(v)+"</text>";
     });
     pts.forEach(function(p,i){
       var cx=L+band*i+band/2,last=i===pts.length-1;
       var h=Math.max(2,y(0)-y(p.med));
-      var tip=p.year+" \\u00b7 median "+psf0(p.med)+"/SF \\u00b7 "+p.n+" sale"+(p.n===1?"":"s");
+      var tip=p.year+" \\u00b7 median "+fig(p.med)+(acre?"/acre":"/SF")+" \\u00b7 "+p.n+" sale"+(p.n===1?"":"s");
       // Full-band transparent hit rect first: a 24px column is a small target,
       // and the tooltip should not require landing on the mark itself.
       s+='<rect x="'+(L+band*i).toFixed(1)+'" y="'+T+'" width="'+band.toFixed(1)+'" height="'+plotH+
@@ -2871,7 +2933,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       // The endpoint is the one worth reading without hovering.
       if(last){
         s+='<text class="chart-endpoint" x="'+cx.toFixed(1)+'" y="'+(y(p.med)-7).toFixed(1)+'" text-anchor="middle" font-size="12" '+
-          'font-weight="600" font-family="Inter, sans-serif">'+psf0(p.med)+"</text>";
+          'font-weight="600" font-family="Inter, sans-serif">'+fig(p.med)+"</text>";
       }
     });
     s+="</svg>";
@@ -2886,7 +2948,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // than shown empty.
   // ---- The reading strip ---------------------------------------------------
   // Three headline figures over the comps table, each one already computed by
-  // the panel it summarises — the median comes from the same psfList/median
+  // the panel it summarises — the median comes from the same saleStats/median
   // pair that seals the table's own footer, so the strip and the closing row
   // can never quote different numbers.
   //
@@ -2916,12 +2978,13 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // the rule this strip has carried since it shipped, now enforced by there
     // being a single computation instead of two that happen to agree.
     var lease=unit.kind==="lease",st=lease?unit.rent:unit.sale;
-    var head=unit.kind==="both"?"Median rate":lease?"Median rent/yr":"Median $/SF";
+    var head=unit.kind==="both"?"Median rate":lease?"Median rent/yr"
+      :st.unit==="acre"?"Median $/acre":"Median $/SF";
     var sub=unit.kind==="both"?"sales and leases"
       :st.mixed?st.types+" property types"
       :st.values.length?st.values.length+(lease?" lease":" priced sale")+(st.values.length===1?"":"s")
       :lease?"no rents":"no priced sales";
-    cells.push(stripCell(head,foot.value==null?"&mdash;":psf(foot.value),sub,
+    cells.push(stripCell(head,foot.value==null?"&mdash;":saleCell(foot.value,foot.unit),sub,
       $("chartBox").className.indexOf("hide")<0?"chartBox":""));
     var gv="&mdash;",gs="",gok=false;
     if(lastGut&&lastGut.unavailable){ gs="benchmarks unavailable"; }
@@ -3019,7 +3082,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       }).map(function(d){
         return '<div class="deal">'+esc(d.deal_date||"undated")+" \\u00b7 "+esc(d.transaction||"")+
           (d.price!=null?" \\u00b7 "+money(d.price):"")+
-          (psfOf(d)!=null?" \\u00b7 "+psf(psfOf(d))+"/SF":"")+"</div>";
+          (saleOf(d)!=null?" \\u00b7 "+saleCell(saleOf(d),saleUnit(d))+(isLand(d)?"/acre":"/SF"):"")+"</div>";
       }).join("");
       // The market is named on the row, not just used as a grouping key: two
       // same-numbered addresses in neighbouring cities are exactly the pair a
@@ -3811,14 +3874,22 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   }
   function rowFigure(c){
     if(c.transaction==="lease"){ var r=rentOf(c); return r!=null?rentLabel(r):""; }
-    var v=psfOf(c); return v!=null?psf0(v)+"/SF":"";
+    return saleLabel(saleOf(c),saleUnit(c));
   }
+  // A land comp's size is its acreage, and the ledger says so in the Size
+  // column and under the figure (the line a phone reads).
+  function acresOf(c){
+    var a=Number(c&&c.lot_acres);
+    return (c&&c.lot_acres!=null&&c.lot_acres!==""&&isFinite(a)&&a>0)?a:null;
+  }
+  function acresLabel(a){ return a==null?"":(Math.round(a*10)/10).toLocaleString("en-US")+" ac"; }
   function rowSub(c){
     if(c.transaction==="lease"){
       var bits=[]; if(c.lease_type)bits.push(c.lease_type); if(c.lease_expiry)bits.push("ends "+monthLabel(c.lease_expiry));
       return bits.join(" \\u00b7 ")||"lease";
     }
-    return (c.price!=null&&c.price!=="")?shortMoney(c.price):"undisclosed";
+    var price=(c.price!=null&&c.price!=="")?shortMoney(c.price):"undisclosed";
+    return isLand(c)&&acresOf(c)!=null?price+" \\u00b7 "+acresLabel(acresOf(c)):price;
   }
   var DETAIL_FIELDS=[["price","Price"],["size_sqft","Size"],["cap_rate","Cap rate"],["year_built","Year built"],
     ["tenancy","Tenancy"],["rent_psf_yr","Rent"],["lease_type","Lease type"],["lease_expiry","Lease ends"],
@@ -3901,7 +3972,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     var f=rowFigure(c);
     if(f)return esc(f);
     if(c.transaction==="lease")return '<em class="vd-na">rent not entered</em>';
-    return '<em class="vd-na">'+((c.price!=null&&c.price!=="")?"no size":"undisclosed")+"</em>";
+    return '<em class="vd-na">'+((c.price!=null&&c.price!=="")?(isLand(c)?"no acreage":"no size"):"undisclosed")+"</em>";
   }
   var CHEV='<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M4.5 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   // One row. The meta line and the figure's sub-line are what a phone shows in
@@ -3921,7 +3992,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       '<td class="vd-lx">'+esc(c.property_type||"")+"</td>"+
       '<td class="vd-lx">'+(lease?"Lease"+(c.lease_type?" \\u00b7 "+esc(c.lease_type):""):"Sale")+"</td>"+
       '<td class="vd-lx vd-ld">'+esc(monthLabel(c.deal_date))+"</td>"+
-      '<td class="vd-lx num">'+(c.size_sqft?esc(num(c.size_sqft)):"")+"</td>"+
+      '<td class="vd-lx num">'+(c.size_sqft?esc(num(c.size_sqft)):isLand(c)?esc(acresLabel(acresOf(c))):"")+"</td>"+
       '<td class="vd-lx num">'+(lease||c.price==null||c.price===""?"":esc(shortMoney(c.price)))+"</td>"+
       '<td class="num vd-lrate"><b>'+ledRate(c)+'</b><span class="vd-lsub">'+esc(rowSub(c))+"</span></td></tr>"+
       (open?'<tr class="vd-ldet"><td></td><td colspan="7">'+bmDetail(c)+"</td></tr>":"");
@@ -3934,9 +4005,13 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     $("bmCount").textContent=rows.length===comps.length
       ? num(rows.length)+" comp"+(rows.length===1?"":"s")
       : num(rows.length)+" of "+num(comps.length)+" comps";
+    // The headings name acres only when land is on screen, so a book without
+    // any reads exactly as it did.
+    var land=rows.some(isLand),built=rows.some(function(c){return !isLand(c)&&c.transaction!=="lease"});
     $("bmHead").innerHTML="<tr><th></th>"+headCell("address","Address")+headCell("property_type","Type")+
-      headCell("transaction","Deal")+headCell("deal_date","Date")+headCell("size_sqft","Size (SF)",true)+
-      headCell("price","Price",true)+headCell("price_per_sqft","$/SF or rent",true)+"</tr>";
+      headCell("transaction","Deal")+headCell("deal_date","Date")+headCell("size_sqft",land?"Size":"Size (SF)",true)+
+      headCell("price","Price",true)+
+      headCell("price_per_sqft",!land?"$/SF or rent":built?"$/SF, $/acre or rent":"$/acre or rent",true)+"</tr>";
     gLast={}; gIds={}; rowGroup={};
     var h="";
     groups.forEach(function(g,i){
@@ -4161,16 +4236,19 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // ---- The comp set -----------------------------------------------------------
   function setList(){ return comps.filter(function(c){return setIds[String(c.id)]}); }
   // Sales and leases are never summarised together, and neither is a set that
-  // spans property types: the book's own rules (unitOf, psfStats), applied to
+  // spans property types: the book's own rules (unitOf, saleStats), applied to
   // a hand-picked set.
   function setSummary(list){
-    var s=psfStats(list.filter(function(c){return c.transaction!=="lease"}));
+    var s=saleStats(list.filter(function(c){return c.transaction!=="lease"}));
     var r=rentStats(list.filter(function(c){return c.transaction==="lease"}));
     var parts=[];
     if(s.values.length){
-      if(s.mixed)parts.push(s.values.length+" priced sales across "+s.types+" property types, so no single $/SF");
-      else parts.push("sales median "+psf0(median(s.values))+"/SF"+(s.values.length>1
-        ? " (range "+psf0(Math.min.apply(null,s.values))+"\\u2013"+psf0(Math.max.apply(null,s.values))+")":""));
+      // A land set is quoted per acre; land beside buildings is two types, so mixed.
+      var f=s.unit==="acre"?shortMoney:psf0;
+      if(s.mixed)parts.push(s.values.length+" priced sales across "+s.types+" property types, so no single "+
+        (s.unit==="sf"?"$/SF":"median"));
+      else parts.push("sales median "+saleLabel(median(s.values),s.unit)+(s.values.length>1
+        ? " (range "+f(Math.min.apply(null,s.values))+"\\u2013"+f(Math.max.apply(null,s.values))+")":""));
     }
     if(r.values.length){
       if(r.mixed)parts.push(r.values.length+" rents across "+r.types+" property types, so no single rent");
@@ -4221,9 +4299,20 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     if(s.indexOf(",")>=0||s.indexOf('"')>=0||s.indexOf("\\n")>=0||s.indexOf("\\r")>=0)s='"'+s.split('"').join('""')+'"';
     return s;
   }
+  // A set holding land carries its acreage and $/acre beside Price $/SF, the
+  // figure the page shows (acreOf: as typed, else price over acres). A set
+  // without land downloads exactly the columns it always did.
+  function setCols(list){
+    if(!list.some(isLand))return SET_COLS;
+    var at=SET_COLS.map(function(k){return k[0]}).indexOf("price_per_sqft")+1;
+    return SET_COLS.slice(0,at).concat([["lot_acres","Lot acres"],["price_per_acre","Price $/acre"]],SET_COLS.slice(at));
+  }
   function downloadSetCsv(list){
-    var lines=[SET_COLS.map(function(k){return k[1]}).join(",")];
-    list.forEach(function(c){ lines.push(SET_COLS.map(function(k){return setCsvCell(c[k[0]])}).join(",")); });
+    var cols=setCols(list);
+    var lines=[cols.map(function(k){return k[1]}).join(",")];
+    list.forEach(function(c){ lines.push(cols.map(function(k){
+      return setCsvCell(k[0]==="price_per_acre"?acreOf(c):c[k[0]]);
+    }).join(",")); });
     try{
       var blob=new Blob(["\\ufeff"+lines.join("\\r\\n")+"\\r\\n"],{type:"text/csv;charset=utf-8"});
       var a=document.createElement("a");
@@ -4245,12 +4334,17 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       .filter(function(x){return x}).join(" \\u00b7 "):"";
     var now=new Date(),dated=MON[now.getMonth()]+" "+now.getDate()+", "+now.getFullYear();
     var rows=list.slice().sort(function(a,b){return String(b.deal_date||"").localeCompare(String(a.deal_date||""))});
+    // Land is sized in acres and priced per acre, in full on a page a client
+    // reads; the headings name both units only when the set holds land.
+    var land=list.some(isLand),built=list.some(function(c){return !isLand(c)&&c.transaction!=="lease"});
     var body=rows.map(function(c){
       var rate=c.transaction==="lease"
         ? (rentOf(c)!=null?rentLabel(rentOf(c))+(c.lease_type?" "+c.lease_type:""):"")
+        : isLand(c)?(acreOf(c)!=null?money(acreOf(c))+"/acre":"")
         : (psfOf(c)!=null?psf0(psfOf(c))+"/SF":"");
+      var size=c.size_sqft?num(c.size_sqft):isLand(c)?acresLabel(acresOf(c)):"";
       return "<tr><td>"+esc(c.address)+"</td><td>"+esc(c.property_type)+"</td><td>"+(c.transaction==="lease"?"Lease":"Sale")+"</td>"+
-        "<td>"+esc(c.deal_date?dayLabel(c.deal_date,true):"Undated")+'</td><td class="num">'+(c.size_sqft?num(c.size_sqft):"")+"</td>"+
+        "<td>"+esc(c.deal_date?dayLabel(c.deal_date,true):"Undated")+'</td><td class="num">'+esc(size)+"</td>"+
         '<td class="num">'+(c.price?money(c.price):"")+'</td><td class="num">'+esc(rate)+"</td>"+
         '<td class="num">'+(c.cap_rate!=null&&c.cap_rate!==""?esc(String(c.cap_rate))+"%":"")+"</td></tr>";
     }).join("");
@@ -4260,8 +4354,9 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       '<div class="vd-sh-date">'+esc(dated)+"</div></div>"+
       "<h1>Comparable transactions</h1>"+
       '<p class="vd-sh-sum">'+list.length+" comp"+(list.length===1?"":"s")+(sum?" \\u00b7 "+esc(sum):"")+"</p>"+
-      '<table><thead><tr><th>Address</th><th>Type</th><th>Deal</th><th>Date</th><th class="num">Size (SF)</th>'+
-      '<th class="num">Price</th><th class="num">$/SF or rent</th><th class="num">Cap rate</th></tr></thead><tbody>'+body+"</tbody></table>"+
+      '<table><thead><tr><th>Address</th><th>Type</th><th>Deal</th><th>Date</th><th class="num">'+(land?"Size":"Size (SF)")+"</th>"+
+      '<th class="num">Price</th><th class="num">'+(!land?"$/SF or rent":built?"$/SF, $/acre or rent":"$/acre or rent")+
+      '</th><th class="num">Cap rate</th></tr></thead><tbody>'+body+"</tbody></table>"+
       (brand&&brand.disclaimer?'<p class="vd-sh-foot">'+esc(brand.disclaimer)+"</p>":"")+
       '<p class="vd-sh-foot">'+(firm?"From "+esc(firm)+"&rsquo;s own transaction records, as recorded. ":"From the broker&rsquo;s own transaction records, as recorded. ")+
       "A list of comparable transactions, not an appraisal. Prepared with CompNinja.</p>";

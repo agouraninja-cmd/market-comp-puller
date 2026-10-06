@@ -629,40 +629,53 @@ test("the desk's hub gate reads proConfig.canUseVault, not proConfig.pro.canUseV
   assert.match(fn[0], /try\s*\{[\s\S]*catch[\s\S]*return false/);
 });
 
-test("the desk hub list has no empty state, and never shows one", () => {
-  // A member who has never been invited into a hub cannot start one from this
-  // page, so an empty section would advertise a door with no handle. Contrast
-  // the two share lists, which teach a feature this member can use.
-  assert.match(html, /id="deskHubs"/);
-  assert.match(html, /id="deskHubRows"/);
-  assert.ok(!/id="deskHubsEmpty"/.test(html), "the hub list is hidden when empty, not emptied");
+test("the desk's deal rooms list in Sent to you, read silently, the tenant side only", () => {
+  // Since the Sharing card (2026-10-06) the rooms have no section of their
+  // own: they list in Sent to you, on the row of the report each was opened
+  // from. The old "Shared with you" section must not come back beside it.
+  assert.ok(!/id="deskHubs"/.test(html), "the rooms' old section is back beside Sent to you");
+  assert.ok(!/id="deskHubRows"/.test(html));
+  assert.match(html, /id="deskInbox"/);
   const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,4000}?\n  \}/);
   assert.ok(fn, "index.html must define renderDeskHubs()");
-  assert.match(fn[0], /if \(!rows\.length\) return;/);
-  // Every failure is silent here: this is an extra list at the bottom of a
-  // page that already works, and a hub outage must not put an error on the
-  // desk of somebody who came for their portfolio.
-  assert.ok(!/deskHubsLoadError|classList\.remove\("hidden"\)[\s\S]{0,40}rr/.test(fn[0]),
-    "renderDeskHubs must fail silently");
+  // It READS; drawShareInbox draws, on every path, so a failed read still
+  // redraws what the reports read knows.
+  assert.ok((fn[0].match(/drawShareInbox\(\);/g) || []).length >= 3, "every exit redraws Sent to you");
+  // Every failure is silent: a hub outage must not put an error on the page
+  // of somebody who came for something else.
+  assert.ok(!/LoadError|classList\.remove\("hidden"\)/.test(fn[0]), "renderDeskHubs must fail silently");
+  // ...and is never told as "nothing was sent to you": a failed read keeps
+  // the pane's empty card down.
+  assert.match(fn[0], /deskRoomsFailed = true;/);
+  const draw = html.match(/  function drawShareInbox\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(draw, "index.html must define drawShareInbox()");
+  assert.match(draw[0], /classList\.toggle\("hidden", rows\.length > 0 \|\| deskRoomsFailed\)/);
   // theirs, never mine: a broker's own rooms live in /messages.
   assert.match(fn[0], /data\.theirs/);
   assert.ok(!/data\.mine/.test(fn[0]), "the desk shows the tenant side only");
-  // And each row opens the conversation in Messages, where a client's rooms
-  // have listed since #275 — not the room's own page. The token door at
+});
+
+test("a deal room's row opens the conversation in Messages, never the room's own page", () => {
+  // Where a client's rooms have listed since #275. The token door at
   // /hub/<id> is for the emailed link and is not what this list is for.
-  assert.match(fn[0], /link\.href = "\/messages\?x=" \+ encodeURIComponent\(h\.id\)/,
+  const fn = html.match(/  function shareInboxRow\(r\) \{[\s\S]*?\n  \}/);
+  assert.ok(fn, "index.html must define shareInboxRow()");
+  assert.match(fn[0], /"\/messages\?x=" \+ encodeURIComponent\(r\.room\.id\)/,
     "the desk list must open rooms in Messages");
   assert.ok(!/"\/hub\/" \+ encodeURIComponent/.test(fn[0]), "the desk list still links to the old hub page");
 });
 
-test("hub rows render user-authored text through textContent, never innerHTML", () => {
-  // A hub title is typed by the broker who created it, so it is user-authored
-  // text like an address or a viewer email — the rule the rest of this desk
-  // already follows.
-  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,4000}?\n  \}/)[0];
-  assert.match(fn, /link\.textContent = h\.title/);
-  assert.ok(!/innerHTML\s*=\s*[^"']/.test(fn.replace(/innerHTML = "";/g, "")),
-    "no interpolated innerHTML in the hub list");
+test("Sent to you renders user-authored text through textContent, never innerHTML", () => {
+  // A room's title is typed by the broker who created it and a sender's name
+  // by its owner, so both are user-authored text like an address or a viewer
+  // email — the rule the rest of this desk already follows.
+  const row = html.match(/  function shareInboxRow\(r\) \{[\s\S]*?\n  \}/)[0];
+  const draw = html.match(/  function drawShareInbox\(\) \{[\s\S]*?\n  \}/)[0];
+  assert.match(row, /link\.textContent = r\.label;/);
+  for (const fn of [row, draw]) {
+    assert.ok(!/innerHTML\s*=\s*[^"']/.test(fn.replace(/innerHTML = "";/g, "")),
+      "no interpolated innerHTML in Sent to you");
+  }
 });
 
 test("every Tailwind class the hub surfaces use is in the vendored stylesheet", () => {

@@ -70,6 +70,8 @@ function makeEl(tag, initialClasses) {
     value: "",
     checked: false,
     disabled: false,
+    // A turned-off link's address greys itself through style (Your links).
+    style: {},
     classList: {
       add: (c) => classes.add(c),
       remove: (c) => classes.delete(c),
@@ -628,12 +630,19 @@ function loadShelf(opts) {
   return load(SHELF_RE,
     "this.render = renderFirmShelf; this.filter = applyFirmShelfFilter; this.items = () => firmShelfItems;" +
     // The flag the type filter sets when a person changes it themselves.
-    " this.touch = () => { firmShelfTypeTouched = true; };",
+    " this.touch = () => { firmShelfTypeTouched = true; };" +
+    // What the shelf tells the Sharing card (2026-10-06): its count, and that
+    // it changed.
+    " this.cardCount = () => shareShelfCount; this.synced = () => __synced;",
     "let currentUser = __user; function myFirm() { return __firm; }\n" +
     "function fmtShareDate(s) { return 'Mar 14'; }\n" +
     // The buildings door (slice 3) is a collaborator of a shelf row, stubbed
     // here like fmtShareDate; its own tests are the buildings block below.
-    "function buildingDoor() { return null; }",
+    "function buildingDoor() { return null; }\n" +
+    // The Sharing card's two hooks, declared beside renderShares on the page.
+    // Take down is stubbed to a marked button; its own source test is below.
+    "let shareShelfCount = -1; let __synced = 0; function syncShareCard() { __synced++; }\n" +
+    "function shelfTakeDown(r) { const b = document.createElement('button'); b.className = 'dk-row-act'; b.textContent = 'Take down'; b.shareId = r.id; return b; }",
     { fetch, __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
       __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm });
 }
@@ -1181,6 +1190,51 @@ test("your own share is on the shelf, attributed to you rather than to your name
   const text = ctx.dom.text("sharedWithFirmRows");
   assert.match(text, /shared by you/);
   assert.doesNotMatch(text, /shared by Brad/);
+});
+
+test("your own shelf report can be taken down from the shelf, and only yours", async () => {
+  // Since the Sharing card (2026-10-06) a firm share is listed once, on the
+  // shelf, and no longer repeats in Your links, so the shelf carries its off
+  // switch. A colleague's report has none: revoking is the sharer's call, and
+  // the server's revoke is scoped to the sharer's own rows besides.
+  const ctx = loadShelf({ body: { items: [
+    ITEM({ id: "s-mine", mine: true, sharedBy: "Brad" }),
+    ITEM({ id: "s-theirs", address: "88 Chinden Blvd", sharedBy: "Mike" }),
+  ] } });
+  await ctx.render();
+  const [mine, theirs] = ctx.dom.el("sharedWithFirmRows").children;
+  const downs = (row) => row.children.filter((c) => c.textContent === "Take down");
+  assert.equal(downs(mine).length, 1, "your own report has a Take down");
+  assert.equal(downs(mine)[0].shareId, "s-mine", "and it takes down that report");
+  assert.equal(downs(theirs).length, 0, "a colleague's report has none");
+  // Discuss stays the last action on every row.
+  const acts = mine.children.filter((c) => /\bdk-row-act\b/.test(c.className));
+  assert.equal(acts[acts.length - 1].textContent, "Discuss");
+});
+
+test("the shelf tells the Sharing card its whole count on every outcome", async () => {
+  const ok = loadShelf({ body: { items: [ITEM({}), ITEM({ address: "2 B St" })] } });
+  await ok.render();
+  assert.equal(ok.cardCount(), 2);
+  assert.ok(ok.synced() > 0, "a drawn shelf re-syncs the card");
+  ok.dom.el("firmShelfSearch").value = "warehouse";
+  ok.filter();
+  assert.equal(ok.cardCount(), 2, "the tab counts the whole shelf, as its header line does");
+  for (const o of [{ firm: null, body: { items: [] } }, { status: 500, body: {} }]) {
+    const gone = loadShelf(o);
+    await gone.render();
+    assert.equal(gone.cardCount(), 0, "no shelf, no count");
+    assert.ok(gone.synced() > 0, "a shelf that went away still tells the card, so its tab goes with it");
+  }
+});
+
+test("Take down revokes the share by id, after a confirm that names what cannot be undone", () => {
+  const fn = html.match(/  function shelfTakeDown\(r\) \{[\s\S]*?\n  \}/);
+  assert.ok(fn, "index.html must define shelfTakeDown()");
+  assert.match(fn[0], /if \(!confirm\(`Take \$\{r\.address\} off the firm shelf\?[^`]*cannot be put back\.`\)\) return;/);
+  assert.match(fn[0], /acctApi\("POST", "\/api\/shares\/revoke", \{ id: r\.id \}\)/,
+    "the same one-way revoke Your links' Turn off link sends");
+  assert.ok(fn[0].indexOf("confirm(") < fn[0].indexOf("acctApi("), "the confirm comes first");
 });
 
 test("a truncated shelf says so rather than under-reporting", async () => {
@@ -2707,4 +2761,253 @@ test("tracked permits stay off the Workspace: no card, no Needs-you entry, no bo
   // Your permits (filings at the firm's own buildings) is a different card
   // and stays.
   assert.ok(html.includes('id="deskPermits"'));
+});
+
+// ---------------------------------------------------------------------------
+// The Sharing card (2026-10-06; Draft C of the sharing drafts). The firm
+// shelf, what was sent to this member and their own links are three tabs of
+// one section. These run the card's own code against the fake page.
+// ---------------------------------------------------------------------------
+const SHARE_CARD_RE = /  let shareWithMe = \[\];[\s\S]*?\n  function syncShareCard\(\) \{[\s\S]*?\n  \}/;
+const SHARE_PANES = ["deskSharedWithFirm", "deskInbox", "deskShares"];
+
+function loadCard() {
+  return load(SHARE_CARD_RE,
+    "this.sync = syncShareCard;" +
+    " this.set = (o) => { shareShelfCount = o.shelf || 0; shareInboxCount = o.inbox || 0;" +
+    " shareInboxNew = o.fresh || 0; shareLiveLinks = o.links || 0; };" +
+    " this.pick = (p) => { shareTabPicked = p; };");
+}
+const offer = (ctx, ...ids) => ids.forEach((id) => ctx.dom.el(id).classList.remove("hidden"));
+const showing = (ctx) => SHARE_PANES.filter((id) => !ctx.dom.el(id).classList.contains("dk-off"));
+
+test("the Sharing card ships hidden, with every tab hidden until a pane applies", () => {
+  assert.equal(MARKUP_CLASSES.get("deskSharing").split(/\s+/).includes("hidden"), true);
+  for (const id of SHARE_PANES) {
+    assert.match(MARKUP_CLASSES.get(id), /\bhidden\b/, `${id} ships hidden; its renderer decides`);
+    assert.match(MARKUP_CLASSES.get(id), /\bdk-pane\b/);
+  }
+  for (const id of ["shareTabShelf", "shareTabIn", "shareTabOut"]) {
+    assert.match(html, new RegExp(`id="${id}"[^>]*\\shidden>`), `${id} ships hidden`);
+  }
+  // The three old headings that all began "Shared" are gone from the page.
+  for (const gone of [">Shared reports<", ">Shared with you<", ">Shared with your firm<"]) {
+    assert.ok(!html.includes(gone), `"${gone}" is back on the page`);
+  }
+});
+
+test("the card hides when no pane applies, and shows for a failed read's line alone", () => {
+  const ctx = loadCard();
+  ctx.sync();
+  assert.equal(ctx.dom.hidden("deskSharing"), true);
+  ctx.dom.el("deskSharesLoadError").classList.remove("hidden");
+  ctx.sync();
+  assert.equal(ctx.dom.hidden("deskSharing"), false, "the error line lives inside the card");
+});
+
+test("a firm member's card opens on the shelf, with all three tabs and their counts", () => {
+  const ctx = loadCard();
+  offer(ctx, ...SHARE_PANES);
+  ctx.set({ shelf: 4, inbox: 1, fresh: 1, links: 3 });
+  ctx.sync();
+  assert.equal(ctx.dom.hidden("deskSharing"), false);
+  assert.deepEqual(showing(ctx), ["deskSharedWithFirm"]);
+  assert.equal(ctx.dom.el("shareTabShelf").getAttribute("aria-selected"), "true");
+  assert.equal(ctx.dom.el("shareTabShelf").tabIndex, 0);
+  assert.equal(ctx.dom.el("shareTabIn").tabIndex, -1, "one tab stop for the whole tab list");
+  for (const id of ["shareTabShelf", "shareTabIn", "shareTabOut"]) assert.equal(ctx.dom.el(id).hidden, false);
+  assert.equal(ctx.dom.text("shareTabShelfN"), "4");
+  assert.equal(ctx.dom.text("shareTabInN"), "1");
+  assert.equal(ctx.dom.text("shareTabOutN"), "3");
+});
+
+test("with no firm it opens on Sent to you when something was sent, else on Your links", () => {
+  const ctx = loadCard();
+  offer(ctx, "deskInbox", "deskShares");
+  ctx.set({ inbox: 2, links: 0 });
+  ctx.sync();
+  assert.deepEqual(showing(ctx), ["deskInbox"]);
+  assert.equal(ctx.dom.el("shareTabShelf").hidden, true, "no firm, no shelf tab");
+  ctx.set({ inbox: 0, links: 1 });
+  ctx.sync();
+  assert.deepEqual(showing(ctx), ["deskShares"], "an empty inbox is not where a member starts");
+});
+
+test("a tab the member picked stays picked, and falls back when its pane goes away", () => {
+  const ctx = loadCard();
+  offer(ctx, ...SHARE_PANES);
+  ctx.pick("deskShares");
+  ctx.sync();
+  assert.deepEqual(showing(ctx), ["deskShares"]);
+  ctx.sync();
+  assert.deepEqual(showing(ctx), ["deskShares"], "a re-render keeps the pick");
+  ctx.dom.el("deskShares").classList.add("hidden");
+  ctx.sync();
+  assert.deepEqual(showing(ctx), ["deskSharedWithFirm"]);
+  assert.equal(ctx.dom.el("shareTabOut").hidden, true);
+});
+
+test("the count turns red only for something sent to you and not yet opened", () => {
+  const ctx = loadCard();
+  offer(ctx, ...SHARE_PANES);
+  ctx.set({ shelf: 9, inbox: 3, fresh: 0, links: 5 });
+  ctx.sync();
+  for (const id of ["shareTabShelfN", "shareTabInN", "shareTabOutN"]) {
+    assert.equal(ctx.dom.el(id).classList.contains("new"), false, id);
+  }
+  ctx.set({ shelf: 9, inbox: 3, fresh: 2, links: 5 });
+  ctx.sync();
+  assert.equal(ctx.dom.el("shareTabInN").classList.contains("new"), true);
+  assert.equal(ctx.dom.el("shareTabInN").title, "2 not opened yet");
+  assert.equal(ctx.dom.el("shareTabShelfN").classList.contains("new"), false, "the shelf never asks for anything");
+});
+
+// Your links and Sent to you, run together: the slice is the links table, the
+// inbox and the tab handlers, through the end of addMyShareRow.
+const SHARE_LISTS_RE = /  function renderSharesTable\(mine\) \{[\s\S]*?\n  function addMyShareRow\(tbody, r\) \{[\s\S]*?\n  \}\n/;
+function loadSharing(o) {
+  const opts = o || {};
+  return load(SHARE_LISTS_RE,
+    "this.table = renderSharesTable; this.merge = mergeShareInbox; this.inbox = drawShareInbox;" +
+    " this.live = () => shareLiveLinks; this.counts = () => [shareInboxCount, shareInboxNew];" +
+    " this.rooms = (r, failed) => { deskRooms = r; deskRoomsFailed = Boolean(failed); };" +
+    " this.withMe = (w) => { shareWithMe = w; };",
+    "let currentUser = { email: 'brad@foothillcre.com' }; function myFirm() { return __firm; }\n" +
+    "function fmtShareDate(s) { return 'D' + new Date(s).getUTCDate(); }\n" +
+    "let shareWithMe = []; let deskRooms = []; let deskRoomsFailed = false;\n" +
+    "let shareInboxCount = 0; let shareInboxNew = 0; let shareLiveLinks = 0; let shareTabPicked = '';\n" +
+    "function syncShareCard() {} function hubCreationAllowed() { return __hubs; }\n" +
+    "function acctApi() { return Promise.resolve({}); } function renderShares() {}\n" +
+    "function renderDeskHubs() {} function showHubInvites() {}\n" +
+    "document.addEventListener = function () {};",
+    { __firm: opts.firm === undefined ? { id: "o1", name: "Foothill Commercial" } : opts.firm,
+      __hubs: opts.hubs !== false });
+}
+const REPORT = (o) => Object.assign({
+  id: "s1", address: "1210 N 17th St, Boise, ID", type: "Industrial", from: "Brad Keller",
+  url: "/r/s1", invitedAt: "2026-10-02T10:00:00Z", viewedAt: "2026-10-03T10:00:00Z",
+}, o);
+const ROOM = (o) => Object.assign({
+  id: "h1", title: "1210 N 17th St, Boise, ID", subjectAddress: "1210 N 17th St, Boise, ID",
+  propertyType: "Industrial", from: "Brad Keller", updatedAt: "2026-10-05T10:00:00Z",
+  lastSeenAt: "2026-10-05T12:00:00Z", status: "open",
+}, o);
+
+test("a report and the deal room opened from it are ONE row in Sent to you", () => {
+  const ctx = loadSharing();
+  const rows = ctx.merge([REPORT({}), REPORT({ id: "s2", address: "2750 S Cole Rd, Boise, ID", invitedAt: "2026-09-24T10:00:00Z" })],
+    [ROOM({})]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].label, "1210 N 17th St, Boise, ID");
+  assert.ok(rows[0].report && rows[0].room, "one row, both doors");
+  assert.equal(rows[0].date, "2026-10-05T10:00:00Z", "dated by whichever moved last");
+  assert.equal(rows[1].room, null);
+  // The address match ignores punctuation and case; a different sender is
+  // a different conversation, so it does not merge.
+  const loose = ctx.merge([REPORT({})], [ROOM({ subjectAddress: "1210 n. 17th st boise id" })]);
+  assert.equal(loose.length, 1);
+  const other = ctx.merge([REPORT({})], [ROOM({ from: "Erin Walsh", title: "17th St co-broke" })]);
+  assert.equal(other.length, 2, "two senders, two rows");
+  assert.ok(other.some((r) => !r.report && r.label === "17th St co-broke"), "a room alone is labelled by its title");
+});
+
+test("New means a report not yet opened, or a room not seen since it last moved", () => {
+  const ctx = loadSharing();
+  const one = (reports, rooms) => ctx.merge(reports, rooms)[0].isNew;
+  assert.equal(one([REPORT({ viewedAt: null })], []), true, "never opened");
+  assert.equal(one([REPORT({})], []), false, "opened");
+  assert.equal(one([REPORT({ viewedAt: undefined })], []), false,
+    "an answer without the field must not light every row up");
+  assert.equal(one([], [ROOM({ lastSeenAt: null })]), true, "a room never opened");
+  assert.equal(one([], [ROOM({})]), false, "seen after it last moved");
+  assert.equal(one([], [ROOM({ lastSeenAt: "2026-10-04T00:00:00Z" })]), true, "moved since it was seen");
+  assert.equal(one([], [ROOM({ lastSeenAt: null, status: "closed" })]), false, "a closed room asks nothing");
+  assert.equal(one([REPORT({})], [ROOM({ lastSeenAt: null })]), true, "either door being new makes the row new");
+});
+
+test("Sent to you draws each row with who sent it, and links a room into Messages", () => {
+  const ctx = loadSharing();
+  ctx.withMe([REPORT({ viewedAt: null })]);
+  ctx.rooms([ROOM({}), ROOM({ id: "h2", title: "Overland co-broke", subjectAddress: "9 Overland Rd", from: "Erin Walsh", updatedAt: "2026-10-01T10:00:00Z" })]);
+  ctx.inbox();
+  const text = ctx.dom.text("deskInboxRows");
+  assert.match(text, /from Brad Keller/);
+  assert.match(text, /from Erin Walsh/);
+  assert.match(text, /New/);
+  assert.match(text, /Open report/);
+  assert.match(text, /Open the conversation/);
+  assert.equal(ctx.dom.hidden("deskInboxEmpty"), true);
+  assert.equal(ctx.dom.text("deskInboxStats"), "1 report · 2 deal rooms");
+  const [merged, roomOnly] = ctx.dom.el("deskInboxRows").children;
+  assert.equal(merged.children[0].children[0].href, "/r/s1", "a row with a report opens the report");
+  assert.equal(roomOnly.children[0].children[0].href, "/messages?x=h2", "a room alone opens in Messages");
+  assert.equal(ctx.counts()[0], 2);
+  assert.equal(ctx.counts()[1], 1, "only the unopened report is new");
+});
+
+test("an empty Sent to you says so only when both reads came back", () => {
+  const ctx = loadSharing();
+  ctx.withMe([]);
+  ctx.rooms([], false);
+  ctx.inbox();
+  assert.equal(ctx.dom.hidden("deskInboxEmpty"), false);
+  ctx.rooms([], true);
+  ctx.inbox();
+  assert.equal(ctx.dom.hidden("deskInboxEmpty"), true, "a failed rooms read is never told as 'nothing was sent to you'");
+});
+
+const LINK = (o) => Object.assign({
+  id: "l1", address: "77 E Fairview Ave", type: "Retail", visibility: "public", orgId: "",
+  firm: "", createdAt: "2026-09-27T00:00:00Z", url: "/r/l1", viewers: [],
+}, o);
+
+test("Your links lists what this member sent, minus the shares on the shelf they can see", () => {
+  const ctx = loadSharing();
+  ctx.table([
+    LINK({ id: "a", address: "500 Warehouse Way", visibility: "org", orgId: "o1", firm: "Foothill Commercial", createdAt: "2026-10-04T00:00:00Z" }),
+    LINK({ id: "b", address: "9 Old Firm Rd", visibility: "org", orgId: "o-old", firm: "Basin Partners", createdAt: "2026-10-03T00:00:00Z" }),
+    LINK({ id: "c", address: "1210 N 17th St", visibility: "invited", createdAt: "2026-10-02T00:00:00Z",
+      viewers: [{ email: "j@acme.com", firstViewedAt: "2026-10-03T00:00:00Z" }, { email: "o@acme.com" }] }),
+    LINK({ id: "d" }),
+    LINK({ id: "e", address: "6200 W Emerald St", revokedAt: "2026-09-10T00:00:00Z", createdAt: "2026-09-06T00:00:00Z" }),
+  ]);
+  const text = ctx.dom.text("sharesRows");
+  assert.doesNotMatch(text, /500 Warehouse Way/, "a share on this member's own shelf is listed there, not twice");
+  assert.match(text, /9 Old Firm Rd/);
+  assert.match(text, /Shared with Basin Partners/, "a left firm's share stays: the only place left to turn it off");
+  assert.match(text, /2 people/);
+  assert.match(text, /1 opened it/);
+  assert.match(text, /Anyone with the link/);
+  assert.match(text, /Turned off/);
+  const table = ctx.dom.el("sharesRows").children[0];
+  const head = table.children[0].children[0].children.map((th) => th.textContent);
+  assert.equal(head.join("|"), "Report|Who can open it|Sent|");
+  assert.equal(ctx.live(), 3, "turned-off links do not count as live");
+  assert.equal(ctx.dom.text("deskSharesStats"), "3 live · 1 turned off");
+  assert.equal(ctx.dom.hidden("deskSharesEmpty"), true);
+  // A deal room starts from a link that has people to invite, never a firm
+  // share (it has no viewer list, so the room would open with nobody in it).
+  const starts = buttons(table).filter((b) => b.textContent === "Start a deal room");
+  assert.equal(starts.length, 2, "on the invited and the public link, not the firm share or the dead one");
+  assert.equal(buttons(table).filter((b) => b.textContent === "Start a hub").length, 0, "Messages calls it a deal room");
+});
+
+test("Your links: a member of no firm sees their firm shares there, and an empty list says so", () => {
+  const ctx = loadSharing({ firm: null });
+  ctx.table([LINK({ visibility: "org", orgId: "o1", firm: "Foothill Commercial" })]);
+  assert.match(ctx.dom.text("sharesRows"), /Shared with Foothill Commercial/);
+  const empty = loadSharing();
+  empty.table([]);
+  assert.equal(empty.dom.hidden("deskSharesEmpty"), false);
+  assert.equal(empty.dom.text("deskSharesStats"), "");
+  assert.equal(empty.live(), 0);
+  const noVault = loadSharing({ hubs: false });
+  noVault.table([LINK({})]);
+  assert.equal(buttons(noVault.dom.el("sharesRows")).filter((b) => b.textContent === "Start a deal room").length, 0,
+    "only offered to a member who can open a deal room");
+});
+
+test("the strip's Shelf link opens the shelf tab rather than scrolling to a pane that is not showing", () => {
+  assert.match(html, /href="#deskSharedWithFirm"/, "the strip still links to the shelf");
+  assert.match(html, /closest\('a\[href="#deskSharedWithFirm"\]'\)\) \{\n      shareTabPicked = "deskSharedWithFirm";\n      syncShareCard\(\);/);
 });

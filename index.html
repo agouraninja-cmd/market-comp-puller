@@ -2006,6 +2006,42 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-shares .acts { text-align: right; white-space: nowrap; font-size: 12px; }
     .dk-shares .acts > * + * { margin-left: 12px; }
     .dk-shares tr.det > td { padding-top: 0; background: var(--wash); }
+    /* The Sharing card (2026-10-06, Draft C): three tabs of one section. A
+       pane's `hidden` class says whether it applies at all; `dk-off` says it
+       is not the tab showing. Tabs are buttons with the hidden ATTRIBUTE, and
+       display is set here, so they need their own [hidden] rule. */
+    .dk-tabs { display: flex; gap: 22px; margin-top: 10px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+    .dk-tabs::-webkit-scrollbar { display: none; }
+    .dk-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 13px; font-weight: 500; color: var(--ink-3); background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 0 9px; margin-bottom: -1px; cursor: pointer; white-space: nowrap; }
+    .dk-tab[hidden] { display: none; }
+    .dk-tab:hover { color: var(--ink); }
+    .dk-tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--red-fill); }
+    .dk-tab:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    .dk-tab-n { min-width: 9px; text-align: center; font-size: 11px; font-weight: 600; line-height: 17px; color: var(--ink-2); background: var(--wash); border: 1px solid var(--line); border-radius: 99px; padding: 0 7px; }
+    .dk-tab-n:empty { display: none; }
+    .dk-tab-n.new { color: #fff; background: var(--red-fill); border-color: var(--red-fill); }
+    .dk-pane.dk-off { display: none; }
+    .dk-pane-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; margin: 10px 0 2px; }
+    .dk-pane-head .dk-copy { flex: 1 1 320px; margin: 0; }
+    .dk-pane-head .dk-note { flex: 0 0 auto; white-space: nowrap; }
+    .dk-kinds { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 10px; vertical-align: 1px; }
+    .dk-kind { display: inline-flex; align-items: center; gap: 4px; font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 10.5px; font-weight: 600; letter-spacing: .02em; line-height: 1.5; padding: 0 7px 0 6px; border-radius: 99px; }
+    .dk-shares .dk-sub { display: block; margin-top: 3px; font-size: 11px; color: var(--ink-3); }
+    .dk-shares td:nth-child(3) { white-space: nowrap; }
+    .dk-shares .rd-chip { white-space: nowrap; }
+    /* On a phone the links table stacks each row, so its buttons sit under
+       the row instead of past the right edge (they did, before this card).
+       `:not(.hidden)` because these selectors outrank the utility class. */
+    @media (max-width: 639.98px) {
+      .dk-shares { min-width: 0; }
+      .dk-shares thead { display: none; }
+      .dk-shares tr:not(.hidden), .dk-shares tr:not(.hidden) > td { display: block; }
+      .dk-shares tr:not(.hidden):not(.det) { padding: 10px 0; border-bottom: 1px solid var(--hair); }
+      .dk-shares td { padding: 2px 0; border-bottom: 0; }
+      .dk-shares .acts { text-align: left; white-space: normal; padding-top: 6px; }
+      .dk-shares tr:not(.det) > td:nth-child(3):not(:empty)::before { content: "Sent "; color: var(--ink-3); }
+      .dk-shares tr.det > td { padding: 8px 10px; }
+    }
     @media (max-width: 639.98px) {
       .rd-ledger { flex-direction: column; }
       .rd-ledger .rd-lcell { border-right: 0; border-bottom: 1px solid var(--hair); }
@@ -3577,43 +3613,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <p id="buildingsMore" class="hidden"><a id="buildingsMoreLink" href="/buildings" class="dk-more"></a></p>
         <div id="buildingsEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ink"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Your board starts here</span><span class="dk-gx">No buildings yet. Add one by address, from a report on the shelf, or from a property in your Data.</span></span><button type="button" id="buildingsEmptyAdd" class="dk-gbtn">+ Add a building</button></div></div></div>
       </div>
-      <!-- Reports a colleague shared with the whole firm (migration 030).
-           Rendered ONLY for a member of a firm — the same rule the hub list
-           below follows, and the opposite of the two lists above: those teach
-           a feature every account can use, while an empty firm section shown
-           to somebody with no firm is an empty room. The firm's own section
-           (deskFirm) is what teaches the feature. -->
-      <div id="deskSharedWithFirm" class="hidden mt-8">
-        <div class="dk-rule">
-          <span id="deskFirmSharesLabel" class="rd-lab">Shared with your firm</span>
-          <span id="firmShelfStats" class="dk-note"></span>
-        </div>
-        <div id="deskSharedWithFirmEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-bv"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3" width="10" height="13" rx="1.2"/><path d="M6.5 16.9V17h9.2a1 1 0 0 0 1-1V6.5"/><path d="M6.5 7h4.5M6.5 9.8h4.5M6.5 12.6h3"/></svg></span><span class="dk-gtxt"><span class="dk-gt">The firm&#39;s shelf</span><span class="dk-gx">Nobody at your firm has shared a report yet. Open a report and use Share → My firm, and it lands here for everyone.</span></span></div></div></div>
-        <!-- The search box appears only once there is enough on the shelf to
-             need one. A filter over three rows is furniture. -->
-        <div id="firmShelfSearchWrap" class="hidden mt-2 flex flex-wrap items-center gap-4 text-sm">
-          <input id="firmShelfSearch" type="text" placeholder="Search by address, market or type" aria-label="Search your firm's reports"
-            class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          <!-- The saved view of Transition Plan v2 §6: a development shop
-               opens on Land, a broker shop on everything. It is a DEFAULT and
-               not a wall - "All types" is one click away and the count beside
-               it always names the whole shelf. -->
-          <select id="firmShelfType" aria-label="Filter the shelf by property type"
-            class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
-            <option value="">All types</option>
-            <option value="Industrial">Industrial</option>
-            <option value="Office">Office</option>
-            <option value="Retail">Retail</option>
-            <option value="Multifamily">Multifamily</option>
-            <option value="Land">Land</option>
-            <option value="Residential">Residential</option>
-          </select>
-          <span id="firmShelfCount" class="text-xs text-[#68707E]"></span>
-        </div>
-        <p id="firmShelfTruncated" class="hidden dk-copy">Showing the most recent 1,000 reports. Older ones are not in this list.</p>
-        <div id="sharedWithFirmRows" class="mt-1"></div>
-        <p id="firmShelfNoMatch" class="hidden dk-empty">Nothing on the shelf matches that.</p>
-      </div>
 
       </div><!-- /deckFirm -->
 
@@ -3628,49 +3627,101 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
 
       <div class="dk-deck" data-deck id="deckSharing">
-      <!-- Client sharing — ONE table for both directions (2026-08-21; the two
-           stacked lists merged). One GET (/api/shares) still covers both. A
-           401 (signed out) hides it silently, since the sign-in card above
-           already covers that case; a 503 shows the one error line instead
-           and leaves the rest of the desk working. See renderShares() /
-           renderSharesTable(). The firm SHELF is deliberately NOT merged in:
-           it is a firm-level record with its own rules (whole-shelf count,
-           1000-row truncation notice, its own search) and lives in the firm
-           deck below. -->
-      <!-- Matched to #deskLoadError's two-sentence shape (2026-08-22). It said
-           only "Couldn't load your shared reports", which is the failure
-           without the reassurance — and this line covers the sections that
-           name COLLEAGUES and their work, so it is the one where a bare
-           "couldn't load" is likeliest to read as somebody's shared reports
-           having been lost. It already hides the sections rather than
-           fabricating a "0 shares" empty state; this only finishes the
-           sentence. -->
-      <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-8">Couldn't load your shared reports just now. Nothing has been lost. Refresh in a moment.</p>
-      <div id="deskShares" class="hidden mt-8">
-        <div class="dk-rule">
-          <span class="rd-lab">Shared reports</span>
-          <span id="deskSharesStats" class="dk-note"></span>
+      <!-- Sharing (2026-10-06; Draft C of the sharing drafts, the owner's
+           pick). Three sections used to sit here with names that all began
+           "Shared": the firm's shelf ("Shared with <firm>"), one table of
+           links in both directions ("Shared reports"), and the deal rooms a
+           broker had invited this member into ("Shared with you"). A report
+           and the deal room opened from it landed under two of those
+           headings with the same address on both. Now they are three TABS of
+           one card:
+             Firm shelf  - #deskSharedWithFirm, renderFirmShelf (members of a firm)
+             Sent to you - #deskInbox, drawShareInbox: reports invited to this
+                           member and the deal rooms they are in, one row per
+                           property and sender
+             Your links  - #deskShares, renderSharesTable: what THEY sent, minus
+                           firm shares on the shelf above (listed once, there)
+           Every pane keeps its id and its one writer, and its `hidden` CLASS
+           still means what it always meant: this pane does not apply, or its
+           read failed. The strip and the tests read that. Which tab is
+           SHOWING is a second class, dk-off, written by syncShareCard alone,
+           so the two can never fight over one element. -->
+      <div id="deskSharing" class="hidden">
+        <div class="dk-rule"><span class="rd-lab">Sharing</span></div>
+        <div id="shareTabs" class="dk-tabs" role="tablist" aria-label="Sharing">
+          <button type="button" role="tab" id="shareTabShelf" class="dk-tab" data-pane="deskSharedWithFirm" aria-controls="deskSharedWithFirm" aria-selected="false" hidden>Firm shelf <span id="shareTabShelfN" class="dk-tab-n"></span></button>
+          <button type="button" role="tab" id="shareTabIn" class="dk-tab" data-pane="deskInbox" aria-controls="deskInbox" aria-selected="false" hidden>Sent to you <span id="shareTabInN" class="dk-tab-n"></span></button>
+          <button type="button" role="tab" id="shareTabOut" class="dk-tab" data-pane="deskShares" aria-controls="deskShares" aria-selected="false" hidden>Your links <span id="shareTabOutN" class="dk-tab-n"></span></button>
         </div>
-        <div id="deskSharesEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-bv"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Nothing shared yet</span><span class="dk-gx">You haven&#39;t shared a report, and nobody has shared one with you. Open a report and use Share to invite someone or copy a link.</span></span></div></div></div>
-        <div id="sharesRows" class="mt-2 overflow-x-auto no-scrollbar"></div>
-      </div>
-
-      <!-- Hubs someone has invited this member into. The TENANT side only —
-           a broker's own hubs live on /vault beside the pipeline deck (the
-           owner's answer, 2026-08-13), because creating one is a broker
-           surface gated on canUseVault and this page is seen by every free
-           account. Spec:
-           docs/superpowers/specs/2026-08-13-messaging-hub-design.md
-           NOT the connection hub at /brokers.
-
-           Rendered ONLY when there is something in it: a member who has
-           never been invited into a hub should not be shown an empty
-           section for a feature they have no way to start. That is the
-           opposite of the shared-reports table above, which teaches a
-           feature this member can use themselves. -->
-      <div id="deskHubs" class="hidden mt-8">
-        <div class="dk-rule"><span class="rd-lab">Shared with you</span></div>
-        <div id="deskHubRows" class="mt-2 space-y-1.5"></div>
+        <!-- Matched to #deskLoadError's two-sentence shape (2026-08-22). It said
+             only "Couldn't load your shared reports", which is the failure
+             without the reassurance — and this line covers the lists that
+             name COLLEAGUES and their work, so it is the one where a bare
+             "couldn't load" is likeliest to read as somebody's shared reports
+             having been lost. It hides the two panes the failed read fills
+             rather than fabricating a "0 shares" empty state; the shelf, which
+             has a read of its own, stays. -->
+        <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your shared reports just now. Nothing has been lost. Refresh in a moment.</p>
+        <!-- Firm shelf: reports a colleague shared with the whole firm
+             (migration 030). Available ONLY to a member of a firm — an empty
+             firm shelf shown to somebody with no firm is an empty room; the
+             firm's own section (deskFirm) is what teaches the feature. -->
+        <div id="deskSharedWithFirm" class="hidden dk-pane" role="tabpanel" aria-labelledby="shareTabShelf">
+          <div class="dk-pane-head">
+            <span id="deskFirmSharesLabel" class="dk-copy">Reports anyone at your firm has put here for the whole firm.</span>
+            <span id="firmShelfStats" class="dk-note"></span>
+          </div>
+          <div id="deskSharedWithFirmEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-bv"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3" width="10" height="13" rx="1.2"/><path d="M6.5 16.9V17h9.2a1 1 0 0 0 1-1V6.5"/><path d="M6.5 7h4.5M6.5 9.8h4.5M6.5 12.6h3"/></svg></span><span class="dk-gtxt"><span class="dk-gt">The firm&#39;s shelf</span><span class="dk-gx">Nobody at your firm has shared a report yet. Open a report and use Share → My firm, and it lands here for everyone.</span></span></div></div></div>
+          <!-- The search box appears only once there is enough on the shelf to
+               need one. A filter over three rows is furniture. -->
+          <div id="firmShelfSearchWrap" class="hidden mt-2 flex flex-wrap items-center gap-4 text-sm">
+            <input id="firmShelfSearch" type="text" placeholder="Search by address, market or type" aria-label="Search your firm's reports"
+              class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <!-- The saved view of Transition Plan v2 §6: a development shop
+                 opens on Land, a broker shop on everything. It is a DEFAULT and
+                 not a wall - "All types" is one click away and the count beside
+                 it always names the whole shelf. -->
+            <select id="firmShelfType" aria-label="Filter the shelf by property type"
+              class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+              <option value="">All types</option>
+              <option value="Industrial">Industrial</option>
+              <option value="Office">Office</option>
+              <option value="Retail">Retail</option>
+              <option value="Multifamily">Multifamily</option>
+              <option value="Land">Land</option>
+              <option value="Residential">Residential</option>
+            </select>
+            <span id="firmShelfCount" class="text-xs text-[#68707E]"></span>
+          </div>
+          <p id="firmShelfTruncated" class="hidden dk-copy">Showing the most recent 1,000 reports. Older ones are not in this list.</p>
+          <div id="sharedWithFirmRows" class="mt-1"></div>
+          <p id="firmShelfNoMatch" class="hidden dk-empty">Nothing on the shelf matches that.</p>
+          <p id="firmShelfMsg" class="hidden dk-msg"></p>
+        </div>
+        <!-- Sent to you: reports somebody invited this member to, and the deal
+             rooms a broker invited them into, merged so a report and the room
+             opened from it are ONE row with two doors. Every failure of the
+             rooms read is silent (the reports still list); a failed shares
+             read hides this pane and shows the line above. -->
+        <div id="deskInbox" class="hidden dk-pane" role="tabpanel" aria-labelledby="shareTabIn">
+          <div class="dk-pane-head">
+            <span class="dk-copy">Reports and deal rooms other people have sent you. A deal room is a conversation, and opens in Messages.</span>
+            <span id="deskInboxStats" class="dk-note"></span>
+          </div>
+          <div id="deskInboxEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ok"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5l2-6.5h10l2 6.5v4H3z"/><path d="M3 11.5h4l1 2h4l1-2h4"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Nothing sent to you yet</span><span class="dk-gx">When someone sends you a report or invites you into a deal room, it lands here.</span></span></div></div></div>
+          <div id="deskInboxRows" class="mt-1"></div>
+        </div>
+        <!-- Your links: one table of what this member sent (2026-08-21's
+             merged table, now one direction). A 401 hides it silently, since
+             the sign-in card above already covers that case. -->
+        <div id="deskShares" class="hidden dk-pane" role="tabpanel" aria-labelledby="shareTabOut">
+          <div class="dk-pane-head">
+            <span class="dk-copy">Links you have sent, and who can open each one.</span>
+            <span id="deskSharesStats" class="dk-note"></span>
+          </div>
+          <div id="deskSharesEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-bv"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 11.5l3-3"/><path d="M7 9.5l-1.8 1.8a2.5 2.5 0 0 0 3.5 3.5L10.5 13"/><path d="M13 10.5l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L9.5 7"/></svg></span><span class="dk-gtxt"><span class="dk-gt">No links yet</span><span class="dk-gx">Open a report and use Share to send a client a link, or invite them by email.</span></span></div></div></div>
+          <div id="sharesRows" class="mt-2 overflow-x-auto no-scrollbar"></div>
+        </div>
       </div>
       </div><!-- /deckSharing -->
       </div><!-- /dk-main -->
@@ -14525,6 +14576,64 @@ async function renderMyDesk() {
   // "0 shares" empty state, which would misreport a database blip as "you
   // haven't shared anything."
   // ----------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // The Sharing card (2026-10-06; Draft C of the sharing drafts, the owner's
+  // pick). Firm shelf, Sent to you and Your links are three tabs of one
+  // section — see the comment on #deckSharing for why. Each pane keeps its
+  // own writer; this block owns only which tab shows and the counts on them.
+  //
+  // The counts are kept HERE rather than read off each list's own state,
+  // because the shelf's `firmShelfItems` is declared far below and the card
+  // must never read a `let` before its declaration has run.
+  // ---------------------------------------------------------------------------
+  let shareWithMe = [];       // GET /api/shares' sharedWithMe, from the last good read
+  let deskRooms = [];         // GET /api/hubs' theirs; [] when that read failed
+  let deskRoomsFailed = false;
+  let shareShelfCount = 0;
+  let shareInboxCount = 0;
+  let shareInboxNew = 0;
+  let shareLiveLinks = 0;
+  let shareTabPicked = "";    // a pane id once the member picks a tab; "" = the default
+  const SHARE_TABS = [
+    ["deskSharedWithFirm", "shareTabShelf", "shareTabShelfN"],
+    ["deskInbox", "shareTabIn", "shareTabInN"],
+    ["deskShares", "shareTabOut", "shareTabOutN"],
+  ];
+
+  // The ONE writer of which tab is showing (the dk-off class) and of the
+  // card's own visibility. A pane is offered when its `hidden` class is off —
+  // its own renderer's decision, untouched here — and the card shows when any
+  // pane is offered or the shares read failed (its error line lives inside).
+  function syncShareCard() {
+    const avail = SHARE_TABS.map(([pane]) => pane)
+      .filter((pane) => !document.getElementById(pane).classList.contains("hidden"));
+    const failed = !document.getElementById("deskSharesLoadError").classList.contains("hidden");
+    document.getElementById("deskSharing").classList.toggle("hidden", !avail.length && !failed);
+    // The default: the firm's shelf for a member of a firm (the firm's record
+    // is what this page is), else what was sent to them if anything was, else
+    // their own links. A tab they picked stays picked across re-renders.
+    const on = avail.includes(shareTabPicked) ? shareTabPicked
+      : avail.includes("deskSharedWithFirm") ? "deskSharedWithFirm"
+      : avail.includes("deskInbox") && shareInboxCount ? "deskInbox"
+      : avail.includes("deskShares") ? "deskShares"
+      : (avail[0] || "");
+    const counts = { deskSharedWithFirm: shareShelfCount, deskInbox: shareInboxCount, deskShares: shareLiveLinks };
+    SHARE_TABS.forEach(([pane, tabId, countId]) => {
+      const tab = document.getElementById(tabId);
+      tab.hidden = !avail.includes(pane);
+      tab.setAttribute("aria-selected", String(pane === on));
+      tab.tabIndex = pane === on ? 0 : -1;
+      document.getElementById(pane).classList.toggle("dk-off", pane !== on);
+      const n = document.getElementById(countId);
+      n.textContent = String(counts[pane]);
+      // Red only for something sent to this member that they have not opened:
+      // the one count on the card that asks them to do something.
+      const fresh = pane === "deskInbox" && shareInboxNew > 0;
+      n.classList.toggle("new", fresh);
+      n.title = fresh ? `${shareInboxNew} not opened yet` : "";
+    });
+  }
+
   function fmtShareDate(iso) {
     return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
@@ -14535,6 +14644,11 @@ async function renderMyDesk() {
     errEl.classList.add("hidden");
     const hideAll = () => {
       sharesBox.classList.add("hidden");
+      // Sent to you is filled by the same read, so it goes with it, and a
+      // signed-out page forgets what was sent to whoever was signed in.
+      document.getElementById("deskInbox").classList.add("hidden");
+      shareWithMe = [];
+      shareTabPicked = "";
       // The two firm surfaces hide with it. A stale firm roster left on
       // screen after a sign-out is the same class of mistake as a stale share
       // list, and this one names colleagues.
@@ -14562,6 +14676,7 @@ async function renderMyDesk() {
       // Draft C's banner names the member, the firm's cities and what needs
       // them — all of it goes on the same signal.
       resetDeskHero();
+      syncShareCard();
     };
     if (!currentUser) { hideAll(); return; }
     // The membership read starts NOW, beside the shares read, not after it
@@ -14577,7 +14692,9 @@ async function renderMyDesk() {
       await firmReady;
       hideAll();
       if (err) errEl.classList.remove("hidden");
+      syncShareCard();
     };
+    shareWithMe = [];
     let res;
     try {
       res = await bootFetch("/api/shares");
@@ -14588,11 +14705,8 @@ async function renderMyDesk() {
     if (!res.ok) return bail(true);
     const data = await res.json().catch(() => null);
     if (!data) return bail(true);
-    sharesBox.classList.remove("hidden");
-    renderSharesTable(
-      Array.isArray(data.mine) ? data.mine : [],
-      Array.isArray(data.sharedWithMe) ? data.sharedWithMe : []
-    );
+    shareWithMe = Array.isArray(data.sharedWithMe) ? data.sharedWithMe : [];
+    const mine = Array.isArray(data.mine) ? data.mine : [];
     // AWAITED before anything firm-scoped: renderFirm is what loads the
     // membership, and everything below reads it through myFirm(). Firing them
     // together showed the shelf for whatever firm was in memory from the last
@@ -14601,6 +14715,12 @@ async function renderMyDesk() {
     // The no-firm body of the firm deck: decided off the membership just
     // loaded, fetching nothing, so it lands in the same paint as the rest.
     renderFirmEmpty();
+    // Your links leaves out the firm shares the shelf lists, and that needs
+    // the membership just loaded, so both panes this read fills draw here.
+    sharesBox.classList.remove("hidden");
+    document.getElementById("deskInbox").classList.remove("hidden");
+    renderSharesTable(mine);
+    drawShareInbox();
     // The firm's name over the title, and whether the find box shows — the
     // same membership, the same paint.
     drawDeskHead();
@@ -14687,17 +14807,18 @@ async function renderMyDesk() {
     // calls first. A member with no firm, or a firm read that failed, both
     // land here — and both correctly show nothing rather than an empty shelf
     // for a firm we could not confirm they are in.
-    if (!firm) { box.classList.add("hidden"); firmShelfItems = []; return; }
+    if (!firm) { box.classList.add("hidden"); firmShelfItems = []; shareShelfCount = 0; syncShareCard(); return; }
     let data = null;
     try {
       const res = await bootFetch(`/api/org/shelf?id=${encodeURIComponent(firm.id)}`);
       if (res.ok) data = await res.json();
     } catch (_) { /* handled below */ }
-    if (!data) { box.classList.add("hidden"); firmShelfItems = []; return; }
+    if (!data) { box.classList.add("hidden"); firmShelfItems = []; shareShelfCount = 0; syncShareCard(); return; }
 
     firmShelfItems = Array.isArray(data.items) ? data.items : [];
     box.classList.remove("hidden");
-    document.getElementById("deskFirmSharesLabel").textContent = `Shared with ${firm.name}`;
+    document.getElementById("deskFirmSharesLabel").textContent =
+      `Reports anyone at ${firm.name} has put here for the whole firm.`;
     document.getElementById("firmShelfTruncated").classList.toggle("hidden", !data.truncated);
 
     // The header line describes the WHOLE shelf and never the filtered view —
@@ -14724,6 +14845,8 @@ async function renderMyDesk() {
     if (!filters) type.value = "";
     else if (!firmShelfTypeTouched) type.value = shopCopy(firm.kind).shelfType;
     applyFirmShelfFilter();
+    shareShelfCount = firmShelfItems.length;
+    syncShareCard();
   }
 
   function applyFirmShelfFilter() {
@@ -14774,6 +14897,11 @@ async function renderMyDesk() {
       // the same door the property rows carry, so nobody retypes it.
       const door = buildingDoor({ address: r.address, propertyType: r.type });
       if (door) row.appendChild(door);
+      // "Take down" on a report this member put here (2026-10-06): the shelf
+      // is now the only place a firm share is listed for its sharer (it left
+      // Your links so it would stop showing twice), so its off switch is here.
+      // The same one-way revoke Your links' "Turn off link" sends.
+      if (r.mine && r.id) row.appendChild(shelfTakeDown(r));
       // "Discuss" (slice 8): the report travels as its LINK, so report-access.js
       // stays the sole decider of who may read it. Never a copy of the payload.
       const talk = document.createElement("a");
@@ -17636,33 +17764,36 @@ async function renderMyDesk() {
     }
   });
 
-  // One table, both directions (2026-08-21; replaces the two stacked lists).
-  // Sorted newest-first across the merged set, so "what moved lately" is the
-  // top of the table rather than a per-list question. Everything
-  // user-authored (addresses, emails) renders via textContent — the rule
+  // Your links (2026-10-06, the Sharing card): what THIS member sent, newest
+  // first. Until then this was one table for both directions (2026-08-21);
+  // the reports sent TO this member moved to Sent to you, onto the same row as
+  // the deal room opened from each, so a person reads one direction per tab.
+  // A firm share on the shelf this member can see is listed THERE and not
+  // here (the shelf's Take down is its off switch), while one left on the
+  // shelf of a firm they have since left stays here, the only place left to
+  // turn it off. Everything user-authored renders via textContent, the rule
   // this desk already follows.
-  function renderSharesTable(mine, withMe) {
+  function renderSharesTable(mine) {
     const wrap = document.getElementById("sharesRows");
     wrap.innerHTML = "";
-    const rows = [
-      ...mine.map((r) => ({ mine: true, date: r.createdAt, r })),
-      ...withMe.map((r) => ({ mine: false, date: r.invitedAt, r })),
-    ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    const firm = currentUser ? myFirm() : null;
+    const rows = mine
+      .filter((r) => !(r.visibility === "org" && firm && r.orgId && String(r.orgId) === String(firm.id)))
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    const off = rows.filter((r) => r.revokedAt).length;
+    shareLiveLinks = rows.length - off;
     document.getElementById("deskSharesEmpty").classList.toggle("hidden", rows.length > 0);
-    // The note counts each direction separately — a merged table must still
-    // answer "how many did I send" without being re-split by eye.
-    document.getElementById("deskSharesStats").textContent = rows.length
-      ? [
-          mine.length ? `${mine.length} by you` : "",
-          withMe.length ? `${withMe.length} with you` : "",
-        ].filter(Boolean).join(" · ")
-      : "";
+    document.getElementById("deskSharesStats").textContent = [
+      shareLiveLinks ? `${shareLiveLinks} live` : "",
+      off ? `${off} turned off` : "",
+    ].filter(Boolean).join(" · ");
+    syncShareCard();
     if (!rows.length) return;
     const table = document.createElement("table");
     table.className = "dk-stmt dk-shares";
     const thead = document.createElement("thead");
     const hr = document.createElement("tr");
-    ["Report", "Shared", "Audience", ""].forEach((t) => {
+    ["Report", "Who can open it", "Sent", ""].forEach((t) => {
       const th = document.createElement("th");
       th.textContent = t;
       hr.appendChild(th);
@@ -17670,7 +17801,7 @@ async function renderMyDesk() {
     thead.appendChild(hr);
     table.appendChild(thead);
     const tbody = document.createElement("tbody");
-    rows.forEach((row) => (row.mine ? addMyShareRow(tbody, row.r) : addWithMeRow(tbody, row.r)));
+    rows.forEach((r) => addMyShareRow(tbody, r));
     table.appendChild(tbody);
     wrap.appendChild(table);
   }
@@ -17701,33 +17832,197 @@ async function renderMyDesk() {
     return td;
   }
 
-  function addWithMeRow(tbody, r) {
-    const tr = document.createElement("tr");
-    tr.appendChild(shareAddressCell(r));
-    const tdShared = document.createElement("td");
-    // Who invited them, when the server sends it — today's /api/shares
-    // contract doesn't carry an inviter identity on this side, so the "from"
-    // stays a graceful no-op rather than a fabricated "someone shared this."
-    const bits = ["With you"];
-    if (r.invitedBy) bits.push(`from ${r.invitedBy}`);
-    if (r.invitedAt) bits.push(fmtShareDate(r.invitedAt));
-    tdShared.textContent = bits.join(" · ");
-    tr.appendChild(tdShared);
-    const tdAud = document.createElement("td");
-    tdAud.textContent = "—";
-    tr.appendChild(tdAud);
-    const tdActs = document.createElement("td");
-    tdActs.className = "acts";
-    const open = document.createElement("a");
-    open.href = r.url;
-    open.target = "_blank";
-    open.rel = "noopener noreferrer";
-    open.className = "dk-row-act";
-    open.textContent = "Open";
-    tdActs.appendChild(open);
-    tr.appendChild(tdActs);
-    tbody.appendChild(tr);
+  // Sent to you: one row per property per sender (2026-10-06). A report and
+  // the deal room opened from it are the same thing to the person they were
+  // sent to, and they used to list under two headings ("Shared reports" and
+  // "Shared with you") with the same address on both. A room joins a report's
+  // row when the addresses match and the senders do not disagree; a room
+  // with no such report gets a row of its own. Pure, so the merge is tested
+  // on its own; `isNew` is what turns the tab's count red.
+  function mergeShareInbox(reports, rooms) {
+    const key = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const later = (a, b) => (a && (!b || new Date(a) > new Date(b))) ? a : b;
+    const rows = (reports || []).map((r) => ({
+      key: key(r.address),
+      label: r.address || "",
+      type: r.type || "",
+      from: r.from || "",
+      report: r,
+      room: null,
+      date: r.invitedAt || "",
+      // null, not merely missing: an older answer without the field must not
+      // light every row up as unopened.
+      isNew: r.viewedAt === null,
+    }));
+    (rooms || []).forEach((h) => {
+      const closed = Boolean(h.closedAt || h.status === "closed");
+      const unseen = !closed && (!h.lastSeenAt
+        || Boolean(h.updatedAt && new Date(h.updatedAt) > new Date(h.lastSeenAt)));
+      const k = key(h.subjectAddress || h.title);
+      const hit = k && rows.find((x) => !x.room && x.report && x.key === k
+        && (!x.from || !h.from || x.from === h.from));
+      if (hit) {
+        hit.room = h;
+        hit.isNew = hit.isNew || unseen;
+        hit.date = later(h.updatedAt, hit.date) || "";
+        if (!hit.from) hit.from = h.from || "";
+        if (!hit.type) hit.type = h.propertyType || "";
+      } else {
+        rows.push({
+          key: k,
+          label: h.title || h.subjectAddress || "Deal room",
+          type: h.propertyType || "",
+          from: h.from || "",
+          report: null,
+          room: h,
+          date: h.updatedAt || "",
+          isNew: unseen,
+        });
+      }
+    });
+    return rows.sort((a, b) => (new Date(b.date || 0) - new Date(a.date || 0)));
   }
+
+  function shareKind(text, tone) {
+    const pill = document.createElement("span");
+    pill.className = "dk-kind " + tone;
+    pill.textContent = text;
+    return pill;
+  }
+
+  function shareInboxRow(r) {
+    const roomHref = r.room ? "/messages?x=" + encodeURIComponent(r.room.id) : "";
+    const row = document.createElement("div");
+    row.className = "dk-row";
+    const name = document.createElement("span");
+    name.className = "dk-row-name";
+    const link = document.createElement("a");
+    link.className = "dk-addr";
+    if (r.report) {
+      link.href = r.report.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    } else {
+      // Into Messages, not the room's own page (2026-09-04): every
+      // conversation a member is in lives on one screen now, and a client's
+      // rooms have listed there since #275. The token door at /hub/<id> is
+      // untouched for the emailed link.
+      link.href = roomHref;
+    }
+    // textContent, never innerHTML: an address and a room's title are both
+    // user-authored (a room's title is typed by the broker who opened it).
+    link.textContent = r.label;
+    name.appendChild(link);
+    const kinds = document.createElement("span");
+    kinds.className = "dk-kinds";
+    if (r.isNew) kinds.appendChild(shareKind("New", "dk-tone-red"));
+    if (r.report) kinds.appendChild(shareKind("Report", "dk-tone-bv"));
+    if (r.room) kinds.appendChild(shareKind("Deal room", "dk-tone-ok"));
+    name.appendChild(kinds);
+    row.appendChild(name);
+    if (r.report) {
+      const open = document.createElement("a");
+      open.className = "dk-row-act";
+      open.href = r.report.url;
+      open.target = "_blank";
+      open.rel = "noopener noreferrer";
+      open.textContent = "Open report";
+      row.appendChild(open);
+    }
+    if (r.room) {
+      const talk = document.createElement("a");
+      talk.className = "dk-row-act";
+      talk.href = roomHref;
+      talk.textContent = "Open the conversation";
+      row.appendChild(talk);
+    }
+    const meta = document.createElement("span");
+    meta.className = "dk-row-meta";
+    const closed = r.room && (r.room.closedAt || r.room.status === "closed");
+    meta.textContent = [
+      r.type,
+      r.from ? `from ${r.from}` : "",
+      r.date ? fmtShareDate(r.date) : "",
+      closed ? "deal room closed" : "",
+    ].filter(Boolean).join(" · ");
+    row.appendChild(meta);
+    return row;
+  }
+
+  // Sent to you's one writer. Called by both reads that feed it, in whichever
+  // order they land; each call draws everything known so far.
+  function drawShareInbox() {
+    const rows = mergeShareInbox(shareWithMe, deskRooms);
+    shareInboxCount = rows.length;
+    shareInboxNew = rows.filter((r) => r.isNew).length;
+    const wrap = document.getElementById("deskInboxRows");
+    wrap.innerHTML = "";
+    rows.forEach((r) => wrap.appendChild(shareInboxRow(r)));
+    // An empty card only when both reads came back: a failed rooms read
+    // must never be told as "nothing was sent to you".
+    document.getElementById("deskInboxEmpty").classList.toggle("hidden", rows.length > 0 || deskRoomsFailed);
+    const reports = rows.filter((r) => r.report).length;
+    const rooms = rows.filter((r) => r.room).length;
+    document.getElementById("deskInboxStats").textContent = [
+      reports ? `${reports} ${reports === 1 ? "report" : "reports"}` : "",
+      rooms ? `${rooms} ${rooms === 1 ? "deal room" : "deal rooms"}` : "",
+    ].filter(Boolean).join(" · ");
+    syncShareCard();
+  }
+
+  // The shelf row's Take down. The confirm names what cannot be undone, as
+  // "Turn off link" does: a revoke is one-way.
+  function shelfTakeDown(r) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "dk-row-act";
+    btn.textContent = "Take down";
+    btn.addEventListener("click", async () => {
+      const msg = document.getElementById("firmShelfMsg");
+      msg.classList.add("hidden");
+      if (!confirm(`Take ${r.address} off the firm shelf? Its link stops working for everyone at your firm, and it cannot be put back.`)) return;
+      btn.disabled = true;
+      try {
+        await acctApi("POST", "/api/shares/revoke", { id: r.id });
+        renderShares();
+      } catch (ex) {
+        btn.disabled = false;
+        msg.textContent = ex.message;
+        msg.classList.remove("hidden");
+      }
+    });
+    return btn;
+  }
+
+  // The tabs. A click or the tabs pattern's keys pick one, and a pick stays
+  // picked across re-renders of the panes.
+  const shareTabsEl = document.getElementById("shareTabs");
+  shareTabsEl.addEventListener("click", (e) => {
+    const tab = e.target.closest(".dk-tab");
+    if (!tab || tab.hidden) return;
+    shareTabPicked = tab.dataset.pane;
+    syncShareCard();
+  });
+  shareTabsEl.addEventListener("keydown", (e) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    const tabs = Array.from(shareTabsEl.querySelectorAll(".dk-tab")).filter((t) => !t.hidden);
+    const i = tabs.indexOf(document.activeElement);
+    if (i < 0) return;
+    e.preventDefault();
+    const next = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1
+      : (i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
+    shareTabPicked = tabs[next].dataset.pane;
+    syncShareCard();
+    tabs[next].focus();
+  });
+  // The strip's Shelf figure links to #deskSharedWithFirm, a tab now: open it
+  // first, or the link would scroll to a pane that is not showing.
+  document.addEventListener("click", (e) => {
+    if (e.target.closest && e.target.closest('a[href="#deskSharedWithFirm"]')) {
+      shareTabPicked = "deskSharedWithFirm";
+      syncShareCard();
+    }
+  });
 
   function addMyShareRow(tbody, r) {
     const revoked = Boolean(r.revokedAt);
@@ -17737,18 +18032,17 @@ async function renderMyDesk() {
     const tr = document.createElement("tr");
     tr.appendChild(shareAddressCell(r, { dead: revoked }));
 
-    const tdShared = document.createElement("td");
-    tdShared.textContent = r.createdAt ? `By you · ${fmtShareDate(r.createdAt)}` : "By you";
-    tr.appendChild(tdShared);
-
-    // Audience cell: revoked wins over visibility — a report can be "invited"
-    // AND turned off, and "Link turned off" is the more useful thing to say.
+    // Who can open it: revoked wins over visibility — a report can be
+    // "invited" AND turned off, and "Turned off" is the more useful thing to
+    // say.
     //
     // The firm case is named EXPLICITLY rather than left to the else. Before
     // migration 030 there were two visibilities and `!invited` meant public,
     // so a firm share inherited "Anyone with the link" — telling the person
     // who restricted a report to their firm that they had published it, which
     // is the one wrong answer on this line that could make them forward it.
+    // (Since 2026-10-06 a firm share reaches this table only when its firm is
+    // one this member has left; the shelf lists the rest.)
     const tdAud = document.createElement("td");
     // The audience wears a chip (2026-08-29) so who-can-see-this scans as a
     // STATE, not a sentence lost in table prose. Same strings as before,
@@ -17757,12 +18051,25 @@ async function renderMyDesk() {
     const aud = document.createElement("span");
     aud.className = revoked ? "rd-chip o" : "rd-chip";
     aud.textContent = revoked
-      ? "Link turned off"
-      : invited ? `${viewers.length} invited`
+      ? "Turned off"
+      : invited ? `${viewers.length} ${viewers.length === 1 ? "person" : "people"}`
       : r.visibility === "org" ? (r.firm ? `Shared with ${r.firm}` : "Shared with your firm")
       : "Anyone with the link";
     tdAud.appendChild(aud);
+    // Whether the people it went to have opened it, which is the question a
+    // broker has about an invited link, answered on its row.
+    if (invited && !revoked && viewers.length) {
+      const opened = viewers.filter((v) => v.firstViewedAt).length;
+      const sub = document.createElement("span");
+      sub.className = "dk-sub";
+      sub.textContent = opened ? `${opened} opened it` : "Not opened yet";
+      tdAud.appendChild(sub);
+    }
     tr.appendChild(tdAud);
+
+    const tdSent = document.createElement("td");
+    tdSent.textContent = r.createdAt ? fmtShareDate(r.createdAt) : "";
+    tr.appendChild(tdSent);
 
     const tdActs = document.createElement("td");
     tdActs.className = "acts";
@@ -17844,7 +18151,8 @@ async function renderMyDesk() {
         editBtn.addEventListener("click", () => { showDet(); editWrap.classList.toggle("hidden"); });
         actions.appendChild(editBtn);
       }
-      // "Start a hub" — the only in-product discovery path the messaging hub
+      // "Start a deal room" (it said "Start a hub" until 2026-10-06; Messages
+      // has always called it a deal room) — the only in-product discovery path the messaging hub
       // has (the owner's Q5 yes, 2026-08-13). It seeds a hub with this
       // report's comps and the people already invited to it, so the broker
       // does not retype either.
@@ -17856,11 +18164,15 @@ async function renderMyDesk() {
       // reads it. Without this check the button would appear for every
       // signed-in member and answer with a 403; the server still refuses
       // either way, so this decides visibility and nothing else.
-      if (hubCreationAllowed()) {
+      //
+      // Never on a firm share: it has no viewer list, so the room would open
+      // with nobody in it. (One only reaches this table now when its firm is
+      // one this member has left.)
+      if (hubCreationAllowed() && r.visibility !== "org") {
         const hubBtn = document.createElement("button");
         hubBtn.type = "button";
         hubBtn.className = "dk-row-act";
-        hubBtn.textContent = "Start a hub";
+        hubBtn.textContent = "Start a deal room";
         hubBtn.addEventListener("click", async () => {
           rowErr.classList.add("hidden");
           hubBtn.disabled = true;
@@ -17940,11 +18252,12 @@ async function renderMyDesk() {
   //
   // Two rules, both different from the share lists above:
   //
-  //   1. It renders ONLY when there is something in it. There is no empty
-  //      state, because a member who has never been invited into a hub cannot
-  //      start one from here, so an empty section would advertise a door with
-  //      no handle. The share lists teach a feature this member can use; this
-  //      one reports a fact about someone else's invitation.
+  //   1. The rooms have no section of their own (2026-10-06): they list in
+  //      the Sharing card's Sent to you, on the same row as the report each
+  //      was opened from, and that pane's empty card speaks for reports and
+  //      rooms together ("When someone sends you a report or invites you into
+  //      a deal room, it lands here"). Nothing advertises a room as a door a
+  //      member can open themselves, because they cannot.
   //   2. EVERY failure is silent. This is an extra list at the bottom of a
   //      page that already works; a hub outage must not put an error on the
   //      desk of somebody who came here for their portfolio. Contrast
@@ -18032,54 +18345,29 @@ async function renderMyDesk() {
     card.appendChild(box);
   }
 
+  // READS the rooms; drawShareInbox draws them, beside the reports.
   async function renderDeskHubs() {
-    const box = document.getElementById("deskHubs");
-    if (!box) return;
-    box.classList.add("hidden");
-    if (!currentUser) return;
+    deskRooms = [];
+    deskRoomsFailed = false;
+    if (!currentUser) { drawShareInbox(); return; }
     let data;
     try {
       const res = await bootFetch("/api/hubs");
       // 401/403 mean "not for you" and stay silent, as before. Anything else
-      // is a failure, and this list stays hidden rather than rendering as
-      // though the member has no hubs — the same correction the vault's deck
-      // needed on 2026-08-14, where a 503 read as "No hubs yet".
+      // is a failure, and the rooms simply do not list — never a "nothing was
+      // sent to you", which is why a failure also keeps Sent to you's empty
+      // card down (the same correction the vault's deck needed on
+      // 2026-08-14, where a 503 read as "No hubs yet").
       //
-      // It stays SILENT rather than showing an error, unlike the vault: this
-      // section has no empty state at all, so hiding it says nothing false.
-      // The vault's deck has an invitation that would be a lie.
-      if (!res.ok) return;
+      // It stays SILENT rather than showing an error, unlike the vault: the
+      // reports beside them still list, and a hub outage must not put an
+      // error on the page of somebody who came for something else.
+      if (!res.ok) { deskRoomsFailed = res.status !== 401 && res.status !== 403; drawShareInbox(); return; }
       data = await res.json();
-    } catch (_) { return; }
-    const rows = (data && Array.isArray(data.theirs)) ? data.theirs : [];
-    if (!rows.length) return;
-
-    const wrap = document.getElementById("deskHubRows");
-    wrap.innerHTML = "";
-    rows.forEach((h) => {
-      const row = document.createElement("div");
-      row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
-      const link = document.createElement("a");
-      // Into Messages, not the room's own page (2026-09-04): every
-      // conversation a member is in lives on one screen now, and a client's
-      // rooms have listed there since #275. The token door at /hub/<id> is
-      // untouched for the emailed link.
-      link.href = "/messages?x=" + encodeURIComponent(h.id);
-      link.className = "dk-row-name";
-      // textContent, never innerHTML — a hub title is typed by the broker who
-      // created it, so it is user-authored text like an address or an email.
-      link.textContent = h.title || h.subjectAddress || "Comp hub";
-      row.appendChild(link);
-      const bits = [h.propertyType, h.market].filter(Boolean);
-      if (h.closedAt || h.status === "closed") bits.push("closed");
-      else if (h.updatedAt) bits.push("updated " + fmtShareDate(h.updatedAt));
-      const meta = document.createElement("span");
-      meta.className = "text-xs text-[#68707E]";
-      meta.textContent = bits.join(" · ");
-      row.appendChild(meta);
-      wrap.appendChild(row);
-    });
-    box.classList.remove("hidden");
+    } catch (_) { deskRoomsFailed = true; drawShareInbox(); return; }
+    // theirs, never mine: a broker's own rooms live in Messages.
+    deskRooms = (data && Array.isArray(data.theirs)) ? data.theirs : [];
+    drawShareInbox();
   }
 
   // ----------------------------------------------------------------------------

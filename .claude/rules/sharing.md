@@ -47,6 +47,18 @@ paths:
   newly-added addresses), and `POST /api/shares/revoke` (one-way — there is
   no un-revoke, matching the vault's stance that access lapsing is safer
   than access silently returning).
+  **What `GET /api/shares` says about a sender (2026-10-06, Home's Sharing
+  card).** Each `sharedWithMe` row carries `from`, the sharer's display name
+  (`MSG.displayName`: their name, else their address's local part, never the
+  whole address), stitched through `usersByIds` the way the shelf's "shared
+  by" is, and `viewedAt`, THIS member's own `first_viewed_at` (null = not
+  opened, which turns the card's Sent to you count red). The sharer's
+  `user_id` is read only to look the name up and never leaves the server.
+  `mine` rows carry `orgId` so the page can list a firm share once, on the
+  shelf. `GET /api/hubs`' `theirs` rows carry `from` the same way, from the
+  room's `owner_user_id`, which stays on the server as before.
+  `test/sharing-card-run.test.js` holds all of it; the stand-in database does
+  not resolve PostgREST embeds, so that suite seeds the rows pre-joined.
   **Three rules a future editor will otherwise break:**
   - **The ACL is never cached.** `sharedReportsMem` caches a share's
     *payload* for the life of the process — right for a report body, and

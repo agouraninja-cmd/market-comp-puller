@@ -4789,7 +4789,9 @@ async function listSharesForOwner(userId) {
 async function listSharesForViewer(email) {
   return (await sbRequest("GET",
     `report_viewers?email=eq.${encodeURIComponent(email)}` +
-    `&select=share_id,invited_at,shared_reports(id,payload,visibility,revoked_at,created_at)` +
+    // first_viewed_at is this viewer's own row (has THEY opened it), and the
+    // share's user_id is only ever turned into a display name by the route.
+    `&select=share_id,invited_at,first_viewed_at,shared_reports(id,payload,visibility,revoked_at,created_at,user_id)` +
     `&order=invited_at.desc&limit=200`)) || [];
 }
 
@@ -26975,7 +26977,18 @@ const server = http.createServer((req, res) =>
         listSharesForOwner(user.id),
         listSharesForViewer(SHAREACCESS.normalizeEmail(user.email)),
       ]);
-      const firmRows = await orgsByIds(owned.map((r) => r.org_id).filter(Boolean));
+      // Who sent each report shared WITH this member (2026-10-06, the Sharing
+      // card): the row used to read "With you · Oct 2" because nothing here
+      // said who. A display name only, through the same never-throwing stitch
+      // the shelf uses; the sharer's id never leaves the server.
+      const [firmRows, senders] = await Promise.all([
+        orgsByIds(owned.map((r) => r.org_id).filter(Boolean)),
+        usersByIds(invited.map((r) => r.shared_reports && r.shared_reports.user_id)),
+      ]);
+      const senderOf = (s) => {
+        const who = s && s.user_id ? senders.get(String(s.user_id)) : null;
+        return who ? MSG.displayName(who) : "";
+      };
       const brief = (payload) => ({
         address: (payload && payload.meta && payload.meta.address) || "",
         type: (payload && payload.meta && payload.meta.type) || "",
@@ -26989,6 +27002,11 @@ const server = http.createServer((req, res) =>
           // answer here that could make them forward it.
           firm: r.org_id
             ? ((firmRows.get(String(r.org_id)) || {}).name || "Your firm") : "",
+          // The firm's id too, so the desk can tell a share on the shelf it is
+          // showing (listed there, not in Your links) from one left on the
+          // shelf of a firm this member has since left (listed in Your links,
+          // the only place left to turn it off).
+          orgId: r.org_id ? String(r.org_id) : "",
           includePrivate: r.include_private, revokedAt: r.revoked_at, createdAt: r.created_at,
           url: `${SITE_URL}/r/${r.id}`,
           viewers: (r.report_viewers || []).map((v) => ({
@@ -27001,6 +27019,10 @@ const server = http.createServer((req, res) =>
           .map((r) => ({
             id: r.share_id, ...brief(r.shared_reports.payload),
             invitedAt: r.invited_at, url: `${SITE_URL}/r/${r.share_id}`,
+            from: senderOf(r.shared_reports),
+            // When THIS member first opened it; null means not yet, which is
+            // what turns the desk's "Sent to you" count red.
+            viewedAt: r.first_viewed_at || null,
           })),
       });
     })().catch((err) => {
@@ -29837,6 +29859,14 @@ const server = http.createServer((req, res) =>
             listHubsForOwner(user.id),
             email ? listHubsForParticipant(email) : Promise.resolve([]),
           ]);
+          // The broker who opened each room this member was invited into, by
+          // display name (2026-10-06, the Sharing card's "from Brad Keller").
+          // owner_user_id itself still never leaves the server.
+          const owners = await usersByIds(theirs.map((r) => r.hubs && r.hubs.owner_user_id));
+          const ownerOf = (h) => {
+            const who = h && h.owner_user_id ? owners.get(String(h.owner_user_id)) : null;
+            return who ? MSG.displayName(who) : "";
+          };
           return sendJson(res, 200, {
             mine: mine.map((h) => ({
               id: h.id, title: h.title, market: h.market, propertyType: h.property_type,
@@ -29865,6 +29895,7 @@ const server = http.createServer((req, res) =>
                 propertyType: r.hubs.property_type, subjectAddress: r.hubs.subject_address,
                 status: r.hubs.status, updatedAt: r.hubs.updated_at, closedAt: r.hubs.closed_at,
                 role: r.role, lastSeenAt: r.last_seen_at,
+                from: ownerOf(r.hubs),
               })),
           });
         } catch (err) {

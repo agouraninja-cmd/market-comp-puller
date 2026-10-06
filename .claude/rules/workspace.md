@@ -347,6 +347,50 @@ paths:
   - **`test/helpers/boot.js` points `CENSUS_API_URL` at a closed local port by
     default** (found while building Draft C): the Vault's import geocode sent
     real addresses to the live service from any suite that stored one.
+  **The Sharing card (2026-10-06; Draft C of the sharing drafts at
+  https://claude.ai/artifact/Mv5i1eKECyYqJm5zyLnyXD, the owner's pick).** The
+  main column used to end in three sections whose names all began "Shared":
+  "Shared with <firm>" (the shelf), "Shared reports" (one table of links in
+  BOTH directions) and "Shared with you" (deal rooms a broker invited this
+  member into). A report and the deal room opened from it sat under two of
+  those headings with the same address on both, and a firm share showed twice
+  (on the shelf, and in the table under a "Shared with <firm>" chip). Now
+  `#deskSharing` in `#deckSharing` is one "Sharing" section with three tabs.
+  Rules, all tested (`test/org-desk.test.js`'s last block,
+  `test/sharing-card-run.test.js`, the deal-room tests in
+  `test/index-html.test.js`):
+  - **Every pane kept its id and its one writer**: `#deskSharedWithFirm`
+    (renderFirmShelf), `#deskShares` (renderSharesTable) and the new
+    `#deskInbox` (drawShareInbox). A pane's `hidden` CLASS still means "does
+    not apply / its read failed" (the strip reads it); which tab is SHOWING is
+    the separate `dk-off` class, written only by `syncShareCard`, which also
+    owns the tab buttons (the `hidden` ATTRIBUTE), their counts and the card's
+    own visibility. Each writer calls it when it changes something. Its
+    counts live in its own `let`s beside renderShares, never in
+    `firmShelfItems`, which is declared far below.
+  - **Default tab**: the shelf for a member of a firm; else Sent to you when
+    anything was sent; else Your links. A tab the member picked stays picked
+    across re-renders until its pane goes away. The strip's Shelf link
+    (`href="#deskSharedWithFirm"`) opens the shelf tab before it scrolls.
+  - **Sent to you merges** (`mergeShareInbox`, pure): a deal room joins the
+    row of a report when the addresses match (case and punctuation aside) and
+    the senders do not disagree. A room alone gets its own row, titled by the
+    room. Rooms open in Messages, reports in a new tab, all text through
+    textContent. The tab's count turns red only for something unopened: a
+    report whose `viewedAt` is null (never merely missing), or a room not seen
+    since it last moved (closed rooms ask nothing). A failed rooms read stays
+    silent and keeps the pane's empty card down, never "nothing was sent to
+    you".
+  - **Your links is one direction** (what this member sent) and leaves out a
+    firm share on the shelf they can see (`orgId` equals `myFirm().id`); the
+    shelf gives their own rows a **Take down** (the same one-way revoke). A
+    firm share from a firm they have LEFT stays in Your links, the only place
+    left to turn it off. "Start a hub" is **Start a deal room** (the name
+    Messages uses) and is never offered on a firm share, which has nobody to
+    invite. Below 640px the table stacks each row so its buttons sit under it.
+  - **The server says who sent it**: `GET /api/shares`' `sharedWithMe` rows
+    carry `from` and `viewedAt`, `mine` rows carry `orgId`, and `GET /api/hubs`'
+    `theirs` rows carry `from` (see `sharing.md`).
 - `GET /` — serves `index.html`. **For a signed-in member `/` opens the
   WORKSPACE, not the search page** (2026-08-28) — the firm's shelf, the deal
   board and their own properties. That is the whole firm-first

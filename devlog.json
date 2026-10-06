@@ -4555,5 +4555,11 @@
     "type": "feature",
     "title": "Sites: one tab for the land a development firm is buying and the buildings it owns",
     "details": "On the Data page, members of a development firm now see a Sites tab in place of Pipeline and Properties. Buying lists each deal from Prospect through LOI, Under contract and Entitlements, with its asking price, price per acre and next deadline (red inside a week). Open one to see which stages it has passed and when, its key terms, key dates and notes; move it on with one click, pass on it, or start a land report with the address already filled in. Owned and tracking holds everything Properties did: each building’s likely value, its change and history, when it was last checked (with a warning past a year), the market since then, Open report, Refresh, Add to firm and Remove. A deal that closes moves to Owned with its history, a building you only watch can be marked Tracking, and tracked buildings stay out of your owned value. Broker firms and people without a firm keep Pipeline and Properties as they were."
+  },
+  {
+    "date": "2026-10-06",
+    "type": "improvement",
+    "title": "Data page speaks to development firms: Comps, no publishing, opens on Sites",
+    "details": "For members of a development firm, the Data page now opens on Sites, which moves to the front of the tabs. The Book tab is called Comps, a developer’s word rather than a broker’s book of business. Publishing is no longer offered there: the Published figure, the Public column, Publish in the comp set and the license-number credit line are gone, and the privacy line drops its mention of publishing, because a published comp’s Verified badge means a licensed broker vouched for it. Sharing comps with your firm is unchanged. Anyone who already has a published comp keeps every publishing control, so a public comp never looks private. Broker firms and people without a firm see no change."
   }
 ]

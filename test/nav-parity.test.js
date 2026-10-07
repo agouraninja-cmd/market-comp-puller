@@ -128,6 +128,35 @@ test("the tools group is labelled on both rails, and shows on neither bar", () =
   }
 });
 
+test("the account circle sits in the same box on both rails", () => {
+  // RAIL_CSS gave #navAcct margin-top:auto and nothing else, so on /vault,
+  // /messages, /bulk, /buildings, /permits and /markets the circle sat at x=0,
+  // flush against the window's edge with no hairline above it, while the
+  // app's sat 20px in under one (2026-10-06). Measured on a seeded server, the
+  // two boxes now match to the pixel; this holds the declarations together.
+  const decls = (body) => Object.fromEntries(body.split(";").map((d) => d.trim()).filter(Boolean)
+    .map((d) => [d.slice(0, d.indexOf(":")).trim(), d.slice(d.indexOf(":") + 1).replace(/\s+/g, " ").trim()]));
+  const app = INDEX_HTML.match(/html\.nav-rail #acctMenuWrap \{([^}]*)\}/);
+  const shared = SERVER_JS.match(/html\.nav-rail \.hdr nav>#navAcct\{([^}]*)\}/);
+  assert.ok(app, "the app's account-slot rule moved");
+  assert.ok(shared, "RAIL_CSS's account-slot rule moved");
+  for (const prop of ["margin-top", "padding", "border-top"]) {
+    assert.ok(decls(app[1])[prop], `the app's rail no longer sets ${prop} on the account slot`);
+    assert.equal(decls(shared[1])[prop], decls(app[1])[prop],
+      `the account slot's ${prop} differs between index.html and RAIL_CSS`);
+  }
+
+  // Each menu is positioned from that box, so its offsets must match too, or
+  // the same menu opens in two places depending on which page you are on.
+  const appMenu = INDEX_HTML.match(/html\.nav-rail #acctMenu \{([^}]*)\}/);
+  const sharedMenu = SERVER_JS.match(/html\.nav-rail \.hdr nav>#navAcct \.dd\{([^}]*)\}/);
+  assert.ok(appMenu && sharedMenu, "an account menu's rail rule moved");
+  for (const prop of ["left", "right", "top", "bottom"]) {
+    assert.equal(decls(sharedMenu[1])[prop], decls(appMenu[1])[prop],
+      `the account menu's ${prop} differs between index.html and RAIL_CSS`);
+  }
+});
+
 test("the Data row is called the same thing on both sides of the click", () => {
   // It read "Your vault" in the app and "Vault" everywhere else, so the row a
   // member was looking at renamed itself the moment they clicked it.

@@ -2157,6 +2157,52 @@ test("a building's type is a tinted tag with the same word", async () => {
   assert.ok(typeCell(rows[2]).className.includes("empty"));
 });
 
+test("a type tag never breaks mid-word, and the Type column holds the widest one", () => {
+  // At 1.1fr the column was 77.7px in the 593px main column, the Multifamily
+  // tag is 78px, and it rendered as "Multifamil" over "y" (2026-10-06): the
+  // cell carries overflow-wrap:anywhere, right for an address, wrong for a tag.
+  const pill = html.match(/\.dk-pill \{[^}]*\}/);
+  assert.ok(pill, ".dk-pill's rule moved");
+  assert.match(pill[0], /white-space: nowrap/, "a tag is one word on a chip and must never wrap");
+
+  // Every row is its own grid, so the header and the rows line up only while
+  // each track is an fr share of one width or a fixed px. A content-sized
+  // track would give every row its own Type column.
+  const rule = html.match(/\.dk-bhead, \.dk-row\.dk-brow \{[^}]*grid-template-columns: ([^;]+); column-gap: (\d+)px/);
+  assert.ok(rule, "the buildings grid's template moved");
+  const tracks = rule[1].trim().split(/\s+(?![^(]*\))/);
+  assert.equal(tracks.length, 7, "the address, five cells and the menu");
+  const frs = [];
+  let fixed = 0;
+  for (const t of tracks) {
+    const fr = t.match(/^minmax\(0, ([\d.]+)fr\)$/);
+    const px = t.match(/^(\d+)px$/);
+    assert.ok(fr || px, `track "${t}" sizes to its content, so rows would stop lining up`);
+    if (fr) frs.push(Number(fr[1])); else fixed += Number(px[1]);
+  }
+  assert.equal(frs.length, 6);
+
+  // The narrowest container the grid is drawn in: one pixel past the reflow.
+  const reflow = html.match(/\.dk-btable \{ container-type: inline-size; \}[\s\S]*?@container \(max-width: (\d+)px\)/);
+  assert.ok(reflow, "the buildings table's reflow query moved");
+  const narrowest = Number(reflow[1]) + 1;
+  const perFr = (narrowest - fixed - Number(rule[2]) * (tracks.length - 1)) / frs.reduce((a, b) => a + b, 0);
+  // "Multifamily" at 11.5px/600 plus 16px of padding, measured in Chrome on
+  // the seeded Home page (Residential is 77.2px, Industrial 68.1px).
+  const WIDEST_TAG_PX = 78;
+  assert.ok(frs[1] * perFr >= WIDEST_TAG_PX,
+    `the Type column is ${(frs[1] * perFr).toFixed(1)}px at a ${narrowest}px container; the widest tag needs ${WIDEST_TAG_PX}px`);
+
+  // The measurement holds only for the words it measured. A longer type name
+  // means measuring again rather than trusting the number above.
+  const tones = html.match(/const TYPE_TONES = \{([^}]*)\}/);
+  assert.ok(tones, "TYPE_TONES moved");
+  for (const [, word] of tones[1].matchAll(/(\w[\w-]*):/g)) {
+    assert.ok(word.length <= "Multifamily".length,
+      `"${word}" is longer than Multifamily; re-measure WIDEST_TAG_PX and the Type column`);
+  }
+});
+
 test("the empty board's own button opens the add form and never closes it", async () => {
   const ctx = loadBuildings({ body: { buildings: [], summary: "" } });
   await ctx.render();

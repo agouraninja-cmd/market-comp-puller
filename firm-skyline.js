@@ -312,7 +312,7 @@
       ? `${x.reports} ${x.reports === 1 ? "report" : "reports"} this month`
       : "No reports this month";
     const facts = [str(b.type).trim(), x.sized ? `${Number(b.sizeSqft).toLocaleString("en-US")} SF` : "",
-      b.createdAt ? `on the board since ${shortDate(b.createdAt)}` : ""].filter(Boolean).join(" · ");
+      b.createdAt ? `added ${shortDate(b.createdAt)}` : ""].filter(Boolean).join(" · ");
     return { name: street, due, fresh, meta, facts };
   }
 

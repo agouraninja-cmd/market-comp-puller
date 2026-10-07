@@ -726,7 +726,7 @@ test("Remove sits in the row's menu, beside a way to the sheet, not on the row",
   const pop = menu.children[1];
   assert.equal(pop.children[0].href, "/building/b1");
   assert.equal(pop.children[1].tagName, "BUTTON");
-  assert.equal(pop.children[1].textContent, "Remove from the board");
+  assert.equal(pop.children[1].textContent, "Remove from the firm");
   assert.ok(!row.children.some((c) => c.tagName === "BUTTON"), "no button sits on the row itself");
 });
 
@@ -1803,7 +1803,7 @@ test("a member who can create a firm is told what one gives and offered the door
   assert.equal(ctx.dom.hidden("deskFirmEmpty"), false);
   assert.equal(ctx.dom.text("deskFirmEmptyLab"), "Not in a firm yet");
   assert.equal(ctx.dom.text("deskFirmEmptyBtn"), "Create a firm");
-  assert.match(ctx.dom.text("deskFirmEmptyCopy"), /board of buildings, a shelf of shared reports, a contact list and conversations/);
+  assert.match(ctx.dom.text("deskFirmEmptyCopy"), /list of buildings, a shelf of shared reports, a contact list and conversations/);
   assert.match(ctx.dom.text("deskFirmEmptyCopy"), /keeps your own reports and Data/, "the privacy half of the promise travels with it");
 });
 
@@ -1949,7 +1949,7 @@ test("Needs you says 'nothing' only when both of its reads came back", () => {
   // instead of reassuring anybody about a firm with no record in it.
   ctx = loadDates({ buildings: [] });
   ctx.draw([]);
-  assert.equal(ctx.dom.text("deskHeroSub"), "Foothill Commercial is ready. Put your first building on the board to begin.");
+  assert.equal(ctx.dom.text("deskHeroSub"), "Foothill Commercial is ready. Add your first building to begin.");
 });
 
 test("Needs you follows the strip: no firm, a signed-out page or a hidden strip means no agenda", () => {

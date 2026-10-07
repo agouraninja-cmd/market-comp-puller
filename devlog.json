@@ -2,6 +2,12 @@
   {
     "date": "2026-10-06",
     "type": "improvement",
+    "title": "Your watchlist is now The Board",
+    "details": "The markets you follow are called The Board everywhere you see them: the tab in Data, the button on market pages (Add to The Board), the digest email and its settings. The digest’s “see them all” link now opens The Board in Data instead of Home, where the markets have not lived since September. So that “the board” means one thing, Home now talks about the firm’s buildings (“Remove from the firm”, “Add your first building”), and the Deal board card is called Firm activity."
+  },
+  {
+    "date": "2026-10-06",
+    "type": "improvement",
     "title": "Your buildings on Home’s banner look solid now",
     "details": "The buildings in Home’s skyline were see-through outlines and did not sit well against the sky. They are solid now, tinted for morning, afternoon or evening, with lit windows that glow and a faint reflection in the street below. Hovering a building, the red date lights and the cranes work as before."
   },

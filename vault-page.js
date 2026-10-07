@@ -1016,7 +1016,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     <div id="vaultLocked" class="invite hide">
       <p><strong>Your book and your pipeline are part of Pro.</strong>
         Upload closed deals, keep them private, and see them inside your own reports.</p>
-      <p>Your properties and your watchlist are in their own tabs either way &mdash; those are yours.</p>
+      <p>Your properties and The Board are in their own tabs either way &mdash; those are yours.</p>
       <p style="margin:0"><a class="btn" href="/desk">See your plan</a></p>
     </div>
     <!-- ------------------------------------------------------------------
@@ -1040,7 +1040,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       <button type="button" role="tab" class="vt-tab vt-off" id="tab-sites" data-tab="sites" aria-selected="false" aria-controls="panelSites">Sites <b id="tabSitesN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-pipe" data-tab="pipe" aria-selected="false" aria-controls="panelPipe">Pipeline <b id="tabPipeN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-props" data-tab="props" aria-selected="false" aria-controls="panelProps">Properties <b id="tabPropsN"></b></button>
-      <button type="button" role="tab" class="vt-tab" id="tab-watch" data-tab="watch" aria-selected="false" aria-controls="panelWatch">Watchlist <b id="tabWatchN"></b></button>
+      <button type="button" role="tab" class="vt-tab" id="tab-watch" data-tab="watch" aria-selected="false" aria-controls="panelWatch">The Board <b id="tabWatchN"></b></button>
       <button type="button" role="tab" class="vt-tab vt-off" id="tab-contrib" data-tab="contrib" aria-selected="false" aria-controls="panelContrib">Contributions <b id="tabContribN"></b></button>
     </div>
     <div class="vt-panel on" id="panelBook" data-panel="book" role="tabpanel" aria-labelledby="tab-book">
@@ -1692,7 +1692,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
          free, so a free member sees a real feed rather than a locked one.
          ------------------------------------------------------------------ -->
     <div class="deck" id="deckMarkets">
-      <span class="dlab">Your watchlist</span><span class="dln"></span>
+      <span class="dlab">The Board</span><span class="dln"></span>
     </div>
 
     <section id="mktSec">
@@ -1703,14 +1703,14 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
         <label>State <input id="wState" type="text" maxlength="2" placeholder="ID"/></label>
         <label>Type <select id="wType"></select></label>
         <div class="formact">
-          <button class="btn" id="wAdd">Watch market</button>
+          <button class="btn" id="wAdd">Add to The Board</button>
         </div>
       </div>
       <div id="mktMsg"></div>
       <div class="msg bad hide" id="mktErr">Couldn&rsquo;t load your markets just now.
         Nothing has been lost. Refresh in a moment.</div>
       <div class="invite hide" id="mktEmpty">
-        <p>You are not watching any markets yet. Add one above and new comps in it will show up here.</p>
+        <p>Nothing on The Board yet. Add a market above and new comps in it will show up here.</p>
       </div>
       <div id="mktRows"></div>
     </section>
@@ -2059,7 +2059,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     if(curTab==="book"||curTab==="pipe"||curTab==="sites")setTab("props",true);
     // The page subtitle describes the book and the pipeline. With both
     // locked it would be describing a page that is not on screen.
-    $("deckSub").textContent="Your properties and your watchlist. Only you can see this.";
+    $("deckSub").textContent="Your properties and The Board. Only you can see this.";
     if(msg) $("vaultLocked").insertAdjacentHTML("afterbegin",
       '<p class="note">'+esc(msg)+"</p>");
   }
@@ -3687,8 +3687,8 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // named before there were tabs.
   var TABS=["book","sites","pipe","props","watch","contrib"];
   var PANEL={book:"panelBook",sites:"panelSites",pipe:"panelPipe",props:"panelProps",watch:"panelWatch",contrib:"panelContrib"};
-  var HASH_OF_TAB={book:"book",sites:"sites",pipe:"pipeline",props:"properties",watch:"watchlist",contrib:"contributions"};
-  var TAB_OF_HASH={book:"book",sites:"sites",pipeline:"pipe",properties:"props",watchlist:"watch",contributions:"contrib",
+  var HASH_OF_TAB={book:"book",sites:"sites",pipe:"pipeline",props:"properties",watch:"board",contrib:"contributions"};
+  var TAB_OF_HASH={book:"book",sites:"sites",pipeline:"pipe",properties:"props",board:"watch",watchlist:"watch",contributions:"contrib",
     compsSec:"book",sitesSec:"sites",pipeSec:"pipe",propsSec:"props",mktSec:"watch",contribSec:"contrib"};
   var curTab="book";
   // The tab the page opens on, and the one whose address is the bare path:
@@ -6780,13 +6780,13 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
         '<p class="note" style="margin:4px 0 0">'+facts.join(" · ")+"</p>"+rows+
         '<p style="margin:10px 0 0"><button class="lnk" type="button" data-unwatch="'+
         escA(it.id)+'" data-mkt="'+escA(it.market+" "+it.property_type)+
-        '">Stop watching</button></p></div>';
+        '">Remove from The Board</button></p></div>';
     }).join("");
   }
 
   $("mktRows").addEventListener("click",function(e){
     var b=e.target.closest("button[data-unwatch]");if(!b)return;
-    if(!confirm("Stop watching "+(b.getAttribute("data-mkt")||"this market")+"?"))return;
+    if(!confirm("Remove "+(b.getAttribute("data-mkt")||"this market")+" from The Board?"))return;
     fetch("/api/watchlist?id="+encodeURIComponent(b.getAttribute("data-unwatch")),
       {method:"DELETE",credentials:"same-origin"})
       .then(function(){loadMarkets()}).catch(function(){loadMarkets()});

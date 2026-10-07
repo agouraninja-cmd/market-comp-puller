@@ -2301,7 +2301,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <button id="acctImportNo" type="button" class="flex-1 text-sm text-[#68707E] hover:text-[#374253] border border-[#E4E2DA] rounded-lg">Skip</button>
         </div>
       </div>
-      <p class="text-xs text-[#9AA2AD] mt-3">Free account. Your portfolio and watchlist sync across devices. No spam.
+      <p class="text-xs text-[#9AA2AD] mt-3">Free account. Your portfolio and The Board sync across devices. No spam.
         <span id="acctTos" class="hidden">By creating an account you agree to the <a href="/terms" target="_blank" class="underline text-[#68707E] hover:text-[#374253]">Terms of Service</a> and <a href="/privacy" target="_blank" class="underline text-[#68707E] hover:text-[#374253]">Privacy Policy</a>.</span></p>
     </div>
   </div>
@@ -2755,8 +2755,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div id="settingsDigestRow" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
         <label class="flex items-start justify-between gap-4 cursor-pointer">
           <span>
-            <span class="block text-sm font-medium text-[#1A2433]">Watchlist digest email</span>
-            <span class="block text-xs text-[#68707E] mt-0.5">An occasional email when a market you watch gets new comps. Off means no watchlist email at all.</span>
+            <span class="block text-sm font-medium text-[#1A2433]">The Board digest email</span>
+            <span class="block text-xs text-[#68707E] mt-0.5">An occasional email when a market on The Board gets new comps. Off means no Board email at all.</span>
           </span>
           <input id="settingsDigestToggle" type="checkbox" class="accent-[#B91C1C] mt-1" />
         </label>
@@ -2784,7 +2784,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </div>
         <p id="settingsAvatarMsg" class="hidden text-sm mt-2"></p>
         <div id="settingsDeleteConfirm" class="hidden mt-3 border border-[#D8D4C9] rounded-lg p-3">
-          <p class="text-sm text-[#1A2433]">This deletes your account, portfolio, watchlist, and everything in your Data. It can't be undone.</p>
+          <p class="text-sm text-[#1A2433]">This deletes your account, portfolio, The Board, and everything in your Data. It can't be undone.</p>
           <div class="mt-3 flex flex-wrap items-center gap-2">
             <button id="settingsDeleteGo" type="button"
               class="btn-live text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Permanently delete</button>
@@ -2838,7 +2838,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            that read as nothing; here it has to say so. The pricing door
            obeys settingsUpgradeBtn's rule, live && !pro, applied on open. -->
       <div id="firmModalNone" class="hidden mt-4">
-        <p class="text-sm text-[#4C5665]">You're not part of a firm yet. A firm is a shared shelf: reports colleagues share with it land on everyone's Home, while each person's own reports, Data and watchlist stay theirs. Ask a colleague who has one to invite you, or start one on a Pro plan.</p>
+        <p class="text-sm text-[#4C5665]">You're not part of a firm yet. A firm is a shared shelf: reports colleagues share with it land on everyone's Home, while each person's own reports and Data stay theirs. Ask a colleague who has one to invite you, or start one on a Pro plan.</p>
         <button id="firmModalPricing" type="button"
           class="hidden btn-live mt-3 text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">See pricing</button>
       </div>
@@ -2943,7 +2943,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               class="hidden text-sm text-[#5A6473] hover:text-[#1A2433] underline">Manage firm billing</button>
             <span id="firmBillingMsg" class="text-xs text-[#68707E]"></span>
           </div>
-          <p class="text-xs text-[#68707E] mt-1.5">Colleagues see only what someone shares with the firm. Your own reports, portfolio, watchlist and private Data stay yours. Automatic sharing never applies to reports you have already run.</p>
+          <p class="text-xs text-[#68707E] mt-1.5">Colleagues see only what someone shares with the firm. Your own reports, portfolio, The Board and private Data stay yours. Automatic sharing never applies to reports you have already run.</p>
         </div>
       </div>
       <!-- Report branding — the panel's second section (moved here from the
@@ -3279,7 +3279,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div id="lockDefault">
         <h2 class="rd-h text-xl">Create a free account to run a report</h2>
         <p class="text-sm text-[#4C5665] mt-2 max-w-[52ch]">Reports are free and take about a minute. An account keeps
-          your searches, your portfolio and your watchlist in one place.</p>
+          your searches, your portfolio and The Board in one place.</p>
         <div class="mt-4 flex flex-wrap items-center gap-4">
           <button id="lockSignUpBtn" type="button"
             class="btn-live bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded">Create a free account</button>
@@ -3410,7 +3410,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <b id="deskSkyCap" class="dk-sky-cap"></b>
             <span title="A report on the firm's shelf, the building being added, or a lease date due, in the last 30 days"><i class="dk-sky-k-win" aria-hidden="true"></i>Lit windows: recent work on the building</span>
             <span title="An option notice or a lease expiry inside 90 days"><i class="dk-sky-k-red" aria-hidden="true"></i>Red light: a lease date within 90 days</span>
-            <span><svg viewBox="0 0 17 14" width="17" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 14V1.5M15.5 4.5H1.5M11 1.5L1.5 4.5M11 1.5l4.5 3M4 4.5v4.5"/><rect x="13.2" y="4.5" width="2.3" height="2" fill="currentColor" stroke="none"/><rect x="3" y="9" width="2" height="1.8" fill="currentColor" stroke="none"/></svg>Crane: added to the board this month</span>
+            <span><svg viewBox="0 0 17 14" width="17" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 14V1.5M15.5 4.5H1.5M11 1.5L1.5 4.5M11 1.5l4.5 3M4 4.5v4.5"/><rect x="13.2" y="4.5" width="2.3" height="2" fill="currentColor" stroke="none"/><rect x="3" y="9" width="2" height="1.8" fill="currentColor" stroke="none"/></svg>Crane: added to the firm this month</span>
             <!-- One shape per property type (2026-09-26), the same shapes
                  deskSkyBuilding draws. A building with no type is a plain
                  tower. -->
@@ -3425,7 +3425,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <span class="dk-sky-k-note">Each property type has its own shape, and a bigger building stands bigger. The newest are on the right.</span>
           </div>
         </div>
-        <div id="deskSkyEmpty" class="hidden dk-sky-empty"><b>Your skyline starts here.</b>Each building you put on the board rises as a tower, and it lights up when your firm works on it.<br><button id="deskSkyAdd" type="button" class="dk-sky-add">+ Add a building</button></div>
+        <div id="deskSkyEmpty" class="hidden dk-sky-empty"><b>Your skyline starts here.</b>Each building you add to the firm rises as a tower, and it lights up when your firm works on it.<br><button id="deskSkyAdd" type="button" class="dk-sky-add">+ Add a building</button></div>
         <p id="deskHeroCredit" class="hidden dk-hero-credit"></p>
       </div>
       <!-- There is no subtitle under the header any more (2026-09-04). The
@@ -3645,7 +3645,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              only past eight — one control to the whole list. Under it the
              control does not render at all, the Buy-button rule. -->
         <p id="buildingsMore" class="hidden"><a id="buildingsMoreLink" href="/buildings" class="dk-more"></a></p>
-        <div id="buildingsEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ink"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Your board starts here</span><span class="dk-gx">No buildings yet. Add one by address, from a report on the shelf, or from a property in your Data.</span></span><button type="button" id="buildingsEmptyAdd" class="dk-gbtn">+ Add a building</button></div></div></div>
+        <div id="buildingsEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ink"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Your buildings start here</span><span class="dk-gx">No buildings yet. Add one by address, from a report on the shelf, or from a property in your Data.</span></span><button type="button" id="buildingsEmptyAdd" class="dk-gbtn">+ Add a building</button></div></div></div>
       </div>
 
       </div><!-- /deckFirm -->
@@ -3796,7 +3796,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            empty state above already says what to do about that, and better. -->
       <div id="deskDealBoard" class="hidden mt-8">
         <div class="dk-rule">
-          <span class="rd-lab"><span class="dk-hico dk-tone-warn"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2.5l1.6 4.7 4.9.1-3.9 3 1.4 4.7-4-2.8-4 2.8 1.4-4.7-3.9-3 4.9-.1z"/></svg></span>Deal board</span>
+          <span class="rd-lab"><span class="dk-hico dk-tone-warn"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2.5l1.6 4.7 4.9.1-3.9 3 1.4 4.7-4-2.8-4 2.8 1.4-4.7-3.9-3 4.9-.1z"/></svg></span>Firm activity</span>
           <span id="dealBoardStats" class="dk-note"></span>
         </div>
         <!-- Said on the panel, not only in the code. The wishlist asked to see
@@ -15274,7 +15274,7 @@ async function renderMyDesk() {
       const del = document.createElement("button");
       del.type = "button";
       del.className = "dk-row-act";
-      del.textContent = "Remove from the board";
+      del.textContent = "Remove from the firm";
       pop.appendChild(del);
       menu.appendChild(pop);
       del.addEventListener("click", async () => {
@@ -15596,7 +15596,7 @@ async function renderMyDesk() {
     // count it leads with \u2014 one source for the figure and the section head.
     const bSum = String(document.getElementById("buildingsStats").textContent || "")
       .replace(/^\s*[\d,]+\s+buildings?\s*(\u00b7\s*)?/, "");
-    cell("Buildings", String(firmBuildings.length), firmBuildings.length ? (bSum || "on the firm's board") : "Nothing on the board yet");
+    cell("Buildings", String(firmBuildings.length), firmBuildings.length ? (bSum || "in the firm") : "No buildings yet");
 
     // Shelf: reports shared with the firm this calendar month, over the whole.
     const shelfHidden = document.getElementById("deskSharedWithFirm").classList.contains("hidden");
@@ -15760,7 +15760,7 @@ async function renderMyDesk() {
       // An empty board has nothing to be due yet; say where to start rather
       // than reassure somebody about a firm that has no record in it.
       heroSub(firmBuildings.length ? "Nothing needs you right now."
-        : `${firm.name} is ready. Put your first building on the board to begin.`);
+        : `${firm.name} is ready. Add your first building to begin.`);
     } else {
       heroSub("");
     }
@@ -17050,7 +17050,7 @@ async function renderMyDesk() {
     const lab = document.getElementById("deskFirmEmptyLab");
     const btn = document.getElementById("deskFirmEmptyBtn");
     const copy = document.getElementById("deskFirmEmptyCopy");
-    const gives = "A firm gives your office one board of buildings, a shelf of shared reports, a contact list and conversations \u2014 each of you keeps your own reports and Data.";
+    const gives = "A firm gives your office one list of buildings, a shelf of shared reports, a contact list and conversations \u2014 each of you keeps your own reports and Data.";
     if (firmState.invites.length) {
       const inv = firmState.invites[0];
       lab.textContent = "You've been invited";

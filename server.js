@@ -14209,7 +14209,7 @@ const MARKET_RESEARCH_JS = `(function(){
     var type = watch.getAttribute("data-type") || "";
     function setWatching() {
       watch.disabled = true;
-      watch.textContent = "Watching — see it on Home";
+      watch.textContent = "On The Board — see it in Data";
     }
     fetch("/api/watchlist", { cache: "no-store" }).then(function (r) {
       return r.ok ? r.json() : null;
@@ -14232,10 +14232,10 @@ const MARKET_RESEARCH_JS = `(function(){
       }).then(function (res) {
         if (res.ok) { setWatching(); return; }
         watch.disabled = false;
-        alert((res.j && res.j.error) || "Could not watch this market.");
+        alert((res.j && res.j.error) || "Could not add this market to The Board.");
       }).catch(function () {
         watch.disabled = false;
-        alert("Could not watch this market.");
+        alert("Could not add this market to The Board.");
       });
     });
   }
@@ -15102,8 +15102,8 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     `<button class="btn" type="submit">${btnLabel}</button></form>`;
   const cta = signedIn
     ? `<div class="cta"><h2>Use this ${escHtml(p.type.toLowerCase())} market in your work</h2>` +
-      `<p>Watch it on your Home page, or take these comps with you. Automated estimates, not an appraisal.</p>` +
-      `<button type="button" class="btn" id="mktWatch" data-market="${escHtml(p.city + ", " + p.state)}" data-type="${escHtml(p.type)}">Watch this market</button>` +
+      `<p>Put it on The Board, or take these comps with you. Automated estimates, not an appraisal.</p>` +
+      `<button type="button" class="btn" id="mktWatch" data-market="${escHtml(p.city + ", " + p.state)}" data-type="${escHtml(p.type)}">Add to The Board</button>` +
       (compRows
         ? `<p style="margin:14px 0 0"><button type="button" class="alt" id="mktCsv" data-slug="${escHtml(slug)}">Download these comps as CSV</button></p>`
         : "") +
@@ -15880,7 +15880,7 @@ function renderPrivacyPageHTML(signedIn) {
     `photo you upload. Passwords are stored only as salted scrypt hashes and are never stored in plain text.</li>` +
     `<li><strong>Lead and broker-opinion requests.</strong> Your name, email address, phone number, ` +
     `company, and the property your request concerns.</li>` +
-    `<li><strong>Saved work.</strong> Portfolio items and watchlist entries associated with your ` +
+    `<li><strong>Saved work.</strong> Portfolio items and markets on The Board associated with your ` +
     `account, including any financial inputs you choose to save (see Section 2).</li>` +
     `<li><strong>Broker comp submissions.</strong> The submitting broker's contact details and the ` +
     `submitted comparable-sale data.</li>` +
@@ -17243,7 +17243,7 @@ function renderDigestCard(state){
     body="<p class=muted>Mails each watcher the markets of theirs that have new comps. "+
       "Preview builds every email and sends none.</p><p>"+lastLine+"</p>";
   }
-  el.innerHTML="<div class=card><h2>Watchlist digest</h2>"+body+
+  el.innerHTML="<div class=card><h2>The Board digest</h2>"+body+
     "<p style='margin-top:12px'>"+digestBtn("dgPrev","Preview (sends nothing)")+
     digestBtn("dgSend","Send now","mute")+"</p></div>";
   el.style.display="block";
@@ -21383,7 +21383,7 @@ const server = http.createServer((req, res) =>
         const user = await requireUser(req, res);
         if (!user) return;
         return sendJson(res, 200, { items: await listWatchlist(user.id) });
-      })().catch((err) => { console.error("watchlist GET error:", err); sendJson(res, 500, { error: "Watchlist read failed." }); });
+      })().catch((err) => { console.error("watchlist GET error:", err); sendJson(res, 500, { error: "Couldn't read The Board." }); });
       return;
     }
     if (req.method === "POST") {
@@ -21405,7 +21405,7 @@ const server = http.createServer((req, res) =>
           }
           if (!typeOk) return sendJson(res, 400, { error: "A property type is required." });
           if ((await listWatchlist(user.id)).length >= WATCHLIST_MAX_ITEMS) {
-            return sendJson(res, 400, { error: `Watchlist is full (${WATCHLIST_MAX_ITEMS} markets).` });
+            return sendJson(res, 400, { error: `The Board is full (${WATCHLIST_MAX_ITEMS} markets).` });
           }
           const item = await upsertWatchlistItem(user.id, marketOk, typeOk);
           logEvent("watchlist_add", { prop_type: typeOk, market: marketOk });
@@ -21413,7 +21413,7 @@ const server = http.createServer((req, res) =>
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("watchlist POST error:", err);
-          return sendJson(res, 500, { error: "Watchlist save failed." });
+          return sendJson(res, 500, { error: "Couldn't save to The Board." });
         }
       });
       return;
@@ -21427,7 +21427,7 @@ const server = http.createServer((req, res) =>
         if (!isUuidish(id)) return sendJson(res, 200, { ok: true });
         await deleteWatchlistItem(user.id, id);
         return sendJson(res, 200, { ok: true });
-      })().catch((err) => { console.error("watchlist DELETE error:", err); sendJson(res, 500, { error: "Watchlist delete failed." }); });
+      })().catch((err) => { console.error("watchlist DELETE error:", err); sendJson(res, 500, { error: "Couldn't remove that from The Board." }); });
       return;
     }
   }
@@ -21611,7 +21611,7 @@ const server = http.createServer((req, res) =>
             });
             const mail = DIGEST.buildDigest({
               items: feed,
-              deskUrl: `${SITE_URL}/desk`,
+              deskUrl: `${SITE_URL}/vault#board`,
               unsubscribeUrl: unsubscribeUrlFor(account.id),
             });
             if (!mail) { summary.nothingNew += 1; continue; }
@@ -21760,7 +21760,7 @@ const server = http.createServer((req, res) =>
           noindex: true,
           body: `<div class="wrap"><h1>This link is not recognized</h1>` +
             `<p>It may have been truncated by an email client, or the site's keys may have been rotated since it was sent. ` +
-            `You can turn the emails off from your Home page, or reply to any CompNinja email and we will do it for you.</p></div>`,
+            `You can turn the emails off from your account settings, or reply to any CompNinja email and we will do it for you.</p></div>`,
         }));
       }
       if (req.method === "POST") {
@@ -21769,25 +21769,25 @@ const server = http.createServer((req, res) =>
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
         return res.end(marketShell({
           title: (resubscribe ? "Digest turned back on" : "Digest turned off") + " | CompNinja",
-          description: "Watchlist email preference updated.",
+          description: "The Board email preference updated.",
           noindex: true,
           body: `<div class="wrap"><h1>${resubscribe ? "These emails are back on" : "That&rsquo;s done"}</h1>` +
             `<p>${resubscribe
-              ? "You will get a digest again when a market you watch has new comps."
-              : "You will not get another watchlist digest. Your watchlist itself is untouched, and the same markets are still on your desk."}</p>` +
+              ? "You will get a digest again when a market on The Board has new comps."
+              : "You will not get another Board digest. The Board itself is untouched, and the same markets are still on it in your Data."}</p>` +
             `<p><a href="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "" : "&amp;on=1"}">` +
-            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/desk">Go to Home</a></p></div>`,
+            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/vault#board">Go to The Board</a></p></div>`,
         }));
       }
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
       return res.end(marketShell({
-        title: (resubscribe ? "Turn the digest back on?" : "Turn off watchlist emails?") + " | CompNinja",
-        description: "Confirm your watchlist email preference.",
+        title: (resubscribe ? "Turn the digest back on?" : "Turn off The Board emails?") + " | CompNinja",
+        description: "Confirm your Board email preference.",
         noindex: true,
-        body: `<div class="wrap"><h1>${resubscribe ? "Turn these emails back on?" : "Turn off watchlist emails?"}</h1>` +
+        body: `<div class="wrap"><h1>${resubscribe ? "Turn these emails back on?" : "Turn off The Board emails?"}</h1>` +
           `<p>${resubscribe
-            ? "You will get an email when a market you watch has new comps."
-            : "You will stop getting the digest when markets you watch have new comps. Your watchlist stays exactly as it is, and you can still see it on your Home page."}</p>` +
+            ? "You will get an email when a market on The Board has new comps."
+            : "You will stop getting the digest when markets on The Board have new comps. The Board stays exactly as it is, and you can still see it in your Data."}</p>` +
           `<form method="POST" action="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "&amp;on=1" : ""}">` +
           `<button type="submit" style="background:#1A2433;color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:600;cursor:pointer">` +
           `${resubscribe ? "Yes, turn them on" : "Yes, turn them off"}</button></form></div>`,
@@ -22422,7 +22422,7 @@ const server = http.createServer((req, res) =>
         return sendJson(res, 200, { ok: true });
       } catch (err) {
         console.error("seen error:", err);
-        return sendJson(res, 500, { error: "Could not update the watchlist." });
+        return sendJson(res, 500, { error: "Could not update The Board." });
       }
     });
     return;
@@ -27623,7 +27623,7 @@ const server = http.createServer((req, res) =>
         return sendJson(res, 200, { id: orgId, board });
       })().catch((err) => {
         console.error("Firm deal board read failed:", err.message);
-        return sendJson(res, 503, { error: "Couldn't load your firm's deal board. Please try again in a minute." });
+        return sendJson(res, 503, { error: "Couldn't load your firm's activity. Please try again in a minute." });
       });
       return;
     }
@@ -31652,7 +31652,7 @@ const server = http.createServer((req, res) =>
       const addr = boot && boot.s === 200 && boot.j.building ? boot.j.building.address : "Building";
       res.end(marketShell({
         title: `${addr} \u00b7 CompNinja`,
-        description: "A building on your firm's board.",
+        description: "One of your firm's buildings.",
         canonical: `${SITE_URL}/building/${sheetMatch[1]}`,
         noindex: true,
         signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),

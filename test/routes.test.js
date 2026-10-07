@@ -2859,7 +2859,7 @@ test("watchlist digest unsubscribe", async (t) => {
     // ever becomes a one-click GET, this assertion is the one that says so.
     assert.match(html, /<form method="POST"/,
       "the GET must only offer a form — a prefetching mail scanner must not be able to unsubscribe anyone");
-    assert.match(html, /Turn off watchlist emails\?/);
+    assert.match(html, /Turn off The Board emails\?/);
     assert.match(html, /noindex/, "an unsubscribe page must never be indexed");
     assert.equal(r.headers.get("x-robots-tag"), "noindex");
   });

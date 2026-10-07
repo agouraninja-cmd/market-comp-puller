@@ -1007,7 +1007,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
          default top-9 would put it off the bottom of the viewport from there.
          (No #themeToggleApp rule above it any more -- the switch went back
          into the settings panel on 2026-08-30, on both halves of the rail, so
-         there is nothing in either nav to lay out.) */
+         there is nothing in either nav to lay out.)
+         RAIL_CSS's #navAcct rule carries the same padding and hairline; until
+         2026-10-06 it had neither, and every server-rendered page put the
+         circle flush against the window's edge. */
       html.nav-rail #acctMenuWrap {
         margin-top: auto; padding: 12px 20px 0; border-top: 1px solid var(--hair);
       }
@@ -1706,9 +1709,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* Buildings as a table. The row is still a .dk-row (the family's
        hairline and hover live there) and still FLAT — name, meta, five
        cells, the menu — so the tests can index it; the grid places the meta
-       under the name and lets every other cell span both lines. */
+       under the name and lets every other cell span both lines.
+       Every row is its own grid, so a column may never size to its content
+       (minmax(min-content, …) would give each row a different Type column
+       and the table would stop lining up); it is all fr shares of one width.
+       Type is 1.3fr because its widest tag, Multifamily, measures 78px, and
+       1.3 of 7.15fr is still 78.7px at the narrowest width the grid draws
+       (a 521px container; at 520 the reflow below takes over). At 1.1fr it
+       was 77.7px in the 593px main column and the tag broke mid-word
+       (2026-10-06). The 0.2fr came off the address, which already wraps at
+       its spaces, so Size, Built, Shelf and Next kept their exact widths.
+       Size is 1.2fr so a six-figure building stays on one line: "999,999 SF"
+       measures 70.8px and 1.2 of 7.15fr is 72.7px at that same 521px floor
+       (77.7px at 1180, 84.7px from 1280). At .9fr it was 58px at 1180 and
+       64px at 1440, so "12,400 SF" wrapped to two lines below 1280 and
+       "186,500 SF" wrapped everywhere (2026-10-07). It is NOT nowrap: a
+       seven-figure size (82.2px) is allowed to drop its unit under the
+       number where it is short, rather than overflow into Built. The 0.3fr
+       came off the address again, so Type, Built, Shelf and Next kept theirs. */
     .dk-btable { container-type: inline-size; }
-    .dk-bhead, .dk-row.dk-brow { display: grid; grid-template-columns: minmax(0, 2.7fr) minmax(0, 1.1fr) minmax(0, .9fr) minmax(0, .5fr) minmax(0, .75fr) minmax(0, 1.2fr) 28px; column-gap: 10px; align-items: center; }
+    .dk-bhead, .dk-row.dk-brow { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1.2fr) minmax(0, .5fr) minmax(0, .75fr) minmax(0, 1.2fr) 28px; column-gap: 10px; align-items: center; }
     .dk-bhead.hidden { display: none; }
     .dk-bhead { padding: 0 0 6px; border-bottom: 1px solid var(--line); font-size: 10px; letter-spacing: .09em; text-transform: uppercase; font-weight: 600; color: var(--ink-3); }
     .dk-bhead .num { text-align: right; }
@@ -1871,7 +1891,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-tone-red { background: var(--err-bg); color: var(--err-text); }
     .dk-tone-warn { background: var(--warn-bg); color: var(--warn-text); }
     .dk-tone-est { background: var(--est-bg); color: var(--est-text); }
-    .dk-pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11.5px; font-weight: 600; line-height: 1.5; }
+    /* nowrap: a tag is one word on a rounded chip, and its cell carries
+       overflow-wrap:anywhere, which broke "Multifamily" into "Multifamil" over
+       "y" the moment the Type column was a pixel short. The column is sized
+       for the widest tag (see .dk-bhead above); this is what keeps a wider
+       font from ever splitting one again. */
+    .dk-pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11.5px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
     .dk-hico { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 22px; width: 22px; height: 22px; border-radius: 6px; margin-right: 8px; }
     .dk-side .dk-rule > .rd-lab { display: inline-flex; align-items: center; }
     /* Empty sections show a faint preview of the rows they will hold, with

@@ -11996,8 +11996,15 @@ const RAIL_CSS = `
   html.nav-rail .hdr nav>details:not(#navAcct){display:none}
   /* The account cluster sits at the foot, and its menu opens UPWARD -- the
      dropdown's default top:calc(100% + 10px) would run off the bottom of
-     the viewport from there. */
-  html.nav-rail .hdr nav>#navAcct{margin-top:auto;position:relative}
+     the viewport from there.
+     The padding and hairline are index.html's #acctMenuWrap rule restated
+     (2026-10-06): without them the circle sat at x=0, flush against the
+     window's edge, on every page but Home, while the rows above it are
+     inset 20px. The menu's left:16px and bottom:calc(100% + 8px) are
+     measured from this padding box, so they now land where the app's do:
+     4px left of the circle and 8px above the hairline. */
+  html.nav-rail .hdr nav>#navAcct{margin-top:auto;position:relative;
+    padding:12px 20px 0;border-top:1px solid var(--hair)}
   html.nav-rail .hdr nav>#navAcct .dd{right:auto;left:16px;top:auto;bottom:calc(100% + 8px)}
 }
 /* Paper has no sidebar. Without this the printed page carries a 224px empty

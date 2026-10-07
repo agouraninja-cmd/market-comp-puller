@@ -1508,23 +1508,42 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-sky { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: hidden; border-radius: inherit; pointer-events: none; }
     .dk-sky.hidden { display: none; }
     .dk-sky a { pointer-events: auto; cursor: pointer; outline: none; }
-    /* Glass, not paint: the sky shows through every tower and fades to
-       almost nothing at its foot, so the lit windows are the brightest thing
-       on it. Three states, deliberately apart (2026-09-25): at rest; `.on`,
+    /* Solid, lit by the sky (2026-10-06, the owner: "the see-through
+       buildings don't blend in with the background"). They were glass, and
+       glass over a gradient sky read as outlines pasted on top of it. Now each
+       is a dark mass a shade nearer than the far city behind it, its top
+       catching the sky's colour and its foot sinking into the street, with a
+       warm rim where the light from the horizon catches its edges. The part
+       of the day only retints the gradient's two stops, so the .on and hover
+       rules below stay the only ones that touch the outline. Lit windows
+       glow, so they are still the brightest thing on it. Three states, deliberately apart (2026-09-25): at rest; `.on`,
        the tower the callout is describing, which is only outlined a little
        brighter (a lone building is always that tower, so this is what a new
        firm sees all day); and a real hover or keyboard focus, which lights
        it up. The hover rule comes after `.on` so it wins on equal weight. */
-    .dk-sky .sky-g0 { stop-color: rgba(226,232,240,.18); }
-    .dk-sky .sky-g1 { stop-color: rgba(148,163,184,.04); }
-    .dk-sky .sky-g-on0 { stop-color: rgba(241,245,249,.28); }
-    .dk-sky .sky-g-on1 { stop-color: rgba(203,213,225,.07); }
-    .dk-sky .sky-body { fill: url(#deskSkyBody); stroke: rgba(255,255,255,.2); stroke-width: .8; }
-    .dk-sky a.on .sky-body { stroke: rgba(255,255,255,.42); stroke-width: 1; }
+    .dk-sky .sky-g0 { stop-color: rgba(44,38,70,1); }
+    .dk-sky .sky-g1 { stop-color: rgba(12,14,27,1); }
+    .dk-hero.sky-dawn .dk-sky .sky-g0 { stop-color: rgba(50,56,84,1); }
+    .dk-hero.sky-dawn .dk-sky .sky-g1 { stop-color: rgba(13,19,33,1); }
+    .dk-hero.sky-day .dk-sky .sky-g0 { stop-color: rgba(52,72,102,1); }
+    .dk-hero.sky-day .dk-sky .sky-g1 { stop-color: rgba(16,25,40,1); }
+    .dk-sky .sky-g-on0 { stop-color: rgba(78,74,116,1); }
+    .dk-sky .sky-g-on1 { stop-color: rgba(26,30,52,1); }
+    .dk-sky .sky-body { fill: url(#deskSkyBody); stroke: rgba(255,226,206,.2); stroke-width: .8; }
+    .dk-sky a.on .sky-body { stroke: rgba(255,232,214,.44); stroke-width: 1; }
     .dk-sky a:hover .sky-body, .dk-sky a:focus-visible .sky-body { fill: url(#deskSkyBodyOn); stroke: rgba(255,255,255,.78); stroke-width: 1.2; }
     .dk-sky .sky-roof { stroke: rgba(255,255,255,.45); stroke-width: 1; }
-    .dk-sky .sky-win { fill: rgba(255,255,255,.07); }
-    .dk-sky .sky-win.lit { fill: rgba(252,214,138,.92); }
+    .dk-sky .sky-win { fill: rgba(255,255,255,.06); }
+    .dk-sky .sky-win.lit { fill: rgba(255,218,146,1); filter: drop-shadow(0 0 2.5px rgba(252,186,96,.9)); }
+    /* The wet street: the row again, upside down under the ground line,
+       faint and fading out (layoutDeskSky builds it; the fade is the
+       #deskSkyFade mask, whose stops are these classes). Scenery only: it
+       takes no pointer, and its links lose their href and their tab stop. */
+    .dk-sky .sky-reflect { opacity: .3; pointer-events: none; }
+    .dk-sky .sky-reflect a { pointer-events: none; }
+    .dk-sky .sky-reflect .sky-win.lit { filter: none; }
+    .dk-sky .sky-fd0 { stop-color: rgba(255,255,255,1); }
+    .dk-sky .sky-fd1 { stop-color: rgba(255,255,255,0); }
     .dk-sky .sky-mast { stroke: rgba(255,255,255,.62); stroke-width: 1.1; fill: none; }
     /* The crane (a building added this month). It shared the red light's
        1.1px hairline and read as a stray mark at this size, so it is drawn at
@@ -1547,9 +1566,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        as a roof, and they light with the walls on hover. A lot has no
        walls, so its fence and tree light instead, and a clear `sky-hit`
        rect gives its thin lines a whole slot to hover. */
-    .dk-sky .sky-cap { fill: rgba(226,232,240,.16); stroke: rgba(255,255,255,.3); stroke-width: .8; stroke-linejoin: round; }
-    .dk-sky a.on .sky-cap { stroke: rgba(255,255,255,.5); stroke-width: 1; }
-    .dk-sky a:hover .sky-cap, .dk-sky a:focus-visible .sky-cap { fill: rgba(241,245,249,.3); stroke: rgba(255,255,255,.78); stroke-width: 1.2; }
+    .dk-sky .sky-cap { fill: url(#deskSkyBody); stroke: rgba(255,226,206,.32); stroke-width: .8; stroke-linejoin: round; }
+    .dk-sky a.on .sky-cap { stroke: rgba(255,232,214,.52); stroke-width: 1; }
+    .dk-sky a:hover .sky-cap, .dk-sky a:focus-visible .sky-cap { fill: url(#deskSkyBodyOn); stroke: rgba(255,255,255,.78); stroke-width: 1.2; }
     .dk-sky .sky-door { fill: rgba(255,255,255,.16); }
     .dk-sky .sky-dock { fill: rgba(255,255,255,.1); stroke: rgba(255,255,255,.3); stroke-width: .6; }
     .dk-sky .sky-rail { stroke: rgba(255,255,255,.36); stroke-width: .8; fill: none; }
@@ -16234,6 +16253,38 @@ async function renderMyDesk() {
     return { mast: { x: cx, y: top }, crane: { x: x + w - 6, y: top } };
   }
 
+  // The wet street (2026-10-06): the drawn row copied, flipped about the
+  // ground line and faded out under it by a mask, so the firm's buildings
+  // stand in the scene rather than on it. It is a picture of the row and
+  // nothing else: no href, no label, no tab stop, hidden from a screen
+  // reader, and no pointer (the style block). Skipped where a copy cannot be
+  // made, which leaves the skyline as it was.
+  function deskSkyReflect(sky, defs, row, ground, W, H) {
+    if (typeof row.cloneNode !== "function") return;
+    const depth = Math.max(0, H - ground);
+    if (!depth) return;
+    const fade = deskSkyNode("linearGradient", { id: "deskSkyFadeG", gradientUnits: "userSpaceOnUse",
+      x1: 0, y1: deskSkyN(ground), x2: 0, y2: deskSkyN(ground + Math.min(depth, 46)) });
+    fade.appendChild(deskSkyNode("stop", { offset: 0, class: "sky-fd0" }));
+    fade.appendChild(deskSkyNode("stop", { offset: 1, class: "sky-fd1" }));
+    const mask = deskSkyNode("mask", { id: "deskSkyFade", maskUnits: "userSpaceOnUse",
+      x: 0, y: deskSkyN(ground), width: W, height: deskSkyN(depth) });
+    mask.appendChild(deskSkyNode("rect", { x: 0, y: deskSkyN(ground), width: W, height: deskSkyN(depth), fill: "url(#deskSkyFadeG)" }));
+    defs.appendChild(fade);
+    defs.appendChild(mask);
+    const mirror = row.cloneNode(true);
+    mirror.setAttribute("class", "sky-reflect-row");
+    mirror.setAttribute("transform", `matrix(1 0 0 -1 0 ${deskSkyN(2 * ground)})`);
+    mirror.querySelectorAll("a").forEach((a) => {
+      a.removeAttribute("href");
+      a.removeAttribute("aria-label");
+      a.setAttribute("tabindex", "-1");
+    });
+    const wrap = deskSkyNode("g", { class: "sky-reflect", "aria-hidden": "true", mask: "url(#deskSkyFade)" });
+    wrap.appendChild(mirror);
+    sky.insertBefore(wrap, row);
+  }
+
   function layoutDeskSky() {
     if (!deskSky) return;
     const hero = document.getElementById("deskHero");
@@ -16334,6 +16385,7 @@ async function renderMyDesk() {
       row.appendChild(a);
     });
     sky.appendChild(row);
+    deskSkyReflect(sky, defs, row, ground, W, H);
     deskSky.leader = deskSkyNode("line", { class: "sky-leader hidden", x1: 0, y1: 0, x2: 0, y2: 0 });
     sky.appendChild(deskSky.leader);
     sky.classList.remove("hidden");

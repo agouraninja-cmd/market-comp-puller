@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-10-07",
+    "type": "improvement",
+    "title": "Six market pages refreshed with current comps",
+    "details": "Industrial in Ontario, Fontana, Phoenix, Las Vegas, Dallas and Atlanta now carry October comps and a fresh momentum read, good until January 5. The rest of the market pages still read as of July and their momentum badges go blank on October 12 until they are refreshed too."
+  },
+  {
+    "date": "2026-10-07",
     "type": "fix",
     "title": "Building sizes stay on one line on Home",
     "details": "On Home’s buildings table, sizes like “12,400 SF” wrapped onto two lines on laptop-width windows, and any building of 100,000 SF or more wrapped at every window size. A 1,240,000 SF warehouse even split mid-number into “1,240,00” over “0 SF”. The size column is now wide enough for any six-figure building wherever the table is drawn, so every size reads on one line. A seven-figure building can still drop “SF” onto a second line on the narrowest windows, but its number is never split. The address column gave up the room, so the type, built, shelf and next-date columns stay exactly as they were."

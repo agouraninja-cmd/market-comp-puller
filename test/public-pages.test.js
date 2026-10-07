@@ -354,7 +354,8 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
   await t.test("the comps table arrives newest deal first, and says so on the Date header", async () => {
     // Owner's call, 2026-09-27: the Explorer's data starts sorted newest to
     // oldest. The committed seed stores this market's comps out of order
-    // (Q1 2025, Q1 2025, Jan 2026, Mar 2026, ...), so arriving sorted proves
+    // (Sep 2026, Aug 2026, Listed Jan 2026, Listed Sep 2026, ... since the
+    // 2026-10-07 refresh), so arriving sorted proves
     // the server sorted them rather than the seed happening to be in order.
     const html = await (await fetch(srv.base + MARKET_PAGE)).text();
     assert.match(html, /<th data-k="date"[^>]*aria-sort="descending"/,
@@ -371,7 +372,7 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
       assert.ok(keys[i - 1] >= keys[i], `row ${i} is newer than the row above it: ${keys.join(", ")}`);
     }
     const dates = rows.map((r) => [...r.matchAll(/<td data-s="[^"]*">([^<]*)<\/td>/g)].map((m) => m[1]));
-    assert.ok(dates[0].includes("Mar 2026"), "the newest comp (Mar 2026) must lead the table");
+    assert.ok(dates[0].includes("Sep 2026"), "the newest comp (Sep 2026) must lead the table");
   });
 
   await t.test("a signed-in visitor gets Watch and CSV instead of the owner CTA", async () => {

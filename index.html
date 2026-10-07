@@ -1718,9 +1718,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        (a 521px container; at 520 the reflow below takes over). At 1.1fr it
        was 77.7px in the 593px main column and the tag broke mid-word
        (2026-10-06). The 0.2fr came off the address, which already wraps at
-       its spaces, so Size, Built, Shelf and Next kept their exact widths. */
+       its spaces, so Size, Built, Shelf and Next kept their exact widths.
+       Size is 1.2fr so a six-figure building stays on one line: "999,999 SF"
+       measures 70.8px and 1.2 of 7.15fr is 72.7px at that same 521px floor
+       (77.7px at 1180, 84.7px from 1280). At .9fr it was 58px at 1180 and
+       64px at 1440, so "12,400 SF" wrapped to two lines below 1280 and
+       "186,500 SF" wrapped everywhere (2026-10-07). It is NOT nowrap: a
+       seven-figure size (82.2px) is allowed to drop its unit under the
+       number where it is short, rather than overflow into Built. The 0.3fr
+       came off the address again, so Type, Built, Shelf and Next kept theirs. */
     .dk-btable { container-type: inline-size; }
-    .dk-bhead, .dk-row.dk-brow { display: grid; grid-template-columns: minmax(0, 2.5fr) minmax(0, 1.3fr) minmax(0, .9fr) minmax(0, .5fr) minmax(0, .75fr) minmax(0, 1.2fr) 28px; column-gap: 10px; align-items: center; }
+    .dk-bhead, .dk-row.dk-brow { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1.2fr) minmax(0, .5fr) minmax(0, .75fr) minmax(0, 1.2fr) 28px; column-gap: 10px; align-items: center; }
     .dk-bhead.hidden { display: none; }
     .dk-bhead { padding: 0 0 6px; border-bottom: 1px solid var(--line); font-size: 10px; letter-spacing: .09em; text-transform: uppercase; font-weight: 600; color: var(--ink-3); }
     .dk-bhead .num { text-align: right; }

@@ -77,9 +77,12 @@ CLAUDE.md ("Design changes: before and after") then applies as usual.
 - **Plain English for a non-programmer.** Use short sentences and say what a
   person sees. Page copy never names a file, a class, a function or a route.
   Findings can name a URL a person can visit (e.g. /run-report).
-- Use the site's own words: Workspace, firm, Comp report, Vault, Market
-  explorer. Use its own colours, which are already the template's `:root`
-  tokens (theme.js values, light and dark), so no draft needs a second palette.
+- Use the site's own words: Home, Data, Messages, firm, Comp report, Market
+  explorer, Permit tracker, and The Board (the markets a member follows, a tab
+  on Data). CLAUDE.md's rule holds here too: "Workspace", "Vault" and
+  "Watchlist" never appear in copy, even where the code still says them. Use
+  the site's own colours, which are already the template's `:root` tokens
+  (theme.js values, light and dark), so no draft needs a second palette.
 - CLAUDE.md's copy rules hold in drafts too. We *connect you with* a local
   broker and never claim to be one. A valuation is an automated estimate, never
   an appraisal. A draft that breaks either rule is not a draft the owner can

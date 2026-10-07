@@ -2157,17 +2157,12 @@ test("a building's type is a tinted tag with the same word", async () => {
   assert.ok(typeCell(rows[2]).className.includes("empty"));
 });
 
-test("a type tag never breaks mid-word, and the Type column holds the widest one", () => {
-  // At 1.1fr the column was 77.7px in the 593px main column, the Multifamily
-  // tag is 78px, and it rendered as "Multifamil" over "y" (2026-10-06): the
-  // cell carries overflow-wrap:anywhere, right for an address, wrong for a tag.
-  const pill = html.match(/\.dk-pill \{[^}]*\}/);
-  assert.ok(pill, ".dk-pill's rule moved");
-  assert.match(pill[0], /white-space: nowrap/, "a tag is one word on a chip and must never wrap");
-
-  // Every row is its own grid, so the header and the rows line up only while
-  // each track is an fr share of one width or a fixed px. A content-sized
-  // track would give every row its own Type column.
+// The buildings grid's columns at the narrowest container it is drawn in, by
+// the browser's own arithmetic: fixed px and gaps off the top, the rest in fr
+// shares. Every row is its own grid, so the header and the rows line up only
+// while each track is an fr share of one width or a fixed px; a content-sized
+// track would give every row its own columns, and this refuses one.
+function buildingColumnsAtNarrowest() {
   const rule = html.match(/\.dk-bhead, \.dk-row\.dk-brow \{[^}]*grid-template-columns: ([^;]+); column-gap: (\d+)px/);
   assert.ok(rule, "the buildings grid's template moved");
   const tracks = rule[1].trim().split(/\s+(?![^(]*\))/);
@@ -2181,17 +2176,29 @@ test("a type tag never breaks mid-word, and the Type column holds the widest one
     if (fr) frs.push(Number(fr[1])); else fixed += Number(px[1]);
   }
   assert.equal(frs.length, 6);
-
-  // The narrowest container the grid is drawn in: one pixel past the reflow.
+  // One pixel past the reflow, which takes over at its max-width and below.
   const reflow = html.match(/\.dk-btable \{ container-type: inline-size; \}[\s\S]*?@container \(max-width: (\d+)px\)/);
   assert.ok(reflow, "the buildings table's reflow query moved");
   const narrowest = Number(reflow[1]) + 1;
   const perFr = (narrowest - fixed - Number(rule[2]) * (tracks.length - 1)) / frs.reduce((a, b) => a + b, 0);
+  const [address, type, size, built, shelf, next] = frs.map((f) => f * perFr);
+  return { narrowest, address, type, size, built, shelf, next };
+}
+
+test("a type tag never breaks mid-word, and the Type column holds the widest one", () => {
+  // At 1.1fr the column was 77.7px in the 593px main column, the Multifamily
+  // tag is 78px, and it rendered as "Multifamil" over "y" (2026-10-06): the
+  // cell carries overflow-wrap:anywhere, right for an address, wrong for a tag.
+  const pill = html.match(/\.dk-pill \{[^}]*\}/);
+  assert.ok(pill, ".dk-pill's rule moved");
+  assert.match(pill[0], /white-space: nowrap/, "a tag is one word on a chip and must never wrap");
+
+  const cols = buildingColumnsAtNarrowest();
   // "Multifamily" at 11.5px/600 plus 16px of padding, measured in Chrome on
   // the seeded Home page (Residential is 77.2px, Industrial 68.1px).
   const WIDEST_TAG_PX = 78;
-  assert.ok(frs[1] * perFr >= WIDEST_TAG_PX,
-    `the Type column is ${(frs[1] * perFr).toFixed(1)}px at a ${narrowest}px container; the widest tag needs ${WIDEST_TAG_PX}px`);
+  assert.ok(cols.type >= WIDEST_TAG_PX,
+    `the Type column is ${cols.type.toFixed(1)}px at a ${cols.narrowest}px container; the widest tag needs ${WIDEST_TAG_PX}px`);
 
   // The measurement holds only for the words it measured. A longer type name
   // means measuring again rather than trusting the number above.
@@ -2200,6 +2207,39 @@ test("a type tag never breaks mid-word, and the Type column holds the widest one
   for (const [, word] of tones[1].matchAll(/(\w[\w-]*):/g)) {
     assert.ok(word.length <= "Multifamily".length,
       `"${word}" is longer than Multifamily; re-measure WIDEST_TAG_PX and the Type column`);
+  }
+});
+
+test("a six-figure building size stays on one line wherever the grid is drawn", () => {
+  // At .9fr the Size column was 58px at 1180 and 64px at 1440, so "12,400 SF"
+  // wrapped to two lines below 1280 and every 100,000 SF building wrapped at
+  // every width (2026-10-07). Industrial boards are full of those.
+  const cols = buildingColumnsAtNarrowest();
+  // "999,999 SF" at the cell's 12.5px, measured in Chrome on the seeded Home
+  // page ("64,000 SF" is 62.6px, "1,250,000 SF" 82.2px). Any six digits
+  // measure the same only because the cell sets tabular figures.
+  const SIX_FIGURE_SIZE_PX = 70.8;
+  assert.ok(cols.size >= SIX_FIGURE_SIZE_PX,
+    `the Size column is ${cols.size.toFixed(1)}px at a ${cols.narrowest}px container; "999,999 SF" needs ${SIX_FIGURE_SIZE_PX}px`);
+  const cell = html.match(/\.dk-brow > \.dk-bc \{[^}]*\}/);
+  assert.ok(cell, "the buildings cell rule moved");
+  assert.match(cell[0], /font-variant-numeric: tabular-nums/,
+    "without tabular figures a six-digit size's width depends on its digits, and the measurement above means nothing");
+  // ...and only for the text it measured: the number, a space, then the unit.
+  assert.ok(html.includes('cell("size", b.sizeSqft ? `${Number(b.sizeSqft).toLocaleString("en-US")} SF` : "", true)'),
+    "the size cell's text changed shape; re-measure SIX_FIGURE_SIZE_PX and the Size column");
+
+  // Seven figures are allowed to drop their unit under the number where the
+  // column is short. A nowrap here would push "1,240,000 SF" across Built.
+  assert.ok(!/white-space/.test(cell[0]),
+    "every buildings cell sets white-space now; a Size cell that cannot wrap overflows into Built");
+  // The style block writes one rule per line, so a line scan finds them all.
+  const style = html.slice(0, html.indexOf("</style>"));
+  const sizeRules = style.split("\n").filter((l) => l.includes(".dk-bc-size") && l.includes("{"));
+  assert.ok(sizeRules.length > 0, "no rule names the Size cell any more");
+  for (const line of sizeRules) {
+    assert.ok(!/white-space/.test(line),
+      `${line.trim()} sets white-space; a Size cell that cannot wrap overflows into Built`);
   }
 });
 

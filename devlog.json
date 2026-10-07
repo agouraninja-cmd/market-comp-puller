@@ -2,6 +2,12 @@
   {
     "date": "2026-10-06",
     "type": "improvement",
+    "title": "An empty firm’s banner shows the towers to come more clearly",
+    "details": "While a firm has no buildings yet, the far-off city on Home’s banner steps back, so the dashed outlines of the towers to come stand out in front of it. It returns to full strength with the first building."
+  },
+  {
+    "date": "2026-10-06",
+    "type": "improvement",
     "title": "The city behind your skyline matches your buildings",
     "details": "The far-off city behind your firm’s buildings on Home was a flat grey silhouette and did not match the solid buildings in front. It is redrawn in the same style (stepped tops, sawtooth roofs, water tanks and the same edge light), hazier so it reads as farther away, and tinted for morning, afternoon and evening. In the evening a few of its windows are lit."
   },

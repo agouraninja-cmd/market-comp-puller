@@ -359,7 +359,7 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     ["Ten-year lookback", "Free reports look back three years. Pro widens the search to ten."],
     ["Your branding", "Reports go out under your firm’s name, with unlimited exports."],
     ["Verified credit", "Publish a comp and it carries your firm’s name on every report that uses it."],
-    ["Deal board", "Counts what each member contributed to the shelf, not who is closing what."],
+    ["Firm activity", "Counts what each member contributed to the shelf, not who is closing what."],
     ["Owner introductions", "When an owner in a market you watch asks for a BOV, we make the introduction by hand."],
   ].map(([lab, p]) =>
     `<div><div class="hmtlab">${esc(lab)}</div><div class="hmtp">${esc(p)}</div></div>`).join("");

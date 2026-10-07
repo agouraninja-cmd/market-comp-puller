@@ -65,7 +65,7 @@ struct AccountView: View {
                 }
                 .disabled(deleting)
             } footer: {
-                Text("Permanently deletes your account, your saved properties and your watchlist, and removes every report saved on this iPhone. This cannot be undone.")
+                Text("Permanently deletes your account, your saved properties and The Board, and removes every report saved on this iPhone. This cannot be undone.")
             }
 
             if let errorMessage {
@@ -76,7 +76,7 @@ struct AccountView: View {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) { runDelete() }
         } message: {
-            Text("Your account, saved properties and watchlist are deleted from CompNinja, and the reports saved on this iPhone are removed. This cannot be undone.")
+            Text("Your account, saved properties and The Board are deleted from CompNinja, and the reports saved on this iPhone are removed. This cannot be undone.")
         }
     }
 

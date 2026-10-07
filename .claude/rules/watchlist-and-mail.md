@@ -9,6 +9,17 @@ paths:
 ---
 # Outbound mail, leads and the watchlist
 
+> **Customers call the watchlist "The Board"** (2026-10-06, the owner's call,
+> from a partner's idea of a board of properties you are pursuing). Every
+> customer-facing string says The Board: the Data tab (`/vault#board`;
+> `#watchlist` still opens it), the digest email and its unsubscribe page, the
+> settings toggle, the market pages' "Add to The Board" button. The code, the
+> routes (`/api/watchlist*`, `/watchlist/unsubscribe`), the `watchlist_items`
+> table, event names and this file keep "watchlist" — renaming them buys
+> nothing and breaks every link already in somebody's inbox. The digest's
+> link now goes to `/vault#board`; it pointed at `/desk` after the markets
+> moved to Data on 2026-09-01.
+
 > Moved verbatim from CLAUDE.md on 2026-09-25. Claude Code loads this file
 > when it opens a file matching `paths` above; read it by hand before changing
 > this area's code in `server.js`. The never-break rules stay in CLAUDE.md.

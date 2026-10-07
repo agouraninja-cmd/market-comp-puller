@@ -55,7 +55,7 @@ test("subject lines", async (t) => {
       item({ new_count: 2 }),
       item({ market: "Meridian, ID", property_type: "Office", new_count: 1 }),
     ]);
-    assert.equal(out.subject, "3 new comps across 2 markets you watch");
+    assert.equal(out.subject, "3 new comps across 2 markets on The Board");
   });
 
   await t.test("markets with no news are excluded from the subject's count", () => {
@@ -164,7 +164,7 @@ test("every digest discloses why it arrived, how to stop it, and what the figure
     // Months after adding a market, "why am I getting this" is a real
     // question, and one sentence carrying both facts reads as a marketing
     // footer and gets skimmed.
-    assert.match(out.text, /because you added these markets to your CompNinja watchlist/);
+    assert.match(out.text, /because you added these markets to The Board on CompNinja/);
     assert.match(out.text, /Turn these emails off: https:\/\/compninja\.co\/u\?t=abc/);
   });
 

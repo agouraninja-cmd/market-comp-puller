@@ -126,7 +126,7 @@ function subjectFor(items) {
   if (news.length === 1) {
     return total + " new " + plural(total, "comp") + " in " + news[0].market;
   }
-  return total + " new " + plural(total, "comp") + " across " + news.length + " markets you watch";
+  return total + " new " + plural(total, "comp") + " across " + news.length + " markets on The Board";
 }
 
 // Builds the whole email, or returns null when there is nothing worth
@@ -141,17 +141,17 @@ function buildDigest({ items, deskUrl, unsubscribeUrl }) {
   const news = items.filter(hasNews);
 
   const body = [
-    "New comps landed in " + (news.length === 1 ? "a market" : news.length + " markets") + " you watch.",
+    "New comps landed in " + (news.length === 1 ? "a market" : news.length + " markets") + " on The Board.",
     "",
     news.map(marketBlock).join("\n\n"),
     "",
-    "See them all in your desk: " + deskUrl,
+    "See them all on The Board: " + deskUrl,
     "",
     // Two separate facts, and the reader needs both: WHY this arrived (they
     // asked for it, which is not obvious months later) and HOW to stop it.
     // Never one sentence — "you subscribed, unsubscribe here" reads as a
     // marketing footer and gets skimmed past.
-    "You are receiving this because you added these markets to your CompNinja watchlist.",
+    "You are receiving this because you added these markets to The Board on CompNinja.",
     "Turn these emails off: " + unsubscribeUrl,
     "",
     "Comp figures are automated estimates drawn from public records and listings, never an appraisal.",

@@ -244,8 +244,8 @@ test("the callout says what is due, what is new and what is on the shelf, in pla
   assert.equal(c.due, "Option notice for Acme Logistics in 41 days");
   assert.equal(c.fresh, "New this month, added by you");
   assert.equal(c.meta, "2 reports this month");
-  assert.equal(c.facts, `Industrial · 24,000 SF · on the board since ${SKY.shortDate(daysAgo(2))}`);
-  assert.match(SKY.labelFor(t), /^3275 S Federal Way\. Industrial · 24,000 SF · on the board since [A-Z][a-z]{2} \d{1,2}\. Option notice for Acme Logistics in 41 days\. New this month, added by you\. 2 reports this month\.$/);
+  assert.equal(c.facts, `Industrial · 24,000 SF · added ${SKY.shortDate(daysAgo(2))}`);
+  assert.match(SKY.labelFor(t), /^3275 S Federal Way\. Industrial · 24,000 SF · added [A-Z][a-z]{2} \d{1,2}\. Option notice for Acme Logistics in 41 days\. New this month, added by you\. 2 reports this month\.$/);
   const [q] = SKY.towersFor({ now: NOW, buildings: [B({ sizeSqft: null, addedBy: "" })],
     critical: [{ buildingId: "b1", kind: "expiry", tenant: "", days: 1 }] });
   const d = SKY.calloutFor(q);

@@ -314,7 +314,7 @@ function renderBrokersFirmsPageBody({
   const ledger = [
     ["Yours", "Your own work stays yours",
      "Colleagues see what somebody shares, and nothing else. Your reports, portfolio and " +
-     "watchlist never land on the shelf on their own."],
+     "The Board never land on the shelf on their own."],
     ["Never retroactive", "Sharing only applies going forward",
      "Turn on automatic sharing and it covers new reports only, never work already run. Your " +
      "own setting beats the firm&#39;s either way."],
@@ -437,7 +437,7 @@ function renderBrokersFirmsPageBody({
     `branding on them.</p></div>` +
     `<div class="bfplan firm"><div class="k">Firm &middot; every seat gets Pro</div>` +
     `<div class="f">$${pricing.firmSeat}<span> / seat, min. ${minSeats}</span></div>` +
-    `<p>Everything in Pro, plus the shelf and the deal board. Whoever owns the account holds ` +
+    `<p>Everything in Pro, plus the shelf and Firm activity. Whoever owns the account holds ` +
     `billing and can add or drop seats any time.</p></div>` +
     `</div></div>` +
 

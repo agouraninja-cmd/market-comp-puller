@@ -152,7 +152,7 @@ test("no heading collides with the two market-ish ones this page already had", (
   // headings on one screen meaning different things.
   const labels = [...html.matchAll(/<span class="dlab">([^<]+)</g)].map((m) => m[1]);
   assert.equal(new Set(labels).size, labels.length, `duplicate deck labels: ${labels}`);
-  assert.ok(labels.includes("Your watchlist"), "the watchlist deck lost its name");
+  assert.ok(labels.includes("The Board"), "The Board deck (the watchlist) lost its name");
   assert.ok(!labels.includes("Your markets"),
     "'Your markets' is #rollupSec's h2 — a deck by that name is a collision");
 });

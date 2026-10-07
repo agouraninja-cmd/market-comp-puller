@@ -18,6 +18,12 @@ Estimate). Signed-in members move between **Home** (the firm's shared space, `/d
 and **Data** (their own private comps, `/vault`) — the customer-facing names
 since 2026-10-04; code, routes and the rules files still say "desk"/"workspace"
 and "vault", and copy must never say "Workspace" or "Vault" again.
+The markets a member follows are **The Board** in copy since 2026-10-06
+(the Data tab, the digest email, settings, the market pages' button); code,
+routes, tables and `watchlist-digest.js` still say "watchlist", and copy
+must never say "Watchlist" again. "The board" is now that one thing, so the
+firm's buildings on Home are "buildings", never "the board", and Home's old
+"Deal board" card is **Firm activity**.
 There is deliberately **no mode toggle** — an earlier owner-mode /
 comps-mode split was merged (commit 87095aa); `#owner` survives only as a
 deep link that pre-opens the property-details section. The hero carries a

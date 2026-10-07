@@ -19,6 +19,11 @@ paths:
 > nothing and breaks every link already in somebody's inbox. The digest's
 > link now goes to `/vault#board`; it pointed at `/desk` after the markets
 > moved to Data on 2026-09-01.
+>
+> **Since 2026-10-07 The Board also holds the deal wall** (vault.md, "The
+> Board's deal wall"): each market is a tile with a computed buying read, and
+> `buildWatchlistFeed` items carry the market page's fresh `direction` for
+> it. The digest ignores that key, as it ignores `market_page`.
 
 > Moved verbatim from CLAUDE.md on 2026-09-25. Claude Code loads this file
 > when it opens a file matching `paths` above; read it by hand before changing

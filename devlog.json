@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-10-06",
+    "type": "improvement",
+    "title": "Home’s banner has a city behind your skyline",
+    "details": "The sky behind your firm’s buildings on Home now has a faint far-off city along the horizon, so your buildings stand in front of a city instead of in an empty field. In the evening a few of its windows light up and stars come out. Your own buildings, their lights and the red date markers work exactly as before."
+  },
+  {
     "date": "2026-10-04",
     "type": "improvement",
     "title": "Workspace is now Home, and the Vault is now Data",

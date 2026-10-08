@@ -11357,7 +11357,7 @@ function authBoot(signedIn) {
 //   DESK_BOOT_MAX_BODY, keyed by the exact URL string the client will ask
 //   for. The org-scoped set is keyed by the firm the SESSION resolves to
 //   in-process (activeMembershipsFor — two cached-or-cheap reads), so every
-//   URL goes out in ONE wave rather than the firm's six waiting on
+//   URL goes out in ONE wave rather than the firm's reads waiting on
 //   /api/org's ~8 round trips. That hint decides only which URL STRINGS to
 //   prefetch, never access: the routes still enforce membership, and if the
 //   hint ever named a different firm than /api/org's `orgs[0]` the keys
@@ -11386,14 +11386,11 @@ const DESK_BOOT_URLS = [
 ];
 const DESK_BOOT_ORG_URLS = (id) => [
   `/api/org/members?id=${id}`, `/api/org/buildings?id=${id}`, "/api/messages",
-  `/api/org/board?id=${id}`, `/api/org/shelf?id=${id}`, `/api/org/contacts?id=${id}`,
-  // The firm strip's critical-dates cell (2026-09-04) — the one read the
-  // workspace makes that no section below it already makes.
+  `/api/org/shelf?id=${id}`, `/api/org/contacts?id=${id}`,
+  // The firm's lease dates (2026-09-04): Home's Today and its map.
   `/api/org/leases?id=${id}`,
-  // Your permits (2026-09-24): filings at the firm's own buildings. A firm
-  // with no building in a swept city answers `permits: null` off the board
-  // read alone.
-  `/api/org/permits?id=${id}`,
+  // /api/org/board (the deal board) and /api/org/permits (Your permits) left
+  // this list on 2026-10-07 with the old Home sections that read them.
 ];
 async function deskBootPayload(req) {
   if (!parseCookies(req)[SESSION_COOKIE]) return null;
@@ -30804,13 +30801,8 @@ const server = http.createServer((req, res) =>
     // same function the market pages read, so the browser copy must never be
     // stale relative to the page that calls it.
     "/market-snapshot.js": { file: "market-snapshot.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
-    // And again: the Workspace banner draws the firm's skyline through the
-    // global SKYLINE, so the browser copy must never be stale relative to the
-    // page that calls it (the page degrades to the city photograph without
-    // it, but a STALE copy would draw yesterday's rule).
-    "/firm-skyline.js": { file: "firm-skyline.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // Home as one map (2026-10-07): the rules for its lists, through the
-    // global HOMEMAP. Same reason as the two above: never stale against the
+    // global HOMEMAP. Same reason as the ones above: never stale against the
     // page that calls it.
     "/home-map.js": { file: "home-map.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // The desktop/mobile install identity (PWA). Users "download" the app

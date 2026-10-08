@@ -1,12 +1,10 @@
 ---
 paths:
   - "index.html"
-  - "firm-skyline.js"
   - "home-map.js"
   - "test/home-map.test.js"
   - "test/org-desk.test.js"
   - "test/desk-*.test.js"
-  - "test/firm-skyline.test.js"
   - "test/auth-boot.test.js"
 ---
 # The signed-in workspace
@@ -26,8 +24,10 @@ paths:
 > member's Home is ONE screen: a list on the left with tabs (Today,
 > Properties, Comps, Reports, People) and every property on a map on the
 > right. Read this before anything below: most of the sections the notes
-> describe (the skyline banner, the figure cards, Needs you, the two columns)
-> are HIDDEN on Home now, though their writers still run.
+> describe (the skyline banner, the figure cards, Needs you, the two columns,
+> the buildings table, the deal board, Your permits, the no-firm start cards)
+> were DELETED on 2026-10-07 — see "The old Home, deleted" at the end of this
+> box for what of them survives.
 > - **`#homeMap`** is the first child of `#myDesk`, so the one-paint hold
 >   covers it. `drawHomeMap()` is its one writer; it draws only from what the
 >   desk already parsed (`firmBuildings`, `deskCritical`, `deskThreadsStat`,
@@ -64,9 +64,8 @@ paths:
 >   "Start a firm" and "One of the firm's buildings" showed to members they
 >   did not apply to.
 > - **`html.hm-page`** is written by `markNavCurrent()` alone (a member's
->   Home showing): the content container loses its gutter, the footer hides
->   (the legal line is at the foot of the list), and the old banner, figure
->   cards, agenda and columns are `display:none`. At 900px and up under
+>   Home showing): the content container loses its gutter and the footer
+>   hides (the legal line is at the foot of the list). At 900px and up under
 >   `nav-rail` the list and map share the viewport; below, or in the bar
 >   shell, the map is a 300px strip above the list and the page scrolls.
 > - **Tabs are the URL fragment** (`#properties`, `#comps`, `#reports`,
@@ -102,14 +101,34 @@ paths:
 >   `/markets` carries a `.mboard` band for a signed-in member only (the
 >   anonymous page is publicly cached), and a market page's "Add to The
 >   Board" has "Open The Board →" under it.
-> - **Still to do before this ships (2026-10-07):** delete what Home hides
->   (the banner and skyline: `#deskHero`, `drawDeskSky`/`drawDeskHome`/
->   `resetDeskHero`, `firm-skyline.js` and its test; `#deskStrip`,
->   `#deskAgenda`, `#deskCritical`, `#deskThreads`, `#deskDealBoard`,
->   `#deskPermits`, the buildings table and the old skeleton) and the
->   org-desk tests that pin them; and the comp report's own "Your property" /
->   "Comps used" labels, left out because that page feeds the PNG, print and
->   PowerPoint exports.
+> - **The old Home, deleted (2026-10-07; it was hidden under `html.hm-page`
+>   for the day Draft C shipped).** Gone from index.html with their CSS and
+>   tests: the banner and skyline (`#deskHero`, `drawDeskSky`,
+>   `drawDeskHome`, `resetDeskHero`, `firm-skyline.js` and its test, its
+>   STATIC_FILES entry), the old find box (`renderDeskFind`), the figure
+>   cards (`#deskStrip`, `drawFirmStrip`), Needs you and the dates card
+>   (`#deskAgenda`, `#deskCritical`, `drawAgenda`), the decks and columns
+>   (`.dk-cols`, `[data-deck]`, `refreshDeckVisibility`), the buildings
+>   table, Conversations' rows, the deal board (`renderDealBoard`), Your
+>   permits (`renderYourPermits`), the no-firm start cards
+>   (`renderFirmEmpty`, `syncStartCards`) and the skeleton's old parts.
+>   `/api/org/board` and `/api/org/permits` left `DESK_BOOT_ORG_URLS`
+>   (nothing reads them now; the routes and their route tests were left in
+>   place, unused by any page). What SURVIVES, because `drawHomeMap` reads it: the
+>   reads, now DOM-free — `readFirmBuildings()` (was renderBuildings; fills
+>   `firmBuildings` and syncs the shelf's "Add to firm" doors),
+>   `renderDeskThreads()` (fills `deskThreadsStat` only), and
+>   `readFirmCritical()`, whose answer `renderShares` stores in
+>   `deskCritical` after the batch. `deskGreetingFor`, `drawDeskClock`
+>   (writes `#hmTitle`/`#hmDay` and re-arms at noon, 5pm and midnight) and
+>   `stopDeskClock` (hideAll's call) are the greeting. `#deskAvatarFile`
+>   (the photo pipeline's input) moved out of the banner to the top of
+>   `#deskView`. An add from the firm-building form or a shelf row's door
+>   now goes through `refreshFirmBuildings()`, which redraws the map, so a
+>   new building shows in Properties at once (before, only after a reload).
+>   Everything below that describes the deleted sections is history.
+> - **Done:** the comp report's own "Your property" / "Comps Used" labels
+>   shipped in #387 (report-and-valuation.md).
 
 > Moved verbatim from CLAUDE.md on 2026-09-25. Claude Code loads this file
 > when it opens a file matching `paths` above; read it by hand before changing
@@ -147,6 +166,7 @@ paths:
   and Buildings stays first. Recorded for later, not built: a `/firm/contacts`
   page for the fold's "See all". (The firm-level "needs attention" band that
   sat in this sentence shipped on 2026-09-04 as the strip below.)
+  > **Retired 2026-10-07** — the strip, the buildings table and its add toggle, and the deal board described here were deleted with the old Home; the `.dk-row` family, plain-ink addresses and the closed add forms survive.
   **The Ledger pass (2026-09-04; owner's pick from a two-direction design
   canvas, "match /bulk and /vault").** Photographed populated with a seeded
   firm — `test/helpers/fake-supabase.js` behind a CDP capture with a
@@ -190,6 +210,7 @@ paths:
     `.dk-copy`/`.dk-empty`/`.dk-msg` (token colours — the hexes were those
     tokens' exact light values, so light mode did not move).
   The rail's 224px sidebar and the phone bar are unchanged.
+  > **Retired 2026-10-07** — the agenda, the columns, the buildings table and the head's find box were deleted with the old Home.
   **Draft 1: two columns (2026-09-24; the owner's pick from the workspace
   redesign canvas).** The single 3,300px column became a top row and two
   columns; every section kept its id and its own writer. Test-pinned in
@@ -225,6 +246,7 @@ paths:
     eight shown), `firmShelfItems` and `firmContacts` in the browser, terms
     ANDed. It asks the server nothing. Everything new hides in
     `renderShares`' `hideAll`.
+  > **Retired 2026-10-07** — the banner, its photograph, the figure cards and the start cards were deleted with the old Home (`/api/org/buildings` still sends `home`; nothing on Home reads it). The greeting and its clock survive over Home's list.
   **Draft C: your city, pictured (2026-09-25; the owner's pick from three
   drafts — the comparison page and the prototypes are in
   `docs/designs/2026-09-25-workspace-drafts/`).** The Workspace read as
@@ -302,6 +324,7 @@ paths:
   strip's icons, the side cards' head icons, the previews and the
   buildings' type tags, `TYPE_TONES`), so dark mode needed nothing of its
   own. No new Tailwind utility — everything is in the style block.
+  > **Retired 2026-10-07** — the skyline, `firm-skyline.js` and `test/firm-skyline.test.js` were deleted with the old Home.
   **The firm's skyline (2026-09-25 evening; the owner's pick, Draft B of the
   banner drafts at https://claude.ai/artifact/Ef7zJpN17C3wXg5xaakWCZ).** The
   city photograph was the same picture every day, and only ~30 cities have
@@ -449,7 +472,8 @@ paths:
   member into). A report and the deal room opened from it sat under two of
   those headings with the same address on both, and a firm share showed twice
   (on the shelf, and in the table under a "Shared with <firm>" chip). Now
-  `#deskSharing` in `#deckSharing` is one "Sharing" section with three tabs.
+  `#deskSharing` is one "Sharing" section with three tabs (Home's Reports tab
+  since 2026-10-07; `#deckSharing` went with the decks).
   Rules, all tested (`test/org-desk.test.js`'s last block,
   `test/sharing-card-run.test.js`, the deal-room tests in
   `test/index-html.test.js`):
@@ -464,8 +488,8 @@ paths:
     `firmShelfItems`, which is declared far below.
   - **Default tab**: the shelf for a member of a firm; else Sent to you when
     anything was sent; else Your links. A tab the member picked stays picked
-    across re-renders until its pane goes away. The strip's Shelf link
-    (`href="#deskSharedWithFirm"`) opens the shelf tab before it scrolls.
+    across re-renders until its pane goes away. (The strip's Shelf link that
+    opened the shelf tab went with the strip on 2026-10-07.)
   - **Sent to you merges** (`mergeShareInbox`, pure): a deal room joins the
     row of a report when the addresses match (case and punctuation aside) and
     the senders do not disagree. A room alone gets its own row, titled by the

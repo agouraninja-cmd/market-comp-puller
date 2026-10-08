@@ -653,8 +653,10 @@ const ITEM = (o) => Object.assign({
 }, o);
 
 // ---------------------------------------------------------------------------
-// The firm's buildings (migration 046, Three Spaces slice 3) — the deck's
-// index. Presentation only; org-buildings.js decides what may be stored.
+// The firm's buildings (migration 046, Three Spaces slice 3). Presentation
+// only; org-buildings.js decides what may be stored. Since 2026-10-07 the
+// list draws on Home's map rather than in a table of its own, so these tests
+// pin the READ (firmBuildings), the add form and the "Add to firm" doors.
 // ---------------------------------------------------------------------------
 const BUILDINGS_RE = /  let firmBuildings = \[\];[\s\S]*?\n  document\.getElementById\("buildingAddForm"\)\.addEventListener\("submit"[\s\S]*?\n  \}\);/;
 function loadBuildings(opts) {
@@ -662,22 +664,16 @@ function loadBuildings(opts) {
   const routes = [["/api/org/buildings", o.route || { status: o.status || 200, body: o.body }]];
   const fetch = makeFetch(routes);
   const ctx = load(BUILDINGS_RE,
-    "this.render = renderBuildings; this.door = buildingDoor; this.onBoard = buildingOnBoard;" +
+    "this.read = readFirmBuildings; this.door = buildingDoor; this.onBoard = buildingOnBoard;" +
     " this.list = () => firmBuildings; this.setFirmKnown = (v) => { __firmKnown = v; };" +
-    " this.setOpen = setBuildingAddOpen;" +
-    // The table's two borrowed columns (Draft 1): the shelf count and the
-    // next lease date, read from state other sections parsed.
-    " this.setCritical = (c) => { deskCritical = c; }; this.decorate = decorateBuildingRows;",
+    " this.setOpen = setBuildingAddOpen; this.drawn = () => __drawn;",
     // myFirm() answers null until renderFirm has resolved the membership on a
-    // real page; __firmKnown lets a test model that cold-load beat.
-    // COLLAPSE_AT is the desk's own threshold (index.html:~11860), stubbed
-    // at the value the source pins below. firmShelfItems is the shelf's own
-    // module-level list, declared above this slice on the real page.
+    // real page; __firmKnown lets a test model that cold-load beat. Home's
+    // map is the list's one drawer now; counted, not drawn, here.
     "let currentUser = __user; let __firmKnown = true; function myFirm() { return __firmKnown ? __firm : null; }\n" +
-    "const COLLAPSE_AT = 8; let firmShelfItems = __shelf;",
+    "let __drawn = 0; function drawHomeMap() { __drawn++; }",
     { fetch, __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
-      __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm,
-      __shelf: o.shelf || [] });
+      __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm });
   ctx.fetchLog = fetch.log;
   return ctx;
 }
@@ -687,131 +683,39 @@ const BLDG = (o) => Object.assign({
   addedBy: "Mike", mine: false, createdAt: "2026-09-01T00:00:00Z", updatedAt: "2026-09-01T00:00:00Z",
 }, o);
 
-test("the buildings section states the server's count for the whole set and attributes each row", async () => {
+test("the firm's buildings are read whole, once, for Home's map", async () => {
   const ctx = loadBuildings({ body: {
     summary: "2 buildings · 2 Industrial", truncated: false,
-    buildings: [BLDG({}), BLDG({ id: "b2", address: "7 Linder Rd, Meridian, ID", mine: true, addedBy: "Brad", sizeSqft: null, yearBuilt: null })],
+    buildings: [BLDG({}), BLDG({ id: "b2", address: "7 Linder Rd, Meridian, ID" })],
   } });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("deskBuildings"), false);
-  assert.equal(ctx.dom.text("buildingsStats"), "2 buildings · 2 Industrial", "the line is the server's, never recomputed here");
-  assert.equal(ctx.dom.hidden("buildingsEmpty"), true);
-  assert.equal(ctx.dom.hidden("buildingsTruncated"), true);
-  const text = ctx.dom.text("buildingRows");
-  assert.match(text, /500 Warehouse Way, Boise, ID/);
-  assert.match(text, /7 Linder Rd, Meridian, ID/);
-  assert.match(text, /added by you/, "your own row reads 'you', the shelf's rule");
-  assert.doesNotMatch(text, /added by Brad/);
-  // A table since Draft 1: each figure is its own cell, in column order.
-  const cells = (row) => row.children.filter((c) => /\bdk-bc\b/.test(c.className)).map((c) => c.textContent);
-  const [first, second] = ctx.dom.el("buildingRows").children;
-  assert.equal(first.children[1].textContent, "added by Mike");
-  assert.deepEqual(cells(first), ["Industrial", "40,000 SF", "1994", "—", "—"]);
-  assert.deepEqual(cells(second), ["Industrial", "—", "—", "—", "—"], "a blank figure is a dash, never a zero");
-  assert.equal(ctx.dom.hidden("buildingsHead"), false, "the column header shows with the rows");
-  assert.equal(buttons(ctx.dom.el("buildingRows")).length, 2, "a Remove per row");
-});
-
-// Draft 1 (2026-09-24): the one destructive verb moved behind ⋯, and the
-// two columns Buildings cannot fill itself come from state other sections
-// already parsed — never a fetch of their own.
-test("Remove sits in the row's menu, beside a way to the sheet, not on the row", async () => {
-  const ctx = loadBuildings({ body: { summary: "1 building", truncated: false, buildings: [BLDG({})] } });
-  await ctx.render();
-  const row = ctx.dom.el("buildingRows").children[0];
-  const menu = row.children[row.children.length - 1];
-  assert.equal(menu.tagName, "DETAILS", "the last cell is the ⋯ menu");
-  assert.equal(menu.className, "dk-menu");
-  assert.match(menu.children[0].getAttribute("aria-label"), /^More for 500 Warehouse Way/, "the knob names its row for a screen reader");
-  const pop = menu.children[1];
-  assert.equal(pop.children[0].href, "/building/b1");
-  assert.equal(pop.children[1].tagName, "BUTTON");
-  assert.equal(pop.children[1].textContent, "Remove from the firm");
-  assert.ok(!row.children.some((c) => c.tagName === "BUTTON"), "no button sits on the row itself");
-});
-
-test("the shelf and next-date columns are read from the shelf and the leases, and can only under-count", async () => {
-  const ctx = loadBuildings({
-    body: { summary: "2 buildings", truncated: false, buildings: [
-      BLDG({}), BLDG({ id: "b2", address: "7 Linder Rd, Meridian, ID" })] },
-    shelf: [
-      { address: "500 WAREHOUSE WAY, Boise, ID " }, { address: "500 Warehouse Way, Boise, ID" },
-      { address: "500 Warehouse Way Boise ID" },   // typed another way: missed, never guessed
-    ],
-  });
-  await ctx.render();
-  const cell = (i, cls) => ctx.dom.el("buildingRows").children[i].children.find((c) => c.className.includes("dk-bc-" + cls));
-  assert.equal(cell(0, "shelf").textContent, "2 reports", "the exact address, whatever its case or padding");
-  assert.equal(cell(1, "shelf").textContent, "—");
-  assert.equal(cell(0, "next").textContent, "—", "no leases read yet");
-  ctx.setCritical([
-    { buildingId: "b2", kind: "notice", date: "2026-11-04", days: 41, tenant: "Acme" },
-    { buildingId: "b2", kind: "expiry", date: "2027-02-01", days: 130, tenant: "Acme" },
-    { buildingId: "b1", kind: "expiry", date: "2027-07-21", days: 300, tenant: "Dental" },
-  ]);
-  ctx.decorate();
-  assert.match(cell(1, "next").textContent, /^Notice Nov 4/, "the soonest date is the next date");
-  assert.ok(cell(1, "next").classList.contains("due"), "inside ninety days it is the red figure");
-  assert.match(cell(0, "next").textContent, new RegExp("^Expires Jul 21" + (new Date().getUTCFullYear() === 2027 ? "$" : ", 2027$")),
-    "a date in another year says the year");
-  assert.ok(!cell(0, "next").classList.contains("due"));
+  await ctx.read();
+  assert.deepEqual(ctx.list().map((b) => b.id), ["b1", "b2"]);
   assert.equal(ctx.fetchLog.length, 1, "one read of its own route, and nothing else");
+  assert.equal(ctx.fetchLog[0].url, "/api/org/buildings?id=o1");
 });
 
-// The owner's overflow rule (slice 4): eight rows, then one control.
-test("past eight buildings the desk shows eight and one link to the whole list", async () => {
-  const twelve = Array.from({ length: 12 }, (_, i) => BLDG({ id: "b" + i, address: (i + 1) * 100 + " Cap St, Boise, ID" }));
-  const ctx = loadBuildings({ body: { summary: "12 buildings · 12 Industrial", truncated: false, buildings: twelve } });
-  await ctx.render();
-  assert.equal(buttons(ctx.dom.el("buildingRows")).length, 8, "eight rows, most recent first");
-  assert.match(ctx.dom.text("buildingRows"), /100 Cap St/);
-  assert.doesNotMatch(ctx.dom.text("buildingRows"), /900 Cap St/, "the ninth is behind the link");
-  assert.equal(ctx.dom.text("buildingsStats"), "12 buildings · 12 Industrial", "the count line still describes the whole set");
-  assert.equal(ctx.dom.hidden("buildingsMore"), false);
-  assert.equal(ctx.dom.text("buildingsMoreLink"), "See all 12 buildings →");
-});
-
-test("at eight or fewer the link does not render at all", async () => {
-  const eight = Array.from({ length: 8 }, (_, i) => BLDG({ id: "b" + i, address: (i + 1) * 100 + " Cap St, Boise, ID" }));
-  const ctx = loadBuildings({ body: { summary: "8 buildings", truncated: false, buildings: eight } });
-  await ctx.render();
-  assert.equal(buttons(ctx.dom.el("buildingRows")).length, 8);
-  assert.equal(ctx.dom.hidden("buildingsMore"), true, "a control that can only be a no-op never renders");
-});
-
-// The Ledger redesign (2026-09-04): the add form ships closed behind one
-// control, the Contacts rule applied to the section that never got it.
-test("the buildings add form ships closed behind one control, with one writer", () => {
+// The add form moved into Home's Properties tab (2026-10-07), behind "Add a
+// property" → "One of the firm's buildings". It still ships closed, and
+// setBuildingAddOpen is still its one writer.
+test("the buildings add form ships closed, with one writer, behind Home's chooser", () => {
   assert.match(html, /id="buildingAddForm" class="hidden /, "the form ships hidden — the vault's #addSec rule");
-  assert.match(html, /id="buildingAddToggle" aria-expanded="false" aria-controls="buildingAddForm"/);
   assert.equal((html.match(/getElementById\("buildingAddForm"\)\.classList/g) || []).length, 1,
     "setBuildingAddOpen is the single writer of the form's visibility");
+  assert.match(html, /getElementById\("hmAddFirm"\)\.addEventListener\("click", \(\) => \{[\s\S]{0,300}setBuildingAddOpen\(true\);/,
+    "the chooser's firm choice opens it");
   const ctx = loadBuildings({ body: { summary: "", truncated: false, buildings: [] } });
   ctx.setOpen(true);
   assert.equal(ctx.dom.hidden("buildingAddForm"), false);
-  assert.equal(ctx.dom.el("buildingAddToggle").getAttribute("aria-expanded"), "true");
-  assert.match(ctx.dom.text("buildingAddToggle"), /Close/);
   ctx.setOpen(false);
   assert.equal(ctx.dom.hidden("buildingAddForm"), true);
-  assert.equal(ctx.dom.el("buildingAddToggle").getAttribute("aria-expanded"), "false");
-  assert.match(ctx.dom.text("buildingAddToggle"), /Add by address/);
 });
 
-// One row family (2026-09-04). The rows are FLAT — the tests above index a
-// row's children by position — and their text is unchanged; only the
-// classes moved. This pins the family so a renderer cannot drift back to
-// its own idiom, which is how the same building came to be a Georgia
-// address on the shelf and an underlined sans one in Buildings.
-test("buildings, conversations, the shelf and contacts draw one row family", async () => {
-  const ctx = loadBuildings({ body: { summary: "1 building", truncated: false, buildings: [BLDG({})] } });
-  await ctx.render();
-  const row = ctx.dom.el("buildingRows").children[0];
-  // Buildings is a table since Draft 1 (2026-09-24), but still one of the
-  // family: a .dk-row, flat, the Georgia address first and the meta second.
-  assert.equal(row.className, "dk-row dk-brow");
-  assert.equal(row.children[0].className, "dk-row-name dk-addr", "the address is the name line, in Georgia");
-  assert.equal(row.children[1].className, "dk-row-meta", "the meta sits under the name");
-  // The shelf and the contacts, by source: same three classes.
+// One row family (2026-09-04). The rows are FLAT — the tests in this file
+// index a row's children by position — and pinning the family stops a
+// renderer drifting back to its own idiom, which is how the same building
+// came to be a Georgia address on the shelf and an underlined sans one in
+// the old Buildings table.
+test("the shelf and contacts draw one row family", () => {
   for (const fn of ["applyFirmShelfFilter", "contactRow"]) {
     const at = html.indexOf(`function ${fn}(`);
     const src = html.slice(at, html.indexOf("\n  }\n", at));
@@ -822,46 +726,30 @@ test("buildings, conversations, the shelf and contacts draw one row family", asy
   assert.ok(!/\.dk-shelf-row\s*\{/.test(html), "the shelf's own row rule is retired");
 });
 
-test("the desk's threshold and the module's OVERFLOW_AT are one number", () => {
-  const B = require("../org-buildings");
-  assert.match(html, /const COLLAPSE_AT = 8;/, "index.html's threshold moved; move org-buildings.js's OVERFLOW_AT with it");
-  assert.equal(B.OVERFLOW_AT, 8);
+test("a failed read empties the list rather than keeping another firm's", async () => {
+  const ctx = loadBuildings({ body: { buildings: [BLDG({})] } });
+  await ctx.read();
+  assert.equal(ctx.list().length, 1);
+  const failed = loadBuildings({ status: 503, body: { error: "down" } });
+  await failed.read();
+  assert.deepEqual(failed.list(), []);
 });
 
-test("an empty board is an invitation, a failed read is neither", async () => {
-  let ctx = loadBuildings({ body: { summary: "", truncated: false, buildings: [] } });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("deskBuildings"), false);
-  assert.equal(ctx.dom.hidden("buildingsEmpty"), false);
-  assert.equal(ctx.dom.text("buildingsStats"), "");
-  ctx = loadBuildings({ status: 503, body: { error: "down" } });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("deskBuildings"), true,
-    "'no buildings' and 'could not reach the database' must never look the same");
-  assert.deepEqual(ctx.list(), []);
-});
-
-test("a truncated board says so rather than under-reporting", async () => {
-  const ctx = loadBuildings({ body: { summary: "1000 buildings", truncated: true, buildings: [BLDG({})] } });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("buildingsTruncated"), false);
-});
-
-test("a member of no firm, or a signed-out page, gets no buildings section and no fetch", async () => {
+test("a member of no firm, or a signed-out page, reads no buildings and makes no fetch", async () => {
   let ctx = loadBuildings({ firm: null, body: { buildings: [BLDG({})] } });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("deskBuildings"), true);
+  await ctx.read();
+  assert.deepEqual(ctx.list(), []);
   assert.equal(ctx.fetchLog.length, 0);
   ctx = loadBuildings({ user: null, body: { buildings: [BLDG({})] } });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("deskBuildings"), true);
+  await ctx.read();
+  assert.deepEqual(ctx.list(), []);
   assert.equal(ctx.fetchLog.length, 0, "a stale firm in memory must not be asked about on a signed-out page");
 });
 
 test("the door shows only for a member of a firm and only for an address not already on the board", async () => {
   const ctx = loadBuildings({ body: { summary: "1 building", truncated: false,
     buildings: [BLDG({ verifiedKey: "500 warehouse way boise id 83702" })] } });
-  await ctx.render();
+  await ctx.read();
   const shown = (d) => d && !d.classList.contains("hidden");
   assert.equal(shown(ctx.door({ address: "1 New St, Boise, ID" })), true, "a new address gets the door");
   assert.equal(shown(ctx.door({ address: "500 WAREHOUSE WAY, Boise, ID  " })), false, "the exact address, whatever its case, is already listed");
@@ -875,20 +763,20 @@ test("the door shows only for a member of a firm and only for an address not alr
 });
 
 test("a door created before the firm resolved is revealed once the list loads — the cold-load order", async () => {
-  // The portfolio table is drawn before renderFirm has answered, so a door
-  // decided at creation time would leave every property row doorless.
+  // A shelf row can be drawn before renderFirm has answered, so a door
+  // decided at creation time would leave the row doorless.
   const ctx = loadBuildings({ body: { summary: "1 building", truncated: false, buildings: [BLDG({})] } });
   ctx.setFirmKnown(false);
   const early = ctx.door({ address: "1 New St, Boise, ID" });
   const listed = ctx.door({ address: "500 Warehouse Way, Boise, ID" });
   assert.ok(early.classList.contains("hidden"), "hidden until the list is known");
   ctx.setFirmKnown(true);
-  await ctx.render();
-  assert.equal(early.classList.contains("hidden"), false, "revealed by the renderer");
+  await ctx.read();
+  assert.equal(early.classList.contains("hidden"), false, "revealed by the read");
   assert.equal(listed.classList.contains("hidden"), true, "and the one already on the board stays hidden");
 });
 
-test("the door posts the identity the row already holds and then re-reads the board", async () => {
+test("the door posts the identity the row already holds, then re-reads the board and redraws Home", async () => {
   const seen = [];
   const ctx = loadBuildings({ route: () => {
     seen.push(1);
@@ -896,7 +784,7 @@ test("the door posts the identity the row already holds and then re-reads the bo
       ? { status: 200, body: { summary: "", truncated: false, buildings: [] } }
       : { status: 200, body: { ok: true, existed: false, building: BLDG({}) } };
   } });
-  await ctx.render();
+  await ctx.read();
   const door = ctx.door({ address: "500 Warehouse Way, Boise, ID", propertyType: "Industrial", verifiedKey: "500 warehouse way boise id 83702" });
   assert.ok(door);
   await door.fire("click");
@@ -907,55 +795,56 @@ test("the door posts the identity the row already holds and then re-reads the bo
   }, "the verified key travels, so the same building typed two ways still meets one row");
   assert.equal(door.textContent, "On the firm's list");
   assert.match(ctx.dom.text("buildingMsg"), /Added 500 Warehouse Way, Boise, ID to Colliers Boise's buildings/);
+  assert.equal(ctx.fetchLog.filter((c) => !c.init.method).length, 2, "the list is read again after the add");
+  assert.equal(ctx.drawn(), 1, "and Home's map is redrawn, so the new building shows");
 });
 
 // ---------------------------------------------------------------------------
-// Conversations on the Workspace, and the contact door (slice 8)
+// Conversations for Home's Today, and the contact door (slice 8)
 // ---------------------------------------------------------------------------
-const THREADS_RE = /  const DESK_THREADS = 5;[\s\S]*?\n  async function renderDeskThreads\(\) \{[\s\S]*?\n  \}/;
+const THREADS_RE = /  let deskThreadsStat = null;\n  async function renderDeskThreads\(\) \{[\s\S]*?\n  \}/;
 function loadDeskThreads(opts) {
   const o = opts || {};
   const fetch = makeFetch([["/api/messages", { status: o.status || 200, body: o.body }]]);
-  return load(THREADS_RE,
-    "this.render = renderDeskThreads;",
+  const ctx = load(THREADS_RE,
+    "this.render = renderDeskThreads; this.stat = () => deskThreadsStat;",
     "let currentUser = __user; function myFirm() { return __firm; }",
     { fetch, __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
       __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm });
+  ctx.fetchLog = fetch.log;
+  return ctx;
 }
 const TH = (o) => Object.assign({ id: "t1", label: "Mike", unread: 0, lastMessageAt: "2026-09-01T00:00:00Z", preview: "Seen the comp?" }, o);
 
-test("the Workspace shows at most five conversations, unread first, each a door into /messages", async () => {
+test("Today's unread conversations arrive unread first, newest first, with the whole list counted", async () => {
   const body = { threads: [
-    TH({ id: "old", label: "Old", lastMessageAt: "2026-01-01T00:00:00Z" }),
+    TH({ id: "old", label: "Old", unread: 1, lastMessageAt: "2026-01-01T00:00:00Z" }),
     TH({ id: "u", label: "Dana", unread: 2, lastMessageAt: "2026-02-01T00:00:00Z" }),
     TH({ id: "n1", label: "N1", lastMessageAt: "2026-09-01T00:00:00Z" }),
-    TH({ id: "n2", label: "N2", lastMessageAt: "2026-08-01T00:00:00Z" }),
-    TH({ id: "n3", label: "N3", lastMessageAt: "2026-07-01T00:00:00Z" }),
-    TH({ id: "n4", label: "N4", lastMessageAt: "2026-06-01T00:00:00Z" }),
   ] };
   const ctx = loadDeskThreads({ body });
   await ctx.render();
-  assert.equal(ctx.dom.hidden("deskThreads"), false);
-  assert.match(ctx.dom.text("deskThreadsStats"), /6 conversations · 1 unread/, "the count describes the whole list");
-  const rows = ctx.dom.el("deskThreadRows").children;
-  assert.equal(rows.length, 5, "five, never more");
-  assert.match(rows[0].textContent, /● Dana/, "unread first, marked");
-  assert.match(rows[0].textContent, /2 new/);
-  assert.match(rows[1].textContent, /N1/, "then most recent");
-  assert.doesNotMatch(ctx.dom.text("deskThreadRows"), /Old/, "the oldest fell off the five");
-  assert.equal(rows[0].children[0].href, "/messages?t=u");
+  const s = ctx.stat();
+  assert.equal(s.total, 3);
+  assert.equal(s.unread, 2);
+  assert.deepEqual(s.unreadList.map((t) => t.id), ["u", "old"], "unread only, newest first: HOMEMAP.agenda never re-sorts them");
 });
 
-test("no firm, a failed read, or a signed-out page: no conversations section, no fetch where there is no member", async () => {
+test("no firm, a failed read, or a signed-out page: no conversations, and no fetch where there is no member", async () => {
   let ctx = loadDeskThreads({ firm: null, body: { threads: [TH({})] } });
   await ctx.render();
-  assert.equal(ctx.dom.hidden("deskThreads"), true);
+  assert.equal(ctx.stat(), null);
+  assert.equal(ctx.fetchLog.length, 0);
+  ctx = loadDeskThreads({ user: null, body: { threads: [TH({})] } });
+  await ctx.render();
+  assert.equal(ctx.stat(), null);
+  assert.equal(ctx.fetchLog.length, 0, "a stale firm in memory must not be asked about on a signed-out page");
   ctx = loadDeskThreads({ status: 503, body: { error: "down" } });
   await ctx.render();
-  assert.equal(ctx.dom.hidden("deskThreads"), true, "'could not read' is not 'no conversations'");
+  assert.equal(ctx.stat(), null, "'could not read' is null, never an empty list");
   ctx = loadDeskThreads({ body: { threads: [] } });
   await ctx.render();
-  assert.equal(ctx.dom.hidden("deskThreadsEmpty"), false);
+  assert.deepEqual(ctx.stat(), { total: 0, unread: 0, unreadList: [] });
 });
 
 test("the contact door names the person and the company, and NEVER their email", () => {
@@ -1056,88 +945,44 @@ test("the add/import form ships closed behind one control, with one writer", () 
 });
 
 // ---------------------------------------------------------------------------
-// The firm strip (2026-09-04) — four figures above the decks, drawn from the
-// state the section renderers parsed plus one read of its own (the leases).
+// The firm's lease dates (2026-09-04): one read, for Home's Today and map.
+// The figure strip that first drew them left with the old Home (2026-10-07);
+// the read and its rules stayed.
 // ---------------------------------------------------------------------------
-const STRIP_RE = /  async function readFirmCritical\(\) \{[\s\S]*?\n  function drawFirmStrip\(critical\) \{[\s\S]*?\n  \}\n/;
-function loadStrip(opts) {
+const CRIT_RE = /  async function readFirmCritical\(\) \{[\s\S]*?\n  \}\n/;
+function loadCritical(opts) {
   const o = opts || {};
   const fetch = makeFetch([["/api/org/leases", o.leases || { status: 200, body: { critical: o.critical || [] } }]]);
-  const ctx = load(STRIP_RE,
-    "this.read = readFirmCritical; this.draw = drawFirmStrip;",
-    "let currentUser = __user; function myFirm() { return __firm; }\n" +
-    "let firmBuildings = __buildings; let firmShelfItems = __shelf; let deskThreadsStat = __threads;",
+  const ctx = load(CRIT_RE, "this.read = readFirmCritical;",
+    "let currentUser = __user; function myFirm() { return __firm; }",
     { fetch, __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
-      __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm,
-      __buildings: o.buildings || [], __shelf: o.shelf || [], __threads: o.threads === undefined ? null : o.threads });
+      __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm });
   ctx.fetchLog = fetch.log;
-  // The sections the strip reads ship hidden in the markup; a populated desk
-  // has shown them.
-  if (!o.buildingsHidden) ctx.dom.el("deskBuildings").classList.remove("hidden");
-  if (!o.shelfHidden) ctx.dom.el("deskSharedWithFirm").classList.remove("hidden");
-  ctx.dom.el("buildingsStats").textContent = o.stats === undefined ? "2 buildings · 2 Industrial" : o.stats;
   return ctx;
 }
-const NOW_ISO = new Date().toISOString();
 
-test("the strip draws its four figures from the sections' state and the leases read", async () => {
-  const ctx = loadStrip({
-    buildings: [BLDG({}), BLDG({ id: "b2" })],
-    shelf: [{ market: "Boise, ID", createdAt: NOW_ISO }, { market: "Boise, ID", createdAt: "2026-01-02T00:00:00Z" }, { market: "Meridian, ID", createdAt: "2026-02-02T00:00:00Z" }],
-    threads: { total: 5, unread: 2 },
-    critical: [{ tenant: "Acme Logistics", kind: "notice", days: 41 }, { tenant: "Zed", kind: "expiry", days: 200 }],
-  });
-  ctx.draw(await ctx.read());
-  assert.equal(ctx.dom.hidden("deskStrip"), false);
-  assert.equal(ctx.dom.text("stripBuildingsFig"), "2");
-  assert.equal(ctx.dom.text("stripBuildingsSub"), "2 Industrial", "the server's summary line, minus the count the figure already shows");
-  assert.equal(ctx.dom.text("stripShelfFig"), "1 this month");
-  assert.equal(ctx.dom.text("stripShelfSub"), "3 reports · 2 markets");
-  assert.equal(ctx.dom.text("stripUnreadFig"), "2");
-  assert.equal(ctx.dom.text("stripUnreadSub"), "of 5 conversations");
-  assert.equal(ctx.dom.text("stripCriticalFig"), "2", "every date in the window counts");
-  assert.equal(ctx.dom.text("stripCriticalSub"), "Acme Logistics · notice in 41 days", "the soonest is named");
-  assert.ok(ctx.dom.el("stripCriticalFig").classList.contains("due"), "a due date is the one red figure");
-  assert.equal(ctx.fetchLog.length, 1, "one read of its own, and no re-read of a section's route");
-  assert.equal(ctx.fetchLog[0].url, "/api/org/leases?id=o1");
-});
-
-test("a figure whose read failed is a dash, never a zero", async () => {
-  const ctx = loadStrip({ buildings: [BLDG({})], leases: { status: 503, body: {} }, threads: null, shelfHidden: true });
-  ctx.draw(await ctx.read());
-  assert.equal(ctx.dom.hidden("deskStrip"), false, "the other cells still draw");
-  assert.equal(ctx.dom.text("stripCriticalFig"), "—");
-  assert.match(ctx.dom.text("stripCriticalSub"), /Couldn't read leases/);
-  assert.ok(!ctx.dom.el("stripCriticalFig").classList.contains("due"));
-  assert.equal(ctx.dom.text("stripUnreadFig"), "—");
-  assert.equal(ctx.dom.text("stripShelfFig"), "—");
-});
-
-test("no firm, or a buildings read that failed, means no strip", async () => {
-  const none = loadStrip({ firm: null });
-  none.draw(await none.read());
-  assert.equal(none.dom.hidden("deskStrip"), true);
+test("the leases read hands back the dates, or null when it could not read them — never an empty list", async () => {
+  const dates = [{ tenant: "Acme Logistics", kind: "notice", days: 41 }];
+  const ok = loadCritical({ critical: dates });
+  assert.deepEqual(await ok.read(), dates);
+  assert.equal(ok.fetchLog.length, 1);
+  assert.equal(ok.fetchLog[0].url, "/api/org/leases?id=o1");
+  const failed = loadCritical({ leases: { status: 503, body: {} } });
+  assert.equal(await failed.read(), null, "'could not read the leases' must not look like 'nothing is due'");
+  const none = loadCritical({ firm: null });
+  assert.equal(await none.read(), null);
   assert.equal(none.fetchLog.length, 0, "no firm, no read");
-  const failed = loadStrip({ buildingsHidden: true });
-  failed.draw(await failed.read());
-  assert.equal(failed.dom.hidden("deskStrip"), true, "a strip of dashes says nothing");
 });
 
-test("the strip lands in the same paint as the batch, and hides with the firm sections", () => {
+test("the leases read starts beside the batch, lands before Home draws, and has one reader", () => {
   const at = html.indexOf("async function renderShares()");
   const fn = html.slice(at, html.indexOf("\n  }\n", at));
-  assert.ok(fn.indexOf("const critical = readFirmCritical();") < fn.indexOf("const buildings = renderBuildings();"),
+  assert.ok(fn.indexOf("const critical = readFirmCritical();") < fn.indexOf("const buildings = readFirmBuildings();"),
     "the leases read starts beside the batch, not after it");
-  assert.ok(fn.indexOf("drawFirmStrip(await critical)") > fn.indexOf("await Promise.all(["),
-    "the strip is drawn after the batch has parsed the state it reads");
-  assert.ok(fn.includes('getElementById("deskStrip").classList.add("hidden")'), "hideAll hides the strip");
-  assert.ok(!html.includes("bootFetch(`/api/org/leases?id=${encodeURIComponent(firm.id)}`)") ||
-    (html.match(/bootFetch\(`\/api\/org\/leases\?id=\$\{encodeURIComponent\(firm\.id\)\}`\)/g) || []).length === 1,
-    "exactly one reader of the leases route on the desk");
-  // Every id the strip reaches for exists in the markup.
-  const ctx = loadStrip({ buildings: [BLDG({})], threads: { total: 1, unread: 0 } });
-  ctx.draw([]);
-  for (const id of ctx.dom.asked) assert.ok(html.includes(`id="${id}"`), `the strip reads #${id}, which is not in index.html's markup`);
+  assert.ok(fn.indexOf("deskCritical = await critical;") > fn.indexOf("await Promise.all(["), "joined after the batch");
+  assert.ok(fn.indexOf("deskCritical = await critical;") < fn.indexOf("drawHomeMap()"), "and before Home draws from it");
+  assert.equal((html.match(/bootFetch\(`\/api\/org\/leases\?id=\$\{encodeURIComponent\(firm\.id\)\}`\)/g) || []).length, 1,
+    "exactly one reader of the leases route on Home: bootFetch hands an embedded answer to its FIRST caller only");
 });
 
 test("the section is labelled Contacts — the tenant-rep shop it was named for was withdrawn", () => {
@@ -1780,89 +1625,17 @@ test("the firm section lives in the panel, not on the workspace", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The firm deck's body for a member in no firm (2026-09-16). Until this
-// existed every section of the deck rendered only for a member of a firm, so
-// a member in none opened the workspace to the Sharing deck alone — with
-// nothing saying what a firm is or where to start one (seen in the desktop
-// app on an account with no firm). renderFirmEmpty() reads the membership
-// renderFirm() already loaded and fetches nothing.
+// Home's greeting and its clock (Draft C, 2026-09-25). The banner that first
+// carried them left with the old Home on 2026-10-07 (and with it the agenda,
+// the dates card, the figure cards, the find box, the no-firm start cards
+// and the skyline); the greeting moved over Home's list (#hmTitle, #hmDay),
+// with its timer.
 // ---------------------------------------------------------------------------
-const FIRM_EMPTY_RE = /  function renderFirmEmpty\(\) \{[\s\S]*?\n  \}\n[\s\S]*?\n  function syncStartCards\(\) \{[\s\S]*?\n  \}\n/;
-function loadFirmEmpty(o) {
-  return load(FIRM_EMPTY_RE, "this.draw = renderFirmEmpty;",
-    "let currentUser = __user; let firmState = __state; function myFirm() { return __firm; } let proConfig = __pro;",
-    { __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
-      __state: o.state === undefined ? { orgs: [], invites: [], canCreate: true } : o.state,
-      __firm: o.firm === undefined ? null : o.firm,
-      __pro: o.pro === undefined ? { enabled: false } : o.pro });
-}
-
-test("a member who can create a firm is told what one gives and offered the door", () => {
-  const ctx = loadFirmEmpty({});
-  ctx.draw();
-  assert.equal(ctx.dom.hidden("deskFirmEmpty"), false);
-  assert.equal(ctx.dom.text("deskFirmEmptyLab"), "Not in a firm yet");
-  assert.equal(ctx.dom.text("deskFirmEmptyBtn"), "Create a firm");
-  assert.match(ctx.dom.text("deskFirmEmptyCopy"), /list of buildings, a shelf of shared reports, a contact list and conversations/);
-  assert.match(ctx.dom.text("deskFirmEmptyCopy"), /keeps your own reports and Data/, "the privacy half of the promise travels with it");
-});
-
-test("a pending invitation names the firm and points at it instead of at creating one", () => {
-  const ctx = loadFirmEmpty({ state: { orgs: [], invites: [{ orgId: "o1", name: "Colliers Boise" }], canCreate: true } });
-  ctx.draw();
-  assert.equal(ctx.dom.hidden("deskFirmEmpty"), false);
-  assert.equal(ctx.dom.text("deskFirmEmptyLab"), "You've been invited");
-  assert.equal(ctx.dom.text("deskFirmEmptyBtn"), "See the invitation");
-  assert.match(ctx.dom.text("deskFirmEmptyCopy"), /^Colliers Boise invited you\./);
-});
-
-test("an account that cannot create a firm is not offered a Create button", () => {
-  const ctx = loadFirmEmpty({ state: { orgs: [], invites: [], canCreate: false } });
-  ctx.draw();
-  assert.equal(ctx.dom.hidden("deskFirmEmpty"), false, "the explanation still shows — the deck must not be empty for a free member either");
-  assert.notEqual(ctx.dom.text("deskFirmEmptyBtn"), "Create a firm");
-  assert.match(ctx.dom.text("deskFirmEmptyCopy"), /Ask a colleague to invite you/);
-});
-
-test("a member of a firm, a failed read and a signed-out desk all show nothing", () => {
-  for (const o of [
-    { firm: { id: "o1", name: "Colliers Boise" }, state: { orgs: [{ id: "o1" }], invites: [], canCreate: true } },
-    { state: null },
-    { user: null },
-  ]) {
-    const ctx = loadFirmEmpty(o);
-    ctx.dom.el("deskFirmEmpty").classList.remove("hidden"); // a stale reveal from the previous identity
-    ctx.draw();
-    assert.equal(ctx.dom.hidden("deskFirmEmpty"), true, JSON.stringify(o));
-  }
-});
-
-test("the empty state is wired: first in the deck, drawn after the firm read, hidden by hideAll, and its button opens the panel", () => {
-  const deck = html.indexOf('id="deckFirm"');
-  const empty = html.indexOf('id="deskFirmEmpty"');
-  const buildings = html.indexOf('id="deskBuildings"');
-  assert.ok(deck > 0 && empty > deck && empty < buildings, "the no-firm body sits at the top of the firm deck, ahead of Buildings");
-  const at = html.indexOf("async function renderShares()");
-  const fn = html.slice(at, html.indexOf("\n  }\n", at));
-  assert.ok(fn.indexOf("await firmReady;\n    // The no-firm body") > 0 && fn.indexOf("renderFirmEmpty();") > fn.indexOf("await firmReady;"),
-    "renderShares draws it once the membership is known");
-  assert.ok(fn.indexOf("renderFirmEmpty();") < fn.indexOf("await Promise.all(["), "and before the firm batch, so it lands in the one paint");
-  assert.ok(fn.includes('getElementById("deskFirmEmpty").classList.add("hidden")'), "hideAll hides it with the rest of the firm surfaces");
-  assert.ok(html.includes('document.getElementById("deskFirmEmptyBtn").addEventListener("click", () => {\n    if (typeof openFirmModal === "function") openFirmModal();'),
-    "the one door is the Firm & branding panel, which already knows which state it is showing");
-});
-
-// ---------------------------------------------------------------------------
-// Draft 1 (2026-09-24): the "Needs you" agenda, the dates card, the head's
-// firm line and the find box. All four draw from state other sections have
-// already parsed; none of them fetches.
-// ---------------------------------------------------------------------------
-const DATE_HELPERS_RE = /  function fmtDeskDay\(iso, withYear\) \{[\s\S]*?\n  function leaseWhat\(c\) \{[\s\S]*?\n  \}/;
-const DATES_RE = /  const AGENDA_DAYS = 90;[\s\S]*?\n  function drawDeskHead\(\) \{[\s\S]*?\n  \}/;
+const CLOCK_RE = /  function deskGreetingFor\(now, user\) \{[\s\S]*?\n  function stopDeskClock\(\) \{[\s\S]*?\n  \}/;
 // A test clock for the slice: `new Date()` reads `clock.now`, and timers are
-// RECORDED, never scheduled. drawDeskHead arms a timer for the next change
-// of greeting (2026-09-25), and a real one aimed at noon would hold this
-// file's `node --test` process open for hours.
+// RECORDED, never scheduled. drawDeskClock arms a timer for the next change
+// of greeting, and a real one aimed at noon would hold this file's
+// `node --test` process open for hours.
 function fakeClock(ms) {
   const clock = { now: ms, timers: [] };
   clock.Date = class extends Date {
@@ -1881,493 +1654,75 @@ function fakeClock(ms) {
   };
   return clock;
 }
-function loadDates(o) {
-  const opts = o || {};
-  const fetch = makeFetch([]);
-  const clock = fakeClock(Date.now());
-  const ctx = load(DATES_RE,
-    "this.draw = drawDeskDates; this.head = drawDeskHead; this.closed = () => __closed;",
-    "let currentUser = __user; function myFirm() { return __firm; }\n" +
-    "let deskCritical = null; let deskThreadsStat = __threads; const DESK_DUE_DAYS = 90; let __closed = 0;\n" +
-    "let firmBuildings = __buildings;\n" +
-    "function decorateBuildingRows() {} function closeDeskFind() { __closed++; }\n" +
-    "function shopCopy(kind) { return kind === 'development' ? { label: 'Development shop' } : { label: 'Broker shop' }; }\n" +
-    html.match(DATE_HELPERS_RE)[0],
-    { fetch, setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
-      __user: opts.user === undefined ? { email: "brad@colliers.com" } : opts.user,
-      __firm: opts.firm === undefined ? { id: "o1", name: "Foothill Commercial", kind: "broker" } : opts.firm,
-      __threads: opts.threads === undefined ? { total: 0, unread: 0, unreadList: [] } : opts.threads,
-      __buildings: opts.buildings || [{ id: "b3", address: "3100 S Federal Way, Boise, ID" }] });
-  ctx.fetchLog = fetch.log;
-  // The strip is what the agenda follows; a populated desk has shown it.
-  if (!opts.stripHidden) ctx.dom.el("deskStrip").classList.remove("hidden");
-  return ctx;
-}
-const LEASE = (o) => Object.assign({ buildingId: "b3", address: "3100 S Federal Way, Boise, ID", tenant: "Acme Logistics",
-  suite: "", kind: "notice", date: "2026-11-04", days: 41, leaseExpiry: "2027-02-01" }, o);
-
-test("Needs you lists the lease dates inside ninety days, then the unread conversations, each with its next step", () => {
-  const ctx = loadDates({ threads: { total: 3, unread: 1, unreadList: [{ id: "t9", label: "Mike Tran", unread: 2, preview: "Rent roll is in" }] } });
-  ctx.draw([LEASE({}), LEASE({ buildingId: "b6", tenant: "Treasure Valley Dental", kind: "expiry", date: "2027-07-21", days: 300 })]);
-  assert.equal(ctx.dom.hidden("deskAgenda"), false);
-  const rows = ctx.dom.el("deskAgendaRows").children;
-  assert.equal(rows.length, 2, "the 300-day expiry is a critical date, not something that needs you this quarter");
-  assert.match(rows[0].textContent, /Option notice · Acme Logistics/);
-  assert.match(rows[0].textContent, /in 41 days/);
-  assert.match(rows[0].textContent, /lease expires Feb 1, 2027/, "a notice names the expiry it protects");
-  assert.equal(rows[0].children[2].href, "/building/b3", "the lease lives on the building's sheet");
-  assert.match(rows[1].textContent, /2 new.*Mike Tran.*Rent roll is in/);
-  assert.equal(rows[1].children[2].href, "/messages?t=t9");
-  assert.equal(ctx.dom.text("deskAgendaStats"), "2 items");
-  assert.equal(ctx.dom.hidden("deskAgendaNote"), true);
-  // Draft C: the banner's one line counts what the card lists.
-  assert.equal(ctx.dom.text("deskHeroSub"), "1 date in the next 90 days and 1 unread conversation.");
-  assert.equal(ctx.dom.hidden("deskHeroSub"), false);
-  assert.equal(ctx.fetchLog.length, 0, "no read of its own");
-});
-
-test("Needs you says 'nothing' only when both of its reads came back", () => {
-  // Draft C (2026-09-25): "nothing" is said on the banner, and the card
-  // whose only sentence it would be steps aside. A failed read keeps the
-  // card up to name the read, and the banner then says nothing at all.
-  let ctx = loadDates({});
-  ctx.draw([]);
-  assert.equal(ctx.dom.text("deskHeroSub"), "Nothing needs you right now.", "both read, nothing due, nothing unread: say so");
-  assert.equal(ctx.dom.hidden("deskHeroSub"), false);
-  assert.equal(ctx.dom.hidden("deskAgenda"), true, "a card that could only say 'nothing' is not drawn");
-  ctx = loadDates({});
-  ctx.draw(null);
-  assert.equal(ctx.dom.hidden("deskHeroSub"), true, "a failed leases read must not read as 'nothing is due'");
-  assert.equal(ctx.dom.hidden("deskAgenda"), false, "the card stays up to say which read failed");
-  assert.match(ctx.dom.text("deskAgendaNote"), /Couldn't read lease dates/);
-  ctx = loadDates({ threads: null });
-  ctx.draw([]);
-  assert.equal(ctx.dom.hidden("deskHeroSub"), true);
-  assert.equal(ctx.dom.hidden("deskAgenda"), false);
-  assert.match(ctx.dom.text("deskAgendaNote"), /Couldn't read conversations/);
-  // An empty board has nothing to be due yet: the line says where to start
-  // instead of reassuring anybody about a firm with no record in it.
-  ctx = loadDates({ buildings: [] });
-  ctx.draw([]);
-  assert.equal(ctx.dom.text("deskHeroSub"), "Foothill Commercial is ready. Add your first building to begin.");
-});
-
-test("Needs you follows the strip: no firm, a signed-out page or a hidden strip means no agenda", () => {
-  for (const o of [{ firm: null }, { user: null }, { stripHidden: true }]) {
-    const ctx = loadDates(o);
-    ctx.dom.el("deskAgenda").classList.remove("hidden"); // a stale reveal
-    ctx.draw([LEASE({})]);
-    assert.equal(ctx.dom.hidden("deskAgenda"), true, JSON.stringify(o));
-  }
-});
-
-test("the dates card lists the next twelve months, hides on a failed read, and says so when there are none", () => {
-  let ctx = loadDates({});
-  ctx.draw([LEASE({}), LEASE({ buildingId: "", tenant: "", kind: "expiry", date: "2027-07-21", days: 300 })]);
-  assert.equal(ctx.dom.hidden("deskCritical"), false);
-  const rows = ctx.dom.el("deskCriticalRows").children;
-  assert.equal(rows.length, 2);
-  assert.match(rows[0].textContent, /Nov 4.*2026.*Option notice · Acme Logistics/);
-  assert.ok(rows[0].children[0].className.includes("due"), "inside ninety days it is red");
-  assert.equal(rows[1].children[1].children[0].tagName, "SPAN", "no building to name, no broken link");
-  assert.match(rows[1].textContent, /Lease expires · A lease/);
-  ctx = loadDates({});
-  ctx.draw(null);
-  assert.equal(ctx.dom.hidden("deskCritical"), true, "'could not read' is not 'nothing due'");
-  ctx = loadDates({});
-  ctx.draw([]);
-  assert.equal(ctx.dom.hidden("deskCritical"), false);
-  assert.equal(ctx.dom.hidden("deskCriticalEmpty"), false);
-});
-
-test("the head names the firm and its shop, and shows the find box only for a member of a firm", () => {
-  let ctx = loadDates({ firm: { id: "o1", name: "Foothill Commercial", kind: "development" } });
-  ctx.head();
-  assert.equal(ctx.dom.text("deskFirmLine"), "Foothill Commercial · Development shop");
-  assert.equal(ctx.dom.hidden("deskFirmLine"), false);
-  assert.equal(ctx.dom.hidden("deskFindWrap"), false);
-  ctx = loadDates({ firm: null });
-  ctx.head();
-  assert.equal(ctx.dom.hidden("deskFirmLine"), true);
-  assert.equal(ctx.dom.hidden("deskFindWrap"), true);
-  assert.equal(ctx.closed(), 1, "a find box that goes away takes its open results with it");
-});
-
-const FIND_RE = /  const DESK_FIND_EACH = 5;[\s\S]*?\n  function renderDeskFind\(\) \{[\s\S]*?\n  \}/;
-function loadFind(o) {
-  return load(FIND_RE,
-    "this.find = renderDeskFind; this.match = deskFindMatches;",
-    "let firmBuildings = __b; let firmShelfItems = __s; let firmContacts = __c; let contactsExpanded = false;",
-    { fetch: makeFetch([]), __b: o.buildings || [], __s: o.shelf || [], __c: o.contacts || [] });
-}
-
-test("the find box searches the whole board, shelf and contact list in the browser, all terms together", () => {
-  const buildings = Array.from({ length: 12 }, (_, i) => BLDG({ id: "b" + i, address: `${(i + 1) * 100} Federal Way, Boise, ID` }));
-  const ctx = loadFind({
-    buildings,
-    shelf: [ITEM({ address: "3100 S Federal Way, Boise, ID", sharedBy: "Mike Tran", url: "/r/x1" })],
-    contacts: [{ id: "c1", name: "Dana Wu", company: "Acme Logistics", email: "dana@acme.com" },
-               { id: "c2", name: "Sam Ortiz", company: "Idaho Cold Storage", buildingId: "b2" }],
-  });
-  assert.equal(ctx.match("f"), null, "one character is not a search");
-  const m = ctx.match("federal way");
-  assert.equal(m.buildings.length, 12, "the whole board, not the eight on screen");
-  assert.equal(m.reports.length, 1);
-  assert.equal(ctx.match("acme dana").contacts.length, 1, "terms AND together");
-  assert.equal(ctx.match("acme sam").contacts.length, 0);
-  ctx.dom.el("deskFind").value = "federal";
-  ctx.find();
-  assert.equal(ctx.dom.hidden("deskFindResults"), false);
-  assert.equal(ctx.dom.el("deskFind").getAttribute("aria-expanded"), "true");
-  const text = ctx.dom.text("deskFindResults");
-  assert.match(text, /Buildings/);
-  assert.match(text, /and 7 more/, "five of each, and the rest counted rather than dropped silently");
-  assert.match(text, /Reports on the shelf/);
-  ctx.dom.el("deskFind").value = "cold storage";
-  ctx.find();
-  const hit = ctx.dom.el("deskFindResults").children.find((c) => c.className === "dk-find-hit");
-  assert.equal(hit.href, "/building/b2", "a contact attached to a building opens that building's sheet");
-  ctx.dom.el("deskFind").value = "zzzz";
-  ctx.find();
-  assert.match(ctx.dom.text("deskFindResults"), /Nothing on Home matches/);
-});
-
-test("the new desk pieces reach only ids that exist, and are hidden with the firm sections", () => {
-  const asked = new Set();
-  const dates = loadDates({ threads: { total: 1, unread: 1, unreadList: [{ id: "t", label: "M", unread: 1, preview: "p" }] } });
-  dates.draw([LEASE({})]);
-  dates.head();
-  dates.dom.asked.forEach((id) => asked.add(id));
-  const find = loadFind({ buildings: [BLDG({})] });
-  find.dom.el("deskFind").value = "warehouse";
-  find.find();
-  find.dom.asked.forEach((id) => asked.add(id));
-  for (const id of asked) assert.ok(html.includes(`id="${id}"`), `the desk reads #${id}, which is not in index.html's markup`);
-  const at = html.indexOf("async function renderShares()");
-  const fn = html.slice(at, html.indexOf("\n  }\n", at));
-  for (const id of ["deskAgenda", "deskCritical", "deskFirmLine", "deskFindWrap"]) {
-    assert.ok(fn.includes(`getElementById("${id}").classList.add("hidden")`), `hideAll hides #${id}`);
-  }
-  assert.ok(fn.indexOf("drawDeskDates(await critical)") > fn.indexOf("drawFirmStrip(await critical)"),
-    "the agenda is drawn after the strip, whose verdict it follows");
-});
-
-test("the workspace is two columns of decks, and the top row is not a deck", () => {
-  const main = html.indexOf('class="dk-col dk-main"');
-  const side = html.indexOf('id="deckSide"');
-  assert.ok(main > 0 && side > main, "the record column, then the side column");
-  for (const id of ["deckFirm", "deckSharing"]) {
-    const at = html.indexOf(`id="${id}"`);
-    assert.ok(at > main && at < side, `#${id} sits in the main column`);
-  }
-  for (const id of ["deskThreads", "deskCritical", "deskDealBoard", "deskPermits"]) {
-    assert.ok(html.indexOf(`id="${id}"`) > side, `#${id} is a card in the side column`);
-  }
-  // Home as one map (2026-10-07): Contacts and the Sharing card moved INTO
-  // its People and Reports tabs, keeping their ids and their writers.
-  const people = html.indexOf('id="hmPanePeople"'), reports = html.indexOf('id="hmPaneReports"');
-  assert.ok(reports > 0 && html.indexOf('id="deskSharing"') > reports && html.indexOf('id="deskSharing"') < people,
-    "#deskSharing is the Reports tab's body");
-  assert.ok(people > 0 && html.indexOf('id="deskContacts"') > people && html.indexOf('id="deskContacts"') < html.indexOf('id="hmMap"'),
-    "#deskContacts is in the People tab");
-  assert.match(html, /<div class="dk-col dk-side dk-deck" data-deck id="deckSide">/,
-    "the side column is itself a deck, so it hides when every card in it is hidden");
-  const top = html.slice(html.indexOf('<div class="dk-top">'), html.indexOf('<div class="dk-cols">'));
-  assert.ok(top.includes('id="deskAgenda"'), "the top row holds Needs you");
-  assert.ok(!/<[a-z][^>]*\sdata-deck[\s>]/.test(top), "the top row must never hold a deck open");
-  // Draft C: the figure cards rest on the banner's edge, so they come first
-  // in #myDesk and Needs you follows them, full width.
-  assert.ok(html.indexOf('id="deskStrip"') < html.indexOf('<div class="dk-top">'), "the figure cards read first, on the banner's edge");
-});
-
-// ---------------------------------------------------------------------------
-// Draft C (2026-09-25, the owner's pick): the banner over the Workspace —
-// the home city's photograph or a drawn contour map, the greeting, one line
-// of status — the figure cards on its edge, the empty sections drawn as a
-// faint preview with one next step, type tags, and three start cards for a
-// member in no firm.
-// ---------------------------------------------------------------------------
-const HOME_RE = /  function drawDeskHome\(home\) \{[\s\S]*?\n  \}\n/;
-function loadHome(buildings) {
-  return load(HOME_RE, "this.draw = drawDeskHome;", "let firmBuildings = __b;", { __b: buildings || [] });
-}
-const BOISE_PHOTO = {
-  src: "/market-heroes/boise-id.jpg",
-  srcset: "/market-heroes/boise-id-1920.jpg 1920w, /market-heroes/boise-id.jpg 3840w",
-  credit: "Patrick R.", license: "CC BY-SA 3.0",
-  commonsUrl: "https://commons.wikimedia.org/wiki/File:Front_St._Downtown_Boise.jpg",
-};
-
-test("the banner shows the home city's photograph, credited on the picture, with the board's markets", () => {
-  const ctx = loadHome([{ market: "Meridian, ID" }, { market: "Boise, ID" }, { market: "Boise, ID" }, { market: "Nampa, ID" }]);
-  ctx.draw({ market: "Boise, ID", photo: BOISE_PHOTO });
-  assert.equal(ctx.dom.hidden("deskHeroImg"), false);
-  assert.equal(ctx.dom.el("deskHeroImg").getAttribute("src"), "/market-heroes/boise-id.jpg");
-  assert.equal(ctx.dom.el("deskHeroImg").getAttribute("srcset"), BOISE_PHOTO.srcset);
-  assert.ok(ctx.dom.el("deskHero").classList.contains("has-photo"), "the scrim that keeps white text readable on a photo");
-  assert.equal(ctx.dom.hidden("deskHeroCredit"), false, "a photograph is never shown without its credit");
-  assert.equal(ctx.dom.text("deskHeroCredit"), "Photo: Patrick R. · CC BY-SA 3.0");
-  const link = ctx.dom.el("deskHeroCredit").children[0];
-  assert.equal(link.tagName, "A");
-  assert.equal(link.href, BOISE_PHOTO.commonsUrl);
-  assert.equal(link.rel, "noopener noreferrer");
-  assert.equal(ctx.dom.text("deskHeroWhere"), "Boise, ID · Meridian, ID · Nampa, ID", "the home market leads, the photo is of it");
-  assert.equal(ctx.dom.hidden("deskHeroWhereWrap"), false);
-});
-
-test("the banner shows only our own /market-heroes/ files, and a null home takes the picture down", () => {
-  for (const src of ["https://evil.example/x.jpg", "//evil.example/market-heroes/x.jpg", "javascript:alert(1)", "", 42]) {
-    const ctx = loadHome([{ market: "Boise, ID" }]);
-    ctx.draw({ market: "Boise, ID", photo: Object.assign({}, BOISE_PHOTO, { src }) });
-    assert.equal(ctx.dom.hidden("deskHeroImg"), true, String(src));
-    assert.equal(ctx.dom.hidden("deskHeroCredit"), true, "no picture, no credit");
-    assert.ok(!ctx.dom.el("deskHero").classList.contains("has-photo"));
-  }
-  // A srcset naming anything else is dropped whole; the checked src stands.
-  let ctx = loadHome([{ market: "Boise, ID" }]);
-  ctx.draw({ market: "Boise, ID", photo: Object.assign({}, BOISE_PHOTO, { srcset: "/market-heroes/a.jpg 1920w, https://evil.example/b.jpg 3840w" }) });
-  assert.equal(ctx.dom.el("deskHeroImg").getAttribute("srcset"), null);
-  assert.equal(ctx.dom.hidden("deskHeroImg"), false);
-  // A credit link goes only to Commons.
-  ctx = loadHome([{ market: "Boise, ID" }]);
-  ctx.draw({ market: "Boise, ID", photo: Object.assign({}, BOISE_PHOTO, { commonsUrl: "https://evil.example/" }) });
-  assert.equal(ctx.dom.el("deskHeroCredit").children[0].tagName, "SPAN", "an unexpected credit URL is text, never a link");
-  // A sign-out, a failed read or no firm: the drawn banner, nothing named.
-  ctx = loadHome([{ market: "Boise, ID" }]);
-  ctx.draw({ market: "Boise, ID", photo: BOISE_PHOTO });
-  ctx.draw(null);
-  assert.equal(ctx.dom.hidden("deskHeroImg"), true);
-  assert.equal(ctx.dom.hidden("deskHeroCredit"), true);
-  assert.equal(ctx.dom.hidden("deskHeroWhereWrap"), true, "no city left on a banner whose firm is gone");
-});
-
-test("renderBuildings draws the banner from the buildings read it already made", async () => {
-  const ctx = loadBuildings({ body: { buildings: [BLDG({})], summary: "1 building · 1 Industrial", home: { market: "Boise, ID", photo: BOISE_PHOTO } } });
-  await ctx.render();
-  assert.equal(ctx.fetchLog.length, 1, "the photo rides the buildings answer, not a read of its own");
-  assert.equal(ctx.dom.el("deskHeroImg").getAttribute("src"), BOISE_PHOTO.src);
-  const failed = loadBuildings({ status: 503, body: {} });
-  failed.dom.el("deskHeroImg").classList.remove("hidden"); // a stale picture
-  await failed.render();
-  assert.equal(failed.dom.hidden("deskHeroImg"), true, "a failed read takes the picture down with the list");
-});
-
-test("a building's type is a tinted tag with the same word", async () => {
-  const ctx = loadBuildings({ body: { buildings: [BLDG({}), BLDG({ id: "b2", type: "Office" }), BLDG({ id: "b3", type: "" })], summary: "" } });
-  await ctx.render();
-  const rows = ctx.dom.el("buildingRows").children;
-  const typeCell = (row) => row.children.find((c) => String(c.className).includes("dk-bc-type"));
-  assert.equal(typeCell(rows[0]).textContent, "Industrial", "the cell's text is unchanged, so the narrow reflow reads the same");
-  assert.equal(typeCell(rows[0]).children[0].className, "dk-pill dk-tone-est");
-  assert.equal(typeCell(rows[1]).children[0].className, "dk-pill dk-tone-bv");
-  assert.equal(typeCell(rows[2]).textContent, "—", "no type, no tag");
-  assert.ok(typeCell(rows[2]).className.includes("empty"));
-});
-
-// The buildings grid's columns at the narrowest container it is drawn in, by
-// the browser's own arithmetic: fixed px and gaps off the top, the rest in fr
-// shares. Every row is its own grid, so the header and the rows line up only
-// while each track is an fr share of one width or a fixed px; a content-sized
-// track would give every row its own columns, and this refuses one.
-function buildingColumnsAtNarrowest() {
-  const rule = html.match(/\.dk-bhead, \.dk-row\.dk-brow \{[^}]*grid-template-columns: ([^;]+); column-gap: (\d+)px/);
-  assert.ok(rule, "the buildings grid's template moved");
-  const tracks = rule[1].trim().split(/\s+(?![^(]*\))/);
-  assert.equal(tracks.length, 7, "the address, five cells and the menu");
-  const frs = [];
-  let fixed = 0;
-  for (const t of tracks) {
-    const fr = t.match(/^minmax\(0, ([\d.]+)fr\)$/);
-    const px = t.match(/^(\d+)px$/);
-    assert.ok(fr || px, `track "${t}" sizes to its content, so rows would stop lining up`);
-    if (fr) frs.push(Number(fr[1])); else fixed += Number(px[1]);
-  }
-  assert.equal(frs.length, 6);
-  // One pixel past the reflow, which takes over at its max-width and below.
-  const reflow = html.match(/\.dk-btable \{ container-type: inline-size; \}[\s\S]*?@container \(max-width: (\d+)px\)/);
-  assert.ok(reflow, "the buildings table's reflow query moved");
-  const narrowest = Number(reflow[1]) + 1;
-  const perFr = (narrowest - fixed - Number(rule[2]) * (tracks.length - 1)) / frs.reduce((a, b) => a + b, 0);
-  const [address, type, size, built, shelf, next] = frs.map((f) => f * perFr);
-  return { narrowest, address, type, size, built, shelf, next };
-}
-
-test("a type tag never breaks mid-word, and the Type column holds the widest one", () => {
-  // At 1.1fr the column was 77.7px in the 593px main column, the Multifamily
-  // tag is 78px, and it rendered as "Multifamil" over "y" (2026-10-06): the
-  // cell carries overflow-wrap:anywhere, right for an address, wrong for a tag.
-  const pill = html.match(/\.dk-pill \{[^}]*\}/);
-  assert.ok(pill, ".dk-pill's rule moved");
-  assert.match(pill[0], /white-space: nowrap/, "a tag is one word on a chip and must never wrap");
-
-  const cols = buildingColumnsAtNarrowest();
-  // "Multifamily" at 11.5px/600 plus 16px of padding, measured in Chrome on
-  // the seeded Home page (Residential is 77.2px, Industrial 68.1px).
-  const WIDEST_TAG_PX = 78;
-  assert.ok(cols.type >= WIDEST_TAG_PX,
-    `the Type column is ${cols.type.toFixed(1)}px at a ${cols.narrowest}px container; the widest tag needs ${WIDEST_TAG_PX}px`);
-
-  // The measurement holds only for the words it measured. A longer type name
-  // means measuring again rather than trusting the number above.
-  const tones = html.match(/const TYPE_TONES = \{([^}]*)\}/);
-  assert.ok(tones, "TYPE_TONES moved");
-  for (const [, word] of tones[1].matchAll(/(\w[\w-]*):/g)) {
-    assert.ok(word.length <= "Multifamily".length,
-      `"${word}" is longer than Multifamily; re-measure WIDEST_TAG_PX and the Type column`);
-  }
-});
-
-test("a six-figure building size stays on one line wherever the grid is drawn", () => {
-  // At .9fr the Size column was 58px at 1180 and 64px at 1440, so "12,400 SF"
-  // wrapped to two lines below 1280 and every 100,000 SF building wrapped at
-  // every width (2026-10-07). Industrial boards are full of those.
-  const cols = buildingColumnsAtNarrowest();
-  // "999,999 SF" at the cell's 12.5px, measured in Chrome on the seeded Home
-  // page ("64,000 SF" is 62.6px, "1,250,000 SF" 82.2px). Any six digits
-  // measure the same only because the cell sets tabular figures.
-  const SIX_FIGURE_SIZE_PX = 70.8;
-  assert.ok(cols.size >= SIX_FIGURE_SIZE_PX,
-    `the Size column is ${cols.size.toFixed(1)}px at a ${cols.narrowest}px container; "999,999 SF" needs ${SIX_FIGURE_SIZE_PX}px`);
-  const cell = html.match(/\.dk-brow > \.dk-bc \{[^}]*\}/);
-  assert.ok(cell, "the buildings cell rule moved");
-  assert.match(cell[0], /font-variant-numeric: tabular-nums/,
-    "without tabular figures a six-digit size's width depends on its digits, and the measurement above means nothing");
-  // ...and only for the text it measured: the number, a space, then the unit.
-  assert.ok(html.includes('cell("size", b.sizeSqft ? `${Number(b.sizeSqft).toLocaleString("en-US")} SF` : "", true)'),
-    "the size cell's text changed shape; re-measure SIX_FIGURE_SIZE_PX and the Size column");
-
-  // Seven figures are allowed to drop their unit under the number where the
-  // column is short. A nowrap here would push "1,240,000 SF" across Built.
-  assert.ok(!/white-space/.test(cell[0]),
-    "every buildings cell sets white-space now; a Size cell that cannot wrap overflows into Built");
-  // The style block writes one rule per line, so a line scan finds them all.
-  const style = html.slice(0, html.indexOf("</style>"));
-  const sizeRules = style.split("\n").filter((l) => l.includes(".dk-bc-size") && l.includes("{"));
-  assert.ok(sizeRules.length > 0, "no rule names the Size cell any more");
-  for (const line of sizeRules) {
-    assert.ok(!/white-space/.test(line),
-      `${line.trim()} sets white-space; a Size cell that cannot wrap overflows into Built`);
-  }
-});
-
-test("a next date is never split, and the widest one fits wherever the grid is drawn", async () => {
-  // At 1.2fr the Next column was 78px at 1180 and 85px at 1440, and its one
-  // string broke wherever a space fell: "Notice Oct" over "26", "Expires Dec"
-  // over "10" (2026-10-07). The date is now its own unbreakable piece.
-  const ctx = loadBuildings({ body: { summary: "", truncated: false, buildings: [BLDG({}), BLDG({ id: "b2" })] } });
-  await ctx.render();
-  ctx.setCritical([{ buildingId: "b1", kind: "notice", date: "2027-09-30", days: 300, tenant: "Acme" }]);
-  ctx.decorate();
-  const cell = (i) => ctx.dom.el("buildingRows").children[i].children.find((c) => c.className.includes("dk-bc-next"));
-  const day = cell(0).children.find((c) => c.className === "dk-bc-day");
-  assert.ok(day, "the date is not its own piece, so a short column can split it");
-  assert.match(day.textContent, /^Sep 30(, 2027)?$/);
-  assert.match(cell(0).textContent, /^Notice Sep 30/, "the cell reads the same words as before");
-  assert.equal(cell(1).textContent, "—", "no date, no pieces");
-  assert.equal(cell(1).children.length, 0);
-  assert.match(html, /\.dk-bc-day \{ white-space: nowrap; \}/, "the date piece must not wrap");
-
-  // "Sep 30, 2027" at the cell's 12.5px, in red, measured in Chrome on the
-  // seeded Home page: the widest date the cell writes (a year is added only
-  // off this year). It must fit on its own line at the narrowest grid.
-  const WIDEST_DATE_PX = 81.9;
-  const cols = buildingColumnsAtNarrowest();
-  assert.ok(cols.next >= WIDEST_DATE_PX,
-    `the Next column is ${cols.next.toFixed(1)}px at a ${cols.narrowest}px container; "Sep 30, 2027" needs ${WIDEST_DATE_PX}px`);
-  assert.ok(html.includes('return d.toLocaleDateString("en-US", opts);') && html.includes('const opts = { month: "short", day: "numeric", timeZone: "UTC" };'),
-    "fmtDeskDay's format changed; re-measure WIDEST_DATE_PX and the Next column");
-});
-
-test("the empty board's own button opens the add form and never closes it", async () => {
-  const ctx = loadBuildings({ body: { buildings: [], summary: "" } });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("buildingsEmpty"), false);
-  await ctx.dom.el("buildingsEmptyAdd").fire("click");
-  assert.equal(ctx.dom.hidden("buildingAddForm"), false);
-  await ctx.dom.el("buildingsEmptyAdd").fire("click");
-  assert.equal(ctx.dom.hidden("buildingAddForm"), false, "a second click must not close what the first opened");
-});
-
 function loadGreeting(user, clock) {
   const c = clock || fakeClock(Date.now());
-  return load(DATES_RE, "this.greet = deskGreetingFor; this.head = drawDeskHead;",
-    "let currentUser = __user; function myFirm() { return null; }\n" +
-    "let deskCritical = null; let deskThreadsStat = null; const DESK_DUE_DAYS = 90; let firmBuildings = [];\n" +
-    "function decorateBuildingRows() {} function closeDeskFind() {}\n" +
-    "function shopCopy() { return { label: 'Broker shop' }; }\n" + html.match(DATE_HELPERS_RE)[0],
+  return load(CLOCK_RE, "this.greet = deskGreetingFor; this.draw = drawDeskClock; this.stop = stopDeskClock;",
+    "let currentUser = __user;",
     { fetch: makeFetch([]), __user: user, Date: c.Date, setTimeout: c.setTimeout, clearTimeout: c.clearTimeout });
 }
 
-test("the banner greets a member by first name, on this browser's clock, and says Workspace to nobody", () => {
+test("Home greets a member by first name, on this browser's clock, and says Home to nobody", () => {
   const ctx = loadGreeting({ email: "brad@colliers.com", name: "Brad Keller" });
   const at = (h) => new Date(2026, 8, 25, h, 5);
   assert.equal(ctx.greet(at(8), { name: "Brad Keller" }), "Good morning, Brad");
   assert.equal(ctx.greet(at(13), { name: "Brad Keller" }), "Good afternoon, Brad");
   assert.equal(ctx.greet(at(19), { name: "  Brad  " }), "Good evening, Brad");
   assert.equal(ctx.greet(at(8), { email: "sam@summitcre.com" }), "Good morning", "no name, no guess at one from the email");
-  assert.equal(ctx.greet(at(8), { name: "X".repeat(90) }).length, "Good morning, ".length + 40, "a long name is cut, not wrapped over the banner");
-  ctx.head();
-  assert.match(ctx.dom.text("deskGreeting"), /^Good (morning|afternoon|evening), Brad$/);
-  assert.match(ctx.dom.text("deskToday"), /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), [A-Z][a-z]+ \d{1,2}$/);
+  assert.equal(ctx.greet(at(8), { name: "X".repeat(90) }).length, "Good morning, ".length + 40, "a long name is cut, not wrapped over the heading");
+  ctx.draw();
+  assert.match(ctx.dom.text("hmTitle"), /^Good (morning|afternoon|evening), Brad$/);
+  assert.match(ctx.dom.text("hmDay"), /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), [A-Z][a-z]+ \d{1,2}$/);
   const out = loadGreeting(null);
-  out.head();
-  assert.equal(out.dom.text("deskGreeting"), "Home");
+  out.draw();
+  assert.equal(out.dom.text("hmTitle"), "Home");
+  // drawHomeMap writes the same greeting on every draw, from the same helper.
+  assert.match(html, /getElementById\("hmTitle"\)\.textContent = deskGreetingFor\(new Date\(\), currentUser\);/);
 });
 
-test("a workspace left open turns to Good afternoon at noon, Good evening at 5, and a new day at midnight", () => {
-  // Owner, 2026-09-25: a workspace opened before noon still said "Good
-  // morning" in the afternoon, because the greeting was written once, at
-  // paint. This runs the real timer path on a clock the test moves.
+test("a Home left open turns to Good afternoon at noon, Good evening at 5, and a new day at midnight", () => {
+  // Owner, 2026-09-25: a Home opened before noon still said "Good morning"
+  // in the afternoon, because the greeting was written once, at paint. This
+  // runs the real timer path on a clock the test moves.
   const clock = fakeClock(new Date(2026, 8, 25, 11, 50).getTime());
   const ctx = loadGreeting({ email: "brad@colliers.com", name: "Brad Keller" }, clock);
-  ctx.head();
-  assert.equal(ctx.dom.text("deskGreeting"), "Good morning, Brad");
+  ctx.draw();
+  assert.equal(ctx.dom.text("hmTitle"), "Good morning, Brad");
   assert.equal(clock.armed().length, 1, "one timer");
   assert.equal(clock.armed()[0].delay, 10 * 60 * 1000 + 250, "aimed just past noon, not polled");
   clock.fire();
-  assert.equal(ctx.dom.text("deskGreeting"), "Good afternoon, Brad", "noon itself is afternoon");
+  assert.equal(ctx.dom.text("hmTitle"), "Good afternoon, Brad", "noon itself is afternoon");
   assert.equal(clock.armed().length, 1, "re-armed for 5pm, never stacked");
   clock.fire();
-  assert.equal(ctx.dom.text("deskGreeting"), "Good evening, Brad");
-  assert.equal(ctx.dom.text("deskToday"), "Friday, September 25");
+  assert.equal(ctx.dom.text("hmTitle"), "Good evening, Brad");
+  assert.equal(ctx.dom.text("hmDay"), "Friday, September 25");
   clock.fire();
-  assert.equal(ctx.dom.text("deskGreeting"), "Good morning, Brad");
-  assert.equal(ctx.dom.text("deskToday"), "Saturday, September 26", "midnight moves the day line too");
-  ctx.head(); ctx.head();
+  assert.equal(ctx.dom.text("hmTitle"), "Good morning, Brad");
+  assert.equal(ctx.dom.text("hmDay"), "Saturday, September 26", "midnight moves the day line too");
+  ctx.draw(); ctx.draw();
   assert.equal(clock.armed().length, 1, "every draw re-arms the SAME one timer");
+  ctx.stop();
+  assert.equal(clock.armed().length, 0, "stopDeskClock leaves nothing armed");
   const nobody = fakeClock(new Date(2026, 8, 25, 11, 50).getTime());
-  loadGreeting(null, nobody).head();
-  assert.equal(nobody.armed().length, 0, "a signed-out banner says Workspace and arms nothing");
+  loadGreeting(null, nobody).draw();
+  assert.equal(nobody.armed().length, 0, "a signed-out Home says Home and arms nothing");
 });
 
-test("a sign-out puts the banner back: no name, no status line, no city", () => {
+test("a sign-out takes Home back down: no name, no timer, no firm", () => {
   const at = html.indexOf("async function renderShares()");
   const fn = html.slice(at, html.indexOf("\n  }\n", at));
-  assert.ok(fn.includes("resetDeskHero();"), "hideAll resets the banner with the rest of the firm surfaces");
-  const reset = html.slice(html.indexOf("  function resetDeskHero() {"), html.indexOf("\n  }\n", html.indexOf("  function resetDeskHero() {")));
-  assert.ok(reset.includes('getElementById("deskGreeting").textContent = "Home"'));
-  assert.ok(reset.includes("clearTimeout(deskClockTimer);"),
-    "and stops the greeting's timer, or it would greet the signed-out banner at the next hour mark");
-  assert.ok(html.includes('if (!document.hidden && deskClockTimer) drawDeskClock();'),
+  const hide = fn.slice(fn.indexOf("const hideAll = () => {"), fn.indexOf("};", fn.indexOf("const hideAll = () => {")));
+  assert.ok(hide.includes("stopDeskClock();"),
+    "hideAll stops the greeting's timer, or it would greet the signed-out page at the next hour mark");
+  assert.ok(hide.includes("resetHomeMap();"), "and Home's map forgets the buildings, deals and colleagues it named");
+  const reset = html.slice(html.indexOf("  function resetHomeMap() {"), html.indexOf("\n  }\n", html.indexOf("  function resetHomeMap() {")));
+  assert.ok(reset.includes('t.textContent = "Home"'), "the heading goes back to Home, with no name");
+  assert.ok(html.includes("if (!document.hidden && deskClockTimer) drawDeskClock();"),
     "a tab coming back re-reads the clock, only while a greeting is live");
-  assert.ok(reset.includes('heroSub("")'));
-  assert.ok(reset.includes("drawDeskHome(null)"));
+  assert.ok(fn.indexOf("drawDeskClock();") > fn.indexOf("await firmReady;"), "the greeting is drawn once the account is known");
 });
 
-test("a zero on the figure cards steps back, and a dash (a read that failed) does not", async () => {
-  const ctx = loadStrip({ buildings: [], shelf: [], threads: { total: 0, unread: 0 }, critical: [], stats: "" });
-  ctx.draw(await ctx.read());
-  for (const id of ["stripBuildingsFig", "stripShelfFig", "stripUnreadFig", "stripCriticalFig"]) {
-    assert.ok(ctx.dom.el(id).classList.contains("zero"), id + " is a zero and should step back");
-  }
-  const failed = loadStrip({ buildings: [BLDG({})], leases: { status: 503, body: {} }, threads: null, shelfHidden: true });
-  failed.draw(await failed.read());
-  assert.ok(!failed.dom.el("stripCriticalFig").classList.contains("zero"), "'could not read' keeps its ink");
-  assert.ok(!failed.dom.el("stripBuildingsFig").classList.contains("zero"), "1 building is not a zero");
-});
-
-test("the empty sections are previews with one next step, and the preview holds no text that could read as data", () => {
-  for (const id of ["buildingsEmpty", "deskSharedWithFirmEmpty", "deskSharesEmpty", "deskThreadsEmpty", "deskCriticalEmpty", "contactsEmpty"]) {
+test("the empty lists are previews with one next step, and the preview holds no text that could read as data", () => {
+  for (const id of ["deskSharedWithFirmEmpty", "deskInboxEmpty", "deskSharesEmpty", "contactsEmpty"]) {
     const at = html.indexOf(`id="${id}"`);
     assert.ok(at > 0, id);
     const tag = html.slice(html.lastIndexOf("<", at), html.indexOf(">", at) + 1);
@@ -2377,511 +1732,37 @@ test("the empty sections are previews with one next step, and the preview holds 
     assert.match(rows, /class="dk-ghost-rows" aria-hidden="true"/, `${id}'s preview is hidden from a screen reader`);
     assert.equal(rows.replace(/<[^>]*>/g, "").trim(), "", `${id}'s preview rows must carry no text`);
   }
-  // .dk-ghost sets display, so it needs its own hidden rule (the .dk-strip trap).
+  // .dk-ghost sets display, so it needs its own hidden rule (the .pr-cell trap).
   assert.ok(html.includes(".dk-ghost.hidden { display: none; }"));
-  assert.ok(html.includes(".dk-start.hidden { display: none; }"));
-  assert.ok(html.includes(".dk-hero-where.hidden { display: none; }"));
 });
 
-test("a member in no firm gets three start cards, the second chosen by plan so it never opens onto a Pro gate", () => {
-  let ctx = loadFirmEmpty({ state: { orgs: [], invites: [], canCreate: true }, pro: { enabled: true, canBulkValue: true } });
-  ctx.draw();
-  assert.equal(ctx.dom.el("deskStart2").href, "/bulk");
-  assert.equal(ctx.dom.text("deskStart2T"), "Run a comp report");
-  assert.equal(ctx.dom.hidden("deskStart2IcoReport"), false);
-  assert.equal(ctx.dom.hidden("deskStart2IcoPermit"), true);
-  ctx = loadFirmEmpty({ state: { orgs: [], invites: [], canCreate: false }, pro: { enabled: true, canBulkValue: false } });
-  ctx.draw();
-  assert.equal(ctx.dom.el("deskStart2").href, "/permits", "a free member is sent where a free member can go");
-  // A vault-only beta grant can create a firm (canUseOrg) and still has no
-  // Comp report tool (canBulkValue is Pro alone): the card follows the tool,
-  // not the firm flag (Cursor Bugbot on PR #320).
-  const beta = loadFirmEmpty({ state: { orgs: [], invites: [], canCreate: true }, pro: { enabled: true, canBulkValue: false } });
-  beta.draw();
-  assert.equal(beta.dom.el("deskStart2").href, "/permits");
-  assert.equal(beta.dom.text("deskFirmEmptyBtn"), "Create a firm", "the firm card still offers what canCreate allows");
-  // Before /api/config answers, the default config has no canBulkValue: the
-  // safe card, never the gated one.
-  const early = loadFirmEmpty({ state: { orgs: [], invites: [], canCreate: true } });
-  early.draw();
-  assert.equal(early.dom.el("deskStart2").href, "/permits");
-  // And the card follows the config when it lands, beside the rail's row.
-  const rb = html.indexOf("function refreshBillingUI(");
-  assert.ok(rb > 0 && html.slice(rb, html.indexOf("\n  }\n", rb)).includes("syncStartCards();"), "refreshBillingUI re-decides the card when the config lands");
-  assert.equal(ctx.dom.text("deskStart2T"), "Watch new permits");
-  assert.equal(ctx.dom.hidden("deskStart2IcoReport"), true);
-  assert.equal(ctx.dom.hidden("deskStart2IcoPermit"), false);
-  // The city pictures on the first card are real, committed files.
-  const box = html.slice(html.indexOf('id="deskFirmEmpty"'), html.indexOf('id="deskStart2"'));
-  const pics = [...box.matchAll(/src="\/market-heroes\/([a-z0-9-]+\.jpg)"/g)].map((m) => m[1]);
-  assert.equal(pics.length, 3);
-  for (const f of pics) assert.ok(fs.existsSync(path.join(__dirname, "..", "market-heroes", f)), f + " must exist");
-});
-
-test("the banner, the start cards and the previews reach only ids that exist", async () => {
-  const asked = new Set();
-  const home = loadHome([{ market: "Boise, ID" }]);
-  home.draw({ market: "Boise, ID", photo: BOISE_PHOTO });
-  home.dom.asked.forEach((id) => asked.add(id));
-  const greet = loadGreeting({ name: "Brad" });
-  greet.head();
-  greet.dom.asked.forEach((id) => asked.add(id));
-  const empty = loadFirmEmpty({});
-  empty.draw();
-  empty.dom.asked.forEach((id) => asked.add(id));
-  const dates = loadDates({});
-  dates.draw([]);
-  dates.dom.asked.forEach((id) => asked.add(id));
-  for (const id of asked) assert.ok(html.includes(`id="${id}"`), `the desk reads #${id}, which is not in index.html's markup`);
-});
-
-// ---------------------------------------------------------------------------
-// The firm's skyline (2026-09-25, Draft B of the banner drafts — the owner's
-// pick). One tower per building on the board. The RULES are firm-skyline.js's
-// and are tested in test/firm-skyline.test.js; these run the page's half —
-// what it draws, what hovering does, and when it stays away — against the
-// real module.
-// ---------------------------------------------------------------------------
-const SKY_RE = /  let deskSky = null;[\s\S]*?\n  window\.addEventListener\("resize"[\s\S]*?\n  \}\);/;
-const SKY_NOW = new Date(2026, 8, 25, 9, 30).getTime();
-const skyDaysAgo = (n) => new Date(SKY_NOW - n * 86400000).toISOString();
-const SKYB = (o) => Object.assign({ id: "b1", address: "3275 S Federal Way, Boise, ID", sizeSqft: 24000, type: "Industrial",
-  createdAt: skyDaysAgo(90), addedBy: "Brad Ellis", mine: false, market: "Boise, ID" }, o);
-function loadSky(o) {
-  const clock = fakeClock(o.at || SKY_NOW);
-  const ctx = load(SKY_RE,
-    "this.draw = drawDeskSky; this.clear = clearDeskSky; this.paint = paintDeskSky; this.state = () => deskSky;",
-    "let currentUser = __user; function myFirm() { return __firm; }\n" +
-    "let firmBuildings = __b; let deskCritical = __crit; let firmShelfItems = __shelf;",
-    { __user: o.user === undefined ? { email: "brad@foothillcre.com" } : o.user,
-      __firm: o.firm === undefined ? { id: "o1", name: "Foothill Commercial" } : o.firm,
-      __b: o.buildings || [], __crit: o.critical || null, __shelf: o.shelf || [],
-      SKYLINE: o.noModule ? undefined : require("../firm-skyline.js"),
-      Date: clock.Date,
-      window: { innerWidth: o.width || 1440, addEventListener() {} } });
-  if (o.stripHidden) ctx.dom.el("deskStrip").classList.add("hidden");
-  else ctx.dom.el("deskStrip").classList.remove("hidden");
-  ctx.clock = clock;
-  return ctx;
-}
-const skyTowers = (ctx) => {
-  const g = ctx.dom.el("deskSky").children.find((c) => c.attrs && c.attrs.class === "sky-towers");
-  return g ? g.children : [];
-};
-const partsOf = (a, cls) => a.children.filter((c) => c.attrs && c.attrs.class === cls);
-const BOARD = () => [
-  SKYB({ id: "quiet", address: "120 N Milwaukee St, Boise, ID", sizeSqft: 15600, createdAt: skyDaysAgo(200) }),
-  SKYB({ id: "due", createdAt: skyDaysAgo(60) }),
-  SKYB({ id: "new", address: "2900 E Overland Rd, Meridian, ID", sizeSqft: 64000, createdAt: skyDaysAgo(5), mine: true }),
-];
-
-test("the skyline draws one tower per building, oldest first, each a link to its sheet", () => {
-  const ctx = loadSky({ buildings: BOARD(), critical: [{ buildingId: "due", kind: "notice", tenant: "Acme Logistics", days: 41 }] });
-  ctx.draw();
-  assert.ok(ctx.dom.el("deskHero").classList.contains("has-sky"), "the sky covers the city photograph");
-  assert.ok(ctx.dom.el("deskHero").classList.contains("sky-dawn"), "half past nine is dawn, like the greeting's morning");
-  assert.equal(ctx.dom.hidden("deskSky"), false);
-  const towers = skyTowers(ctx);
-  assert.deepEqual(towers.map((a) => a.attrs.href), ["/building/quiet", "/building/due", "/building/new"],
-    "oldest on the left, so the skyline grows to the right");
-  assert.match(towers[1].attrs["aria-label"], /^3275 S Federal Way\. Industrial · 24,000 SF .*Option notice for Acme Logistics in 41 days\./);
-  assert.equal(ctx.dom.text("deskSkyCap"), "Your firm's skyline · 3 buildings · +1 this month");
-  assert.equal(ctx.dom.hidden("deskSkyInfo"), false, "the count and the key are behind the ⓘ, not under the greeting");
-  assert.equal(ctx.dom.hidden("deskSkyEmpty"), true);
-});
-
-test("a red light marks only a date inside 90 days, a crane only a building added this month, and work lights windows", () => {
-  const ctx = loadSky({ buildings: BOARD(),
-    critical: [{ buildingId: "due", kind: "notice", tenant: "Acme", days: 41 }, { buildingId: "quiet", kind: "expiry", days: 200 }],
-    shelf: [{ address: "3275 S Federal Way, Boise, ID", createdAt: skyDaysAgo(2) }] });
-  ctx.draw();
-  const [quiet, due, fresh] = skyTowers(ctx);
-  assert.equal(partsOf(due, "sky-red").length, 1);
-  assert.equal(partsOf(quiet, "sky-red").length, 0, "a date past 90 days is not a red light");
-  assert.equal(partsOf(fresh, "sky-crane").length, 1);
-  assert.equal(partsOf(due, "sky-crane").length + partsOf(quiet, "sky-crane").length, 0);
-  const lit = (a) => partsOf(a, "sky-win lit").length / (partsOf(a, "sky-win lit").length + partsOf(a, "sky-win").length);
-  assert.ok(lit(due) > lit(quiet), "a building the firm worked on is brighter than a quiet one");
-});
-
-test("the crane is drawn at a weight it can be read at, and the city line is not a pill that looks like a button", () => {
-  const ctx = loadSky({ buildings: BOARD() });
-  ctx.draw();
-  const fresh = skyTowers(ctx)[2];
-  assert.equal(partsOf(fresh, "sky-crane").length, 1);
-  assert.equal(partsOf(fresh, "sky-crane-wt").length, 2, "a filled weight and hook block, not hairlines alone");
-  const crane = html.match(/\.dk-sky \.sky-crane \{[^}]*\}/)[0];
-  assert.ok(Number(/stroke-width: ([\d.]+)/.exec(crane)[1]) >= 1.5, "the owner read the 1.1px crane as a stray mark");
-  const where = html.match(/\.dk-hero-where \{[^}]*\}/)[0];
-  assert.doesNotMatch(where, /border|background|padding/, "it does nothing when clicked, so it must not look clickable");
-});
-
-test("at rest the callout names the tower that needs the firm most; hovering another moves it, leaving brings it back", () => {
-  const ctx = loadSky({ buildings: BOARD(), critical: [{ buildingId: "due", kind: "notice", tenant: "Acme Logistics", days: 41 }],
-    shelf: [{ address: "3275 S Federal Way, Boise, ID", createdAt: skyDaysAgo(2) }] });
-  ctx.draw();
-  assert.equal(ctx.dom.hidden("deskSkyCall"), false);
-  assert.equal(ctx.dom.text("deskSkyCallName"), "3275 S Federal Way");
-  assert.equal(ctx.dom.el("deskSkyCallName").getAttribute("href"), "/building/due");
-  assert.equal(ctx.dom.el("deskSkyCallOpen").getAttribute("href"), "/building/due", "the callout opens the building's sheet");
-  assert.equal(ctx.dom.text("deskSkyCallDue"), "Option notice for Acme Logistics in 41 days");
-  assert.equal(ctx.dom.text("deskSkyCallMeta"), "1 report this month");
-  const [, due, fresh] = skyTowers(ctx);
-  assert.ok(due.classList.contains("on"), "the tower being spoken about is lit up");
-  fresh.fire("mouseenter");
-  assert.equal(ctx.dom.text("deskSkyCallName"), "2900 E Overland Rd");
-  assert.equal(ctx.dom.text("deskSkyCallDue"), "");
-  assert.equal(ctx.dom.text("deskSkyCallFresh"), "New this month, added by you");
-  assert.ok(fresh.classList.contains("on") && !due.classList.contains("on"));
-  fresh.fire("mouseleave");
-  assert.equal(ctx.dom.text("deskSkyCallName"), "3275 S Federal Way", "back to the tower that needs the firm");
-  fresh.fire("focus");
-  assert.equal(ctx.dom.text("deskSkyCallName"), "2900 E Overland Rd", "a keyboard gets the same callout");
-});
-
-test("with nothing due and nothing new, the callout waits for a hover", () => {
-  const ctx = loadSky({ buildings: [SKYB({})] });
-  ctx.draw();
-  assert.equal(ctx.dom.hidden("deskSkyCall"), true);
-  skyTowers(ctx)[0].fire("mouseenter");
-  assert.equal(ctx.dom.hidden("deskSkyCall"), false);
-  assert.equal(ctx.dom.text("deskSkyCallMeta"), "No reports this month");
-});
-
-test("with nothing due, even a building added this month waits for a hover (the crane already says new)", () => {
-  const ctx = loadSky({ buildings: [SKYB({ createdAt: skyDaysAgo(1), mine: true })] });
-  ctx.draw();
-  assert.equal(ctx.dom.hidden("deskSkyCall"), true, "a new firm's lone building no longer carries a card all day");
-  assert.ok(!skyTowers(ctx)[0].classList.contains("on"));
-  skyTowers(ctx)[0].fire("mouseenter");
-  assert.equal(ctx.dom.hidden("deskSkyCall"), false);
-  assert.equal(ctx.dom.text("deskSkyCallFresh"), "New this month, added by you");
-  ctx.draw(); // the desk re-renders while the pointer is still on the tower
-  assert.equal(ctx.dom.hidden("deskSkyCall"), false, "a redraw under the pointer keeps the card up");
-  assert.equal(ctx.dom.text("deskSkyCallFresh"), "New this month, added by you");
-  skyTowers(ctx)[0].fire("mouseleave");
-  assert.equal(ctx.dom.hidden("deskSkyCall"), true, "and goes again when the pointer leaves");
-  ctx.draw();
-  assert.equal(ctx.dom.hidden("deskSkyCall"), true, "a redraw after leaving does not bring it back");
-});
-
-test("the callout stands beside the tower it describes, never over it, and never over the ⓘ", () => {
-  const W = 1000, H = 292;
-  const box = (el) => {
-    const m = /^left:(-?\d+)px;top:(-?\d+)px;width:(\d+)px$/.exec(el.getAttribute("style") || "");
-    assert.ok(m, "placed as left/top/width: " + el.getAttribute("style"));
-    return { left: Number(m[1]), top: Number(m[2]), width: Number(m[3]) };
-  };
-  const boards = {
-    "one building": [SKYB({ createdAt: skyDaysAgo(1) })],
-    "ten buildings": Array.from({ length: 10 }, (_, i) => SKYB({ id: "b" + i, address: `${i + 1} Main St, Boise, ID`,
-      sizeSqft: 8000 + i * 9000, createdAt: skyDaysAgo(80 - i * 8) })),
-  };
-  for (const [what, buildings] of Object.entries(boards)) {
-    const ctx = loadSky({ buildings });
-    ctx.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: W, height: H });
-    ctx.draw();
-    const info = /^left:(\d+)px/.exec(ctx.dom.el("deskSkyInfo").getAttribute("style"));
-    const infoRight = Number(info[1]) + 24;
-    for (const a of skyTowers(ctx)) {
-      a.fire("mouseenter");
-      const body = partsOf(a, "sky-body")[0].attrs;
-      const tx = Number(body.x), tr = tx + Number(body.width), ttop = Number(body.y);
-      const c = box(ctx.dom.el("deskSkyCall"));
-      assert.ok(c.left >= tr + 10 || c.left + c.width <= tx - 10, `${what}: the card is beside its tower, not over it`);
-      assert.ok(c.left >= infoRight, `${what}: the ⓘ stays uncovered`);
-      assert.ok(c.left + c.width <= W - 22, `${what}: inside the banner`);
-      assert.ok(c.top >= 76, `${what}: below the find box`);
-      assert.ok(c.top + 80 <= H * 0.79, `${what}: standing on the ground, not under it`);
-      assert.ok(ttop > 0);
-      a.fire("mouseleave");
-    }
+test("the old Home is deleted, not hidden: no banner, skyline, strip, agenda, decks or their writers", () => {
+  for (const gone of ['id="deskHero"', 'id="deskSky"', 'id="deskStrip"', 'id="deskAgenda"', 'id="deskCritical"',
+    'id="deskThreads"', 'id="deskDealBoard"', 'id="deskPermits"', 'id="deskBuildings"', 'id="deskFirmEmpty"',
+    "data-deck", "drawDeskSky", "drawDeskHome", "resetDeskHero", "drawFirmStrip", "drawAgenda", "renderDeskFind",
+    "renderDealBoard", "renderYourPermits", "renderFirmEmpty", "refreshDeckVisibility", "/firm-skyline.js", "SKYLINE"]) {
+    assert.ok(!html.includes(gone), `index.html still carries ${gone}`);
   }
-});
-
-test("each property type is drawn as its own building, and a residential one is a house", () => {
-  // The owner, 2026-09-26: "for residential make it a house, and a different
-  // type of building for each property type".
-  const TYPES = { "": "tower", Office: "office", Industrial: "warehouse", Retail: "store",
-    Multifamily: "apartments", Residential: "house", Land: "lot" };
-  const buildings = Object.keys(TYPES).map((type, i) => SKYB({ id: "t" + i, type, address: `${i + 1} Main St, Boise, ID`,
-    sizeSqft: type === "Residential" ? 2400 : 60000 + i * 9000, createdAt: skyDaysAgo(90 - i) }));
-  const ctx = loadSky({ buildings });
-  ctx.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: 1200, height: 292 });
-  ctx.draw();
-  const towers = skyTowers(ctx);
-  assert.deepEqual(towers.map((a) => a.attrs["data-shape"]), Object.values(TYPES));
-  const by = Object.fromEntries(towers.map((a) => [a.attrs["data-shape"], a]));
-  const has = (shape, cls) => partsOf(by[shape], cls).length;
-  const ground = 292 * 0.79;
-  for (const a of towers) {
-    const body = partsOf(a, "sky-body")[0];
-    assert.ok(body, a.attrs["data-shape"] + ": every shape stands a body on the ground, which the callout measures");
-    assert.ok(Math.abs(Number(body.attrs.y) + Number(body.attrs.height) - ground) < 0.01, a.attrs["data-shape"] + " stands on the horizon");
-    assert.ok(partsOf(a, "sky-win").length + partsOf(a, "sky-win lit").length > 0, a.attrs["data-shape"] + " has windows to light");
-  }
-  // The house: walls, then a pitched roof whose ridge is the top of its slot.
-  const roof = partsOf(by.house, "sky-cap").find((c) => /L[\d.]+ [\d.]+L/.test(c.attrs.d));
-  assert.ok(roof, "a pitched roof");
-  const [, ridgeX, ridgeY] = /L([\d.]+) ([\d.]+)L/.exec(roof.attrs.d).map(Number);
-  const walls = partsOf(by.house, "sky-body")[0].attrs;
-  assert.ok(ridgeY < Number(walls.y) - 10, "the ridge rises above the walls");
-  assert.ok(Math.abs(ridgeX - (Number(walls.x) + Number(walls.width) / 2)) < 0.1, "over the middle of the house");
-  assert.equal(has("house", "sky-cap"), 2, "the roof and a chimney");
-  assert.equal(has("house", "sky-door"), 1, "a front door");
-  assert.equal(partsOf(by.house, "sky-win").length + partsOf(by.house, "sky-win lit").length, 3, "two windows and one in the gable");
-  assert.ok(has("warehouse", "sky-dock") >= 1 && has("warehouse", "sky-cap") === 1, "loading doors under a sawtooth roof");
-  assert.ok(has("store", "sky-awn") === 1 && has("store", "sky-awn-s") === 1 && has("store", "sky-sign") === 1, "an awning and a sign");
-  assert.ok(has("apartments", "sky-rail") === 1 && has("apartments", "sky-tank") === 1, "balconies and a water tank");
-  assert.equal(has("office", "sky-cap"), 1, "a stepped crown");
-  assert.ok(has("lot", "sky-fence") >= 1 && has("lot", "sky-tree") >= 1 && has("lot", "sky-hit") === 1,
-    "land is an open lot, with a clear rect that makes its thin lines hoverable");
-  assert.equal(has("tower", "sky-cap"), 0, "no type is the plain tower");
-  for (const shape of ["house", "warehouse", "store", "apartments", "office", "lot"]) {
-    assert.match(html, new RegExp(`id="deskSkyKey"[\\s\\S]*?<\\/svg>${{ house: "Residential", warehouse: "Industrial", store: "Retail",
-      apartments: "Multifamily", office: "Office", lot: "Land" }[shape]}</span>`), "the legend shows the " + shape);
-  }
-  for (const cls of ["sky-cap", "sky-door", "sky-dock", "sky-rail", "sky-tank", "sky-sign", "sky-awn", "sky-awn-s", "sky-fence", "sky-trunk", "sky-tree", "sky-hit"]) {
-    assert.match(html, new RegExp(`\\.dk-sky \\.${cls} \\{`), `.${cls} is coloured in the style block, not in the markup`);
-  }
-});
-
-test("a red light stands on a house's ridge, and land added this month gets its crane on the ground", () => {
-  const ctx = loadSky({ buildings: [
-    SKYB({ id: "home", type: "Residential", sizeSqft: 2400, createdAt: skyDaysAgo(120) }),
-    SKYB({ id: "shed", type: "Industrial", sizeSqft: 90000, createdAt: skyDaysAgo(100) }),
-    SKYB({ id: "lot", type: "Land", sizeSqft: 200000, createdAt: skyDaysAgo(1), address: "9000 W Ustick Rd, Boise, ID" }),
-  ], critical: [{ buildingId: "home", kind: "notice", tenant: "Acme", days: 12 }] });
-  ctx.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: 1000, height: 292 });
-  ctx.draw();
-  const [home, , lot] = skyTowers(ctx);
-  const roof = partsOf(home, "sky-cap").find((c) => /L[\d.]+ [\d.]+L/.test(c.attrs.d));
-  const [, ridgeX, ridgeY] = /L([\d.]+) ([\d.]+)L/.exec(roof.attrs.d).map(Number);
-  const mast = partsOf(home, "sky-mast")[0].attrs;
-  assert.ok(Math.abs(Number(mast.x1) - ridgeX) < 0.1 && Math.abs(Number(mast.y1) - ridgeY) < 0.1, "the mast starts at the ridge");
-  assert.equal(partsOf(home, "sky-red").length, 1);
-  const crane = partsOf(lot, "sky-crane")[0].attrs.d;
-  const [, mastX, base] = /^M([\d.]+) ([\d.]+)V/.exec(crane).map(Number);
-  assert.ok(Math.abs(base - 292 * 0.79) < 0.1, "an open lot has no roof, so its crane stands on the ground: breaking ground");
-  assert.equal(partsOf(lot, "sky-tree").length + partsOf(lot, "sky-trunk").length, 0,
-    "a lot added this month is cleared for building; with its trees left in, the mast ran through a canopy (Cursor Bugbot, PR #338)");
-  assert.ok(partsOf(lot, "sky-fence").length >= 1 && Number.isFinite(mastX), "it is still a fenced lot");
-  // A lot that is not new keeps its trees, however wide.
-  for (const sizeSqft of [20000, 400000]) {
-    const old = loadSky({ buildings: [SKYB({ id: "o", type: "Office", sizeSqft: 90000 }), SKYB({ id: "p", type: "Office", sizeSqft: 30000 }),
-      SKYB({ id: "l", type: "Land", sizeSqft, createdAt: skyDaysAgo(80) })] });
-    old.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: 1000, height: 292 });
-    old.draw();
-    assert.ok(partsOf(skyTowers(old)[2], "sky-tree").length >= 1, "an older lot has its tree");
-  }
-});
-
-test("on a board of a few houses the callout stays inside the banner and off the ⓘ", () => {
-  // Found 2026-09-26: four houses stand together at the right edge, too
-  // narrow to leave either side room for the card, and it ran off the banner.
-  const W = 1000, H = 292, ground = H * 0.79;
-  const box = (el) => {
-    const m = /^left:(-?\d+)px;top:(-?\d+)px;width:(\d+)px$/.exec(el.getAttribute("style") || "");
-    return { left: Number(m[1]), top: Number(m[2]), width: Number(m[3]) };
-  };
-  const ctx = loadSky({ buildings: ["1412 W Idaho St", "1715 N 10th St", "22 E Warm Springs Ave", "88 N Harrison Blvd"].map((address, i) =>
-    SKYB({ id: "h" + i, type: "Residential", sizeSqft: 2400 + i * 900, address: address + ", Boise, ID", createdAt: skyDaysAgo(200 - i * 40) })) });
-  ctx.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: W, height: H });
-  ctx.draw();
-  const info = /^left:(\d+)px;top:(\d+)px$/.exec(ctx.dom.el("deskSkyInfo").getAttribute("style"));
-  const infoLeft = Number(info[1]), infoTop = Number(info[2]);
-  for (const a of skyTowers(ctx)) {
-    a.fire("mouseenter");
-    const body = partsOf(a, "sky-body")[0].attrs;
-    const tx = Number(body.x), tr = tx + Number(body.width);
-    const c = box(ctx.dom.el("deskSkyCall"));
-    assert.ok(c.left + c.width <= W - 22 && c.left >= 0, "inside the banner: " + JSON.stringify(c));
-    assert.ok(c.left >= tr + 10 || c.left + c.width <= tx - 10, "beside its house, not over it");
-    const overInfo = c.left < infoLeft + 24 && c.left + c.width > infoLeft;
-    if (overInfo) assert.ok(c.top + 80 <= infoTop, "lifted clear of the ⓘ where it passes it");
-    assert.ok(c.top >= 76 && c.top + 80 <= ground, "below the find box, above the ground");
-    a.fire("mouseleave");
-  }
-});
-
-test("an empty board shows where the skyline will stand, and its button opens the add form", () => {
-  const ctx = loadSky({ buildings: [] });
-  let opened = 0;
-  ctx.dom.el("buildingsEmptyAdd").click = () => { opened += 1; };
-  ctx.draw();
-  assert.ok(ctx.dom.el("deskHero").classList.contains("has-sky"));
-  assert.equal(ctx.dom.el("deskSky").children.filter((c) => c.attrs && c.attrs.class === "sky-ghost").length, 3);
-  assert.equal(ctx.dom.hidden("deskSkyEmpty"), false);
-  assert.equal(ctx.dom.hidden("deskSkyInfo"), true, "no legend for nothing");
-  assert.equal(ctx.dom.hidden("deskSkyCall"), true);
-  ctx.dom.el("deskSkyAdd").fire("click");
-  assert.equal(opened, 1);
-});
-
-test("no firm, a failed board read, a missing rule or a sign-out leaves the old banner", () => {
-  const cases = [
-    ["the board could not be read", { buildings: BOARD(), stripHidden: true }],
-    ["/firm-skyline.js did not load", { buildings: BOARD(), noModule: true }],
-    ["not in a firm", { buildings: BOARD(), firm: null }],
-    ["signed out", { buildings: BOARD(), user: null }],
-  ];
-  for (const [why, o] of cases) {
-    const ctx = loadSky(o);
-    ["has-sky", "sky-dawn"].forEach((c) => ctx.dom.el("deskHero").classList.add(c)); // a stale skyline
-    ["deskSky", "deskSkyInfo", "deskSkyCall", "deskSkyEmpty"].forEach((id) => ctx.dom.el(id).classList.remove("hidden"));
-    ctx.draw();
-    assert.ok(!ctx.dom.el("deskHero").classList.contains("has-sky"), why + ": the city photograph shows again");
-    assert.ok(!ctx.dom.el("deskHero").classList.contains("sky-dawn"), why);
-    for (const id of ["deskSky", "deskSkyInfo", "deskSkyCall", "deskSkyEmpty"]) {
-      assert.equal(ctx.dom.hidden(id), true, `${why}: #${id}`);
-    }
-  }
-});
-
-test("the sky turns with the greeting's clock", () => {
-  const at = (h) => new Date(2026, 8, 25, h, 5).getTime();
-  const day = loadSky({ buildings: BOARD(), at: at(13) });
-  day.draw();
-  assert.ok(day.dom.el("deskHero").classList.contains("sky-day"));
-  assert.ok(!day.dom.el("deskHero").classList.contains("sky-dawn"));
-  day.clock.now = at(18);
-  day.paint();
-  assert.ok(day.dom.el("deskHero").classList.contains("sky-dusk"));
-  assert.ok(!day.dom.el("deskHero").classList.contains("sky-day"), "one sky at a time");
-  const clockFn = html.slice(html.indexOf("  function drawDeskClock() {"), html.indexOf("\n  }\n", html.indexOf("  function drawDeskClock() {")));
-  assert.ok(clockFn.includes('if (typeof paintDeskSky === "function") paintDeskSky();'),
-    "the greeting's timer turns the sky too, guarded so a page without the skyline still greets");
-});
-
-test("the towers stand on the sky's horizon at any banner height, and the ground runs only under them", () => {
-  // The owner's screenshot, 2026-09-25: a 312px banner put the horizon at
-  // 246px and the ground at 250px (H - 62), two lines four pixels apart, and
-  // the ground ran from beside a lone tower to the banner's corner.
-  const share = Number(html.match(/const DESK_SKY_HORIZON = ([\d.]+);/)[1]);
-  const pct = +(share * 100).toFixed(2);
-  for (const part of ["dawn", "day", "dusk"]) {
-    const rule = html.match(new RegExp(`\\.dk-hero\\.has-sky\\.sky-${part} \\.dk-hero-bg \\{ background:[^}]*\\}`))[0];
-    assert.ok(rule.includes(` ${pct}%,`), `the ${part} sky's horizon is at ${pct}%, the share the towers stand at`);
-  }
-  for (const H of [292, 312, 360]) {
-    const ctx = loadSky({ buildings: [SKYB({ createdAt: skyDaysAgo(1), mine: true })] });
-    ctx.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: 1000, height: H });
-    ctx.draw();
-    const ground = ctx.dom.el("deskSky").children.filter((c) => c.attrs && c.attrs.class === "sky-ground");
-    assert.equal(ground.length, 1);
-    assert.equal(Number(ground[0].attrs.y1), +(H * share).toFixed(1), `a ${H}px banner's ground is its horizon`);
-    const body = partsOf(skyTowers(ctx)[0], "sky-body")[0].attrs;
-    assert.ok(Math.abs(Number(body.y) + Number(body.height) - H * share) < 0.01, "the tower stands on it");
-    // What stands on it: the tower, and a lone tower's outlines of towers to come.
-    const ghosts = ctx.dom.el("deskSky").children.filter((c) => c.attrs && /sky-ghost/.test(c.attrs.class || ""));
-    const edge = ghosts.length ? ghosts[ghosts.length - 1].attrs : body;
-    const left = Number(body.x), right = Number(edge.x) + Number(edge.width);
-    assert.ok(Number(ground[0].attrs.x1) >= left - 26.01 && Number(ground[0].attrs.x2) <= right + 26.01,
-      "the ground is only as wide as what stands on it");
-    assert.ok(Number(ground[0].attrs.x2) < 1000, "and never runs to the banner's edge");
-  }
-  assert.match(html, /\.dk-sky \.sky-ground \{ stroke: url\(#deskSkyGround\);/, "its ends fade out");
-  assert.match(html, /new ResizeObserver\(\(\) => \{\s*if \(!deskSky\) return;[\s\S]{0,200}?layoutDeskSky\(\)[\s\S]{0,80}?\.observe\(document\.getElementById\("deskHero"\)\)/,
-    "a banner that grows after it was drawn is laid out again, or the ground floats above the horizon");
-});
-
-test("one building stands mid-room beside outlines of towers to come; three are an ordinary skyline", () => {
-  const soon = (ctx) => ctx.dom.el("deskSky").children.filter((c) => c.attrs && c.attrs.class === "sky-ghost sky-soon");
-  const one = loadSky({ buildings: [SKYB({ createdAt: skyDaysAgo(1), mine: true })] });
-  one.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: 1000, height: 292 });
-  one.draw();
-  assert.equal(skyTowers(one).length, 1);
-  assert.equal(soon(one).length, 3, "three faint outlines beside a lone tower");
-  assert.ok(soon(one).every((g) => g.attrs["aria-hidden"] === "true"), "outlines are not buildings, so a screen reader skips them");
-  const body = partsOf(skyTowers(one)[0], "sky-body")[0].attrs;
-  assert.ok(Number(body.x) < 1000 - 28 - 150, "not pinned to the banner's right edge");
-  const three = loadSky({ buildings: BOARD() });
-  three.draw();
-  assert.equal(soon(three).length, 0);
-  assert.match(html, /\.dk-sky \.sky-ghost\.sky-soon \{[^}]*stroke: rgba\(255,255,255,\.2\)/, "fainter than the empty board's outlines");
-});
-
-test("the skyline's count and key sit behind an ⓘ beside the towers, which a click pins open", () => {
-  const ctx = loadSky({ buildings: BOARD() });
-  ctx.draw();
-  const info = ctx.dom.el("deskSkyInfo");
-  assert.match(info.getAttribute("style"), /^left:\d+px;top:\d+px$/, "layoutDeskSky stands it on the ground");
-  const btn = ctx.dom.el("deskSkyInfoBtn");
-  btn.fire("click");
-  assert.ok(info.classList.contains("open"));
-  assert.equal(btn.getAttribute("aria-expanded"), "true");
-  btn.fire("keydown", { key: "Escape" });
-  assert.ok(!info.classList.contains("open"), "Escape closes it");
-  btn.fire("click");
-  ctx.clear();
-  assert.ok(!info.classList.contains("open") && btn.getAttribute("aria-expanded") === "false", "a sign-out does not leave it pinned");
-  const hero = html.slice(html.indexOf('<h2 id="deskGreeting"'), html.indexOf('<div id="deskSkyCall"'));
-  assert.doesNotMatch(hero, /deskSkyCap|deskSkyKey/, "nothing explains the chart under the greeting");
-  assert.match(html, /\.dk-sky-info:hover \.dk-sky-key, \.dk-sky-info:focus-within \.dk-sky-key, \.dk-sky-info\.open \.dk-sky-key \{ display: flex; \}/);
-});
-
-test("a tower the callout describes is only outlined; a hover or keyboard focus lights it", () => {
-  const on = html.match(/\.dk-sky a\.on \.sky-body \{[^}]*\}/);
-  assert.ok(on, "a lone building is always the callout's tower, so .on is what a new firm sees all day");
-  assert.doesNotMatch(on[0], /fill:/, ".on keeps the resting glass");
-  const lit = html.indexOf(".dk-sky a:hover .sky-body, .dk-sky a:focus-visible .sky-body {");
-  assert.ok(lit > html.indexOf(on[0]), "the hover rule comes after .on, so it wins on equal weight");
-});
-
-test("on a phone the towers stay behind the words and take no pointer or tab stop", () => {
-  const ctx = loadSky({ buildings: BOARD(), width: 390, critical: [{ buildingId: "due", kind: "notice", days: 10 }] });
-  ctx.draw();
-  assert.ok(skyTowers(ctx).every((a) => a.attrs.tabindex === "-1"));
-  assert.equal(ctx.dom.hidden("deskSkyCall"), true, "no callout floating over the words");
-  assert.match(html, /\.dk-sky a \{ pointer-events: none; \}/);
-});
-
-test("the skyline is drawn last from what the desk read, and goes with the rest of the banner", () => {
-  const at = html.indexOf("async function renderShares()");
-  const fn = html.slice(at, html.indexOf("\n  }\n", at));
-  assert.ok(fn.indexOf("drawDeskSky();") > fn.indexOf("drawDeskDates(await critical);"),
-    "after the lease dates, the shelf and the buildings have all been parsed");
-  const r0 = html.indexOf("  function resetDeskHero() {");
-  assert.ok(html.slice(r0, html.indexOf("\n  }\n", r0)).includes("clearDeskSky();"),
-    "a sign-out takes the skyline down with the name");
-  const block = html.match(SKY_RE)[0];
-  assert.doesNotMatch(block, /bootFetch\(|fetch\(`?\/api/, "it has no read of its own");
-  assert.doesNotMatch(block, /innerHTML/, "tenants, names and addresses are written with textContent");
-  assert.doesNotMatch(block, /#[0-9A-Fa-f]{3,8}\b|rgba?\(/, "no colour rides in the markup the script builds; they are classes in the style block");
-  const ctx = loadSky({ buildings: BOARD(), critical: [{ buildingId: "due", kind: "notice", tenant: "A", days: 3 }] });
-  ctx.draw();
-  const empty = loadSky({ buildings: [] });
-  empty.draw();
-  const asked = new Set([...ctx.dom.asked, ...empty.dom.asked]);
-  for (const id of asked) assert.ok(html.includes(`id="${id}"`), `the skyline reads #${id}, which is not in index.html's markup`);
-});
-
-test("the browser can actually reach SKYLINE", () => {
-  assert.match(html, /<script src="\/firm-skyline\.js"><\/script>/);
+  assert.ok(!fs.existsSync(path.join(__dirname, "..", "firm-skyline.js")), "firm-skyline.js left with the skyline");
   const serverSrc = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
-  assert.match(serverSrc,
-    /"\/firm-skyline\.js": \{ file: "firm-skyline\.js", type: "text\/javascript; charset=utf-8", maxAge: 0 \}/);
-  assert.ok(!/const \{[^}]*\} = SKYLINE/.test(html), "guarded with typeof, never destructured: a missing file must not take the page down");
+  assert.ok(!serverSrc.includes('"/firm-skyline.js"'), "server.js no longer serves it");
 });
 
 // ---------------------------------------------------------------------------
-// Tracked permits are OFF the Workspace (2026-09-30, owner's call). The card
+// Tracked permits are OFF Home (2026-09-30, owner's call). The card
 // (#deskTracked) and its "Needs you" entries shipped 2026-09-29 and came off
 // the next day; a member's permits live on /permits, and the rail's Permit
 // tracker dot still says when one reached a step. /api/permits/mine is
-// /permits' read now, so it is not in the workspace's boot list either.
+// /permits' read now, so it is not in the boot list either.
 // ---------------------------------------------------------------------------
-test("tracked permits stay off the Workspace: no card, no Needs-you entry, no boot read", () => {
+test("tracked permits stay off Home: no card, no Today entry, no boot read", () => {
   for (const gone of ['id="deskTracked', "renderTrackedPermits", "deskPermitNotices", "View permit →"]) {
     assert.ok(!html.includes(gone), `index.html still carries ${gone}`);
   }
   const serverSrc = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
   const list = serverSrc.match(/const DESK_BOOT_URLS = \[[\s\S]*?\n\];/)[0];
-  assert.ok(!list.includes("/api/permits/mine"), "nothing on the Workspace reads it, so the page must not wait on it");
+  assert.ok(!list.includes("/api/permits/mine"), "nothing on Home reads it, so the page must not wait on it");
   assert.ok(list.includes("/api/permits/unread"), "the rail's Permit tracker dot still ships with the page");
-  // Your permits (filings at the firm's own buildings) is a different card
-  // and stays.
-  assert.ok(html.includes('id="deskPermits"'));
 });
 
 // ---------------------------------------------------------------------------
@@ -3126,9 +2007,4 @@ test("Your links: a member of no firm sees their firm shares there, and an empty
   noVault.table([LINK({})]);
   assert.equal(buttons(noVault.dom.el("sharesRows")).filter((b) => b.textContent === "Start a deal room").length, 0,
     "only offered to a member who can open a deal room");
-});
-
-test("the strip's Shelf link opens the shelf tab rather than scrolling to a pane that is not showing", () => {
-  assert.match(html, /href="#deskSharedWithFirm"/, "the strip still links to the shelf");
-  assert.match(html, /closest\('a\[href="#deskSharedWithFirm"\]'\)\) \{\n      shareTabPicked = "deskSharedWithFirm";\n      syncShareCard\(\);/);
 });

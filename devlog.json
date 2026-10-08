@@ -6,6 +6,12 @@
     "details": "The report’s header tags the address as “Your property”, and the comp table is headed “Comps Used” instead of “Comparable Properties”, so a comp is never called a property. The image and print exports carry both, and the PowerPoint export says the same on its first slide and its comp slides."
   },
   {
+    "date": "2026-10-07",
+    "type": "improvement",
+    "title": "Home loads lighter, and a building you add shows up right away",
+    "details": "The old Home sections that sat hidden behind the map (the skyline banner, the figure cards, Needs you, the two columns, the deal board and Your permits) are gone for good, so Home no longer builds them or reads their data on every visit. Adding one of the firm’s buildings from the Properties tab now puts it on the list and the map at once, instead of after a reload."
+  },
+  {
     "date": "2026-10-08",
     "type": "improvement",
     "title": "Every market page refreshed, and thirteen new ones",

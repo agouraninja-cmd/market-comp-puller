@@ -35,8 +35,20 @@ function boot(env) {
 
 // --- A bare environment: no keys, no database, nothing configured -----------
 
+// Every seeded market page carries a momentum read since the 2026-10-07
+// refresh, but the hollow, no-claim state still has to be exercised. So this
+// server also holds Denver office as a dynamic market page with no read and a
+// later stamp, which makes it the copy served (isBetterSnapshot) and leaves
+// Denver a city with no current read. Data only: no key, no database.
+const UNREAD_DENVER = (() => {
+  const p = JSON.parse(JSON.stringify(require("../market-seed.json")["office-denver-co"]));
+  delete p.direction; delete p.direction_source;
+  p.generatedAt = "2099-01-01";
+  return { "office-denver-co": p };
+})();
+
 test("bare environment", async (t) => {
-  const srv = await boot({});
+  const srv = await boot({ DATA_FILES: { "market-pages-dynamic.json": UNREAD_DENVER } });
   t.after(() => srv.stop());
 
   await t.test("healthz answers", async () => {
@@ -279,7 +291,7 @@ test("bare environment", async (t) => {
       }
     }
     assert.ok(unread > 0,
-      "the seeds deliberately include unread markets — the hollow state must actually be exercised");
+      "an unread market (UNREAD_DENVER) — the hollow state must actually be exercised");
     // The pin CSS: all four states have rules, and the hollow one never
     // shares flat's grey fill — the distinction between "we don't know" and
     // "the market is flat" is the whole point of the fourth class.
@@ -341,7 +353,7 @@ test("bare environment", async (t) => {
     assert.ok(states.has("mixed"),
       "the seeds hold cities whose markets disagree (Phoenix) — the mixed state must be exercised");
     assert.ok(states.has("none"),
-      "the seeds hold unread cities (Fontana) — the no-claim state must be exercised");
+      "an unread city (Denver, from UNREAD_DENVER) — the no-claim state must be exercised");
     // The Mixed swatch must look like what a mixed city actually DRAWS (the
     // areaStyle grey wash inside an ink ring). It shipped as a green/red
     // split gradient that no shape on the map ever wore, which left the

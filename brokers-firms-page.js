@@ -437,7 +437,7 @@ function renderBrokersFirmsPageBody({
     `branding on them.</p></div>` +
     `<div class="bfplan firm"><div class="k">Firm &middot; every seat gets Pro</div>` +
     `<div class="f">$${pricing.firmSeat}<span> / seat, min. ${minSeats}</span></div>` +
-    `<p>Everything in Pro, plus the shelf and Firm activity. Whoever owns the account holds ` +
+    `<p>Everything in Pro, plus the shelf and one map of the firm’s buildings and lease dates. Whoever owns the account holds ` +
     `billing and can add or drop seats any time.</p></div>` +
     `</div></div>` +
 

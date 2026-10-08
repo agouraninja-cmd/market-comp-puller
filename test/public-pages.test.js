@@ -613,22 +613,18 @@ test("the home page follows the owner's band order", async (t) => {
     }
   });
 
-  // deal-board.js is explicit that it counts CONTRIBUTION to the firm, not
-  // closings. A page that promised otherwise would be selling surveillance
-  // the product deliberately does not do.
-  //
-  // The NEGATION is stripped before the sweep, because the honest sentence
-  // and the dishonest one share their last five words. Design 3a's
-  // deal-board tile phrases it "Counts what each member contributed to the
-  // shelf — not who is closing what", where the landing page it replaces
-  // said "It does not report who is closing what."
-  await t.test("the firm band does not promise a closings leaderboard", async () => {
-    const html = await (await fetch(srv.base + "/")).text();
-    const stripped = html.replace(/not who is closing what/g, "");
-    assert.ok(!/who (is|are) closing what/i.test(stripped),
-      "the home page must not offer a record of who is closing what");
-    assert.match(html, /not who is closing what/i,
-      "the deal-board tile should say plainly what the board is not");
+  // The firm band sells only what ships. Firm activity (the deal board) left
+  // the app with Draft C's Home on 2026-10-07, and its tile and the firm
+  // plan's line went with it. Nothing may promise a record of who is closing
+  // what, which the product deliberately never kept.
+  await t.test("the firm band sells only what ships, and no closings leaderboard", async () => {
+    for (const path of ["/", "/brokers-firms"]) {
+      const html = await (await fetch(srv.base + path)).text();
+      assert.ok(!/Firm activity/.test(html), path + " still sells Firm activity, which left the app");
+      assert.ok(!/who (is|are) closing what/i.test(html), path + " must not offer a record of who is closing what");
+    }
+    const home = await (await fetch(srv.base + "/")).text();
+    assert.match(home, /One map<\/div><div class="hmtp">The firm’s buildings, your deals and what you own on one map/);
   });
 });
 

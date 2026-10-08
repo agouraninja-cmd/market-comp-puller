@@ -1010,7 +1010,9 @@ test("a firm is one of two shops, and says which", async (t) => {
 // person arrived as TWO rows — once by name, once unattributed — with correct
 // totals and a wrong-looking roster.
 // ---------------------------------------------------------------------------
-test("a departed member is one row on the deal board, not two", async (t) => {
+// The deal board itself left with Draft C's Home (2026-10-07); the snapshot
+// it needed stays, because the shelf names its reports the same way.
+test("a share keeps its sharer's name after their account is gone", async (t) => {
   const tables = seedTables();
   const { db, srv, stop } = await bootWithDb(tables);
   t.after(stop);
@@ -1042,18 +1044,8 @@ test("a departed member is one row on the deal board, not two", async (t) => {
   // is gone, so the live lookup can no longer answer who shared this.
   tables.shared_reports.forEach((r) => { if (r.user_id === MIKE.id) r.user_id = null; });
   tables.users = tables.users.filter((u) => u.id !== MIKE.id);
-
-  const board = (await (await fetch(srv.base +
-    `/api/org/board?id=${encodeURIComponent(org.id)}`, as(BRAD))).json()).board;
-  assert.ok(board, "the firm has shared something, so there is a board");
-
-  const mike = board.members.filter((m) => m.name === "Mike");
-  assert.equal(mike.length, 1, "Mike is one row");
-  assert.equal(mike[0].reports, 1);
-  // And crucially NOT an extra anonymous row beside him.
-  const anon = board.members.filter((m) => !m.name);
-  assert.deepEqual(anon, [],
-    "a departed member with a stored name never also appears as an unattributed row");
+  const kept = tables.shared_reports.find((r) => r.user_id === null && r.shared_by_name === "Mike");
+  assert.ok(kept, "the name outlives the account");
 });
 
 test("the live name wins over the snapshot while the account exists", async (t) => {

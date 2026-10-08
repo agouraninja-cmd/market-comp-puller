@@ -143,40 +143,6 @@ test("permit signals on the building sheet, the buildings strip and the Workspac
     assert.ok(html.includes('id="blPermits"'), "the strip is on the page");
   });
 
-  await t.test("Your permits: every firm, whatever its kind, gets the filings at its OWN buildings", async () => {
-    for (const [user, org, b, other] of [[BRAD, BROKER_ORG, B_BROKER, B_DEV], [DANA, DEV_ORG, B_DEV, B_BROKER]]) {
-      const r = await getJson(`${srv.base}/api/org/permits?id=${org}`, user);
-      assert.equal(r.status, 200, r.text);
-      assert.equal(r.j.cities, "Boise, Meridian and Nampa", "every swept city is named as lit, Nampa from its reports");
-      assert.equal(r.j.windowDays, PF.ACTIVITY_WINDOW_DAYS);
-      assert.equal(r.j.buildings, 1, "the board in a swept city — Brad's Dallas building is not counted as looked at");
-      assert.deepEqual(r.j.permits.map((p) => [p.permitNumber, p.buildingId, p.kind, p.status]),
-        [["BLD26-01234", b, "status", "Prep for Issuance"]],
-        "the Federal Way filing on this firm's copy of the building, as its status move two days ago");
-      assert.equal(r.j.permits[0].applicant, "Federal Way Partners");
-      assert.equal(r.j.stale, false);
-      // Not the Meridian filing on the same street line, not a filing at an
-      // address nobody's board holds, and not the other firm's building.
-      for (const absent of ["MER-SAME-STREET", "Meridian Twin LLC", "BLD-OFFICE", "Office Only Inc", "Too Old Co", other]) {
-        assert.equal(r.text.includes(absent), false, `${absent} must not appear`);
-      }
-      assert.equal("feed" in r.j, false, "the market-wide feed is gone from this route");
-    }
-  });
-
-  await t.test("a board with no building in a swept city gets permits: null, and an outsider gets nothing", async () => {
-    const r = await getJson(`${srv.base}/api/org/permits?id=${DALLAS_ORG}`, CARL);
-    assert.equal(r.status, 200, r.text);
-    assert.equal(r.j.permits, null, "no section — an empty one would claim we looked");
-    assert.equal(r.j.buildings, 0);
-    assert.equal(r.j.cities, "Boise, Meridian and Nampa");
-    const out = await getJson(`${srv.base}/api/org/permits?id=${DEV_ORG}`, OUT);
-    assert.ok(out.status === 403 || out.status === 404, `an outsider is refused (${out.status})`);
-    assert.equal(out.text.includes("BLD26-01234"), false);
-    const cross = await getJson(`${srv.base}/api/org/permits?id=${DEV_ORG}`, BRAD);
-    assert.ok(cross.status === 403 || cross.status === 404, `another firm's member is refused (${cross.status})`);
-    assert.equal(cross.text.includes(B_DEV), false);
-  });
 });
 
 test("an unswept table reads as 'not checked yet', never as a quiet fortnight", async (t) => {
@@ -191,8 +157,4 @@ test("an unswept table reads as 'not checked yet', never as a quiet fortnight", 
   assert.deepEqual(r.j.permits.filings, []);
   assert.equal(r.j.permits.never, true);
   assert.equal(r.j.permits.stale, true);
-  const f = await getJson(`${srv.base}/api/org/permits?id=${DEV_ORG}`, DANA);
-  assert.equal(f.status, 200, f.text);
-  assert.equal(f.j.never, true);
-  assert.deepEqual(f.j.permits, [], "a swept board with nothing in the table is an empty list, said with 'not checked yet'");
 });

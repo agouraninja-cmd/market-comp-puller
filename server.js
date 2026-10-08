@@ -98,7 +98,6 @@ const MAX_CONTACTS_XLSX_BYTES = 1024 * 1024;
 // org-access.js — this file owns the two reads and hands the rows in. It counts
 // CONTRIBUTION to the firm, never closings; see its header for why that is the
 // only number a firm can honestly be shown.
-const BOARD = require("./deal-board.js");
 // Who may read, write and add to a messaging hub. Same pure, fails-closed
 // contract as report-access.js: this file owns the reads, that one owns the
 // rules. NOT the connection hub at /brokers — see the spec's naming warning
@@ -5392,14 +5391,6 @@ async function buildingSheetPayload(user, orgId, buildingId) {
   return { org: { id: orgId, name: (org && org.name) || "Your firm" }, ...sheet, permits };
 }
 
-async function orgCompRowsForBoard(orgId) {
-  if (!DB_CONFIGURED || !orgId) return [];
-  return (await sbRequest("GET",
-    `org_comps?org_id=eq.${encodeURIComponent(orgId)}` +
-    `&select=id,market,property_type,created_at,shared_by_user_id,shared_by_name` +
-    `&order=created_at.desc&limit=1000`)) || [];
-}
-
 // ---------------------------------------------------------------------------
 // Firm messaging (migration 044) — the reads and writes behind /api/messages*.
 //
@@ -7435,28 +7426,6 @@ async function boardPermitActivityFor(boardRows) {
     console.error("Board permit activity read failed:", err.message);
     return [];
   }
-}
-
-// The Workspace's Your permits (2026-09-24, replacing the development shop's
-// New filings): what was filed, or whose status moved, at the firm's OWN
-// buildings in the last thirty days — the /buildings strip's rows, for every
-// shop kind. `permits` is null — the section does not render — when no board
-// building sits in a swept city, and then no filing is read at all. The city
-// line always travels, so the page can say where the feature is lit.
-// Unlike the strip this THROWS: the Workspace hides a section it could not
-// read, and "nothing happened at your buildings" must never be what a failed
-// read looks like.
-async function yourPermitsFor(orgId) {
-  const now = Date.now();
-  const base = { cities: PERMIT_FILINGS.citiesLine(PERMIT_SWEPT.map((c) => c.label)),
-    windowDays: PERMIT_FILINGS.ACTIVITY_WINDOW_DAYS };
-  const board = PERMIT_FILINGS.sweptBuildings(await orgBuildingRows(orgId), PERMIT_SWEPT_MARKETS);
-  if (!board.length) return { ...base, ...PERMIT_FILINGS.yourPermits({ buildings: [] }) };
-  const [filings, lastSweptAt] = await Promise.all([recentPermitFilings(now), permitLastSweptAt()]);
-  return { ...base,
-    ...PERMIT_FILINGS.yourPermits({ buildings: board, supportedMarkets: PERMIT_SWEPT_MARKETS,
-      filings, addressKey: VAULT.addressKey, now }),
-    ...PERMIT_FILINGS.sweepFreshness(lastSweptAt, now) };
 }
 
 // How far each city read from its published reports is covered: to the end of
@@ -11390,7 +11359,8 @@ const DESK_BOOT_ORG_URLS = (id) => [
   // The firm's lease dates (2026-09-04): Home's Today and its map.
   `/api/org/leases?id=${id}`,
   // /api/org/board (the deal board) and /api/org/permits (Your permits) left
-  // this list on 2026-10-07 with the old Home sections that read them.
+  // this list on 2026-10-07 with the old Home sections that read them, and
+  // both routes were removed the same day: nothing else read them.
 ];
 async function deskBootPayload(req) {
   if (!parseCookies(req)[SESSION_COOKIE]) return null;
@@ -14602,37 +14572,6 @@ function cachedHeroInspect() {
     }
   }
   return HERO_INSPECT_MEM;
-}
-
-// The Workspace banner's picture (Draft C, 2026-09-25): the firm's home
-// market (org-buildings.js's homeMarket) and, when that city has one, the
-// photograph its market page opens on — the same heroFor decision, the same
-// quality grade, the same credit. Three rules:
-//   - PHOTOGRAPHS ONLY. heroFor's satellite fallback is right for a market
-//     page, which must show where the market is; a banner behind somebody's
-//     name does not need an aerial tile, and the desk draws its own contour
-//     banner instead.
-//   - Never another city's picture (market-hero.js's rule): no photo for the
-//     home market means no photo, not the nearest one.
-//   - Fails to "no photo", never to an error: a banner is decoration, and
-//     the buildings read it rides on must not 503 because of it.
-function firmHomeFor(rows) {
-  const market = BUILDINGS.homeMarket(rows);
-  let photo = null;
-  const comma = market.lastIndexOf(",");
-  if (comma > 0) {
-    try {
-      const skipFiles = HEROQUALITY.skipFilesFromRows(cachedHeroInspect().rows);
-      const h = MARKETHERO.heroFor(market.slice(0, comma).trim(), market.slice(comma + 1).trim(), { skipFiles });
-      if (h && h.kind === "photo") {
-        photo = { src: h.src, srcset: h.srcset, credit: h.credit, license: h.license, commonsUrl: h.commonsUrl };
-      }
-    } catch (err) {
-      console.error("Workspace banner photo failed:", err && err.message);
-      photo = null;
-    }
-  }
-  return { market, photo };
 }
 
 // The CSS class for each momentum word, shared by every server-rendered
@@ -27572,127 +27511,6 @@ const server = http.createServer((req, res) =>
       return;
     }
 
-    // --- GET /api/org/board?id= — the deal board ---------------------------
-    //
-    // Who shared what to the firm, by member, by market, by month, with a
-    // leaderboard of contribution this month and this quarter.
-    //
-    // AGGREGATED SERVER-SIDE, which is the opposite of the shelf directly
-    // above it, and the two reasons are the shelf's own reasons read backwards.
-    // The shelf ships whole because its filters are interactive and its counts
-    // describe the whole list; the board ships counted because a firm with a
-    // thousand shares needs about forty numbers to draw it, and because every
-    // judgment in that counting — who is one person, which month a share falls
-    // in, what an undated row does to a total — is a rule worth a test, and
-    // `deal-board.js` is where `npm test` can reach it. index.html cannot
-    // require a module, so a browser-side board would be a second copy of
-    // those rules, which is the drift `test/index-html.test.js` exists to
-    // catch elsewhere and would be better off not creating here.
-    //
-    // NO NEW TABLES AND NO WIDENED READ. Both sources are already attributed
-    // at write time (018's `user_id`, 032's `shared_by_user_id` +
-    // `shared_by_name`), so this is presentation over reads that exist. In
-    // particular it does not touch `broker_comps` or `broker_bovs` — a
-    // member's own book and their won/lost record are private to the USER, not
-    // to the firm, and the leaderboard's honest limit follows from that rather
-    // than from a query nobody has written yet. See deal-board.js's header.
-    // --- GET /api/org/permits — the Workspace's Your permits ------------
-    //
-    // Permits filed, or whose status moved, at the firm's OWN buildings
-    // (2026-09-24; until then this answered the development shop's
-    // market-wide New filings, which moved to /permits). The firm gate like
-    // every /api/org read: the filings are public record, but WHICH of them
-    // sit on this firm's board is the firm's, and a non-member learns nothing
-    // about it. Every shop kind gets it. A firm with no building in a swept
-    // city gets `permits: null` for the cost of the board read alone.
-    if (req.method === "GET" && orgPath === "/api/org/permits") {
-      (async () => {
-        const user = await openOrg();
-        if (!user) return;
-        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
-        const membership = await memberOf(user, orgId);
-        if (!membership) return;
-        return sendJson(res, 200, await yourPermitsFor(orgId));
-      })().catch((err) => {
-        console.error("Your permits read failed:", err.message);
-        return sendJson(res, 503, { error: "Couldn't read your permits just now." });
-      });
-      return;
-    }
-
-    if (req.method === "GET" && orgPath === "/api/org/board") {
-      (async () => {
-        const user = await openOrg();
-        if (!user) return;
-        // Rate-limited like the shelf, and for the same reason: this pays for
-        // two thousand-row reads. Same generosity, since the desk fetches it
-        // on every render.
-        if (rateLimited("orgboard:" + clientIp(req), 60)) {
-          return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
-        }
-        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
-        const membership = await memberOf(user, orgId);
-        if (!membership) return;
-
-        const [shelf, comps] = await Promise.all([
-          orgShelfRows(orgId),
-          orgCompRowsForBoard(orgId),
-        ]);
-        // Only the shelf needs the attribution stitch — `org_comps` carries the
-        // name already. Same failure-safe read the shelf uses: losing a name
-        // must not cost the row it belongs to.
-        const people = await usersByIds(shelf.map((r) => r.user_id));
-
-        const board = BOARD.build({
-          reports: shelf.map((r) => {
-            const meta = (r.payload && r.payload.meta) || {};
-            const who = r.user_id ? people.get(String(r.user_id)) : null;
-            return {
-              id: r.id,
-              // marketOf here, not the stored address, so the board's markets
-              // are the SAME canonical strings the shelf filter, the corpus and
-              // the vault use. A second parse would give one firm two spellings
-              // of one city and split its own board in half.
-              market: marketOf(meta.address || ""),
-              at: r.created_at,
-              // "" rather than the shelf's "a colleague" fallback: the board
-              // groups on this, and a literal fallback string would merge every
-              // unreadable row into one plausible-looking person. An empty name
-              // goes to deal-board.js's declared unattributed bucket instead.
-              // Live first, snapshot second, then the declared unattributed
-              // bucket (038). This is the line that closed the departed-member
-              // split: `org_comps` has carried a snapshotted name since 032,
-              // so a member who deleted their account kept their attribution
-              // on their COMPS and lost it on their REPORTS, and the board
-              // showed one person as two rows — once by name, once as "a
-              // former colleague". Both sources snapshot now.
-              sharedBy: (who && (who.name || who.email)) || r.shared_by_name || "",
-              sharedById: r.user_id || "",
-              mine: Boolean(r.user_id && String(r.user_id) === String(user.id)),
-            };
-          }),
-          comps: comps.map((r) => ({
-            id: r.id,
-            market: r.market || "",
-            at: r.created_at,
-            sharedBy: r.shared_by_name || "",
-            sharedById: r.shared_by_user_id || "",
-            mine: Boolean(r.shared_by_user_id && String(r.shared_by_user_id) === String(user.id)),
-          })),
-          now: Date.now(),
-          truncated: shelf.length >= 1000 || comps.length >= 1000,
-        });
-
-        // null when the firm has shared nothing — the desk's existing empty
-        // state says it better, so the panel simply does not render.
-        return sendJson(res, 200, { id: orgId, board });
-      })().catch((err) => {
-        console.error("Firm deal board read failed:", err.message);
-        return sendJson(res, 503, { error: "Couldn't load your firm's activity. Please try again in a minute." });
-      });
-      return;
-    }
-
     // --- /api/org/contacts — the firm's own tenant list (039) --------------
     //
     // FIRM-WIDE and membership-gated, exactly like the shelf: every member
@@ -27920,11 +27738,6 @@ const server = http.createServer((req, res) =>
             // The whole set's line, computed once here so the desk and (slice
             // 4) the subpage cannot disagree about the count.
             summary: BUILDINGS.summarize(rows).line,
-            // The Workspace's banner (Draft C, 2026-09-25): the firm's home
-            // market and, when that city has a photograph, the same file its
-            // market page opens on. Computed over the WHOLE set, like the
-            // summary, so a truncated list cannot move the picture.
-            home: firmHomeFor(rows),
             buildings: wire(rows, ctx),
           });
         })().catch((err) => {

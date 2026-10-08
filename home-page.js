@@ -353,13 +353,13 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
   // Six tiles, every one of them a feature that ships today: the Explorer is
   // canExploreAddresses, the lookback is PRO_MAX_LOOKBACK_MONTHS, branding is
   // branding.js, Verified credit is the green badge a published comp earns,
-  // the board is deal-board.js and the introductions are the BOV lead route.
+  // Home's one map is home-map.js and the introductions are the BOV lead route.
   const tiles = [
     ["Address Explorer", "Set a pin and a radius, see every comp we hold around it, yours included."],
     ["Ten-year lookback", "Free reports look back three years. Pro widens the search to ten."],
     ["Your branding", "Reports go out under your firm’s name, with unlimited exports."],
     ["Verified credit", "Publish a comp and it carries your firm’s name on every report that uses it."],
-    ["Firm activity", "Counts what each member contributed to the shelf, not who is closing what."],
+    ["One map", "The firm’s buildings, your deals and what you own on one map, each saying who can see it."],
     ["Owner introductions", "When an owner in a market you watch asks for a BOV, we make the introduction by hand."],
   ].map(([lab, p]) =>
     `<div><div class="hmtlab">${esc(lab)}</div><div class="hmtp">${esc(p)}</div></div>`).join("");

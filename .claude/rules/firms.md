@@ -8,13 +8,11 @@ paths:
   - "messaging.js"
   - "messages-page.js"
   - "renewal-watch.js"
-  - "deal-board.js"
   - "test/org-*.test.js"
   - "test/building-sheet-run.test.js"
   - "test/buildings-page*.test.js"
   - "test/messag*.test.js"
   - "test/renewal-watch*.test.js"
-  - "test/deal-board.test.js"
   - "test/contacts-import-browser.test.js"
 ---
 # Firms
@@ -148,8 +146,9 @@ paths:
   **`buildings-page.js`** whose boot payload is the SAME `/api/org/buildings`
   answer the desk reads (one read, one count), filtered in the browser with
   the header count always describing the whole set. `CTA_FREE_PAGES` gains
-  `/buildings`. `org-buildings.js`'s `OVERFLOW_AT` mirrors index.html's
-  `COLLAPSE_AT` and `test/org-desk.test.js` holds them together.
+  `/buildings`. (`OVERFLOW_AT`, the old Home's eight-row cut, was removed
+  2026-10-07 with that list. So were the deal board, `deal-board.js` and
+  `GET /api/org/board`, which nothing read after Draft C's Home.)
   **Each building has a sheet** (slice 5, 2026-09-02; migration
   `047-org-building-notes.sql`, **run before deploying**): `GET /building/<id>`
   (`renderBuildingSheetBody`), composed by the pure `composeSheet` from reads

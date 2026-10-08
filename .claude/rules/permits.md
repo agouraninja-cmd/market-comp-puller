@@ -99,7 +99,9 @@ paths:
     rather than rows in the forward-looking Critical dates. The board rows
     come from the buildings read already made; nothing here names the
     board's table.
-  - **The Workspace's Your permits** (2026-09-24, owner's call; `GET
+  - **The Workspace's Your permits** (RETIRED 2026-10-07: the section, its
+    route and `PERMIT_FILINGS.yourPermits` were removed with the old Home;
+    the history below is kept. 2026-09-24, owner's call; `GET
     /api/org/permits?id=`, `yourPermitsFor` → `PERMIT_FILINGS.yourPermits`,
     `#deskPermits`). It REPLACED the development shop's New filings — every
     industrial filing in the swept cities for the last 14 days, shown only

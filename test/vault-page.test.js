@@ -748,7 +748,7 @@ async function runPage(comps, benchResult, opts, identity) {
       return Promise.resolve(jsonResponse(200, { items: opts.portfolio || [] }));
     }
     if (u.indexOf("/api/watchlist/feed") === 0) {
-      return Promise.resolve(jsonResponse(200, { items: [] }));
+      return Promise.resolve(jsonResponse(200, { items: opts.feed || [] }));
     }
     // The firm's buildings (slice 3): what the portfolio rows' "Add to firm"
     // door reads to decide whether to render, and where it posts.
@@ -5375,4 +5375,62 @@ test("the set's CSV carries acreage and $/acre only when the set holds land", as
   assert.match(withLand, /Price \$\/SF,Lot acres,Price \$\/acre,Rent/);
   assert.match(withLand, /,10,200000,/, "the derived $/acre, the figure the page shows");
   assert.doesNotMatch(await csvOf([comp({ id: "i" })]), /acre/i);
+});
+
+// ---------------------------------------------------------------------------
+// The Board's deal wall (2026-10-06, the owner's pick "C, Deal wall"). The
+// wall itself is test/deal-wall.test.js; these pin the page's half: the
+// markup, the script order, the mount, and the market tiles' buying read.
+// ---------------------------------------------------------------------------
+
+const DEALWALL_MOD = require("../deal-wall");
+function wallWindow(mounted, withWall) {
+  const w = { SITES: SITES_RULES, SITESTAB: { mount: () => ({ reload() {} }) } };
+  if (withWall !== false) w.DEALWALL = Object.assign({}, DEALWALL_MOD, { mount: (ctx) => { mounted.push(ctx); return { refresh() {}, reload() {} }; } });
+  return w;
+}
+const FALLING = { id: "w1", market: "Boise, ID", property_type: "Industrial", new_count: 3, median_psf: 165,
+  median_trend: { current: 165, prior: 173 } };
+
+test("The Board carries the wall's root, its action, and its script before the page's own", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /<section id="wallSec" aria-label="Your deals"><div id="wallRoot"><\/div><\/section>/);
+  assert.match(html, /<button class="dact hide" id="wallAddToggle"[^>]*>\+ Add a property<\/button>/);
+  const inline = html.indexOf("<script>\n(function(){");
+  const sites = html.indexOf('<script src="/sites.js"></script>'), wall = html.indexOf('<script src="/deal-wall.js"></script>');
+  assert.ok(sites > 0 && wall > sites && wall < inline, "/deal-wall.js must load after /sites.js and before the page's script");
+});
+
+test("The Board mounts the deal wall once and hands it the markets", async () => {
+  const mounted = [];
+  const { doc } = await runPage([comp({})], null, { feed: [FALLING], window: wallWindow(mounted) });
+  assert.equal(mounted.length, 1, "the wall was mounted " + mounted.length + " times");
+  const ctx = mounted[0];
+  assert.equal(ctx.root, doc.getElementById("wallRoot"));
+  assert.equal(ctx.addToggle, doc.getElementById("wallAddToggle"));
+  assert.equal(ctx.feed().length, 1);
+  assert.equal(ctx.isDev(), false);
+  ctx.setCount(2);
+  assert.equal(String(doc.getElementById("tabWatchN").textContent), "2", "the tab counts deals in play once there are some");
+  ctx.setCount(0);
+  assert.equal(String(doc.getElementById("tabWatchN").textContent), "1", "with none it counts the markets again");
+});
+
+test("each market on The Board is a tile with its buying read and the not-advice line", async () => {
+  const { doc } = await runPage([comp({})], null, { feed: [FALLING], window: wallWindow([]) });
+  const tiles = doc.getElementById("mktRows").innerHTML;
+  assert.match(tiles, /class="dw-pill dw-good"><i><\/i>Buying: Favorable</);
+  assert.match(tiles, /Prices down 4.6% in six months \(\$173 to \$165\/SF\)/);
+  assert.match(tiles, /Not investment advice/);
+  assert.match(tiles, /data-unwatch="w1"/);
+  assert.match(tiles, /id="wAddTile"/);
+});
+
+test("without the wall's script The Board keeps its markets, and invents no read", async () => {
+  const mounted = [];
+  const { doc } = await runPage([comp({})], null, { feed: [FALLING], window: wallWindow(mounted, false) });
+  assert.equal(mounted.length, 0);
+  const tiles = doc.getElementById("mktRows").innerHTML;
+  assert.ok(!/dw-pill|investment advice/.test(tiles), "a read appeared with nothing to compute it");
+  assert.match(tiles, /▼ 4.6% vs the six months before/);
 });

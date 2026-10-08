@@ -1726,9 +1726,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        "186,500 SF" wrapped everywhere (2026-10-07). It is NOT nowrap: a
        seven-figure size (82.2px) is allowed to drop its unit under the
        number where it is short, rather than overflow into Built. The 0.3fr
-       came off the address again, so Type, Built, Shelf and Next kept theirs. */
+       came off the address again, so Type, Built, Shelf and Next kept theirs.
+       Next is 1.4fr and the gap 8px so a date is never split: the date is
+       its own nowrap span (.dk-bc-day), so the cell breaks only between the
+       word and the date, and the widest date, "Sep 30, 2027" (81.7px), fits
+       at the 521px floor (87px). One line holds "Notice Oct 26" (83.7px)
+       from 1180 and "Expires Dec 10" in red (91.3px) at 1180 and up (93px
+       there, 101px from 1280). At 1.2fr and 10px it was 78px at 1180 and
+       85px at 1440, and dates broke into "Notice Oct" over "26" and
+       "Expires Dec" over "10" (2026-10-07). The 0.2fr came off the address;
+       the 12px the narrower gaps free keep it at 133px at 1180, so an
+       address like "16000 N Can Ada Rd," (130px) keeps its line. */
     .dk-btable { container-type: inline-size; }
-    .dk-bhead, .dk-row.dk-brow { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1.2fr) minmax(0, .5fr) minmax(0, .75fr) minmax(0, 1.2fr) 28px; column-gap: 10px; align-items: center; }
+    .dk-bhead, .dk-row.dk-brow { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.3fr) minmax(0, 1.2fr) minmax(0, .5fr) minmax(0, .75fr) minmax(0, 1.4fr) 28px; column-gap: 8px; align-items: center; }
+    .dk-bc-day { white-space: nowrap; }
     .dk-bhead.hidden { display: none; }
     .dk-bhead { padding: 0 0 6px; border-bottom: 1px solid var(--line); font-size: 10px; letter-spacing: .09em; text-transform: uppercase; font-weight: 600; color: var(--ink-3); }
     .dk-bhead .num { text-align: right; }
@@ -11304,6 +11315,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // facade. (First shipped 2026-07-13 as 427ff44.)
   // Tile math lives in one place so prefetch after the building snap hits
   // the same URLs the popup will request.
+  // ⚠ deal-wall.js aerialTiles runs the same math for The Board's card
+  // photos. Change both together.
   function aerialTileSpec(ll, w, h, z) {
     const scale = 256 * Math.pow(2, z);
     const x = ((ll.lng + 180) / 360) * scale;
@@ -15426,9 +15439,17 @@ async function renderMyDesk() {
       shelfCell.classList.toggle("empty", !n);
       // critical is sorted soonest first, so the first match is the next date.
       const c = crit.find((x) => String(x.buildingId) === String(b.id));
-      const text = c ? `${c.kind === "notice" ? "Notice" : "Expires"} ${fmtDeskDay(c.date)}` : "";
-      nextCell.textContent = text || "—";
-      nextCell.classList.toggle("empty", !text);
+      // The word and the date as two pieces, the date unbreakable, so a
+      // short column puts "Expires" over "Dec 10" and never "Expires Dec"
+      // over "10". The cell's text is the same words either way.
+      nextCell.textContent = c ? `${c.kind === "notice" ? "Notice" : "Expires"} ` : "—";
+      if (c) {
+        const day = document.createElement("span");
+        day.className = "dk-bc-day";
+        day.textContent = fmtDeskDay(c.date);
+        nextCell.appendChild(day);
+      }
+      nextCell.classList.toggle("empty", !c);
       nextCell.classList.toggle("due", Boolean(c && c.days <= DESK_DUE_DAYS));
     });
   }

@@ -198,15 +198,16 @@ test("the firm's buildings, end to end", async (t) => {
     assert.match(body.home.photo.src, /^\/market-heroes\/[a-z0-9-]+\.jpg$/, "one of our own files, never a hotlink");
     assert.ok(body.home.photo.credit, "a photograph is never sent without its credit");
     assert.match(body.home.photo.commonsUrl, /^https:\/\/commons\.wikimedia\.org\//);
-    // Two buildings in Nampa make Nampa the home market. Nampa's market page
+    // Two buildings in Vero Beach make it the home market. Its market page
     // opens on a SATELLITE tile (it has coordinates and no photograph); the
-    // banner takes photographs only, so the answer is no photo at all.
-    for (const address of ["12 Main St, Nampa, ID", "900 Garrity Blvd, Nampa, ID"]) {
+    // banner takes photographs only, so the answer is no photo at all. (This
+    // was Nampa until Nampa got a photograph on 2026-10-07.)
+    for (const address of ["12 Ocean Dr, Vero Beach, FL", "900 20th St, Vero Beach, FL"]) {
       const r = await fetch(url(ORG_ID), as(BRAD, { method: "POST", body: JSON.stringify({ address, propertyType: "Industrial" }) }));
       assert.equal(r.status, 200, await r.text());
     }
     body = await (await fetch(url(ORG_ID), as(MIKE))).json();
-    assert.equal(body.home.market, "Nampa, ID", "the market most of the board is in");
+    assert.equal(body.home.market, "Vero Beach, FL", "the market most of the board is in");
     assert.equal(body.home.photo, null, "a satellite tile is a market page's fallback, not the banner's");
   });
 

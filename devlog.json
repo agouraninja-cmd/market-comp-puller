@@ -7,6 +7,12 @@
   },
   {
     "date": "2026-10-07",
+    "type": "feature",
+    "title": "Home is one map, and the side menu is five places",
+    "details": "Home and Data are now one screen. On the left, a list with tabs: Today (unread messages, new BOV requests if you take them, and lease dates and your deal deadlines, soonest first and numbered like their pins), Properties (the firm’s buildings, your deals and what you own, one row per address, each saying whether the firm or only you can see it), Comps (your past sales and leases, each with its deal date and price per unit), Reports and People. On the right, every property on a map, with the same numbers on the pins and an aerial photo when you open one. The banner is gone. The side menu is a dark strip: Home, Messages, Reports, Markets, Permits; The Board is opened from the Markets page and every market page. Your private page is now headed “Your properties and comps”, and Comps is called Comps for every kind of firm. A deal opens where your private page lists it: Sites for a development firm, The Board for everyone else. “Add a property” asks whether it’s one of the firm’s buildings, a deal you’re working on or a property you own, and opens the right form already open. A development firm’s tab says “properties” throughout, not “sites”."
+  },
+  {
+    "date": "2026-10-07",
     "type": "fix",
     "title": "Lease dates on Home are never split across lines",
     "details": "On Home’s buildings table, the Next date column broke dates wherever a space fell, so “Notice Oct 26” read “Notice Oct” over “26” and “Expires Dec 10” read “Expires Dec” over “10”. The column is wider now, so dates this year sit on one line on laptop-width windows and up, and a date is never split: when a later-year date needs two lines, it reads “Expires” over “Feb 14, 2027”."

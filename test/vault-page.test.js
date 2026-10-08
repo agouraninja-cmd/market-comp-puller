@@ -3472,15 +3472,20 @@ test("sharing one comp corrects the promise rather than leaving it false", () =>
 test("a development shop's header names its own work, and the promise still holds", () => {
   const DEV = { ...FIRM, name: "Ridgeline Development", kind: "development" };
   let els = runFirmPrivacy(DEV, 0);
+  // Only what the page holds (2026-10-07): the old line promised absorption
+  // rates and feasibility calculations the page has no tab for.
   assert.equal(els.deckSub.textContent,
-    "Your comps, absorption rates, and feasibility calculations in one place. Visible only to you.");
+    "The properties you are buying or hold, and the comps you value against. Visible only to you.");
   els = runFirmPrivacy(DEV, 2);
   assert.match(els.deckSub.textContent,
-    /^Your comps, absorption rates, and feasibility calculations in one place. 2 shared with Ridgeline Development; the rest visible only to you.$/);
-  // A broker shop, and a firm whose kind is missing, keep today's line.
+    /^The properties you are buying or hold, and the comps you value against\. 2 shared with Ridgeline Development; the rest visible only to you\.$/);
+  // A broker shop names the BOV requests its Pipeline holds; a member whose
+  // firm kind is unknown reads as a broker (org-access.js kindOf's rule).
   for (const firm of [FIRM, { ...FIRM, kind: "broker" }]) {
-    assert.match(runFirmPrivacy(firm, 0).deckSub.textContent, /^Closed deals, leads, and BOVs./);
+    assert.match(runFirmPrivacy(firm, 0).deckSub.textContent, /^Your comps, the owners asking you for a BOV, and the properties you hold\./);
   }
+  // No firm at all: no BOV pipeline is promised to a member who has none.
+  assert.match(runFirmPrivacy(null, 0).deckSub.textContent, /^Your comps and the properties you hold\./);
 });
 
 test("the corrected promise counts in plural", () => {
@@ -3494,7 +3499,7 @@ test("the default promise lives in the MARKUP, not only in the script", () => {
   // be is worse than a stale one.
   const html = renderVaultHTML(firmBoot([comp({})], FIRM, ["c1"]), CHROME);
   assert.match(html, /<p class="note" id="trustNote">Visible only to you\./);
-  assert.match(html, /id="deckSub">Closed deals, leads, and BOVs\. Visible only to you\./);
+  assert.match(html, /id="deckSub">Your comps and the properties you hold\. Visible only to you\./);
 });
 
 test("the Firm column exists only for a broker who is in a firm", () => {
@@ -4787,7 +4792,8 @@ test("the Sites tab ships hidden, with its panel, its action and both of its scr
   assert.match(html, /<button type="button" role="tab" class="vt-tab vt-off" id="tab-sites" data-tab="sites"/,
     "a broker would see a Sites tab before the page decided anything");
   assert.match(html, /<div class="vt-panel" id="panelSites" data-panel="sites"/);
-  assert.match(html, /<button class="dact" id="sitesAddToggle"[^>]*>\+ Add a site<\/button>/);
+  // "Add a property" since 2026-10-07: Home's word for the same act.
+  assert.match(html, /<button class="dact" id="sitesAddToggle"[^>]*>\+ Add a property<\/button>/);
   assert.match(html, /<section id="sitesSec"><div id="sitesRoot"><\/div><\/section>/);
   // Both before the inline script that mounts them.
   const inline = html.indexOf("<script>\n(function(){");
@@ -4832,8 +4838,9 @@ test("a broker firm, and a member in no firm, keep exactly the tabs they had", a
     assert.ok(!doc.getElementById("tab-pipe").classList.contains("vt-off"), "Pipeline went missing");
     assert.ok(!doc.getElementById("tab-props").classList.contains("vt-off"), "Properties went missing");
     assert.equal(mounted.length, 0);
-    // And the Book as it was: its name, the tab it opens on, and publishing.
-    assert.equal(String(doc.getElementById("tabBookL").textContent), "Book");
+    // And the Book as it was: the tab it opens on and publishing. Its NAME is
+    // Comps for every kind of firm since 2026-10-07 (one word for one thing).
+    assert.equal(String(doc.getElementById("tabBookL").textContent), "Comps");
     assert.equal(doc.getElementById("panelBook").className, "vt-panel on");
     assert.ok(!doc.getElementById("cPubCell").classList.contains("hide"), "the Published cell went missing");
     assert.ok(!doc.getElementById("creditLine").classList.contains("hide"), "the credit line went missing");
@@ -5414,6 +5421,38 @@ test("The Board mounts the deal wall once and hands it the markets", async () =>
   assert.equal(String(doc.getElementById("tabWatchN").textContent), "2", "the tab counts deals in play once there are some");
   ctx.setCount(0);
   assert.equal(String(doc.getElementById("tabWatchN").textContent), "1", "with none it counts the markets again");
+});
+
+test("Home's Add a property opens the form that takes it, already open, and only once", async () => {
+  // Draft C (2026-10-07): /vault?add=own#properties, ?add=buy#board, and a
+  // development firm's ?add=own#sites / ?add=buy#sites (HOMEMAP.addHref).
+  const LOC = (search, hash) => ({ search, hash, pathname: "/vault" });
+  const hist = () => { const urls = []; return { urls, state: null, replaceState(s, t, u) { urls.push(u); } }; };
+  const closed = (doc) => doc.getElementById("propAddForm").className.indexOf("hide") >= 0;
+
+  let h = hist();
+  let { doc } = await runPage([comp({})], null, { window: Object.assign(wallWindow([]), { location: LOC("?add=own", "#properties"), history: h }) });
+  assert.ok(!closed(doc), "a property you own: the Properties form must be open");
+  assert.deepEqual(h.urls, ["/vault#properties"], "?add= must come off the address, or a reload opens the form again");
+
+  const wall = [];
+  ({ doc } = await runPage([comp({})], null, { window: Object.assign(wallWindow(wall), { location: LOC("?add=buy", "#board"), history: hist() }) }));
+  assert.equal(wall[0].openAdd, true, "a deal: The Board's wall must open its form");
+  assert.ok(closed(doc), "and Properties' form stays shut");
+
+  const sites = [];
+  await runPage([comp({})], null, { firm: { id: "f1", name: "Ridgeline Development", kind: "development" },
+    window: Object.assign(sitesWindow(sites), { location: LOC("?add=own", "#sites"), history: hist() }) });
+  assert.equal(sites[0].openAdd, "own", "a development firm's Sites tab takes both, with the kind picked");
+
+  // An ask with no tab in the address, or an unknown kind, opens nothing.
+  for (const [search, hash] of [["?add=buy", ""], ["?add=sell", "#board"]]) {
+    const quiet = []; h = hist();
+    ({ doc } = await runPage([comp({})], null, { window: Object.assign(wallWindow(quiet), { location: LOC(search, hash), history: h }) }));
+    assert.equal(quiet[0].openAdd, false, search + hash);
+    assert.ok(closed(doc), search + hash);
+    assert.deepEqual(h.urls, [], "an address with nothing to act on is left alone");
+  }
 });
 
 test("each market on The Board is a tile with its buying read and the not-advice line", async () => {

@@ -104,6 +104,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        three above; the banner falls back to the city photograph when this is
        missing, so it is guarded with typeof, never destructured. -->
   <script src="/firm-skyline.js"></script>
+  <!-- Home as one map (2026-10-07): what goes in Today, Properties and Comps
+       (HOMEMAP). maxAge 0 like the scripts above, and guarded with typeof:
+       without it Home falls back to its old sections, never a broken page. -->
+  <script src="/home-map.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -953,9 +957,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        hero, the content container and the footer) each keep mx-auto, so they
        re-centre themselves inside the body's new left padding. */
     @media (min-width: 900px) {
-      html.nav-rail body { padding-left: 224px; }
+      html.nav-rail body { padding-left: 84px; }
       html.nav-rail body > header {
-        position: fixed; top: 0; left: 0; bottom: 0; width: 224px;
+        position: fixed; top: 0; left: 0; bottom: 0; width: 84px;
         border-bottom: 0; border-right: 1px solid var(--line);
         background: var(--paper); overflow-y: auto;
         /* Above the page, below the dropdowns (1100) and the modals (1200),
@@ -1015,6 +1019,41 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         margin-top: auto; padding: 12px 20px 0; border-top: 1px solid var(--hair);
       }
       html.nav-rail #acctMenu { right: auto; left: 16px; top: auto; bottom: calc(100% + 8px); }
+    }
+    /* --- The icon rail (2026-10-07; Draft C of the Home and Data drafts) ---
+       The twin of RAIL_CSS's icon-rail block in server.js: a dark strip of
+       five places, an icon over a word, on --slab (dark in both themes, so
+       literal white at stepped opacities, the footer's reason). Below 900px
+       the icons hide and the bar reads as words, as it did. The anchors'
+       Tailwind hover colour is ink, which would vanish on the slab, so the
+       hover here outranks it. */
+    .rd-appbar .nvi { display: none; }
+    @media (min-width: 900px) {
+      html.nav-rail body > header { background: var(--slab); border-right: 0; overflow: visible; }
+      html.nav-rail .rd-appbar { align-items: center; padding: 18px 0 16px; }
+      html.nav-rail .rd-appbar > a { padding: 0 0 14px; }
+      html.nav-rail .rd-appbar > a .rd-wordmark { display: none; }
+      html.nav-rail .rd-appbar > a svg { width: 30px; height: 30px; }
+      html.nav-rail .rd-appbar > a svg { color: #fff; }
+      html.nav-rail .rd-appbar > a svg rect { fill: currentColor; }
+      html.nav-rail .rd-appbar > nav { width: 100%; gap: 4px; }
+      html.nav-rail .rd-appbar > nav > a, html.nav-rail .rd-appbar > nav > button {
+        position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px;
+        margin: 0 8px; padding: 10px 2px 9px; border-left: 0; border-radius: 10px; text-align: center;
+        font-size: 10.5px; font-weight: 500; line-height: 1.1; color: rgba(255, 255, 255, .68);
+      }
+      /* The rows above set display, which outranks Tailwind's .hidden: a
+         signed-in member's Sign in button and an unresolved account circle
+         must stay hidden in the strip too. */
+      html.nav-rail .rd-appbar > nav > .hidden, html.nav-rail #acctMenuWrap.hidden { display: none; }
+      html.nav-rail .rd-appbar > nav > a .nvi { display: block; width: 22px; height: 22px; }
+      html.nav-rail .rd-appbar > nav > a:hover, html.nav-rail .rd-appbar > nav > button:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+      html.nav-rail .rd-appbar > nav > a[aria-current="page"] { background: rgba(255, 255, 255, .13); color: #fff; font-weight: 600; }
+      html.nav-rail .rd-appbar > nav > .navsec { font-size: 0; height: 1px; margin: 8px 18px; padding: 0; border: 0; background: rgba(255, 255, 255, .14); }
+      html.nav-rail .rd-appbar .navdot { position: absolute; top: 4px; right: 16px; margin: 0; }
+      html.nav-rail #acctMenuWrap { display: flex; justify-content: center; padding: 12px 0 0; border-top: 1px solid rgba(255, 255, 255, .14); }
+      html.nav-rail #acctMenuBtn { background: rgba(255, 255, 255, .16); }
+      html.nav-rail #acctMenu { left: calc(100% + 10px); right: auto; top: auto; bottom: 0; }
     }
     /* Paper has no sidebar. The header is already no-print; this is the body
        padding it would otherwise leave behind as an empty left column. */
@@ -2228,6 +2267,179 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .pwtog:hover { color: var(--ink); }
     .pwtog:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
     .pwtog svg { width: 18px; height: 18px; }
+    /* ---- Home as one map (2026-10-07; Draft C of the Home and Data drafts,
+       the owner's pick) ------------------------------------------------------
+       A list on the left and every property on a map on the right, one
+       screen beside the rail; on a phone or in the bar shell the map is a
+       strip above the list and the page scrolls. html.hm-page is written by
+       markNavCurrent() alone (the one writer of which view shows): it marks
+       a signed-in Home and nothing else, so no other view loses its padding
+       or its footer. Theme tokens only, so dark mode needs nothing of its
+       own; the map's own dark basemap comes from basemapUrl(). */
+    html.hm-page body > .max-w-5xl.pb-8 { max-width: none; padding: 0; }
+    html.hm-page #deskView { margin-top: 0; }
+    html.hm-page #myDesk { margin-top: 0; }
+    html.hm-page body > footer { display: none; }
+    /* What the map replaced: the banner, the figure cards, the agenda and the
+       two columns. Their writers still run (the strip and the dates feed the
+       map), so they are hidden here rather than left half-drawn. */
+    html.hm-page #deskHero, html.hm-page #myDesk > .dk-strip, html.hm-page #myDesk > .dk-top,
+    html.hm-page #myDesk > .dk-cols { display: none !important; }
+    html.hm-page #deskLoading .dk-skel-top, html.hm-page #deskLoading .dk-skel-cols { display: none; }
+    html.hm-page #deskLoading { max-width: 460px; padding: 28px 28px 0; }
+    html.hm-page #deskLoading .dk-skel-agenda { height: 70vh; }
+    html.hm-page #checkoutNotice { margin: 16px; }
+
+    .hm { display: flex; flex-direction: column; }
+    .hm-mapw { position: relative; order: -1; height: 300px; background: var(--wash-2); border-bottom: 1px solid var(--line); }
+    .hm-map { position: absolute; inset: 0; }
+    .hm-map.leaflet-container { background: var(--wash-2); font-family: inherit; }
+    .hm-panel { min-width: 0; background: var(--paper); }
+    .hm-head { padding: 22px 16px 0; }
+    .hm-body { padding: 4px 8px 28px; }
+    @media (min-width: 900px) {
+      html.nav-rail.hm-page .hm { display: grid; grid-template-columns: 468px minmax(0, 1fr); height: 100vh; min-height: 560px; }
+      html.nav-rail.hm-page .hm-mapw { order: 0; height: auto; border-bottom: 0; }
+      html.nav-rail.hm-page .hm-panel { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+      html.nav-rail.hm-page .hm-head { padding: 28px 28px 0; }
+      html.nav-rail.hm-page .hm-body { flex: 1; overflow-y: auto; min-height: 0; padding: 4px 16px 28px; }
+    }
+    .hm-kick { font-size: 12.5px; font-weight: 500; color: var(--ink-3); }
+    .hm-kick #hmFirm::before { content: "\00b7"; margin: 0 .45em; }
+    .hm-title { margin: 6px 0 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 30px; line-height: 1.12; letter-spacing: -.015em; color: var(--ink); }
+    .hm-sub { margin: 8px 0 0; font-size: 14.5px; line-height: 1.5; color: var(--ink-2); }
+    .hm-find { position: relative; display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 0 12px; border: 1px solid var(--edge); border-radius: 11px; background: var(--card); color: var(--ink-3); }
+    .hm-find:focus-within { border-color: var(--ink-3); box-shadow: 0 0 0 3px var(--hair); }
+    .hm-find svg { flex: none; }
+    .hm-find input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; -webkit-appearance: none; appearance: none; padding: 10px 0; font: inherit; font-size: 14px; color: var(--ink); }
+    .hm-find-res { position: absolute; left: -1px; right: -1px; top: calc(100% + 6px); z-index: 40; max-height: 360px; overflow-y: auto; padding: 6px; background: var(--card); border: 1px solid var(--edge); border-radius: 12px; box-shadow: 0 16px 40px -18px rgba(15, 23, 42, .45); }
+    .hm-fr { display: flex; flex-direction: column; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: none; text-align: left; font: inherit; color: var(--ink); cursor: pointer; text-decoration: none; }
+    .hm-fr:hover, .hm-fr:focus-visible { background: var(--wash); outline: 0; }
+    .hm-fr b { font-size: 14px; font-weight: 600; }
+    .hm-fr small { font-size: 12.5px; color: var(--ink-3); }
+    .hm-fr.go b { color: var(--red); }
+    .hm-tabs { display: flex; gap: 2px; margin-top: 16px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+    .hm-tabs::-webkit-scrollbar { display: none; }
+    .hm-tabs button { flex: none; padding: 10px 10px 12px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; font: inherit; font-size: 14px; font-weight: 500; color: var(--ink-3); white-space: nowrap; cursor: pointer; }
+    .hm-tabs button b { margin-left: 2px; font-weight: 600; color: var(--ink-3); }
+    .hm-tabs button[aria-selected="true"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--red-fill); }
+    .hm-tabs button:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
+    .hm-ph { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 10px 8px; }
+    .hm-what { margin: 0; max-width: 36ch; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
+    .hm-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--edge); border-radius: 8px; background: var(--card); font: inherit; font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; cursor: pointer; text-decoration: none; }
+    .hm-btn:hover { border-color: var(--ink-3); }
+    .hm-btn.red { background: var(--red-fill); border-color: var(--red-fill); color: #fff; }
+    .hm-btn.red:hover { background: var(--red-fill-hover); }
+    .hm-choice { display: grid; gap: 8px; margin: 2px 10px 12px; }
+    .hm-choice.hidden { display: none; }
+    .hm-ch { display: block; width: 100%; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font: inherit; text-align: left; color: inherit; cursor: pointer; text-decoration: none; }
+    .hm-ch.hidden { display: none; }
+    .hm-ch:hover { border-color: var(--ink-3); }
+    .hm-ch b { display: block; font-size: 14px; font-weight: 600; color: var(--ink); }
+    .hm-ch small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink-3); }
+    #hmPaneProps #buildingAddForm { margin: 0 10px 12px; }
+    #hmPaneProps #buildingMsg { margin: 0 10px 10px; }
+    .hm-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px 10px; border-radius: 12px; color: inherit; cursor: pointer; }
+    .hm-row:hover { background: var(--wash); }
+    .hm-row.on { background: var(--card); box-shadow: inset 0 0 0 1px var(--edge), 0 6px 20px -14px rgba(15, 23, 42, .35); }
+    .hm-row:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
+    .hm-num { width: 28px; height: 28px; border: 1.5px solid var(--ink); border-radius: 99px; font-size: 13px; font-weight: 600; line-height: 25px; text-align: center; color: var(--ink); }
+    .hm-num.hot { border-color: var(--red-fill); background: var(--red-fill); color: #fff; }
+    .hm-num.msg { display: flex; align-items: center; justify-content: center; border: 0; background: var(--slab); color: #fff; }
+    .hm-rt { min-width: 0; }
+    .hm-rt b { display: block; font-size: 14.5px; font-weight: 600; line-height: 1.3; color: var(--ink); }
+    .hm-rt b i { font-style: normal; font-weight: 500; color: var(--ink-3); }
+    .hm-rt small { display: block; margin-top: 2px; font-size: 13px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hm-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+    .hm-when { text-align: right; white-space: nowrap; }
+    .hm-when b { display: block; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+    .hm-when small { font-size: 12px; color: var(--ink-3); }
+    .hm-when.hot b, .hm-when.hot small { color: var(--red); }
+    .hm-scope { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 6px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+    .hm-scope svg { width: 12px; height: 12px; }
+    .hm-scope.you { background: var(--wash-2); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); }
+    .hm-scope.firm { background: var(--bv-bg); color: var(--bv-text); }
+    .hm-chip { display: inline-flex; align-items: center; padding: 3px 7px; border-radius: 6px; font-size: 11px; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+    .hm-chip.prospect, .hm-chip.loi { background: var(--wash-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+    .hm-chip.contract { background: var(--warn-bg); color: var(--warn-text); }
+    .hm-chip.entitle { background: var(--bv-bg); color: var(--bv-text); }
+    .hm-chip.owned { background: var(--ok-bg); color: var(--ok-text); }
+    .hm-chip.tracking { background: var(--wash-2); color: var(--ink-2); }
+    .hm-chip.firm { background: var(--slab); color: #fff; }
+    .hm-chip.deal { background: var(--wash-2); color: var(--ink-2); }
+    .hm-gh { display: flex; align-items: baseline; gap: 8px; padding: 16px 10px 4px; }
+    .hm-gh b { font-family: Georgia, 'Times New Roman', serif; font-size: 17px; font-weight: 400; color: var(--ink); }
+    .hm-gh span { font-size: 12px; font-weight: 600; color: var(--ink-3); }
+    .hm-gh small { font-size: 12px; color: var(--ink-3); }
+    .hm-row.p { grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; padding: 10px; }
+    .hm-th { position: relative; width: 48px; height: 48px; overflow: hidden; border-radius: 9px; background: var(--wash-2); }
+    .hm-th img, .hm-pop-ph img { position: absolute; width: 256px; height: 256px; max-width: none; }
+    .hm-th.none { background: repeating-linear-gradient(135deg, var(--wash-2) 0 6px, var(--hair) 6px 12px); }
+    .hm-val { text-align: right; white-space: nowrap; }
+    .hm-val b { display: block; font-size: 14px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .hm-val small { font-size: 12px; color: var(--ink-3); }
+    .hm-val .up { color: var(--green); font-weight: 600; }
+    .hm-val .dn { color: var(--red); font-weight: 600; }
+    .hm-empty { margin: 14px 10px; font-size: 13.5px; line-height: 1.5; color: var(--ink-3); }
+    .hm-more { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 12px 10px 0; font-size: 13px; }
+    .hm-more.hidden { display: none; }
+    .hm-more a { font-weight: 500; color: var(--ink-2); }
+    .hm-legal { margin: 26px 10px 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); }
+    #hmPaneReports #deskSharing .dk-rule, #hmPanePeople #deskContacts > .dk-rule .rd-lab .dk-hico { display: none; }
+    #hmPaneReports #deskSharing, #hmPanePeople #deskContacts { margin: 0 10px; }
+    #hmPanePeople #deskContacts { margin-top: 18px; }
+    .hm-team { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: center; padding: 9px 10px; }
+    .hm-av { width: 36px; height: 36px; border-radius: 99px; background: var(--slab); color: #fff; font-family: Georgia, 'Times New Roman', serif; font-size: 14px; line-height: 36px; text-align: center; }
+    .hm-team b { display: block; font-size: 14px; font-weight: 600; color: var(--ink); }
+    .hm-team b i { margin-left: 4px; font-style: normal; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+    .hm-team small { display: block; font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hm-start { display: flex; flex-direction: column; gap: 10px; padding: 14px 10px 0; }
+    .hm-start.hidden { display: none; }
+    .hm-st { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 14px; width: 100%; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); font: inherit; text-align: left; color: inherit; cursor: pointer; text-decoration: none; }
+    .hm-st.hidden { display: none; }
+    .hm-st:hover { border-color: var(--ink-3); }
+    .hm-sti { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; background: var(--wash-2); color: var(--ink); }
+    .hm-st b { display: block; font-size: 15px; font-weight: 600; color: var(--ink); }
+    .hm-st small { display: block; margin: 2px 0 10px; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
+    .hm-legend { position: absolute; left: 14px; bottom: 24px; z-index: 500; display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 12.5px; color: var(--ink-2); box-shadow: 0 4px 16px -8px rgba(15, 23, 42, .35); }
+    .hm-legend.hidden { display: none; }
+    /* On the phone strip the map's credit wraps to two lines; stay above it. */
+    @media (max-width: 899px) { .hm-legend { bottom: 44px; left: 10px; gap: 4px 10px; padding: 6px 10px; font-size: 11.5px; } }
+    .hm-legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .hm-legend span.hidden { display: none; }
+    .hm-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 99px; }
+    .hm-legend i.buy, .hm-pip.buy { background: var(--red-fill); }
+    .hm-legend i.own, .hm-pip.own { background: var(--green); }
+    .hm-legend i.firm, .hm-pip.firm { background: var(--ink); }
+    .hm-legend i.comp, .hm-pip.comp { background: var(--ink-3); }
+    .hm-map-empty { position: absolute; left: 50%; top: 50%; z-index: 500; width: min(340px, calc(100% - 32px)); transform: translate(-50%, -50%); padding: 20px 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); text-align: center; box-shadow: 0 18px 40px -16px rgba(15, 23, 42, .4); }
+    .hm-map-empty b { display: block; font-family: Georgia, 'Times New Roman', serif; font-size: 21px; font-weight: 400; color: var(--ink); }
+    .hm-map-empty span { display: block; margin-top: 6px; font-size: 13.5px; color: var(--ink-3); }
+    .hm-mk { background: none !important; border: 0 !important; }
+    .hm-pip { display: block; width: 14px; height: 14px; border: 2.5px solid var(--card); border-radius: 99px; box-shadow: 0 1px 4px rgba(15, 23, 42, .4); }
+    .hm-pip.comp { width: 10px; height: 10px; border-width: 2px; margin: 2px; }
+    .hm-pip.on { box-shadow: 0 0 0 3px var(--red-fill), 0 1px 4px rgba(15, 23, 42, .4); }
+    .hm-npin { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 2.5px solid var(--card); border-radius: 99px; background: var(--ink); color: var(--paper); font-size: 13px; font-weight: 700; box-shadow: 0 3px 10px rgba(15, 23, 42, .45); }
+    .hm-npin.hot { background: var(--red-fill); color: #fff; }
+    .hm-npin.on { transform: scale(1.18); }
+    .hm-tag { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 4px 8px; border: 1.5px solid var(--card); border-radius: 999px; background: var(--card); font-size: 12px; font-weight: 700; line-height: 1.2; color: var(--ink); white-space: nowrap; box-shadow: 0 2px 8px rgba(15, 23, 42, .3); }
+    .hm-tag.buy { border-color: var(--red); color: var(--red); }
+    .hm-tag.own { border-color: var(--ok-text); background: var(--ok-text); color: var(--paper); }
+    .hm-tag.firm { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+    .hm-tag.on { transform: translate(-50%, -50%) scale(1.15); box-shadow: 0 0 0 3px var(--card), 0 4px 14px rgba(15, 23, 42, .45); }
+    .hm-pop .leaflet-popup-content-wrapper { padding: 0; overflow: hidden; border-radius: 14px; background: var(--card); color: var(--ink-body); box-shadow: 0 16px 40px -12px rgba(15, 23, 42, .45); }
+    .hm-pop .leaflet-popup-content { width: 260px !important; margin: 0; font: inherit; }
+    .hm-pop .leaflet-popup-tip { background: var(--card); }
+    .hm-pop-ph { position: relative; height: 104px; overflow: hidden; background: var(--wash-2); }
+    .hm-pop-b { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px 14px; }
+    .hm-pop-b > b { font-family: Georgia, 'Times New Roman', serif; font-size: 18px; font-weight: 400; line-height: 1.2; color: var(--ink); }
+    .hm-pop-b > small { font-size: 12.5px; color: var(--ink-3); }
+    .hm-pop-r { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+    .hm-pop-v { margin-top: 8px; font-size: 13px; color: var(--ink-3); }
+    .hm-pop-v b { margin-right: 4px; font-size: 18px; font-weight: 600; color: var(--ink); }
+    .hm-pop-n { margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+    .hm-pop-n.hot { color: var(--red); }
+    .hm-pop .hm-pop-a { align-self: flex-start; margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--red); text-decoration: none; }
   </style>
 </head>
 <body class="bg-[#FBFBF9] text-[#1A2433] min-h-screen">
@@ -3201,7 +3413,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              invented for the markup. The handler below still swaps the view in
              place for a plain left-click, and stands aside for a modified or
              middle click, so nothing navigates that did not navigate before. -->
-        <a id="myDeskLink" href="/desk" class="hover:text-[#1A2433] font-medium">Home</a>
+        <a id="myDeskLink" href="/desk" class="hover:text-[#1A2433] font-medium"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9.2 10 4l6.5 5.2V16a1 1 0 0 1-1 1H12v-4.5H8V17H4.5a1 1 0 0 1-1-1z"/></svg><span class="nvl">Home</span></a>
         <!-- The vault's only entrance. It lived inside the account dropdown
              until 2026-08-29; in rail mode that buried a daily workspace two
              clicks down a menu pinned to the foot of the sidebar, so it is a
@@ -3217,7 +3429,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              header and every server-rendered rail call the same destination
              Vault, so the app was the one surface where the row a member is
              looking at renamed itself the moment they clicked it. -->
-        <a id="menuVaultLink" href="/vault" class="hidden hover:text-[#1A2433] font-medium">Data</a>
+        <!-- No Data row since 2026-10-07 (Draft C, "One map"): deals, holdings
+             and comps are tabs of Home, and /vault is the workbench they open
+             into. server.js's marketBar carries the same decision. -->
         <!-- Messages, its own page and its own tab (owner's, 2026-09-01) —
              firm messaging, deliberately NOT a panel on /vault and not a deck
              on this desk. The vault is a broker's private book; this is the
@@ -3239,12 +3453,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              badge would be a red bar. Ships hidden; refreshAccountUI fills it
              from GET /api/messages/unread for a signed-in member, the same
              pass that reveals the vault row. marketBar carries the twin. -->
-        <a id="navMessagesLink" href="/messages" class="hover:text-[#1A2433] font-medium">Messages<span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>
+        <a id="navMessagesLink" href="/messages" class="hover:text-[#1A2433] font-medium"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13v8.5h-7L5.5 16v-3h-2z"/><path d="M7 8.2h6M7 10.6h3.5"/></svg><span class="nvl">Messages</span><span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>
+        <!-- Reports (2026-10-07): Home's Reports tab. A fragment of /desk, so on
+             Home it switches the tab in place (the handler below) and from any
+             other page it opens Home on that tab. marketBar carries the twin. -->
+        <a id="navReportsLink" href="/desk#reports" class="hover:text-[#1A2433] font-medium"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/></svg><span class="nvl">Reports</span></a>
         <!-- The tools group's label. Rail-only, and present for every visitor
              so the two nav authors keep emitting the same shape -- see
              server.js's marketBar and RAIL_CSS for the twin. -->
         <span class="navsec">Tools</span>
-        <a href="/markets" class="hover:text-[#1A2433]">Market explorer</a>
+        <a href="/markets" class="hover:text-[#1A2433]"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5.5l4.5-2 5 2 4.5-2v11l-4.5 2-5-2-4.5 2z"/><path d="M7.5 3.5v11M12.5 5.5v11"/></svg><span class="nvl">Markets</span></a>
         <!-- A "Run a report" row (/run-report) sat here for one day,
              2026-09-04, and the owner took it out the same evening: Bulk
              valuation is the comp-report tool (one address or fifty), and a
@@ -3261,12 +3479,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              they move together today (both read `pro`) but they are separate
              answers and a shared flag here would be a second copy of a rule
              entitlements.js owns. Ships hidden, like the vault link. -->
-        <a id="menuBulkLink" href="/bulk" class="hidden hover:text-[#1A2433] font-medium">Comp report</a>
+        <!-- No Comp report row since 2026-10-07 (Draft C): running one is
+             Home's address box and the button on its Reports tab. -->
         <!-- The Permit tracker (2026-09-24): the THIRD Tools row, after Comp
              report (owner's order). marketBar carries the twin. Its unread dot
              (2026-09-27) is a tracked permit's step completing; filled by
              refreshPermitsDot, the Messages dot's shape. -->
-        <a href="/permits" class="hover:text-[#1A2433]">Permit tracker<span id="navPermitDot" class="navdot" hidden aria-label="permit updates"></span></a>
+        <a href="/permits" class="hover:text-[#1A2433]"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h10v14.4H5z"/><path d="M7.5 6h5M7.5 8.6h5"/><circle cx="10" cy="13" r="1.8"/></svg><span class="nvl">Permits</span><span id="navPermitDot" class="navdot" hidden aria-label="permit updates"></span></a>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
@@ -3539,6 +3758,240 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </div>
       </div>
       <section id="myDesk" class="hidden mt-4">
+      <!-- Home as one map (2026-10-07; Draft C of the Home and Data drafts,
+           the owner's pick: "One map"). A list on the left (Today,
+           Properties, Comps, Reports, People) and every property on a map on
+           the right, each dated row numbered like its pin. What goes in the
+           lists is home-map.js (HOMEMAP), tested there; drawHomeMap() below is
+           its one writer here, and it draws ONLY from what the desk already
+           read, plus two reads of its own: the member's deals (/api/sites,
+           embedded with the page in DESK_BOOT) and their comps (/api/vault,
+           read once the page is SHOWN, never while it is prerendered).
+           The firm's sections that still have work to do moved INTO the tabs
+           rather than being rewritten: Sharing is the Reports tab, Contacts
+           is in People, and the add-a-building form is behind Properties'
+           "Add a property". Each keeps its id and its one writer. -->
+      <div id="homeMap" class="hm">
+        <div class="hm-panel">
+          <div class="hm-head">
+            <div class="hm-kick"><span id="hmDay"></span><span id="hmFirm" class="hidden"></span></div>
+            <h2 id="hmTitle" class="hm-title">Home</h2>
+            <p id="hmSub" class="hm-sub"></p>
+            <div class="hm-find" role="search">
+              <svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8.6" cy="8.6" r="5.4"/><path d="M12.8 12.8l4.2 4.2"/></svg>
+              <input id="hmFind" type="search" autocomplete="off" spellcheck="false" maxlength="160"
+                placeholder="Find a property, or type an address to value it" aria-label="Find a property, comp or contact, or type an address to value it"
+                aria-controls="hmFindRes" aria-expanded="false" />
+              <div id="hmFindRes" class="hidden hm-find-res" role="listbox" aria-label="Matches"></div>
+            </div>
+            <div id="hmTabs" class="hm-tabs" role="tablist" aria-label="Home">
+              <button type="button" role="tab" id="hmTabToday" data-tab="today" aria-controls="hmPaneToday" aria-selected="true">Today <b id="hmNToday"></b></button>
+              <button type="button" role="tab" id="hmTabProps" data-tab="properties" aria-controls="hmPaneProps" aria-selected="false">Properties <b id="hmNProps"></b></button>
+              <button type="button" role="tab" id="hmTabComps" data-tab="comps" aria-controls="hmPaneComps" aria-selected="false" hidden>Comps <b id="hmNComps"></b></button>
+              <button type="button" role="tab" id="hmTabReports" data-tab="reports" aria-controls="hmPaneReports" aria-selected="false">Reports</button>
+              <button type="button" role="tab" id="hmTabPeople" data-tab="people" aria-controls="hmPanePeople" aria-selected="false" hidden>People</button>
+            </div>
+          </div>
+          <div class="hm-body">
+            <!-- Start here: an account with nothing on the map yet. -->
+            <div id="hmStart" class="hidden hm-start">
+              <a class="hm-st" href="/bulk"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/></svg></span><span><b>Value any address</b><small>A comp report in about a minute, with the sales behind the number.</small><span class="hm-btn red">Run a comp report</span></span></a>
+              <a id="hmStartProp" class="hm-st" href="#properties"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg></span><span><b>Add a property</b><small>A building you own, manage or are buying. It gets a pin, a value and its dates.</small><span class="hm-btn">Add a property</span></span></a>
+              <a id="hmStartComps" class="hm-st" href="/vault#book"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 16.5h14"/><path d="M5 16.5v-5M8.5 16.5v-8M12 16.5v-6M15.5 16.5v-10"/></svg></span><span><b>Add comps</b><small>Past sales and leases from a spreadsheet, PDF or photo. Only you can see them.</small><span class="hm-btn">Add comps</span></span></a>
+              <button type="button" id="hmStartFirm" class="hm-st"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg></span><span><b>Bring your team</b><small>Start a firm to share buildings, reports and contacts with the people you work with.</small><span class="hm-btn">Start a firm</span></span></button>
+            </div>
+
+            <div id="hmPaneToday" class="hm-pane" role="tabpanel" aria-labelledby="hmTabToday">
+              <div id="hmTodayRows" class="hm-rows"></div>
+              <p id="hmTodayEmpty" class="hidden hm-empty"></p>
+              <p id="hmTodayMore" class="hidden hm-more"><a id="hmTodayLeases" href="/buildings">All lease dates →</a><a id="hmTodayMsgs" href="/messages">All conversations →</a><a id="hmTodayPipe" class="hidden" href="/vault#pipeline">Your BOV pipeline →</a></p>
+            </div>
+
+            <div id="hmPaneProps" class="hm-pane hidden" role="tabpanel" aria-labelledby="hmTabProps">
+              <div class="hm-ph"><p class="hm-what">Buildings you own, manage or are buying. Each one says who can see it.</p>
+                <button type="button" id="hmAddProp" class="hm-btn" aria-expanded="false" aria-controls="hmAddChoice">+ Add a property</button></div>
+              <div id="hmAddChoice" class="hidden hm-choice">
+                <button type="button" id="hmAddFirm" class="hm-ch"><b>One of the firm's buildings</b><small>Everyone at <span id="hmAddFirmName">your firm</span> sees its address, size and lease dates.</small></button>
+                <a id="hmAddDeal" class="hm-ch" href="/vault?add=buy#board"><b>A deal you're working on</b><small>Only you can see it. It's tracked with its stage, asking price and next date.</small></a>
+                <a id="hmAddOwn" class="hm-ch" href="/vault?add=own#properties"><b>A property you own</b><small>Only you can see it. It gets a value you can refresh, and its numbers stay private.</small></a>
+              </div>
+              <form id="buildingAddForm" class="hidden mt-3 flex flex-wrap items-end gap-2">
+                <label class="flex-1 min-w-[10rem]">
+                  <span class="rd-lab">Address</span>
+                  <input id="buildingAddress" type="text" required maxlength="200" placeholder="100 Main St, Boise, ID"
+                    class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                </label>
+                <label class="min-w-[10rem]">
+                  <span class="rd-lab">Type</span>
+                  <!-- The vault's PROPERTY_TYPES, restated: index.html cannot
+                       require the module, and the server refuses anything else. -->
+                  <select id="buildingType" class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+                    <option value="">Any type</option>
+                    <option value="Industrial">Industrial</option>
+                    <option value="Office">Office</option>
+                    <option value="Retail">Retail</option>
+                    <option value="Multifamily">Multifamily</option>
+                    <option value="Land">Land</option>
+                    <option value="Residential">Residential</option>
+                  </select>
+                </label>
+                <button type="submit" class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add</button>
+              </form>
+              <p id="buildingMsg" class="hidden dk-msg"></p>
+              <div id="hmPropRows" class="hm-rows"></div>
+              <p id="hmPropsEmpty" class="hidden hm-empty">No properties yet. Add a building you own, manage or are buying, and it lands on the map with its value and its dates.</p>
+            </div>
+
+            <div id="hmPaneComps" class="hm-pane hidden" role="tabpanel" aria-labelledby="hmTabComps">
+              <div class="hm-ph"><p class="hm-what">Past sales and leases you value against. Only you can see them.</p>
+                <a class="hm-btn" href="/vault#book">+ Add comps</a></div>
+              <div id="hmCompRows" class="hm-rows"></div>
+              <p id="hmCompsEmpty" class="hidden hm-empty">No comps yet. Upload past sales and leases from a spreadsheet, PDF or photo, and they land here as pins. Only you can see them.</p>
+              <p id="hmCompsMore" class="hidden hm-more"><a href="/vault#book">All your comps, comp sets and imports →</a></p>
+            </div>
+
+            <div id="hmPaneReports" class="hm-pane hidden" role="tabpanel" aria-labelledby="hmTabReports">
+              <div class="hm-ph"><p class="hm-what">Comp reports: the firm's shelf, what was sent to you, and the links you sent.</p>
+                <a class="hm-btn red" href="/bulk">Run a comp report</a></div>
+              <div id="deskSharing" class="hidden">
+                <div class="dk-rule"><span class="rd-lab">Sharing</span></div>
+                <div id="shareTabs" class="dk-tabs" role="tablist" aria-label="Sharing">
+                  <button type="button" role="tab" id="shareTabShelf" class="dk-tab" data-pane="deskSharedWithFirm" aria-controls="deskSharedWithFirm" aria-selected="false" hidden>Firm shelf <span id="shareTabShelfN" class="dk-tab-n"></span></button>
+                  <button type="button" role="tab" id="shareTabIn" class="dk-tab" data-pane="deskInbox" aria-controls="deskInbox" aria-selected="false" hidden>Sent to you <span id="shareTabInN" class="dk-tab-n"></span></button>
+                  <button type="button" role="tab" id="shareTabOut" class="dk-tab" data-pane="deskShares" aria-controls="deskShares" aria-selected="false" hidden>Your links <span id="shareTabOutN" class="dk-tab-n"></span></button>
+                </div>
+                <!-- Matched to #deskLoadError's two-sentence shape (2026-08-22). It said
+                     only "Couldn't load your shared reports", which is the failure
+                     without the reassurance — and this line covers the lists that
+                     name COLLEAGUES and their work, so it is the one where a bare
+                     "couldn't load" is likeliest to read as somebody's shared reports
+                     having been lost. It hides the two panes the failed read fills
+                     rather than fabricating a "0 shares" empty state; the shelf, which
+                     has a read of its own, stays. -->
+                <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your shared reports just now. Nothing has been lost. Refresh in a moment.</p>
+                <!-- Firm shelf: reports a colleague shared with the whole firm
+                     (migration 030). Available ONLY to a member of a firm — an empty
+                     firm shelf shown to somebody with no firm is an empty room; the
+                     firm's own section (deskFirm) is what teaches the feature. -->
+                <div id="deskSharedWithFirm" class="hidden dk-pane" role="tabpanel" aria-labelledby="shareTabShelf">
+                  <div class="dk-pane-head">
+                    <span id="deskFirmSharesLabel" class="dk-copy">Reports anyone at your firm has put here for the whole firm.</span>
+                    <span id="firmShelfStats" class="dk-note"></span>
+                  </div>
+                  <div id="deskSharedWithFirmEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-bv"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3" width="10" height="13" rx="1.2"/><path d="M6.5 16.9V17h9.2a1 1 0 0 0 1-1V6.5"/><path d="M6.5 7h4.5M6.5 9.8h4.5M6.5 12.6h3"/></svg></span><span class="dk-gtxt"><span class="dk-gt">The firm&#39;s shelf</span><span class="dk-gx">Nobody at your firm has shared a report yet. Open a report and use Share → My firm, and it lands here for everyone.</span></span></div></div></div>
+                  <!-- The search box appears only once there is enough on the shelf to
+                       need one. A filter over three rows is furniture. -->
+                  <div id="firmShelfSearchWrap" class="hidden mt-2 flex flex-wrap items-center gap-4 text-sm">
+                    <input id="firmShelfSearch" type="text" placeholder="Search by address, market or type" aria-label="Search your firm's reports"
+                      class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                    <!-- The saved view of Transition Plan v2 §6: a development shop
+                         opens on Land, a broker shop on everything. It is a DEFAULT and
+                         not a wall - "All types" is one click away and the count beside
+                         it always names the whole shelf. -->
+                    <select id="firmShelfType" aria-label="Filter the shelf by property type"
+                      class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+                      <option value="">All types</option>
+                      <option value="Industrial">Industrial</option>
+                      <option value="Office">Office</option>
+                      <option value="Retail">Retail</option>
+                      <option value="Multifamily">Multifamily</option>
+                      <option value="Land">Land</option>
+                      <option value="Residential">Residential</option>
+                    </select>
+                    <span id="firmShelfCount" class="text-xs text-[#68707E]"></span>
+                  </div>
+                  <p id="firmShelfTruncated" class="hidden dk-copy">Showing the most recent 1,000 reports. Older ones are not in this list.</p>
+                  <div id="sharedWithFirmRows" class="mt-1"></div>
+                  <p id="firmShelfNoMatch" class="hidden dk-empty">Nothing on the shelf matches that.</p>
+                  <p id="firmShelfMsg" class="hidden dk-msg"></p>
+                </div>
+                <!-- Sent to you: reports somebody invited this member to, and the deal
+                     rooms a broker invited them into, merged so a report and the room
+                     opened from it are ONE row with two doors. Every failure of the
+                     rooms read is silent (the reports still list); a failed shares
+                     read hides this pane and shows the line above. -->
+                <div id="deskInbox" class="hidden dk-pane" role="tabpanel" aria-labelledby="shareTabIn">
+                  <div class="dk-pane-head">
+                    <span class="dk-copy">Reports and deal rooms other people have sent you. A deal room is a conversation, and opens in Messages.</span>
+                    <span id="deskInboxStats" class="dk-note"></span>
+                  </div>
+                  <div id="deskInboxEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ok"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5l2-6.5h10l2 6.5v4H3z"/><path d="M3 11.5h4l1 2h4l1-2h4"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Nothing sent to you yet</span><span class="dk-gx">When someone sends you a report or invites you into a deal room, it lands here.</span></span></div></div></div>
+                  <div id="deskInboxRows" class="mt-1"></div>
+                </div>
+                <!-- Your links: one table of what this member sent (2026-08-21's
+                     merged table, now one direction). A 401 hides it silently, since
+                     the sign-in card above already covers that case. -->
+                <div id="deskShares" class="hidden dk-pane" role="tabpanel" aria-labelledby="shareTabOut">
+                  <div class="dk-pane-head">
+                    <span class="dk-copy">Links you have sent, and who can open each one.</span>
+                    <span id="deskSharesStats" class="dk-note"></span>
+                  </div>
+                  <div id="deskSharesEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-bv"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 11.5l3-3"/><path d="M7 9.5l-1.8 1.8a2.5 2.5 0 0 0 3.5 3.5L10.5 13"/><path d="M13 10.5l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L9.5 7"/></svg></span><span class="dk-gtxt"><span class="dk-gt">No links yet</span><span class="dk-gx">Open a report and use Share to send a client a link, or invite them by email.</span></span></div></div></div>
+                  <div id="sharesRows" class="mt-2 overflow-x-auto no-scrollbar"></div>
+                </div>
+              </div>
+              <p id="hmReportsEmpty" class="hidden hm-empty">No reports yet. Run a comp report on any address, then use Share to send it to a client or put it on the firm's shelf.</p>
+            </div>
+
+            <div id="hmPanePeople" class="hm-pane hidden" role="tabpanel" aria-labelledby="hmTabPeople">
+              <div class="hm-ph"><p class="hm-what">The people at your firm, and the contacts you keep together.</p>
+                <button type="button" id="hmInvite" class="hm-btn">+ Invite someone</button></div>
+              <div id="hmTeam" class="hm-rows"></div>
+              <div id="deskContacts" class="hidden mt-8">
+                <div class="dk-rule">
+                  <span class="rd-lab"><span class="dk-hico dk-tone-ink"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg></span>Contacts</span>
+                  <div class="flex items-center gap-3">
+                    <span id="contactsStats" class="dk-note"></span>
+                    <button type="button" id="contactAddToggle" aria-expanded="false" aria-controls="contactAddForm"
+                      class="dk-toggle">+ Add or import</button>
+                  </div>
+                </div>
+                <p class="dk-copy">Your firm's own list, shared with everyone in it. Type them in or import a spreadsheet — nothing here is ever filled in from CompNinja enquiries.</p>
+
+                <form id="contactAddForm" class="hidden mt-3 flex flex-wrap items-end gap-2">
+                  <label class="flex-1 min-w-[10rem]">
+                    <span class="rd-lab">Name</span>
+                    <input id="contactName" type="text" required maxlength="120" placeholder="Dana Wu"
+                      class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                  </label>
+                  <label class="flex-1 min-w-[10rem]">
+                    <span class="rd-lab">Email</span>
+                    <input id="contactEmail" type="text" maxlength="200" placeholder="optional"
+                      class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                  </label>
+                  <label class="flex-1 min-w-[10rem]">
+                    <span class="rd-lab">Company</span>
+                    <input id="contactCompany" type="text" maxlength="120" placeholder="optional"
+                      class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                  </label>
+                  <button type="submit" class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add</button>
+                  <!-- A second door for a list somebody already keeps in a
+                       spreadsheet. It posts to the same route the Add button does. -->
+                  <button type="button" id="contactImportBtn" class="text-sm font-medium text-[#4C5665] border border-[#D8D4C9] rounded-lg px-3 py-1.5">Import a spreadsheet</button>
+                  <!-- .xls is accepted INTO the dialog on purpose, so the server can
+                       answer "that is an older .xls, save it as .xlsx" by name. Left
+                       out, the broker's own file is greyed out with nothing on screen
+                       saying why — the vault's HEIC rule. -->
+                  <input id="contactCsvFile" type="file" class="hidden"
+                    accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" />
+                </form>
+                <p id="contactMsg" class="hidden dk-msg"></p>
+                <p id="contactsTruncated" class="hidden dk-copy">Showing the most recent 2,000 contacts. Older ones are not in this list.</p>
+
+                <div id="contactRows" class="mt-1"></div>
+                <div id="contactsEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ink"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg></span><span class="dk-gtxt"><span class="dk-gt">No contacts yet</span><span class="dk-gx">Use Add or import above to type one in, or bring a spreadsheet — Excel (.xlsx) or CSV — with a name column.</span></span></div></div></div>
+              </div>
+            </div>
+
+            <p class="hm-legal">Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we connect you with local brokers for opinions of value. Aerial imagery &copy; Esri, Maxar.</p>
+          </div>
+        </div>
+        <div class="hm-mapw">
+          <div id="hmMap" class="hm-map" role="region" aria-label="Map of your properties"></div>
+          <div id="hmLegend" class="hidden hm-legend" aria-hidden="true"><span class="hm-lg-p"><i class="buy"></i>Your deals</span><span class="hm-lg-p"><i class="own"></i>You own</span><span class="hm-lg-p"><i class="firm"></i>Firm buildings</span><span id="hmLegendComps" class="hidden"><i class="comp"></i>Your comps</span></div>
+          <div id="hmMapEmpty" class="hidden hm-map-empty"><b>Your map is empty</b><span>Add a property or type an address on the left, and it lands here as your first pin.</span></div>
+        </div>
+      </div>
       <!-- The firm strip (2026-09-04): four figures a member glances at
            before the decks — buildings on the board, reports on the shelf
            this month, unread conversations, and lease dates due in the next
@@ -3650,29 +4103,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <button type="button" id="buildingAddToggle" aria-expanded="false" aria-controls="buildingAddForm" class="dk-toggle">+ Add by address</button>
           </div>
         </div>
-        <form id="buildingAddForm" class="hidden mt-3 flex flex-wrap items-end gap-2">
-          <label class="flex-1 min-w-[10rem]">
-            <span class="rd-lab">Address</span>
-            <input id="buildingAddress" type="text" required maxlength="200" placeholder="100 Main St, Boise, ID"
-              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          </label>
-          <label class="min-w-[10rem]">
-            <span class="rd-lab">Type</span>
-            <!-- The vault's PROPERTY_TYPES, restated: index.html cannot
-                 require the module, and the server refuses anything else. -->
-            <select id="buildingType" class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
-              <option value="">Any type</option>
-              <option value="Industrial">Industrial</option>
-              <option value="Office">Office</option>
-              <option value="Retail">Retail</option>
-              <option value="Multifamily">Multifamily</option>
-              <option value="Land">Land</option>
-              <option value="Residential">Residential</option>
-            </select>
-          </label>
-          <button type="submit" class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add</button>
-        </form>
-        <p id="buildingMsg" class="hidden dk-msg"></p>
         <p id="buildingsTruncated" class="hidden dk-copy">Showing the 1,000 most recently touched buildings. Older ones are not in this list.</p>
         <!-- A table since 2026-09-24 (Draft 1): the figures a broker scans
              down a column — type, size, year, what is on the shelf, the next
@@ -3724,83 +4154,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            read failed. The strip and the tests read that. Which tab is
            SHOWING is a second class, dk-off, written by syncShareCard alone,
            so the two can never fight over one element. -->
-      <div id="deskSharing" class="hidden">
-        <div class="dk-rule"><span class="rd-lab">Sharing</span></div>
-        <div id="shareTabs" class="dk-tabs" role="tablist" aria-label="Sharing">
-          <button type="button" role="tab" id="shareTabShelf" class="dk-tab" data-pane="deskSharedWithFirm" aria-controls="deskSharedWithFirm" aria-selected="false" hidden>Firm shelf <span id="shareTabShelfN" class="dk-tab-n"></span></button>
-          <button type="button" role="tab" id="shareTabIn" class="dk-tab" data-pane="deskInbox" aria-controls="deskInbox" aria-selected="false" hidden>Sent to you <span id="shareTabInN" class="dk-tab-n"></span></button>
-          <button type="button" role="tab" id="shareTabOut" class="dk-tab" data-pane="deskShares" aria-controls="deskShares" aria-selected="false" hidden>Your links <span id="shareTabOutN" class="dk-tab-n"></span></button>
-        </div>
-        <!-- Matched to #deskLoadError's two-sentence shape (2026-08-22). It said
-             only "Couldn't load your shared reports", which is the failure
-             without the reassurance — and this line covers the lists that
-             name COLLEAGUES and their work, so it is the one where a bare
-             "couldn't load" is likeliest to read as somebody's shared reports
-             having been lost. It hides the two panes the failed read fills
-             rather than fabricating a "0 shares" empty state; the shelf, which
-             has a read of its own, stays. -->
-        <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your shared reports just now. Nothing has been lost. Refresh in a moment.</p>
-        <!-- Firm shelf: reports a colleague shared with the whole firm
-             (migration 030). Available ONLY to a member of a firm — an empty
-             firm shelf shown to somebody with no firm is an empty room; the
-             firm's own section (deskFirm) is what teaches the feature. -->
-        <div id="deskSharedWithFirm" class="hidden dk-pane" role="tabpanel" aria-labelledby="shareTabShelf">
-          <div class="dk-pane-head">
-            <span id="deskFirmSharesLabel" class="dk-copy">Reports anyone at your firm has put here for the whole firm.</span>
-            <span id="firmShelfStats" class="dk-note"></span>
-          </div>
-          <div id="deskSharedWithFirmEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-bv"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3" width="10" height="13" rx="1.2"/><path d="M6.5 16.9V17h9.2a1 1 0 0 0 1-1V6.5"/><path d="M6.5 7h4.5M6.5 9.8h4.5M6.5 12.6h3"/></svg></span><span class="dk-gtxt"><span class="dk-gt">The firm&#39;s shelf</span><span class="dk-gx">Nobody at your firm has shared a report yet. Open a report and use Share → My firm, and it lands here for everyone.</span></span></div></div></div>
-          <!-- The search box appears only once there is enough on the shelf to
-               need one. A filter over three rows is furniture. -->
-          <div id="firmShelfSearchWrap" class="hidden mt-2 flex flex-wrap items-center gap-4 text-sm">
-            <input id="firmShelfSearch" type="text" placeholder="Search by address, market or type" aria-label="Search your firm's reports"
-              class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-            <!-- The saved view of Transition Plan v2 §6: a development shop
-                 opens on Land, a broker shop on everything. It is a DEFAULT and
-                 not a wall - "All types" is one click away and the count beside
-                 it always names the whole shelf. -->
-            <select id="firmShelfType" aria-label="Filter the shelf by property type"
-              class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
-              <option value="">All types</option>
-              <option value="Industrial">Industrial</option>
-              <option value="Office">Office</option>
-              <option value="Retail">Retail</option>
-              <option value="Multifamily">Multifamily</option>
-              <option value="Land">Land</option>
-              <option value="Residential">Residential</option>
-            </select>
-            <span id="firmShelfCount" class="text-xs text-[#68707E]"></span>
-          </div>
-          <p id="firmShelfTruncated" class="hidden dk-copy">Showing the most recent 1,000 reports. Older ones are not in this list.</p>
-          <div id="sharedWithFirmRows" class="mt-1"></div>
-          <p id="firmShelfNoMatch" class="hidden dk-empty">Nothing on the shelf matches that.</p>
-          <p id="firmShelfMsg" class="hidden dk-msg"></p>
-        </div>
-        <!-- Sent to you: reports somebody invited this member to, and the deal
-             rooms a broker invited them into, merged so a report and the room
-             opened from it are ONE row with two doors. Every failure of the
-             rooms read is silent (the reports still list); a failed shares
-             read hides this pane and shows the line above. -->
-        <div id="deskInbox" class="hidden dk-pane" role="tabpanel" aria-labelledby="shareTabIn">
-          <div class="dk-pane-head">
-            <span class="dk-copy">Reports and deal rooms other people have sent you. A deal room is a conversation, and opens in Messages.</span>
-            <span id="deskInboxStats" class="dk-note"></span>
-          </div>
-          <div id="deskInboxEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ok"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5l2-6.5h10l2 6.5v4H3z"/><path d="M3 11.5h4l1 2h4l1-2h4"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Nothing sent to you yet</span><span class="dk-gx">When someone sends you a report or invites you into a deal room, it lands here.</span></span></div></div></div>
-          <div id="deskInboxRows" class="mt-1"></div>
-        </div>
-        <!-- Your links: one table of what this member sent (2026-08-21's
-             merged table, now one direction). A 401 hides it silently, since
-             the sign-in card above already covers that case. -->
-        <div id="deskShares" class="hidden dk-pane" role="tabpanel" aria-labelledby="shareTabOut">
-          <div class="dk-pane-head">
-            <span class="dk-copy">Links you have sent, and who can open each one.</span>
-            <span id="deskSharesStats" class="dk-note"></span>
-          </div>
-          <div id="deskSharesEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-bv"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 11.5l3-3"/><path d="M7 9.5l-1.8 1.8a2.5 2.5 0 0 0 3.5 3.5L10.5 13"/><path d="M13 10.5l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L9.5 7"/></svg></span><span class="dk-gtxt"><span class="dk-gt">No links yet</span><span class="dk-gx">Open a report and use Share to send a client a link, or invite them by email.</span></span></div></div></div>
-          <div id="sharesRows" class="mt-2 overflow-x-auto no-scrollbar"></div>
-        </div>
-      </div>
       </div><!-- /deckSharing -->
       </div><!-- /dk-main -->
 
@@ -3926,50 +4279,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            rule, and setContactAddOpen() is its single writer — the vault's
            #addSec rule: a firm with three hundred contacts opening the
            Workspace should be handed its list, not a form. -->
-      <div id="deskContacts" class="hidden mt-8">
-        <div class="dk-rule">
-          <span class="rd-lab"><span class="dk-hico dk-tone-ink"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg></span>Contacts</span>
-          <div class="flex items-center gap-3">
-            <span id="contactsStats" class="dk-note"></span>
-            <button type="button" id="contactAddToggle" aria-expanded="false" aria-controls="contactAddForm"
-              class="dk-toggle">+ Add or import</button>
-          </div>
-        </div>
-        <p class="dk-copy">Your firm's own list, shared with everyone in it. Type them in or import a spreadsheet — nothing here is ever filled in from CompNinja enquiries.</p>
-
-        <form id="contactAddForm" class="hidden mt-3 flex flex-wrap items-end gap-2">
-          <label class="flex-1 min-w-[10rem]">
-            <span class="rd-lab">Name</span>
-            <input id="contactName" type="text" required maxlength="120" placeholder="Dana Wu"
-              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          </label>
-          <label class="flex-1 min-w-[10rem]">
-            <span class="rd-lab">Email</span>
-            <input id="contactEmail" type="text" maxlength="200" placeholder="optional"
-              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          </label>
-          <label class="flex-1 min-w-[10rem]">
-            <span class="rd-lab">Company</span>
-            <input id="contactCompany" type="text" maxlength="120" placeholder="optional"
-              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          </label>
-          <button type="submit" class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add</button>
-          <!-- A second door for a list somebody already keeps in a
-               spreadsheet. It posts to the same route the Add button does. -->
-          <button type="button" id="contactImportBtn" class="text-sm font-medium text-[#4C5665] border border-[#D8D4C9] rounded-lg px-3 py-1.5">Import a spreadsheet</button>
-          <!-- .xls is accepted INTO the dialog on purpose, so the server can
-               answer "that is an older .xls, save it as .xlsx" by name. Left
-               out, the broker's own file is greyed out with nothing on screen
-               saying why — the vault's HEIC rule. -->
-          <input id="contactCsvFile" type="file" class="hidden"
-            accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" />
-        </form>
-        <p id="contactMsg" class="hidden dk-msg"></p>
-        <p id="contactsTruncated" class="hidden dk-copy">Showing the most recent 2,000 contacts. Older ones are not in this list.</p>
-
-        <div id="contactRows" class="mt-1"></div>
-        <div id="contactsEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ink"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg></span><span class="dk-gtxt"><span class="dk-gt">No contacts yet</span><span class="dk-gx">Use Add or import above to type one in, or bring a spreadsheet — Excel (.xlsx) or CSV — with a name column.</span></span></div></div></div>
-      </div>
       </div><!-- /deckSide -->
       </div><!-- /dk-cols -->
 
@@ -14436,6 +14745,8 @@ async function renderMyDesk() {
       let items = null;
       try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) {}
       if (items) {
+        // Home's map lists what the member holds (2026-10-07).
+        deskPortfolio = items;
         portfolioKeys.clear();
         items.forEach((item) => markPortfolioSaved(item.address, item.property_type));
         syncPortfolioButton();
@@ -14444,7 +14755,7 @@ async function renderMyDesk() {
     // The rest of the desk does not depend on the portfolio read (see
     // renderDeskRest), so the two run side by side rather than in sequence.
     const work = Promise.all([portfolio, renderDeskRest()]);
-    if (!held) { await work; return; }
+    if (!held) { await work; try { drawHomeMap(); } catch (_) {} return; }
     await Promise.race([work, new Promise((r) => setTimeout(r, DESK_FILL_MAX_MS))]);
     // Signed out, or somebody else signed in, while this fill was in flight:
     // that later call owns the desk now, and revealing here would show this
@@ -14453,6 +14764,9 @@ async function renderMyDesk() {
     deskFilledFor = ident;
     loading.classList.add("hidden");
     desk.classList.remove("hidden");
+    // The map can only lay itself out in a box that is showing, and the
+    // portfolio read may have landed after the firm batch drew.
+    try { drawHomeMap(); } catch (err) { console.error("Home map draw failed:", err); }
   }
 
   // The rest of the desk, which does not depend on the portfolio read — so a
@@ -14499,8 +14813,17 @@ async function renderMyDesk() {
     const link = document.getElementById("myDeskLink");
     if (!link) return;
     const showing = !document.getElementById("deskView").classList.contains("hidden");
-    if (showing) link.setAttribute("aria-current", "page");
+    // On Home, the Reports tab is the rail's Reports row (2026-10-07), so
+    // that row is the one marked while it shows.
+    const reports = document.getElementById("navReportsLink");
+    const onReports = showing && typeof hmTab !== "undefined" && hmTab === "reports";
+    if (showing && !onReports) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
+    if (reports) { if (onReports) reports.setAttribute("aria-current", "page"); else reports.removeAttribute("aria-current"); }
+    // Home as one map takes the whole page beside the rail (2026-10-07):
+    // no content gutter, no footer. A member's Home only; every other view,
+    // and a signed-out /desk, keeps the page as it was.
+    document.documentElement.classList.toggle("hm-page", showing && looksSignedIn() && typeof HOMEMAP !== "undefined");
   }
   function showDeskView() {
     document.getElementById("hero").classList.add("hidden");
@@ -14624,8 +14947,21 @@ async function renderMyDesk() {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     enterDesk({ markSeen: true });
+    // The Home row is Home's first tab, whichever tab was showing.
+    if (hmHas()) setHomeTab("today");
   });
   document.getElementById("deskSignInBtn").addEventListener("click", () => openAcctModal("signin"));
+  // The rail's Reports row (2026-10-07) is Home's Reports tab. A plain click
+  // opens it in place, like the Home row; anything that would open a new tab
+  // is left to the href.
+  document.getElementById("navReportsLink").addEventListener("click", (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (!hmHas() || !looksSignedIn()) return;
+    e.preventDefault();
+    hmTab = "reports";
+    enterDesk({ markSeen: true });
+    setHomeTab("reports");
+  });
 
   // ----------------------------------------------------------------------------
   // renderWatchFeed and the watch-market form moved to /vault on 2026-09-01
@@ -14718,6 +15054,678 @@ async function renderMyDesk() {
     return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
 
+  // ---------------------------------------------------------------------------
+  // Home as one map (2026-10-07; Draft C of the Home and Data drafts, the
+  // owner's pick: "One map"). See the comment on #homeMap for the shape.
+  //
+  // drawHomeMap() is the one writer of the lists, the counts, the header and
+  // the pins, and it reads ONLY what the desk already parsed (firmBuildings,
+  // deskCritical, deskThreadsStat, firmContacts, firmMembers, deskPortfolio)
+  // plus the member's deals (deskSites, read beside the firm batch and
+  // embedded with the page) and, once the page is shown, their comps.
+  // HOMEMAP (home-map.js) decides what each list holds; this half draws it.
+  //
+  // Three rules this half keeps:
+  //   - Every row says who can see it (Firm / Only you), from HOMEMAP.scopeOf.
+  //   - A private address is geocoded only through our own /api/geocode
+  //     (geocodeAddress with noThirdParty: CLAUDE.md's rule 7), and only for
+  //     properties: comps carry the coordinates their import gave them.
+  //   - Nothing here writes. The comps read waits for the page to be shown,
+  //     so a prerendered Home never asks for a member's book unseen.
+  // Rendered with createElement/textContent: every address, name and note
+  // is text a person typed (the desk's standing rule).
+  // ---------------------------------------------------------------------------
+  let deskSites = null;      // GET /api/sites' rows; null = not read, refused or failed
+  let deskPortfolio = null;  // renderMyDesk's GET /api/portfolio items; null = not read
+  let firmMembers = [];      // renderFirmMembers' roster, for People
+  let hmComps = null;        // GET /api/vault's comps once read; null until then
+  let hmCompsAsked = false;
+  let hmLeads = null;        // GET /api/broker/leads' requests once read; null until then
+  let hmLeadsAsked = false;
+  let hmTab = "today";
+  let hmRows = [], hmItems = [];
+  let hmNothing = false;     // an account with nothing on Home yet: Today shows the start cards
+  let hmSel = "";            // the selected row's key
+  let hmMap = null, hmPinLayer = null, hmBaseLayers = null, hmFitFor = "", hmOpenedOnce = false;
+  const HM_TAB_IDS = { today: ["hmTabToday", "hmPaneToday"], properties: ["hmTabProps", "hmPaneProps"],
+    comps: ["hmTabComps", "hmPaneComps"], reports: ["hmTabReports", "hmPaneReports"], people: ["hmTabPeople", "hmPanePeople"] };
+  const HM_ICON = {
+    lock: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="9" width="11" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg>',
+    people: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg>',
+    chat: '<svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13v8.5h-7L5.5 16v-3h-2z"/></svg>',
+    bov: '<svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 11.5 5.5 4.5h9l2 7v4h-13z"/><path d="M3.5 11.5h4l1 2h3l1-2h4"/></svg>',
+  };
+  const hmHas = () => typeof HOMEMAP !== "undefined" && !!document.getElementById("homeMap");
+  // A moment as the member's own calendar date. HOMEMAP reads no clock and
+  // knows no time zone, so a BOV request's UTC stamp is turned into this
+  // first: otherwise one sent two days ago reads "yesterday" every evening.
+  const hmLocalDay = (t) => {
+    const d = new Date(t);
+    return isNaN(d) ? "" : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const hmTodayIso = () => hmLocalDay(Date.now());
+  // proConfig is a `let` declared far below; the TDZ guard hubCreationAllowed
+  // already carries. Comps are the member's private book, offered to whoever
+  // the server would let read it.
+  const hmCanComps = () => { try { return Boolean(proConfig && proConfig.canUseVault); } catch (_) { return false; } };
+  // BOV requests are the Pipeline's, and the private page has a Pipeline for
+  // everyone but a development firm (vault-page.js's applyShop), behind the
+  // same Pro gate as the comps (requireBroker).
+  const hmCanLeads = () => hmCanComps() && !(myFirm() && myFirm().kind === "development");
+  const hmFirmKind = () => (myFirm() ? myFirm().kind || "" : "");
+  function hmEl(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function hmScope(scope) {
+    const s = hmEl("span", "hm-scope " + (scope === "you" ? "you" : "firm"));
+    s.innerHTML = scope === "you" ? HM_ICON.lock : HM_ICON.people; // static markup, no data
+    s.append(scope === "you" ? "Only you" : "Firm");
+    return s;
+  }
+  function hmChip(stage, label) { return hmEl("span", "hm-chip " + stage, label || HOMEMAP.stageLabel(stage)); }
+  function hmScopeTags(row) {
+    const wrap = document.createDocumentFragment();
+    const sc = HOMEMAP.scopeOf(row);
+    if (sc === "both") {
+      wrap.append(hmScope("firm"));
+      const mine = hmScope("you");
+      mine.lastChild.textContent = "Your numbers";
+      mine.title = "The firm sees this building's address, size and lease dates. Your deal, value and notes stay private to you.";
+      wrap.append(mine);
+    } else wrap.append(hmScope(sc));
+    return wrap;
+  }
+  // An aerial crop, stitched from the same free Esri tiles the report map's
+  // popups use (aerialTileSpec). No coordinates, no photo: a hatched square.
+  function hmAerial(box, ll, w, h, z) {
+    box.textContent = "";
+    if (!ll) { box.classList.add("none"); return box; }
+    box.classList.remove("none");
+    for (const t of aerialTileSpec(ll, w, h, z)) {
+      const img = document.createElement("img");
+      img.src = t.src; img.alt = ""; img.loading = "lazy";
+      img.style.left = t.left + "px"; img.style.top = t.top + "px";
+      img.addEventListener("error", () => { img.style.display = "none"; });
+      box.append(img);
+    }
+    return box;
+  }
+  function hmLL(row) {
+    if (!row) return null;
+    if (row.lat != null && row.lng != null) return { lat: row.lat, lng: row.lng };
+    const hit = geoCache[String(row.address || "").trim().toLowerCase()];
+    return hit && isFinite(hit.lat) && isFinite(hit.lng) ? { lat: hit.lat, lng: hit.lng } : null;
+  }
+  const hmRowByKey = (key) => hmRows.find((r) => r.key === key) || null;
+  const hmLLForAddress = (address) => {
+    const row = hmRowByKey(HOMEMAP.addressKey(address));
+    if (row) return hmLL(row);
+    const hit = geoCache[String(address || "").trim().toLowerCase()];
+    return hit && isFinite(hit.lat) ? { lat: hit.lat, lng: hit.lng } : null;
+  };
+
+  async function readDeskSites() {
+    deskSites = null;
+    try {
+      const res = await bootFetch("/api/sites");
+      if (res.ok) {
+        const j = await res.json();
+        deskSites = Array.isArray(j && j.sites) ? j.sites : [];
+      }
+    } catch (_) { /* no deals on the map; the rest of Home stands */ }
+  }
+
+  // The comps and BOV-request reads: once per page view, and never while the
+  // page is being built speculatively (instant tab switching) — the fetch
+  // guard holds only writes, and nobody should read a member's book for a
+  // page they never saw.
+  function hmWhenShown(go) {
+    if (document.prerendering) document.addEventListener("prerenderingchange", go, { once: true });
+    else go();
+  }
+  function hmLoadComps() {
+    if (hmCompsAsked || !hmCanComps() || !currentUser) return;
+    hmCompsAsked = true;
+    hmWhenShown(async () => {
+      try {
+        const res = await fetch("/api/vault", { credentials: "same-origin" });
+        if (res.ok) {
+          const j = await res.json();
+          hmComps = Array.isArray(j && j.comps) ? j.comps : [];
+        }
+      } catch (_) { /* the tab says it could not read them */ }
+      if (hmComps == null) hmComps = false;
+      drawHomeMap();
+    });
+  }
+  // New BOV requests for Today, from the Pipeline's own inbox. ?noseed=1
+  // because that route WRITES on a first open (it earns the member's
+  // coverage from their approved submissions) and Home only reads: the
+  // Pipeline's first open still does the seeding, as it always has. A
+  // failure leaves Today without requests and says nothing; the Pipeline
+  // states its own errors.
+  function hmLoadLeads() {
+    if (hmLeadsAsked || !hmCanLeads() || !currentUser) return;
+    hmLeadsAsked = true;
+    hmWhenShown(async () => {
+      try {
+        const res = await fetch("/api/broker/leads?noseed=1", { credentials: "same-origin" });
+        if (res.ok) {
+          const j = await res.json();
+          hmLeads = Array.isArray(j && j.leads) ? j.leads : [];
+        }
+      } catch (_) { /* Today simply lists no requests */ }
+      if (hmLeads) drawHomeMap();
+    });
+  }
+
+  function resetHomeMap() {
+    deskSites = null; deskPortfolio = null; firmMembers = []; hmComps = null; hmCompsAsked = false;
+    hmLeads = null; hmLeadsAsked = false;
+    hmRows = []; hmItems = []; hmSel = ""; hmFitFor = ""; hmOpenedOnce = false; hmNothing = false;
+    hmGeoTried.clear();
+    if (hmPinLayer) hmPinLayer.clearLayers();
+    if (hmMap) hmMap.closePopup();
+    ["hmTodayRows", "hmPropRows", "hmCompRows", "hmTeam"].forEach((id) => { const e = document.getElementById(id); if (e) e.textContent = ""; });
+    const t = document.getElementById("hmTitle"); if (t) t.textContent = "Home";
+    const s = document.getElementById("hmSub"); if (s) s.textContent = "";
+    const f = document.getElementById("hmFirm"); if (f) { f.textContent = ""; f.classList.add("hidden"); }
+  }
+
+  // A message and a BOV request have no address, so no number and no pin:
+  // their row is a link to where they are answered.
+  function hmTodayRow(x) {
+    const row = hmEl("div", "hm-row");
+    row.tabIndex = 0;
+    const pinless = x.num == null;
+    row.dataset.key = x.kind === "msg" ? "msg" : x.kind === "bov" ? "bov:" + x.id : HOMEMAP.addressKey(x.address);
+    row.dataset.num = x.num || "";
+    if (hmSel && row.dataset.key === hmSel) row.classList.add("on");
+    // A request is hot for its first two days, the way a dated row is hot in
+    // its last week.
+    const hot = x.kind === "msg" || (x.kind === "bov" ? x.n >= -2 : x.n <= HOMEMAP.WEEK_DAYS);
+    const n = hmEl("span", "hm-num" + (pinless ? " msg" : hot ? " hot" : ""));
+    if (pinless) n.innerHTML = x.kind === "bov" ? HM_ICON.bov : HM_ICON.chat; else n.textContent = String(x.num);
+    const rt = hmEl("span", "hm-rt");
+    const b = hmEl("b", null, x.kind === "msg" ? x.who : x.label);
+    if (x.kind === "msg") b.append(" ", hmEl("i", null, "sent a message"));
+    else if (x.who) b.append(" ", hmEl("i", null, "· " + x.who));
+    rt.append(b, hmEl("small", null, x.place));
+    const tags = hmEl("span", "hm-tags");
+    tags.append(hmScope(x.scope));
+    rt.append(tags);
+    const when = hmEl("span", "hm-when" + (hot ? " hot" : ""));
+    when.append(hmEl("b", null, x.kind === "msg" ? "Now" : HOMEMAP.shortDate(x.date)), hmEl("small", null, x.kind === "msg" ? "unread" : HOMEMAP.inDays(x.n)));
+    row.append(n, rt, when);
+    const open = () => { if (pinless) location.href = x.href; else hmSelect(row.dataset.key, { item: x }); };
+    row.addEventListener("click", open);
+    row.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
+    return row;
+  }
+
+  function hmPropRow(r) {
+    const row = hmEl("div", "hm-row p" + (hmSel && r.key === hmSel ? " on" : ""));
+    row.tabIndex = 0;
+    row.dataset.key = r.key;
+    const th = hmAerial(hmEl("span", "hm-th"), hmLL(r), 96, 96, 17);
+    const rt = hmEl("span", "hm-rt");
+    rt.append(hmEl("b", null, HOMEMAP.street(r.address)),
+      hmEl("small", null, [HOMEMAP.town(r.address), r.type, r.acres ? `${r.acres} acres` : (r.size ? `${Number(r.size).toLocaleString("en-US")} SF` : "")].filter(Boolean).join(" · ")));
+    const tags = hmEl("span", "hm-tags");
+    // A firm-only building's status IS that it is the firm's, which its
+    // Firm tag already says; a chip would say it twice.
+    if (r.stage !== "firm") tags.append(hmChip(r.stage));
+    tags.append(hmScopeTags(r));
+    rt.append(tags);
+    const val = hmEl("span", "hm-val");
+    if (r.value) {
+      val.append(hmEl("b", null, HOMEMAP.money(r.value)));
+      const small = hmEl("small");
+      if (r.change != null) small.append(hmEl("span", r.change >= 0 ? "up" : "dn", `${r.change >= 0 ? "▲" : "▼"} ${Math.abs(r.change * 100).toFixed(1)}%`), " ");
+      small.append(r.valueNote === "asking" ? "asking" : "likely");
+      val.append(small);
+    } else if (r.next) {
+      val.append(hmEl("b", null, HOMEMAP.shortDate(r.next.on)), hmEl("small", null, "next date"));
+    }
+    row.append(th, rt, val);
+    const open = () => hmSelect(r.key, {});
+    row.addEventListener("click", open);
+    row.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
+    return row;
+  }
+
+  function hmCompRow(c) {
+    const row = hmEl("div", "hm-row p");
+    row.tabIndex = 0;
+    row.dataset.key = "comp:" + c.id;
+    const th = hmAerial(hmEl("span", "hm-th"), c.lat != null && c.lng != null ? { lat: c.lat, lng: c.lng } : null, 96, 96, 17);
+    const rt = hmEl("span", "hm-rt");
+    rt.append(hmEl("b", null, c.street), hmEl("small", null, [c.place, c.type, c.size].filter(Boolean).join(" · ")));
+    const tags = hmEl("span", "hm-tags");
+    tags.append(hmChip("deal", `${c.deal} · ${c.when || "date unknown"}`), hmScope("you"));
+    rt.append(tags);
+    const val = hmEl("span", "hm-val");
+    val.append(hmEl("b", null, c.figure || c.price || "—"), hmEl("small", null, c.figure && c.price ? c.price : (c.deal === "Lease" ? "rent" : "")));
+    row.append(th, rt, val);
+    const open = () => hmSelect(row.dataset.key, { comp: c });
+    row.addEventListener("click", open);
+    row.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
+    return row;
+  }
+
+  function hmGroupHead(title, n, note) {
+    const h = hmEl("div", "hm-gh");
+    h.append(hmEl("b", null, title), hmEl("span", null, String(n)));
+    if (note) h.append(hmEl("small", null, note));
+    return h;
+  }
+
+  function drawHomeMap() {
+    if (!hmHas()) return;
+    if (!currentUser) { resetHomeMap(); return; }
+    const firm = myFirm();
+    const today = hmTodayIso();
+    hmRows = HOMEMAP.properties({ buildings: firm ? firmBuildings : [], sites: deskSites || [], portfolio: deskPortfolio || [],
+      critical: firm && Array.isArray(deskCritical) ? deskCritical : [], today });
+    const canLeads = hmCanLeads();
+    if (canLeads && !hmLeadsAsked && deskFilledFor) hmLoadLeads();
+    hmItems = HOMEMAP.agenda({ critical: firm && Array.isArray(deskCritical) ? deskCritical : [],
+      threads: firm && deskThreadsStat ? deskThreadsStat.unreadList : [], sites: deskSites || [],
+      leads: canLeads && Array.isArray(hmLeads) ? hmLeads.map((l) => ({ ...l, ts: hmLocalDay(l.ts) })) : [],
+      firmKind: hmFirmKind(), today });
+
+    // The head: the day, the firm, a greeting, one sentence of status.
+    document.getElementById("hmDay").textContent = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+    const firmEl = document.getElementById("hmFirm");
+    firmEl.textContent = firm ? firm.name : "";
+    firmEl.classList.toggle("hidden", !firm);
+    document.getElementById("hmTitle").textContent = deskGreetingFor(new Date(), currentUser);
+    document.getElementById("hmSub").textContent = HOMEMAP.statusLine({ items: hmItems, hasFirm: !!firm, propertyCount: hmRows.length });
+
+    // Which tabs apply, and their counts.
+    const canComps = hmCanComps();
+    if (canComps && !hmCompsAsked && deskFilledFor) hmLoadComps();
+    const comps = Array.isArray(hmComps) ? hmComps.map(HOMEMAP.compRow).filter(Boolean) : [];
+    document.getElementById("hmTabComps").hidden = !canComps;
+    document.getElementById("hmTabPeople").hidden = !firm;
+    document.getElementById("hmNToday").textContent = hmItems.length ? String(hmItems.length) : "";
+    document.getElementById("hmNProps").textContent = hmRows.length ? String(hmRows.length) : "";
+    document.getElementById("hmNComps").textContent = comps.length ? String(comps.length) : "";
+
+    // An account with nothing on the map yet is shown where to start.
+    const nothing = !hmRows.length && !hmItems.length && !comps.length;
+    // Today's content, not every tab's: the start card's "Add a property"
+    // opens the Properties tab's own chooser, which the cards would bury.
+    hmNothing = nothing;
+    document.getElementById("hmStart").classList.toggle("hidden", !nothing || hmTab !== "today");
+    document.getElementById("hmStartFirm").classList.toggle("hidden", !!firm);
+    document.getElementById("hmStartComps").classList.toggle("hidden", !canComps);
+    // A property of the member's own opens the form that takes it, already
+    // open (HOMEMAP.addHref): The Board's for a deal, Properties' for one they
+    // own, a development firm's Sites tab for both.
+    document.getElementById("hmAddDeal").href = HOMEMAP.addHref("buy", hmFirmKind());
+    document.getElementById("hmAddOwn").href = HOMEMAP.addHref("own", hmFirmKind());
+    document.getElementById("hmAddFirm").classList.toggle("hidden", !firm);
+    document.getElementById("hmAddFirmName").textContent = firm ? firm.name : "your firm";
+
+    // Today.
+    const todayBox = document.getElementById("hmTodayRows");
+    todayBox.textContent = "";
+    hmItems.forEach((x) => todayBox.append(hmTodayRow(x)));
+    const todayEmpty = document.getElementById("hmTodayEmpty");
+    todayEmpty.textContent = hmRows.length
+      ? (canLeads
+        ? "Nothing needs you right now. Unread messages, new BOV requests, lease dates in the next 90 days and your deal dates in the next 30 land here."
+        : "Nothing needs you right now. Lease dates in the next 90 days, your deal dates in the next 30 and unread messages land here.")
+      : (canLeads
+        ? "Lease dates, deal deadlines, BOV requests and messages land here, soonest first."
+        : "Lease dates, deal deadlines and messages land here, soonest first.");
+    todayEmpty.classList.toggle("hidden", hmItems.length > 0 || nothing);
+    // The firm's two lists, and the member's own Pipeline when they have one.
+    document.getElementById("hmTodayMore").classList.toggle("hidden", !firm && !canLeads);
+    document.getElementById("hmTodayLeases").classList.toggle("hidden", !firm);
+    document.getElementById("hmTodayMsgs").classList.toggle("hidden", !firm);
+    document.getElementById("hmTodayPipe").classList.toggle("hidden", !canLeads);
+
+    // Properties: your deals, what you own, the firm's other buildings.
+    const props = document.getElementById("hmPropRows");
+    props.textContent = "";
+    [["buying", "Buying", "your deals"], ["owned", "Owned and tracking", "your numbers stay private"],
+      ["firm", "Firm buildings", firm ? `on ${firm.name}'s list` : ""]].forEach(([g, title, note]) => {
+      const list = hmRows.filter((r) => r.group === g);
+      if (!list.length) return;
+      props.append(hmGroupHead(title, list.length, note));
+      list.forEach((r) => props.append(hmPropRow(r)));
+    });
+    document.getElementById("hmPropsEmpty").classList.toggle("hidden", hmRows.length > 0);
+
+    // Comps.
+    const compBox = document.getElementById("hmCompRows");
+    compBox.textContent = "";
+    comps.slice(0, 200).forEach((c) => compBox.append(hmCompRow(c)));
+    const compsEmpty = document.getElementById("hmCompsEmpty");
+    compsEmpty.textContent = hmComps === false
+      ? "Couldn't read your comps just now. Nothing has been lost. Refresh in a moment."
+      : hmComps == null ? "Reading your comps…"
+      : "No comps yet. Upload past sales and leases from a spreadsheet, PDF or photo, and they land here as pins. Only you can see them.";
+    compsEmpty.classList.toggle("hidden", comps.length > 0);
+    document.getElementById("hmCompsMore").classList.toggle("hidden", !comps.length);
+
+    // Reports: the Sharing card lives in this tab; it says when it is empty.
+    document.getElementById("hmReportsEmpty").classList.toggle("hidden",
+      !document.getElementById("deskSharing").classList.contains("hidden"));
+
+    // People: the firm's roster over its contacts.
+    const team = document.getElementById("hmTeam");
+    team.textContent = "";
+    firmMembers.filter((m) => !m.pending).forEach((m) => {
+      const r = hmEl("div", "hm-team");
+      const nm = String(m.name || m.email || "").trim();
+      r.append(hmEl("span", "hm-av", nm.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase()));
+      const t = hmEl("span");
+      const b = hmEl("b", null, nm);
+      if (m.self) b.append(hmEl("i", null, "you"));
+      t.append(b, hmEl("small", null, [m.role === "owner" ? "Owner" : "Member", m.email].filter(Boolean).join(" · ")));
+      r.append(t);
+      team.append(r);
+    });
+
+    setHomeTab(hmTab, { quiet: true });
+    hmGeocodeMissing();
+  }
+
+  function setHomeTab(tab, { quiet } = {}) {
+    if (!HM_TAB_IDS[tab] || document.getElementById(HM_TAB_IDS[tab][0]).hidden) tab = "today";
+    const changed = tab !== hmTab;
+    hmTab = tab;
+    Object.entries(HM_TAB_IDS).forEach(([k, [tabId, paneId]]) => {
+      const b = document.getElementById(tabId);
+      b.setAttribute("aria-selected", String(k === tab));
+      b.tabIndex = k === tab ? 0 : -1;
+      document.getElementById(paneId).classList.toggle("hidden", k !== tab);
+    });
+    document.getElementById("hmStart").classList.toggle("hidden", !hmNothing || tab !== "today");
+    if (tab === "comps") hmLoadComps();
+    markNavCurrent();
+    if (changed) { hmFitFor = ""; hmSel = ""; if (hmMap) hmMap.closePopup(); }
+    // The tab is the address's fragment, so the rail's Reports row (and a
+    // reload) opens the tab it names. Today is the bare address.
+    if (!quiet && history.replaceState) {
+      history.replaceState(history.state, "", location.pathname + location.search + (tab === "today" ? "" : "#" + tab));
+    }
+    hmDrawPins();
+  }
+  document.getElementById("hmTabs").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-tab]");
+    if (b) setHomeTab(b.dataset.tab);
+  });
+  document.getElementById("hmTabs").addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    const tabs = [...document.querySelectorAll("#hmTabs button[data-tab]")].filter((b) => !b.hidden);
+    const i = tabs.findIndex((b) => b.dataset.tab === hmTab);
+    const next = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+    if (next) { setHomeTab(next.dataset.tab); next.focus(); }
+  });
+  window.addEventListener("hashchange", () => {
+    const h = location.hash.replace("#", "");
+    if (HM_TAB_IDS[h] && h !== hmTab) setHomeTab(h, { quiet: true });
+  });
+  {
+    const h = location.hash.replace("#", "");
+    if (HM_TAB_IDS[h]) hmTab = h;
+  }
+
+  // Add a property: the firm's list (the building form, moved here) or the
+  // member's own (their Data page's add flow).
+  function hmSetAddChoice(open) {
+    document.getElementById("hmAddChoice").classList.toggle("hidden", !open);
+    document.getElementById("hmAddProp").setAttribute("aria-expanded", String(open));
+    if (!open) setBuildingAddOpen(false);
+  }
+  document.getElementById("hmAddProp").addEventListener("click", () => {
+    hmSetAddChoice(document.getElementById("hmAddChoice").classList.contains("hidden"));
+  });
+  // The start card's "Add a property" is the same question, asked where the
+  // answer lives: the Properties tab, chooser open.
+  document.getElementById("hmStartProp").addEventListener("click", (e) => {
+    e.preventDefault();
+    setHomeTab("properties");
+    hmSetAddChoice(true);
+    const first = [...document.querySelectorAll("#hmAddChoice .hm-ch")].find((c) => !c.classList.contains("hidden"));
+    if (first) first.focus();
+  });
+  document.getElementById("hmAddFirm").addEventListener("click", () => {
+    document.getElementById("hmAddChoice").classList.add("hidden");
+    document.getElementById("hmAddProp").setAttribute("aria-expanded", "false");
+    setBuildingAddOpen(true);
+  });
+  document.getElementById("hmInvite").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
+  document.getElementById("hmStartFirm").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
+
+  // ---- The map ---------------------------------------------------------------
+  function hmEnsureMap() {
+    if (hmMap) return hmMap;
+    if (typeof L === "undefined") return null;
+    const el = document.getElementById("hmMap");
+    if (!el || !el.offsetWidth || !el.offsetHeight) return null;
+    hmMap = L.map(el, { zoomControl: false, scrollWheelZoom: true, worldCopyJump: true });
+    L.control.zoom({ position: "topright" }).addTo(hmMap);
+    hmBaseLayers = hmBasemap().addTo(hmMap);
+    hmPinLayer = L.layerGroup().addTo(hmMap);
+    hmMap.setView([39.6, -98.6], 4);
+    hmMap.on("popupclose", () => { hmSel = ""; hmMarkSelected(); });
+    if (typeof ResizeObserver === "function") new ResizeObserver(() => hmMap && hmMap.invalidateSize()).observe(el);
+    // The basemap follows the theme toggle, like the report's map.
+    new MutationObserver(() => {
+      if (!hmMap || !hmBaseLayers) return;
+      hmMap.removeLayer(hmBaseLayers);
+      hmBaseLayers = hmBasemap().addTo(hmMap);
+      hmBaseLayers.bringToBack();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return hmMap;
+  }
+  // The site's canvas basemap. Place labels only from zoom 6, the shared
+  // basemap's own rule: at national zoom they name countries, not this map.
+  function hmBasemap() {
+    return L.layerGroup([
+      L.tileLayer(basemapUrl(), { maxZoom: 18, crossOrigin: "anonymous", attribution: BASEMAP_ATTRIB }),
+      L.tileLayer(basemapLabelUrl(), { maxZoom: 18, minZoom: 6, crossOrigin: "anonymous" }),
+    ]);
+  }
+
+  function hmPin(ll, html, size, onClick, z) {
+    const m = L.marker([ll.lat, ll.lng], { icon: L.divIcon({ className: "hm-mk", html, iconSize: size, iconAnchor: [size[0] / 2, size[1] / 2] }),
+      zIndexOffset: z || 0, keyboard: false });
+    if (onClick) m.on("click", onClick);
+    return m.addTo(hmPinLayer);
+  }
+  const hmPipClass = (r) => (r.group === "buying" ? "buy" : r.group === "owned" ? "own" : "firm");
+
+  function hmDrawPins() {
+    if (!hmEnsureMap()) return;
+    hmPinLayer.clearLayers();
+    const pts = [];
+    const located = hmRows.map((r) => ({ r, ll: hmLL(r) })).filter((x) => x.ll);
+    const showRows = hmTab !== "comps" || !Array.isArray(hmComps);
+    if (showRows) located.forEach(({ r, ll }) => {
+      pts.push([ll.lat, ll.lng]);
+      const on = r.key === hmSel;
+      if (hmTab === "properties" && r.value) {
+        hmPin(ll, `<span class="hm-tag ${hmPipClass(r)}${on ? " on" : ""}">${HOMEMAP.money(r.value)}</span>`, [76, 28], () => hmSelect(r.key, { from: "map" }), on ? 900 : 100);
+      } else {
+        hmPin(ll, `<span class="hm-pip ${hmPipClass(r)}${on ? " on" : ""}"></span>`, [14, 14], () => hmSelect(r.key, { from: "map" }), on ? 900 : 0);
+      }
+    });
+    if (hmTab === "today") {
+      hmItems.forEach((x) => {
+        if (x.num == null) return;
+        const ll = hmLLForAddress(x.address);
+        if (!ll) return;
+        pts.push([ll.lat, ll.lng]);
+        const key = HOMEMAP.addressKey(x.address);
+        hmPin(ll, `<span class="hm-npin${x.n <= HOMEMAP.WEEK_DAYS ? " hot" : ""}${key === hmSel ? " on" : ""}">${x.num}</span>`, [30, 30],
+          () => hmSelect(key, { item: x, from: "map" }), 1000 - x.num);
+      });
+    }
+    if (hmTab === "comps" && Array.isArray(hmComps)) {
+      hmComps.map(HOMEMAP.compRow).filter((c) => c && c.lat != null && c.lng != null).slice(0, 600).forEach((c) => {
+        pts.push([c.lat, c.lng]);
+        const key = "comp:" + c.id;
+        hmPin({ lat: c.lat, lng: c.lng }, `<span class="hm-pip comp${key === hmSel ? " on" : ""}"></span>`, [14, 14], () => hmSelect(key, { comp: c, from: "map" }), key === hmSel ? 900 : 0);
+      });
+    }
+    const empty = !pts.length;
+    document.getElementById("hmMapEmpty").classList.toggle("hidden", !empty || !!hmRows.length);
+    document.getElementById("hmLegend").classList.toggle("hidden", empty);
+    document.getElementById("hmLegendComps").classList.toggle("hidden", hmTab !== "comps");
+    // The Comps tab draws only comps, so the legend names only them.
+    document.querySelectorAll("#hmLegend .hm-lg-p").forEach((e) => e.classList.toggle("hidden", !showRows));
+    // Fit once per tab (and again when the set of pins grows), never on a
+    // redraw that only moved the selection, so the map does not jump under
+    // the pointer.
+    const fitKey = hmTab + ":" + pts.length;
+    if (!empty && fitKey !== hmFitFor) {
+      hmFitFor = fitKey;
+      hmMap.fitBounds(pts, { padding: [56, 56], maxZoom: 15 });
+    }
+    // The first view of Today opens the card of what is due first, the way
+    // the draft showed it; only once, and only beside a list (not on a phone).
+    if (!hmOpenedOnce && hmTab === "today" && window.innerWidth >= 900) {
+      const first = hmItems.find((x) => x.num != null && hmLLForAddress(x.address));
+      if (first) { hmOpenedOnce = true; hmSelect(HOMEMAP.addressKey(first.address), { item: first, quiet: true }); }
+    }
+  }
+
+  function hmMarkSelected() {
+    document.querySelectorAll("#homeMap .hm-row").forEach((r) => r.classList.toggle("on", !!hmSel && r.dataset.key === hmSel));
+  }
+
+  function hmSelect(key, { item, comp, from, quiet } = {}) {
+    hmSel = key;
+    hmMarkSelected();
+    if (from === "map") {
+      const row = document.querySelector(`#homeMap .hm-pane:not(.hidden) .hm-row[data-key="${CSS.escape(key)}"]`);
+      if (row) row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+    if (!hmEnsureMap()) return;
+    const r = comp ? null : hmRowByKey(key);
+    const ll = comp ? (comp.lat != null ? { lat: comp.lat, lng: comp.lng } : null) : (r ? hmLL(r) : item ? hmLLForAddress(item.address) : null);
+    if (!ll) return;
+    const card = hmEl("div");
+    card.append(hmAerial(hmEl("div", "hm-pop-ph"), ll, 260, 104, 18));
+    const b = hmEl("div", "hm-pop-b");
+    if (comp) {
+      b.append(hmEl("b", null, comp.street), hmEl("small", null, [comp.place, comp.type, comp.size].filter(Boolean).join(" · ")));
+      const tags = hmEl("span", "hm-pop-r");
+      tags.append(hmChip("deal", `${comp.deal} · ${comp.when || "date unknown"}`), hmScope("you"));
+      b.append(tags);
+      const v = hmEl("span", "hm-pop-v");
+      v.append(hmEl("b", null, comp.figure || comp.price || "—"), comp.figure && comp.price ? comp.price : "");
+      b.append(v);
+      const a = hmEl("a", "hm-pop-a", "Open in your comps →");
+      a.href = "/vault#book";
+      b.append(a);
+    } else if (item && hmTab === "today") {
+      b.append(hmEl("b", null, item.label + (item.who ? ` · ${item.who}` : "")), hmEl("small", null, item.place));
+      b.append(hmEl("span", "hm-pop-n" + (item.n <= HOMEMAP.WEEK_DAYS ? " hot" : ""), `${HOMEMAP.shortDate(item.date)} · ${HOMEMAP.inDays(item.n)}`));
+      const tags = hmEl("span", "hm-pop-r");
+      tags.append(hmScope(item.scope));
+      b.append(tags);
+      const a = hmEl("a", "hm-pop-a", item.act + " →");
+      a.href = item.href;
+      b.append(a);
+    } else if (r) {
+      b.append(hmEl("b", null, HOMEMAP.street(r.address)),
+        hmEl("small", null, [HOMEMAP.town(r.address), r.type, r.acres ? `${r.acres} acres` : (r.size ? `${Number(r.size).toLocaleString("en-US")} SF` : "")].filter(Boolean).join(" · ")));
+      const tags = hmEl("span", "hm-pop-r");
+      if (r.stage !== "firm") tags.append(hmChip(r.stage));
+      tags.append(hmScopeTags(r));
+      b.append(tags);
+      if (r.value) {
+        const v = hmEl("span", "hm-pop-v");
+        v.append(hmEl("b", null, HOMEMAP.money(r.value)), r.valueNote === "asking" ? "asking" : "likely value");
+        b.append(v);
+      }
+      if (r.next) b.append(hmEl("span", "hm-pop-n" + (HOMEMAP.daysUntil(r.next.on, hmTodayIso()) <= 21 ? " hot" : ""), `${HOMEMAP.shortDate(r.next.on)} · ${r.next.label}`));
+      const a = hmEl("a", "hm-pop-a");
+      if (r.buildingId != null) { a.textContent = "Open the building sheet →"; a.href = "/building/" + encodeURIComponent(r.buildingId); }
+      else if (r.group === "buying") { a.textContent = "Open the deal →"; a.href = HOMEMAP.dealsHref(hmFirmKind()); }
+      else { a.textContent = "Open in your properties →"; a.href = "/vault#properties"; }
+      b.append(a);
+    } else return;
+    card.append(b);
+    L.popup({ closeButton: true, autoClose: true, offset: [0, -12], maxWidth: 260, minWidth: 260, className: "hm-pop", autoPan: !quiet })
+      .setLatLng([ll.lat, ll.lng]).setContent(card).openOn(hmMap);
+    // Redraw the pins so the selected one stands out; the map does not refit.
+    hmDrawPins();
+  }
+  // Properties with no coordinates yet are placed through our own geocoder
+  // only (rule 7). geoCache already remembers answers across visits, the
+  // report map's contract for private comps; at most 40 per view.
+  let hmGeocoding = false;
+  const hmGeoTried = new Set(); // a miss is not cached by geocodeAddress, so this stops a retry loop
+  async function hmGeocodeMissing() {
+    if (hmGeocoding || !hmRows.length) return;
+    const need = hmRows.filter((r) => !hmLL(r) && !hmGeoTried.has(r.key)).slice(0, 40);
+    need.forEach((r) => hmGeoTried.add(r.key));
+    if (!need.length) return;
+    hmGeocoding = true;
+    try {
+      for (let i = 0; i < need.length; i += 4) {
+        await Promise.all(need.slice(i, i + 4).map((r) => geocodeAddress(r.address, { noThirdParty: true }).catch(() => null)));
+      }
+    } finally { hmGeocoding = false; }
+    // Thumbnails and pins both read the new coordinates.
+    drawHomeMap();
+  }
+
+  // ---- The find box ------------------------------------------------------------
+  // Searches what Home already holds (properties, comps, contacts) in the
+  // browser, and offers to value whatever was typed as an address.
+  function hmFindResults(q) {
+    const res = document.getElementById("hmFindRes");
+    const input = document.getElementById("hmFind");
+    res.textContent = "";
+    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) { res.classList.add("hidden"); input.setAttribute("aria-expanded", "false"); return; }
+    const hit = (s) => terms.every((t) => s.toLowerCase().includes(t));
+    const add = (title, sub, onClick, cls) => {
+      const b = hmEl("button", "hm-fr" + (cls ? " " + cls : ""));
+      b.type = "button";
+      b.append(hmEl("b", null, title), hmEl("small", null, sub));
+      b.addEventListener("click", () => { res.classList.add("hidden"); input.setAttribute("aria-expanded", "false"); onClick(); });
+      res.append(b);
+    };
+    hmRows.filter((r) => hit([r.address, r.type, HOMEMAP.stageLabel(r.stage)].join(" "))).slice(0, 5).forEach((r) =>
+      add(HOMEMAP.street(r.address), [HOMEMAP.place(r.address), HOMEMAP.stageLabel(r.stage)].filter(Boolean).join(" · "), () => { setHomeTab("properties"); hmSelect(r.key, {}); }));
+    (Array.isArray(hmComps) ? hmComps : []).map(HOMEMAP.compRow).filter((c) => c && hit([c.address, c.type].join(" "))).slice(0, 4).forEach((c) =>
+      add(c.street, `Comp · ${c.deal} · ${c.when}`, () => { setHomeTab("comps"); hmSelect("comp:" + c.id, { comp: c }); }));
+    (Array.isArray(firmContacts) ? firmContacts : []).filter((c) => hit([c.name, c.company, c.email].join(" "))).slice(0, 3).forEach((c) =>
+      add(c.name, ["Contact", c.company].filter(Boolean).join(" · "), () => setHomeTab("people")));
+    // Anything that starts with a street number can be valued.
+    if (/^\s*\d+\s+\S+/.test(q)) {
+      add(`Run a comp report on ${q.trim()}`, "A value range and the sales behind it, in about a minute", () => {
+        location.href = "/bulk?address=" + encodeURIComponent(q.trim());
+      }, "go");
+    }
+    if (!res.childElementCount) res.append(hmEl("p", "hm-empty", "Nothing on Home matches that. Type a full address to value it."));
+    res.classList.remove("hidden");
+    input.setAttribute("aria-expanded", "true");
+  }
+  document.getElementById("hmFind").addEventListener("input", (e) => hmFindResults(e.target.value));
+  document.getElementById("hmFind").addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.target.value = ""; hmFindResults(""); }
+    if (e.key === "Enter") { const first = document.querySelector("#hmFindRes .hm-fr"); if (first) first.click(); }
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest || e.target.closest(".hm-find")) return;
+    const res = document.getElementById("hmFindRes");
+    if (res && !res.classList.contains("hidden")) { res.classList.add("hidden"); document.getElementById("hmFind").setAttribute("aria-expanded", "false"); }
+  });
+
   async function renderShares() {
     const sharesBox = document.getElementById("deskShares");
     const errEl = document.getElementById("deskSharesLoadError");
@@ -14756,6 +15764,8 @@ async function renderMyDesk() {
       // Draft C's banner names the member, the firm's cities and what needs
       // them — all of it goes on the same signal.
       resetDeskHero();
+      // Home's map names the same buildings, deals and colleagues.
+      resetHomeMap();
       syncShareCard();
     };
     if (!currentUser) { hideAll(); return; }
@@ -14815,7 +15825,11 @@ async function renderMyDesk() {
     // joined after it — the strip draws from what the batch parsed.
     const critical = readFirmCritical();
     const buildings = renderBuildings();
+    // The member's own deals, for Home's map (2026-10-07). Embedded with the
+    // page like the rest, and read whether or not there is a firm.
+    const sites = readDeskSites();
     await Promise.all([
+      sites,
       buildings,
       renderDeskThreads(),
       renderYourPermits(),
@@ -14827,6 +15841,9 @@ async function renderMyDesk() {
     // same leases answer the strip just drew, after it (the agenda hides with
     // the strip, so it needs the strip's verdict first).
     drawDeskDates(await critical);
+    // Home as one map reads everything the lines above parsed. Guarded: a
+    // fault in the new drawing must never cost the member the rest of Home.
+    try { drawHomeMap(); } catch (err) { console.error("Home map draw failed:", err); }
     // The banner's skyline reads the buildings, the shelf and the dates the
     // three lines above just parsed, so it goes last.
     drawDeskSky();
@@ -15910,6 +16927,8 @@ async function renderMyDesk() {
     document.getElementById("deskToday").textContent =
       now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
     document.getElementById("deskGreeting").textContent = currentUser ? deskGreetingFor(now, currentUser) : "Home";
+    const hmTitle = document.getElementById("hmTitle");
+    if (hmTitle) hmTitle.textContent = currentUser ? deskGreetingFor(now, currentUser) : "Home";
     clearTimeout(deskClockTimer);
     deskClockTimer = currentUser ? setTimeout(drawDeskClock, msToNextDeskBoundary(now)) : null;
     // The skyline's sky turns with the greeting (noon, five, midnight).
@@ -17220,6 +18239,7 @@ async function renderMyDesk() {
       return;
     }
     const members = Array.isArray(data.members) ? data.members : [];
+    firmMembers = members; // Home's People tab
     const joined = members.filter((m) => !m.pending).length;
     // The last owner cannot be removed and cannot leave — org-access.js
     // refuses it, because a firm with no owner has nobody who can invite,
@@ -20426,22 +21446,16 @@ async function renderMyDesk() {
     // (No `canVault` read here since 2026-09-04: the workspace's vault card,
     // its only consumer, left with the Broker deck. The entitlement is still
     // read where it decides something — canCreateHub and the vault page.)
-    document.getElementById("menuVaultLink").classList.toggle("hidden", !currentUser);
     // The unread dot (slice 8): its own endpoint, never a field on /api/config.
     // A member with no firm gets a 403 here, which leaves the dot hidden —
     // the same answer as nothing waiting. Never awaited: the rest of this
     // function must not wait on a count.
     refreshMessagesDot();
     refreshPermitsDot();
-    // Bulk valuation, off its OWN entitlement. Same shape and same reasons as
-    // the vault link above it -- /api/bulk re-checks canBulkValue server-side,
-    // so unhiding this by hand reveals a link and a 403 behind it -- and
-    // likewise not gated on `live`, so a comped admin on a deployment with no
-    // Stripe keys gets both tools rather than one.
-    document.getElementById("menuBulkLink")
-      .classList.toggle("hidden", !(proConfig && proConfig.canBulkValue));
-    // The no-firm start card that points at the same tool follows the same
-    // answer (Draft C) — see syncStartCards.
+    // The no-firm start card that offers the comp-report tool follows
+    // canBulkValue (syncStartCards), and /api/config can answer after the desk
+    // drew, so it is re-decided here. (The rail's Comp report row it used to
+    // sit beside left the rail on 2026-10-07, Draft C.)
     syncStartCards();
     // /api/config already carries this visitor's remaining exports, so the
     // counter can be right on first paint instead of only after an export.

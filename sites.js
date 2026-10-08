@@ -109,7 +109,7 @@
   function cleanDates(list) {
     if (list == null || list === "") return { ok: true, value: [] };
     if (!Array.isArray(list)) return { ok: false, error: "Dates must be a list." };
-    if (list.length > MAX_DATES) return { ok: false, error: `A site can hold ${MAX_DATES} dates.` };
+    if (list.length > MAX_DATES) return { ok: false, error: `A property can hold ${MAX_DATES} dates.` };
     const out = [];
     for (const d of list) {
       const on = cleanDate(d && d.on);
@@ -147,7 +147,7 @@
     const out = {};
     if (body.address !== undefined) {
       const a = cleanText(body.address, 300);
-      if (!a) return { ok: false, error: "Type the site's address." };
+      if (!a) return { ok: false, error: "Type the property's address." };
       out.address = a;
     }
     if (body.property_type !== undefined) {
@@ -187,7 +187,7 @@
     if (pid && !UUID.test(pid)) return { ok: false, error: "Unknown property." };
     if (isHeld(stage) && !pid) return { ok: false, error: "Owned and Tracking describe a property you already hold." };
     if (!isHeld(stage) && pid) return { ok: false, error: "A deal in progress is not one of your properties yet." };
-    if (b.address === undefined) return { ok: false, error: "Type the site's address." };
+    if (b.address === undefined) return { ok: false, error: "Type the property's address." };
     const f = cleanFields(Object.assign({ property_type: b.property_type === undefined ? "Land" : b.property_type }, b), o);
     if (!f.ok) return f;
     const today = String(o.today || "");

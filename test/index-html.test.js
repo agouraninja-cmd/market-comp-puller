@@ -1085,30 +1085,55 @@ test("Refresh survives a row whose report never landed", () => {
 // exactly as the nav links and the bulk run view are, so it is never in the
 // static bytes. The invariant is about the page a browser runs, which means it
 // has to be asserted against the SERVED page.
-test("the vault is a nav item, not a row inside the account menu", () => {
-  // It sat in the account dropdown until 2026-08-29. Under NAV_SHELL=rail that
-  // dropdown is pinned to the FOOT of a 224px sidebar and opens upward, so a
-  // broker's daily workspace was two clicks down a menu -- while "Workspace"
-  // itself sat one click away in the rail. The gate is unchanged; only the
-  // position moved.
-  const nav = html.slice(html.indexOf('id="myDeskLink"'), html.indexOf('id="acctMenuWrap"'));
-  assert.match(nav, /id="menuVaultLink"/, "the vault link is a sibling of Workspace in the rail nav");
-  assert.match(nav, /href="\/vault"/, "and still points at its own server-rendered page");
-  const menu = html.slice(html.indexOf('id="acctMenu"'), html.indexOf('id="signOutBtn"'));
-  assert.ok(!menu.includes("menuVaultLink"), "and it is no longer a row in the account menu");
-  // One link, one toggle: refreshBillingUI still owns it.
-  assert.equal(html.split('id="menuVaultLink"').length - 1, 1, "exactly one vault link");
-  // Shown to every signed-in member since 2026-09-01 ("Three Spaces"), where
-  // it was canUseVault before. /vault stopped being only the comp book that
-  // day: the member's portfolio and watchlist moved into it off the
-  // workspace, and neither was ever part of Pro. Gating the only door on the
-  // entitlement would leave a free member's own saved properties reachable by
-  // typing the URL and no other way. The PAGE still refuses the book, the
-  // pipeline and the hubs -- vaultReadPayload's 403 and #vaultLocked -- so
-  // this widened who can see the door, never what is behind it.
-  assert.ok(html.includes(`getElementById("menuVaultLink").classList.toggle("hidden", !currentUser)`),
-    "shown to any signed-in member, not gated on the vault entitlement");
+test("the vault has no rail row and no account-menu row; Home's tabs open it", () => {
+  // Draft C (2026-10-07): deals, holdings and comps are tabs of Home, and
+  // /vault is the workbench those tabs open into. It must not drift back into
+  // the account menu either, which is where it was buried before 2026-08-29.
+  const railNav = html.slice(html.indexOf('id="myDeskLink"'), html.indexOf('id="acctMenuWrap"'));
+  assert.ok(!railNav.includes('id="menuVaultLink"'), "the Data row is back in the rail");
+  const acctMenu = html.slice(html.indexOf('id="acctMenu"'), html.indexOf('id="signOutBtn"'));
+  assert.ok(!acctMenu.includes('href="/vault"'), "the vault is back inside the account menu");
+  const home = html.slice(html.indexOf('id="homeMap"'), html.indexOf('id="hmMap"'));
+  assert.match(home, /href="\/vault#book"/, "Home's Comps tab no longer opens the comps workbench");
+  // "Add a property" asks which kind (2026-10-07): a deal opens The Board's
+  // add form, a property you own opens Properties' (HOMEMAP.addHref rewrites
+  // both for a development firm). One "Only you" link to Properties sent
+  // deals to a tab that cannot take them.
+  assert.ok(home.includes('<a id="hmAddDeal" class="hm-ch" href="/vault?add=buy#board">'), "no deal choice opening The Board's form");
+  assert.ok(home.includes('<a id="hmAddOwn" class="hm-ch" href="/vault?add=own#properties">'), "no own-it choice opening Properties' form");
+  assert.ok(!home.includes('id="hmAddMine"'), "the single Only-you choice is back");
+  assert.ok(html.includes('document.getElementById("hmAddDeal").href = HOMEMAP.addHref("buy", hmFirmKind());'));
+  assert.ok(html.includes('document.getElementById("hmAddOwn").href = HOMEMAP.addHref("own", hmFirmKind());'));
+  // The empty account's start card asks the same question in the same place.
+  assert.ok(home.includes('<a id="hmStartProp" class="hm-st" href="#properties">'));
+  const start = html.slice(html.indexOf('getElementById("hmStartProp").addEventListener('), html.indexOf("// ---- The map"));
+  assert.ok(start.includes('setHomeTab("properties");') && start.includes("hmSetAddChoice(true);"), "the start card no longer opens the chooser");
+  // Both kinds of card hide by class, so each needs its .hidden companion
+  // (without one, "Start a firm" showed to a member already in a firm).
+  assert.ok(html.includes(".hm-ch.hidden { display: none; }"));
+  assert.ok(html.includes(".hm-st.hidden { display: none; }"));
 });
+
+test("Home's Today reads new BOV requests without writing, and only once the page is shown", () => {
+  // The Pipeline left the rail with the Data row (Draft C), so a broker's new
+  // requests come to Today instead. GET /api/broker/leads seeds the member's
+  // coverage on a first open, which is a WRITE: Home asks with ?noseed=1 so
+  // only the Pipeline's own first open ever does that, and it waits for a
+  // prerendered Home to be shown (CLAUDE.md's rule 15) like the comps read.
+  const at = html.indexOf("function hmLoadLeads(");
+  assert.ok(at > 0, "hmLoadLeads is gone");
+  const body = html.slice(at, html.indexOf("\n  }\n", at));
+  assert.ok(body.includes('fetch("/api/broker/leads?noseed=1"'), "Home must never seed coverage");
+  assert.ok(body.includes("hmWhenShown("), "the read must wait for a prerendered page to be shown");
+  const shown = html.slice(html.indexOf("function hmWhenShown("), html.indexOf("function hmLoadComps("));
+  assert.match(shown, /document\.prerendering[\s\S]*prerenderingchange/);
+  // A development firm has no Pipeline (vault-page.js's applyShop), so it is
+  // never asked; and a deal opens where the private page lists it.
+  assert.ok(html.includes('const hmCanLeads = () => hmCanComps() && !(myFirm() && myFirm().kind === "development");'));
+  assert.ok(html.includes('a.textContent = "Open the deal →"; a.href = HOMEMAP.dealsHref(hmFirmKind());'));
+  assert.ok(!html.includes('"Open the deal →"; a.href = "/vault#sites"'), "#sites opens Comps for anyone outside a development firm");
+});
+
 
 // The workspace header's profile cluster is pinned by "the workspace header
 // does not say who you are at all" further down -- it started life as that

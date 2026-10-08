@@ -540,10 +540,10 @@ test("bare environment", async (t) => {
     })).text();
     assert.ok(!html.includes(`<a href="/">Home</a>`),
       "a member's / IS their workspace, so Home duplicates the Workspace row");
-    assert.match(html, /<a href="\/desk">Home<\/a>/,
+    assert.match(html, /<a href="\/desk">[\s\S]{0,400}?<span class="nvl">Home<\/span><\/a>/,
       "suppressing Home is only safe because Workspace is the way back; without it "
       + "a member is left with the wordmark and a CTA, which is the 2026-08-28 bug");
-    assert.match(html, /Run a report/,
+    assert.match(html, /Run a comp report/,
       "the CTA is untouched on a browse page: it was never the way home, and it is not one now");
 
     // The half that must NOT move. Home was owner-reported missing for
@@ -564,11 +564,11 @@ test("bare environment", async (t) => {
     for (const p of ["/vault", "/markets", "/bulk", "/buildings"]) {
       const html = await (await fetch(srv.base + p, { headers: member })).text();
       const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
-      assert.ok(!/class="btn sm" href="\/bulk">Run a report/.test(nav),
-        p + " still carries the Run a report CTA in its header");
+      assert.ok(!/class="btn sm" href="\/bulk">Run a/.test(nav),
+        p + " still carries the Run a comp report CTA in its header");
       // Dropping it is only safe because the way back is still a row, not a
       // button — the same argument that let Home go for members.
-      assert.match(nav, /<a href="\/desk">Home<\/a>/,
+      assert.match(nav, /<a href="\/desk">[\s\S]{0,400}?<span class="nvl">Home<\/span><\/a>/,
         p + " lost the CTA and has no Workspace row either — that strands the member");
     }
   });
@@ -589,7 +589,8 @@ test("bare environment", async (t) => {
       // Workspace. Asserted as the literal href rather than as "some link
       // called Run a report", because the failure worth catching is the
       // button quietly going back to pointing at home, or at the retired row.
-      assert.match(nav, /class="btn sm" href="\/bulk">Run a report/,
+      // "Run a comp report" since 2026-10-07: one name for the act everywhere.
+      assert.match(nav, /class="btn sm" href="\/bulk">Run a comp report/,
         p + " lost the CTA; only the working pages drop it");
     }
   });
@@ -640,11 +641,16 @@ test("bare environment", async (t) => {
     // stay in the dropdown. Workspace is matched by NAME rather than by href
     // because it is a link on the server-rendered pages and a button in the
     // app, where it opens a panel instead of navigating.
+    // Draft C of the Home and Data drafts (the owner's pick, 2026-10-07) made
+    // the rail five places: Home, Messages, Reports, Markets, Permits. The
+    // vault and the comp-report tool stopped being rows -- they are tabs and
+    // buttons of Home now -- which the two asserts after the loop pin.
     const ROWS = [
-      ["Home", />Home</],
-      ["the vault", /<a [^>]*href="\/vault"/],
-      ["Market explorer", /<a [^>]*href="\/markets"/],
-      ["Comp report", /<a [^>]*href="\/bulk"/],
+      ["Home", /<span class="nvl">Home</],
+      ["Messages", /<a [^>]*href="\/messages"/],
+      ["Reports", /<a [^>]*href="\/desk#reports"/],
+      ["Markets", /<a [^>]*href="\/markets"/],
+      ["Permits", /<a [^>]*href="\/permits"/],
     ];
     for (const page of ["/", "/markets", "/vault"]) {
       const html = await (await fetch(srv.base + page, { headers: SESSION })).text();
@@ -669,6 +675,8 @@ test("bare environment", async (t) => {
           `${page} puts ${name} out of order — expected ${ROWS.map((r) => r[0]).join(", ")}`);
         last = at;
       }
+      assert.ok(!/<a [^>]*href="\/vault"/.test(rows), page + " still has a Data row in the rail");
+      assert.ok(!/<a (?![^>]*class="btn sm")[^>]*href="\/bulk"/.test(rows), page + " still has a Comp report row in the rail");
     }
   });
 
@@ -764,12 +772,14 @@ test("bare environment", async (t) => {
       "throws and takes the whole script with it: " + missing.join(", "));
   });
 
-  await t.test("the app reveals bulk valuation from canBulkValue, not from the vault's flag", async () => {
+  // The rail lost both entitlement-gated rows on 2026-10-07 (Draft C): the
+  // vault and the comp-report tool are reached from Home's tabs and buttons.
+  // What must survive is that the vault's own flag still decides what it
+  // gates in this file.
+  await t.test("the app's rail has no Data or Comp report row, and the vault's flag still gates what it gates", async () => {
     const app = await (await fetch(srv.base + "/")).text();
-    assert.match(app, /id="menuBulkLink"[^>]*class="hidden/,
-      "the bulk link must ship hidden — it is a Pro tool, and the render cannot know");
-    assert.match(app, /getElementById\("menuBulkLink"\)[\s\S]{0,160}canBulkValue/,
-      "the bulk link is not toggled from canBulkValue");
+    assert.ok(!app.includes('id="menuBulkLink"'), "the Comp report row is back in the rail");
+    assert.ok(!app.includes('id="menuVaultLink"'), "the Data row is back in the rail");
     // canUseVault still gates something in this file -- creating a hub
     // (canCreateHub) -- so the two flags are provably separate answers rather
     // than one shared one. (Until 2026-09-04 the workspace's vault card was
@@ -782,10 +792,9 @@ test("bare environment", async (t) => {
     // portfolio and watchlist and those were never Pro. Widened who sees the
     // door, never what is behind it -- vaultReadPayload still answers 403 and
     // the page renders #vaultLocked in place of the three gated decks.
-    assert.match(app, /getElementById\("menuVaultLink"\)[\s\S]{0,80}!currentUser/,
-      "the vault link must open to any signed-in member");
-    assert.ok(!/getElementById\("menuVaultLink"\)[\s\S]{0,80}canVault/.test(app),
-      "and must not go back to being gated on the entitlement");
+    // Home's Comps tab is offered off the same flag (hmCanComps).
+    assert.match(app, /const hmCanComps = \(\) => \{ try \{ return Boolean\(proConfig && proConfig\.canUseVault\)/,
+      "Home's Comps tab is not gated on the vault's own flag");
   });
 
   // The Market Explorer's example, rotated per page load (2026-08-24).

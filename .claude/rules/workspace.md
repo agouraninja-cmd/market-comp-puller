@@ -2,6 +2,8 @@
 paths:
   - "index.html"
   - "firm-skyline.js"
+  - "home-map.js"
+  - "test/home-map.test.js"
   - "test/org-desk.test.js"
   - "test/desk-*.test.js"
   - "test/firm-skyline.test.js"
@@ -16,6 +18,98 @@ paths:
 > (`navVault`, `menuVaultLink`, `deskGreeting`), tables (`broker_comps`) and
 > module names keep "desk"/"vault", and these notes still say "workspace" and
 > "vault" for the two spaces. Never put "Workspace" or "Vault" back in copy.
+> (Since 2026-10-07 the rail no longer has a Data row, and /vault's heading
+> reads "Your properties and comps"; see below.)
+
+> **Home as one map (2026-10-07; Draft C of the Home and Data drafts, the
+> owner's pick, https://claude.ai/artifact/SkPtByefNY6JbwFAFWxRLY).** A
+> member's Home is ONE screen: a list on the left with tabs (Today,
+> Properties, Comps, Reports, People) and every property on a map on the
+> right. Read this before anything below: most of the sections the notes
+> describe (the skyline banner, the figure cards, Needs you, the two columns)
+> are HIDDEN on Home now, though their writers still run.
+> - **`#homeMap`** is the first child of `#myDesk`, so the one-paint hold
+>   covers it. `drawHomeMap()` is its one writer; it draws only from what the
+>   desk already parsed (`firmBuildings`, `deskCritical`, `deskThreadsStat`,
+>   `firmContacts`, `firmMembers` (captured in `renderFirmMembers`),
+>   `deskPortfolio` (captured in `renderMyDesk`)) plus two reads of its own:
+>   `deskSites` (`GET /api/sites`, added to `DESK_BOOT_URLS`, read beside the
+>   firm batch in `renderShares`) and `hmComps` (`GET /api/vault`, read only
+>   once the page is SHOWN, never while prerendered, and only when
+>   `canUseVault`). It is called after `drawDeskDates` in `renderShares`
+>   (inside try/catch, so a fault never costs the rest of Home), after the
+>   reveal in `renderMyDesk` (the map needs a laid-out box), and after the
+>   comps and geocodes land. `resetHomeMap()` rides `hideAll`.
+> - **What goes in the lists is `home-map.js`** (pure, dual-exported, browser
+>   global `HOMEMAP`, `maxAge: 0`, tested in `test/home-map.test.js`). Its
+>   three rules: ONE row per property (a firm building, a deal and a holding
+>   at the same street and city are one row that knows `firm` and `you`);
+>   EVERY row says who can see it (`scopeOf`: firm / you / both, where both
+>   reads "Firm" + "Your numbers"); a property always shows a STATUS and a
+>   comp always shows its DEAL DATE and price per unit (the owner's wording:
+>   a property is something you own, manage or are buying; a comp is a past
+>   deal you value against).
+> - **The firm's working sections moved INTO the tabs rather than being
+>   rewritten:** `#deskSharing` is the Reports tab's body, `#deskContacts`
+>   sits in People under the roster, and `#buildingAddForm` is behind
+>   Properties' "Add a property" → "One of the firm's buildings". Every id and
+>   writer is unchanged. The chooser's other two choices are the member's own
+>   (`HOMEMAP.addHref`): "A deal you're working on" opens
+>   `/vault?add=buy#board` and "A property you own" `/vault?add=own#properties`
+>   (both `#sites` for a development firm, whose Sites tab takes both), and
+>   vault-page.js opens that tab's add form on arrival (see vault.md). The
+>   empty account's "Add a property" start card switches to Properties with
+>   the chooser open, so the start cards show on Today only. `.hm-ch` and
+>   `.hm-st` set `display`, so each has a `.hidden` companion; without them
+>   "Start a firm" and "One of the firm's buildings" showed to members they
+>   did not apply to.
+> - **`html.hm-page`** is written by `markNavCurrent()` alone (a member's
+>   Home showing): the content container loses its gutter, the footer hides
+>   (the legal line is at the foot of the list), and the old banner, figure
+>   cards, agenda and columns are `display:none`. At 900px and up under
+>   `nav-rail` the list and map share the viewport; below, or in the bar
+>   shell, the map is a 300px strip above the list and the page scrolls.
+> - **Tabs are the URL fragment** (`#properties`, `#comps`, `#reports`,
+>   `#people`; Today is the bare path). The rail's Reports row is
+>   `/desk#reports`, handled in place on Home; `markNavCurrent` marks Reports
+>   rather than Home while that tab shows (five calls now, pinned).
+> - **Privacy:** private addresses are geocoded only through
+>   `geocodeAddress(…, { noThirdParty: true })` (our `/api/geocode`, rule 7),
+>   at most 40 per view, and only for properties; comps use the coordinates
+>   their import stored. `hmGeoTried` stops a retry loop (a miss is not
+>   cached). Every list is built with createElement/textContent.
+> - **The find box** searches properties, comps and contacts in the browser
+>   and, for anything that starts with a street number, offers "Run a comp
+>   report on …", which opens `/bulk?address=` (bulk-page.js fills an EMPTY
+>   box and runs nothing; every address is a billed search).
+> - **Today holds new BOV requests** (the Pipeline's door now that it has no
+>   rail row). `hmLoadLeads()` reads `GET /api/broker/leads?noseed=1` once
+>   the page is shown (`hmWhenShown`, shared with the comps read), only for a
+>   Pro member outside a development firm (`hmCanLeads`; a development firm
+>   has no Pipeline). **`noseed=1` is load-bearing:** without it that GET
+>   WRITES the member's coverage on a first open, and Home only reads, so a
+>   broker whose Pipeline was never opened sees no requests on Home until it
+>   is. `HOMEMAP.agenda` lists a request while it is inside `BOV_DAYS` (14)
+>   and has no intro request, after messages and newest first, with no number
+>   and no pin (the server already anonymized it: type, size, market, date).
+>   The row opens `/vault#pipeline`, and Today's foot gains "Your BOV
+>   pipeline →".
+> - **A deal opens where /vault lists it** (`HOMEMAP.dealsHref`): `#sites` for
+>   a development firm, `#board` (the deal wall) for everyone else, because
+>   `applyShop` hides Sites outside a development firm and `#sites` would land
+>   on Comps. Today's deal rows and a deal's map card both read it.
+> - **The Board's door is on the Markets pages** (it has no rail row now):
+>   `/markets` carries a `.mboard` band for a signed-in member only (the
+>   anonymous page is publicly cached), and a market page's "Add to The
+>   Board" has "Open The Board →" under it.
+> - **Still to do before this ships (2026-10-07):** delete what Home hides
+>   (the banner and skyline: `#deskHero`, `drawDeskSky`/`drawDeskHome`/
+>   `resetDeskHero`, `firm-skyline.js` and its test; `#deskStrip`,
+>   `#deskAgenda`, `#deskCritical`, `#deskThreads`, `#deskDealBoard`,
+>   `#deskPermits`, the buildings table and the old skeleton) and the
+>   org-desk tests that pin them; and the comp report's own "Your property" /
+>   "Comps used" labels, left out because that page feeds the PNG, print and
+>   PowerPoint exports.
 
 > Moved verbatim from CLAUDE.md on 2026-09-25. Claude Code loads this file
 > when it opens a file matching `paths` above; read it by hand before changing

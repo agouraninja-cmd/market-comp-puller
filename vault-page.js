@@ -1121,8 +1121,14 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 }
 </style>
   <p class="kicker">Private to you</p>
-  <h1 class="h">Data</h1>
-  <p class="sub" id="deckSub">Closed deals, leads, and BOVs. Visible only to you.</p>
+  <!-- "Your properties and comps" since 2026-10-07 (Draft C, "One map"): the
+       rail no longer has a Data row, and every door here is a tab of Home
+       that names what it opens (Properties, Comps), so the page says the
+       same two words. A property is something you own, manage or are
+       buying; a comp is a past deal you value against (the owner's wording,
+       2026-10-07). -->
+  <h1 class="h">Your properties and comps</h1>
+  <p class="sub" id="deckSub">Your comps and the properties you hold. Visible only to you.</p>
 
   <!-- Visible from the first paint. Everything below the title waits on
        /api/vault (session -> entitlements -> two reads), and with both panes
@@ -1169,8 +1175,8 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
          ------------------------------------------------------------------ -->
     <div class="vt-wrap" id="vtWrap">
     <div class="vt-tabs" id="vaultTabs" role="tablist" aria-label="Your Data">
-      <button type="button" role="tab" class="vt-tab on" id="tab-book" data-tab="book" aria-selected="true" aria-controls="panelBook"><span id="tabBookL">Book</span> <b id="tabBookN"></b></button>
-      <button type="button" role="tab" class="vt-tab vt-off" id="tab-sites" data-tab="sites" aria-selected="false" aria-controls="panelSites">Sites <b id="tabSitesN"></b></button>
+      <button type="button" role="tab" class="vt-tab on" id="tab-book" data-tab="book" aria-selected="true" aria-controls="panelBook"><span id="tabBookL">Comps</span> <b id="tabBookN"></b></button>
+      <button type="button" role="tab" class="vt-tab vt-off" id="tab-sites" data-tab="sites" aria-selected="false" aria-controls="panelSites">Properties <b id="tabSitesN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-pipe" data-tab="pipe" aria-selected="false" aria-controls="panelPipe">Pipeline <b id="tabPipeN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-props" data-tab="props" aria-selected="false" aria-controls="panelProps">Properties <b id="tabPropsN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-watch" data-tab="watch" aria-selected="false" aria-controls="panelWatch">The Board <b id="tabWatchN"></b></button>
@@ -1628,8 +1634,8 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
          exactly what it was.
          ------------------------------------------------------------------ -->
     <div class="deck" id="deckSites">
-      <span class="dlab">Your sites</span><span class="dln"></span>
-      <button class="dact" id="sitesAddToggle" aria-expanded="false" aria-controls="sitesRoot">+ Add a site</button>
+      <span class="dlab">Your deals and holdings</span><span class="dln"></span>
+      <button class="dact" id="sitesAddToggle" aria-expanded="false" aria-controls="sitesRoot">+ Add a property</button>
     </div>
     <section id="sitesSec"><div id="sitesRoot"></div></section>
     </div>
@@ -3906,8 +3912,10 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     var dev=shop&&!!(window.SITESTAB&&window.SITES);
     var first=!tabSettled; tabSettled=true;
     noPublish=shop&&!pubCount;
-    $("tabBookL").textContent=shop?"Comps":"Book";
-    $("bookEmptyK").textContent=shop?"Your comps, on one map":"Your book, on one map";
+    // One word for one thing on every kind of firm (2026-10-07): it was the
+    // Book for a broker and Comps for a development shop.
+    $("tabBookL").textContent="Comps";
+    $("bookEmptyK").textContent="Your comps, on one map";
     $("vFootPub").className=noPublish?"hide":"";
     homeTab=dev?"sites":"book";
     $("vaultTabs").insertBefore($("tab-sites"),dev?$("tab-book"):$("tab-pipe"));
@@ -3919,6 +3927,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     if(!sitesView){
       sitesView=window.SITESTAB.mount({
         root:$("sitesRoot"),addToggle:$("sitesAddToggle"),esc:esc,escA:escA,
+        openAdd:addTab==="sites"?addAsk:"",
         firm:myFirm,showValues:showValues,propTypes:PROP_TYPES,
         setCount:function(text,hot){tabCount("tabSitesN",text,hot)}
       });
@@ -4544,6 +4553,25 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     try{ h=String((window.location&&window.location.hash)||"").replace("#",""); }catch(e){}
     tabSettled=!!TAB_OF_HASH[h];
     setTab(TAB_OF_HASH[h]||"book",true);
+  })();
+  // Home's "Add a property" opens this page with the form that takes it
+  // already open (2026-10-07, Draft C): ?add=buy for a deal (The Board's
+  // wall, or Sites for a development firm), ?add=own for a property the member
+  // owns (Properties, or Sites with "I own it" picked). Read once, only with a
+  // tab named in the address, and taken off the address so a reload or a
+  // shared link does not open the form again. addTab is the tab it was meant
+  // for, so a form never opens on a tab the member did not ask for.
+  var addAsk="",addTab="";
+  (function(){
+    try{
+      var a=new URLSearchParams(window.location.search||"").get("add");
+      var t=TAB_OF_HASH[String(window.location.hash||"").replace("#","")];
+      if((a==="buy"||a==="own")&&t){
+        addAsk=a;addTab=t;
+        if(window.history&&window.history.replaceState)
+          window.history.replaceState(window.history.state,"",window.location.pathname+window.location.hash);
+      }
+    }catch(e){}
   })();
 
   var pending = null;   // {name, csv} held while the broker maps
@@ -6118,9 +6146,15 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       : null;
     // What the vault holds, in the shop's own words: a development shop keeps
     // site work, not a broker's deals and BOVs (owner's copy, 2026-10-04).
+    // Only what the page actually holds (2026-10-07): the development line
+    // promised absorption rates and feasibility calculations it has no tab
+    // for, and the other promised BOV leads to a member who is not a broker.
     var holds=myFirm&&myFirm.kind==="development"
-      ? "Your comps, absorption rates, and feasibility calculations in one place. "
-      : "Closed deals, leads, and BOVs. ";
+      ? "The properties you are buying or hold, and the comps you value against. "
+      // Any other firm reads as a broker shop, org-access.js kindOf's rule.
+      : myFirm
+        ? "Your comps, the owners asking you for a BOV, and the properties you hold. "
+        : "Your comps and the properties you hold. ";
     if(deck)deck.textContent=sharedLine
       ? holds+n+" shared with "+myFirm.name+"; the rest visible only to you."
       : holds+"Visible only to you.";
@@ -6798,7 +6832,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   }
   // Stated at load, not only in the markup: the closed state is then a fact
   // the one writer made, wherever the page is drawn.
-  setPropAddOpen(false);
+  setPropAddOpen(addAsk==="own"&&addTab==="props");
   $("propAddToggle").addEventListener("click",function(){ setPropAddOpen(!propAddOpen); });
   $("pCancel").addEventListener("click",function(){ setPropAddOpen(false); });
   $("pAdd").addEventListener("click",function(){
@@ -6953,6 +6987,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     if(wallView||!window.DEALWALL||!window.SITES)return;
     wallView=window.DEALWALL.mount({
       root:$("wallRoot"),addToggle:$("wallAddToggle"),esc:esc,escA:escA,propTypes:PROP_TYPES,
+      openAdd:addAsk==="buy"&&addTab==="watch",
       isDev:function(){return !!(myFirm&&myFirm.kind==="development")},
       feed:function(){return mktItems},
       setCount:function(n){wallLive=n;boardCount()}

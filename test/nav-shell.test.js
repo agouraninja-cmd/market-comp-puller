@@ -213,7 +213,8 @@ test("the app's rail survives the hint being retired", () => {
       `nav-rail must not be retired by ${call}`);
   }
   // And the rules it drives have to actually exist in the app's stylesheet.
-  assert.match(html, /html\.nav-rail body\s*\{[^}]*padding-left:\s*224px/,
+  // 84px since 2026-10-07: the rail is Draft C's strip of icons.
+  assert.match(html, /html\.nav-rail body\s*\{[^}]*padding-left:\s*84px/,
     "the app pads the body for the rail");
   assert.match(html, /@media print\s*\{\s*html\.nav-rail body\s*\{\s*padding-left:\s*0/,
     "and takes that padding off on paper");

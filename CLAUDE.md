@@ -14,10 +14,18 @@ records when not entered), a plain-English market summary, a "What's Driving
 Prices Here" card (model-supplied `value_drivers` + `market_trend`), a market
 position chart, a comp map, and the full sortable comp table with per-comp
 source-confidence badges (Verified / Public record / Listing / News /
-Estimate). Signed-in members move between **Home** (the firm's shared space, `/desk`)
-and **Data** (their own private comps, `/vault`) — the customer-facing names
-since 2026-10-04; code, routes and the rules files still say "desk"/"workspace"
-and "vault", and copy must never say "Workspace" or "Vault" again.
+Estimate). Signed-in members land on **Home** (`/desk`), which since
+2026-10-07 is one screen: a list (Today, Properties, Comps, Reports, People)
+beside a map of every property, the firm's and their own, each row saying who
+can see it (`home-map.js`; workspace.md). Their private workbench is `/vault`,
+headed "Your properties and comps" and opened from Home's tabs; it was the
+**Data** rail row from 2026-10-04 until the rail became five places (Home,
+Messages, Reports, Markets, Permits; app-shell.md). Its tabs with no rail row
+have doors instead: new BOV requests land in Home's Today (the Pipeline), and
+The Board is linked from `/markets` and every market page. In copy a **property** is
+something you own, manage or are buying and a **comp** is a past deal you value
+against. Code, routes and the rules files still say "desk"/"workspace" and
+"vault", and copy must never say "Workspace" or "Vault" again.
 The markets a member follows are **The Board** in copy since 2026-10-06
 (the Data tab, the digest email, settings, the market pages' button); code,
 routes, tables and `watchlist-digest.js` still say "watchlist", and copy

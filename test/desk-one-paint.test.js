@@ -205,7 +205,9 @@ test("the firm-scoped reads run together, and only the two that need the buildin
   // (Your permits sits in the batch — it joined as New filings with permit
   // signals slice 4 — and reads the membership and nothing else: the server
   // resolves the board's addresses itself, so it need not wait for buildings.)
-  assert.match(batch, /Promise\.all\(\[\s*buildings,\s*renderDeskThreads\(\),\s*renderYourPermits\(\),\s*renderDealBoard\(\),\s*buildings\.then\(\(\) => Promise\.all\(\[renderFirmShelf\(\), renderContacts\(\)\]\)\),\s*\]\)/,
+  // (The member's own deals joined on 2026-10-07 for Home's map. They read
+  // nothing of the firm's, so they go out with the rest and wait for nothing.)
+  assert.match(batch, /Promise\.all\(\[\s*sites,\s*buildings,\s*renderDeskThreads\(\),\s*renderYourPermits\(\),\s*renderDealBoard\(\),\s*buildings\.then\(\(\) => Promise\.all\(\[renderFirmShelf\(\), renderContacts\(\)\]\)\),\s*\]\)/,
     "the firm-scoped batch must keep this shape");
   assert.ok(!fn.includes("await renderBuildings();"), "the sequential chain must not come back");
   assert.ok(!fn.includes("await renderDeskThreads();"));

@@ -1155,6 +1155,11 @@ function start(boot){
   if(live)BULKRUN.poll(live.id);
 
   $("bulkText").addEventListener("input",refreshCount);
+  // An address handed over from Home's find box (2026-10-07): ?address= fills
+  // an EMPTY box once and runs nothing, because every address is a billed
+  // search and the member still presses the button.
+  try{var pre=new URLSearchParams(location.search).get("address");
+    if(pre&&!$("bulkText").value){$("bulkText").value=String(pre).slice(0,200);refreshCount();$("bulkText").focus();}}catch(e){}
   $("bulkType").addEventListener("change",function(){renderSubjectFields($("bulkType").value);refreshPerAddress();});
   ["bulkSize","bulkAsking","bulkNoi","bulkCap","bulkLabel"].forEach(function(id){
     $(id).addEventListener("input",refreshMore);});

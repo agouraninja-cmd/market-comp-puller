@@ -31,9 +31,12 @@
     var el = ctx.root, esc = ctx.esc, escA = ctx.escA;
     var state = {
       loaded: false, sites: [], props: [], board: null, today: "",
-      sitesErr: "", propsErr: "", open: null, addOpen: false, addKind: "buy",
+      // ctx.openAdd ("buy" or "own"): the page was opened to add one (Home's
+      // "Add a property", via /vault?add=), so the form starts open on that kind.
+      sitesErr: "", propsErr: "", open: null, addOpen: !!ctx.openAdd, addKind: ctx.openAdd === "own" ? "own" : "buy",
       editing: null, dating: null, msg: "", msgBad: false, paneMsg: {},
     };
+    var focusAsked = !!ctx.openAdd;   // once, when the first read lands
     var STALE_MS = 365 * 24 * 60 * 60 * 1000;
     var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -156,12 +159,17 @@
         state.today = (s.s === 200 && s.j.today) || state.today || todayIso();
         // A failed read renders as a FAILURE, never as an empty list: "nothing
         // here" said to somebody with twelve deals reads as their work gone.
-        state.sitesErr = s.s === 200 ? "" : (s.j.error || "Couldn't load your sites. Nothing has been lost.");
+        state.sitesErr = s.s === 200 ? "" : (s.j.error || "Couldn't load your properties. Nothing has been lost.");
         state.props = p.s === 200 && Array.isArray(p.j.items) ? p.j.items : [];
         state.propsErr = p.s === 200 ? "" : "Couldn't load your properties just now. Nothing has been lost.";
         state.board = b && b.s === 200 && Array.isArray(b.j.buildings) ? b.j.buildings : null;
         state.loaded = true;
         render();
+        if (focusAsked) {
+          focusAsked = false;
+          var a = el.querySelector && el.querySelector('form[data-form="add"] input[name="address"]');
+          if (a && a.focus) a.focus();
+        }
       });
     }
 
@@ -220,13 +228,13 @@
 
     // ---- drawing -------------------------------------------------------------
     function render() {
-      if (!state.loaded) { el.innerHTML = '<p class="st-mute">Loading your sites&hellip;</p>'; return; }
+      if (!state.loaded) { el.innerHTML = '<p class="st-mute">Loading your properties&hellip;</p>'; return; }
       var m = model();
       var active = m.deals.length + m.held.length;
       var soon = m.deals.filter(function (s) { var d = S.nextDeadline(s.dates, state.today); return d && S.daysUntil(d.on, state.today) <= 7; }).length;
       if (ctx.setCount) ctx.setCount(soon ? soon + " due this week" : (active || ""), soon > 0);
       if (ctx.addToggle) {
-        ctx.addToggle.textContent = state.addOpen ? "Close" : "+ Add a site";
+        ctx.addToggle.textContent = state.addOpen ? "Close" : "+ Add a property";
         ctx.addToggle.setAttribute("aria-expanded", state.addOpen ? "true" : "false");
       }
       var nothing = !active && !m.passed.length && !state.sitesErr && !state.propsErr;
@@ -243,13 +251,13 @@
       d.forEach(function (s) { var x = S.nextDeadline(s.dates, state.today); if (x && (!nx || x.on < nx.on)) nx = x; });
       var sumAsk = d.reduce(function (t, s) { return t + (Number(s.asking_price) || 0); }, 0);
       var sumAc = d.reduce(function (t, s) { return t + (Number(s.acres) || 0); }, 0);
-      var figs = "<b>" + d.length + "</b> site" + (d.length === 1 ? "" : "s") +
+      var figs = "<b>" + d.length + "</b> propert" + (d.length === 1 ? "y" : "ies") +
         (sumAc ? " &middot; " + acres(sumAc) + " acres" : "") + (sumAsk ? " &middot; <b>" + short(sumAsk) + "</b> asking" : "") +
         (nx ? ' &middot; next deadline <b class="st-hot">' + dayLabel(nx.on) + "</b>" : "");
       var body;
       if (state.sitesErr) body = '<div class="msg bad">' + esc(state.sitesErr) + "</div>";
-      else if (!d.length) body = '<p class="st-none">No deals in progress. Use <b>+ Add a site</b> for the next one you&rsquo;re looking at.</p>';
-      else body = '<div class="st-tw"><table class="st-tbl"><thead><tr><th>Site</th><th>Stage</th><th class="n">Acres</th>' +
+      else if (!d.length) body = '<p class="st-none">No deals in progress. Use <b>+ Add a property</b> for the next one you&rsquo;re looking at.</p>';
+      else body = '<div class="st-tw"><table class="st-tbl"><thead><tr><th>Property</th><th>Stage</th><th class="n">Acres</th>' +
         '<th class="n">Asking</th><th class="n">Per acre</th><th>Next deadline</th><th></th></tr></thead><tbody>' +
         d.map(dealRow).join("") + "</tbody></table></div>";
       return '<section class="st-sec" aria-labelledby="stBuyH"><div class="st-sh"><h2 id="stBuyH">Buying</h2><span class="st-sf">' + figs + "</span></div>" + body + "</section>";
@@ -298,7 +306,7 @@
       var acts = s.stage === "passed"
         ? '<button class="btn" type="button" data-stage="prospect" data-id="' + escA(s.id) + '">Back to Prospect</button>'
         : (nxt ? '<button class="btn" type="button" data-stage="' + nxt + '" data-id="' + escA(s.id) + '">Move to ' + esc(S.labelOf(nxt)) + " &rarr;</button>" : "") +
-          '<button class="btn ghost" type="button" data-stage="passed" data-id="' + escA(s.id) + '">Pass on this site</button>';
+          '<button class="btn ghost" type="button" data-stage="passed" data-id="' + escA(s.id) + '">Pass on this property</button>';
       return '<div class="st-pane">' + head + stepper(s.stage === "passed" ? "" : s.stage, s.stage_dates) +
         '<div class="st-grid"><div class="st-blk"><h4>Key terms</h4><dl class="st-terms">' +
         terms.map(function (t) { return "<div><dt>" + t[0] + "</dt><dd>" + t[1] + "</dd></div>"; }).join("") + "</dl></div>" +
@@ -336,7 +344,7 @@
         (show && m.valuedN ? " &middot; <b>" + short(m.ownedValue) + "</b> owned, likely value &middot; " + pct(m.between) + " between checks" : "");
       var body;
       if (state.propsErr) body = '<div class="msg bad">' + esc(state.propsErr) + "</div>";
-      else if (!m.held.length) body = '<p class="st-none">Nothing here yet. A site you close on lands here, and so does any report you save.</p>';
+      else if (!m.held.length) body = '<p class="st-none">Nothing here yet. A property you close on lands here, and so does any report you save.</p>';
       else {
         var foot = show && m.valuedN > 1
           ? '<tfoot><tr><td colspan="3">Owned, combined &middot; ' + m.valuedN + ' valued</td><td class="n">' + money(m.ownedValue) + '</td><td class="n">' + pct(m.between) + '</td><td colspan="2"></td></tr></tfoot>'
@@ -433,17 +441,17 @@
           '<label class="st-wide">Notes<input type="text" name="notes" maxlength="1000" placeholder="Optional"/></label>'
         : '<label class="st-wide">Property type<select name="property_type"><option value="">Choose one</option>' + types + "</select></label>" +
           '<p class="st-wide st-mute" style="margin:0">No search runs. Use Refresh on it when you want a value, or <a href="/">run a report</a>.</p>';
-      return '<form class="st-form" data-form="add"' + (first ? "" : ' aria-label="Add a site"') + ">" +
-        (first ? '<h3 class="st-fh">Add your first site</h3>' : "") + seg +
+      return '<form class="st-form" data-form="add"' + (first ? "" : ' aria-label="Add a property"') + ">" +
+        (first ? '<h3 class="st-fh">Add your first property</h3>' : "") + seg +
         '<label class="st-wide">Address<input type="text" name="address" maxlength="300" placeholder="Street, City, ST" required/></label>' + fields +
-        '<div class="st-wide st-fa"><button class="btn" type="submit">Add site</button>' +
+        '<div class="st-wide st-fa"><button class="btn" type="submit">Add property</button>' +
         (first ? "" : '<button class="btn ghost" type="button" data-addclose="1">Cancel</button>') + "</div>" +
         (state.msg && state.msgBad && first ? '<div class="msg bad st-wide">' + esc(state.msg) + "</div>" : "") + "</form>";
     }
     function emptyState() {
-      return '<div class="st-empty"><div class="st-ei"><p class="st-k">Sites</p>' +
+      return '<div class="st-empty"><div class="st-ei"><p class="st-k">Properties</p>' +
         '<h2 class="st-eh">Every property in one place, from first look to owning it</h2>' +
-        "<p>Track land you&rsquo;re buying through five stages, and keep the value of what you own up to date. Only you can see your sites.</p>" +
+        "<p>Track land you&rsquo;re buying through five stages, and keep the value of what you own up to date. Only you can see them.</p>" +
         stepper("", null, true) +
         '<ul class="st-ways"><li><b>Buying</b>Asking price, stage and deadlines</li><li><b>Owned</b>Its value from every report you run, and how it changed</li>' +
         "<li><b>Tracking</b>A building you watch but don&rsquo;t own</li></ul></div>" + addForm(true) + "</div>";
@@ -510,7 +518,7 @@
       }
       if ((b = t.closest("[data-rmsite]"))) {
         var rs = siteById(b.getAttribute("data-rmsite")); if (!rs) return;
-        if (!window.confirm("Remove " + placeOf(rs.address).street + " from your sites?")) return;
+        if (!window.confirm("Remove " + placeOf(rs.address).street + " from your properties?")) return;
         send("DELETE", "/api/sites?id=" + encodeURIComponent(rs.id)).then(function (r) {
           if (r.s !== 200) { flash(r.j.error || "That didn't go through.", true); render(); return; }
           state.open = null; flash("Removed " + placeOf(rs.address).street + "."); load();
@@ -562,7 +570,7 @@
       var again = function () { if (btn) btn.disabled = false; };
       if (kind === "add") {
         var address = v("address");
-        if (!address) { flash("Type the site's address.", true); render(); return; }
+        if (!address) { flash("Type the property's address.", true); render(); return; }
         if (state.addKind === "buy") {
           var body = { address: address, property_type: v("property_type") || "Land", stage: v("stage") || "prospect",
             acres: v("acres"), asking_price: v("asking_price"), notes: v("notes") };

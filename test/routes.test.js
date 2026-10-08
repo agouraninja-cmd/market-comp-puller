@@ -169,8 +169,8 @@ test("bare environment", async (t) => {
     const html = await (await fetch(srv.base + "/market/industrial-ontario-ca")).text();
     const head = (html.match(/<div class="mhead">([\s\S]*?)<\/div>/) || [])[1] || "";
     assert.match(head, /<h2[^>]*>Where these comps are<\/h2>/, "the map card's own heading must stay in the row");
-    assert.match(head, /class="mdirv mdirv-contracting">Contracting</,
-      "Ontario's stored read is contracting — the word and its colour class must both render");
+    assert.match(head, /class="mdirv mdirv-flat">Flat</,
+      "Ontario's stored read is flat (refreshed 2026-10-07) — the word and its colour class must both render");
     assert.match(head, /Momentum/, "the word is labelled, not left to be guessed at");
     for (const cls of ["mdirv-expanding", "mdirv-flat", "mdirv-contracting"]) {
       assert.match(html, new RegExp("\\." + cls + "\\{color:var\\(--"),
@@ -182,7 +182,7 @@ test("bare environment", async (t) => {
   // Five of the seeded pages are in this state on purpose: their momentum
   // sentence was two-sided and the classifier refused to pick a half.
   await t.test("a market with no stored direction gets no badge at all", async () => {
-    const html = await (await fetch(srv.base + "/market/industrial-fontana-ca")).text();
+    const html = await (await fetch(srv.base + "/market/office-denver-co")).text();
     assert.ok(html.includes('id="mktMapCard"'), "this page must still have its map card");
     assert.ok(!html.includes('class="mdir"'),
       "an unread market must show no momentum, not an Unknown chip");
@@ -293,15 +293,15 @@ test("bare environment", async (t) => {
   // An unread market keeps its boundary and simply makes no colour claim —
   // the same rule the badge follows by rendering nothing.
   await t.test("an unread market page carries its boundary but no direction", async () => {
-    const html = await (await fetch(srv.base + "/market/industrial-fontana-ca")).text();
+    const html = await (await fetch(srv.base + "/market/office-denver-co")).text();
     const blob = JSON.parse((html.match(/<script id="mktMapData"[^>]*>([\s\S]*?)<\/script>/) || [])[1]);
-    assert.ok(blob.boundary, "Fontana's shape is stored and must still be drawn");
+    assert.ok(blob.boundary, "Denver's shape is stored and must still be drawn");
     assert.ok(!("dir" in blob),
       "a market with no current read must omit dir outright, never carry an empty one");
     assert.ok(!html.includes('class="mdir"'), "and its badge must still render nothing");
     assert.match(html, /outlined area[\s\S]{0,160}no current momentum read/,
       "the disclosure must call the shape outlined, and say why it carries no colour");
-    assert.ok(!/shaded area is Fontana/.test(html),
+    assert.ok(!/shaded area is Denver/.test(html),
       "an unread market's area is not shaded — the copy must not call it that");
   });
 

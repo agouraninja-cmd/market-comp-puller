@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-21",
+  "generatedAt": "2026-10-08",
   "cities": {
     "agoura hills, ca": {
       "coords": {
@@ -142,34 +142,21 @@
         "lat": 43.6014,
         "lng": -116.5278
       },
-      "checkedAt": "2026-08-21",
-      "hero": null,
-      "rejected": [
-        {
-          "title": "Nampa Water Tower (Nampa, Idaho)",
-          "reason": "It shows a fenced grassy utility yard at a water tower, not a city view or skyline."
-        },
-        {
-          "title": "Before I Die (Nampa, Idaho)",
-          "reason": "It is a close-up of a graffiti wall covered in text, not a distant view of the city."
-        },
-        {
-          "title": "College of Western Idaho Nampa Campus Academic Building",
-          "reason": "It's a close-up of a single building's facade rather than a wider city or downtown view."
-        },
-        {
-          "title": "Overland Brewery Office (Nampa, Idaho)",
-          "reason": "It is a close-up of a single building's facade rather than a city view at a distance."
-        },
-        {
-          "title": "Sportsman Bar (Nampa, Idaho)",
-          "reason": "The crop shows only empty asphalt pavement and curb, with no identifiable cityscape."
-        },
-        {
-          "title": "Nampa Depot",
-          "reason": "It is a close-up of a single building's facade with signage rather than a wider city, skyline or streetscape view."
+      "checkedAt": "2026-10-08",
+      "hero": {
+        "file": "nampa-id.jpg",
+        "credit": "Tamanoeconomico",
+        "license": "CC BY-SA 4.0",
+        "commons": "Nampa Water Tower (Nampa, Idaho).jpg",
+        "alt": "Nampa, ID from above",
+        "source": "category",
+        "crop": "center",
+        "judge": {
+          "verdict": "good",
+          "reason": "not reviewed (--no-judge)"
         }
-      ]
+      },
+      "rejected": []
     },
     "new bedford, ma": {
       "coords": {
@@ -377,6 +364,27 @@
           "reason": "It's a close-up group photo of people in a yard, not a distant city view."
         }
       ]
+    },
+    "meridian, id": {
+      "coords": {
+        "lat": 43.6142,
+        "lng": -116.3989
+      },
+      "checkedAt": "2026-10-08",
+      "hero": {
+        "file": "meridian-id.jpg",
+        "credit": "Tamanoeconomico",
+        "license": "CC BY-SA 4.0",
+        "commons": "Meridian Historic Walking Tour.jpg",
+        "alt": "Meridian, ID from above",
+        "source": "category",
+        "crop": "center",
+        "judge": {
+          "verdict": "good",
+          "reason": "not reviewed (--no-judge)"
+        }
+      },
+      "rejected": []
     }
   }
 }

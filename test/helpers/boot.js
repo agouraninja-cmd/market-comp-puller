@@ -84,6 +84,12 @@ async function boot(env) {
 }
 
 async function bootOnce(env) {
+  // DATA_FILES is not an environment variable: it is { name: contents } to
+  // write into the child's private DATA_DIR before it starts (a JSON value is
+  // serialised), for a suite that needs local data the committed files no
+  // longer hold -- the routes suite's unread market page, 2026-10-07.
+  const dataFiles = env && env.DATA_FILES;
+  if (dataFiles) { env = Object.assign({}, env); delete env.DATA_FILES; }
   // An explicit PORT is honoured, which is what lets a caller know the URL
   // BEFORE the server starts — scripts/firm-sandbox.js needs it, because
   // SITE_URL is read once at startup and every link the app generates is
@@ -115,6 +121,9 @@ async function bootOnce(env) {
   // Under the OS temp dir rather than the repo, so an interrupted run leaves
   // nothing behind for somebody to commit by accident.
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "cn-test-"));
+  for (const [name, body] of Object.entries(dataFiles || {})) {
+    fs.writeFileSync(path.join(dataDir, name), typeof body === "string" ? body : JSON.stringify(body));
+  }
   const child = spawn(process.execPath, [SERVER], {
     env: {
       ...process.env,

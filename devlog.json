@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-10-07",
+    "type": "fix",
+    "title": "The home page stops selling Firm activity",
+    "details": "The home page and the Brokers & Firms page still listed Firm activity, the deal board that left the app with the new one-map Home. Its tile now describes the map instead: the firm’s buildings, your deals and what you own in one place, each saying who can see it. The two server reads behind the old deal board and the old Your permits card are gone too, along with the banner photo the buildings list still worked out."
+  },
+  {
+    "date": "2026-10-07",
     "type": "improvement",
     "title": "The comp report names your property and the comps it used",
     "details": "The report’s header tags the address as “Your property”, and the comp table is headed “Comps Used” instead of “Comparable Properties”, so a comp is never called a property. The image and print exports carry both, and the PowerPoint export says the same on its first slide and its comp slides."

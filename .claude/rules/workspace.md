@@ -113,8 +113,10 @@ paths:
 >   permits (`renderYourPermits`), the no-firm start cards
 >   (`renderFirmEmpty`, `syncStartCards`) and the skeleton's old parts.
 >   `/api/org/board` and `/api/org/permits` left `DESK_BOOT_ORG_URLS`
->   (nothing reads them now; the routes and their route tests were left in
->   place, unused by any page). What SURVIVES, because `drawHomeMap` reads it: the
+>   (nothing reads them now), and the follow-up the same day removed both
+>   routes, `deal-board.js`, `yourPermitsFor`/`PERMIT_FILINGS.yourPermits`,
+>   `OVERFLOW_AT`, and the buildings read's `home` (`firmHomeFor`,
+>   `BUILDINGS.homeMarket`, the banner's city photo). What SURVIVES, because `drawHomeMap` reads it: the
 >   reads, now DOM-free — `readFirmBuildings()` (was renderBuildings; fills
 >   `firmBuildings` and syncs the shelf's "Add to firm" doors),
 >   `renderDeskThreads()` (fills `deskThreadsStat` only), and

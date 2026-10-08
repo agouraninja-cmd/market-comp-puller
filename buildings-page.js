@@ -8,9 +8,8 @@
 // MARKET_CSS so its rules win on equal specificity. server.js owns the route,
 // the gate and the read; this file only decides how the list is drawn.
 //
-// WHY A PAGE. The Workspace shows at most OVERFLOW_AT (8) buildings and
-// always states the count for the WHOLE set; past eight, one control links
-// here. A firm's buildings are a shared record with search needs and earn a
+// WHY A PAGE. Home lists the firm's buildings beside its other properties;
+// this page is the firm's whole list on its own. A firm's buildings are a shared record with search needs and earn a
 // page; one member's portfolio is a short personal list and earns a fold —
 // the deliberate asymmetry the plan names.
 //

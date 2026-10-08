@@ -229,27 +229,6 @@ test("sweptBuildings keeps only the board in a city the sweep reads", () => {
   assert.deepEqual(F.sweptBuildings([bldg], undefined), [], "no supported list, no buildings");
 });
 
-test("yourPermits: null (no section) when no building is in a swept city; the board's own rows otherwise", () => {
-  const dallas = { id: "b2", address: "100 Main St, Dallas, TX", market: "Dallas, TX" };
-  assert.deepEqual(F.yourPermits({ buildings: [dallas], supportedMarkets: swept, filings: [row()], addressKey, now: NOW }),
-    { buildings: 0, permits: null }, "a Dallas board must not read 'nothing filed at your buildings'");
-  assert.deepEqual(F.yourPermits({ buildings: [] }), { buildings: 0, permits: null });
-
-  const meridianTwin = row({ id: "f3", permit_number: "MER-1", market: "Meridian, ID", jurisdiction: "meridian" });
-  const neighbour = row({ id: "f2", permit_number: "BLD-NEXT-DOOR", address: "8002 S FEDERAL WAY",
-    street_key: F.streetKey("8002 S FEDERAL WAY", addressKey) });
-  const input = { buildings: [bldg, dallas], supportedMarkets: swept, addressKey, now: NOW,
-    filings: [row(), meridianTwin, neighbour, row({ id: "old", permit_number: "OLD", applied_date: "2026-06-01" })] };
-  const out = F.yourPermits(input);
-  assert.equal(out.buildings, 1, "the count is the board we looked at, not the whole board");
-  assert.deepEqual(out.permits.map((p) => [p.permitNumber, p.buildingId, p.kind]), [["BLD26-1", "b1", "filed"]],
-    "the building's own filing — not the Meridian twin, not next door, not outside the window");
-  // One rule with the /buildings strip: the same rows, byte for byte.
-  assert.deepEqual(out.permits, F.boardPermitActivity({ ...input, buildings: [bldg] }));
-
-  assert.deepEqual(F.yourPermits({ ...input, filings: [] }), { buildings: 1, permits: [] },
-    "a swept board with nothing new is an empty list — we looked");
-});
 
 test("the development shop's market-wide feed is gone from the module (it lives on /permits now)", () => {
   assert.equal("newFilingsFeed" in F, false);

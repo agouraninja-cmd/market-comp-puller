@@ -32,11 +32,6 @@
 // record nobody will notice; a refused row is a message somebody can act on.
 // ---------------------------------------------------------------------------
 
-// The owner's overflow rule (slice 4): the Workspace shows this many rows and
-// past it one control links to the whole list. Matches index.html's
-// FILTER_AT / COLLAPSE_AT, not the firm shelf's six — that six answers a
-// different question ("is a filter box furniture").
-const OVERFLOW_AT = 8;
 // The list read's ceiling, /vault's rule: past it the page SAYS it is
 // truncated rather than under-reporting.
 const MAX_BUILDINGS = 1000;
@@ -182,28 +177,6 @@ function summarize(rows) {
   const head = count === 0 ? "" : `${count} ${count === 1 ? "building" : "buildings"}`;
   const line = count === 0 ? "" : [head, ...types.map(([t, n]) => `${n} ${t}`)].join(" · ");
   return { count, byType: types, line };
-}
-
-// The firm's HOME market: the market most of its buildings are in. It picks
-// the photograph that heads the Workspace (Draft C, 2026-09-25). A tie goes
-// to the market that reached the top count first in the list it is handed,
-// which is the server's order (most recent activity first), so the answer
-// is stable for one list. "" for a board with no market on it.
-//
-// Read, never stored: a board that moves cities moves its picture with it,
-// and a column holding this would be a second answer that could disagree
-// with the list. Rows or wire buildings both work (market is `market` on
-// each), so the desk and the route cannot count differently.
-function homeMarket(rows) {
-  const counts = new Map();
-  let best = "";
-  for (const r of Array.isArray(rows) ? rows : []) {
-    const m = str(r && r.market).trim();
-    if (!m) continue;
-    counts.set(m, (counts.get(m) || 0) + 1);
-    if (!best || counts.get(m) > counts.get(best)) best = m;
-  }
-  return best;
 }
 
 // The wire shape, as an ALLOWLIST — vault-api.js's rule. A new storage
@@ -411,7 +384,6 @@ function composeSheet(parts) {
 module.exports = {
   normalizeBuilding,
   summarize,
-  homeMarket,
   toBuilding,
   findBuilding,
   validateBuildingEdit,
@@ -419,7 +391,6 @@ module.exports = {
   composeSheet,
   EDITABLE_FIELDS,
   MAX_NOTE,
-  OVERFLOW_AT,
   MAX_BUILDINGS,
   MAX_ADDRESS,
   MAX_NAME,

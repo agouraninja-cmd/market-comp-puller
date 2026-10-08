@@ -12449,6 +12449,13 @@ table.stmt th[aria-sort="ascending"]::after{content:" ▲";font-size:.8em}
    template call. node --check still passes when that happens; the server dies
    at startup instead. */
 .vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+/* The Board's door on /markets, for a signed-in member (Draft C took The
+   Board's row off the rail, and this is the page the rail's Markets row opens). */
+.mboard{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;border:1px solid var(--edge);background:var(--card);
+  border-radius:6px;padding:12px 16px;margin:-6px 0 24px;font-size:14px;color:var(--ink-2);box-shadow:var(--lift)}
+.mboard b{color:var(--ink);font-weight:600}
+.mboard a{margin-left:auto;font-weight:600;color:var(--ink);text-decoration:underline;text-decoration-color:var(--edge)}
+.mboard a:hover{text-decoration-color:var(--ink)}
 .mfilter{margin-top:24px;max-width:420px}
 .mfilter input{width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--edge);border-radius:6px;
   padding:10px 12px;font-family:inherit;font-size:16px;color:var(--ink)}
@@ -14261,7 +14268,7 @@ const MARKET_RESEARCH_JS = `(function(){
     var type = watch.getAttribute("data-type") || "";
     function setWatching() {
       watch.disabled = true;
-      watch.textContent = "On The Board — see it in Data";
+      watch.textContent = "On The Board";
     }
     fetch("/api/watchlist", { cache: "no-store" }).then(function (r) {
       return r.ok ? r.json() : null;
@@ -15156,6 +15163,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     ? `<div class="cta"><h2>Use this ${escHtml(p.type.toLowerCase())} market in your work</h2>` +
       `<p>Put it on The Board, or take these comps with you. Automated estimates, not an appraisal.</p>` +
       `<button type="button" class="btn" id="mktWatch" data-market="${escHtml(p.city + ", " + p.state)}" data-type="${escHtml(p.type)}">Add to The Board</button>` +
+      `<div><a class="alt" href="/vault#board">Open The Board &rarr;</a></div>` +
       (compRows
         ? `<p style="margin:14px 0 0"><button type="button" class="alt" id="mktCsv" data-slug="${escHtml(slug)}">Download these comps as CSV</button></p>`
         : "") +
@@ -15455,6 +15463,14 @@ function renderMarketDirectoryHTML(signedIn) {
   const body =
     `<h1>Commercial Real Estate Market Snapshots</h1>` +
     `<p class="sub">Recent price-per-square-foot and cap-rate snapshots by market, built from real comparable sales. Pick a market, or run a free valuation for your own building.</p>` +
+    // The Board's door (Draft C, 2026-10-07): it has no rail row of its own,
+    // and the markets a member follows are added from these pages, so this
+    // is where a member looks for it. Members only; the anonymous page is
+    // cached publicly and has no Board.
+    (signedIn
+      ? `<div class="mboard"><span><b>The Board</b> · The markets you follow, and the properties you're trying to buy.</span>` +
+        `<a href="/vault#board">Open The Board &rarr;</a></div>`
+      : "") +
     // The rankings, above the directory grid. Ordering is deliberate: the grid
     // below answers "what do you have on this city", the card answers "which
     // cities should I be looking at", and the second question comes first.

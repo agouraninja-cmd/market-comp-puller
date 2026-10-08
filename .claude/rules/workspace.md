@@ -74,15 +74,34 @@ paths:
 >   and, for anything that starts with a street number, offers "Run a comp
 >   report on …", which opens `/bulk?address=` (bulk-page.js fills an EMPTY
 >   box and runs nothing; every address is a billed search).
+> - **Today holds new BOV requests** (the Pipeline's door now that it has no
+>   rail row). `hmLoadLeads()` reads `GET /api/broker/leads?noseed=1` once
+>   the page is shown (`hmWhenShown`, shared with the comps read), only for a
+>   Pro member outside a development firm (`hmCanLeads`; a development firm
+>   has no Pipeline). **`noseed=1` is load-bearing:** without it that GET
+>   WRITES the member's coverage on a first open, and Home only reads, so a
+>   broker whose Pipeline was never opened sees no requests on Home until it
+>   is. `HOMEMAP.agenda` lists a request while it is inside `BOV_DAYS` (14)
+>   and has no intro request, after messages and newest first, with no number
+>   and no pin (the server already anonymized it: type, size, market, date).
+>   The row opens `/vault#pipeline`, and Today's foot gains "Your BOV
+>   pipeline →".
+> - **A deal opens where /vault lists it** (`HOMEMAP.dealsHref`): `#sites` for
+>   a development firm, `#board` (the deal wall) for everyone else, because
+>   `applyShop` hides Sites outside a development firm and `#sites` would land
+>   on Comps. Today's deal rows and a deal's map card both read it.
+> - **The Board's door is on the Markets pages** (it has no rail row now):
+>   `/markets` carries a `.mboard` band for a signed-in member only (the
+>   anonymous page is publicly cached), and a market page's "Add to The
+>   Board" has "Open The Board →" under it.
 > - **Still to do before this ships (2026-10-07):** delete what Home hides
 >   (the banner and skyline: `#deskHero`, `drawDeskSky`/`drawDeskHome`/
 >   `resetDeskHero`, `firm-skyline.js` and its test; `#deskStrip`,
 >   `#deskAgenda`, `#deskCritical`, `#deskThreads`, `#deskDealBoard`,
 >   `#deskPermits`, the buildings table and the old skeleton) and the
->   org-desk tests that pin them; give a broker's BOV Pipeline and The Board
->   a door (both are /vault tabs with no rail row now); and the comp report's
->   own "Your property" / "Comps used" labels, left out because that page
->   feeds the PNG, print and PowerPoint exports.
+>   org-desk tests that pin them; and the comp report's own "Your property" /
+>   "Comps used" labels, left out because that page feeds the PNG, print and
+>   PowerPoint exports.
 
 > Moved verbatim from CLAUDE.md on 2026-09-25. Claude Code loads this file
 > when it opens a file matching `paths` above; read it by hand before changing

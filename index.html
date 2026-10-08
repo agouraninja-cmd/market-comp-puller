@@ -3802,7 +3802,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div id="hmPaneToday" class="hm-pane" role="tabpanel" aria-labelledby="hmTabToday">
               <div id="hmTodayRows" class="hm-rows"></div>
               <p id="hmTodayEmpty" class="hidden hm-empty"></p>
-              <p id="hmTodayMore" class="hidden hm-more"><a href="/buildings">All lease dates →</a><a href="/messages">All conversations →</a></p>
+              <p id="hmTodayMore" class="hidden hm-more"><a id="hmTodayLeases" href="/buildings">All lease dates →</a><a id="hmTodayMsgs" href="/messages">All conversations →</a><a id="hmTodayPipe" class="hidden" href="/vault#pipeline">Your BOV pipeline →</a></p>
             </div>
 
             <div id="hmPaneProps" class="hm-pane hidden" role="tabpanel" aria-labelledby="hmTabProps">
@@ -15077,6 +15077,8 @@ async function renderMyDesk() {
   let firmMembers = [];      // renderFirmMembers' roster, for People
   let hmComps = null;        // GET /api/vault's comps once read; null until then
   let hmCompsAsked = false;
+  let hmLeads = null;        // GET /api/broker/leads' requests once read; null until then
+  let hmLeadsAsked = false;
   let hmTab = "today";
   let hmRows = [], hmItems = [];
   let hmSel = "";            // the selected row's key
@@ -15087,16 +15089,26 @@ async function renderMyDesk() {
     lock: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="9" width="11" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg>',
     people: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg>',
     chat: '<svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13v8.5h-7L5.5 16v-3h-2z"/></svg>',
+    bov: '<svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 11.5 5.5 4.5h9l2 7v4h-13z"/><path d="M3.5 11.5h4l1 2h3l1-2h4"/></svg>',
   };
   const hmHas = () => typeof HOMEMAP !== "undefined" && !!document.getElementById("homeMap");
-  const hmTodayIso = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  // A moment as the member's own calendar date. HOMEMAP reads no clock and
+  // knows no time zone, so a BOV request's UTC stamp is turned into this
+  // first: otherwise one sent two days ago reads "yesterday" every evening.
+  const hmLocalDay = (t) => {
+    const d = new Date(t);
+    return isNaN(d) ? "" : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
+  const hmTodayIso = () => hmLocalDay(Date.now());
   // proConfig is a `let` declared far below; the TDZ guard hubCreationAllowed
   // already carries. Comps are the member's private book, offered to whoever
   // the server would let read it.
   const hmCanComps = () => { try { return Boolean(proConfig && proConfig.canUseVault); } catch (_) { return false; } };
+  // BOV requests are the Pipeline's, and the private page has a Pipeline for
+  // everyone but a development firm (vault-page.js's applyShop), behind the
+  // same Pro gate as the comps (requireBroker).
+  const hmCanLeads = () => hmCanComps() && !(myFirm() && myFirm().kind === "development");
+  const hmFirmKind = () => (myFirm() ? myFirm().kind || "" : "");
   function hmEl(tag, cls, text) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -15162,13 +15174,18 @@ async function renderMyDesk() {
     } catch (_) { /* no deals on the map; the rest of Home stands */ }
   }
 
-  // The comps read: once per page view, and never while the page is being
-  // built speculatively (instant tab switching) — the fetch guard holds only
-  // writes, and nobody should read a member's book for a page they never saw.
+  // The comps and BOV-request reads: once per page view, and never while the
+  // page is being built speculatively (instant tab switching) — the fetch
+  // guard holds only writes, and nobody should read a member's book for a
+  // page they never saw.
+  function hmWhenShown(go) {
+    if (document.prerendering) document.addEventListener("prerenderingchange", go, { once: true });
+    else go();
+  }
   function hmLoadComps() {
     if (hmCompsAsked || !hmCanComps() || !currentUser) return;
     hmCompsAsked = true;
-    const go = async () => {
+    hmWhenShown(async () => {
       try {
         const res = await fetch("/api/vault", { credentials: "same-origin" });
         if (res.ok) {
@@ -15178,13 +15195,32 @@ async function renderMyDesk() {
       } catch (_) { /* the tab says it could not read them */ }
       if (hmComps == null) hmComps = false;
       drawHomeMap();
-    };
-    if (document.prerendering) document.addEventListener("prerenderingchange", go, { once: true });
-    else go();
+    });
+  }
+  // New BOV requests for Today, from the Pipeline's own inbox. ?noseed=1
+  // because that route WRITES on a first open (it earns the member's
+  // coverage from their approved submissions) and Home only reads: the
+  // Pipeline's first open still does the seeding, as it always has. A
+  // failure leaves Today without requests and says nothing; the Pipeline
+  // states its own errors.
+  function hmLoadLeads() {
+    if (hmLeadsAsked || !hmCanLeads() || !currentUser) return;
+    hmLeadsAsked = true;
+    hmWhenShown(async () => {
+      try {
+        const res = await fetch("/api/broker/leads?noseed=1", { credentials: "same-origin" });
+        if (res.ok) {
+          const j = await res.json();
+          hmLeads = Array.isArray(j && j.leads) ? j.leads : [];
+        }
+      } catch (_) { /* Today simply lists no requests */ }
+      if (hmLeads) drawHomeMap();
+    });
   }
 
   function resetHomeMap() {
     deskSites = null; deskPortfolio = null; firmMembers = []; hmComps = null; hmCompsAsked = false;
+    hmLeads = null; hmLeadsAsked = false;
     hmRows = []; hmItems = []; hmSel = ""; hmFitFor = ""; hmOpenedOnce = false;
     hmGeoTried.clear();
     if (hmPinLayer) hmPinLayer.clearLayers();
@@ -15195,14 +15231,20 @@ async function renderMyDesk() {
     const f = document.getElementById("hmFirm"); if (f) { f.textContent = ""; f.classList.add("hidden"); }
   }
 
+  // A message and a BOV request have no address, so no number and no pin:
+  // their row is a link to where they are answered.
   function hmTodayRow(x) {
     const row = hmEl("div", "hm-row");
     row.tabIndex = 0;
-    row.dataset.key = x.kind === "msg" ? "msg" : HOMEMAP.addressKey(x.address);
+    const pinless = x.num == null;
+    row.dataset.key = x.kind === "msg" ? "msg" : x.kind === "bov" ? "bov:" + x.id : HOMEMAP.addressKey(x.address);
     row.dataset.num = x.num || "";
     if (hmSel && row.dataset.key === hmSel) row.classList.add("on");
-    const n = hmEl("span", "hm-num" + (x.kind === "msg" ? " msg" : x.n <= HOMEMAP.WEEK_DAYS ? " hot" : ""));
-    if (x.kind === "msg") n.innerHTML = HM_ICON.chat; else n.textContent = String(x.num);
+    // A request is hot for its first two days, the way a dated row is hot in
+    // its last week.
+    const hot = x.kind === "msg" || (x.kind === "bov" ? x.n >= -2 : x.n <= HOMEMAP.WEEK_DAYS);
+    const n = hmEl("span", "hm-num" + (pinless ? " msg" : hot ? " hot" : ""));
+    if (pinless) n.innerHTML = x.kind === "bov" ? HM_ICON.bov : HM_ICON.chat; else n.textContent = String(x.num);
     const rt = hmEl("span", "hm-rt");
     const b = hmEl("b", null, x.kind === "msg" ? x.who : x.label);
     if (x.kind === "msg") b.append(" ", hmEl("i", null, "sent a message"));
@@ -15211,10 +15253,10 @@ async function renderMyDesk() {
     const tags = hmEl("span", "hm-tags");
     tags.append(hmScope(x.scope));
     rt.append(tags);
-    const when = hmEl("span", "hm-when" + (x.kind === "msg" || x.n <= HOMEMAP.WEEK_DAYS ? " hot" : ""));
+    const when = hmEl("span", "hm-when" + (hot ? " hot" : ""));
     when.append(hmEl("b", null, x.kind === "msg" ? "Now" : HOMEMAP.shortDate(x.date)), hmEl("small", null, x.kind === "msg" ? "unread" : HOMEMAP.inDays(x.n)));
     row.append(n, rt, when);
-    const open = () => { if (x.kind === "msg") location.href = x.href; else hmSelect(row.dataset.key, { item: x }); };
+    const open = () => { if (pinless) location.href = x.href; else hmSelect(row.dataset.key, { item: x }); };
     row.addEventListener("click", open);
     row.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
     return row;
@@ -15284,8 +15326,12 @@ async function renderMyDesk() {
     const today = hmTodayIso();
     hmRows = HOMEMAP.properties({ buildings: firm ? firmBuildings : [], sites: deskSites || [], portfolio: deskPortfolio || [],
       critical: firm && Array.isArray(deskCritical) ? deskCritical : [], today });
+    const canLeads = hmCanLeads();
+    if (canLeads && !hmLeadsAsked && deskFilledFor) hmLoadLeads();
     hmItems = HOMEMAP.agenda({ critical: firm && Array.isArray(deskCritical) ? deskCritical : [],
-      threads: firm && deskThreadsStat ? deskThreadsStat.unreadList : [], sites: deskSites || [], today });
+      threads: firm && deskThreadsStat ? deskThreadsStat.unreadList : [], sites: deskSites || [],
+      leads: canLeads && Array.isArray(hmLeads) ? hmLeads.map((l) => ({ ...l, ts: hmLocalDay(l.ts) })) : [],
+      firmKind: hmFirmKind(), today });
 
     // The head: the day, the firm, a greeting, one sentence of status.
     document.getElementById("hmDay").textContent = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
@@ -15322,10 +15368,18 @@ async function renderMyDesk() {
     hmItems.forEach((x) => todayBox.append(hmTodayRow(x)));
     const todayEmpty = document.getElementById("hmTodayEmpty");
     todayEmpty.textContent = hmRows.length
-      ? "Nothing needs you right now. Lease dates in the next 90 days, your deal dates in the next 30 and unread messages land here."
-      : "Lease dates, deal deadlines and messages land here, soonest first.";
+      ? (canLeads
+        ? "Nothing needs you right now. Unread messages, new BOV requests, lease dates in the next 90 days and your deal dates in the next 30 land here."
+        : "Nothing needs you right now. Lease dates in the next 90 days, your deal dates in the next 30 and unread messages land here.")
+      : (canLeads
+        ? "Lease dates, deal deadlines, BOV requests and messages land here, soonest first."
+        : "Lease dates, deal deadlines and messages land here, soonest first.");
     todayEmpty.classList.toggle("hidden", hmItems.length > 0 || nothing);
-    document.getElementById("hmTodayMore").classList.toggle("hidden", !firm);
+    // The firm's two lists, and the member's own Pipeline when they have one.
+    document.getElementById("hmTodayMore").classList.toggle("hidden", !firm && !canLeads);
+    document.getElementById("hmTodayLeases").classList.toggle("hidden", !firm);
+    document.getElementById("hmTodayMsgs").classList.toggle("hidden", !firm);
+    document.getElementById("hmTodayPipe").classList.toggle("hidden", !canLeads);
 
     // Properties: your deals, what you own, the firm's other buildings.
     const props = document.getElementById("hmPropRows");
@@ -15487,7 +15541,7 @@ async function renderMyDesk() {
     });
     if (hmTab === "today") {
       hmItems.forEach((x) => {
-        if (x.kind === "msg") return;
+        if (x.num == null) return;
         const ll = hmLLForAddress(x.address);
         if (!ll) return;
         pts.push([ll.lat, ll.lng]);
@@ -15520,7 +15574,7 @@ async function renderMyDesk() {
     // The first view of Today opens the card of what is due first, the way
     // the draft showed it; only once, and only beside a list (not on a phone).
     if (!hmOpenedOnce && hmTab === "today" && window.innerWidth >= 900) {
-      const first = hmItems.find((x) => x.kind !== "msg" && hmLLForAddress(x.address));
+      const first = hmItems.find((x) => x.num != null && hmLLForAddress(x.address));
       if (first) { hmOpenedOnce = true; hmSelect(HOMEMAP.addressKey(first.address), { item: first, quiet: true }); }
     }
   }
@@ -15578,7 +15632,7 @@ async function renderMyDesk() {
       if (r.next) b.append(hmEl("span", "hm-pop-n" + (HOMEMAP.daysUntil(r.next.on, hmTodayIso()) <= 21 ? " hot" : ""), `${HOMEMAP.shortDate(r.next.on)} · ${r.next.label}`));
       const a = hmEl("a", "hm-pop-a");
       if (r.buildingId != null) { a.textContent = "Open the building sheet →"; a.href = "/building/" + encodeURIComponent(r.buildingId); }
-      else if (r.group === "buying") { a.textContent = "Open the deal →"; a.href = "/vault#sites"; }
+      else if (r.group === "buying") { a.textContent = "Open the deal →"; a.href = HOMEMAP.dealsHref(hmFirmKind()); }
       else { a.textContent = "Open in your properties →"; a.href = "/vault#properties"; }
       b.append(a);
     } else return;

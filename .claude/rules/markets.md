@@ -26,6 +26,14 @@ paths:
 
 ## Architecture
 
+- **The Board's door (2026-10-07, Draft C).** The rail lost its Data row, so
+  The Board (a /vault tab) is reached from here: `/markets` renders a
+  `.mboard` band ("Open The Board →", `/vault#board`) for a signed-in member
+  only — the anonymous page is cached publicly and must never carry it — and
+  a market page's "Add to The Board" has the same link under it. The button
+  reads "On The Board" once added (it said "see it in Data", a row that no
+  longer exists). Pinned in `test/public-pages.test.js`.
+
 - **Broker directory on market pages** (2026-08-06). A market page slug IS a
   (market, property type) pair — `industrial-boise-id` — the identical key
   `broker_coverage` uses, so "who covers Boise industrial" renders on

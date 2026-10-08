@@ -348,6 +348,7 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
     }
     assert.ok(!/id="mktWatch"/.test(html), "Watch is signed-in chrome, not on the cached SEO body");
     assert.ok(!/id="mktCsv"/.test(html), "CSV is signed-in chrome, not on the cached SEO body");
+    assert.ok(!html.includes('href="/vault#board"'), "The Board is a member's; the cached SEO body has no door to it");
     assert.match(html, /Get my free valuation/, "anonymous visitors still get the owner CTA");
   });
 
@@ -381,10 +382,28 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
     assert.match(html, new RegExp(`data-market="${MARKET.city}, ${MARKET.state}"`));
     assert.match(html, /data-type="Industrial"/);
     assert.match(html, /id="mktCsv"/);
+    // Draft C (2026-10-07) took The Board's row off the rail; the market page
+    // that adds to it is one of its doors.
+    assert.ok(html.includes('<a class="alt" href="/vault#board">Open The Board &rarr;</a>'), "no door to The Board beside Add to The Board");
+    assert.ok(!/see it in Data/.test(html), "the Data row left the rail, so the button cannot send people there");
     assert.ok(!/Get my free valuation/.test(html), "the owner funnel is for anonymous SEO traffic");
     assert.match(html, /href="\/\?explore=/, "members skip the signup door on the Address Explorer link");
     assert.ok(!/javascript:/i.test(html), "no model-supplied script URL may land in the HTML");
   });
+});
+
+test("/markets is The Board's door for a member, and only for a member", async (t) => {
+  // The rail's Markets row opens /markets, and The Board has no row of its
+  // own since Draft C (2026-10-07). The anonymous page is cached publicly,
+  // so the door must never be baked into it.
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+  const member = await (await fetch(srv.base + "/markets", { headers: SESSION })).text();
+  const band = member.slice(member.indexOf('<div class="mboard">'));
+  assert.ok(member.includes('<div class="mboard">') && band.slice(0, band.indexOf("</div>")).includes('<a href="/vault#board">Open The Board &rarr;</a>'),
+    "a member's /markets has no door to The Board");
+  const anon = await (await fetch(srv.base + "/markets")).text();
+  assert.ok(!anon.includes('class="mboard"') && !anon.includes("/vault#board"), "no Board door on the public page");
 });
 
 test("a lost visitor gets a page, not a bare string", async (t) => {

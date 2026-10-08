@@ -20,7 +20,9 @@ beside a map of every property, the firm's and their own, each row saying who
 can see it (`home-map.js`; workspace.md). Their private workbench is `/vault`,
 headed "Your properties and comps" and opened from Home's tabs; it was the
 **Data** rail row from 2026-10-04 until the rail became five places (Home,
-Messages, Reports, Markets, Permits; app-shell.md). In copy a **property** is
+Messages, Reports, Markets, Permits; app-shell.md). Its tabs with no rail row
+have doors instead: new BOV requests land in Home's Today (the Pipeline), and
+The Board is linked from `/markets` and every market page. In copy a **property** is
 something you own, manage or are buying and a **comp** is a past deal you value
 against. Code, routes and the rules files still say "desk"/"workspace" and
 "vault", and copy must never say "Workspace" or "Vault" again.

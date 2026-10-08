@@ -1098,6 +1098,26 @@ test("the vault has no rail row and no account-menu row; Home's tabs open it", (
   assert.match(home, /href="\/vault#properties"/, "Home's Properties tab no longer opens the member's own properties");
 });
 
+test("Home's Today reads new BOV requests without writing, and only once the page is shown", () => {
+  // The Pipeline left the rail with the Data row (Draft C), so a broker's new
+  // requests come to Today instead. GET /api/broker/leads seeds the member's
+  // coverage on a first open, which is a WRITE: Home asks with ?noseed=1 so
+  // only the Pipeline's own first open ever does that, and it waits for a
+  // prerendered Home to be shown (CLAUDE.md's rule 15) like the comps read.
+  const at = html.indexOf("function hmLoadLeads(");
+  assert.ok(at > 0, "hmLoadLeads is gone");
+  const body = html.slice(at, html.indexOf("\n  }\n", at));
+  assert.ok(body.includes('fetch("/api/broker/leads?noseed=1"'), "Home must never seed coverage");
+  assert.ok(body.includes("hmWhenShown("), "the read must wait for a prerendered page to be shown");
+  const shown = html.slice(html.indexOf("function hmWhenShown("), html.indexOf("function hmLoadComps("));
+  assert.match(shown, /document\.prerendering[\s\S]*prerenderingchange/);
+  // A development firm has no Pipeline (vault-page.js's applyShop), so it is
+  // never asked; and a deal opens where the private page lists it.
+  assert.ok(html.includes('const hmCanLeads = () => hmCanComps() && !(myFirm() && myFirm().kind === "development");'));
+  assert.ok(html.includes('a.textContent = "Open the deal →"; a.href = HOMEMAP.dealsHref(hmFirmKind());'));
+  assert.ok(!html.includes('"Open the deal →"; a.href = "/vault#sites"'), "#sites opens Comps for anyone outside a development firm");
+});
+
 
 // The workspace header's profile cluster is pinned by "the workspace header
 // does not say who you are at all" further down -- it started life as that

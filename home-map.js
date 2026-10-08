@@ -37,6 +37,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
   const LEASE_DAYS = 90;   // a lease date inside this "needs you" (the old agenda's window)
   const DEAL_DAYS = 30;    // a deal date inside this "needs you"
+  const BOV_DAYS = 14;     // a BOV request received inside this, not yet answered, "needs you"
   const WEEK_DAYS = 7;
   const DAY_MS = 86400000;
   const ACTIVE = { prospect: 1, loi: 1, contract: 1, entitle: 1 };
@@ -90,6 +91,7 @@
     if (n == null) return "";
     if (n === 0) return "today";
     if (n === 1) return "tomorrow";
+    if (n === -1) return "yesterday";
     if (n < 0) return `${-n} days ago`;
     return `in ${n} days`;
   }
@@ -197,14 +199,39 @@
     return row && row.firm ? "firm" : "you";
   }
 
-  // What needs the member: unread conversations first, then every lease date
-  // inside LEASE_DAYS and every deal date inside DEAL_DAYS, soonest first.
-  function agenda({ critical = [], threads = [], sites = [], today = "" } = {}) {
+  // Where the member's own deals are listed on their private page. A
+  // development firm has a Sites tab for them; for everyone else they are the
+  // deal wall on The Board, because vault-page.js's applyShop hides Sites from
+  // anyone outside a development firm and a #sites link would land on Comps.
+  function dealsHref(firmKind) { return firmKind === "development" ? "/vault#sites" : "/vault#board"; }
+
+  // What needs the member: unread conversations first, then new BOV requests
+  // (newest first), then every lease date inside LEASE_DAYS and every deal
+  // date inside DEAL_DAYS, soonest first.
+  //
+  // `leads` is GET /api/broker/leads' list, which the server has already
+  // anonymized to type, size, market and date: a request carries no address,
+  // so like a message it has no number and no pin. It is "new" while it is
+  // inside BOV_DAYS and the member has not asked for an introduction.
+  // `firmKind` decides where a deal's row links (dealsHref).
+  function agenda({ critical = [], threads = [], sites = [], leads = [], firmKind = "", today = "" } = {}) {
     const out = [];
     (Array.isArray(threads) ? threads : []).forEach((t) => {
       if (!t || !t.unread) return;
       out.push({ kind: "msg", n: -1, date: "", label: str(t.label) || "A conversation", who: str(t.label), address: "",
         place: str(t.preview), scope: "firm", act: "Reply", href: "/messages" });
+    });
+    (Array.isArray(leads) ? leads : []).forEach((l) => {
+      if (!l || l.intro_requested) return;
+      const n = daysUntil(l.ts, today);
+      if (n == null || n < -BOV_DAYS) return;
+      const size = num(l.size_sqft);
+      // The caller hands `ts` over as the member's own date (index.html's
+      // hmLocalDay); a raw UTC stamp from this evening could still read as
+      // tomorrow, and a request is never in the future: it is today.
+      out.push({ kind: "bov", n: Math.min(n, 0), date: str(l.ts).slice(0, 10), label: "BOV request", who: l.is_1031 ? "1031 exchange" : "",
+        address: "", place: [str(l.type), size ? `${Math.round(size).toLocaleString("en-US")} SF` : "", str(l.market)].filter(Boolean).join(" · "),
+        scope: "you", act: "Open your pipeline", href: "/vault#pipeline", id: l.id });
     });
     (Array.isArray(critical) ? critical : []).forEach((c) => {
       if (!c || !c.date) return;
@@ -221,14 +248,15 @@
         if (n == null || n < 0 || n > DEAL_DAYS) return;
         out.push({ kind: "deal", n, date: str(d.on).slice(0, 10), label: str(d.label) || "Deal date", who: "", address: str(s.address),
           place: street(s.address) + (town(s.address) ? " · " + town(s.address) : ""), scope: "you", act: "Open deal",
-          href: "/vault#sites", stage: s.stage });
+          href: dealsHref(firmKind), stage: s.stage });
       });
     });
-    out.sort((a, b) => (a.n - b.n) || a.label.localeCompare(b.label));
-    // Pins carry the same number as their row; a message has no address and
-    // so no number.
+    const rank = (x) => (x.kind === "msg" ? 0 : x.kind === "bov" ? 1 : 2);
+    out.sort((a, b) => (rank(a) - rank(b)) || (a.kind === "bov" ? b.n - a.n : a.n - b.n) || a.label.localeCompare(b.label));
+    // Pins carry the same number as their row; a message and a BOV request
+    // have no address and so no number.
     let k = 0;
-    out.forEach((x) => { x.num = x.kind === "msg" ? null : ++k; });
+    out.forEach((x) => { x.num = x.kind === "msg" || x.kind === "bov" ? null : ++k; });
     return out;
   }
   function thisWeek(items) { return (Array.isArray(items) ? items : []).filter((x) => x.n <= WEEK_DAYS).length; }
@@ -268,6 +296,6 @@
     return hasFirm ? "Add your first property and it shows up here, on the map." : "Everything you add lands on this map.";
   }
 
-  return { LEASE_DAYS, DEAL_DAYS, WEEK_DAYS, STAGES, addressKey, street, place, town, daysUntil, shortDate, inDays, money,
-    stageLabel, stageStep, lastValue, properties, scopeOf, agenda, thisWeek, compRow, statusLine };
+  return { LEASE_DAYS, DEAL_DAYS, BOV_DAYS, WEEK_DAYS, STAGES, addressKey, street, place, town, daysUntil, shortDate, inDays, money,
+    stageLabel, stageStep, lastValue, properties, scopeOf, dealsHref, agenda, thisWeek, compRow, statusLine };
 });

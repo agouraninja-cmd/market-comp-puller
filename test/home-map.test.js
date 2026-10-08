@@ -117,6 +117,42 @@ test("the agenda: unread first, then lease dates inside 90 days and deal dates i
   assert.equal(HM.thisWeek(items), 2, "the message and Friday's call");
 });
 
+test("new BOV requests come after messages, newest first, with no number and no pin", () => {
+  const items = HM.agenda({ today: TODAY,
+    threads: [{ id: "t1", label: "Jordan Lee", unread: 1 }],
+    leads: [
+      { id: "l1", ts: "2026-10-01T15:00:00Z", type: "Industrial", size_sqft: 24000, market: "Boise, ID", is_1031: false, intro_requested: false },
+      { id: "l2", ts: "2026-10-06T22:10:00Z", type: "Retail", size_sqft: null, market: "Meridian, ID", is_1031: true, intro_requested: false },
+      { id: "l3", ts: "2026-10-05T09:00:00Z", type: "Office", market: "Boise, ID", intro_requested: true },
+      { id: "l4", ts: "2026-09-20T09:00:00Z", type: "Office", market: "Boise, ID", intro_requested: false },
+      // UTC evening, the member's afternoon: tomorrow by the stamp, today here.
+      { id: "l5", ts: "2026-10-08T01:30:00Z", type: "Flex", market: "Nampa, ID", intro_requested: false },
+    ],
+    sites: [SITE({ dates: [{ on: "2026-10-10", label: "Call the owner back" }] })],
+  });
+  assert.deepEqual(items.map((x) => x.id || x.label), ["Jordan Lee", "l5", "l2", "l1", "Call the owner back"],
+    "an answered request (l3) and one older than BOV_DAYS (l4) are not new");
+  const bov = items.filter((x) => x.kind === "bov");
+  assert.deepEqual(bov.map((x) => x.num), [null, null, null], "a request carries no address, so no pin");
+  assert.deepEqual(bov.map((x) => x.n), [0, -1, -6]);
+  assert.equal(bov[1].who, "1031 exchange");
+  assert.equal(bov[2].place, "Industrial · 24,000 SF · Boise, ID");
+  assert.equal(bov[1].place, "Retail · Meridian, ID", "no size, no size");
+  assert.ok(bov.every((x) => x.scope === "you" && x.href === "/vault#pipeline"), "the member's own pipeline");
+  assert.equal(items[4].num, 1, "the first dated row is still pin 1");
+  assert.equal(HM.inDays(-1), "yesterday");
+});
+
+test("a deal opens where the private page lists it: Sites for a development firm, The Board for everyone else", () => {
+  const deal = (firmKind) => HM.agenda({ today: TODAY, firmKind,
+    sites: [SITE({ dates: [{ on: "2026-10-10", label: "Call" }] })] })[0].href;
+  assert.equal(deal("development"), "/vault#sites");
+  assert.equal(deal("broker"), "/vault#board", "vault-page.js hides Sites outside a development firm; #sites would open Comps");
+  assert.equal(deal(""), "/vault#board", "no firm at all");
+  assert.equal(HM.dealsHref("development"), "/vault#sites");
+  assert.equal(HM.dealsHref(undefined), "/vault#board");
+});
+
 test("the status line says what is due, never what the page is", () => {
   assert.match(HM.statusLine({ items: [{ n: -1 }, { n: 3 }] }), /^2 things this week/);
   assert.match(HM.statusLine({ items: [{ n: 20 }] }), /^Nothing due this week\. 1 date coming up\./);

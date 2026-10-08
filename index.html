@@ -1679,6 +1679,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     /* Squared chip (meta chips, comp count, sale/lease pill) — replaces rounded-full. */
     .rd-chip { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 500; color: var(--ink-2); background: var(--wash); border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; }
+    .rd-chip.rd-chip-subj { color: var(--ink); font-weight: 600; }
     .rd-chip.o { background: var(--card); border-color: var(--edge); color: var(--ink-mute); }
     /* Comp table/card marks. Replaced † ‡ § — those glyphs read as gray
        glitches next to Size and $/SF, and § next to a dollar figure looks
@@ -4301,7 +4302,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- Comps table -->
         <div id="compsCard" data-assemble class="rd-exhibit overflow-hidden print-shadow-none fade-in">
           <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-[#ECEAE3]">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Comparable Properties</h2>
+            <!-- "Comps Used" (2026-10-07): a comp is a past deal you value against,
+                 never a "property", which is the building this report is about. -->
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Comps Used</h2>
             <div class="flex items-center gap-3">
               <div id="txFilter" style="display:none" class="items-center rounded border border-[#D8D4C9] p-0.5 bg-[#F5F4EF] no-print">
                 <button type="button" data-tx="all"    class="text-xs font-medium px-3 py-2 rounded">All</button>
@@ -5281,6 +5284,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (!metaBox || !meta) return;
     const dateStr = new Date(meta.generatedAt || Date.now()).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
     metaBox.innerHTML = "";
+    // The address above is the building being valued: said in the same words
+    // as the tag on its row in the comp table (2026-10-07). The PNG and print
+    // exports photograph this header, so the label travels with them.
+    const subj = document.createElement("span");
+    subj.className = "rd-chip rd-chip-subj mr-1.5 mt-1.5";
+    subj.textContent = "Your property";
+    metaBox.appendChild(subj);
     metaParts(meta).concat(`Generated ${dateStr}`).forEach((part) => {
       const chip = document.createElement("span");
       chip.className = "rd-chip mr-1.5 mt-1.5";
@@ -21200,7 +21210,7 @@ async function renderMyDesk() {
       {
         const s = pptxFrame(pptx, ctx, "Valuation");
         s.addText(meta.address, T({ x: 0.5, y: 1.05, w: 12.33, h: 0.6, fontSize: 26, bold: true, valign: "middle" }));
-        s.addText(`${metaLine(meta)} · Generated ${dateStr}`, T({ x: 0.5, y: 1.65, w: 12.33, h: 0.35, fontSize: 11, color: PPTX_MUTE }));
+        s.addText(`Your property · ${metaLine(meta)} · Generated ${dateStr}`, T({ x: 0.5, y: 1.65, w: 12.33, h: 0.35, fontSize: 11, color: PPTX_MUTE }));
         s.addText(txt("ownerHeroTitle").toUpperCase(), T({ x: 0.5, y: 2.2, w: 12.33, h: 0.35, fontSize: 11, bold: true, color: PPTX_RED, charSpacing: 1.5 }));
         [["Low", "ownerLow", "ownerLowPpsf"], ["Likely", "ownerMid", "ownerMidPpsf"], ["High", "ownerHigh", "ownerHighPpsf"]]
           .forEach(([label, figId, subId], i) => {
@@ -21310,7 +21320,8 @@ async function renderMyDesk() {
         }
         const PER = 10;
         const pages = Math.max(1, Math.ceil(body.length / PER));
-        const noun = meta.txFocus === "leases" ? "Comparable leases" : meta.txFocus === "sales" ? "Comparable sales" : "Comparable sales & leases";
+        // The on-screen table's heading, Comps Used (2026-10-07).
+        const noun = meta.txFocus === "leases" ? "Comps used · leases" : meta.txFocus === "sales" ? "Comps used · sales" : "Comps used";
         for (let p = 0; p < pages; p++) {
           const s = pptxFrame(pptx, ctx, pages > 1 ? `${noun} (${p + 1} of ${pages})` : noun);
           s.addText(bits.join(" · "), T({ x: 0.5, y: 1.05, w: 12.33, h: 0.35, fontSize: 9, color: PPTX_MUTE, valign: "middle" }));

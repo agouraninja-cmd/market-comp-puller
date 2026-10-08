@@ -20,6 +20,8 @@ paths:
 
 ## Architecture
 
+- **Property vs comp in the report (2026-10-07).** A property is the building being valued; a comp is a past deal it is valued against (the wording Home uses since Draft C). The header's first chip reads "Your property" (`renderReportMeta`, styled `.rd-chip.rd-chip-subj`), matching the tag on the subject's row in the comp table, and the table is headed "Comps Used", never "Comparable Properties". PNG and print photograph the header; the PowerPoint export writes its own text, so its first slide says "Your property · …" and its comp slides are "Comps used" ("· sales" / "· leases" by focus). Pinned in test/index-html.test.js.
+
 **`index.html`** — the entire front-end (Tailwind vendored as `tailwind.css`,
 html2canvas via CDN).
 Holds the form, password gate, results rendering, sortable table, and the

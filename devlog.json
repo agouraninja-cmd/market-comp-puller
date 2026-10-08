@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-10-07",
+    "type": "feature",
+    "title": "The Board is a deal wall",
+    "details": "The Board now shows every property you’re trying to buy as a photo card on a wall: an aerial photo, its stage stamped on it, a progress bar, the asking price, the next date (red when it’s under a week away) and how conditions look for buying in its market. Stage tabs and market chips filter it, with the total still in play, and a card opens in place to move the deal along, pass on it, or edit its price, acres, notes and dates. Each market you follow is a tile with a buying read (Favorable, Mixed or Tough) worked out from the six-month price trend of recorded sales and the market page’s direction, with the reasons shown and a note that it’s an automated read, not investment advice. Deals are part of Pro; the market tiles are free."
+  },
+  {
+    "date": "2026-10-07",
     "type": "improvement",
     "title": "Six market pages refreshed with current comps",
     "details": "Industrial in Ontario, Fontana, Phoenix, Las Vegas, Dallas and Atlanta now carry October comps and a fresh momentum read, good until January 5. The rest of the market pages still read as of July and their momentum badges go blank on October 12 until they are refreshed too."

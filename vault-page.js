@@ -986,6 +986,139 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   #sitesSec .st-tbl tfoot td{border:0;padding:12px 16px}
   #sitesSec .st-tbl tfoot td:empty{display:none}
 }
+/* ---- The Board: market tiles and the deal wall (2026-10-07) ------------------
+   The owner's pick "C, Deal wall" of the Board drafts. #mktSec draws each
+   market on The Board as a tile with its buying read; /deal-wall.js draws the
+   wall into #wallRoot. Every rule is scoped under #mktSec or #wallSec, the
+   Sites block's reason: it outranks this page's bare table/section rules and
+   keeps the dw- names out of MARKET_CSS's way. Tokens only, so both themes
+   hold; the stage colours are the palette's own status pairs. */
+#mktSec .dw-tiles-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(236px,1fr));gap:10px;margin-top:var(--s4)}
+#mktSec .dw-tile{background:var(--card);border:1px solid var(--edge);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+#mktSec .dw-tt{font-family:var(--serif);font-size:16px;color:var(--ink);line-height:1.3}
+#mktSec .dw-tt a{color:inherit;text-decoration:none}
+#mktSec .dw-tt a:hover{text-decoration:underline;text-underline-offset:3px}
+#mktSec .dw-tt span{font-size:13.5px;color:var(--ink-3)}
+#mktSec .dw-pill{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;border-radius:999px;padding:2px 10px 2px 8px;font-size:12.5px;font-weight:600}
+#mktSec .dw-pill i{width:8px;height:8px;border-radius:50%;background:currentColor}
+#mktSec .dw-pill.dw-good{background:var(--ok-bg);color:var(--ok-text)}
+#mktSec .dw-pill.dw-mid{background:var(--warn-bg);color:var(--warn-text)}
+#mktSec .dw-pill.dw-bad{background:var(--err-bg);color:var(--err-text)}
+#mktSec .dw-why{list-style:none;margin:0;padding:0;font-size:12.5px;line-height:1.45;color:var(--ink-2)}
+#mktSec .dw-why li{margin:2px 0}
+#mktSec .dw-why b{font-weight:400;font-size:9px;color:var(--ink-3);margin-right:5px;position:relative;top:-1px}
+#mktSec .dw-tf{margin:0;font-size:12.5px;color:var(--ink-3)}
+#mktSec .dw-tile details{font-size:13px}
+#mktSec .dw-tile summary{cursor:pointer;color:var(--ink-2)}
+#mktSec .dw-tile .tw{margin-top:8px}
+#mktSec .dw-tfoot{margin-top:auto;padding-top:6px}
+#mktSec .dw-addt{font:inherit;font-size:13.5px;color:var(--ink-2);background:none;border:1px dashed var(--ink-4);border-radius:8px;padding:12px 14px;cursor:pointer;min-height:84px}
+#mktSec .dw-addt:hover{color:var(--ink);border-color:var(--ink-3)}
+#mktSec .dw-fine{margin:12px 0 0;font-size:12px;color:var(--ink-3);max-width:80ch}
+
+#wallSec{margin-top:var(--s7)}
+#wallSec .dw-mute{color:var(--ink-3);font-size:13px;margin:0}
+#wallSec .dw-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+#wallSec .dw-tabs{display:flex;flex-wrap:wrap;gap:4px}
+#wallSec .dw-tabs button{font:inherit;font-size:13px;color:var(--ink-2);background:none;border:0;border-radius:6px;padding:5px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+#wallSec .dw-tabs button.hide{display:none}
+#wallSec .dw-tabs button:hover{background:var(--wash)}
+#wallSec .dw-tabs button b{font-weight:600;color:var(--ink-3)}
+#wallSec .dw-tabs button.on{background:var(--ink);color:var(--card)}
+#wallSec .dw-tabs button.on b{color:var(--card)}
+#wallSec .dw-tabs i{width:9px;height:9px;border-radius:2px}
+#wallSec .dw-tot{margin-left:auto;font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+#wallSec .dw-tot b{color:var(--ink);font-weight:600}
+#wallSec .dw-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+#wallSec .dw-chips button{font:inherit;font-size:12.5px;color:var(--ink-2);background:var(--card);border:1px solid var(--edge);border-radius:999px;padding:4px 12px;cursor:pointer}
+#wallSec .dw-chips button.on{background:var(--ink);border-color:var(--ink);color:var(--card)}
+#wallSec .dw-wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(236px,1fr));gap:14px;background:var(--wash-2);border-radius:12px;padding:14px;margin-top:12px}
+#wallSec .dw-card{background:var(--card);border:1px solid var(--edge);border-radius:8px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(26,36,51,.06),0 2px 6px -2px rgba(26,36,51,.08);min-width:0}
+#wallSec .dw-card:hover{border-color:var(--ink-4)}
+#wallSec .dw-card:focus-visible{outline:2px solid var(--red-fill);outline-offset:2px}
+#wallSec .dw-ph{height:150px;position:relative;overflow:hidden;background:var(--wash)}
+#wallSec .dw-pane-ph{height:200px}
+#wallSec .dw-tiles{position:absolute;left:50%;top:50%}
+#wallSec .dw-tiles img{position:absolute;width:256px;height:256px;max-width:none}
+#wallSec .dw-pin{position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--red-fill);box-shadow:0 0 0 3px rgba(255,255,255,.85)}
+#wallSec .dw-credit{position:absolute;right:6px;bottom:5px;font-size:10px;color:#fff;background:rgba(17,24,39,.55);border-radius:3px;padding:0 4px}
+#wallSec .dw-stamp{position:absolute;z-index:1;left:8px;top:8px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:3px 8px;box-shadow:0 1px 3px rgba(0,0,0,.18)}
+#wallSec .dw-type{position:absolute;z-index:1;left:8px;bottom:8px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:#fff;background:rgba(17,24,39,.62);border-radius:4px;padding:2px 7px}
+#wallSec .dw-body{padding:10px 12px 12px;display:flex;flex-direction:column;gap:4px;flex:1}
+#wallSec .dw-a{margin:0;font-family:var(--serif);font-weight:500;font-size:16px;line-height:1.3;color:var(--ink)}
+#wallSec .dw-f{margin:0;font-size:12.5px;color:var(--ink-3)}
+#wallSec .dw-pr{margin:2px 0 0;display:flex;align-items:baseline;gap:8px;font-size:12.5px;color:var(--ink-3)}
+#wallSec .dw-pr b{font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums}
+#wallSec .dw-due{margin:2px 0 0;align-self:flex-start;font-size:12px;color:var(--ink-2);background:var(--wash);border-radius:4px;padding:2px 7px}
+#wallSec .dw-due.hot{background:var(--err-bg);color:var(--err-text);font-weight:600}
+#wallSec .dw-read{margin:4px 0 0;padding-top:7px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-3)}
+#wallSec .dw-dot{width:8px;height:8px;border-radius:50%}
+#wallSec .dw-dot.dw-good{background:var(--ok-text)}
+#wallSec .dw-dot.dw-mid{background:var(--warn-text)}
+#wallSec .dw-dot.dw-bad{background:var(--err-text)}
+#wallSec .dw-l-good{color:var(--ok-text)}
+#wallSec .dw-l-mid{color:var(--warn-text)}
+#wallSec .dw-l-bad{color:var(--err-text)}
+#wallSec .dw-prog{display:grid;grid-auto-flow:column;gap:3px;margin-top:auto;padding-top:8px}
+#wallSec .dw-prog i{height:4px;border-radius:2px;background:var(--hair)}
+/* One colour per stage, from the palette's own status pairs. */
+#wallSec .dw-stamp.dw-s-prospect{background:var(--card);color:var(--ink-2)}
+#wallSec .dw-stamp.dw-s-loi{background:var(--warn-bg);color:var(--warn-text)}
+#wallSec .dw-stamp.dw-s-contract{background:var(--bv-bg);color:var(--bv-text)}
+#wallSec .dw-stamp.dw-s-entitle{background:var(--est-bg);color:var(--est-text)}
+#wallSec .dw-stamp.dw-s-owned{background:var(--ok-bg);color:var(--ok-text)}
+#wallSec .dw-stamp.dw-s-passed{background:var(--err-bg);color:var(--err-text)}
+#wallSec i.dw-s-prospect{background:var(--ink-3)}
+#wallSec i.dw-s-loi{background:var(--warn-text)}
+#wallSec i.dw-s-contract{background:var(--bv-text)}
+#wallSec i.dw-s-entitle{background:var(--est-text)}
+#wallSec i.dw-s-owned{background:var(--ok-text)}
+#wallSec i.dw-s-passed{background:var(--err-text)}
+#wallSec .dw-add{font:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:200px;border:2px dashed var(--ink-4);border-radius:8px;background:none;color:var(--ink-2);font-size:13.5px;cursor:pointer;padding:16px;text-align:center}
+#wallSec .dw-add:hover{color:var(--ink);border-color:var(--ink-3)}
+#wallSec .dw-add span{font-size:26px;line-height:1;color:var(--ink-3)}
+#wallSec .dw-add.dw-big{width:100%;min-height:240px;font-size:16px;color:var(--ink);background:var(--wash-2);border-radius:12px}
+#wallSec .dw-add small{font-size:13px;color:var(--ink-3);max-width:46ch}
+#wallSec .dw-lock{border:1px solid var(--edge);border-radius:8px;background:var(--card);padding:18px 20px;max-width:64ch}
+#wallSec .dw-lock p{margin:0 0 10px;color:var(--ink-2);font-size:14px}
+#wallSec .dw-lock p:last-child{margin:0}
+#wallSec .dw-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px 14px;align-items:end;border:1px solid var(--edge);border-radius:8px;background:var(--card);padding:16px 18px;margin-bottom:14px}
+#wallSec .dw-form h3{grid-column:1/-1;margin:0;font-family:var(--serif);font-weight:500;font-size:18px;color:var(--ink)}
+#wallSec .dw-form label{display:flex;flex-direction:column;gap:5px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;min-width:0}
+#wallSec .dw-form input,#wallSec .dw-form select,#wallSec .dw-form textarea{font:inherit;font-size:14px;letter-spacing:0;text-transform:none;font-weight:400;color:var(--ink);background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:8px 10px;min-width:0}
+#wallSec .dw-opt{text-transform:none;letter-spacing:0;font-weight:400}
+#wallSec .dw-wide{grid-column:1/-1}
+#wallSec .dw-form label.dw-wide{grid-column:1/3}
+#wallSec .dw-edit label.dw-wide{grid-column:1/-1}
+#wallSec .dw-act{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
+#wallSec .dw-err{color:var(--err-text);font-size:13px}
+#wallSec .dw-rm{margin-left:auto}
+#wallSec .dw-pane{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);border:1px solid var(--ink);border-radius:10px;background:var(--card);overflow:hidden;margin-top:12px;box-shadow:var(--shadow)}
+#wallSec .dw-pane .dw-pane-ph{height:auto;min-height:220px}
+#wallSec .dw-pane-in{padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+#wallSec .dw-pane-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+#wallSec .dw-pane-h h3{margin:0;font-family:var(--serif);font-weight:500;font-size:20px;color:var(--ink)}
+#wallSec .dw-moves{display:flex;flex-wrap:wrap;gap:6px}
+#wallSec .dw-mv{font:inherit;font-size:12.5px;color:var(--ink-2);background:var(--card);border:1px solid var(--edge);border-radius:999px;padding:5px 12px;cursor:pointer}
+#wallSec .dw-mv:hover{border-color:var(--ink-3);color:var(--ink)}
+#wallSec .dw-mv.on{background:var(--ink);border-color:var(--ink);color:var(--card);cursor:default}
+#wallSec .dw-mv.dw-pass{color:var(--err-text)}
+#wallSec .dw-pane .dw-form{border:0;padding:0;margin:0;grid-template-columns:repeat(2,minmax(0,1fr))}
+#wallSec .dw-k{margin:0 0 6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+#wallSec .dw-dates{list-style:none;margin:0 0 8px;padding:0;font-size:13.5px;color:var(--ink-body)}
+#wallSec .dw-dates li{display:flex;gap:8px;align-items:baseline;padding:3px 0}
+#wallSec .dw-dates li span{font-variant-numeric:tabular-nums;color:var(--ink-2)}
+#wallSec .dw-adddate{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px}
+#wallSec .msg{margin:0 0 12px}
+@media (max-width:700px){
+  #wallSec .dw-wall{margin-left:-16px;margin-right:-16px;border-radius:0;padding:12px 16px}
+  #wallSec .dw-tot{margin-left:0;width:100%}
+  #wallSec .dw-form,#wallSec .dw-pane .dw-form{grid-template-columns:minmax(0,1fr)}
+  #wallSec .dw-form label.dw-wide{grid-column:1/-1}
+  #wallSec .dw-pane{grid-template-columns:minmax(0,1fr)}
+  #wallSec .dw-pane .dw-pane-ph{min-height:160px}
+  #wallSec .dw-adddate{grid-template-columns:minmax(0,1fr)}
+}
 </style>
   <p class="kicker">Private to you</p>
   <h1 class="h">Data</h1>
@@ -1677,7 +1810,12 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     </div>
     <div class="vt-panel" id="panelWatch" data-panel="watch" role="tabpanel" aria-labelledby="tab-watch">
     <!-- ------------------------------------------------------------------
-         Your watchlist. Same move, same rules.
+         The Board (2026-10-07, the owner's pick "C, Deal wall" of the Board
+         drafts): the markets a member follows, each a tile with its buying
+         read, over the deal wall -- every property they are chasing as a
+         photo card (/deal-wall.js draws it into #wallRoot from /api/sites,
+         the Sites tab's own rows). This deck was "Your watchlist" until the
+         rename that morning; its code still says watchlist.
 
          NOT "Your markets": that heading is already taken on this page by
          #rollupSec, which breaks a broker's own COMPS down by market, and
@@ -1693,12 +1831,13 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
          ------------------------------------------------------------------ -->
     <div class="deck" id="deckMarkets">
       <span class="dlab">The Board</span><span class="dln"></span>
+      <button class="dact hide" id="wallAddToggle" aria-expanded="false" aria-controls="wallRoot">+ Add a property</button>
     </div>
 
     <section id="mktSec">
-      <p class="sub hide" id="mktIntro" style="margin-top:0">Markets you follow for new deals.
+      <p class="sub hide" id="mktIntro" style="margin-top:0">Your markets, with how conditions look for buying there.
         Comps other people search turn up here first.</p>
-      <div class="form" id="watchForm" style="margin-top:var(--s4)">
+      <div class="form hide" id="watchForm" style="margin-top:var(--s4)">
         <label>City <input id="wCity" type="text" placeholder="Boise"/></label>
         <label>State <input id="wState" type="text" maxlength="2" placeholder="ID"/></label>
         <label>Type <select id="wType"></select></label>
@@ -1710,10 +1849,11 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       <div class="msg bad hide" id="mktErr">Couldn&rsquo;t load your markets just now.
         Nothing has been lost. Refresh in a moment.</div>
       <div class="invite hide" id="mktEmpty">
-        <p>Nothing on The Board yet. Add a market above and new comps in it will show up here.</p>
+        <p>No markets on The Board yet. Add one above to see its new comps and how conditions look for buying there.</p>
       </div>
       <div id="mktRows"></div>
     </section>
+    <section id="wallSec" aria-label="Your deals"><div id="wallRoot"></div></section>
     </div>
     <div class="vt-panel" id="panelContrib" data-panel="contrib" role="tabpanel" aria-labelledby="tab-contrib">
     <!-- ------------------------------------------------------------------
@@ -1773,6 +1913,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 <script src="/building-facts.js"></script>
 <script src="/sites.js"></script>
 <script src="/sites-tab.js"></script>
+<script src="/deal-wall.js"></script>
 <script>
 (function(){
   var $=function(id){return document.getElementById(id)};
@@ -2138,7 +2279,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // Once per page visit, not on every filter change or post-import refresh
     // that re-runs load() -- those hit /api/vault, a different endpoint, and
     // re-reading the portfolio on each would be work with no new information.
-    if(!personalLoaded){ personalLoaded=true; loadProps(); loadMarkets(); loadContribs(); }
+    if(!personalLoaded){ personalLoaded=true; loadProps(); loadMarkets(); loadContribs(); mountWall(); }
     else { renderProps(); }
 
     // 403 (not Pro) and 503 (no database) lock the same three decks. The 503
@@ -3760,6 +3901,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // These two need no Sites script: only the third does.
   var sitesView=null;
   function applyShop(){
+    if(wallView)wallView.refresh();
     var shop=!!(myFirm&&myFirm.kind==="development");
     var dev=shop&&!!(window.SITESTAB&&window.SITES);
     var first=!tabSettled; tabSettled=true;
@@ -6725,23 +6867,39 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       .catch(function(){mktOk=false;renderMarkets();});
   }
 
+  // Each market a tile: its buying read and the reasons for it (computed by
+  // /deal-wall.js, DEALWALL.buyingRead, from the feed's six-month price trend
+  // and the market page's direction -- no read when neither exists), its new
+  // comps behind a fold, and Remove. The add form opens on an empty Board and
+  // behind the last tile otherwise.
+  var watchFormOpen=false,wallView=null,wallLive=null;
+  function boardCount(){ tabCount("tabWatchN",wallLive?wallLive:(mktItems.length||""),false); }
   function renderMarkets(){
     $("mktErr").className=mktOk?"msg bad hide":"msg bad";
     if(!mktOk){$("mktEmpty").className="invite hide";return;}
-    var items=mktItems;
-    tabCount("tabWatchN",items.length||"",false);
+    var items=mktItems,DW=window.DEALWALL,anyRead=false;
+    boardCount();
     $("mktIntro").className=items.length?"sub":"sub hide";
     $("mktEmpty").className=items.length?"invite hide":"invite";
-    $("mktRows").innerHTML=items.map(function(it){
-      var title=esc(it.market)+" · "+esc(it.property_type);
+    $("watchForm").className=items.length&&!watchFormOpen?"form hide":"form";
+    var tiles=items.map(function(it){
+      var title=esc(it.market)+" <span>"+esc(it.property_type)+"</span>";
       if(it.market_page&&typeof it.market_page.slug==="string"
          &&/^[a-z0-9-]{1,120}$/.test(it.market_page.slug)){
-        title='<a href="/market/'+escA(it.market_page.slug)+'">'+title+"</a>";
+        title='<a href="/market/'+escA(it.market_page.slug)+'">'+esc(it.market)+"</a> <span>"+esc(it.property_type)+"</span>";
+      }
+      var read=DW?DW.buyingRead(it):null,readHtml="";
+      if(read){
+        anyRead=true;
+        readHtml='<span class="dw-pill dw-'+read.lean+'"><i></i>Buying: '+DW.LEANS[read.lean]+"</span>"+
+          '<ul class="dw-why">'+read.reasons.map(function(r){
+            return "<li><b>"+(r.dir==="down"?"▼":r.dir==="up"?"▲":"■")+"</b>"+esc(r.text)+"</li>";
+          }).join("")+"</ul>";
       }
       var facts=[];
       facts.push((it.new_count||0)+" new comp"+((it.new_count||0)===1?"":"s"));
       if(it.median_psf!=null)facts.push("median "+psf0(it.median_psf)+"/SF");
-      if(it.median_trend&&it.median_trend.current!=null&&it.median_trend.prior!=null
+      if(!DW&&it.median_trend&&it.median_trend.current!=null&&it.median_trend.prior!=null
          &&Number(it.median_trend.prior)>0){
         var d=((it.median_trend.current-it.median_trend.prior)/it.median_trend.prior)*100;
         facts.push((d>=0?"▲":"▼")+" "+Math.abs(d).toFixed(1)+"% vs the six months before");
@@ -6755,7 +6913,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       }
       var rows="";
       if(it.comps&&it.comps.length){
-        rows='<div class="tw" style="margin-top:8px"><table>'+
+        rows='<details><summary>The new comps</summary><div class="tw"><table>'+
           "<thead><tr><th>Address</th><th>Deal</th><th>Date</th>"+
           '<th class="num">Price or rate</th><th class="num">$/SF</th></tr></thead><tbody>'+
           it.comps.map(function(c){
@@ -6767,24 +6925,46 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
               esc(c.deal_date||"")+'</td><td class="num">'+esc(c.price_or_rate||"")+
               '</td><td class="num">'+esc(c.price_per_sqft==null?"":psf(c.price_per_sqft))+
               "</td></tr>";
-          }).join("")+"</tbody></table></div>";
+          }).join("")+"</tbody></table></div></details>";
       }
       // The gated remainder, said out loud rather than silently dropped.
       if(it.locked_count){
-        rows+='<p class="note" style="margin-top:8px">'+it.locked_count+" more comp"+
+        rows+='<p class="dw-tf">'+it.locked_count+" more comp"+
           (it.locked_count===1?"":"s")+" in this market. "+
           '<a href="/desk">See your plan</a> to itemise them.</p>';
       }
-      return '<div class="dbox" style="margin-top:var(--s4);padding:14px 16px">'+
-        '<div style="font-family:var(--serif);font-size:17px">'+title+"</div>"+
-        '<p class="note" style="margin:4px 0 0">'+facts.join(" · ")+"</p>"+rows+
-        '<p style="margin:10px 0 0"><button class="lnk" type="button" data-unwatch="'+
+      return '<div class="dw-tile"><div class="dw-tt">'+title+"</div>"+readHtml+
+        '<p class="dw-tf">'+facts.join(" · ")+"</p>"+rows+
+        '<p class="dw-tfoot"><button class="lnk" type="button" data-unwatch="'+
         escA(it.id)+'" data-mkt="'+escA(it.market+" "+it.property_type)+
         '">Remove from The Board</button></p></div>';
     }).join("");
+    $("mktRows").innerHTML=items.length?'<div class="dw-tiles-row">'+tiles+
+      (watchFormOpen?"":'<button type="button" class="dw-addt" id="wAddTile">+ Add a market</button>')+"</div>"+
+      (anyRead?'<p class="dw-fine">Buying conditions are an automated read of public numbers: the six-month '+
+        "median price of recorded sales and, where one exists, the market page’s direction. Not investment advice.</p>":""):"";
+    if(wallView)wallView.refresh();
+  }
+
+  // The deal wall (/deal-wall.js, the global DEALWALL). Mounted once, on the
+  // first read, like the other personal decks; without the script, or
+  // without SITES, The Board keeps its markets and nothing else changes.
+  function mountWall(){
+    if(wallView||!window.DEALWALL||!window.SITES)return;
+    wallView=window.DEALWALL.mount({
+      root:$("wallRoot"),addToggle:$("wallAddToggle"),esc:esc,escA:escA,propTypes:PROP_TYPES,
+      isDev:function(){return !!(myFirm&&myFirm.kind==="development")},
+      feed:function(){return mktItems},
+      setCount:function(n){wallLive=n;boardCount()}
+    });
   }
 
   $("mktRows").addEventListener("click",function(e){
+    if(e.target.closest("#wAddTile")){
+      watchFormOpen=true;renderMarkets();
+      try{$("wCity").focus()}catch(ex){}
+      return;
+    }
     var b=e.target.closest("button[data-unwatch]");if(!b)return;
     if(!confirm("Remove "+(b.getAttribute("data-mkt")||"this market")+" from The Board?"))return;
     fetch("/api/watchlist?id="+encodeURIComponent(b.getAttribute("data-unwatch")),
@@ -6866,6 +7046,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
           return;
         }
         $("wCity").value="";$("wState").value="";
+        watchFormOpen=false;
         loadMarkets();
       })
       .catch(function(){

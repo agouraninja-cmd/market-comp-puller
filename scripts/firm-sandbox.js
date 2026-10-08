@@ -116,7 +116,7 @@ async function seedFirm(base, log) {
   // Broker here because that is what the rest of this sandbox's data looks
   // like; flip it to "development" to click through the other vocabulary and
   // the shelf's Land-first view.
-  const org = await post("/api/org", BRAD, { name: "Colliers Boise", kind: "broker" });
+  const org = await post("/api/org", BRAD, { name: "Colliers Boise", kind: "development" });
   if (org.status !== 200) throw new Error("could not create the firm");
   const orgId = org.json.id;
   log(`  firm "${org.json.name}" (${org.json.kind} shop) created by ${BRAD.email}`);

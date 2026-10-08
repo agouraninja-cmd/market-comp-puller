@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=816">
+<title>CompNinja One-Pager</title>
+<!--
+  CompNinja one-pager, US Letter. The source for CompNinja-1pg-10.7.26.pdf;
+  rebuild it from the repo root with `node docs/one-pager/build.js`.
+
+  Colours are theme.js's LIGHT values written literally: this is a printed
+  page, not a themed surface (the photograph exception in DESIGN-SYSTEM.md
+  section 7). Type follows the house rule: Georgia is the answer (headings
+  and every dollar figure), Inter is everything that helps you read it.
+
+  The sample report's figures are what valuation.js's valueFromComps returns
+  for these five comps at 21,600 SF: each comp weighted by its source tier and
+  age (compWeight), the weighted 25th / 50th / 75th percentile of $/SF, then
+  heroRound. Dated mid-month as shown, no market trend; the as-of date does
+  not move the answer. Each figure also equals its rounded $/SF times 21,600
+  SF after heroRound, so a reader who checks the arithmetic finds it holds.
+  The set was searched for that property: change one comp and re-derive all
+  three figures.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=block" rel="stylesheet">
+<style>
+  @page { size: letter; margin: 0; }
+  :root {
+    --ink: #1A2433; --ink-body: #374253; --ink-2: #4C5665; --ink-mute: #5A6473;
+    --ink-3: #68707E; --ink-faint: #9AA2AD;
+    --red: #B91C1C;
+    --edge: #D8D4C9; --line: #E4E2DA; --hair: #F0EFE9; --wash: #F5F4EF;
+    --ok-text: #06603A; --ok-bg: #E7F5EE;
+    --pr-text: #46536A; --pr-bg: #EAEEF4;
+    --warn-text: #8A6D1A; --warn-bg: #FBF3DC;
+    --est-text: #9A3412; --est-bg: #F8E9DC;
+    --serif: Georgia, 'Times New Roman', serif;
+    --sans: Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #E9E7E1; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @media print { html, body { background: #fff; } }
+
+  .page {
+    width: 816px; height: 1056px; margin: 0 auto; background: #fff;
+    padding: 40px 52px 30px; display: flex; flex-direction: column;
+    font-family: var(--sans); color: var(--ink-body); font-size: 11.2px; line-height: 1.45;
+    font-feature-settings: "cv11", "ss01"; overflow: hidden;
+  }
+
+  /* --- Masthead ------------------------------------------------------------ */
+  .mast { display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand svg { width: 34px; height: 34px; display: block; }
+  .word { font-size: 18.5px; font-weight: 600; letter-spacing: .14em; color: var(--ink); line-height: 1; }
+  .word span { color: var(--red); }
+  .contact { text-align: right; font-size: 10.3px; line-height: 1.5; color: var(--ink-3); }
+  .contact b { color: var(--ink); font-weight: 600; }
+  .contact a { color: inherit; text-decoration: none; }
+
+  /* --- Headline ------------------------------------------------------------ */
+  .head { margin-top: 22px; padding-bottom: 17px; border-bottom: 2px solid var(--ink); }
+  .eye { font-size: 9.3px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--red); }
+  h1 {
+    font-family: var(--serif); font-weight: 500; font-size: 32px; line-height: 1.12;
+    letter-spacing: -.005em; color: var(--ink); margin: 7px 0 0;
+  }
+  .deck { font-size: 13.4px; line-height: 1.52; color: var(--ink-body); margin: 8px 0 0; max-width: 700px; }
+
+  /* --- Two columns --------------------------------------------------------- */
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 34px; margin-top: 18px; flex: 1; min-height: 0; }
+  .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+  .lab { font-size: 8.8px; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; color: var(--red); }
+  h2 {
+    font-family: var(--serif); font-weight: 500; font-size: 15.5px; line-height: 1.25; color: var(--ink);
+    margin: 2px 0 6px;
+  }
+  p { margin: 0; }
+  strong { color: var(--ink); font-weight: 600; }
+
+  ul.pts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  ul.pts li { position: relative; padding-left: 12px; }
+  ul.pts li::before { content: ""; position: absolute; left: 0; top: .6em; width: 5px; height: 5px;
+    background: var(--red); border-radius: 1px; }
+
+  /* The two levels: label-beside-body rows inside one bordered box, the
+     house ledger shape. */
+  .levels { border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; }
+  .lv { display: grid; grid-template-columns: 72px 1fr; }
+  .lv + .lv { border-top: 1px solid var(--edge); }
+  .lv .who { background: var(--wash); padding: 8px 10px; border-right: 1px solid var(--edge); }
+  .lv .k { font-size: 7.8px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  .lv .t { font-family: var(--serif); font-size: 15px; color: var(--ink); margin-top: 1px; }
+  .lv .body { padding: 8px 11px 9px; font-size: 10.9px; line-height: 1.46; }
+
+  ol.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; counter-reset: s; }
+  ol.steps li { position: relative; padding-left: 19px; counter-increment: s; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 0; top: -1px;
+    font-family: var(--serif); font-size: 13px; color: var(--red); }
+
+  /* --- The sample report ---------------------------------------------------- */
+  .ex { border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; background: #fff;
+    box-shadow: 0 1px 2px rgba(26,36,51,.05), 0 10px 22px -16px rgba(26,36,51,.24); }
+  .excap { display: flex; justify-content: space-between; align-items: center; padding: 7px 11px;
+    border-bottom: 1px solid var(--hair); font-size: 8.2px; font-weight: 600; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-3); }
+  .excap .ill { color: var(--ink-faint); }
+  .exsubj { padding: 8px 11px 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .exaddr { font-family: var(--serif); font-size: 13.5px; color: var(--ink); }
+  .exnote { font-size: 9.2px; color: var(--ink-3); white-space: nowrap; }
+  .exlab { font-size: 8px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  .range { margin: 7px 11px 0; border: 1px solid var(--edge); border-radius: 5px;
+    display: grid; grid-template-columns: 1fr 1.12fr 1fr; }
+  .rc { padding: 6px 4px; text-align: center; border-right: 1px solid var(--hair); }
+  .rc:last-child { border-right: 0; }
+  .rc.mid { background: var(--wash); }
+  .rc.mid .exlab { color: var(--red); }
+  .fig { font-family: var(--serif); font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums;
+    margin-top: 1px; line-height: 1.2; }
+  .rc.mid .fig { font-size: 17.5px; }
+  .psf { font-size: 8.8px; color: var(--ink-3); }
+  .ctab { margin-top: 8px; border-top: 1px solid var(--edge); }
+  .cr { display: grid; grid-template-columns: 1.55fr .66fr .7fr .55fr 1.12fr; gap: 6px; padding: 3px 11px;
+    border-top: 1px solid var(--hair); font-size: 9.6px; line-height: 1.5; color: var(--ink-body);
+    font-variant-numeric: tabular-nums; align-items: center; white-space: nowrap; }
+  .cr:first-child { border-top: 0; }
+  .cr.h { background: var(--wash); font-size: 7.6px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-3); }
+  .cr .r { text-align: right; }
+  .badge { display: inline-block; font-size: 8.2px; font-weight: 600; border-radius: 3px; padding: 0 5px; line-height: 1.55; }
+  .b-v { color: var(--ok-text); background: var(--ok-bg); }
+  .b-p { color: var(--pr-text); background: var(--pr-bg); }
+  .b-l { color: var(--warn-text); background: var(--warn-bg); }
+  .b-n { color: var(--ink-mute); background: var(--wash); }
+  .b-e { color: var(--est-text); background: var(--est-bg); }
+  .exfoot { background: var(--wash); border-top: 1px solid var(--hair); padding: 5px 11px 6px; font-size: 9px;
+    line-height: 1.45; color: var(--ink-mute); }
+
+  /* --- Revenue: the statement table ---------------------------------------- */
+  .stmt { border-top: 2px solid var(--ink); margin-top: 6px; }
+  .srow { display: grid; grid-template-columns: 34px 58px 1fr; gap: 7px; padding: 5px 0 6px;
+    border-bottom: 1px solid var(--line); align-items: baseline; font-size: 10.8px; line-height: 1.42; }
+  .srow .k { font-size: 8.2px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+  .srow .f { font-family: var(--serif); font-size: 16px; color: var(--ink); font-variant-numeric: tabular-nums;
+    white-space: nowrap; line-height: 1.1; }
+  .srow .f small { font-family: var(--sans); font-size: 9.2px; color: var(--ink-3); margin-left: 1px; }
+  .srow .f i { display: block; white-space: nowrap; font-family: var(--sans); font-style: normal; font-size: 8.8px; color: var(--ink-3); margin-top: 3px; }
+  .trial { margin-top: 6px; font-size: 10.8px; }
+
+  /* --- Vision: the closing band. --slab is dark in both themes on the site,
+         so its ink is literal here exactly as it is in the site footer. ----- */
+  .vision { margin-top: 14px; background: var(--ink); border-radius: 6px; padding: 13px 20px 14px;
+    display: grid; grid-template-columns: 74px 1fr; gap: 14px; align-items: baseline; }
+  .vision .vk { font-size: 8.8px; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; color: #F87171; }
+  .vision p { font-family: var(--serif); font-size: 15px; line-height: 1.38; color: #fff; }
+
+  /* --- Footer --------------------------------------------------------------- */
+  .foot { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line); display: flex;
+    justify-content: space-between; gap: 24px; font-size: 8.4px; line-height: 1.5; color: var(--ink-3); }
+  .foot .r { white-space: nowrap; text-align: right; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="mast">
+    <div class="brand">
+      <svg viewBox="0 0 30 30" aria-hidden="true"><rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/><polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/></svg>
+      <div class="word">COMP<span>NINJA</span></div>
+    </div>
+    <div class="contact"><a href="https://compninja.co"><b>compninja.co</b></a><br><a href="mailto:info@compninja.co">info@compninja.co</a></div>
+  </header>
+
+  <section class="head">
+    <div class="eye">Run the company &middot; Organize the properties &middot; Value any building</div>
+    <h1>The operating system for real estate companies.</h1>
+    <p class="deck">One place for a real estate team&rsquo;s buildings, leases, contacts, conversations and private comps. Value any U.S. commercial property in about a minute, with every comp and its source shown.</p>
+  </section>
+
+  <div class="cols">
+
+    <!-- ===================== LEFT ===================== -->
+    <div class="col">
+
+      <div>
+        <div class="lab">Problem</div>
+        <h2>What a firm knows is scattered and slow to use</h2>
+        <ul class="pts">
+          <li><strong>It walks out the door.</strong> Comps live in personal spreadsheets, lease dates in inboxes, contacts in phones. When someone leaves, the firm loses what they knew.</li>
+          <li><strong>Valuations are slow.</strong> Pulling comps by hand takes hours, and the databases that speed it up are priced for big firms.</li>
+          <li><strong>Numbers arrive without proof.</strong> A value with no evidence under it does not survive a client or lender who pushes back.</li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="lab">The solution</div>
+        <h2>One system for the firm, with valuations that show their work</h2>
+                <div class="levels">
+          <div class="lv">
+            <div class="who"><div class="k">Individual</div><div class="t">Data</div></div>
+            <div class="body">Your private comp library. Import past deals from a spreadsheet, PDF or screenshot and they appear in your reports, labeled as yours, private until you share or publish them.</div>
+          </div>
+          <div class="lv">
+            <div class="who"><div class="k">Company</div><div class="t">Home</div></div>
+            <div class="body">The firm&rsquo;s shared page: its buildings, leases, contacts, deal conversations, and every report a colleague has shared. Colleagues see only what someone chooses to share.</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="lab">How it works</div>
+        <h2>From an address to a client-ready report</h2>
+        <ol class="steps">
+          <li><strong>Value it.</strong> Enter an address. In about a minute: a value range, the comps behind it on a map, and a source on every comp, with your own and your firm&rsquo;s comps blended in.</li>
+          <li><strong>File it.</strong> Add the property to the firm&rsquo;s buildings. Its sheet gathers the firm&rsquo;s reports, comps, leases and notes.</li>
+          <li><strong>Share it.</strong> Put the report on the firm&rsquo;s shelf, push chosen comps from your Data, and discuss the deal in Messages.</li>
+          <li><strong>Track it.</strong> Upcoming lease deadlines sit on one list, and The Board flags new comps in the markets you follow.</li>
+          <li><strong>Deliver it.</strong> Send the client a PDF or PowerPoint with your firm&rsquo;s logo, or a link you can revoke.</li>
+        </ol>
+      </div>
+
+    </div>
+
+    <!-- ===================== RIGHT ===================== -->
+    <div class="col">
+
+      <div class="ex">
+        <div class="excap"><span>Sample report &middot; 5 sale comps &middot; 24 months</span><span class="ill">Illustrative</span></div>
+        <div class="exsubj">
+          <div class="exaddr">21,600 SF industrial building</div>
+          <div class="exnote">Rancho Cucamonga, CA</div>
+        </div>
+        <div class="range">
+          <div class="rc"><div class="exlab">Low</div><div class="fig">$4,625,000</div><div class="psf">at $214/SF</div></div>
+          <div class="rc mid"><div class="exlab">Likely</div><div class="fig">$4,825,000</div><div class="psf">at $223/SF</div></div>
+          <div class="rc"><div class="exlab">High</div><div class="fig">$5,050,000</div><div class="psf">at $234/SF</div></div>
+        </div>
+        <div class="ctab">
+          <div class="cr h"><span>Comparable sale</span><span>Sold</span><span class="r">SF</span><span class="r">$/SF</span><span>Source</span></div>
+          <div class="cr"><span>9020 Center Ave</span><span>May &rsquo;26</span><span class="r">21,400</span><span class="r">$238</span><span><span class="badge b-v">Verified</span></span></div>
+          <div class="cr"><span>11215 4th St</span><span>Mar &rsquo;26</span><span class="r">18,750</span><span class="r">$229</span><span><span class="badge b-p">Public record</span></span></div>
+          <div class="cr"><span>8933 Utica Ave</span><span>Feb &rsquo;26</span><span class="r">24,100</span><span class="r">$216</span><span><span class="badge b-l">Listing</span></span></div>
+          <div class="cr"><span>10722 Arrow Route</span><span>Dec &rsquo;25</span><span class="r">19,900</span><span class="r">$213</span><span><span class="badge b-n">News</span></span></div>
+          <div class="cr"><span>12190 6th St</span><span>Nov &rsquo;25</span><span class="r">26,300</span><span class="r">$206</span><span><span class="badge b-e">Estimate</span></span></div>
+        </div>
+        <div class="exfoot">Likely: weighted median $223/SF &times; 21,600 SF. Newer, better&#8209;sourced comps weigh more. An automated estimate, not an appraisal.</div>
+      </div>
+
+      <div>
+        <div class="lab">Target audience</div>
+        <ul class="pts" style="margin-top:4px">
+          <li><strong>Real estate companies.</strong> Brokerages and development firms today; investors, property managers and lenders next.</li>
+          <li><strong>Brokers and analysts</strong> who keep their own comp book and need a number they can defend.</li>
+          <li><strong>Property owners</strong> asking what a building is worth. A free Broker Opinion of Value request lets us introduce them to a licensed local broker, bringing brokers new clients.</li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="lab">Revenue model</div>
+        <div class="stmt">
+          <div class="srow"><span class="k">Free</span><span class="f">$0</span><span>Three reports a month, every comp itemized, a three-year lookback.</span></div>
+          <div class="srow"><span class="k">Pro</span><span class="f">$49<small>/mo</small></span><span>Unlimited reports, ten-year lookback, private Data, whole-list valuation, branding.</span></div>
+          <div class="srow"><span class="k">Firm</span><span class="f">$39<small>/seat</small><i>per month</i></span><span>Pro for every seat, plus a shared shelf for the firm. One bill, minimum two seats.</span></div>
+        </div>
+        <p class="trial">Every new account starts with a 14-day Pro trial. No card.</p>
+      </div>
+
+    </div>
+  </div>
+
+  <section class="vision">
+    <div class="vk">Vision</div>
+    <p>Every real estate company runs on CompNinja: what it knows compounds instead of walking out the door, and every search makes the next valuation better grounded.</p>
+  </section>
+
+  <footer class="foot">
+    <div>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; when an owner needs an opinion of value, we connect them with a licensed local broker.</div>
+    <div class="r">&copy; 2026 CompNinja LLC</div>
+  </footer>
+
+</div>
+<script>
+  // build.js loads the page with ?measure and reads this back off the DOM:
+  // how much room each column has left above the footer (negative = it runs
+  // into it), and whether Inter actually loaded rather than Arial standing in.
+  if (location.search.indexOf("measure") !== -1) {
+    addEventListener("load", function () {
+      document.fonts.ready.then(function () {
+        var limit = document.querySelector(".vision").getBoundingClientRect().top - 14;
+        var cols = Array.prototype.map.call(document.querySelectorAll(".col"), function (c) {
+          var bottom = c.lastElementChild.getBoundingClientRect().bottom;
+          return { used: Math.round(bottom - c.getBoundingClientRect().top), spare: Math.round(limit - bottom) };
+        });
+        document.body.setAttribute("data-measure", JSON.stringify({
+          cols: cols, inter: document.fonts.check("12px Inter")
+        }));
+      });
+    });
+  }
+</script>
+</body>
+</html>

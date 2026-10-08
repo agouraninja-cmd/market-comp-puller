@@ -23,6 +23,8 @@ paths:
   - "sites-tab.js"
   - "test/sites.test.js"
   - "test/sites-run.test.js"
+  - "deal-wall.js"
+  - "test/deal-wall.test.js"
 ---
 # The broker vault and lead inbox
 
@@ -1284,3 +1286,57 @@ only: nothing about storage or import changed.
   `lot_acres` is a column.
 - Tests: the "Land is priced per acre" block at the end of
   `test/vault-page.test.js`.
+
+## The Board's deal wall (2026-10-07)
+
+The owner's pick "C, Deal wall" of the Board drafts
+(https://claude.ai/artifact/YXWid51XCmpwwyBxjTmsrY), from a partner's idea of
+a board of the properties you are trying to buy or build that says when a
+market turns good or bad for it. The Board tab (`#panelWatch`, the watchlist
+until 2026-10-06) is now two things:
+
+- **Market tiles** (`renderMarkets` in vault-page.js, `#mktSec`): each
+  followed market as a tile with a **Buying: Favorable / Mixed / Tough** pill
+  and the reasons under it, its new comps behind a fold, and Remove. The add
+  form opens on an empty Board and behind a "+ Add a market" tile otherwise.
+- **The deal wall** (`/deal-wall.js`, the global `DEALWALL`, mounted into
+  `#wallRoot` by `mountWall()` beside `loadMarkets()`): every `user_sites`
+  row on a buying stage or Owned as a photo card, stage tabs with counts and
+  the asking prices "in play", city chips, and a card that opens in place to
+  move the deal (any step, Pass, Bring it back), edit price, acres, notes and
+  dates, or remove it. The deck's "+ Add a property" (`#wallAddToggle`) opens
+  the add form.
+
+Rules a future editor will otherwise break:
+
+- **The deals are the Sites tab's rows.** Same table, same routes
+  (`/api/sites`, `requireSites`: Pro, then a database), same stage names
+  (`SITES.LABELS`), same validation (`sites.js`). The wall is for every Pro
+  member; a development firm keeps its Sites tab as the list of the same
+  rows. Closing a deal is `sites-tab.js`'s `makeOwned` flow, restated:
+  POST `/api/portfolio` first, then mark the row Owned with that
+  `portfolio_item_id` (`validatePatch` refuses Owned without one). A free
+  member gets the Pro door on the wall and keeps the market tiles.
+- **The buying read is computed, never typed.** `DEALWALL.buyingRead` takes
+  two signals: the feed's six-month median $/SF trend (±2% is flat) and the
+  market page's direction while `freshDirection` says it is fresh (the feed
+  item's `direction`, added to `buildWatchlistFeed` for this). Each is a
+  point toward the buyer or against; no signal is **no read**, never a
+  default. There is deliberately **no Building read**: with only these two
+  signals it would be the Buying read inverted, so it waits for supply,
+  construction-cost and borrowing-cost data. Copy says "conditions", the
+  tiles carry the not-advice line, and nothing says "buy now".
+- **Photos keep rule 7.** A deal's address goes only to our own POST
+  `/api/geocode` (Census behind it), in the body; the photo is Esri World
+  Imagery fetched by coordinates, the comp map's pin-popup source.
+  Coordinates are cached in the browser (`localStorage` `cnDealGeo1`); a
+  miss is stamped and retried after three days, because the route answers a
+  Census outage with the same `{}` as a real miss. `aerialTiles` is a ⚠
+  pair with index.html's `aerialTileSpec`, and a test runs both.
+- **Not built yet:** the Building read, the "turned on <date>" note, and the
+  alert email when a market's read turns (the drafts showed all three). They
+  need supply and cost signals and a stored history of each read.
+- Tests: `test/deal-wall.test.js` (the read, the wall's grouping, cards,
+  photo math, the privacy rule, add and close) and the "Board's deal wall"
+  block at the end of `test/vault-page.test.js` (markup, script order,
+  mount, tiles).

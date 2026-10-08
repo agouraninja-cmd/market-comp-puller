@@ -2595,10 +2595,16 @@ async function buildWatchlistFeed(user, ent, cutoffOf, opts) {
     // ignores keys it does not read, so this rides the shared feed shape
     // harmlessly.
     const marketPage = marketPageInfo(w.market, w.property_type);
+    // The market page's direction while it is fresh (freshDirection: one of
+    // expanding / flat / contracting, or null once 90 days old). The deal
+    // wall's buying read takes it as its second signal (deal-wall.js
+    // buyingRead); absent key = no fresh page = the read rests on prices alone.
+    const direction = marketPage ? freshDirection(getMarketPage(marketPage.slug), Date.now()) : null;
     out.push({
       id: w.id, market: w.market, property_type: w.property_type,
       median_psf, new_count: fresh.length,
       ...(marketPage ? { market_page: marketPage } : {}),
+      ...(direction ? { direction } : {}),
       ...(median_trend ? { median_trend } : {}),
       // Always present for a subscriber, including at zero — "nobody searched
       // this market in 30 days" is a true answer and a useful one, and an
@@ -30772,6 +30778,9 @@ const server = http.createServer((req, res) =>
     // so the same maxAge: 0 rule holds for the same reason.
     "/sites.js": { file: "sites.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     "/sites-tab.js": { file: "sites-tab.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // The deal wall on The Board (the global DEALWALL), mounted by the same
+    // inline script on the same terms.
+    "/deal-wall.js": { file: "deal-wall.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },

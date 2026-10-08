@@ -43,11 +43,22 @@
 //      them up — the same handoff the market pages use. The
 //      input carries NO name attribute on purpose: a named field would put a
 //      street address on GET /?auth=signup.
-//   4. THE SAMPLE REPORT IS ILLUSTRATIVE AND ITS ARITHMETIC HOLDS. The median
-//      of the five $/SF values IS $219, "Likely" is that median times 21,600
-//      SF, and Low and High are the cheapest and dearest comp times the same
-//      size. A visitor who checks it finds it holds, which is the entire pitch
-//      of the page it sits on. Keep the "Illustrative" label.
+//   4. THE SAMPLE REPORT IS ILLUSTRATIVE AND ITS ARITHMETIC HOLDS. Low, Likely
+//      and High are what valuation.js's valueFromComps returns for these five
+//      comps at 21,600 SF, the same call the real report makes: each comp
+//      weighted by its source tier and age (compWeight), the WEIGHTED 25th,
+//      50th and 75th percentile of $/SF, then heroRound to the nearest
+//      $25,000. Not the plain median and not the cheapest and dearest comp,
+//      which is what this rule claimed until 2026-10-07 while the page showed
+//      figures the product would never have produced. Dated mid-month as
+//      shown, no market trend, and the as-of date does not move the answer.
+//      Each $/SF is a whole dollar, and that dollar times 21,600 SF, after
+//      heroRound, is the figure beside it, so a visitor who checks finds it
+//      holds, which is the entire pitch of the page it sits on. The comps were
+//      SEARCHED for that property: change one and re-derive all three
+//      figures. test/home-page.test.js runs the real function and fails the
+//      build when they disagree. The subject is never one of its own comps.
+//      Keep the "Illustrative" label.
 // ---------------------------------------------------------------------------
 
 // The property types the report actually supports, in the design's order.
@@ -56,16 +67,25 @@
 // silently dropped on arrival.
 const HOME_TYPES = ["Industrial", "Office", "Retail", "Multifamily", "Land", "Residential"];
 
-// One illustrative comp set. The figures are internally honest; see rule 4.
+// One illustrative comp set and the range the product computes from it; see
+// rule 4. The badge class is the source tier compWeight reads (v verified,
+// p public record, li listing).
+const SAMPLE_ADDRESS = "8780 White Oak Ave, Rancho Cucamonga, CA";
 const SAMPLE_SIZE_SQFT = "21,600";
-const SAMPLE_MEDIAN = "$219";
 const SAMPLE_COMPS = [
-  ["9020 Center Ave", "May 26", "21,400", "$238", "v", "Verified &middot; via Ridgeline CRE"],
-  ["11215 4th St", "Mar 26", "18,750", "$226", "p", "Public record"],
-  ["8933 Utica Ave", "Feb 26", "24,100", "$219", "li", "Listing"],
+  ["9020 Center Ave", "May 26", "21,400", "$233", "v", "Verified &middot; via Ridgeline CRE"],
+  ["11215 4th St", "Mar 26", "18,750", "$223", "p", "Public record"],
+  ["8933 Utica Ave", "Feb 26", "24,100", "$218", "li", "Listing"],
   ["10722 Arrow Route", "Dec 25", "19,900", "$214", "p", "Public record"],
-  ["12190 6th St", "Nov 25", "26,300", "$208", "li", "Listing"],
+  ["12190 6th St", "Nov 25", "26,300", "$204", "li", "Listing"],
 ];
+// The weighted median is $219 while the plain median of the five is $218:
+// the newer, better-sourced comps above it pull it up a dollar.
+const SAMPLE_RANGE = {
+  low: { value: "$4,600,000", psf: "$213" },
+  mid: { value: "$4,725,000", psf: "$219" },
+  high: { value: "$4,900,000", psf: "$227" },
+};
 
 // The vault ledger under "For firms". Three rows, the first badged, because
 // the badge is here to TEACH the chip a broker meets inside their own report;
@@ -198,9 +218,12 @@ main.wrap{max-width:none;padding:0}
   text-transform:uppercase;color:var(--ink-3);border-top:0}
 .hmtr.med{border-top:2px solid var(--ink);font-weight:600;color:var(--ink)}
 /* The working, beside the median it multiplies. "≈" and not "=": 219 x 21,600
-   is 4,730,400 and the Likely figure is rounded, and a visitor who does the
-   sum should find the sign honest (rule 4). */
+   is 4,730,400 and the Likely figure is rounded to the nearest $25,000, and a
+   visitor who does the sum should find the sign honest (rule 4). */
 .hmtr .hmarith{font-weight:500;color:var(--ink-3)}
+/* "Weighted median of 5 sale comps" runs on into the empty Sold and SF cells
+   rather than wrapping in the address column at phone width. */
+.hmtr .hmmedlab{grid-column:span 3}
 .hmfoot{background:var(--wash);border-top:1px solid var(--hair);padding:14px 24px;font-size:13px;
   line-height:1.55;color:var(--ink-mute)}
 
@@ -417,18 +440,18 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<div class="hmcap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span>` +
     `<span class="ill">Illustrative</span></div>` +
     `<div class="hmsubj">` +
-    `<div class="hmaddr">9020 Center Ave, Rancho Cucamonga, CA</div>` +
+    `<div class="hmaddr">${esc(SAMPLE_ADDRESS)}</div>` +
     `<div class="hmchips"><span>Industrial</span><span>${SAMPLE_SIZE_SQFT} SF &middot; public record</span>` +
     `<span>24-month lookback</span><span>5 comparables</span></div>` +
     `</div>` +
     `<div style="padding:0 22px 6px" class="hmlab">What this building is worth &middot; from 5 comparable sales</div>` +
     `<div class="hmrange">` +
-    `<div class="hmrcell"><div class="hmlab">Low</div><div class="hmfig">$4,580,000</div>` +
-    `<div class="hmpsf">at $212/SF</div></div>` +
-    `<div class="hmrcell mid"><div class="hmlab">Likely</div><div class="hmfig">$4,730,000</div>` +
-    `<div class="hmpsf">at ${SAMPLE_MEDIAN}/SF &middot; comp median</div></div>` +
-    `<div class="hmrcell"><div class="hmlab">High</div><div class="hmfig">$5,140,000</div>` +
-    `<div class="hmpsf">at $238/SF</div></div>` +
+    `<div class="hmrcell"><div class="hmlab">Low</div><div class="hmfig">${SAMPLE_RANGE.low.value}</div>` +
+    `<div class="hmpsf">at ${SAMPLE_RANGE.low.psf}/SF</div></div>` +
+    `<div class="hmrcell mid"><div class="hmlab">Likely</div><div class="hmfig">${SAMPLE_RANGE.mid.value}</div>` +
+    `<div class="hmpsf">at ${SAMPLE_RANGE.mid.psf}/SF &middot; comp median</div></div>` +
+    `<div class="hmrcell"><div class="hmlab">High</div><div class="hmfig">${SAMPLE_RANGE.high.value}</div>` +
+    `<div class="hmpsf">at ${SAMPLE_RANGE.high.psf}/SF</div></div>` +
     `</div>` +
     `<div style="padding:22px">` +
     `<div class="hmlab" style="margin-bottom:10px">What&#39;s driving prices here</div>` +
@@ -440,10 +463,11 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<div class="hmscroll"><div class="hmtable">` +
     `<div class="hmtr head"><span>Address</span><span>Sold</span><span>SF</span><span>$/SF</span><span>Source</span></div>` +
     compRows +
-    `<div class="hmtr med"><span>Median of 5 sale comps</span><span></span><span></span>` +
-    `<span>${SAMPLE_MEDIAN}</span><span class="hmarith">&times; ${SAMPLE_SIZE_SQFT} SF &asymp; $4,730,000</span></div>` +
+    `<div class="hmtr med"><span class="hmmedlab">Weighted median of 5 sale comps</span>` +
+    `<span>${SAMPLE_RANGE.mid.psf}</span><span class="hmarith">&times; ${SAMPLE_SIZE_SQFT} SF &asymp; ${SAMPLE_RANGE.mid.value}</span></div>` +
     `</div></div></div>` +
-    `<div class="hmfoot">Your price and NOI never leave your browser.</div>` +
+    `<div class="hmfoot">Newer, better-sourced comps weigh more; Low and High bound the weighted ` +
+    `middle half. Your price and NOI never leave your browser.</div>` +
     `</div></section>` +
 
     // --- Band 3: the firm pitch --------------------------------------------
@@ -526,5 +550,8 @@ module.exports = {
   HOME_CSS,
   HOME_SEARCH_JS,
   HOME_TYPES,
-  SAMPLE_MEDIAN,
+  SAMPLE_ADDRESS,
+  SAMPLE_SIZE_SQFT,
+  SAMPLE_COMPS,
+  SAMPLE_RANGE,
 };

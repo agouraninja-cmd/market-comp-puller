@@ -2,6 +2,12 @@
   {
     "date": "2026-10-07",
     "type": "fix",
+    "title": "The home page's sample report now shows what the product would actually compute",
+    "details": "The sample report on the home page said its arithmetic holds, but its Low and High were the cheapest and dearest comp and its Likely was a plain median, while the real report weights each comp by source and age and takes the weighted middle half. Run through the real valuation, those five comps came out at $4,600,000 / $4,750,000 / $4,975,000, not the $4,580,000 / $4,730,000 / $5,140,000 the page showed. The comps now carry new $/SF figures, chosen so the real valuation returns Low $4,600,000 at $213/SF, Likely $4,725,000 at $219/SF and High $4,900,000 at $227/SF, and each one checks by hand: that whole-dollar $/SF times 21,600 SF, rounded, is the figure beside it. The median row says it is weighted, a footnote says newer, better-sourced comps weigh more, and the subject is no longer one of its own comps (it moved to 8780 White Oak Ave). A new test runs the real valuation against the page and fails the build if they ever disagree again."
+  },
+  {
+    "date": "2026-10-07",
+    "type": "fix",
     "title": "The home page stops selling Firm activity",
     "details": "The home page and the Brokers & Firms page still listed Firm activity, the deal board that left the app with the new one-map Home. Its tile now describes the map instead: the firm’s buildings, your deals and what you own in one place, each saying who can see it. The two server reads behind the old deal board and the old Your permits card are gone too, along with the banner photo the buildings list still worked out."
   },

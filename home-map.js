@@ -2,8 +2,10 @@
 // Home and Data drafts, the owner's pick on 2026-10-07: "One map").
 //
 // Home is one screen: a list on the left with tabs (Today, Properties,
-// Comps, Reports, People) and every property on a map on the right. This
-// file decides what goes in the lists; index.html draws them.
+// Comps, People) and a map on the right of every property, and of the
+// member's comps and the city's permits when they switch those on (2026-10-
+// 08; Reports left for Messages that day). This file decides what goes in
+// the lists and on the map; index.html draws them.
 //
 // Three rules carry the design, and each is tested:
 //
@@ -297,6 +299,101 @@
     };
   }
 
+  // ---- What the map shows (2026-10-08) -------------------------------------
+  // The owner's ask: the map "shows where the properties, comps and permits
+  // are, and you can filter what you want to see". Three layers, any mix on.
+  // The list's tabs choose the LIST and these choose the MAP; opening a tab
+  // whose rows are pins of a layer turns that layer on (tabLayer), so a row
+  // never opens a card over a map that hides its pin. The choice is kept per
+  // browser as JSON; anything unreadable is the default, Properties alone,
+  // which is how Draft C drew the switch and so the calm first map.
+  const LAYERS = ["properties", "comps", "permits"];
+  const LAYER_DEFAULT = Object.freeze({ properties: true, comps: false, permits: false });
+  function readLayers(raw) {
+    let o = raw;
+    if (typeof raw === "string") { try { o = JSON.parse(raw); } catch (_) { o = null; } }
+    const out = { ...LAYER_DEFAULT };
+    if (o && typeof o === "object") LAYERS.forEach((k) => { if (typeof o[k] === "boolean") out[k] = o[k]; });
+    return out;
+  }
+  // Today draws its own numbered pins whatever the layers say (they are its
+  // rows), and People has no pins, so neither turns anything on.
+  function tabLayer(tab) { return tab === "properties" ? "properties" : tab === "comps" ? "comps" : null; }
+
+  // A permit as a pin: GET /api/permits/map's filing (public record, from the
+  // sweep), cut to what its pin and card show. No place, no pin: the
+  // tracker's list still carries a filing the parcel layer could not place.
+  // The stage words are the tracker's own (⚠ permits-page.js STAGE_NAMES;
+  // test/home-map.test.js holds the two together), with the portal's raw
+  // status always shown beside them, the tracker's rule.
+  const PERMIT_STAGES = { open: "Open", attention: "Needs attention", approved: "Approved", issued: "Issued or finaled", ended: "Ended" };
+  // A portal prints "1450 S EAGLE RD"; the tracker shows "1450 S Eagle Rd",
+  // keeping directions, the state and anything with a digit (⚠ permits-page.js
+  // tidy(); test/home-map.test.js runs both on the same inputs). Display only:
+  // matching reads the raw text through addressKey, which ignores case.
+  function tidyCaps(s) {
+    s = str(s);
+    if (!s || /[a-z]/.test(s)) return s;
+    return s.replace(/[A-Z0-9][A-Z0-9'.&-]*/g, (w) => {
+      if (/^(N|S|E|W|NE|NW|SE|SW|ID|PO|US)$/.test(w)) return w;
+      if (/[0-9]/.test(w)) return w.toLowerCase();
+      return w.charAt(0) + w.slice(1).toLowerCase();
+    });
+  }
+  function permitPin(f) {
+    if (!f || f.id == null) return null;
+    const lat = num(f.lat), lng = num(f.lng);
+    if (lat == null || lng == null || (lat === 0 && lng === 0)) return null;
+    return {
+      id: str(f.id), number: str(f.permitNumber), type: str(f.type) || "Building permit",
+      what: str(f.projectName) || str(f.description), street: tidyCaps(street(f.address)), city: str(f.city),
+      status: str(f.status), stage: PERMIT_STAGES[f.stage] ? f.stage : "open", filed: str(f.appliedDate).slice(0, 10),
+      href: /^https?:\/\//i.test(str(f.sourceUrl)) ? str(f.sourceUrl) : "",
+      applicant: str(f.applicant), contractor: str(f.contractor),
+      board: f.onBoard && f.onBoard.address ? { id: f.onBoard.id, address: str(f.onBoard.address) } : null,
+      lat, lng,
+    };
+  }
+  function permitStageLabel(stage) { return PERMIT_STAGES[stage] || PERMIT_STAGES.open; }
+  // The property a permit was filed at: the same street line in the same
+  // city, the sweep's own rule (permit-filings.js matches the street line and
+  // the jurisdiction) restated over Home's rows. Strict, like it: "Rd" and
+  // "Road" are two streets, and a miss is a miss rather than a guess.
+  function permitAt(pin, rows) {
+    if (!pin || !pin.street || !pin.city) return null;
+    const key = addressKey(pin.street + ", " + pin.city);
+    return (Array.isArray(rows) ? rows : []).find((r) => r && addressKey(street(r.address) + ", " + town(r.address)) === key) || null;
+  }
+
+  // What the map says under the switch when a layer that is on has nothing
+  // to draw where the member is looking. Never a silent empty layer: a map
+  // with no permit pins must not read as "nothing was filed" when the truth
+  // is "we do not read this city" (permits.md, §7) or "the read failed".
+  // `comps` and `permits` are null while unread and false when the read
+  // failed; `show` says whether "Show them" can bring the pins into view.
+  function layerNotes({ layers = {}, comps = null, compsPlaced = 0, compsInView = 0,
+    permits = null, permitsFiled = 0, permitsInView = 0, cities = "", windowDays = 30 } = {}) {
+    const out = [];
+    if (layers.comps) {
+      if (comps === false) out.push({ layer: "comps", text: "Couldn't read your comps just now. Nothing has been lost. Try again in a moment.", show: false });
+      else if (Array.isArray(comps) && comps.length && !compsPlaced) out.push({ layer: "comps", text: "None of your comps has a map location yet.", show: false });
+      else if (compsPlaced && !compsInView) out.push({ layer: "comps", text: "None of your comps is in this part of the map.", show: true });
+    }
+    if (layers.permits) {
+      const where = str(cities) || "the cities CompNinja reads";
+      const days = `the last ${windowDays} days`;
+      if (permits === false) out.push({ layer: "permits", text: "Couldn't read permits just now. Try again in a moment.", show: false });
+      else if (Array.isArray(permits) && !permits.length) {
+        out.push({ layer: "permits", show: false, text: permitsFiled
+          ? `None of the ${permitsFiled} permits filed in ${where} in ${days} has a map location yet.`
+          : `No commercial permits were filed in ${where} in ${days}.` });
+      } else if (Array.isArray(permits) && !permitsInView) {
+        out.push({ layer: "permits", show: true, text: `No permits filed in this part of the map in ${days}. CompNinja reads permits in ${where}.` });
+      }
+    }
+    return out;
+  }
+
   // The line under the greeting: one sentence of status, never a description
   // of the page (workspace.md's rule for the banner it replaces).
   function statusLine({ items = [], hasFirm = false, propertyCount = 0 } = {}) {
@@ -308,5 +405,6 @@
   }
 
   return { LEASE_DAYS, DEAL_DAYS, BOV_DAYS, WEEK_DAYS, STAGES, addressKey, street, place, town, daysUntil, shortDate, inDays, money,
-    stageLabel, stageStep, lastValue, properties, scopeOf, dealsHref, addHref, agenda, thisWeek, compRow, statusLine };
+    stageLabel, stageStep, lastValue, properties, scopeOf, dealsHref, addHref, agenda, thisWeek, compRow, statusLine,
+    LAYERS, LAYER_DEFAULT, readLayers, tabLayer, PERMIT_STAGES, tidyCaps, permitPin, permitStageLabel, permitAt, layerNotes };
 });

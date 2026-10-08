@@ -642,14 +642,16 @@ test("bare environment", async (t) => {
     // because it is a link on the server-rendered pages and a button in the
     // app, where it opens a panel instead of navigating.
     // Draft C of the Home and Data drafts (the owner's pick, 2026-10-07) made
-    // the rail five places: Home, Messages, Reports, Markets, Permits. The
-    // vault and the comp-report tool stopped being rows -- they are tabs and
-    // buttons of Home now -- which the two asserts after the loop pin.
+    // the rail five places and took the vault off it (its deals, holdings
+    // and comps are tabs of Home), which the assert after the loop pins. On
+    // 2026-10-08 (owner's call) Reports left (it only opened a tab of Home;
+    // its reports are Messages' now) and Comp report came back under Tools:
+    // Home, Messages | Markets, Comp report, Permits.
     const ROWS = [
       ["Home", /<span class="nvl">Home</],
       ["Messages", /<a [^>]*href="\/messages"/],
-      ["Reports", /<a [^>]*href="\/desk#reports"/],
       ["Markets", /<a [^>]*href="\/markets"/],
+      ["Comp report", /<a (?![^>]*class="btn sm")[^>]*href="\/bulk"/],
       ["Permits", /<a [^>]*href="\/permits"/],
     ];
     for (const page of ["/", "/markets", "/vault"]) {
@@ -676,7 +678,7 @@ test("bare environment", async (t) => {
         last = at;
       }
       assert.ok(!/<a [^>]*href="\/vault"/.test(rows), page + " still has a Data row in the rail");
-      assert.ok(!/<a (?![^>]*class="btn sm")[^>]*href="\/bulk"/.test(rows), page + " still has a Comp report row in the rail");
+      assert.ok(!/href="\/desk#reports"/.test(rows), page + " still has a Reports row in the rail");
     }
   });
 
@@ -772,13 +774,16 @@ test("bare environment", async (t) => {
       "throws and takes the whole script with it: " + missing.join(", "));
   });
 
-  // The rail lost both entitlement-gated rows on 2026-10-07 (Draft C): the
-  // vault and the comp-report tool are reached from Home's tabs and buttons.
-  // What must survive is that the vault's own flag still decides what it
-  // gates in this file.
-  await t.test("the app's rail has no Data or Comp report row, and the vault's flag still gates what it gates", async () => {
+  // The rail lost both entitlement-gated rows on 2026-10-07 (Draft C). The
+  // comp-report tool came back on 2026-10-08 as a row for EVERY member,
+  // never hidden and hydrated the way it was before Draft C: nothing on Home
+  // runs a report any more, so a row hidden from a free member would leave
+  // them no door, and /bulk answers them with its upgrade card. What must
+  // survive is that the vault's own flag still decides what it gates here.
+  await t.test("the app's rail has no Data row, Comp report is everyone's, and the vault's flag still gates what it gates", async () => {
     const app = await (await fetch(srv.base + "/")).text();
-    assert.ok(!app.includes('id="menuBulkLink"'), "the Comp report row is back in the rail");
+    assert.ok(!app.includes('id="menuBulkLink"'), "the hidden-until-hydrated Comp report row is back");
+    assert.ok(!/id="navBulkLink"[^>]*\bhidden\b/.test(app), "the Comp report row ships hidden");
     assert.ok(!app.includes('id="menuVaultLink"'), "the Data row is back in the rail");
     // canUseVault still gates something in this file -- creating a hub
     // (canCreateHub) -- so the two flags are provably separate answers rather

@@ -290,7 +290,11 @@ test("firm messaging, end to end", async (t) => {
     try {
       const r = await fetch(solo.srv.base + "/api/messages", as(BRAD));
       assert.equal(r.status, 403);
-      assert.equal((await r.json()).code, "no_firm");
+      const j = await r.json();
+      assert.equal(j.code, "no_firm");
+      // Since 2026-10-08 that answer opens the page (Reports is theirs), and
+      // it says whether a deal room may be started from a link they sent.
+      assert.equal(typeof j.canAttachComps, "boolean", "the no-firm answer says nothing about deal rooms");
     } finally { await solo.stop(); }
   });
 

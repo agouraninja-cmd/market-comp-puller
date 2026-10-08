@@ -38,6 +38,18 @@ function esc(s) {
   });
 }
 
+// Messages' Reports view (2026-10-08) runs report-inbox.js's rules: read once
+// here and emitted INSIDE the page's one script, where it sets REPORTINBOX.
+// One copy, the one npm test runs, and no second request for the page to
+// wait on or to fail.
+const fs = require("fs");
+const path = require("path");
+const REPORT_INBOX_SRC = fs.readFileSync(path.join(__dirname, "report-inbox.js"), "utf8");
+// The firm shelf's saved view per shop kind (a development shop opens on
+// Land), from org-access.js's own map: the server's copy, never a hand copy.
+const ORG = require("./org-access");
+const SHELF_SAVED_VIEW = Object.fromEntries(Object.entries(ORG.SHOP_COPY).map(([k, v]) => [k, v.shelfType || ""]));
+
 // The bin on a firm row and in a conversation's header. One copy: the
 // stylesheet's markup and the client script's row builder both draw it.
 const BIN_SVG = '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" ' +
@@ -86,7 +98,7 @@ function renderMessagesBody(boot) {
 .msg-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);min-height:60px}
 .msg-head h2{margin:0;font-size:15px;font-weight:600;color:var(--ink);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.msg-head .sub{font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msg-head .sub{font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;max-width:none}
 .msg-grow{flex:1;min-width:0}
 .msg-btn{appearance:none;border:1px solid var(--edge);background:var(--card);color:var(--ink);
   border-radius:6px;padding:6px 11px;font-size:13px;font-weight:500;cursor:pointer;line-height:1.4}
@@ -336,6 +348,62 @@ function renderMessagesBody(boot) {
 
 .msg-hide{display:none!important}
 
+/* --- Chats and Reports (2026-10-08) -------------------------------------- */
+/* Two lists in one column. data-view on the page says which shows; the chat
+   code rewrites the page's className whole (on-thread), so the view can never
+   live there. */
+.msg-views{display:flex;gap:2px;min-width:0}
+.msg-views button{appearance:none;display:inline-flex;align-items:center;gap:6px;border:0;background:none;
+  padding:6px 10px;border-radius:6px;font:inherit;font-size:14.5px;font-weight:600;color:var(--ink-3);cursor:pointer;white-space:nowrap}
+.msg-views button:hover{color:var(--ink);background:var(--wash)}
+.msg-views button[aria-selected="true"]{color:var(--ink);background:var(--wash-2)}
+.msg-views button:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
+.msg-vn{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red-fill);color:#fff;
+  font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
+.msg-vn:empty{display:none}
+.msg-page[data-view="reports"] #msgThreads,.msg-page[data-view="reports"] #msgNewBtn,
+.msg-page[data-view="reports"] #msgNewPanel,.msg-page[data-view="reports"] #msgMain{display:none!important}
+.msg-page:not([data-view="reports"]) #msgReports,.msg-page:not([data-view="reports"]) #msgRMain,
+.msg-page:not([data-view="reports"]) #msgShelfType{display:none!important}
+.msg-search{display:flex;gap:8px}
+.msg-search input{flex:1;min-width:0}
+.msg-search select{flex:0 0 auto;max-width:46%;box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;
+  background:var(--paper);color:var(--ink);font:inherit;font-size:13px;padding:0 6px}
+/* A report row is a chat row: the avatar is who it came from (or a link for
+   one you sent), the name is the street, the line under it says what it is. */
+.msg-av.link{background:var(--wash-2);color:var(--ink-2);border:1px solid var(--edge)}
+.msg-av.link svg{display:block}
+.msg-row.is-off .msg-name,.msg-row.is-off .msg-prev{color:var(--ink-faint)}
+.msg-new{flex:0 0 auto;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  color:#fff;background:var(--red-fill);border-radius:4px;padding:2px 6px;line-height:1.3}
+.msg-sect .msg-count{letter-spacing:0;color:var(--ink-3);background:var(--wash);border-radius:9px;padding:0 6px;
+  line-height:16px;margin-left:6px;font-weight:600}
+.msg-sline{padding:0 14px 8px;font-size:12px;color:var(--ink-3)}
+.msg-sline.bad{color:var(--red)}
+/* The open report. */
+.msg-rbody{flex:1;overflow-y:auto;min-height:0;padding:20px 22px 28px}
+.msg-rfacts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:7px 18px;margin:0 0 20px;font-size:13.5px}
+.msg-rfacts dt{color:var(--ink-3)}
+.msg-rfacts dd{margin:0;color:var(--ink);overflow-wrap:anywhere}
+.msg-racts{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 20px}
+.msg-racts a.msg-btn{text-decoration:none;display:inline-flex;align-items:center}
+.msg-rsec{border-top:1px solid var(--hair);padding-top:14px;margin-top:4px}
+.msg-rsec h3{margin:0 0 10px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+.msg-rp{display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid var(--hair);font-size:13px}
+.msg-rp:last-child{border-bottom:0}
+.msg-rp .who{flex:1;min-width:0;overflow-wrap:anywhere;color:var(--ink)}
+.msg-rp .st{font-size:12px;color:var(--ink-3);white-space:nowrap}
+.msg-rp .st.ok{color:var(--ok-text)}
+.msg-rbody textarea{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;padding:8px 10px;
+  font:inherit;font-size:13px;background:var(--paper);color:var(--ink);resize:vertical;min-height:64px;margin:4px 0 8px}
+.msg-rnote{font-size:12.5px;line-height:1.5;color:var(--ink-3);margin:0 0 12px}
+.msg-rnote.bad{color:var(--red);font-weight:500}
+.msg-rbody .msg-confirm{border:1px solid var(--edge);border-radius:8px;margin:0 0 16px}
+.msg-rlink{display:flex;gap:6px;align-items:center;margin:6px 0}
+.msg-rlink span{font-size:12.5px;color:var(--ink-2);min-width:0;overflow-wrap:anywhere}
+.msg-rlink input{flex:1;min-width:120px;box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;padding:5px 8px;
+  font:inherit;font-size:12px;background:var(--paper);color:var(--ink)}
+
 /* Below 900px the two panes become one. .msg-page.on-thread is what says
    which of them is showing — the reader's own navigation, not the viewport. */
 @media (max-width:900px){
@@ -345,7 +413,7 @@ function renderMessagesBody(boot) {
   .msg-page.on-thread .msg-side{display:none}
   .msg-page.on-thread .msg-main{display:flex}
 }
-@media (min-width:901px){ #msgBack{display:none} }
+@media (min-width:901px){ #msgBack,#msgRBack{display:none} }
 </style>
 
 <!-- THIS IS THE READER'S INBOX, not the firm's noticeboard (owner's, 2026-09-01).
@@ -358,27 +426,49 @@ function renderMessagesBody(boot) {
   <!-- ONE heading. The eyebrow above this said Messages too, directly over an
        h1 saying Messages, under a rail row saying Messages. -->
   <h1 style="margin:0 0 4px;font-size:26px;letter-spacing:-.01em">Messages</h1>
-  <p style="margin:0;color:var(--ink-2);max-width:62ch;font-size:14px;line-height:1.6">
+  <!-- Reports joined on 2026-10-08, from Home's Reports tab: a shared report
+       is correspondence too, somebody sent it to somebody. -->
+  <p style="margin:0;color:var(--ink-2);max-width:66ch;font-size:14px;line-height:1.6">
     Message the people you work with, and the people outside your firm you
     share comps with. Anything you send is kept in the conversation, so a deal
-    you talk about stays on the record instead of in somebody's text messages.
+    you talk about stays on the record. Reports holds every comp report sent
+    to you, shared with your firm, or sent by you.
   </p>
 </section>
 
 <div class="msg-page" id="msgPage" hidden>
   <aside class="msg-side">
-    <!-- ONE list (owner's, 2026-09-01). There was a People tab beside this
-         one, listing the firm; it went because New already searches the same
-         people and a directory you have to switch views to reach is a second
-         answer to the same question. Chats is a LABEL now, not a tab — a tab
-         with one option is a button that does nothing. -->
+    <!-- Two lists since 2026-10-08: Chats, and Reports (the firm's shelf,
+         what was sent to you and the links you sent, which were Home's
+         Reports tab until that day). Chats was a LABEL from 2026-09-01, when a
+         People tab beside it went (New already searches the same people);
+         with a second list it is a tab again, because a tab with two options
+         does something. Which list shows is the page's data-view, never its
+         className, which the chat code rewrites whole. -->
     <div class="msg-head">
-      <h2 id="msgSideChats">Chats</h2>
+      <div class="msg-views" role="tablist" aria-label="Messages">
+        <button type="button" role="tab" id="msgViewChats" aria-selected="true" aria-controls="msgThreads">Chats<span class="msg-vn" id="msgViewChatsN"></span></button>
+        <button type="button" role="tab" id="msgViewReports" aria-selected="false" aria-controls="msgReports" tabindex="-1">Reports<span class="msg-vn" id="msgViewReportsN"></span></button>
+      </div>
       <span class="msg-grow"></span>
       <button class="msg-btn sm" id="msgNewBtn" type="button">New</button>
     </div>
-    <div class="msg-search"><input id="msgFilter" type="search" placeholder="Search" autocomplete="off"></div>
-    <div class="msg-threads" id="msgThreads"></div>
+    <div class="msg-search"><input id="msgFilter" type="search" placeholder="Search" autocomplete="off">
+      <!-- The shelf's type filter: Reports only, and only once the shelf is
+           long enough to need one (report-inbox.js MIN_FILTER). It narrows
+           the firm's shelf and nothing else. -->
+      <select id="msgShelfType" class="msg-hide" aria-label="Show the firm shelf's reports of one type">
+        <option value="">Shelf: every type</option>
+        <option value="Industrial">Shelf: Industrial</option>
+        <option value="Office">Shelf: Office</option>
+        <option value="Retail">Shelf: Retail</option>
+        <option value="Multifamily">Shelf: Multifamily</option>
+        <option value="Land">Shelf: Land</option>
+        <option value="Residential">Shelf: Residential</option>
+      </select>
+    </div>
+    <div class="msg-threads" id="msgThreads" role="tabpanel" aria-labelledby="msgViewChats"></div>
+    <div class="msg-threads" id="msgReports" role="tabpanel" aria-labelledby="msgViewReports"></div>
     <!-- PEOPLE FIRST. The box searches colleagues; it used to be a channel
          name with "leave blank for a direct message" under it, so typing a
          label for a conversation with one person silently made a CHANNEL
@@ -491,6 +581,20 @@ function renderMessagesBody(boot) {
       </div>
     </div>
   </div>
+
+  <!-- One report, opened from the Reports list (2026-10-08): who sent it,
+       who can open it, and what can be done with it. The second right-hand
+       pane; data-view decides which of the two shows. -->
+  <div class="msg-main msg-rmain" id="msgRMain">
+    <div class="msg-head">
+      <button class="msg-btn sm" id="msgRBack" type="button" aria-label="Back to reports">‹</button>
+      <div class="msg-grow" style="min-width:0">
+        <h2 id="msgRTitle">Select a report</h2>
+        <div class="sub" id="msgRSub"></div>
+      </div>
+    </div>
+    <div class="msg-rbody" id="msgRBody"></div>
+  </div>
 </div>
 
 <!-- One menu and one About card for the whole page, placed by the script
@@ -504,6 +608,7 @@ function renderMessagesBody(boot) {
 
 <script>
 (function(){
+${REPORT_INBOX_SRC}
   var BOOT = ${bootJson};
   var $ = function(id){ return document.getElementById(id); };
   var state = {
@@ -542,7 +647,12 @@ function renderMessagesBody(boot) {
     // what went wrong with the last one.
     renameKey: "", renameBar: false, renaming: "", renErr: "",
     // Closed deal rooms are folded under one heading until this is true.
-    showClosed: false
+    showClosed: false,
+    // Which list shows (2026-10-08): "chats" or "reports". listed is true
+    // once the first list read has answered (the firm, which the shelf's read
+    // needs, comes from it); noFirm when that answer was "you are in no
+    // firm", which since Reports joined is a page, not a wall.
+    view: "chats", listed: false, noFirm: false
   };
   var BIN = ${JSON.stringify(BIN_SVG)};
   var DOTS = ${JSON.stringify(DOTS_SVG)};
@@ -1430,6 +1540,16 @@ function renderMessagesBody(boot) {
         !all.some(function(t){ return t.id === state.openId; })) all.unshift(state.openRow);
     var list = all.filter(function(t){ return threadMatches(t, q); });
     var ext = state.external.filter(function(t){ return externalMatches(t, q); });
+    if (state.noFirm) {
+      // In no firm and in no deal room. The wall this used to be, as the
+      // Chats list's own empty state, so Reports beside it still works.
+      $("msgThreads").innerHTML =
+        '<div class="msg-empty"><h3>Chats are for your firm</h3>' +
+        '<p>Start a firm, or accept an invitation to one, to message the people you work with. ' +
+        'Reports sent to you are under Reports.</p>' +
+        '<p><a class="msg-btn" href="/desk?firm=1">Start a firm</a> <a class="msg-btn" href="/brokers-firms">How firms work</a></p></div>';
+      return;
+    }
     if (!all.length && !state.external.length) {
       $("msgThreads").innerHTML =
         '<div class="msg-empty"><h3>No conversations yet</h3>' +
@@ -1867,6 +1987,9 @@ function renderMessagesBody(boot) {
   function tick(){
     if (document.hidden) return;
     if (Date.now() - state.lastActive > IDLE_MS) return;
+    // In Reports the list is read for its counts and nothing is opened: a
+    // conversation polled while nobody is looking at it would be marked read.
+    if (state.view === "reports") { refreshList(true); return; }
     if (state.tab !== "chat") return;
     if (state.openKind === "external") readExternal(false); else readThread(false);
     refreshList(true);
@@ -1888,6 +2011,26 @@ function renderMessagesBody(boot) {
       if (seq <= state.staleBefore) return;
       if (o.s === 401) { gate('<h3>Please sign in</h3><p>Messages are part of your firm\\'s account.</p>' +
         '<p><a class="msg-btn" href="/?auth=signin">Sign in</a></p>'); return; }
+      if (o.s === 403 && o.j && o.j.code === "no_firm") {
+        // No firm and no deal rooms: since Reports joined (2026-10-08) that
+        // is a page, not a wall. Reports sent to them and the links they sent
+        // are theirs whether or not they have a firm; Chats says what a firm
+        // would give them.
+        state.listed = true;
+        state.noFirm = true;
+        state.firm = null;
+        state.canAttach = o.j.canAttachComps === true;
+        state.threads = [];
+        state.external = [];
+        state.people = [];
+        ungate();
+        $("msgNewBtn").className = "msg-btn sm msg-hide";
+        $("msgFirmLine").textContent = "";
+        applyComposerMode();
+        renderThreads();
+        syncViewCounts();
+        return;
+      }
       if (o.s === 403) { gate('<h3>Messages are for your firm</h3><p>' + esc((o.j && o.j.error) || "") + '</p>' +
         '<p><a class="msg-btn" href="/desk">Go to Home</a> <a class="msg-btn" href="/brokers-firms">How firms work</a></p>'); return; }
       if (o.s !== 200) {
@@ -1914,6 +2057,8 @@ function renderMessagesBody(boot) {
         return String(b.lastMessageAt || "").localeCompare(String(a.lastMessageAt || ""));
       });
       ungate();
+      state.listed = true;
+      state.noFirm = false;
       // NO FIRM, AND STILL A PAGE (2026-09-02): a client who was invited into
       // a deal room by email and signed up with that address belongs here,
       // and everything on this column that only makes sense inside a firm
@@ -1935,6 +2080,9 @@ function renderMessagesBody(boot) {
       }
       applyComposerMode();
       renderThreads();
+      syncViewCounts();
+      // A report's deal-room door follows the rooms this read just listed.
+      if (state.view === "reports" && rep.loadedAt) renderReports();
     });
   }
 
@@ -2244,7 +2392,436 @@ function renderMessagesBody(boot) {
     });
   }
 
+  // --- Reports (2026-10-08) ------------------------------------------------
+  // Home's Reports tab, moved here: the firm's shelf, what was sent to the
+  // reader and the links they sent, as one list beside the chats. What is in
+  // the list is report-inbox.js (REPORTINBOX, emitted at the top of this
+  // script and tested on its own); this half reads, draws and acts. Every
+  // action calls the route the tab's buttons called (revoke, the viewer
+  // list, a deal room from a report), so who may do what did not move.
+  // Everything a person typed (an address, a name, an email) goes through
+  // esc(), this page's standing rule.
+  var rep = {
+    shares: null,  // GET /api/shares: null while unread, false when the read failed
+    shelf: null,   // GET /api/org/shelf: null while unread, false failed, "none" with no firm
+    loadedAt: 0, loading: null,
+    rows: {},      // every row by "kind:id", whatever the search shows
+    sel: "",       // the open report's key
+    typeTouched: false,
+    confirm: "", busy: "", err: "", editing: false,
+    hub: null,     // a deal room just started from the open report
+    copied: ""
+  };
+  var LINK_SVG = '<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 11.5l3-3"/>' +
+    '<path d="M7 9.5l-1.8 1.8a2.5 2.5 0 0 0 3.5 3.5L10.5 13"/><path d="M13 10.5l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L9.5 7"/></svg>';
+  // The shelf's saved view per shop kind, from org-access.js on the server.
+  var SHELF_SAVED = ${JSON.stringify(SHELF_SAVED_VIEW)};
+  function streetOf(a){ return String(a || "").split(",")[0].trim(); }
+  function restOf(a){ return String(a || "").split(",").slice(1).join(",").trim(); }
+  function longDay(iso){
+    var t = Date.parse(iso || "");
+    return isFinite(t) ? new Date(t).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : "";
+  }
+
+  // Both reads at once, and the shelf only for a member of a firm (the list
+  // read is what says which firm). A failed read is said as such, never drawn
+  // as an empty list.
+  function loadReports(){
+    if (rep.loading) return rep.loading;
+    var firm = state.firm;
+    var shares = api("GET", "/api/shares").then(function(o){
+      rep.shares = o.s === 200 && o.j ? o.j : false;
+    }, function(){ rep.shares = false; });
+    var shelf = firm && firm.id
+      ? api("GET", "/api/org/shelf?id=" + encodeURIComponent(firm.id)).then(function(o){
+          rep.shelf = o.s === 200 && o.j ? o.j : false;
+        }, function(){ rep.shelf = false; })
+      : Promise.resolve().then(function(){ rep.shelf = "none"; });
+    rep.loading = Promise.all([shares, shelf]).then(function(){
+      rep.loading = null;
+      rep.loadedAt = Date.now();
+      renderReports();
+      renderReportDetail();
+      syncViewCounts();
+    });
+    return rep.loading;
+  }
+  function reloadReports(){
+    rep.loadedAt = 0;
+    return loadReports();
+  }
+
+  // The three groups as the reader is looking at them now: the search box
+  // and the shelf's type filter applied, and every row by key whatever they
+  // hide, so an open report stays open while a search is typed.
+  function repLists(){
+    var q = ($("msgFilter").value || "").trim();
+    var sh = rep.shares || {};
+    var shelfOk = rep.shelf && typeof rep.shelf === "object";
+    var items = shelfOk ? (rep.shelf.items || []) : [];
+    var firmId = state.firm && shelfOk ? state.firm.id : "";
+    var received = rep.shares ? REPORTINBOX.received(sh.sharedWithMe, state.external) : [];
+    var sent = rep.shares ? REPORTINBOX.sent(sh.mine, firmId) : [];
+    var type = REPORTINBOX.shelfType({ total: items.length, touched: rep.typeTouched,
+      picked: $("msgShelfType").value, saved: SHELF_SAVED[state.firm ? state.firm.kind : ""] || "" });
+    var shelf = REPORTINBOX.shelf(items, { q: q, type: type });
+    var rows = {};
+    received.concat(REPORTINBOX.shelf(items).rows, sent).forEach(function(r){ rows[r.kind + ":" + r.id] = r; });
+    rep.rows = rows;
+    return {
+      q: q, type: type, shelf: shelf, shelfItems: items.length,
+      receivedAll: received, sentAll: sent,
+      received: received.filter(function(r){ return REPORTINBOX.matches(r, q); }),
+      sent: sent.filter(function(r){ return REPORTINBOX.matches(r, q); })
+    };
+  }
+  function reportRowHtml(r){
+    var key = r.kind + ":" + r.id;
+    var av, sub, extra = "";
+    if (r.kind === "in") {
+      av = '<span class="msg-av">' + esc(initial(r.from || "?")) + '</span>';
+      sub = [r.type, r.from ? "from " + r.from : ""].filter(Boolean).join(" \\u00b7 ");
+      if (r.isNew) extra = '<span class="msg-new">New</span>';
+    } else if (r.kind === "shelf") {
+      av = '<span class="msg-av">' + esc(initial(r.mine ? "You" : (r.sharedBy || "?"))) + '</span>';
+      sub = [r.type, r.mine ? "shared by you" : (r.sharedBy ? "shared by " + r.sharedBy : "")].filter(Boolean).join(" \\u00b7 ");
+    } else {
+      av = '<span class="msg-av link">' + LINK_SVG + '</span>';
+      sub = r.audience.label + (r.audience.sub ? " \\u00b7 " + r.audience.sub : "");
+    }
+    return '<button class="msg-row' + (r.revoked ? " is-off" : "") + (r.isNew ? " is-unread" : "") + '" type="button"' +
+      ' data-rep="' + esc(key) + '"' + (rep.sel === key ? ' aria-current="true"' : "") + '>' + av +
+      '<span class="msg-rowbody"><span class="msg-rowtop"><span class="msg-name">' + esc(streetOf(r.address) || "Untitled report") + '</span>' +
+      '<span class="msg-when">' + esc(when(r.date)) + '</span></span>' +
+      '<span class="msg-prev">' + esc(sub) + '</span></span>' + extra + '</button>';
+  }
+  function sectHtml(label, n){
+    return '<div class="msg-sect">' + esc(label) + (n ? '<span class="msg-count">' + n + '</span>' : "") + '</div>';
+  }
+  function renderReports(){
+    var box = $("msgReports");
+    if (rep.shares === null) { box.innerHTML = '<div class="msg-empty">Loading your reports\\u2026</div>'; return; }
+    var L = repLists();
+    var sel = $("msgShelfType");
+    sel.className = L.shelf.filters ? "" : "msg-hide";
+    sel.value = L.type;
+    var firmName = state.firm ? (state.firm.name || "Your firm") : "";
+    var html = "";
+    if (rep.shares === false) {
+      html += '<div class="msg-sline bad" style="padding-top:12px">Couldn\\u2019t load your shared reports just now. Nothing has been lost. Refresh in a moment.</div>';
+    }
+    // 1. Sent to you: the one group that asks something of the reader.
+    if (L.received.length) {
+      html += sectHtml("Sent to you", L.receivedAll.length);
+      L.received.forEach(function(r){ html += reportRowHtml(r); });
+    }
+    // 2. The firm's shelf. Its counts are the whole shelf's; an empty shelf
+    // invites a share, and a filter that empties it says so instead.
+    var shelfShown = false;
+    if (state.firm && rep.shelf === false) {
+      html += sectHtml(firmName + "\\u2019s shelf") +
+        '<div class="msg-sline bad">Couldn\\u2019t load the firm\\u2019s shelf just now. Nothing has been lost. Refresh in a moment.</div>';
+      shelfShown = true;
+    } else if (state.firm && rep.shelf && typeof rep.shelf === "object" &&
+        (L.shelf.rows.length || (!L.shelf.total && !L.q) || (L.shelf.noMatch && L.type))) {
+      shelfShown = true;
+      // The count on the heading is the whole shelf's; this line speaks only
+      // when it has something to add.
+      html += sectHtml(firmName + "\\u2019s shelf", L.shelf.total);
+      var said = [];
+      if (!L.shelf.total) said.push("Nobody at " + firmName + " has shared a report yet. Open a report and use Share, then My firm, and it lands here for everyone.");
+      else if (L.shelf.noMatch) said.push("Nothing on the shelf matches that.");
+      else if (L.shelf.count) said.push("Showing " + L.shelf.count + (L.type ? ", " + L.type + " only" : ""));
+      if (rep.shelf.truncated) said.push("The most recent 1,000 reports.");
+      if (said.length) html += '<div class="msg-sline">' + esc(said.join(" ")) + '</div>';
+      L.shelf.rows.forEach(function(r){ html += reportRowHtml(r); });
+    }
+    // 3. Sent by you.
+    if (L.sent.length) {
+      var live = L.sentAll.filter(function(r){ return !r.revoked; }).length;
+      html += sectHtml("Sent by you", L.sentAll.length);
+      if (live !== L.sentAll.length) html += '<div class="msg-sline">' + live + " live \\u00b7 " + (L.sentAll.length - live) + " turned off</div>";
+      L.sent.forEach(function(r){ html += reportRowHtml(r); });
+    }
+    var anything = L.receivedAll.length || L.shelf.total || L.sentAll.length;
+    if (!anything && rep.shares !== false && !shelfShown) {
+      html = '<div class="msg-empty"><h3>No reports yet</h3><p>A comp report someone sends you, one shared with your firm, ' +
+        'and every link you send land here. To run one, open <a href="/bulk">Comp report</a> under Tools, then use Share.</p></div>';
+    } else if (anything && !L.received.length && !L.sent.length && !L.shelf.rows.length && !shelfShown) {
+      html += '<div class="msg-empty">Nothing matches that.</div>';
+    }
+    box.innerHTML = html;
+  }
+
+  function factsHtml(list){
+    var h = '<dl class="msg-rfacts">';
+    list.forEach(function(f){ if (f[1]) h += '<dt>' + esc(f[0]) + '</dt><dd>' + esc(f[1]) + '</dd>'; });
+    return h + '</dl>';
+  }
+  function renderReportDetail(){
+    var r = rep.sel ? rep.rows[rep.sel] : null;
+    if (!r) {
+      $("msgRTitle").textContent = "Select a report";
+      $("msgRSub").textContent = "";
+      $("msgRBody").innerHTML = '<div class="msg-empty"><h3>' + (rep.sel ? "That report is not on your list any more" : "Select a report") + '</h3>' +
+        '<p>A report opens in a new tab, with its map, its comps and the value they add up to.</p></div>';
+      return;
+    }
+    $("msgRTitle").textContent = streetOf(r.address) || "Report";
+    $("msgRSub").textContent = [restOf(r.address), r.type].filter(Boolean).join(" \\u00b7 ");
+    var open = '<a class="msg-btn primary" href="' + esc(r.url) + '" target="_blank" rel="noopener noreferrer">Open the report \\u2197</a>';
+    var html = "", acts = [];
+    var colleagues = state.firm && state.people.some(function(p){ return !p.pending && p.userId; });
+    if (r.kind === "in") {
+      html += factsHtml([["From", r.from || "Someone outside CompNinja"], ["Sent", longDay(r.date)], ["Opened", r.isNew ? "Not yet" : "Yes"]]);
+      acts.push(open);
+      if (r.room) acts.push('<button class="msg-btn" type="button" data-rep-room="' + esc(r.room.id) + '">Open the conversation</button>');
+    } else if (r.kind === "shelf") {
+      html += factsHtml([["Shared by", r.mine ? "You" : (r.sharedBy || "A colleague")],
+        ["Shared with", state.firm ? state.firm.name : "Your firm"], ["Shared", longDay(r.date)], ["Market", r.market]]);
+      acts.push(open);
+      if (colleagues) acts.push('<button class="msg-btn" type="button" data-rep-discuss="1">Discuss with a colleague</button>');
+      if (r.mine) acts.push('<button class="msg-btn danger" type="button" data-rep-ask="down">Take down</button>');
+    } else {
+      html += factsHtml([["Who can open it", r.audience.label + (r.audience.sub ? " \\u00b7 " + r.audience.sub : "")], ["Sent", longDay(r.date)]]);
+      if (r.revoked) {
+        html += '<p class="msg-rnote">This link was turned off. It opens for nobody, and it cannot be turned back on.</p>';
+      } else {
+        acts.push(open);
+        acts.push('<button class="msg-btn" type="button" data-rep-copy="1">' + (rep.copied === rep.sel ? "Copied" : "Copy link") + '</button>');
+        // A deal room starts from a link with people to invite, never a firm
+        // share (it has no viewer list, so the room would open with nobody in
+        // it), and only for a member who can open one (canUseVault, which is
+        // also the server's own gate).
+        if (state.canAttach && r.visibility !== "org") acts.push('<button class="msg-btn" type="button" data-rep-hub="1"' + (rep.busy === "hub" ? " disabled" : "") + '>Start a deal room</button>');
+        acts.push('<button class="msg-btn danger" type="button" data-rep-ask="off">Turn off link</button>');
+      }
+    }
+    if (rep.confirm) {
+      var down = rep.confirm === "down";
+      html += '<div class="msg-confirm" role="group" aria-label="' + (down ? "Take this report down" : "Turn off this link") + '">' +
+        '<div class="msg-confirm-q">' + (down ? "Take " + esc(streetOf(r.address)) + " off the firm shelf?" : "Turn off this link?") + '</div>' +
+        '<div class="msg-confirm-sub">' + (down
+          ? "Its link stops working for everyone at your firm, and it cannot be put back."
+          : "It stops working at once, for everyone it was sent to, and it cannot be turned back on.") + '</div>' +
+        '<div class="msg-confirm-go"><button class="msg-btn primary sm" type="button" data-rep-yes="1"' + (rep.busy ? " disabled" : "") + '>' +
+          (rep.busy ? "Working\\u2026" : (down ? "Take it down" : "Turn it off")) + '</button>' +
+        '<button class="msg-btn sm" type="button" data-rep-no="1"' + (rep.busy ? " disabled" : "") + '>Cancel</button></div></div>';
+    }
+    if (acts.length) html += '<div class="msg-racts">' + acts.join("") + '</div>';
+    if (rep.err) html += '<p class="msg-rnote bad">' + esc(rep.err) + '</p>';
+    // Who an invited link went to, whether each has opened it, and the list
+    // itself, replaced whole (the route's contract) from one box.
+    if (r.kind === "out" && r.visibility === "invited" && !r.revoked) {
+      html += '<div class="msg-rsec"><h3>Who it was sent to</h3>';
+      if (!r.viewers.length) html += '<p class="msg-rnote">Nobody yet.</p>';
+      r.viewers.forEach(function(v){
+        html += '<div class="msg-rp"><span class="who">' + esc(v.email) + '</span><span class="st' + (v.openedAt ? " ok" : "") + '">' +
+          esc(v.openedAt ? "Opened " + when(v.openedAt) : "Not opened yet") + '</span></div>';
+      });
+      if (rep.editing) {
+        html += '<textarea id="msgRPeople" rows="3" aria-label="Who this report is sent to" placeholder="client@company.com, partner@company.com">' +
+          esc(r.viewers.map(function(v){ return v.email; }).join(", ")) + '</textarea>' +
+          '<div class="msg-racts"><button class="msg-btn primary sm" type="button" data-rep-save="1"' + (rep.busy === "save" ? " disabled" : "") + '>Save</button>' +
+          '<button class="msg-btn sm" type="button" data-rep-edit="0">Cancel</button>' +
+          '<span class="msg-hint">Up to 20 people. Anyone new is emailed the link.</span></div>';
+      } else {
+        html += '<div class="msg-racts" style="margin-top:10px"><button class="msg-btn sm" type="button" data-rep-edit="1">Change who it is sent to</button></div>';
+      }
+      html += '</div>';
+    }
+    // A deal room just started from this report: where it is, and the invite
+    // links when the emails did not go (they cannot be shown again).
+    if (rep.hub && rep.hub.key === rep.sel) {
+      var hub = rep.hub.out || {};
+      var invites = hub.invites || [];
+      html += '<div class="msg-rsec"><h3>Deal room</h3><p class="msg-rnote">' + (hub.emailed
+        ? "Your deal room is open, and " + invites.length + (invites.length === 1 ? " person was" : " people were") + " emailed an invitation."
+        : (invites.length
+          ? "Your deal room is open. Copy each link and send it yourself: these links cannot be shown again."
+          : "Your deal room is open.")) + '</p>';
+      if (!hub.emailed) invites.forEach(function(inv, i){
+        html += '<div class="msg-rlink"><span>' + esc(inv.email) + '</span><input type="text" readonly id="msgRInv' + i + '" value="' + esc(inv.url) + '">' +
+          '<button class="msg-btn sm" type="button" data-copy-inv="msgRInv' + i + '">Copy</button></div>';
+      });
+      html += '<div class="msg-racts" style="margin-top:10px"><button class="msg-btn" type="button" data-rep-room="' + esc(hub.id) + '">Open the conversation</button></div></div>';
+    }
+    $("msgRBody").innerHTML = html;
+    if (rep.editing) { var ta = $("msgRBody").querySelector("textarea"); try { if (ta && document.activeElement !== ta) ta.focus(); } catch (e) {} }
+  }
+
+  function openReport(key, jump){
+    if (rep.sel !== key) { rep.confirm = ""; rep.err = ""; rep.editing = false; rep.copied = ""; }
+    rep.sel = key;
+    renderReports();
+    renderReportDetail();
+    if (jump !== false) $("msgPage").className = "msg-page on-thread";
+  }
+  function setView(v, opts){
+    v = v === "reports" ? "reports" : "chats";
+    var changed = state.view !== v;
+    state.view = v;
+    $("msgPage").setAttribute("data-view", v);
+    $("msgViewChats").setAttribute("aria-selected", v === "chats" ? "true" : "false");
+    $("msgViewReports").setAttribute("aria-selected", v === "reports" ? "true" : "false");
+    $("msgViewChats").tabIndex = v === "chats" ? 0 : -1;
+    $("msgViewReports").tabIndex = v === "reports" ? 0 : -1;
+    $("msgFilter").placeholder = v === "reports" ? "Search reports" : "Search";
+    if (changed) {
+      $("msgFilter").value = "";
+      // A phone goes back to the list it switched to.
+      $("msgPage").className = "msg-page";
+      closeMenu();
+      closeInfo();
+    }
+    var quiet = opts && opts.quiet;
+    if (v === "reports") {
+      if (state.listed && !rep.loading && (!rep.loadedAt || Date.now() - rep.loadedAt > 60000)) loadReports();
+      renderReports();
+      // Beside a list, the newest report is open, the way the newest chat is.
+      if (!rep.sel && window.matchMedia && window.matchMedia("(min-width: 901px)").matches) {
+        var first = $("msgReports").querySelector("[data-rep]");
+        if (first) openReport(first.getAttribute("data-rep"), false);
+      }
+      renderReportDetail();
+      if (!quiet) { try { history.replaceState({}, "", "/messages#reports"); } catch (e) {} }
+    } else {
+      renderThreads();
+      // Beside a list, the newest conversation is open (start()'s rule), when
+      // the page began on Reports and none has been opened yet.
+      if (changed && !(opts && opts.noOpen) && state.listed && !state.openId && window.matchMedia && window.matchMedia("(min-width: 901px)").matches) {
+        if (state.threads.length) openThread(state.threads[0].id, false, false);
+        else if (state.external.length) openExternal(state.external[0].id, false, false);
+      }
+      if (!quiet) {
+        var to = state.openId ? (state.openKind === "external" ? "?x=" : "?t=") + encodeURIComponent(state.openId) : "";
+        try { history.replaceState({}, "", "/messages" + to); } catch (e) {}
+      }
+    }
+  }
+  // The red counts on the two tabs: conversations with something unread, and
+  // reports sent to the reader that they have not opened.
+  function syncViewCounts(){
+    var chats = 0;
+    state.threads.forEach(function(t){ if (t.unread) chats++; });
+    state.external.forEach(function(x){ if (x.unread && !x.closed) chats++; });
+    $("msgViewChatsN").textContent = chats ? String(chats) : "";
+    var fresh = rep.shares ? REPORTINBOX.received(rep.shares.sharedWithMe, state.external).filter(function(r){ return r.isNew; }).length : 0;
+    $("msgViewReportsN").textContent = fresh ? String(fresh) : "";
+    $("msgViewReportsN").title = fresh ? fresh + " not opened yet" : "";
+  }
+  function copyText(text, done){
+    var ok = function(){ if (done) done(); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(ok).catch(function(){ ok(); });
+    } else ok();
+  }
+  // Discuss sends the report as its LINK (REPORTINBOX.discussText), so
+  // report-access.js stays the sole decider of who may read it. The reader
+  // still picks who to tell and still presses Send; nothing posts by itself.
+  function discussReport(r){
+    // The view first: switching can open the newest chat, and a draft set
+    // before it would be poured into that chat's box instead of the new one.
+    setView("chats");
+    state.draft = { text: REPORTINBOX.discussText(r), compId: "" };
+    if (!state.firm) return;
+    openNewPanel();
+    $("msgNewMsg").textContent = "Pick who to tell \\u2014 your message is ready to send.";
+  }
+  function reportAction(e){
+    var r = rep.sel ? rep.rows[rep.sel] : null;
+    var room = e.target.closest("[data-rep-room]");
+    if (room) {
+      var id = room.getAttribute("data-rep-room");
+      setView("chats", { noOpen: true });
+      refreshList(true).then(function(){ openExternal(id, true, true); });
+      return;
+    }
+    var inv = e.target.closest("[data-copy-inv]");
+    if (inv) {
+      var field = $(inv.getAttribute("data-copy-inv"));
+      if (field) { field.focus(); field.select(); copyText(field.value, function(){ inv.textContent = "Copied"; }); }
+      return;
+    }
+    if (!r) return;
+    if (e.target.closest("[data-rep-discuss]")) { discussReport(r); return; }
+    if (e.target.closest("[data-rep-copy]")) {
+      copyText(r.url, function(){ rep.copied = rep.sel; renderReportDetail(); });
+      return;
+    }
+    var ask = e.target.closest("[data-rep-ask]");
+    if (ask) { rep.confirm = ask.getAttribute("data-rep-ask"); rep.err = ""; renderReportDetail(); return; }
+    if (e.target.closest("[data-rep-no]")) { if (!rep.busy) { rep.confirm = ""; renderReportDetail(); } return; }
+    if (e.target.closest("[data-rep-yes]")) {
+      // One revoke for both: Take down is the shelf's Turn off link.
+      if (rep.busy) return;
+      rep.busy = "revoke";
+      renderReportDetail();
+      api("POST", "/api/shares/revoke", { id: r.id }).then(function(o){
+        rep.busy = "";
+        if (o.s !== 200) { rep.err = (o.j && o.j.error) || "That didn\\u2019t go through. Please try again."; renderReportDetail(); return; }
+        rep.confirm = "";
+        reloadReports();
+      }, function(){ rep.busy = ""; rep.err = "That didn\\u2019t go through. Please try again."; renderReportDetail(); });
+      return;
+    }
+    var edit = e.target.closest("[data-rep-edit]");
+    if (edit) { rep.editing = edit.getAttribute("data-rep-edit") === "1"; rep.err = ""; renderReportDetail(); return; }
+    if (e.target.closest("[data-rep-save]")) {
+      if (rep.busy) return;
+      var emails = String(($("msgRBody").querySelector("textarea") || {}).value || "").split(/[,;\\n]/).map(function(s){ return s.trim(); }).filter(Boolean);
+      rep.busy = "save";
+      renderReportDetail();
+      api("PUT", "/api/shares/viewers", { id: r.id, emails: emails }).then(function(o){
+        rep.busy = "";
+        // The server's own words on a failed save: it warns the list may now
+        // be empty (setShareViewers clears before it writes).
+        if (o.s !== 200) { rep.err = (o.j && o.j.error) || "That didn\\u2019t go through. Please try again."; renderReportDetail(); return; }
+        rep.editing = false;
+        rep.err = "";
+        reloadReports();
+      }, function(){ rep.busy = ""; rep.err = "That didn\\u2019t go through. Please try again."; renderReportDetail(); });
+      return;
+    }
+    if (e.target.closest("[data-rep-hub]")) {
+      if (rep.busy) return;
+      rep.busy = "hub";
+      rep.err = "";
+      renderReportDetail();
+      var key = rep.sel;
+      api("POST", "/api/hubs", { fromShare: r.id }).then(function(o){
+        rep.busy = "";
+        if (o.s !== 201) { rep.err = (o.j && o.j.error) || "Couldn\\u2019t start a deal room just now."; renderReportDetail(); return; }
+        // The invite links in this answer exist nowhere else.
+        rep.hub = { key: key, out: o.j };
+        state.extLinks = o.j;
+        renderReportDetail();
+        refreshList(true);
+      }, function(){ rep.busy = ""; rep.err = "Couldn\\u2019t start a deal room just now."; renderReportDetail(); });
+    }
+  }
+
   // --- wiring -------------------------------------------------------------
+  $("msgViewChats").addEventListener("click", function(){ setView("chats"); });
+  $("msgViewReports").addEventListener("click", function(){ setView("reports"); });
+  // The tabs pattern's arrow keys, between the two lists.
+  $("msgViewChats").parentNode.addEventListener("keydown", function(e){
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    setView(state.view === "reports" ? "chats" : "reports");
+    try { (state.view === "reports" ? $("msgViewReports") : $("msgViewChats")).focus(); } catch (err) {}
+  });
+  $("msgReports").addEventListener("click", function(e){
+    var row = e.target.closest("[data-rep]");
+    if (row) openReport(row.getAttribute("data-rep"));
+  });
+  $("msgRBody").addEventListener("click", reportAction);
+  $("msgShelfType").addEventListener("change", function(){ rep.typeTouched = true; renderReports(); });
+  $("msgRBack").addEventListener("click", function(){
+    $("msgPage").className = "msg-page";
+    renderReports();
+  });
   $("msgThreads").addEventListener("click", function(e){
     // A row's More button opens its menu, and a second press closes it.
     var more = e.target.closest("[data-more]");
@@ -2316,7 +2893,7 @@ function renderMessagesBody(boot) {
     renderTray();
   });
   $("msgFilter").addEventListener("input", function(){
-    renderThreads();
+    if (state.view === "reports") renderReports(); else renderThreads();
   });
   $("msgPickFilter").addEventListener("input", renderPicker);
   $("msgAttach").addEventListener("click", openPicker);
@@ -2398,6 +2975,14 @@ function renderMessagesBody(boot) {
   // Messages altogether.
   document.addEventListener("keydown", function(e){
     if (e.key !== "Escape") return;
+    // An open report's question (Turn off link, Take down) backs out the same
+    // way (2026-10-08).
+    if (state.view === "reports" && rep.confirm) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!rep.busy) { rep.confirm = ""; renderReportDetail(); }
+      return;
+    }
     // The menu, the About card and the rename box back out the same way, for
     // the same reason (2026-10-02).
     if (state.menu || state.info) {
@@ -2555,6 +3140,9 @@ function renderMessagesBody(boot) {
   // is also the whole path when BOOT is null.
   function start(){
     var wanted = "", wantedX = "", wantedTo = "";
+    // /messages#reports opens on Reports (the old /desk#reports lands here).
+    var wantReports = String(location.hash || "") === "#reports";
+    setView(wantReports ? "reports" : "chats", { quiet: true });
     try {
       var qp = new URL(location.href).searchParams;
       wanted = qp.get("t") || "";
@@ -2574,6 +3162,19 @@ function renderMessagesBody(boot) {
       }
     } catch (e) {}
     refreshList(false).then(function(){
+      // Reports are read once the list has said which firm the shelf is.
+      var reports = state.listed ? loadReports() : Promise.resolve();
+      if (wantReports) { reports.then(function(){ if (state.view === "reports") setView("reports", { quiet: true }); }); return; }
+      // A reader with nothing to chat about, and reports waiting (or no firm
+      // to chat in at all), lands on Reports rather than on an empty list.
+      if (!wanted && !wantedX && !wantedTo && !state.draft && !state.threads.length && !state.external.length) {
+        reports.then(function(){
+          var any = rep.shares && ((rep.shares.sharedWithMe || []).length || (rep.shares.mine || []).length);
+          var shelf = rep.shelf && typeof rep.shelf === "object" && (rep.shelf.items || []).length;
+          if (state.view === "chats" && (any || shelf || state.noFirm)) setView("reports");
+        });
+        return;
+      }
       // The newest conversation is always LOADED, on every width — the two
       // panes are one stylesheet decision and the data costs one request. What
       // the width decides is which pane a phone shows, and only a link that
@@ -2607,9 +3208,12 @@ function renderMessagesBody(boot) {
     });
     startPolling();
   }
-  if (BOOT && BOOT.s && BOOT.s !== 200) {
+  // A reader with no firm gets the page (2026-10-08): Reports is theirs
+  // either way, and the list read says what Chats would need.
+  var noFirmBoot = BOOT && BOOT.s === 403 && BOOT.j && BOOT.j.code === "no_firm";
+  if (BOOT && BOOT.s && BOOT.s !== 200 && !noFirmBoot) {
     // A refusal the server already knows about, rendered before any fetch —
-    // so somebody with no firm is told so immediately rather than watching a
+    // so somebody signed out is told so immediately rather than watching a
     // spinner resolve into a wall.
     if (BOOT.s === 401) gate('<h3>Please sign in</h3><p>Messages are part of your firm\\'s account.</p>' +
       '<p><a class="msg-btn" href="/?auth=signin">Sign in</a></p>');

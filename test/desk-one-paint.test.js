@@ -55,7 +55,7 @@ function load(user) {
   const src = html.match(DESK_RE);
   assert.ok(src, "could not find renderMyDesk / renderDeskRest in index.html");
   const dom = makeDom();
-  const pending = { portfolio: deferred(), shares: deferred(), hubs: deferred(), branding: deferred() };
+  const pending = { portfolio: deferred(), home: deferred(), branding: deferred() };
   const ctx = vm.createContext({
     document: dom.document,
     console, setTimeout, Promise,
@@ -66,8 +66,7 @@ function load(user) {
     portfolioKeys: new Set(),
     markPortfolioSaved() {},
     syncPortfolioButton() {},
-    renderShares: () => pending.shares.promise,
-    renderDeskHubs: () => pending.hubs.promise,
+    renderHomeFirm: () => pending.home.promise,
     loadBranding: () => pending.branding.promise,
   });
   new vm.Script(
@@ -78,7 +77,7 @@ function load(user) {
   ctx.pending = pending;
   ctx.landAll = (items) => {
     pending.portfolio.resolve({ items: items || [] });
-    pending.shares.resolve(); pending.hubs.resolve(); pending.branding.resolve();
+    pending.home.resolve(); pending.branding.resolve();
   };
   // Everything settles in microtasks once resolved; one macrotask is plenty.
   ctx.settle = () => new Promise((r) => setTimeout(r, 5));
@@ -92,8 +91,8 @@ test("the first fill is held behind the stand-in and revealed once, whole", asyn
   const run = c.run();
   assert.ok(c.dom.hidden("myDesk"), "the desk stays hidden while its reads are out");
   assert.ok(!c.dom.hidden("deskLoading"), "the stand-in shows in its place");
-  // Three of four sections landing is not the desk: it stays held.
-  c.pending.shares.resolve(); c.pending.hubs.resolve(); c.pending.branding.resolve();
+  // Two of three reads landing is not the desk: it stays held.
+  c.pending.home.resolve(); c.pending.branding.resolve();
   await c.settle();
   assert.ok(c.dom.hidden("myDesk"), "one read still out keeps the desk held");
   c.pending.portfolio.resolve({ items: [] });
@@ -109,7 +108,7 @@ test("a later call for the same identity repaints in place and never blanks the 
   await first;
   assert.ok(!c.dom.hidden("myDesk"));
   // Second call: fresh, still-pending reads — the desk must stay on screen.
-  Object.assign(c.pending, { portfolio: deferred(), shares: deferred(), hubs: deferred(), branding: deferred() });
+  Object.assign(c.pending, { portfolio: deferred(), home: deferred(), branding: deferred() });
   const second = c.run();
   assert.ok(!c.dom.hidden("myDesk"), "a desk already on screen is not re-hidden by a repaint");
   assert.ok(c.dom.hidden("deskLoading"), "and the stand-in does not come back");
@@ -136,7 +135,7 @@ test("a different account signing in mid-fill owns the reveal", async () => {
   const c = load(BRAD);
   const bradFill = c.run();
   c.currentUser = { id: "u-mike", email: "mike@colliers.com" };
-  const mikePending = { portfolio: deferred(), shares: deferred(), hubs: deferred(), branding: deferred() };
+  const mikePending = { portfolio: deferred(), home: deferred(), branding: deferred() };
   const bradPending = c.pending;
   Object.assign(c.pending, mikePending);
   const mikeFill = c.run();
@@ -146,17 +145,17 @@ test("a different account signing in mid-fill owns the reveal", async () => {
   await bradFill;
   assert.ok(c.dom.hidden("myDesk"), "Brad's late reads must not reveal Mike's half-filled desk");
   mikePending.portfolio.resolve({ items: [] });
-  mikePending.shares.resolve(); mikePending.hubs.resolve(); mikePending.branding.resolve();
+  mikePending.home.resolve(); mikePending.branding.resolve();
   await mikeFill;
   assert.ok(!c.dom.hidden("myDesk"));
 });
 
 test("a renderer that rejects does not hold the desk forever", async () => {
   const c = load(BRAD);
-  c.renderShares = () => Promise.reject(new Error("boom"));
+  c.renderHomeFirm = () => Promise.reject(new Error("boom"));
   const fill = c.run();
   c.pending.portfolio.resolve({ items: [] });
-  c.pending.hubs.resolve(); c.pending.branding.resolve();
+  c.pending.branding.resolve();
   await fill;
   assert.ok(!c.dom.hidden("myDesk"), "renderDeskRest must swallow a rejection so the reveal still happens");
 });
@@ -189,24 +188,22 @@ test("the boot path decides the sign-in card and the stand-in on the cookie hint
     "the currentUser-only toggle must not come back");
 });
 
-test("the firm-scoped reads run together, and only the two that need the buildings wait for them", () => {
-  const at = html.indexOf("async function renderShares()");
+test("the firm-scoped reads run together, and only the contacts wait for the buildings", () => {
+  const at = html.indexOf("async function renderHomeFirm()");
+  assert.ok(at > 0, "index.html must define renderHomeFirm()");
   const fn = html.slice(at, html.indexOf("\n  }\n", at));
-  // The membership read starts beside the shares read, not after it.
-  assert.ok(fn.indexOf("const firmReady = renderFirm()") < fn.indexOf('bootFetch("/api/shares")'),
-    "renderFirm must start before the shares fetch");
-  // Every early exit waits for it before hiding the firm sections.
-  assert.ok(fn.includes("const bail = async (err) => {\n      await firmReady;\n      hideAll();"),
-    "a shares failure must wait for the firm read before hideAll(), or the read undoes the hide");
-  assert.ok(!/\n\s*hideAll\(\);\s*\n\s*errEl\.classList\.remove/.test(fn), "no bare hideAll-then-error path may remain");
-  // Buildings and conversations go out together; the shelf and the contacts
-  // follow the buildings and nothing else.
+  // No shares read at the head of Home any more (2026-10-08: the reports are
+  // Messages'), so a shares outage can no longer hide the firm's buildings.
+  assert.ok(!fn.includes('bootFetch("/api/shares")'), "Home reads shared reports again");
+  // The membership is read first and AWAITED: everything firm-scoped reads
+  // it through myFirm(), and a stale one is another account's firm.
+  assert.ok(fn.indexOf("await renderFirm()") > -1 && fn.indexOf("await renderFirm()") < fn.indexOf("const buildings = readFirmBuildings();"),
+    "the membership must land before the firm-scoped batch starts");
+  // Buildings and conversations go out together; the contacts follow the
+  // buildings and nothing else. (The member's own deals joined on 2026-10-07
+  // for Home's map; they read nothing of the firm's, so they wait for nothing.)
   const batch = fn.slice(fn.indexOf("const buildings = readFirmBuildings();"));
-  // (The member's own deals joined on 2026-10-07 for Home's map. They read
-  // nothing of the firm's, so they go out with the rest and wait for nothing.
-  // Your permits and the deal board left the batch the same day, with the
-  // old Home sections they drew.)
-  assert.match(batch, /Promise\.all\(\[\s*sites,\s*buildings,\s*renderDeskThreads\(\),\s*buildings\.then\(\(\) => Promise\.all\(\[renderFirmShelf\(\), renderContacts\(\)\]\)\),\s*\]\)/,
+  assert.match(batch, /Promise\.all\(\[\s*sites,\s*buildings,\s*renderDeskThreads\(\),\s*buildings\.then\(\(\) => renderContacts\(\)\),\s*\]\)/,
     "the firm-scoped batch must keep this shape");
   assert.ok(!fn.includes("await readFirmBuildings();"), "the sequential chain must not come back");
   assert.ok(!fn.includes("await renderDeskThreads();"));

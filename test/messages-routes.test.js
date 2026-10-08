@@ -211,17 +211,17 @@ test("Messages is a row on both rails, in the same place", () => {
 
   // Directly under Home on both since 2026-10-07 (Draft C: the Data row it
   // sat under left the rail), so the sidebar does not reshuffle itself when a
-  // member navigates between the app and a server-rendered page.
+  // member navigates between the app and a server-rendered page. The last
+  // row of the members' group since 2026-10-08, when Reports left the rail
+  // for Messages: the Tools group, Markets first, follows it.
   const shared_ = SERVER_JS.slice(SERVER_JS.indexOf('<a href="/desk">${NAV_ICONS.home}'));
-  assert.ok(shared_.indexOf("/messages") > 0 && shared_.indexOf("/messages") < shared_.indexOf('href="/desk#reports"'),
-    "Messages must sit between Home and Reports on the shared rail");
-  assert.ok(shared_.indexOf('href="/desk#reports"') < shared_.indexOf('href="/markets"'),
-    "Reports must sit above Markets on the shared rail");
+  assert.ok(shared_.indexOf("/messages") > 0 && shared_.indexOf("/messages") < shared_.indexOf('href="/markets"'),
+    "Messages must sit between Home and Markets on the shared rail");
+  assert.ok(!shared_.includes('href="/desk#reports"'), "the shared rail grew its Reports row back");
   const app = INDEX_HTML.slice(INDEX_HTML.indexOf('id="myDeskLink"'));
-  assert.ok(app.indexOf("navMessagesLink") > 0 && app.indexOf("navMessagesLink") < app.indexOf("navReportsLink"),
-    "Messages must sit between Home and Reports in the app");
-  assert.ok(app.indexOf("navReportsLink") < app.indexOf('href="/markets"'),
-    "Reports must sit above Markets in the app");
+  assert.ok(app.indexOf("navMessagesLink") > 0 && app.indexOf("navMessagesLink") < app.indexOf('href="/markets"'),
+    "Messages must sit between Home and Markets in the app");
+  assert.ok(!app.includes("navReportsLink"), "the app's rail grew its Reports row back");
 
   // It is NOT hidden-and-hydrated like the vault and bulk rows: those ask an
   // entitlement question and this one does not.

@@ -208,3 +208,120 @@ test("money and dates read the way the rest of the site writes them", () => {
   assert.equal(HM.stageLabel("firm"), "Firm building");
   assert.equal(HM.place("725 W Franklin Rd, Meridian, ID 83642"), "Meridian, ID");
 });
+
+// ---- What the map shows (2026-10-08) ----------------------------------------
+
+test("the map's layers: Properties alone by default, and anything unreadable is the default", () => {
+  assert.deepEqual(HM.readLayers(null), { properties: true, comps: false, permits: false });
+  assert.deepEqual(HM.readLayers(""), HM.LAYER_DEFAULT);
+  assert.deepEqual(HM.readLayers("{not json"), HM.LAYER_DEFAULT, "a corrupt stored value is the default, never a throw");
+  assert.deepEqual(HM.readLayers('{"comps":true,"permits":true}'), { properties: true, comps: true, permits: true });
+  assert.deepEqual(HM.readLayers({ properties: false, permits: true }), { properties: false, comps: false, permits: true });
+  assert.deepEqual(HM.readLayers('{"comps":"yes","permits":1,"extra":true}'), HM.LAYER_DEFAULT,
+    "only real booleans count, and an unknown key is dropped");
+  assert.deepEqual(HM.LAYERS, ["properties", "comps", "permits"]);
+});
+
+test("opening a tab turns on the layer its rows are pins of, and Today and People turn on nothing", () => {
+  assert.equal(HM.tabLayer("properties"), "properties");
+  assert.equal(HM.tabLayer("comps"), "comps");
+  assert.equal(HM.tabLayer("today"), null, "Today's numbered pins are its own rows, drawn whatever the layers say");
+  assert.equal(HM.tabLayer("people"), null);
+  assert.equal(HM.tabLayer("reports"), null, "Reports is not a tab of Home any more");
+});
+
+const FILING = (o) => Object.assign({ id: "f1", permitNumber: "C-TI-2026-0412", type: "Tenant Improvement",
+  description: "Suite B demising wall", projectName: "", address: "1450 S EAGLE RD, Meridian ID 83642", city: "Meridian",
+  status: "In Review", stage: "open", appliedDate: "2026-10-04", applicant: "Petra Inc", contractor: "",
+  sourceUrl: "https://permits.example/412", onBoard: null, lat: 43.5955, lng: -116.354 }, o);
+
+test("a permit is a pin only where the sweep placed it, and carries only what its card shows", () => {
+  const p = HM.permitPin(FILING({}));
+  assert.equal(p.street, "1450 S Eagle Rd", "the portal's capitals, in the tracker's case");
+  assert.equal(p.city, "Meridian");
+  assert.equal(p.type, "Tenant Improvement");
+  assert.equal(p.what, "Suite B demising wall");
+  assert.equal(p.filed, "2026-10-04");
+  assert.equal(p.href, "https://permits.example/412");
+  assert.equal(HM.permitPin(FILING({ lat: null })), null, "no place, no pin");
+  assert.equal(HM.permitPin(FILING({ lat: 0, lng: 0 })), null, "Null Island is not a place");
+  assert.equal(HM.permitPin(FILING({ lat: "", lng: "" })), null);
+  assert.equal(HM.permitPin(null), null);
+  assert.equal(HM.permitPin(FILING({ projectName: "Ridge Commerce Park" })).what, "Ridge Commerce Park", "a project's name beats its description");
+  assert.equal(HM.permitPin(FILING({ sourceUrl: "javascript:alert(1)" })).href, "", "only an http(s) record becomes a link");
+  assert.equal(HM.permitPin(FILING({ stage: "bogus" })).stage, "open", "an unknown stage under-claims");
+  assert.deepEqual(HM.permitPin(FILING({ onBoard: { id: 7, address: "1450 S Eagle Rd, Meridian, ID 83642" } })).board,
+    { id: 7, address: "1450 S Eagle Rd, Meridian, ID 83642" });
+});
+
+test("a permit's stage reads in the tracker's own words", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "permits-page.js"), "utf8");
+  const m = src.match(/var STAGE_NAMES=(\{[^}]*\})/);
+  assert.ok(m, "permits-page.js no longer declares STAGE_NAMES where this test looks");
+  assert.deepEqual(JSON.parse(m[1].replace(/([a-z]+):/g, '"$1":')), HM.PERMIT_STAGES,
+    "Home's permit cards and the tracker name a stage two different ways");
+  assert.equal(HM.permitStageLabel("issued"), "Issued or finaled");
+  assert.equal(HM.permitStageLabel(undefined), "Open");
+});
+
+test("a permit is at one of your properties only on the same street line in the same city", () => {
+  const rows = HM.properties({ today: TODAY, buildings: [B({})], sites: [SITE({})] });
+  const pin = HM.permitPin(FILING({}));
+  assert.equal(HM.permitAt(pin, rows).key, "1450 s eagle rd|meridian", "the portal's capitals and its missing comma do not split one building");
+  assert.equal(HM.permitAt(HM.permitPin(FILING({ address: "1450 S EAGLE RD, Boise ID 83709", city: "Boise" })), rows), null,
+    "the same street in another city is another building");
+  assert.equal(HM.permitAt(HM.permitPin(FILING({ address: "1450 S EAGLE ROAD, Meridian ID" })), rows), null,
+    "no abbreviation expansion: a miss, never a guess");
+  assert.equal(HM.permitAt(HM.permitPin(FILING({ address: "1452 S EAGLE RD, Meridian ID" })), rows), null);
+  assert.equal(HM.permitAt(null, rows), null);
+});
+
+test("a layer that is on and has nothing to draw here says why, and never reads as 'nothing was filed'", () => {
+  const on = { properties: true, comps: true, permits: true };
+  const cities = "Boise, Meridian and Nampa";
+  assert.deepEqual(HM.layerNotes({ layers: on, comps: null, permits: null }), [], "nothing is said while a read is still out");
+  assert.deepEqual(HM.layerNotes({ layers: { properties: true }, comps: false, permits: false }), [],
+    "a layer that is off says nothing");
+  const [failed] = HM.layerNotes({ layers: on, comps: [], permits: false, cities });
+  assert.equal(failed.layer, "permits");
+  assert.match(failed.text, /Couldn't read permits/);
+  assert.match(HM.layerNotes({ layers: on, comps: false, permits: null })[0].text, /Couldn't read your comps/);
+  // Our cities, nothing filed: said as such, naming the cities.
+  assert.equal(HM.layerNotes({ layers: on, comps: [], permits: [], permitsFiled: 0, cities })[0].text,
+    "No commercial permits were filed in Boise, Meridian and Nampa in the last 30 days.");
+  // Filed, but none placed: never "none were filed".
+  assert.match(HM.layerNotes({ layers: on, comps: [], permits: [], permitsFiled: 12, cities })[0].text,
+    /^None of the 12 permits filed in Boise, Meridian and Nampa .* has a map location yet\.$/);
+  // Pins exist, none in view (a member in Dallas): names where we read, and can show them.
+  const away = HM.layerNotes({ layers: on, comps: [], permits: [{}], permitsInView: 0, cities });
+  assert.equal(away[0].show, true);
+  assert.match(away[0].text, /in this part of the map .* CompNinja reads permits in Boise, Meridian and Nampa\./);
+  assert.deepEqual(HM.layerNotes({ layers: on, comps: [], permits: [{}], permitsInView: 3, cities }), []);
+  // Comps: unplaced versus out of view.
+  assert.equal(HM.layerNotes({ layers: on, comps: [{}, {}], compsPlaced: 0, permits: null })[0].text, "None of your comps has a map location yet.");
+  const compsAway = HM.layerNotes({ layers: on, comps: [{}], compsPlaced: 1, compsInView: 0, permits: null });
+  assert.equal(compsAway[0].show, true);
+  assert.deepEqual(HM.layerNotes({ layers: on, comps: [], compsPlaced: 0, permits: null }), [],
+    "no comps at all is the Comps tab's empty card to say, not the map's");
+});
+
+test("a portal's capitals read the way the permit tracker shows them", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const vm = require("node:vm");
+  // The tracker's own tidy(), lifted out of permits-page.js and run beside
+  // Home's copy on the same inputs (⚠ pair).
+  const src = fs.readFileSync(path.join(__dirname, "..", "permits-page.js"), "utf8");
+  const m = src.match(/  function tidy\(s\)\{[\s\S]*?\n  \}/);
+  assert.ok(m, "permits-page.js no longer declares tidy() where this test looks");
+  const ctx = vm.createContext({});
+  new vm.Script(m[0] + "\nthis.tidy = tidy;").runInContext(ctx);
+  for (const s of ["1450 S EAGLE RD", "8000 S FEDERAL WAY", "120 12TH AVE S", "PO BOX 44", "3900 W CHINDEN BLVD STE 2B",
+    "1450 S Eagle Rd", "", "O'BRIEN & SONS"]) {
+    assert.equal(HM.tidyCaps(s), ctx.tidy(s), `Home and the tracker disagree on ${JSON.stringify(s)}`);
+  }
+  assert.equal(HM.tidyCaps("1450 S EAGLE RD"), "1450 S Eagle Rd");
+  assert.equal(HM.permitPin(FILING({})).street, "1450 S Eagle Rd", "a permit's card shows the tidied street");
+});

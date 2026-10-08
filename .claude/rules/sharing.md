@@ -10,6 +10,16 @@ paths:
 > this area's code in `server.js`. The never-break rules stay in CLAUDE.md.
 > Add new notes for this area here, not there.
 
+> **Where a member's shares are listed (2026-10-08): Messages' Reports
+> view**, not Home. Sent to you, the firm's shelf and the links they sent
+> moved there from Home's Reports tab (firms.md, "Reports in Messages";
+> rules in `report-inbox.js`). Nothing about the routes changed:
+> `GET /api/shares`, `GET /api/org/shelf`, `PUT /api/shares/viewers`,
+> `POST /api/shares/revoke` and a deal room from a share (`POST /api/hubs
+> {fromShare}`) answer exactly as before; only the page asking moved, and
+> Home's boot no longer embeds `/api/shares`. Where the notes below say
+> "the card", "the desk" or "Home", read Messages' Reports view.
+
 ## Architecture
 
 - `POST /api/share` — publishes the current report (`{ data, meta }`) under a

@@ -159,17 +159,22 @@ test("the account circle sits in the same box on both rails", () => {
   }
 });
 
-test("neither rail has a Data row, and no old label for it is back", () => {
+test("neither rail has a Data or a Reports row, and both have Comp report under Tools", () => {
   // Draft C (2026-10-07): a member's deals, holdings and comps are tabs of
-  // Home, so the rail is Home, Messages, Reports, Markets, Permits on BOTH
-  // sides. A row on one side only is the seam this file exists to catch.
+  // Home. 2026-10-08 (owner's call): Reports only opened a tab of Home, so it
+  // left the rail for Messages, and Comp report came back under Tools. The
+  // rail is Home, Messages | Markets, Comp report, Permits on BOTH sides. A
+  // row on one side only is the seam this file exists to catch.
   assert.ok(!INDEX_HTML.includes('id="menuVaultLink"'), "the app's rail grew a Data row back");
   assert.ok(!SERVER_JS.includes('id="navVault"'), "the shared rail grew a Data row back");
   assert.ok(!/>Your vault<|>Vault</.test(INDEX_HTML),
     "the old label is still rendered somewhere in the app");
-  // Both say Reports for the same place.
-  assert.match(INDEX_HTML, /id="navReportsLink" href="\/desk#reports"[\s\S]{0,500}?<span class="nvl">Reports</);
-  assert.match(SERVER_JS, /<a href="\/desk#reports">\$\{NAV_ICONS\.reports\}<span class="nvl">Reports<\/span><\/a>/);
+  assert.ok(!INDEX_HTML.includes('id="navReportsLink"') && !INDEX_HTML.includes('href="/desk#reports"'),
+    "the app's rail grew its Reports row back");
+  assert.ok(!SERVER_JS.includes('<a href="/desk#reports">'), "the shared rail grew its Reports row back");
+  // Both say Comp report for /bulk, with the same icon, under the Tools label.
+  assert.match(INDEX_HTML, /<span class="navsec">Tools<\/span>[\s\S]{0,4000}?id="navBulkLink" href="\/bulk"[\s\S]{0,600}?<span class="nvl">Comp report</);
+  assert.match(SERVER_JS, /<a href="\/bulk"\$\{current === "\/bulk" \? ' aria-current="page"' : ""\}>\$\{NAV_ICONS\.reports\}<span class="nvl">Comp report<\/span><\/a>/);
 });
 
 test("the theme switch is one control, in the settings panel, on neither rail", () => {

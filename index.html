@@ -1398,12 +1398,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-rule { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1.5px solid var(--ink); padding-bottom: 4px; }
     .dk-rule .rd-lab { margin-bottom: 0; color: var(--ink); letter-spacing: .12em; }
     .dk-note { font-size: 10.5px; color: var(--ink-3); text-align: right; }
-    .dk-stmt { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; min-width: 560px; }
-    .dk-stmt th { text-align: left; color: var(--ink-3); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--hair); }
-    .dk-stmt td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--hair); color: var(--ink-body); vertical-align: middle; }
-    .dk-stmt th.num, .dk-stmt td.num { text-align: right; }
-    .dk-stmt tfoot td { border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); font-weight: 600; color: var(--ink); }
-    .dk-stmt tfoot .tl { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-mute); }
     /* Feed entries read as briefing cards since 2026-08-29, not ruled rows:
        each watched market is a self-contained "what changed" note, and the
        card edge is what keeps its comp list from reading as the next
@@ -1444,7 +1438,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        vendored build silently drops a class it was not purged against, and
        this file already carries three scars from that. */
     .dk-addr { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 14px; color: var(--ink); }
-    .dk-stmt tbody tr:not(.det):hover td { background: var(--wash); }
     /* ONE row family for every list on the workspace (2026-09-04, the owner's
        pick from the Ledger canvas): the name on its own line, the meta UNDER
        it in the quiet voice, actions as small words at the right. It replaced
@@ -1594,9 +1587,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-sum:hover { background: var(--wash); }
     .dk-sum-t { font-size: 13px; color: var(--ink-body); min-width: 0; }
     .dk-sum-a { margin-left: auto; flex: 0 0 auto; font-size: 11.5px; color: var(--red); }
-    /* The merged shared-reports table (2026-08-21): dk-stmt's statement look,
-       but cells top-align because a row can carry a viewer list or the
-       inline people editor, and the detail row needs its own quiet berth. */
     /* Refine's two groups (2026-08-21). A micro-label on a hairline, one
        step quieter than the desk decks: this is a subdivision inside an
        already-collapsed section, not a shelf of the page. .rf-grule is the
@@ -1632,46 +1622,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        than a class so the two can never disagree. */
     .rn-link[aria-current="true"] { color: var(--ink); border-bottom-color: var(--red); }
     @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
-    .dk-shares td { vertical-align: top; }
-    .dk-shares .acts { text-align: right; white-space: nowrap; font-size: 12px; }
-    .dk-shares .acts > * + * { margin-left: 12px; }
-    .dk-shares tr.det > td { padding-top: 0; background: var(--wash); }
-    /* The Sharing card (2026-10-06, Draft C): three tabs of one section. A
-       pane's `hidden` class says whether it applies at all; `dk-off` says it
-       is not the tab showing. Tabs are buttons with the hidden ATTRIBUTE, and
-       display is set here, so they need their own [hidden] rule. */
-    .dk-tabs { display: flex; gap: 22px; margin-top: 10px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
-    .dk-tabs::-webkit-scrollbar { display: none; }
-    .dk-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 13px; font-weight: 500; color: var(--ink-3); background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 0 9px; margin-bottom: -1px; cursor: pointer; white-space: nowrap; }
-    .dk-tab[hidden] { display: none; }
-    .dk-tab:hover { color: var(--ink); }
-    .dk-tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--red-fill); }
-    .dk-tab:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
-    .dk-tab-n { min-width: 9px; text-align: center; font-size: 11px; font-weight: 600; line-height: 17px; color: var(--ink-2); background: var(--wash); border: 1px solid var(--line); border-radius: 99px; padding: 0 7px; }
-    .dk-tab-n:empty { display: none; }
-    .dk-tab-n.new { color: #fff; background: var(--red-fill); border-color: var(--red-fill); }
-    .dk-pane.dk-off { display: none; }
-    .dk-pane-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; margin: 10px 0 2px; }
-    .dk-pane-head .dk-copy { flex: 1 1 320px; margin: 0; }
-    .dk-pane-head .dk-note { flex: 0 0 auto; white-space: nowrap; }
-    .dk-kinds { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 10px; vertical-align: 1px; }
-    .dk-kind { display: inline-flex; align-items: center; gap: 4px; font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 10.5px; font-weight: 600; letter-spacing: .02em; line-height: 1.5; padding: 0 7px 0 6px; border-radius: 99px; }
-    .dk-shares .dk-sub { display: block; margin-top: 3px; font-size: 11px; color: var(--ink-3); }
-    .dk-shares td:nth-child(3) { white-space: nowrap; }
-    .dk-shares .rd-chip { white-space: nowrap; }
-    /* On a phone the links table stacks each row, so its buttons sit under
-       the row instead of past the right edge (they did, before this card).
-       `:not(.hidden)` because these selectors outrank the utility class. */
-    @media (max-width: 639.98px) {
-      .dk-shares { min-width: 0; }
-      .dk-shares thead { display: none; }
-      .dk-shares tr:not(.hidden), .dk-shares tr:not(.hidden) > td { display: block; }
-      .dk-shares tr:not(.hidden):not(.det) { padding: 10px 0; border-bottom: 1px solid var(--hair); }
-      .dk-shares td { padding: 2px 0; border-bottom: 0; }
-      .dk-shares .acts { text-align: left; white-space: normal; padding-top: 6px; }
-      .dk-shares tr:not(.det) > td:nth-child(3):not(:empty)::before { content: "Sent "; color: var(--ink-3); }
-      .dk-shares tr.det > td { padding: 8px 10px; }
-    }
     @media (max-width: 639.98px) {
       .rd-ledger { flex-direction: column; }
       .rd-ledger .rd-lcell { border-right: 0; border-bottom: 1px solid var(--hair); }
@@ -1826,7 +1776,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-fr:hover, .hm-fr:focus-visible { background: var(--wash); outline: 0; }
     .hm-fr b { font-size: 14px; font-weight: 600; }
     .hm-fr small { font-size: 12.5px; color: var(--ink-3); }
-    .hm-fr.go b { color: var(--red); }
+    .hm-find-res .hm-empty a { color: var(--red); font-weight: 600; }
     .hm-tabs { display: flex; gap: 2px; margin-top: 16px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
     .hm-tabs::-webkit-scrollbar { display: none; }
     .hm-tabs button { flex: none; padding: 10px 10px 12px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; font: inherit; font-size: 14px; font-weight: 500; color: var(--ink-3); white-space: nowrap; cursor: pointer; }
@@ -1894,8 +1844,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-more.hidden { display: none; }
     .hm-more a { font-weight: 500; color: var(--ink-2); }
     .hm-legal { margin: 26px 10px 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); }
-    #hmPaneReports #deskSharing .dk-rule, #hmPanePeople #deskContacts > .dk-rule .rd-lab .dk-hico { display: none; }
-    #hmPaneReports #deskSharing, #hmPanePeople #deskContacts { margin: 0 10px; }
+    #hmPanePeople #deskContacts > .dk-rule .rd-lab .dk-hico { display: none; }
+    #hmPanePeople #deskContacts { margin: 0 10px; }
     #hmPanePeople #deskContacts { margin-top: 18px; }
     .hm-team { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: center; padding: 9px 10px; }
     .hm-av { width: 36px; height: 36px; border-radius: 99px; background: var(--slab); color: #fff; font-family: Georgia, 'Times New Roman', serif; font-size: 14px; line-height: 36px; text-align: center; }
@@ -1921,12 +1871,38 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-legend i.own, .hm-pip.own { background: var(--green); }
     .hm-legend i.firm, .hm-pip.firm { background: var(--ink); }
     .hm-legend i.comp, .hm-pip.comp { background: var(--ink-3); }
+    /* Permits are squares, the only square pins on the map, in the status
+       palette's amber: a filing is a document, not a building. */
+    .hm-legend i.permit, .hm-pip.permit { border-radius: 3px; background: var(--warn-text); }
+    /* What the map shows (2026-10-08): three toggles over the map's top-left
+       corner, the place Draft C drew them. Pressed reads like the list's own
+       selected tab (ink, 600, a red rule under it), so any mix of the three
+       can be seen to be on at once. */
+    .hm-layers { position: absolute; left: 14px; top: 14px; z-index: 500; display: flex; max-width: calc(100% - 70px); overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: 0 4px 16px -8px rgba(15, 23, 42, .35); }
+    .hm-layers button { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 0; border-left: 1px solid var(--line); background: none; font: inherit; font-size: 13px; font-weight: 500; line-height: 1; color: var(--ink-3); white-space: nowrap; cursor: pointer; }
+    .hm-layers button:first-child { border-left: 0; }
+    .hm-layers button[hidden] { display: none; }
+    .hm-layers button:hover { color: var(--ink); background: var(--wash); }
+    .hm-layers button[aria-pressed="true"] { color: var(--ink); font-weight: 600; background: var(--wash-2); box-shadow: inset 0 -2px 0 var(--red-fill); }
+    .hm-layers button:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
+    .hm-layers button.busy span::after { content: "\2026"; }
+    .hm-layer-note { position: absolute; left: 14px; top: 60px; z-index: 500; display: grid; gap: 6px; width: min(340px, calc(100% - 70px)); padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 12.5px; line-height: 1.45; color: var(--ink-2); box-shadow: 0 4px 16px -8px rgba(15, 23, 42, .35); }
+    .hm-layer-note.hidden { display: none; }
+    .hm-layer-note p { margin: 0; }
+    .hm-layer-note a, .hm-layer-note button { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--red); cursor: pointer; text-decoration: none; white-space: nowrap; }
+    .hm-layer-note a:hover, .hm-layer-note button:hover { text-decoration: underline; }
+    @media (max-width: 899px) {
+      .hm-layers { left: 10px; top: 10px; }
+      .hm-layers button { padding: 7px 9px; font-size: 12px; gap: 5px; }
+      .hm-layer-note { left: 10px; top: 50px; }
+    }
     .hm-map-empty { position: absolute; left: 50%; top: 50%; z-index: 500; width: min(340px, calc(100% - 32px)); transform: translate(-50%, -50%); padding: 20px 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); text-align: center; box-shadow: 0 18px 40px -16px rgba(15, 23, 42, .4); }
     .hm-map-empty b { display: block; font-family: Georgia, 'Times New Roman', serif; font-size: 21px; font-weight: 400; color: var(--ink); }
     .hm-map-empty span { display: block; margin-top: 6px; font-size: 13.5px; color: var(--ink-3); }
     .hm-mk { background: none !important; border: 0 !important; }
     .hm-pip { display: block; width: 14px; height: 14px; border: 2.5px solid var(--card); border-radius: 99px; box-shadow: 0 1px 4px rgba(15, 23, 42, .4); }
     .hm-pip.comp { width: 10px; height: 10px; border-width: 2px; margin: 2px; }
+    .hm-pip.permit { width: 11px; height: 11px; border-width: 2px; border-radius: 3px; margin: 1.5px; }
     .hm-pip.on { box-shadow: 0 0 0 3px var(--red-fill), 0 1px 4px rgba(15, 23, 42, .4); }
     .hm-npin { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 2.5px solid var(--card); border-radius: 99px; background: var(--ink); color: var(--paper); font-size: 13px; font-weight: 700; box-shadow: 0 3px 10px rgba(15, 23, 42, .45); }
     .hm-npin.hot { background: var(--red-fill); color: #fff; }
@@ -1949,6 +1925,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-pop-n { margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
     .hm-pop-n.hot { color: var(--red); }
     .hm-pop .hm-pop-a { align-self: flex-start; margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--red); text-decoration: none; }
+    /* A permit's card (2026-10-08): its status tag is the tracker's own (the
+       portal's words, coloured by what they mean: permits-page.js's .st),
+       then what was filed and by whom. */
+    .hm-pop-d { font-size: 12.5px; line-height: 1.4; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .hm-pop-at { margin-top: 6px; padding: 6px 8px; border-radius: 8px; background: var(--wash-2); font-size: 12.5px; font-weight: 600; color: var(--ink); }
+    .hm-pop .hm-pop-a2 { align-self: flex-start; margin-top: 4px; font-size: 12.5px; font-weight: 500; color: var(--ink-2); text-decoration: none; }
+    .hm-pop .hm-pop-a2:hover { color: var(--ink); text-decoration: underline; }
+    .hm-chip.pm-open { background: var(--wash); color: var(--ink-2); }
+    .hm-chip.pm-approved { background: none; color: var(--ok-text); box-shadow: inset 0 0 0 1px var(--ok-rule); }
+    .hm-chip.pm-issued { background: var(--ok-bg); color: var(--ok-text); }
+    .hm-chip.pm-attention { background: var(--warn-bg); color: var(--warn-text); }
+    .hm-chip.pm-ended { background: var(--err-bg); color: var(--err-text); }
   </style>
 </head>
 <body class="bg-[#FBFBF9] text-[#1A2433] min-h-screen">
@@ -2595,7 +2583,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <div id="firmModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
     <div class="mcard bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-2xl p-6">
       <div class="rd-lab">Firm &amp; branding</div>
-      <p class="text-sm text-[#5A6473] mt-1">Who is in your firm, how it shares, and the branding your reports carry. The firm's buildings, conversations and shelf stay on Home.</p>
+      <p class="text-sm text-[#5A6473] mt-1">Who is in your firm, how it shares, and the branding your reports carry. The firm's buildings are on Home, and its conversations and shelf of reports are in Messages.</p>
       <p id="firmModalErr" class="hidden text-sm text-red-600 mt-4">Couldn't load your firm just now. Nothing has changed. Close this and try again in a moment.</p>
       <!-- The fourth state. renderFirm() hides #deskFirm for an account that
            is in no firm, holds no invitation and could not create one (the
@@ -2603,7 +2591,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            that read as nothing; here it has to say so. The pricing door
            obeys settingsUpgradeBtn's rule, live && !pro, applied on open. -->
       <div id="firmModalNone" class="hidden mt-4">
-        <p class="text-sm text-[#4C5665]">You're not part of a firm yet. A firm is a shared shelf: reports colleagues share with it land on everyone's Home, while each person's own reports and Data stay theirs. Ask a colleague who has one to invite you, or start one on a Pro plan.</p>
+        <p class="text-sm text-[#4C5665]">You're not part of a firm yet. A firm is a shared shelf: reports colleagues share with it land in everyone's Messages, while each person's own reports and Data stay theirs. Ask a colleague who has one to invite you, or start one on a Pro plan.</p>
         <button id="firmModalPricing" type="button"
           class="hidden btn-live mt-3 text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">See pricing</button>
       </div>
@@ -2962,11 +2950,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              badge would be a red bar. Ships hidden; refreshAccountUI fills it
              from GET /api/messages/unread for a signed-in member, the same
              pass that reveals the vault row. marketBar carries the twin. -->
+        <!-- Shared reports live in Messages too since 2026-10-08 (its Reports
+             view). The Reports row that sat below this one for a day only
+             opened a tab of Home, so it left the rail; marketBar carries the
+             same decision. -->
         <a id="navMessagesLink" href="/messages" class="hover:text-[#1A2433] font-medium"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13v8.5h-7L5.5 16v-3h-2z"/><path d="M7 8.2h6M7 10.6h3.5"/></svg><span class="nvl">Messages</span><span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>
-        <!-- Reports (2026-10-07): Home's Reports tab. A fragment of /desk, so on
-             Home it switches the tab in place (the handler below) and from any
-             other page it opens Home on that tab. marketBar carries the twin. -->
-        <a id="navReportsLink" href="/desk#reports" class="hover:text-[#1A2433] font-medium"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/></svg><span class="nvl">Reports</span></a>
         <!-- The tools group's label. Rail-only, and present for every visitor
              so the two nav authors keep emitting the same shape -- see
              server.js's marketBar and RAIL_CSS for the twin. -->
@@ -2988,8 +2976,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              they move together today (both read `pro`) but they are separate
              answers and a shared flag here would be a second copy of a rule
              entitlements.js owns. Ships hidden, like the vault link. -->
-        <!-- No Comp report row since 2026-10-07 (Draft C): running one is
-             Home's address box and the button on its Reports tab. -->
+        <!-- Comp report, back under Tools (owner's call, 2026-10-08). Every
+             member, never hydrated: /bulk answers a free member with its
+             upgrade card, and nothing on Home runs a report any more, so a
+             row hidden until canBulkValue (its shape before Draft C) would
+             leave them no door. marketBar carries the twin. -->
+        <a id="navBulkLink" href="/bulk" class="hover:text-[#1A2433]"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/></svg><span class="nvl">Comp report</span></a>
         <!-- The Permit tracker (2026-09-24): the THIRD Tools row, after Comp
              report (owner's order). marketBar carries the twin. Its unread dot
              (2026-09-27) is a tracked permit's step completing; filled by
@@ -3142,8 +3134,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <p id="hmSub" class="hm-sub"></p>
             <div class="hm-find" role="search">
               <svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8.6" cy="8.6" r="5.4"/><path d="M12.8 12.8l4.2 4.2"/></svg>
+              <!-- Finds what Home holds, and only that (2026-10-08): the comp
+                   report went back to its own Tools row, so this box no longer
+                   offers to run one on whatever was typed. -->
               <input id="hmFind" type="search" autocomplete="off" spellcheck="false" maxlength="160"
-                placeholder="Find a property, or type an address to value it" aria-label="Find a property, comp or contact, or type an address to value it"
+                placeholder="Find a property, comp or person" aria-label="Find a property, comp or person on Home"
                 aria-controls="hmFindRes" aria-expanded="false" />
               <div id="hmFindRes" class="hidden hm-find-res" role="listbox" aria-label="Matches"></div>
             </div>
@@ -3151,15 +3146,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <button type="button" role="tab" id="hmTabToday" data-tab="today" aria-controls="hmPaneToday" aria-selected="true">Today <b id="hmNToday"></b></button>
               <button type="button" role="tab" id="hmTabProps" data-tab="properties" aria-controls="hmPaneProps" aria-selected="false">Properties <b id="hmNProps"></b></button>
               <button type="button" role="tab" id="hmTabComps" data-tab="comps" aria-controls="hmPaneComps" aria-selected="false" hidden>Comps <b id="hmNComps"></b></button>
-              <button type="button" role="tab" id="hmTabReports" data-tab="reports" aria-controls="hmPaneReports" aria-selected="false">Reports</button>
+              <!-- No Reports tab since 2026-10-08: the shelf, what was sent to
+                   you and your links are Messages' Reports view now. -->
               <button type="button" role="tab" id="hmTabPeople" data-tab="people" aria-controls="hmPanePeople" aria-selected="false" hidden>People</button>
             </div>
           </div>
           <div class="hm-body">
-            <!-- Start here: an account with nothing on the map yet. -->
+            <!-- Start here: an account with nothing on the map yet. The first
+                 card ran a comp report until 2026-10-08, when the comp report
+                 went back to its Tools row; adding a property leads now. -->
             <div id="hmStart" class="hidden hm-start">
-              <a class="hm-st" href="/bulk"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/></svg></span><span><b>Value any address</b><small>A comp report in about a minute, with the sales behind the number.</small><span class="hm-btn red">Run a comp report</span></span></a>
-              <a id="hmStartProp" class="hm-st" href="#properties"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg></span><span><b>Add a property</b><small>A building you own, manage or are buying. It gets a pin, a value and its dates.</small><span class="hm-btn">Add a property</span></span></a>
+              <a id="hmStartProp" class="hm-st" href="#properties"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg></span><span><b>Add a property</b><small>A building you own, manage or are buying. It gets a pin, a value and its dates.</small><span class="hm-btn red">Add a property</span></span></a>
               <a id="hmStartComps" class="hm-st" href="/vault#book"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 16.5h14"/><path d="M5 16.5v-5M8.5 16.5v-8M12 16.5v-6M15.5 16.5v-10"/></svg></span><span><b>Add comps</b><small>Past sales and leases from a spreadsheet, PDF or photo. Only you can see them.</small><span class="hm-btn">Add comps</span></span></a>
               <button type="button" id="hmStartFirm" class="hm-st"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg></span><span><b>Bring your team</b><small>Start a firm to share buildings, reports and contacts with the people you work with.</small><span class="hm-btn">Start a firm</span></span></button>
             </div>
@@ -3211,89 +3208,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <div id="hmCompRows" class="hm-rows"></div>
               <p id="hmCompsEmpty" class="hidden hm-empty">No comps yet. Upload past sales and leases from a spreadsheet, PDF or photo, and they land here as pins. Only you can see them.</p>
               <p id="hmCompsMore" class="hidden hm-more"><a href="/vault#book">All your comps, comp sets and imports →</a></p>
-            </div>
-
-            <div id="hmPaneReports" class="hm-pane hidden" role="tabpanel" aria-labelledby="hmTabReports">
-              <div class="hm-ph"><p class="hm-what">Comp reports: the firm's shelf, what was sent to you, and the links you sent.</p>
-                <a class="hm-btn red" href="/bulk">Run a comp report</a></div>
-              <div id="deskSharing" class="hidden">
-                <div class="dk-rule"><span class="rd-lab">Sharing</span></div>
-                <div id="shareTabs" class="dk-tabs" role="tablist" aria-label="Sharing">
-                  <button type="button" role="tab" id="shareTabShelf" class="dk-tab" data-pane="deskSharedWithFirm" aria-controls="deskSharedWithFirm" aria-selected="false" hidden>Firm shelf <span id="shareTabShelfN" class="dk-tab-n"></span></button>
-                  <button type="button" role="tab" id="shareTabIn" class="dk-tab" data-pane="deskInbox" aria-controls="deskInbox" aria-selected="false" hidden>Sent to you <span id="shareTabInN" class="dk-tab-n"></span></button>
-                  <button type="button" role="tab" id="shareTabOut" class="dk-tab" data-pane="deskShares" aria-controls="deskShares" aria-selected="false" hidden>Your links <span id="shareTabOutN" class="dk-tab-n"></span></button>
-                </div>
-                <!-- Matched to #deskLoadError's two-sentence shape (2026-08-22). It said
-                     only "Couldn't load your shared reports", which is the failure
-                     without the reassurance — and this line covers the lists that
-                     name COLLEAGUES and their work, so it is the one where a bare
-                     "couldn't load" is likeliest to read as somebody's shared reports
-                     having been lost. It hides the two panes the failed read fills
-                     rather than fabricating a "0 shares" empty state; the shelf, which
-                     has a read of its own, stays. -->
-                <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your shared reports just now. Nothing has been lost. Refresh in a moment.</p>
-                <!-- Firm shelf: reports a colleague shared with the whole firm
-                     (migration 030). Available ONLY to a member of a firm — an empty
-                     firm shelf shown to somebody with no firm is an empty room; the
-                     firm's own section (deskFirm) is what teaches the feature. -->
-                <div id="deskSharedWithFirm" class="hidden dk-pane" role="tabpanel" aria-labelledby="shareTabShelf">
-                  <div class="dk-pane-head">
-                    <span id="deskFirmSharesLabel" class="dk-copy">Reports anyone at your firm has put here for the whole firm.</span>
-                    <span id="firmShelfStats" class="dk-note"></span>
-                  </div>
-                  <div id="deskSharedWithFirmEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-bv"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3" width="10" height="13" rx="1.2"/><path d="M6.5 16.9V17h9.2a1 1 0 0 0 1-1V6.5"/><path d="M6.5 7h4.5M6.5 9.8h4.5M6.5 12.6h3"/></svg></span><span class="dk-gtxt"><span class="dk-gt">The firm&#39;s shelf</span><span class="dk-gx">Nobody at your firm has shared a report yet. Open a report and use Share → My firm, and it lands here for everyone.</span></span></div></div></div>
-                  <!-- The search box appears only once there is enough on the shelf to
-                       need one. A filter over three rows is furniture. -->
-                  <div id="firmShelfSearchWrap" class="hidden mt-2 flex flex-wrap items-center gap-4 text-sm">
-                    <input id="firmShelfSearch" type="text" placeholder="Search by address, market or type" aria-label="Search your firm's reports"
-                      class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-                    <!-- The saved view of Transition Plan v2 §6: a development shop
-                         opens on Land, a broker shop on everything. It is a DEFAULT and
-                         not a wall - "All types" is one click away and the count beside
-                         it always names the whole shelf. -->
-                    <select id="firmShelfType" aria-label="Filter the shelf by property type"
-                      class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
-                      <option value="">All types</option>
-                      <option value="Industrial">Industrial</option>
-                      <option value="Office">Office</option>
-                      <option value="Retail">Retail</option>
-                      <option value="Multifamily">Multifamily</option>
-                      <option value="Land">Land</option>
-                      <option value="Residential">Residential</option>
-                    </select>
-                    <span id="firmShelfCount" class="text-xs text-[#68707E]"></span>
-                  </div>
-                  <p id="firmShelfTruncated" class="hidden dk-copy">Showing the most recent 1,000 reports. Older ones are not in this list.</p>
-                  <div id="sharedWithFirmRows" class="mt-1"></div>
-                  <p id="firmShelfNoMatch" class="hidden dk-empty">Nothing on the shelf matches that.</p>
-                  <p id="firmShelfMsg" class="hidden dk-msg"></p>
-                </div>
-                <!-- Sent to you: reports somebody invited this member to, and the deal
-                     rooms a broker invited them into, merged so a report and the room
-                     opened from it are ONE row with two doors. Every failure of the
-                     rooms read is silent (the reports still list); a failed shares
-                     read hides this pane and shows the line above. -->
-                <div id="deskInbox" class="hidden dk-pane" role="tabpanel" aria-labelledby="shareTabIn">
-                  <div class="dk-pane-head">
-                    <span class="dk-copy">Reports and deal rooms other people have sent you. A deal room is a conversation, and opens in Messages.</span>
-                    <span id="deskInboxStats" class="dk-note"></span>
-                  </div>
-                  <div id="deskInboxEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ok"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5l2-6.5h10l2 6.5v4H3z"/><path d="M3 11.5h4l1 2h4l1-2h4"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Nothing sent to you yet</span><span class="dk-gx">When someone sends you a report or invites you into a deal room, it lands here.</span></span></div></div></div>
-                  <div id="deskInboxRows" class="mt-1"></div>
-                </div>
-                <!-- Your links: one table of what this member sent (2026-08-21's
-                     merged table, now one direction). A 401 hides it silently, since
-                     the sign-in card above already covers that case. -->
-                <div id="deskShares" class="hidden dk-pane" role="tabpanel" aria-labelledby="shareTabOut">
-                  <div class="dk-pane-head">
-                    <span class="dk-copy">Links you have sent, and who can open each one.</span>
-                    <span id="deskSharesStats" class="dk-note"></span>
-                  </div>
-                  <div id="deskSharesEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-bv"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 11.5l3-3"/><path d="M7 9.5l-1.8 1.8a2.5 2.5 0 0 0 3.5 3.5L10.5 13"/><path d="M13 10.5l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L9.5 7"/></svg></span><span class="dk-gtxt"><span class="dk-gt">No links yet</span><span class="dk-gx">Open a report and use Share to send a client a link, or invite them by email.</span></span></div></div></div>
-                  <div id="sharesRows" class="mt-2 overflow-x-auto no-scrollbar"></div>
-                </div>
-              </div>
-              <p id="hmReportsEmpty" class="hidden hm-empty">No reports yet. Run a comp report on any address, then use Share to send it to a client or put it on the firm's shelf.</p>
             </div>
 
             <div id="hmPanePeople" class="hm-pane hidden" role="tabpanel" aria-labelledby="hmTabPeople">
@@ -3350,9 +3264,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </div>
         </div>
         <div class="hm-mapw">
-          <div id="hmMap" class="hm-map" role="region" aria-label="Map of your properties"></div>
-          <div id="hmLegend" class="hidden hm-legend" aria-hidden="true"><span class="hm-lg-p"><i class="buy"></i>Your deals</span><span class="hm-lg-p"><i class="own"></i>You own</span><span class="hm-lg-p"><i class="firm"></i>Firm buildings</span><span id="hmLegendComps" class="hidden"><i class="comp"></i>Your comps</span></div>
-          <div id="hmMapEmpty" class="hidden hm-map-empty"><b>Your map is empty</b><span>Add a property or type an address on the left, and it lands here as your first pin.</span></div>
+          <div id="hmMap" class="hm-map" role="region" aria-label="Map of your properties, comps and permits"></div>
+          <!-- What the map shows (2026-10-08, the owner's ask: "shows where
+               the properties, comps and permits are, and you can filter what
+               you want to see"; the layer switch Draft C drew and the build
+               left out). Three toggles, not tabs: any mix can be on. The
+               list's tabs choose the LIST; these choose the MAP, and opening
+               the Comps tab turns Comps on so its rows have pins. Comps shows
+               only to a member the server would let read their comps
+               (hmCanComps); Permits to every member, as public record. -->
+          <div id="hmLayers" class="hm-layers" role="group" aria-label="Show on the map">
+            <button type="button" id="hmLayerProps" data-layer="properties" aria-pressed="true"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg><span>Properties</span></button>
+            <button type="button" id="hmLayerComps" data-layer="comps" aria-pressed="false" hidden><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 16.5h14"/><path d="M5 16.5v-5M8.5 16.5v-8M12 16.5v-6M15.5 16.5v-10"/></svg><span>Comps</span></button>
+            <button type="button" id="hmLayerPermits" data-layer="permits" aria-pressed="false"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h10v14.4H5z"/><path d="M7.5 6h5M7.5 8.6h5"/><circle cx="10" cy="13" r="1.8"/></svg><span>Permits</span></button>
+          </div>
+          <!-- Said when a layer is on and has nothing to draw here: never an
+               empty map that could be read as "nothing was filed". -->
+          <div id="hmLayerNote" class="hidden hm-layer-note" role="status"></div>
+          <div id="hmLegend" class="hidden hm-legend" aria-hidden="true"><span class="hm-lg-p"><i class="buy"></i>Your deals</span><span class="hm-lg-p"><i class="own"></i>You own</span><span class="hm-lg-p"><i class="firm"></i>Firm buildings</span><span id="hmLegendComps" class="hidden"><i class="comp"></i>Your comps</span><span id="hmLegendPermits" class="hidden"><i class="permit"></i>Permits, last 30 days</span></div>
+          <div id="hmMapEmpty" class="hidden hm-map-empty"><b>Your map is empty</b><span>Add a property on the left, and it lands here as your first pin.</span></div>
         </div>
       </div>
       </section>
@@ -13775,7 +13705,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // still writes into its hidden section exactly as before, and the desk is
   // revealed once, when the whole batch has settled. Two things make that a
   // speed-up rather than a delay: the batch now runs concurrently wherever
-  // the data allows (renderDeskRest and renderShares, below), so the desk is
+  // the data allows (renderDeskRest and renderHomeFirm, below), so the desk is
   // ready sooner than its LAST section used to be; and every later call for
   // the same identity — a report saved, a share revoked, refreshAccountUI
   // re-running — repaints in place with nothing held, so a desk already on
@@ -13852,15 +13782,15 @@ async function renderMyDesk() {
   }
 
   // The rest of the desk, which does not depend on the portfolio read — so a
-  // failed one must not take the shares table and the firm sections down with
-  // it. Returns the batch: renderMyDesk holds the first reveal on it, so a
-  // section added here is held with the rest for free — and must, like these
-  // four, never reject, which `quiet` guarantees on its behalf.
+  // failed one must not take the firm sections down with it. Returns the
+  // batch: renderMyDesk holds the first reveal on it, so a section added here
+  // is held with the rest for free — and must, like these, never reject,
+  // which `quiet` guarantees on its behalf. (The deal rooms' read left with
+  // the reports on 2026-10-08: Messages lists both.)
   function renderDeskRest() {
     const quiet = (p) => Promise.resolve(p).catch(() => {});
     return Promise.all([
-      quiet(renderShares()),
-      quiet(renderDeskHubs()),
+      quiet(renderHomeFirm()),
       quiet(loadBranding()),
     ]);
   }
@@ -13895,13 +13825,11 @@ async function renderMyDesk() {
     const link = document.getElementById("myDeskLink");
     if (!link) return;
     const showing = !document.getElementById("deskView").classList.contains("hidden");
-    // On Home, the Reports tab is the rail's Reports row (2026-10-07), so
-    // that row is the one marked while it shows.
-    const reports = document.getElementById("navReportsLink");
-    const onReports = showing && typeof hmTab !== "undefined" && hmTab === "reports";
-    if (showing && !onReports) link.setAttribute("aria-current", "page");
+    // Every tab of Home is Home (2026-10-08). For one day the Reports tab
+    // marked a Reports row of its own; that row and that tab went to
+    // Messages together.
+    if (showing) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
-    if (reports) { if (onReports) reports.setAttribute("aria-current", "page"); else reports.removeAttribute("aria-current"); }
     // Home as one map takes the whole page beside the rail (2026-10-07):
     // no content gutter, no footer. A member's Home only; every other view,
     // and a signed-out /desk, keeps the page as it was.
@@ -14009,17 +13937,8 @@ async function renderMyDesk() {
     if (hmHas()) setHomeTab("today");
   });
   document.getElementById("deskSignInBtn").addEventListener("click", () => openAcctModal("signin"));
-  // The rail's Reports row (2026-10-07) is Home's Reports tab. A plain click
-  // opens it in place, like the Home row; anything that would open a new tab
-  // is left to the href.
-  document.getElementById("navReportsLink").addEventListener("click", (e) => {
-    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    if (!hmHas() || !looksSignedIn()) return;
-    e.preventDefault();
-    hmTab = "reports";
-    enterDesk({ markSeen: true });
-    setHomeTab("reports");
-  });
+  // (The rail's Reports row and its in-place handler, 2026-10-07, left with
+  // Home's Reports tab on 2026-10-08: the reports are Messages' now.)
 
   // ----------------------------------------------------------------------------
   // renderWatchFeed and the watch-market form moved to /vault on 2026-09-01
@@ -14035,93 +13954,6 @@ async function renderMyDesk() {
   // stamp it would be mailed about them anyway. vault-page.js's loadMarkets
   // does that now, on the same unseen guard this did.
 
-
-  // ----------------------------------------------------------------------------
-  // Client sharing — My Desk's two lists: reports this member has shared, and
-  // reports shared with them. One GET (/api/shares) answers both, matching how
-  // portfolio/watchlist load. Everything renders via createElement/textContent
-  // (address and viewer email are user-authored text), never innerHTML with an
-  // interpolated value — same rule the rest of this desk already follows.
-  //
-  // Failure states (mirrors the brief): a 401 means signed out, and the
-  // deskSignIn card already covers that, so both sections just hide with no
-  // message. A 503 (or any other failure — a network error, a bad body) shows
-  // one line and leaves the rest of the desk alone; it never fabricates a
-  // "0 shares" empty state, which would misreport a database blip as "you
-  // haven't shared anything."
-  // ----------------------------------------------------------------------------
-  // ---------------------------------------------------------------------------
-  // The Sharing card (2026-10-06; Draft C of the sharing drafts, the owner's
-  // pick). Firm shelf, Sent to you and Your links are three tabs of one
-  // section, Home's Reports tab since 2026-10-07. They were three sections
-  // whose names all began "Shared", and a report and the deal room opened
-  // from it landed under two of them with the same address on both:
-  //   Firm shelf  - #deskSharedWithFirm, renderFirmShelf (members of a firm)
-  //   Sent to you - #deskInbox, drawShareInbox: reports invited to this
-  //                 member and the deal rooms they are in, one row per
-  //                 property and sender
-  //   Your links  - #deskShares, renderSharesTable: what THEY sent, minus
-  //                 firm shares on the shelf (listed once, there)
-  // Each pane keeps its own writer, and its `hidden` CLASS means this pane
-  // does not apply, or its read failed. Which tab is SHOWING is a second
-  // class, dk-off, written by syncShareCard alone, so the two never fight
-  // over one element. This block owns only that and the counts on the tabs.
-  //
-  // The counts are kept HERE rather than read off each list's own state,
-  // because the shelf's `firmShelfItems` is declared far below and the card
-  // must never read a `let` before its declaration has run.
-  // ---------------------------------------------------------------------------
-  let shareWithMe = [];       // GET /api/shares' sharedWithMe, from the last good read
-  let deskRooms = [];         // GET /api/hubs' theirs; [] when that read failed
-  let deskRoomsFailed = false;
-  let shareShelfCount = 0;
-  let shareInboxCount = 0;
-  let shareInboxNew = 0;
-  let shareLiveLinks = 0;
-  let shareTabPicked = "";    // a pane id once the member picks a tab; "" = the default
-  const SHARE_TABS = [
-    ["deskSharedWithFirm", "shareTabShelf", "shareTabShelfN"],
-    ["deskInbox", "shareTabIn", "shareTabInN"],
-    ["deskShares", "shareTabOut", "shareTabOutN"],
-  ];
-
-  // The ONE writer of which tab is showing (the dk-off class) and of the
-  // card's own visibility. A pane is offered when its `hidden` class is off —
-  // its own renderer's decision, untouched here — and the card shows when any
-  // pane is offered or the shares read failed (its error line lives inside).
-  function syncShareCard() {
-    const avail = SHARE_TABS.map(([pane]) => pane)
-      .filter((pane) => !document.getElementById(pane).classList.contains("hidden"));
-    const failed = !document.getElementById("deskSharesLoadError").classList.contains("hidden");
-    document.getElementById("deskSharing").classList.toggle("hidden", !avail.length && !failed);
-    // The default: the firm's shelf for a member of a firm (the firm's record
-    // is what this page is), else what was sent to them if anything was, else
-    // their own links. A tab they picked stays picked across re-renders.
-    const on = avail.includes(shareTabPicked) ? shareTabPicked
-      : avail.includes("deskSharedWithFirm") ? "deskSharedWithFirm"
-      : avail.includes("deskInbox") && shareInboxCount ? "deskInbox"
-      : avail.includes("deskShares") ? "deskShares"
-      : (avail[0] || "");
-    const counts = { deskSharedWithFirm: shareShelfCount, deskInbox: shareInboxCount, deskShares: shareLiveLinks };
-    SHARE_TABS.forEach(([pane, tabId, countId]) => {
-      const tab = document.getElementById(tabId);
-      tab.hidden = !avail.includes(pane);
-      tab.setAttribute("aria-selected", String(pane === on));
-      tab.tabIndex = pane === on ? 0 : -1;
-      document.getElementById(pane).classList.toggle("dk-off", pane !== on);
-      const n = document.getElementById(countId);
-      n.textContent = String(counts[pane]);
-      // Red only for something sent to this member that they have not opened:
-      // the one count on the card that asks them to do something.
-      const fresh = pane === "deskInbox" && shareInboxNew > 0;
-      n.classList.toggle("new", fresh);
-      n.title = fresh ? `${shareInboxNew} not opened yet` : "";
-    });
-  }
-
-  function fmtShareDate(iso) {
-    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  }
 
   // ---------------------------------------------------------------------------
   // Home as one map (2026-10-07; Draft C of the Home and Data drafts, the
@@ -14155,9 +13987,19 @@ async function renderMyDesk() {
   let hmRows = [], hmItems = [];
   let hmNothing = false;     // an account with nothing on Home yet: Today shows the start cards
   let hmSel = "";            // the selected row's key
-  let hmMap = null, hmPinLayer = null, hmBaseLayers = null, hmFitFor = "", hmOpenedOnce = false;
+  let hmMap = null, hmPinLayer = null, hmBaseLayers = null, hmFitFor = "", hmOpenedOnce = false, hmPopup = null;
+  // What the map shows (2026-10-08): HOMEMAP.readLayers decides, from this
+  // browser's own last choice. Storage can throw (a private window, blocked
+  // site data), and then the default stands.
+  const HM_LAYER_KEY = "cn.home.layers";
+  let hmLayers = HOMEMAP.LAYER_DEFAULT;
+  try { hmLayers = HOMEMAP.readLayers(localStorage.getItem(HM_LAYER_KEY)); } catch (_) { /* the default */ }
+  let hmLayerTab = "";       // the tab whose layer was last switched on for it
+  let hmPermits = null;      // GET /api/permits/map's pins once read; null until then, false on a failed read
+  let hmPermitsAsked = false;
+  let hmPermitsFiled = 0, hmPermitCities = "", hmPermitDays = 30;
   const HM_TAB_IDS = { today: ["hmTabToday", "hmPaneToday"], properties: ["hmTabProps", "hmPaneProps"],
-    comps: ["hmTabComps", "hmPaneComps"], reports: ["hmTabReports", "hmPaneReports"], people: ["hmTabPeople", "hmPanePeople"] };
+    comps: ["hmTabComps", "hmPaneComps"], people: ["hmTabPeople", "hmPanePeople"] };
   const HM_ICON = {
     lock: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="9" width="11" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg>',
     people: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg>',
@@ -14173,8 +14015,8 @@ async function renderMyDesk() {
     return isNaN(d) ? "" : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
   const hmTodayIso = () => hmLocalDay(Date.now());
-  // proConfig is a `let` declared far below; the TDZ guard hubCreationAllowed
-  // already carries. Comps are the member's private book, offered to whoever
+  // proConfig is a `let` declared far below, so the read is guarded for
+  // the temporal dead zone. Comps are the member's private book, offered to whoever
   // the server would let read it.
   const hmCanComps = () => { try { return Boolean(proConfig && proConfig.canUseVault); } catch (_) { return false; } };
   // BOV requests are the Pipeline's, and the private page has a Pipeline for
@@ -14290,10 +14132,36 @@ async function renderMyDesk() {
       if (hmLeads) drawHomeMap();
     });
   }
+  // The Permits layer's read (2026-10-08): the Permit tracker's own feed,
+  // asked for only once the layer is on and the page is showing, so a Home
+  // that never shows permits never pays for them. Public record, so it needs
+  // no plan; a failure is said on the map (hmLayerNote), never drawn as an
+  // empty layer.
+  function hmLoadPermits() {
+    if (hmPermitsAsked || !currentUser) return;
+    hmPermitsAsked = true;
+    hmSyncLayerButtons();
+    hmWhenShown(async () => {
+      try {
+        const res = await fetch("/api/permits/map", { credentials: "same-origin" });
+        if (res.ok) {
+          const j = await res.json();
+          hmPermits = (Array.isArray(j && j.pins) ? j.pins : []).map(HOMEMAP.permitPin).filter(Boolean);
+          hmPermitsFiled = Number(j.filed) || 0;
+          hmPermitCities = String(j.cities || "");
+          hmPermitDays = Number(j.windowDays) || 30;
+        }
+      } catch (_) { /* said below */ }
+      if (hmPermits == null) hmPermits = false;
+      hmSyncLayerButtons();
+      hmDrawPins();
+    });
+  }
 
   function resetHomeMap() {
     deskSites = null; deskPortfolio = null; firmMembers = []; hmComps = null; hmCompsAsked = false;
     hmLeads = null; hmLeadsAsked = false;
+    hmPermits = null; hmPermitsAsked = false; hmPermitsFiled = 0; hmPermitCities = ""; hmLayerTab = "";
     hmRows = []; hmItems = []; hmSel = ""; hmFitFor = ""; hmOpenedOnce = false; hmNothing = false;
     hmGeoTried.clear();
     if (hmPinLayer) hmPinLayer.clearLayers();
@@ -14483,9 +14351,11 @@ async function renderMyDesk() {
     compsEmpty.classList.toggle("hidden", comps.length > 0);
     document.getElementById("hmCompsMore").classList.toggle("hidden", !comps.length);
 
-    // Reports: the Sharing card lives in this tab; it says when it is empty.
-    document.getElementById("hmReportsEmpty").classList.toggle("hidden",
-      !document.getElementById("deskSharing").classList.contains("hidden"));
+    // The map's switch: Comps only for a member who can read their comps,
+    // and a Permits layer left on from a last visit is read again.
+    document.getElementById("hmLayerComps").hidden = !canComps;
+    if (hmLayers.permits && !hmPermitsAsked && deskFilledFor) hmLoadPermits();
+    hmSyncLayerButtons();
 
     // People: the firm's roster over its contacts.
     const team = document.getElementById("hmTeam");
@@ -14518,10 +14388,18 @@ async function renderMyDesk() {
     });
     document.getElementById("hmStart").classList.toggle("hidden", !hmNothing || tab !== "today");
     if (tab === "comps") hmLoadComps();
+    // A tab whose rows are pins of a layer turns that layer on, once per
+    // arrival on the tab (never on a redraw, which would undo the member's
+    // own switch), so a row never opens a card over a map hiding its pin.
+    if (tab !== hmLayerTab) {
+      hmLayerTab = tab;
+      const need = HOMEMAP.tabLayer(tab);
+      if (need && !hmLayers[need]) hmSetLayer(need, true, { draw: false });
+    }
     markNavCurrent();
     if (changed) { hmFitFor = ""; hmSel = ""; if (hmMap) hmMap.closePopup(); }
-    // The tab is the address's fragment, so the rail's Reports row (and a
-    // reload) opens the tab it names. Today is the bare address.
+    // The tab is the address's fragment, so a reload opens the tab it names.
+    // Today is the bare address.
     if (!quiet && history.replaceState) {
       history.replaceState(history.state, "", location.pathname + location.search + (tab === "today" ? "" : "#" + tab));
     }
@@ -14545,6 +14423,10 @@ async function renderMyDesk() {
   {
     const h = location.hash.replace("#", "");
     if (HM_TAB_IDS[h]) hmTab = h;
+    // The rail's Reports row was /desk#reports for one day (2026-10-07); the
+    // reports are Messages' now, so a saved link of that day lands there.
+    // Home's own address only: index.html also serves / and reports.
+    else if (h === "reports" && /^\/desk\/?$/.test(location.pathname) && !document.prerendering) location.replace("/messages#reports");
   }
 
   // Add a property: the firm's list (the building form, moved here) or the
@@ -14586,6 +14468,9 @@ async function renderMyDesk() {
     hmPinLayer = L.layerGroup().addTo(hmMap);
     hmMap.setView([39.6, -98.6], 4);
     hmMap.on("popupclose", () => { hmSel = ""; hmMarkSelected(); });
+    // The layer note answers "is anything of this layer where I am looking",
+    // so it is asked again whenever the view moves.
+    hmMap.on("moveend", hmSyncLayerNote);
     if (typeof ResizeObserver === "function") new ResizeObserver(() => hmMap && hmMap.invalidateSize()).observe(el);
     // The basemap follows the theme toggle, like the report's map.
     new MutationObserver(() => {
@@ -14613,14 +14498,86 @@ async function renderMyDesk() {
   }
   const hmPipClass = (r) => (r.group === "buying" ? "buy" : r.group === "owned" ? "own" : "firm");
 
+  // ---- What the map shows: the switch (2026-10-08) --------------------------
+  // hmLayers is the one record of which layers are on; hmSetLayer is its one
+  // writer, and it keeps the buttons, this browser's copy and the pins in
+  // step. A Comps layer for a member who cannot read comps is never drawn,
+  // whatever an old visit stored.
+  const hmLayerOn = (layer) => Boolean(hmLayers[layer]) && (layer !== "comps" || hmCanComps());
+  function hmSyncLayerButtons() {
+    document.querySelectorAll("#hmLayers button[data-layer]").forEach((b) => {
+      const layer = b.dataset.layer;
+      b.setAttribute("aria-pressed", String(hmLayerOn(layer)));
+      const busy = layer === "permits" && hmLayerOn("permits") && hmPermitsAsked && hmPermits == null;
+      b.classList.toggle("busy", busy);
+      if (busy) b.setAttribute("aria-busy", "true"); else b.removeAttribute("aria-busy");
+    });
+  }
+  function hmSetLayer(layer, on, { draw = true } = {}) {
+    if (!HOMEMAP.LAYERS.includes(layer)) return;
+    hmLayers = { ...hmLayers, [layer]: Boolean(on) };
+    try { localStorage.setItem(HM_LAYER_KEY, JSON.stringify(hmLayers)); } catch (_) { /* this visit only */ }
+    if (on && layer === "comps") hmLoadComps();
+    if (on && layer === "permits") hmLoadPermits();
+    // A card open on something that just left the map closes with it.
+    if (!on && hmSel && hmMap && ((layer === "comps" && hmSel.startsWith("comp:")) || (layer === "permits" && hmSel.startsWith("permit:")))) hmMap.closePopup();
+    hmSyncLayerButtons();
+    if (draw) hmDrawPins();
+  }
+  document.getElementById("hmLayers").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-layer]");
+    if (b && !b.hidden) hmSetLayer(b.dataset.layer, b.getAttribute("aria-pressed") !== "true");
+  });
+
+  // The pins each layer drew last, for the note and its "Show them".
+  let hmLayerPts = { comps: [], permits: [] };
+  // Says, on the map, why a layer that is on shows nothing where the member
+  // is looking (HOMEMAP.layerNotes decides the words). Re-said as the map
+  // moves, so panning to the pins takes the note away.
+  function hmSyncLayerNote() {
+    const box = document.getElementById("hmLayerNote");
+    if (!box) return;
+    const bounds = hmMap ? hmMap.getBounds() : null;
+    const inView = (pts) => (bounds ? pts.filter((p) => bounds.contains(p)).length : pts.length);
+    const notes = HOMEMAP.layerNotes({
+      layers: { comps: hmLayerOn("comps"), permits: hmLayerOn("permits") },
+      comps: Array.isArray(hmComps) ? hmComps : hmComps === false ? false : null,
+      compsPlaced: hmLayerPts.comps.length, compsInView: inView(hmLayerPts.comps),
+      permits: hmPermits, permitsFiled: hmPermitsFiled, permitsInView: inView(hmLayerPts.permits),
+      cities: hmPermitCities, windowDays: hmPermitDays,
+    });
+    box.textContent = "";
+    notes.forEach((n) => {
+      const p = hmEl("p", null, n.text);
+      if (n.show && hmLayerPts[n.layer].length) {
+        const b = hmEl("button", null, "Show them");
+        b.type = "button";
+        b.addEventListener("click", () => hmMap && hmMap.fitBounds(hmLayerPts[n.layer], { ...hmFitOpts(), maxZoom: 14 }));
+        p.append(" ", b);
+      }
+      if (n.layer === "permits" && !n.show && hmPermits !== false) {
+        const a = hmEl("a", null, "Open the permit tracker");
+        a.href = "/permits";
+        p.append(" ", a);
+      }
+      box.append(p);
+    });
+    box.classList.toggle("hidden", !notes.length);
+  }
+
   function hmDrawPins() {
     if (!hmEnsureMap()) return;
     hmPinLayer.clearLayers();
-    const pts = [];
+    // `subject` is what this tab is about, and what the map fits to; `pts` is
+    // everything drawn. Comps and permits a member switched on are drawn
+    // around the subject, never fitted to (so a switch never yanks the map),
+    // unless they are all there is.
+    const subject = [], pts = [];
+    const put = (ll, mine) => { const p = [ll.lat, ll.lng]; pts.push(p); if (mine) subject.push(p); };
+    const showProps = hmLayerOn("properties");
     const located = hmRows.map((r) => ({ r, ll: hmLL(r) })).filter((x) => x.ll);
-    const showRows = hmTab !== "comps" || !Array.isArray(hmComps);
-    if (showRows) located.forEach(({ r, ll }) => {
-      pts.push([ll.lat, ll.lng]);
+    if (showProps) located.forEach(({ r, ll }) => {
+      put(ll, hmTab !== "comps");
       const on = r.key === hmSel;
       if (hmTab === "properties" && r.value) {
         hmPin(ll, `<span class="hm-tag ${hmPipClass(r)}${on ? " on" : ""}">${HOMEMAP.money(r.value)}</span>`, [76, 28], () => hmSelect(r.key, { from: "map" }), on ? 900 : 100);
@@ -14628,51 +14585,92 @@ async function renderMyDesk() {
         hmPin(ll, `<span class="hm-pip ${hmPipClass(r)}${on ? " on" : ""}"></span>`, [14, 14], () => hmSelect(r.key, { from: "map" }), on ? 900 : 0);
       }
     });
+    // Today's numbered pins are its rows, so they are drawn whatever the
+    // switch says, the way a row is always on its list.
     if (hmTab === "today") {
       hmItems.forEach((x) => {
         if (x.num == null) return;
         const ll = hmLLForAddress(x.address);
         if (!ll) return;
-        pts.push([ll.lat, ll.lng]);
+        put(ll, true);
         const key = HOMEMAP.addressKey(x.address);
         hmPin(ll, `<span class="hm-npin${x.n <= HOMEMAP.WEEK_DAYS ? " hot" : ""}${key === hmSel ? " on" : ""}">${x.num}</span>`, [30, 30],
           () => hmSelect(key, { item: x, from: "map" }), 1000 - x.num);
       });
     }
-    if (hmTab === "comps" && Array.isArray(hmComps)) {
+    hmLayerPts = { comps: [], permits: [] };
+    if (hmLayerOn("comps") && Array.isArray(hmComps)) {
       hmComps.map(HOMEMAP.compRow).filter((c) => c && c.lat != null && c.lng != null).slice(0, 600).forEach((c) => {
-        pts.push([c.lat, c.lng]);
+        put({ lat: c.lat, lng: c.lng }, hmTab === "comps");
+        hmLayerPts.comps.push([c.lat, c.lng]);
         const key = "comp:" + c.id;
-        hmPin({ lat: c.lat, lng: c.lng }, `<span class="hm-pip comp${key === hmSel ? " on" : ""}"></span>`, [14, 14], () => hmSelect(key, { comp: c, from: "map" }), key === hmSel ? 900 : 0);
+        hmPin({ lat: c.lat, lng: c.lng }, `<span class="hm-pip comp${key === hmSel ? " on" : ""}"></span>`, [14, 14], () => hmSelect(key, { comp: c, from: "map" }), key === hmSel ? 900 : 10);
+      });
+    }
+    if (hmLayerOn("permits") && Array.isArray(hmPermits)) {
+      hmPermits.forEach((p) => {
+        put(p, false);
+        hmLayerPts.permits.push([p.lat, p.lng]);
+        const key = "permit:" + p.id;
+        hmPin(p, `<span class="hm-pip permit${key === hmSel ? " on" : ""}"></span>`, [14, 14], () => hmSelect(key, { permit: p, from: "map" }), key === hmSel ? 900 : -10);
       });
     }
     const empty = !pts.length;
     document.getElementById("hmMapEmpty").classList.toggle("hidden", !empty || !!hmRows.length);
     document.getElementById("hmLegend").classList.toggle("hidden", empty);
-    document.getElementById("hmLegendComps").classList.toggle("hidden", hmTab !== "comps");
-    // The Comps tab draws only comps, so the legend names only them.
-    document.querySelectorAll("#hmLegend .hm-lg-p").forEach((e) => e.classList.toggle("hidden", !showRows));
-    // Fit once per tab (and again when the set of pins grows), never on a
-    // redraw that only moved the selection, so the map does not jump under
-    // the pointer.
-    const fitKey = hmTab + ":" + pts.length;
+    // The legend names what is drawn: the property kinds while Properties is
+    // on, and a line for each other layer that put pins down.
+    document.querySelectorAll("#hmLegend .hm-lg-p").forEach((e) => e.classList.toggle("hidden", !showProps));
+    document.getElementById("hmLegendComps").classList.toggle("hidden", !hmLayerPts.comps.length);
+    document.getElementById("hmLegendPermits").classList.toggle("hidden", !hmLayerPts.permits.length);
+    // Fit once per tab (and again when the subject grows), never on a redraw
+    // that only moved the selection or switched a layer around it, so the
+    // map does not jump under the pointer. With no subject, the whole drawing.
+    const fitTo = subject.length ? subject : pts;
+    const fitKey = hmTab + ":" + (subject.length ? "s" + subject.length : "a" + pts.length);
+    let fitted = false;
     if (!empty && fitKey !== hmFitFor) {
       hmFitFor = fitKey;
-      hmMap.fitBounds(pts, { padding: [56, 56], maxZoom: 15 });
+      hmMap.fitBounds(fitTo, hmFitOpts());
+      fitted = true;
+      // A card already open rides the refit with its pin, which can carry it
+      // under the switch; once the map settles it pans clear again.
+      if (hmPopup && hmPopup.isOpen()) { const p = hmPopup; hmAfterMove(() => { if (p.isOpen()) p.update(); }); }
     }
+    hmSyncLayerNote();
     // The first view of Today opens the card of what is due first, the way
     // the draft showed it; only once, and only beside a list (not on a phone).
+    // After the fit has settled: a card's pan clear of the switch, asked for
+    // mid-animation, is dropped, and the card is left under it.
     if (!hmOpenedOnce && hmTab === "today" && window.innerWidth >= 900) {
       const first = hmItems.find((x) => x.num != null && hmLLForAddress(x.address));
-      if (first) { hmOpenedOnce = true; hmSelect(HOMEMAP.addressKey(first.address), { item: first, quiet: true }); }
+      if (first) {
+        hmOpenedOnce = true;
+        const open = () => { if (!hmSel && hmTab === "today") hmSelect(HOMEMAP.addressKey(first.address), { item: first }); };
+        if (fitted) hmAfterMove(open); else open();
+      }
     }
+  }
+  // Room for what sits over the map: the switch at the top-left, the legend
+  // at the foot. A fit never puts a pin under either. Tighter on the phone
+  // strip, which is 300px tall and would otherwise be all margin.
+  const hmFitOpts = () => (window.innerWidth >= 900
+    ? { paddingTopLeft: [56, 84], paddingBottomRight: [56, 72], maxZoom: 15 }
+    : { paddingTopLeft: [20, 56], paddingBottomRight: [20, 60], maxZoom: 15 });
+  // Runs `go` once the map has stopped moving, or after a beat if it never
+  // started (a fit to where it already was fires no moveend).
+  function hmAfterMove(go) {
+    let done = false;
+    const once = () => { if (done) return; done = true; go(); };
+    hmMap.once("moveend", once);
+    setTimeout(once, 450);
   }
 
   function hmMarkSelected() {
     document.querySelectorAll("#homeMap .hm-row").forEach((r) => r.classList.toggle("on", !!hmSel && r.dataset.key === hmSel));
   }
 
-  function hmSelect(key, { item, comp, from, quiet } = {}) {
+  function hmSelect(key, { item, comp, permit, from } = {}) {
     hmSel = key;
     hmMarkSelected();
     if (from === "map") {
@@ -14680,13 +14678,45 @@ async function renderMyDesk() {
       if (row) row.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
     if (!hmEnsureMap()) return;
-    const r = comp ? null : hmRowByKey(key);
-    const ll = comp ? (comp.lat != null ? { lat: comp.lat, lng: comp.lng } : null) : (r ? hmLL(r) : item ? hmLLForAddress(item.address) : null);
+    const r = comp || permit ? null : hmRowByKey(key);
+    const ll = permit ? { lat: permit.lat, lng: permit.lng }
+      : comp ? (comp.lat != null ? { lat: comp.lat, lng: comp.lng } : null) : (r ? hmLL(r) : item ? hmLLForAddress(item.address) : null);
     if (!ll) return;
     const card = hmEl("div");
     card.append(hmAerial(hmEl("div", "hm-pop-ph"), ll, 260, 104, 18));
     const b = hmEl("div", "hm-pop-b");
-    if (comp) {
+    if (permit) {
+      // A permit's card (2026-10-08): what was filed and where, its status
+      // tag as the tracker draws it (the portal's own words, coloured by the
+      // stage they mean), who filed it, and two doors, the tracker and the
+      // city's record. Public record, so no "who can see it" tag; one of the
+      // member's own properties, or the firm's, is named when it is there.
+      b.append(hmEl("b", null, permit.type), hmEl("small", null, [permit.street, permit.city].filter(Boolean).join(" · ")));
+      const tags = hmEl("span", "hm-pop-r");
+      const tag = hmEl("span", "hm-chip pm-" + permit.stage, permit.status || HOMEMAP.permitStageLabel(permit.stage));
+      tag.title = HOMEMAP.permitStageLabel(permit.stage);
+      tags.append(tag);
+      b.append(tags);
+      if (permit.filed) {
+        const ago = HOMEMAP.daysUntil(permit.filed, hmTodayIso());
+        b.append(hmEl("span", "hm-pop-n", `Filed ${HOMEMAP.shortDate(permit.filed)}${ago != null ? " · " + HOMEMAP.inDays(ago) : ""}`));
+      }
+      if (permit.what) b.append(hmEl("span", "hm-pop-d", permit.what));
+      const by = [permit.applicant, permit.contractor && permit.contractor !== permit.applicant ? permit.contractor : ""].filter(Boolean);
+      if (by.length) b.append(hmEl("span", "hm-pop-d", "Filed by " + by.join(" · ")));
+      const at = HOMEMAP.permitAt(permit, hmRows);
+      const atText = at ? `At ${HOMEMAP.street(at.address)}, ${at.you ? "one of your properties" : "one of the firm's buildings"}`
+        : permit.board ? `At ${HOMEMAP.street(permit.board.address)}, one of the firm's buildings` : "";
+      if (atText) b.append(hmEl("span", "hm-pop-at", atText));
+      const a = hmEl("a", "hm-pop-a", "Open the permit tracker →");
+      a.href = "/permits";
+      b.append(a);
+      if (permit.href) {
+        const rec = hmEl("a", "hm-pop-a2", "The city's record ↗");
+        rec.href = permit.href; rec.target = "_blank"; rec.rel = "noopener noreferrer";
+        b.append(rec);
+      }
+    } else if (comp) {
       b.append(hmEl("b", null, comp.street), hmEl("small", null, [comp.place, comp.type, comp.size].filter(Boolean).join(" · ")));
       const tags = hmEl("span", "hm-pop-r");
       tags.append(hmChip("deal", `${comp.deal} · ${comp.when || "date unknown"}`), hmScope("you"));
@@ -14719,6 +14749,11 @@ async function renderMyDesk() {
         b.append(v);
       }
       if (r.next) b.append(hmEl("span", "hm-pop-n" + (HOMEMAP.daysUntil(r.next.on, hmTodayIso()) <= 21 ? " hot" : ""), `${HOMEMAP.shortDate(r.next.on)} · ${r.next.label}`));
+      // A permit filed at this property in the tracker's window, when the
+      // Permits layer is on: the newest one, in the tracker's words.
+      const filedHere = hmLayerOn("permits") && Array.isArray(hmPermits)
+        ? hmPermits.filter((p) => HOMEMAP.permitAt(p, [r])).sort((x, y) => y.filed.localeCompare(x.filed))[0] : null;
+      if (filedHere) b.append(hmEl("span", "hm-pop-at", `Permit filed ${HOMEMAP.shortDate(filedHere.filed)}: ${filedHere.type} (${filedHere.status || HOMEMAP.permitStageLabel(filedHere.stage)})`));
       const a = hmEl("a", "hm-pop-a");
       if (r.buildingId != null) { a.textContent = "Open the building sheet →"; a.href = "/building/" + encodeURIComponent(r.buildingId); }
       else if (r.group === "buying") { a.textContent = "Open the deal →"; a.href = HOMEMAP.dealsHref(hmFirmKind()); }
@@ -14726,7 +14761,12 @@ async function renderMyDesk() {
       b.append(a);
     } else return;
     card.append(b);
-    L.popup({ closeButton: true, autoClose: true, offset: [0, -12], maxWidth: 260, minWidth: 260, className: "hm-pop", autoPan: !quiet })
+    // A card always pans clear of the switch over the map's top-left corner
+    // and of the legend at its foot (2026-10-08): the map's panes sit under
+    // both, so a card opened beneath them would be cut off. That includes the
+    // first card of the day, which pans by just enough.
+    hmPopup = L.popup({ closeButton: true, autoClose: true, offset: [0, -12], maxWidth: 260, minWidth: 260, className: "hm-pop",
+      autoPan: true, autoPanPaddingTopLeft: L.point(16, 72), autoPanPaddingBottomRight: L.point(16, 64) })
       .setLatLng([ll.lat, ll.lng]).setContent(card).openOn(hmMap);
     // Redraw the pins so the selected one stands out; the map does not refit.
     hmDrawPins();
@@ -14752,8 +14792,11 @@ async function renderMyDesk() {
   }
 
   // ---- The find box ------------------------------------------------------------
-  // Searches what Home already holds (properties, comps, contacts) in the
-  // browser, and offers to value whatever was typed as an address.
+  // Searches what Home already holds (properties, comps, contacts, and the
+  // permits once the Permits layer has read them) in the browser. It offered
+  // to run a comp report on whatever was typed until 2026-10-08, when the
+  // comp report went back to its own Tools row; an address that matches
+  // nothing is pointed there instead.
   function hmFindResults(q) {
     const res = document.getElementById("hmFindRes");
     const input = document.getElementById("hmFind");
@@ -14774,13 +14817,21 @@ async function renderMyDesk() {
       add(c.street, `Comp · ${c.deal} · ${c.when}`, () => { setHomeTab("comps"); hmSelect("comp:" + c.id, { comp: c }); }));
     (Array.isArray(firmContacts) ? firmContacts : []).filter((c) => hit([c.name, c.company, c.email].join(" "))).slice(0, 3).forEach((c) =>
       add(c.name, ["Contact", c.company].filter(Boolean).join(" · "), () => setHomeTab("people")));
-    // Anything that starts with a street number can be valued.
-    if (/^\s*\d+\s+\S+/.test(q)) {
-      add(`Run a comp report on ${q.trim()}`, "A value range and the sales behind it, in about a minute", () => {
-        location.href = "/bulk?address=" + encodeURIComponent(q.trim());
-      }, "go");
+    (Array.isArray(hmPermits) ? hmPermits : []).filter((p) => hit([p.street, p.city, p.type, p.what, p.number].join(" "))).slice(0, 3).forEach((p) =>
+      add(p.street, ["Permit", p.type, HOMEMAP.shortDate(p.filed)].filter(Boolean).join(" · "), () => {
+        if (!hmLayerOn("permits")) hmSetLayer("permits", true);
+        hmSelect("permit:" + p.id, { permit: p });
+      }));
+    if (!res.childElementCount) {
+      const none = hmEl("p", "hm-empty", "Nothing on Home matches that.");
+      // Something shaped like an address: say where valuing one lives now.
+      if (/^\s*\d+\s+\S+/.test(q)) {
+        const go = hmEl("a", null, "Comp report");
+        go.href = "/bulk";
+        none.append(" To value a new address, open ", go, " under Tools.");
+      }
+      res.append(none);
     }
-    if (!res.childElementCount) res.append(hmEl("p", "hm-empty", "Nothing on Home matches that. Type a full address to value it."));
     res.classList.remove("hidden");
     input.setAttribute("aria-expanded", "true");
   }
@@ -14795,21 +14846,14 @@ async function renderMyDesk() {
     if (res && !res.classList.contains("hidden")) { res.classList.add("hidden"); document.getElementById("hmFind").setAttribute("aria-expanded", "false"); }
   });
 
-  async function renderShares() {
-    const sharesBox = document.getElementById("deskShares");
-    const errEl = document.getElementById("deskSharesLoadError");
-    errEl.classList.add("hidden");
+  // Home's reads: the membership, then everything the map and the tabs draw
+  // from. It was renderShares until 2026-10-08 and opened with GET
+  // /api/shares, whose answer filled the Reports tab; the reports moved to
+  // Messages that day, so Home no longer asks for them, and a shares outage
+  // no longer hides a firm's buildings and contacts with it.
+  async function renderHomeFirm() {
     const hideAll = () => {
-      sharesBox.classList.add("hidden");
-      // Sent to you is filled by the same read, so it goes with it, and a
-      // signed-out page forgets what was sent to whoever was signed in.
-      document.getElementById("deskInbox").classList.add("hidden");
-      shareWithMe = [];
-      shareTabPicked = "";
-      // The firm surfaces hide with it. A stale firm roster left on screen
-      // after a sign-out is the same class of mistake as a stale share list,
-      // and this one names colleagues.
-      document.getElementById("deskSharedWithFirm").classList.add("hidden");
+      // A stale firm roster left on screen after a sign-out names colleagues.
       // The contact list is the most personal thing on Home — real names and
       // addresses a customer typed — so it hides on the same signal.
       document.getElementById("deskContacts").classList.add("hidden");
@@ -14818,57 +14862,21 @@ async function renderMyDesk() {
       stopDeskClock();
       // Home's map names the same buildings, deals and colleagues.
       resetHomeMap();
-      syncShareCard();
     };
     if (!currentUser) { hideAll(); return; }
-    // The membership read starts NOW, beside the shares read, not after it
-    // (2026-09-03): the two answer different questions and neither needs the
-    // other, and the firm read heads the longest chain on the page (firm →
-    // buildings → shelf), so a round trip spent waiting for the shares before
-    // starting it was a round trip on every member's first paint. Every early
-    // exit below still waits for it before hideAll(): renderFirm unhides
-    // #deskFirm when it lands, and hiding first would be undone by a read
-    // still in flight.
-    const firmReady = renderFirm().catch(() => {});
-    const bail = async (err) => {
-      await firmReady;
-      hideAll();
-      if (err) errEl.classList.remove("hidden");
-      syncShareCard();
-    };
-    shareWithMe = [];
-    let res;
-    try {
-      res = await bootFetch("/api/shares");
-    } catch (_) {
-      return bail(true);
-    }
-    if (res.status === 401) return bail(false); // sign-in card already covers this
-    if (!res.ok) return bail(true);
-    const data = await res.json().catch(() => null);
-    if (!data) return bail(true);
-    shareWithMe = Array.isArray(data.sharedWithMe) ? data.sharedWithMe : [];
-    const mine = Array.isArray(data.mine) ? data.mine : [];
     // AWAITED before anything firm-scoped: renderFirm is what loads the
     // membership, and everything below reads it through myFirm(). Firing them
-    // together showed the shelf for whatever firm was in memory from the last
-    // render — which on a sign-out-then-sign-in is somebody else's.
-    await firmReady;
-    // Your links leaves out the firm shares the shelf lists, and that needs
-    // the membership just loaded, so both panes this read fills draw here.
-    sharesBox.classList.remove("hidden");
-    document.getElementById("deskInbox").classList.remove("hidden");
-    renderSharesTable(mine);
-    drawShareInbox();
+    // together showed whatever firm was in memory from the last render —
+    // which on a sign-out-then-sign-in is somebody else's.
+    await renderFirm().catch(() => {});
+    if (!currentUser) { hideAll(); return; }
     // The greeting, and its timer for the next time it changes.
     drawDeskClock();
     // The firm-scoped reads run TOGETHER (2026-09-03); each needs only the
-    // membership just loaded. Two exceptions, and only these two: the shelf's
-    // rows offer "Add to firm" only for addresses not already listed, and the
-    // contact rows map building_id to an address off the buildings read, so
-    // the shelf and the contacts wait for the buildings — and for nothing
-    // else. The leases read (Home's lease dates) starts beside the batch and
-    // is joined after it.
+    // membership just loaded. One exception, and only this one: the contact
+    // rows map building_id to an address off the buildings read, so the
+    // contacts wait for the buildings — and for nothing else. The leases read
+    // (Home's lease dates) starts beside the batch and is joined after it.
     const critical = readFirmCritical();
     const buildings = readFirmBuildings();
     // The member's own deals, for Home's map (2026-10-07). Embedded with the
@@ -14878,28 +14886,13 @@ async function renderMyDesk() {
       sites,
       buildings,
       renderDeskThreads(),
-      buildings.then(() => Promise.all([renderFirmShelf(), renderContacts()])),
+      buildings.then(() => renderContacts()),
     ]);
     deskCritical = await critical;
     // Home as one map reads everything the lines above parsed. Guarded: a
     // fault in the drawing must never cost the member the rest of Home.
     try { drawHomeMap(); } catch (err) { console.error("Home map draw failed:", err); }
   }
-
-  // ---------------------------------------------------------------------------
-  // The firm shelf — every report anybody at the firm has shared, searchable.
-  //
-  // Hidden entirely for somebody in no firm, unlike the two lists above it,
-  // which teach a feature every account has. The firm section below is what
-  // teaches this one.
-  //
-  // Fetched WHOLE (up to 1000) and filtered here, which is /vault's rule and
-  // is here for its reasons: the count line describes the whole shelf, so a
-  // server-side filter would leave this page unable to say how much it was
-  // not showing, and a search box that re-queries per keystroke is a request
-  // per keystroke.
-  // ---------------------------------------------------------------------------
-  let firmShelfItems = [];
 
   // The two shops (migration 036), Transition Plan v2 §6. A tenant rep shop
   // was a third between 2026-08-21 and 2026-08-31 and was withdrawn.
@@ -14924,134 +14917,6 @@ async function renderMyDesk() {
   // Unrecognized reads as broker, for org-access.js kindOf's reason: it is the
   // vocabulary every firm predating 036 has already been reading.
   const shopCopy = (kind) => SHOP_COPY[kind] || SHOP_COPY.broker;
-
-  // Whether this visitor has touched the shelf's type filter. Once they have,
-  // the shop's default stops being applied on re-render — a saved view that
-  // undoes a person's own click is not a default, it is a fight.
-  let firmShelfTypeTouched = false;
-
-  async function renderFirmShelf() {
-    const box = document.getElementById("deskSharedWithFirm");
-    // `currentUser` first, before the cached membership: a failed /api/org
-    // read leaves firmState holding the LAST answer, and the one state where
-    // acting on that would be wrong rather than merely stale is a signed-out
-    // page. The server gates the fetch either way; this stops us asking.
-    const firm = currentUser ? myFirm() : null;
-    // myFirm() is populated by renderFirm()'s own load, which renderShares
-    // calls first. A member with no firm, or a firm read that failed, both
-    // land here — and both correctly show nothing rather than an empty shelf
-    // for a firm we could not confirm they are in.
-    if (!firm) { box.classList.add("hidden"); firmShelfItems = []; shareShelfCount = 0; syncShareCard(); return; }
-    let data = null;
-    try {
-      const res = await bootFetch(`/api/org/shelf?id=${encodeURIComponent(firm.id)}`);
-      if (res.ok) data = await res.json();
-    } catch (_) { /* handled below */ }
-    if (!data) { box.classList.add("hidden"); firmShelfItems = []; shareShelfCount = 0; syncShareCard(); return; }
-
-    firmShelfItems = Array.isArray(data.items) ? data.items : [];
-    box.classList.remove("hidden");
-    document.getElementById("deskFirmSharesLabel").textContent =
-      `Reports anyone at ${firm.name} has put here for the whole firm.`;
-    document.getElementById("firmShelfTruncated").classList.toggle("hidden", !data.truncated);
-
-    // The header line describes the WHOLE shelf and never the filtered view —
-    // "3 reports" under a search box that is hiding twenty is how a shelf
-    // stops being trusted as a record.
-    const markets = new Set(firmShelfItems.map((i) => i.market).filter(Boolean));
-    const stats = document.getElementById("firmShelfStats");
-    stats.textContent = firmShelfItems.length
-      ? `${firmShelfItems.length} ${firmShelfItems.length === 1 ? "report" : "reports"}` +
-        (markets.size ? ` · ${markets.size} ${markets.size === 1 ? "market" : "markets"}` : "")
-      : "";
-
-    // A filter over three rows is furniture.
-    const filters = firmShelfItems.length >= 6;
-    document.getElementById("firmShelfSearchWrap").classList.toggle("hidden", !filters);
-    document.getElementById("deskSharedWithFirmEmpty").classList.toggle("hidden", firmShelfItems.length > 0);
-
-    // The shop's saved view, applied ONLY while the filter row is on screen.
-    // A hidden control that is quietly hiding rows would make a small shelf
-    // look like a shelf that lost something, which is the one thing a record
-    // may never do. Below six rows the filter is cleared rather than merely
-    // hidden, for the same reason.
-    const type = document.getElementById("firmShelfType");
-    if (!filters) type.value = "";
-    else if (!firmShelfTypeTouched) type.value = shopCopy(firm.kind).shelfType;
-    applyFirmShelfFilter();
-    shareShelfCount = firmShelfItems.length;
-    syncShareCard();
-  }
-
-  function applyFirmShelfFilter() {
-    const q = document.getElementById("firmShelfSearch").value.trim().toLowerCase();
-    const type = document.getElementById("firmShelfType").value;
-    const shown = firmShelfItems.filter((i) =>
-      (!type || i.type === type) &&
-      (!q || `${i.address} ${i.market} ${i.type} ${i.sharedBy}`.toLowerCase().includes(q)));
-
-    const wrap = document.getElementById("sharedWithFirmRows");
-    wrap.innerHTML = "";
-    // Told apart on purpose: an empty shelf is an invitation to share
-    // something, a search with no hits is a search with no hits, and showing
-    // the first message for the second reads as the shelf having been wiped.
-    const filtering = Boolean(q || type);
-    document.getElementById("firmShelfNoMatch").classList
-      .toggle("hidden", !(filtering && !shown.length && firmShelfItems.length));
-    // The count names the WHOLE shelf on purpose, filtered or not: a saved
-    // view a colleague did not choose must never read as the firm's record
-    // having shrunk.
-    document.getElementById("firmShelfCount").textContent =
-      filtering ? `${shown.length} of ${firmShelfItems.length}` : "";
-
-    shown.forEach((r) => {
-      // One row family (.dk-row, 2026-09-04): the shelf is the firm's record,
-      // so its rows read like the buildings above it — Georgia address on its
-      // own line, attribution under it, Discuss at the right. Addresses stay
-      // textContent: user-authored.
-      const row = document.createElement("div");
-      row.className = "dk-row";
-      const addr = document.createElement("a");
-      addr.href = r.url;
-      addr.target = "_blank";
-      addr.rel = "noopener noreferrer";
-      addr.className = "dk-row-name dk-addr";
-      addr.textContent = r.address;
-      row.appendChild(addr);
-      // Attribution is the point of a shelf: a row nobody can be asked about
-      // is a dead end. "you" rather than your own name, because reading your
-      // own name in a list of colleagues is a beat of confusion every time.
-      const bits = [r.type, r.mine ? "shared by you" : `shared by ${r.sharedBy}`];
-      if (r.createdAt) bits.push(fmtShareDate(r.createdAt));
-      const meta = document.createElement("span");
-      meta.className = "dk-row-meta";
-      meta.textContent = bits.filter(Boolean).join(" · ");
-      row.appendChild(meta);
-      // A shelf row names a building somebody at the firm has already valued;
-      // the same door the property rows carry, so nobody retypes it.
-      const door = buildingDoor({ address: r.address, propertyType: r.type });
-      if (door) row.appendChild(door);
-      // "Take down" on a report this member put here (2026-10-06): the shelf
-      // is now the only place a firm share is listed for its sharer (it left
-      // Your links so it would stop showing twice), so its off switch is here.
-      // The same one-way revoke Your links' "Turn off link" sends.
-      if (r.mine && r.id) row.appendChild(shelfTakeDown(r));
-      // "Discuss" (slice 8): the report travels as its LINK, so report-access.js
-      // stays the sole decider of who may read it. Never a copy of the payload.
-      const talk = document.createElement("a");
-      talk.className = "dk-row-act";
-      talk.textContent = "Discuss";
-      talk.href = "/messages?say=" + encodeURIComponent("About the " + (r.type ? r.type + " " : "") + "report on " + r.address + ": " + r.url);
-      row.appendChild(talk);
-      wrap.appendChild(row);
-    });
-  }
-
-  document.getElementById("firmShelfSearch").addEventListener("input", applyFirmShelfFilter);
-  document.getElementById("firmShelfType").addEventListener("change", () => {
-    firmShelfTypeTouched = true;
-    applyFirmShelfFilter();
-  });
 
   // ---------------------------------------------------------------------------
   // The firm's contacts (039; "Tenant contacts" on screen until 2026-09-02,
@@ -15106,7 +14971,7 @@ async function renderMyDesk() {
       (addr && String(b.address || "").trim().toLowerCase() === addr)) || null;
   }
 
-  // currentUser first, then the cached membership — renderFirmShelf's rule
+  // currentUser first, then the cached membership (the shelf's old rule)
   // and its reason: a failed /api/org read leaves the LAST firm in memory,
   // and the one state where acting on that is wrong is a signed-out page.
   // A failed read empties the list rather than keeping a stale one; Home
@@ -15240,7 +15105,7 @@ async function renderMyDesk() {
   }
 
   // The firm's lease dates in the next twelve months (`critical`), for
-  // Home's Today and its map. Starts beside the firm batch in renderShares
+  // Home's Today and its map. Starts beside the firm batch in renderHomeFirm
   // and is joined after it. Never a second read of a route another reader
   // makes: bootFetch hands each embedded DESK_BOOT answer to its FIRST caller
   // and deletes it, so a second reader would cost a live round trip on every
@@ -15407,7 +15272,7 @@ async function renderMyDesk() {
 
     // Attached to a building (046, written by the sheet's Attach door): a
     // door to that sheet. Mapped off the desk's own buildings read, which
-    // renderShares awaits BEFORE this list, so the address is known here.
+    // renderHomeFirm awaits BEFORE this list, so the address is known here.
     const at = c.buildingId ? firmBuildings.find((b) => String(b.id) === String(c.buildingId)) : null;
     if (at) {
       const where = document.createElement("a");
@@ -15741,9 +15606,9 @@ async function renderMyDesk() {
             body: JSON.stringify({ orgId: inv.orgId }),
           });
           if (!res.ok) throw new Error("failed");
-          // Re-read both: joining changes the firm section AND puts the
-          // firm's shares on the desk, and they come from two endpoints.
-          await renderShares();
+          // Re-read Home: joining changes the firm section and puts the
+          // firm's buildings, contacts and dates on the map.
+          await renderHomeFirm();
         } catch (_) {
           note.textContent = "That didn't go through. Please try again.";
           btn.disabled = false;
@@ -15836,7 +15701,7 @@ async function renderMyDesk() {
               { method: "DELETE" });
             const body = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(body.error || "failed");
-            await renderShares();
+            await renderHomeFirm();
           } catch (err) {
             meta.textContent = err.message || "That didn't go through.";
             btn.disabled = false;
@@ -15947,7 +15812,7 @@ async function renderMyDesk() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "failed");
       closeMemberCard();
-      await renderShares();
+      await renderHomeFirm();
     } catch (err) {
       if (msg) msg.textContent = err.message || "That didn't go through.";
     }
@@ -16342,10 +16207,8 @@ async function renderMyDesk() {
       // The server's own answer, not the option that was clicked.
       firm.kind = body.kind;
       renderFirmShop(firm);
-      // The shelf's default view follows the firm, so a shop that has just
-      // changed its mind gets the new view rather than the old one — unless
-      // this visitor has already made the filter their own.
-      if (!firmShelfTypeTouched) await renderFirmShelf();
+      // The shelf's default view follows the firm's kind; it lives in
+      // Messages since 2026-10-08 and reads the kind each time it opens.
     } catch (err) {
       firm.kind = before;
       renderFirmShop(firm);
@@ -16392,7 +16255,7 @@ async function renderMyDesk() {
       document.getElementById("firmNameInput").value = "";
       document.getElementById("firmKindSelect").value = "";
       document.getElementById("firmKindNote").textContent = "";
-      await renderShares();
+      await renderHomeFirm();
     } catch (e) {
       err.textContent = e.message || "That didn't go through. Please try again.";
       err.classList.remove("hidden");
@@ -16433,604 +16296,6 @@ async function renderMyDesk() {
       btn.disabled = false;
     }
   });
-
-  // Your links (2026-10-06, the Sharing card): what THIS member sent, newest
-  // first. Until then this was one table for both directions (2026-08-21);
-  // the reports sent TO this member moved to Sent to you, onto the same row as
-  // the deal room opened from each, so a person reads one direction per tab.
-  // A firm share on the shelf this member can see is listed THERE and not
-  // here (the shelf's Take down is its off switch), while one left on the
-  // shelf of a firm they have since left stays here, the only place left to
-  // turn it off. Everything user-authored renders via textContent, the rule
-  // this desk already follows.
-  function renderSharesTable(mine) {
-    const wrap = document.getElementById("sharesRows");
-    wrap.innerHTML = "";
-    const firm = currentUser ? myFirm() : null;
-    const rows = mine
-      .filter((r) => !(r.visibility === "org" && firm && r.orgId && String(r.orgId) === String(firm.id)))
-      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-    const off = rows.filter((r) => r.revokedAt).length;
-    shareLiveLinks = rows.length - off;
-    document.getElementById("deskSharesEmpty").classList.toggle("hidden", rows.length > 0);
-    document.getElementById("deskSharesStats").textContent = [
-      shareLiveLinks ? `${shareLiveLinks} live` : "",
-      off ? `${off} turned off` : "",
-    ].filter(Boolean).join(" · ");
-    syncShareCard();
-    if (!rows.length) return;
-    const table = document.createElement("table");
-    table.className = "dk-stmt dk-shares";
-    const thead = document.createElement("thead");
-    const hr = document.createElement("tr");
-    ["Report", "Who can open it", "Sent", ""].forEach((t) => {
-      const th = document.createElement("th");
-      th.textContent = t;
-      hr.appendChild(th);
-    });
-    thead.appendChild(hr);
-    table.appendChild(thead);
-    const tbody = document.createElement("tbody");
-    rows.forEach((r) => addMyShareRow(tbody, r));
-    table.appendChild(tbody);
-    wrap.appendChild(table);
-  }
-
-  function shareAddressCell(r, { dead } = {}) {
-    const td = document.createElement("td");
-    if (dead) {
-      // A revoked link opens for nobody, so its address is not a link — a
-      // control that can only 403 is worse than no control.
-      const addr = document.createElement("span");
-      addr.className = "dk-addr";
-      addr.style.color = "var(--ink-3)"; // dead: quiet, but still the book's serif
-      addr.textContent = r.address;
-      td.appendChild(addr);
-    } else {
-      const addr = document.createElement("a");
-      addr.href = r.url;
-      addr.target = "_blank";
-      addr.rel = "noopener noreferrer";
-      addr.className = "dk-addr";
-      addr.textContent = r.address;
-      td.appendChild(addr);
-    }
-    const type = document.createElement("span");
-    type.className = "block text-xs text-[#68707E]";
-    type.textContent = r.type;
-    td.appendChild(type);
-    return td;
-  }
-
-  // Sent to you: one row per property per sender (2026-10-06). A report and
-  // the deal room opened from it are the same thing to the person they were
-  // sent to, and they used to list under two headings ("Shared reports" and
-  // "Shared with you") with the same address on both. A room joins a report's
-  // row when the addresses match and the senders do not disagree; a room
-  // with no such report gets a row of its own. Pure, so the merge is tested
-  // on its own; `isNew` is what turns the tab's count red.
-  function mergeShareInbox(reports, rooms) {
-    const key = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-    const later = (a, b) => (a && (!b || new Date(a) > new Date(b))) ? a : b;
-    const rows = (reports || []).map((r) => ({
-      key: key(r.address),
-      label: r.address || "",
-      type: r.type || "",
-      from: r.from || "",
-      report: r,
-      room: null,
-      date: r.invitedAt || "",
-      // null, not merely missing: an older answer without the field must not
-      // light every row up as unopened.
-      isNew: r.viewedAt === null,
-    }));
-    (rooms || []).forEach((h) => {
-      const closed = Boolean(h.closedAt || h.status === "closed");
-      const unseen = !closed && (!h.lastSeenAt
-        || Boolean(h.updatedAt && new Date(h.updatedAt) > new Date(h.lastSeenAt)));
-      const k = key(h.subjectAddress || h.title);
-      const hit = k && rows.find((x) => !x.room && x.report && x.key === k
-        && (!x.from || !h.from || x.from === h.from));
-      if (hit) {
-        hit.room = h;
-        hit.isNew = hit.isNew || unseen;
-        hit.date = later(h.updatedAt, hit.date) || "";
-        if (!hit.from) hit.from = h.from || "";
-        if (!hit.type) hit.type = h.propertyType || "";
-      } else {
-        rows.push({
-          key: k,
-          label: h.title || h.subjectAddress || "Deal room",
-          type: h.propertyType || "",
-          from: h.from || "",
-          report: null,
-          room: h,
-          date: h.updatedAt || "",
-          isNew: unseen,
-        });
-      }
-    });
-    return rows.sort((a, b) => (new Date(b.date || 0) - new Date(a.date || 0)));
-  }
-
-  function shareKind(text, tone) {
-    const pill = document.createElement("span");
-    pill.className = "dk-kind " + tone;
-    pill.textContent = text;
-    return pill;
-  }
-
-  function shareInboxRow(r) {
-    const roomHref = r.room ? "/messages?x=" + encodeURIComponent(r.room.id) : "";
-    const row = document.createElement("div");
-    row.className = "dk-row";
-    const name = document.createElement("span");
-    name.className = "dk-row-name";
-    const link = document.createElement("a");
-    link.className = "dk-addr";
-    if (r.report) {
-      link.href = r.report.url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-    } else {
-      // Into Messages, not the room's own page (2026-09-04): every
-      // conversation a member is in lives on one screen now, and a client's
-      // rooms have listed there since #275. The token door at /hub/<id> is
-      // untouched for the emailed link.
-      link.href = roomHref;
-    }
-    // textContent, never innerHTML: an address and a room's title are both
-    // user-authored (a room's title is typed by the broker who opened it).
-    link.textContent = r.label;
-    name.appendChild(link);
-    const kinds = document.createElement("span");
-    kinds.className = "dk-kinds";
-    if (r.isNew) kinds.appendChild(shareKind("New", "dk-tone-red"));
-    if (r.report) kinds.appendChild(shareKind("Report", "dk-tone-bv"));
-    if (r.room) kinds.appendChild(shareKind("Deal room", "dk-tone-ok"));
-    name.appendChild(kinds);
-    row.appendChild(name);
-    if (r.report) {
-      const open = document.createElement("a");
-      open.className = "dk-row-act";
-      open.href = r.report.url;
-      open.target = "_blank";
-      open.rel = "noopener noreferrer";
-      open.textContent = "Open report";
-      row.appendChild(open);
-    }
-    if (r.room) {
-      const talk = document.createElement("a");
-      talk.className = "dk-row-act";
-      talk.href = roomHref;
-      talk.textContent = "Open the conversation";
-      row.appendChild(talk);
-    }
-    const meta = document.createElement("span");
-    meta.className = "dk-row-meta";
-    const closed = r.room && (r.room.closedAt || r.room.status === "closed");
-    meta.textContent = [
-      r.type,
-      r.from ? `from ${r.from}` : "",
-      r.date ? fmtShareDate(r.date) : "",
-      closed ? "deal room closed" : "",
-    ].filter(Boolean).join(" · ");
-    row.appendChild(meta);
-    return row;
-  }
-
-  // Sent to you's one writer. Called by both reads that feed it, in whichever
-  // order they land; each call draws everything known so far.
-  function drawShareInbox() {
-    const rows = mergeShareInbox(shareWithMe, deskRooms);
-    shareInboxCount = rows.length;
-    shareInboxNew = rows.filter((r) => r.isNew).length;
-    const wrap = document.getElementById("deskInboxRows");
-    wrap.innerHTML = "";
-    rows.forEach((r) => wrap.appendChild(shareInboxRow(r)));
-    // An empty card only when both reads came back: a failed rooms read
-    // must never be told as "nothing was sent to you".
-    document.getElementById("deskInboxEmpty").classList.toggle("hidden", rows.length > 0 || deskRoomsFailed);
-    const reports = rows.filter((r) => r.report).length;
-    const rooms = rows.filter((r) => r.room).length;
-    document.getElementById("deskInboxStats").textContent = [
-      reports ? `${reports} ${reports === 1 ? "report" : "reports"}` : "",
-      rooms ? `${rooms} ${rooms === 1 ? "deal room" : "deal rooms"}` : "",
-    ].filter(Boolean).join(" · ");
-    syncShareCard();
-  }
-
-  // The shelf row's Take down. The confirm names what cannot be undone, as
-  // "Turn off link" does: a revoke is one-way.
-  function shelfTakeDown(r) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "dk-row-act";
-    btn.textContent = "Take down";
-    btn.addEventListener("click", async () => {
-      const msg = document.getElementById("firmShelfMsg");
-      msg.classList.add("hidden");
-      if (!confirm(`Take ${r.address} off the firm shelf? Its link stops working for everyone at your firm, and it cannot be put back.`)) return;
-      btn.disabled = true;
-      try {
-        await acctApi("POST", "/api/shares/revoke", { id: r.id });
-        renderShares();
-      } catch (ex) {
-        btn.disabled = false;
-        msg.textContent = ex.message;
-        msg.classList.remove("hidden");
-      }
-    });
-    return btn;
-  }
-
-  // The tabs. A click or the tabs pattern's keys pick one, and a pick stays
-  // picked across re-renders of the panes.
-  const shareTabsEl = document.getElementById("shareTabs");
-  shareTabsEl.addEventListener("click", (e) => {
-    const tab = e.target.closest(".dk-tab");
-    if (!tab || tab.hidden) return;
-    shareTabPicked = tab.dataset.pane;
-    syncShareCard();
-  });
-  shareTabsEl.addEventListener("keydown", (e) => {
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
-    const tabs = Array.from(shareTabsEl.querySelectorAll(".dk-tab")).filter((t) => !t.hidden);
-    const i = tabs.indexOf(document.activeElement);
-    if (i < 0) return;
-    e.preventDefault();
-    const next = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1
-      : (i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
-    shareTabPicked = tabs[next].dataset.pane;
-    syncShareCard();
-    tabs[next].focus();
-  });
-
-  function addMyShareRow(tbody, r) {
-    const revoked = Boolean(r.revokedAt);
-    const invited = r.visibility === "invited";
-    const viewers = Array.isArray(r.viewers) ? r.viewers : [];
-
-    const tr = document.createElement("tr");
-    tr.appendChild(shareAddressCell(r, { dead: revoked }));
-
-    // Who can open it: revoked wins over visibility — a report can be
-    // "invited" AND turned off, and "Turned off" is the more useful thing to
-    // say.
-    //
-    // The firm case is named EXPLICITLY rather than left to the else. Before
-    // migration 030 there were two visibilities and `!invited` meant public,
-    // so a firm share inherited "Anyone with the link" — telling the person
-    // who restricted a report to their firm that they had published it, which
-    // is the one wrong answer on this line that could make them forward it.
-    // (Since 2026-10-06 a firm share reaches this table only when its firm is
-    // one this member has left; the shelf lists the rest.)
-    const tdAud = document.createElement("td");
-    // The audience wears a chip (2026-08-29) so who-can-see-this scans as a
-    // STATE, not a sentence lost in table prose. Same strings as before,
-    // still textContent (r.firm is user-authored); revoked gets the outline
-    // variant, the quiet one.
-    const aud = document.createElement("span");
-    aud.className = revoked ? "rd-chip o" : "rd-chip";
-    aud.textContent = revoked
-      ? "Turned off"
-      : invited ? `${viewers.length} ${viewers.length === 1 ? "person" : "people"}`
-      : r.visibility === "org" ? (r.firm ? `Shared with ${r.firm}` : "Shared with your firm")
-      : "Anyone with the link";
-    tdAud.appendChild(aud);
-    // Whether the people it went to have opened it, which is the question a
-    // broker has about an invited link, answered on its row.
-    if (invited && !revoked && viewers.length) {
-      const opened = viewers.filter((v) => v.firstViewedAt).length;
-      const sub = document.createElement("span");
-      sub.className = "dk-sub";
-      sub.textContent = opened ? `${opened} opened it` : "Not opened yet";
-      tdAud.appendChild(sub);
-    }
-    tr.appendChild(tdAud);
-
-    const tdSent = document.createElement("td");
-    tdSent.textContent = r.createdAt ? fmtShareDate(r.createdAt) : "";
-    tr.appendChild(tdSent);
-
-    const tdActs = document.createElement("td");
-    tdActs.className = "acts";
-    tr.appendChild(tdActs);
-    tbody.appendChild(tr);
-
-    // A dead link has no controls, exactly as the old card had none.
-    if (revoked) return;
-
-    // Detail row: the viewer list, the people editor, hub-invite links and
-    // any error land here under the report they belong to, spanning the
-    // table. Hidden until an action needs it.
-    const det = document.createElement("tr");
-    det.className = "det hidden";
-    const detTd = document.createElement("td");
-    detTd.colSpan = 4;
-    det.appendChild(detTd);
-    tbody.appendChild(det);
-    const showDet = () => det.classList.remove("hidden");
-    const card = detTd; // the old card's innards now live in the detail cell
-
-    if (invited && viewers.length) {
-      const ul = document.createElement("ul");
-      ul.className = "mt-1.5 space-y-1";
-      viewers.forEach((v) => {
-        const li = document.createElement("li");
-        li.className = "text-xs text-[#4C5665]";
-        li.textContent = `${v.email} — ${v.firstViewedAt ? "opened " + fmtShareDate(v.firstViewedAt) : "not opened yet"}`;
-        ul.appendChild(li);
-      });
-      card.appendChild(ul);
-    }
-
-    {
-      // A public link has no viewer list — the server refuses the PUT with a
-      // 400 for exactly this reason (see the comment on that route), so the
-      // control is never offered here rather than offered and failing.
-      const editWrap = document.createElement("div");
-      editWrap.className = "hidden mt-2";
-      const ta = document.createElement("textarea");
-      ta.rows = 2;
-      ta.setAttribute("aria-label", "Edit invited emails");
-      ta.placeholder = "client@company.com, partner@company.com";
-      ta.className = "w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none";
-      // Pre-filled with the CURRENT list — replacing is wholesale, so a saved
-      // textarea that only ADDED one address must still carry everyone else.
-      const currentEmails = viewers.map((v) => v.email).join(", ");
-      ta.value = currentEmails;
-      editWrap.appendChild(ta);
-      const editErr = document.createElement("p");
-      editErr.className = "hidden text-xs text-red-600 mt-1";
-      editWrap.appendChild(editErr);
-      const editActions = document.createElement("div");
-      editActions.className = "mt-1.5 flex items-center gap-3 text-xs";
-      const saveBtn = document.createElement("button");
-      saveBtn.type = "button";
-      saveBtn.className = "text-[#B91C1C] hover:text-[#991B1B] font-medium";
-      saveBtn.textContent = "Save";
-      const cancelBtn = document.createElement("button");
-      cancelBtn.type = "button";
-      cancelBtn.className = "text-[#68707E] hover:text-[#1A2433]";
-      cancelBtn.textContent = "Cancel";
-      editActions.appendChild(saveBtn); editActions.appendChild(cancelBtn);
-      editWrap.appendChild(editActions);
-      card.appendChild(editWrap);
-
-      const rowErr = document.createElement("p");
-      rowErr.className = "hidden text-xs text-red-600 mt-1.5";
-      card.appendChild(rowErr);
-
-      // The actions live on the MAIN row's cell; what they operate on (the
-      // viewer list, the editor, errors, hub links) opens in the detail row.
-      const actions = tdActs;
-      if (invited) {
-        const editBtn = document.createElement("button");
-        editBtn.type = "button";
-        editBtn.className = "dk-row-act";
-        editBtn.textContent = "People";
-        editBtn.addEventListener("click", () => { showDet(); editWrap.classList.toggle("hidden"); });
-        actions.appendChild(editBtn);
-      }
-      // "Start a deal room" (it said "Start a hub" until 2026-10-06; Messages
-      // has always called it a deal room) — the only in-product discovery path the messaging hub
-      // has (the owner's Q5 yes, 2026-08-13). It seeds a hub with this
-      // report's comps and the people already invited to it, so the broker
-      // does not retype either.
-      //
-      // Offered ONLY to a member who can actually create one. The gate is
-      // canUseVault, exactly as the server's own is, so this is not a second
-      // opinion about entitlement — it is the same answer, read from
-      // /api/config, which is where every other billing control on this page
-      // reads it. Without this check the button would appear for every
-      // signed-in member and answer with a 403; the server still refuses
-      // either way, so this decides visibility and nothing else.
-      //
-      // Never on a firm share: it has no viewer list, so the room would open
-      // with nobody in it. (One only reaches this table now when its firm is
-      // one this member has left.)
-      if (hubCreationAllowed() && r.visibility !== "org") {
-        const hubBtn = document.createElement("button");
-        hubBtn.type = "button";
-        hubBtn.className = "dk-row-act";
-        hubBtn.textContent = "Start a deal room";
-        hubBtn.addEventListener("click", async () => {
-          rowErr.classList.add("hidden");
-          hubBtn.disabled = true;
-          try {
-            const out = await acctApi("POST", "/api/hubs", { fromShare: r.id });
-            // The invite links "cannot be shown again", so the detail row
-            // they land in must be open before they render.
-            showDet();
-            showHubInvites(card, out);
-            renderDeskHubs();
-          } catch (ex) {
-            showDet();
-            rowErr.textContent = ex.message;
-            rowErr.classList.remove("hidden");
-          } finally {
-            hubBtn.disabled = false;
-          }
-        });
-        actions.appendChild(hubBtn);
-      }
-
-      const offBtn = document.createElement("button");
-      offBtn.type = "button";
-      offBtn.className = "text-xs text-[#68707E] hover:text-red-700";
-      offBtn.textContent = "Turn off link";
-      offBtn.addEventListener("click", async () => {
-        rowErr.classList.add("hidden");
-        if (!confirm(`Turn off the shared link for ${r.address}? It will stop working immediately, for everyone it was sent to, and cannot be turned back on.`)) return;
-        offBtn.disabled = true;
-        try {
-          await acctApi("POST", "/api/shares/revoke", { id: r.id });
-          renderShares();
-        } catch (ex) {
-          offBtn.disabled = false;
-          showDet();
-          rowErr.textContent = ex.message;
-          rowErr.classList.remove("hidden");
-        }
-      });
-      actions.appendChild(offBtn);
-
-      saveBtn.addEventListener("click", async () => {
-        editErr.classList.add("hidden");
-        const emails = ta.value.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
-        saveBtn.disabled = true;
-        try {
-          await acctApi("PUT", "/api/shares/viewers", { id: r.id, emails });
-          renderShares();
-        } catch (ex) {
-          // The server's own copy already warns the list may now be empty on
-          // a failed save (setShareViewers clears before it writes) — show
-          // exactly what it said rather than a made-up reassurance.
-          editErr.textContent = ex.message;
-          editErr.classList.remove("hidden");
-        } finally {
-          saveBtn.disabled = false;
-        }
-      });
-      cancelBtn.addEventListener("click", () => {
-        ta.value = currentEmails;
-        editErr.classList.add("hidden");
-        editWrap.classList.add("hidden");
-      });
-    }
-  }
-
-  // ----------------------------------------------------------------------------
-  // Comp hubs on My Desk — the TENANT side only.
-  //
-  // Spec: docs/superpowers/specs/2026-08-13-messaging-hub-design.md
-  // NOT the connection hub at /brokers.
-  //
-  // A broker's own rooms live in /messages (External), where creating one is
-  // gated on canUseVault; this page is seen by every free account. This list
-  // is what a tenant sees, and a tenant is the person this
-  // whole feature exists to reach.
-  //
-  // Two rules, both different from the share lists above:
-  //
-  //   1. The rooms have no section of their own (2026-10-06): they list in
-  //      the Sharing card's Sent to you, on the same row as the report each
-  //      was opened from, and that pane's empty card speaks for reports and
-  //      rooms together ("When someone sends you a report or invites you into
-  //      a deal room, it lands here"). Nothing advertises a room as a door a
-  //      member can open themselves, because they cannot.
-  //   2. EVERY failure is silent. This is an extra list at the bottom of a
-  //      page that already works; a hub outage must not put an error on the
-  //      desk of somebody who came here for their portfolio. Contrast
-  //      renderShares(), which does show one line, because a broker who has
-  //      shared reports and cannot see them needs telling.
-  // ----------------------------------------------------------------------------
-  // May this member create a hub? The same answer the server gives, read from
-  // the same /api/config block every other billing control on this page reads,
-  // so this is not a second opinion about entitlement — the server still
-  // refuses either way, and this decides visibility only.
-  //
-  // `proConfig` IS the pro block (`proConfig = cfg.pro`), not a wrapper around
-  // one, and it is a `let` declared ~3,000 lines below this function, so the
-  // try/catch is the TDZ guard `addressExplorerAllowed()` already carries for
-  // the same reason. It fails CLOSED, unlike that one: withholding a button
-  // costs a click, while flashing one that 403s costs trust.
-  function hubCreationAllowed() {
-    try {
-      return Boolean(proConfig && proConfig.canUseVault);
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // The one place a raw invite token is ever visible on this page. It is not
-  // stored (only its sha256 is) and cannot be fetched back, so this says so
-  // rather than rendering a link and trusting someone to notice. Same panel,
-  // same reasoning, as the vault's version — outbound email is off until a
-  // domain is verified in Resend, so copying these out IS the delivery.
-  function showHubInvites(card, out) {
-    const box = document.createElement("div");
-    box.className = "mt-2 border-t border-[#ECEAE3] pt-2";
-    const note = document.createElement("p");
-    note.className = "text-xs text-[#4C5665]";
-    note.textContent = "Your hub is ready. Copy each link and send it to that person yourself: "
-      + "CompNinja does not email them yet, and these links cannot be shown again.";
-    box.appendChild(note);
-
-    const invites = Array.isArray(out.invites) ? out.invites : [];
-    if (!invites.length) {
-      const open = document.createElement("a");
-      open.className = "text-xs text-[#B91C1C] underline mt-1 inline-flex";
-      open.href = "/hub/" + encodeURIComponent(out.id);
-      open.textContent = "Open the hub";
-      box.appendChild(open);
-      card.appendChild(box);
-      return;
-    }
-    invites.forEach((inv) => {
-      const row = document.createElement("div");
-      row.className = "mt-1.5 flex flex-wrap items-center gap-2 text-xs";
-      const who = document.createElement("span");
-      who.className = "text-[#4C5665]";
-      who.textContent = inv.email;
-      row.appendChild(who);
-      const field = document.createElement("input");
-      field.type = "text";
-      field.readOnly = true;
-      field.value = inv.url;
-      field.setAttribute("aria-label", "Invite link for " + inv.email);
-      field.className = "flex-1 min-w-0 rounded-lg border border-[#D8D4C9] px-2 py-1 text-xs";
-      row.appendChild(field);
-      const copy = document.createElement("button");
-      copy.type = "button";
-      copy.className = "text-[#B91C1C] hover:text-[#991B1B] font-medium";
-      copy.textContent = "Copy";
-      copy.addEventListener("click", () => {
-        // select() first, and it is the fallback rather than the decoration:
-        // clipboard.writeText needs a secure context and a permission that
-        // can be refused, and a broker who cannot copy the link cannot send
-        // it at all.
-        field.focus(); field.select();
-        const done = () => { copy.textContent = "Copied"; setTimeout(() => { copy.textContent = "Copy"; }, 1500); };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(field.value).then(done).catch(() => {
-            try { document.execCommand("copy"); done(); } catch (_) {}
-          });
-        } else {
-          try { document.execCommand("copy"); done(); } catch (_) {}
-        }
-      });
-      row.appendChild(copy);
-      box.appendChild(row);
-    });
-    card.appendChild(box);
-  }
-
-  // READS the rooms; drawShareInbox draws them, beside the reports.
-  async function renderDeskHubs() {
-    deskRooms = [];
-    deskRoomsFailed = false;
-    if (!currentUser) { drawShareInbox(); return; }
-    let data;
-    try {
-      const res = await bootFetch("/api/hubs");
-      // 401/403 mean "not for you" and stay silent, as before. Anything else
-      // is a failure, and the rooms simply do not list — never a "nothing was
-      // sent to you", which is why a failure also keeps Sent to you's empty
-      // card down (the same correction the vault's deck needed on
-      // 2026-08-14, where a 503 read as "No hubs yet").
-      //
-      // It stays SILENT rather than showing an error, unlike the vault: the
-      // reports beside them still list, and a hub outage must not put an
-      // error on the page of somebody who came for something else.
-      if (!res.ok) { deskRoomsFailed = res.status !== 401 && res.status !== 403; drawShareInbox(); return; }
-      data = await res.json();
-    } catch (_) { deskRoomsFailed = true; drawShareInbox(); return; }
-    // theirs, never mine: a broker's own rooms live in Messages.
-    deskRooms = (data && Array.isArray(data.theirs)) ? data.theirs : [];
-    drawShareInbox();
-  }
 
   // ----------------------------------------------------------------------------
   // Report branding — My Desk's editor for the mark a member's OWN reports and

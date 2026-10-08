@@ -15,12 +15,17 @@ Prices Here" card (model-supplied `value_drivers` + `market_trend`), a market
 position chart, a comp map, and the full sortable comp table with per-comp
 source-confidence badges (Verified / Public record / Listing / News /
 Estimate). Signed-in members land on **Home** (`/desk`), which since
-2026-10-07 is one screen: a list (Today, Properties, Comps, Reports, People)
-beside a map of every property, the firm's and their own, each row saying who
-can see it (`home-map.js`; workspace.md). Their private workbench is `/vault`,
+2026-10-07 is one screen: a list (Today, Properties, Comps, People) beside a
+map of every property, the firm's and their own, each row saying who can see
+it, with a switch over the map that adds the member's comps and the swept
+cities' permits (2026-10-08; `home-map.js`; workspace.md). Home runs no comp
+report and holds no shared reports since 2026-10-08: the comp report is the
+rail's **Comp report** row (`/bulk`), and the firm's shelf, what was sent to
+the member and the links they sent are Messages' **Reports** view
+(`report-inbox.js`; firms.md). Their private workbench is `/vault`,
 headed "Your properties and comps" and opened from Home's tabs; it was the
-**Data** rail row from 2026-10-04 until the rail became five places (Home,
-Messages, Reports, Markets, Permits; app-shell.md). Its tabs with no rail row
+**Data** rail row from 2026-10-04 until the rail became places (since
+2026-10-08: Home, Messages | Markets, Comp report, Permits; app-shell.md). Its tabs with no rail row
 have doors instead: new BOV requests land in Home's Today (the Pipeline), and
 The Board is linked from `/markets` and every market page. In copy a **property** is
 something you own, manage or are buying and a **comp** is a past deal you value
@@ -120,7 +125,8 @@ session that never reads it.
     (`compWeight` in index.html and comp-gate.js; `reportIdFor` /
     `exportReportKey`; `normalizeBrandBlock` / `normalizeBrand`; `areaStyle` /
     `boundaryStyle`; `BULK_SUBJECT_FIELDS` / `TYPE_SUBJECT_FIELDS`; the vault
-    page's refusal needles). Grep for ⚠ before changing either side.
+    page's refusal needles; home-map.js `PERMIT_STAGES` / `tidyCaps` and
+    permits-page.js `STAGE_NAMES` / `tidy`). Grep for ⚠ before changing either side.
 12. **Nothing mails or sweeps on a timer.** The watchlist digest, the trial
     emails and the permit sweep are `ADMIN_KEY`-gated routes driven from
     outside the process. A ledger is marked only after the send, and opening
@@ -412,15 +418,15 @@ gone. Document a new feature in its area's file, not here.
 | `report-and-valuation.md` | the report front end: search form, valuation math and hero, flows 2–4 and 3a–3f, private comps on screen and in exports, PowerPoint export | `index.html`, `valuation.js`, `comp-gate.js`, `market-snapshot.js` |
 | `billing.md` | Pro tier, trial, prices, free allowance, passkeys, admin access, branding, trial emails, `/api/config`, `/pricing` | `entitlements.js`, `stripe.js`, `branding.js`, `trial-notices.js`, `pricing-page.js` |
 | `vault.md` | the broker vault (import, mapper, editing, publishing, dashboard, gut check, BOV, building facts), comp submissions, the lead inbox | `vault-*.js`, `broker-*.js`, `building-facts.js`, `gut-check.js`, `bov-log.js`, `blend-comps.js`, `xlsx.js` |
-| `firms.md` | firms: membership, shelf, buildings, sheets, leases, contacts, messaging doors, auto-share, the shared vault, seats, shop kinds | `org-*.js`, `buildings-page.js`, `messaging.js` |
-| `workspace.md` | the signed-in Home (`/desk`): Home as one map, layout history, one-paint fill, `DESK_BOOT`, `AUTH_BOOT`, `pagePath` | `index.html`, `home-map.js`, desk tests |
+| `firms.md` | firms: membership, shelf, buildings, sheets, leases, contacts, messaging doors, Messages' Reports view, auto-share, the shared vault, seats, shop kinds | `org-*.js`, `buildings-page.js`, `messaging.js`, `messages-page.js`, `report-inbox.js` |
+| `workspace.md` | the signed-in Home (`/desk`): Home as one map and its layer switch, layout history, one-paint fill, `DESK_BOOT`, `AUTH_BOOT`, `pagePath` | `index.html`, `home-map.js`, desk tests |
 | `app-shell.md` | the `NAV_SHELL` rail, the signed-in header on server-rendered pages, nav parity with `index.html`, instant tab switching (prerendered tabs, `/api/visit`) | `theme.js`, `instant-nav.js`, nav tests |
 | `sharing.md` | `POST /api/share`, `/api/shared`, `/r/<id>`, permissioned sharing | `report-access.js` |
 | `accounts.md` | account wall, guest limit, Google sign-in, accounts and portfolio, profile photo | `google-auth.js`, `account-avatar.js`, `portfolio-*.js` |
 | `public-pages.md` | home, FAQ, how-it-works, brokers-firms, the brand entity, `SITE_URL`, Search Console | `home-page.js`, `faq-page.js`, `brokers-firms-page.js` |
 | `markets.md` | market pages, momentum map, city photos and boundaries, the Market Explorer, broker directory | `market-*.js`, `city-check.js`, `gen-market-seed.js`, `broker-directory.js` |
 | `bulk.md` | bulk valuation | `bulk.js`, `bulk-page.js` |
-| `permits.md` | the permit sweep, `/permits`, and tracking your own permit (notices by email and on CompNinja) | `permit-*.js`, `pdf-text.js`, `permits-page.js` |
+| `permits.md` | the permit sweep, `/permits`, tracking your own permit (notices by email and on CompNinja), and Home's Permits layer (`/api/permits/map`) | `permit-*.js`, `pdf-text.js`, `permits-page.js` |
 | `watchlist-and-mail.md` | Resend and outbound mail settings, `/api/lead`, the watchlist digest, search demand | `watchlist-digest.js`, `search-demand.js`, `email-shell.js` |
 | `admin-and-analytics.md` | `/admin`, `/api/stats`, the visitor funnel, the `/dev` hub | `devlog.json`, `dev-returns.js` |
 | `maps.md` | the Google Maps key, `/api/geocode`, `/api/streetview` | `index.html`, `streetview-aim.js` |

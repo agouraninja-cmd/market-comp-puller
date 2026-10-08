@@ -110,12 +110,108 @@ test("the poll skips a hidden tab, and says so", () => {
 });
 
 test("a refusal the server already knows is rendered before any fetch", () => {
-  // Somebody with no firm is told so immediately rather than watching a
+  // Somebody signed out is told so immediately rather than watching a
   // spinner resolve into a wall.
+  const js = scriptOf(renderMessagesBody({ s: 401, j: { error: "Please sign in." } }));
+  assert.match(js, /if \(BOOT && BOOT\.s && BOOT\.s !== 200 && !noFirmBoot\) \{/);
+  assert.match(js, /if \(BOOT\.s === 401\) gate\('<h3>Please sign in<\/h3>/);
+});
+
+test("no firm is a page, not a wall: Reports is theirs, and Chats says what a firm would give them", () => {
+  // Until 2026-10-08 a reader in no firm and no deal room got a wall. Reports
+  // (sent to you, your links) is every account's, so the page opens for them.
   const html = renderMessagesBody({ s: 403, j: { error: "Messages are for your firm.", code: "no_firm" } });
-  assert.match(html, /Messages are for your firm/);
-  // ...and the door out of it is a real page, not a dead end.
+  const js = scriptOf(html);
+  assert.match(js, /var noFirmBoot = BOOT && BOOT\.s === 403 && BOOT\.j && BOOT\.j\.code === "no_firm";/);
+  // The list read's no_firm answer opens the page instead of gating it...
+  assert.match(js, /if \(o\.s === 403 && o\.j && o\.j\.code === "no_firm"\) \{[\s\S]{0,900}?ungate\(\);/);
+  // ...hides what needs a firm, and Chats' own empty state has the doors out.
+  assert.match(js, /if \(state\.noFirm\) \{[\s\S]{0,300}?Chats are for your firm/);
   assert.match(html, /href="\/brokers-firms"/);
+  assert.match(html, /href="\/desk\?firm=1"/);
+});
+
+// ---------------------------------------------------------------------------
+// Reports (2026-10-08): Home's Reports tab, moved into Messages
+// ---------------------------------------------------------------------------
+test("Reports is a second list beside Chats, chosen by data-view, never by className", () => {
+  const html = renderMessagesBody({ s: 200, j: {} });
+  assert.match(html, /role="tablist" aria-label="Messages"/);
+  assert.match(html, /id="msgViewChats"[^>]*aria-selected="true"/);
+  assert.match(html, /id="msgViewReports"[^>]*aria-selected="false"/);
+  assert.match(html, /id="msgReports"/);
+  assert.match(html, /id="msgRMain"/);
+  // The chat code assigns the page's className whole ("msg-page on-thread"),
+  // so a view kept in a class would be wiped by the next thread opened.
+  const js = scriptOf(html);
+  assert.match(js, /\$\("msgPage"\)\.setAttribute\("data-view", v\);/);
+  assert.match(html, /\.msg-page\[data-view="reports"\] #msgThreads/);
+  assert.match(html, /\.msg-page:not\(\[data-view="reports"\]\) #msgReports/);
+  // /messages#reports opens on it (the old /desk#reports lands there).
+  assert.match(js, /var wantReports = String\(location\.hash \|\| ""\) === "#reports";/);
+});
+
+test("the Reports rules are report-inbox.js itself, emitted inside the page's one script", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "report-inbox.js"), "utf8");
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  assert.ok(js.includes(src), "the page carries a copy of the rules that is not the tested file");
+  assert.ok(!/<\/script/i.test(src), "report-inbox.js holds a closing script tag, which would end the page's script early");
+  // The shelf's saved view comes from org-access.js on the server, never a
+  // hand copy in the page.
+  const ORG = require("../org-access");
+  assert.match(js, new RegExp('var SHELF_SAVED = \\{"broker":"","development":"' + ORG.SHOP_COPY.development.shelfType + '"'));
+});
+
+test("a report's actions call the routes the Reports tab called, and nothing writes by arriving", () => {
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  const at = js.indexOf("function reportAction(e){");
+  assert.ok(at > 0, "reportAction moved; this guard now checks nothing");
+  const fn = js.slice(at, js.indexOf("// --- wiring", at));
+  assert.match(fn, /api\("POST", "\/api\/shares\/revoke", \{ id: r\.id \}\)/);
+  assert.match(fn, /api\("PUT", "\/api\/shares\/viewers", \{ id: r\.id, emails: emails \}\)/);
+  assert.match(fn, /api\("POST", "\/api\/hubs", \{ fromShare: r\.id \}\)/);
+  // A revoke is asked first, in the page, and only its own Yes sends it.
+  assert.ok(fn.indexOf("data-rep-ask") < fn.indexOf("/api/shares/revoke"));
+  assert.match(fn, /if \(e\.target\.closest\("\[data-rep-yes\]"\)\) \{/);
+  // The reads are GETs only; a page built before it is seen writes nothing.
+  const load = js.slice(js.indexOf("function loadReports(){"), js.indexOf("function reloadReports(){"));
+  assert.match(load, /api\("GET", "\/api\/shares"\)/);
+  assert.match(load, /api\("GET", "\/api\/org\/shelf\?id=" \+ encodeURIComponent\(firm\.id\)\)/);
+  assert.doesNotMatch(load, /"(POST|PUT|PATCH|DELETE)"/);
+});
+
+test("a deal room starts only from a link with people to invite, for a member who can open one, and opens in Messages", () => {
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  // canAttach is canUseVault (GET /api/messages' canAttachComps), the server's
+  // own gate; never a firm share, which has no viewer list to invite.
+  assert.match(js, /if \(state\.canAttach && r\.visibility !== "org"\) acts\.push\('<button class="msg-btn" type="button" data-rep-hub="1"/);
+  // A room, from either door, opens as a conversation here, never at /hub/.
+  assert.match(js, /setView\("chats", \{ noOpen: true \}\);\s*refreshList\(true\)\.then\(function\(\)\{ openExternal\(id, true, true\); \}\);/);
+  const detail = js.slice(js.indexOf("function renderReportDetail(){"), js.indexOf("function openReport("));
+  assert.doesNotMatch(detail, /"\/hub\//, "a report's room links to the old hub page");
+});
+
+test("everything a person typed reaches the Reports view through esc(), and a failed read says nothing was lost", () => {
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  const rows = js.slice(js.indexOf("function reportRowHtml(r){"), js.indexOf("function sectHtml("));
+  for (const field of ["streetOf(r.address)", "sub", "key"]) {
+    assert.ok(rows.includes("esc(" + field), "a report row writes " + field + " without esc()");
+  }
+  const detail = js.slice(js.indexOf("function renderReportDetail(){"), js.indexOf("function openReport("));
+  assert.ok(detail.includes("esc(r.url)") && detail.includes("esc(v.email)") && detail.includes("esc(inv.url)"),
+    "the open report writes a URL or an email without esc()");
+  assert.match(js, /function factsHtml\(list\)\{[\s\S]{0,200}?esc\(f\[0\]\) \+ '<\/dt><dd>' \+ esc\(f\[1\]\)/);
+  // A failed shares read is said as a failure, with the reassurance, never
+  // drawn as an empty list (the Sharing card's 2026-08-22 rule, carried over).
+  assert.match(js, /Couldn\\u2019t load your shared reports just now\. Nothing has been lost\. Refresh in a moment\./);
+  assert.match(js, /rep\.shares = o\.s === 200 && o\.j \? o\.j : false;/);
+});
+
+test("in Reports the poll reads the list for its counts and opens nothing, so no chat is marked read unseen", () => {
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  const tick = js.slice(js.indexOf("function tick(){"), js.indexOf("function markActive(){"));
+  assert.match(tick, /if \(state\.view === "reports"\) \{ refreshList\(true\); return; \}/);
+  assert.ok(tick.indexOf('state.view === "reports"') < tick.indexOf("readThread(false)"));
 });
 
 

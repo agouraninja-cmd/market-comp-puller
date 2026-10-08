@@ -48,8 +48,8 @@ test("/vault is rendered by marketShell, header and footer included", async (t) 
   // it renders that the copy never did.
   assert.match(html, /<div class="hleft">/, "not marketBar's header");
   const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
-  // Draft C's rail (2026-10-07): Home, Messages, Reports, Markets, Permits.
-  for (const href of ["/desk", "/messages", "/desk#reports", "/markets", "/permits"]) {
+  // The rail since 2026-10-08: Home, Messages | Markets, Comp report, Permits.
+  for (const href of ["/desk", "/messages", "/markets", "/bulk", "/permits"]) {
     assert.ok(nav.includes('href="' + href + '"'), "the vault's nav lost " + href);
   }
   // No row is this page's own any more, so none claims to be current.

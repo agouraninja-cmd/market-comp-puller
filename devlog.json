@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-10-08",
+    "type": "feature",
+    "title": "Home's map shows your properties, comps and permits, and shared reports moved into Messages",
+    "details": "Home's map has a switch over its top-left corner: Properties, Comps and Permits, any mix on, remembered in your browser. Permits are the commercial permits filed in Boise, Meridian and Nampa in the last 30 days, as amber squares; click one for what was filed, its status as the city prints it, who filed it, whether it is at one of your properties, and links to the permit tracker and the city's record. Where you are looking has no permits (or a read fails), the map says so instead of showing nothing. Home's Reports tab and the rail's Reports row are gone: they were the same page. The firm's shelf, reports sent to you and the links you sent are now Messages' Reports view, beside Chats, with the same actions (open, copy the link, change who it is sent to, start a deal room, turn off a link, take a report off the shelf). Members with no firm now get Messages too, for their reports. Running a comp report is back under Tools as the Comp report row, for every member; Home no longer has a Run a comp report card or offers one from its search box."
+  },
+  {
     "date": "2026-10-07",
     "type": "fix",
     "title": "The home page's sample report now shows what the product would actually compute",

@@ -158,3 +158,46 @@ test("an unswept table reads as 'not checked yet', never as a quiet fortnight", 
   assert.equal(r.j.permits.never, true);
   assert.equal(r.j.permits.stale, true);
 });
+
+// Home's map, its Permits layer (2026-10-08): the tracker's own feed, cut to
+// the filings that have a place. Public record for any signed-in account;
+// the firm-board mark is the reader's own firm's, never another's.
+test("Home's Permits layer reads the tracker's feed: placed filings only, every filing counted", async (t) => {
+  const tbl = tables();
+  // The Federal Way filing has its parcel's point; the rest were never placed.
+  tbl.permit_filings = tbl.permit_filings.map((f) => (f.id === F_HIT ? { ...f, lat: 43.5293, lng: -116.147, geo_source: "parcel" } : f));
+  const db = await fake.start({ tables: tbl });
+  const srv = await shared.boot({ ACCOUNT_WALL: "off", PRO_ENABLED: "on", SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key" });
+  t.after(async () => { srv.stop(); await db.stop(); });
+  const url = `${srv.base}/api/permits/map`;
+
+  await t.test("signed out is refused", async () => {
+    assert.equal((await fetch(url)).status, 401);
+  });
+
+  await t.test("a member of a firm gets the placed filing, marked on their own building", async () => {
+    const r = await getJson(url, BRAD);
+    assert.equal(r.status, 200, r.text);
+    assert.deepEqual(r.j.pins.map((p) => p.permitNumber), ["BLD26-01234"], "only a filing with a place is a pin");
+    assert.equal(r.j.filed, 3, "the unplaced filings inside the window are still counted (the 60-day-old one is not)");
+    assert.equal(r.j.windowDays, 30);
+    assert.match(r.j.cities, /Boise/);
+    const pin = r.j.pins[0];
+    assert.equal(pin.lat, 43.5293);
+    assert.equal(pin.city, "Boise");
+    assert.equal(pin.stage, "approved", "the tracker's stage words, from the portal's 'Prep for Issuance'");
+    assert.deepEqual(pin.onBoard, { id: B_BROKER, address: ADDRESS });
+    assert.equal(r.text.includes("street_key"), false, "plumbing stays on the server");
+  });
+
+  await t.test("the other firm sees the same public filing on ITS copy of the building, and an outsider unmarked", async () => {
+    const dana = await getJson(url, DANA);
+    assert.equal(dana.status, 200, dana.text);
+    assert.equal(dana.j.pins[0].onBoard.id, B_DEV);
+    assert.equal(dana.text.includes(B_BROKER), false, "never the other firm's building");
+    const out = await getJson(url, OUT);
+    assert.equal(out.status, 200, out.text);
+    assert.deepEqual(out.j.pins.map((p) => p.permitNumber), ["BLD26-01234"]);
+    assert.equal(out.j.pins[0].onBoard, null);
+  });
+});

@@ -19,11 +19,80 @@ paths:
 > (Since 2026-10-07 the rail no longer has a Data row, and /vault's heading
 > reads "Your properties and comps"; see below.)
 
+> **The map's layers, and Reports leaving Home (2026-10-08, owner's call).**
+> Read this before the box below, which it amends. The owner's words: Home
+> should "show where the properties, comps and permits are, and you can
+> filter what you want to see" (the layer switch Draft C drew and the build
+> left out); "the home and report sections are literally the exact same
+> thing. Remove the Report section", "remove the run a comp report section,
+> because we are moving the comp report back to tools", and "integrate the
+> rest of reports into messages". So:
+> - **Tabs are Today, Properties, Comps, People.** The Reports tab, its pane
+>   and the whole Sharing card (`#deskSharing`, `syncShareCard`,
+>   `renderFirmShelf`, `renderSharesTable`, `drawShareInbox`,
+>   `renderDeskHubs`, `hubCreationAllowed`, `showHubInvites`, their CSS) are
+>   DELETED from index.html; the three lists are Messages' Reports view now
+>   (firms.md, "Reports in Messages"). `renderShares` is **`renderHomeFirm`**:
+>   it no longer reads `/api/shares` first (so a shares outage no longer
+>   hides a firm's buildings and contacts), it awaits `renderFirm()` and then
+>   runs the same firm batch, with the contacts alone waiting on the
+>   buildings. `/api/shares`, `/api/hubs` and `/api/org/shelf` left
+>   `DESK_BOOT_URLS` / `DESK_BOOT_ORG_URLS`. A saved `/desk#reports` (the
+>   rail's link for that one day) is `location.replace`d to
+>   `/messages#reports`.
+> - **No comp report on Home.** The start card "Value any address / Run a
+>   comp report" is gone ("Add a property" leads, red), and the find box
+>   (placeholder "Find a property, comp or person") no longer offers "Run a
+>   comp report on …"; an address that matches nothing says "To value a new
+>   address, open Comp report under Tools." with a link to `/bulk`. The
+>   rail's Comp report row is the door (app-shell.md).
+> - **The map's switch** (`#hmLayers`, over the map's top-left, where Draft C
+>   drew it): three toggles, Properties / Comps / Permits, any mix on, each
+>   `aria-pressed`. The rules are `home-map.js` (`readLayers`, `tabLayer`,
+>   `permitPin`, `permitAt`, `layerNotes`, tested); the wiring is pinned in
+>   `test/desk-map-layers.test.js`. `hmLayers` is the record and
+>   **`hmSetLayer` its one writer** (button state, this browser's
+>   `localStorage` copy under `cn.home.layers`, wrapped in try/catch, and the
+>   pins). Default is Properties alone. Comps shows only to `hmCanComps()`
+>   (and an old stored "on" never draws for anyone else, `hmLayerOn`);
+>   Permits to every member, as public record. **The list's tabs choose the
+>   list, the switch chooses the map**: opening Properties or Comps turns its
+>   own layer on, once per arrival (`hmLayerTab`), never on a redraw, which
+>   would undo the member's own switch; Today's numbered pins are its rows
+>   and draw whatever the switch says.
+> - **Drawn around, never fitted to.** `hmDrawPins` fits to the tab's
+>   SUBJECT (Today: its pins and the properties; Properties; Comps on its own
+>   tab), never to comps or permits switched on around it, so a toggle never
+>   yanks the map; with no subject it fits the whole drawing. The fit leaves
+>   room for the switch and the legend (`hmFitOpts`, tighter on the phone
+>   strip), and a card pans clear of both: the first card of the day opens
+>   only once the fit has settled (`hmAfterMove`), and an open card re-pans
+>   after any later refit (`hmPopup.update()`), because the map's panes sit
+>   UNDER the switch and a pan asked for mid-animation is dropped.
+> - **Permits** come from **`GET /api/permits/map`** (permits.md): read once
+>   the layer is on AND the page is shown (`hmWhenShown`, never in the boot),
+>   `false` on a failed read. A permit is an amber square (`--warn-text`);
+>   its card shows the type, the street and city, the portal's own status in
+>   the tracker's colours (`.hm-chip.pm-<stage>`, the stage name as its
+>   title), the filed date, what was filed and by whom, "At …, one of your
+>   properties" (or the firm's) when `HOMEMAP.permitAt` matches a row, and
+>   doors to `/permits` and the city's record (new tab, noopener). A
+>   property's card names a permit filed there while the layer is on. The
+>   find box finds permits once they are read.
+> - **`#hmLayerNote`** says, on the map, why a layer that is on draws
+>   nothing where the member is looking (`HOMEMAP.layerNotes`, re-said on
+>   `moveend`): a failed read, nothing filed, filings with no place yet, or
+>   "No permits filed in this part of the map in the last 30 days.
+>   CompNinja reads permits in Boise, Meridian and Nampa." with "Show them"
+>   (fits to that layer). Never a silent empty layer (permits.md's §7).
+> - **Legend** names what is drawn: the property kinds while Properties is
+>   on, "Your comps" and "Permits, last 30 days" when those put pins down.
+
 > **Home as one map (2026-10-07; Draft C of the Home and Data drafts, the
 > owner's pick, https://claude.ai/artifact/SkPtByefNY6JbwFAFWxRLY).** A
 > member's Home is ONE screen: a list on the left with tabs (Today,
-> Properties, Comps, Reports, People) and every property on a map on the
-> right. Read this before anything below: most of the sections the notes
+> Properties, Comps, Reports, People; Reports left on 2026-10-08, above) and
+> every property on a map on the right. Read this before anything below: most of the sections the notes
 > describe (the skyline banner, the figure cards, Needs you, the two columns,
 > the buildings table, the deal board, Your permits, the no-firm start cards)
 > were DELETED on 2026-10-07 — see "The old Home, deleted" at the end of this
@@ -50,7 +119,8 @@ paths:
 >   a property is something you own, manage or are buying; a comp is a past
 >   deal you value against).
 > - **The firm's working sections moved INTO the tabs rather than being
->   rewritten:** `#deskSharing` is the Reports tab's body, `#deskContacts`
+>   rewritten:** `#deskSharing` was the Reports tab's body (deleted on
+>   2026-10-08 with the tab, above), `#deskContacts`
 >   sits in People under the roster, and `#buildingAddForm` is behind
 >   Properties' "Add a property" → "One of the firm's buildings". Every id and
 >   writer is unchanged. The chooser's other two choices are the member's own
@@ -68,19 +138,21 @@ paths:
 >   hides (the legal line is at the foot of the list). At 900px and up under
 >   `nav-rail` the list and map share the viewport; below, or in the bar
 >   shell, the map is a 300px strip above the list and the page scrolls.
-> - **Tabs are the URL fragment** (`#properties`, `#comps`, `#reports`,
->   `#people`; Today is the bare path). The rail's Reports row is
->   `/desk#reports`, handled in place on Home; `markNavCurrent` marks Reports
->   rather than Home while that tab shows (five calls now, pinned).
+> - **Tabs are the URL fragment** (`#properties`, `#comps`, `#people`;
+>   Today is the bare path). Every tab is Home to `markNavCurrent` since
+>   2026-10-08; for one day the rail's Reports row was `/desk#reports` and
+>   was marked while that tab showed.
 > - **Privacy:** private addresses are geocoded only through
 >   `geocodeAddress(…, { noThirdParty: true })` (our `/api/geocode`, rule 7),
 >   at most 40 per view, and only for properties; comps use the coordinates
 >   their import stored. `hmGeoTried` stops a retry loop (a miss is not
 >   cached). Every list is built with createElement/textContent.
 > - **The find box** searches properties, comps and contacts in the browser
->   and, for anything that starts with a street number, offers "Run a comp
->   report on …", which opens `/bulk?address=` (bulk-page.js fills an EMPTY
->   box and runs nothing; every address is a billed search).
+>   (and permits once read). Until 2026-10-08, for anything that started with
+>   a street number, it offered "Run a comp report on …", which opened
+>   `/bulk?address=` (bulk-page.js fills an EMPTY box and runs nothing;
+>   every address is a billed search). That door is the rail's Comp report
+>   row now.
 > - **Today holds new BOV requests** (the Pipeline's door now that it has no
 >   rail row). `hmLoadLeads()` reads `GET /api/broker/leads?noseed=1` once
 >   the page is shown (`hmWhenShown`, shared with the comps read), only for a
@@ -467,7 +539,10 @@ paths:
     default** (found while building Draft C): the Vault's import geocode sent
     real addresses to the live service from any suite that stored one.
   **The Sharing card (2026-10-06; Draft C of the sharing drafts at
-  https://claude.ai/artifact/Mv5i1eKECyYqJm5zyLnyXD, the owner's pick).** The
+  https://claude.ai/artifact/Mv5i1eKECyYqJm5zyLnyXD, the owner's pick).**
+  HISTORY since 2026-10-08: the card left Home with its Reports tab, and its
+  three lists are Messages' Reports view (firms.md, "Reports in Messages"),
+  with these rules carried over in report-inbox.js. The
   main column used to end in three sections whose names all began "Shared":
   "Shared with <firm>" (the shelf), "Shared reports" (one table of links in
   BOTH directions) and "Shared with you" (deal rooms a broker invited this

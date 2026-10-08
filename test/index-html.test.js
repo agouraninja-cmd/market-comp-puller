@@ -3058,3 +3058,18 @@ test("no inline class that sets display can outrank Tailwind's .hidden on an ele
   assert.match(style, /\.dk-strip\.hidden \{ display: none; \}/);
   assert.match(style, /\.pr-cell\.hidden \{ display: none; \}/);
 });
+
+test("the report names the building it values and the comps it used, in Home's words", () => {
+  // 2026-10-07: a property is the building you own, manage or are buying; a
+  // comp is a past deal you value against. The comp table said "Comparable
+  // Properties", which called comps properties.
+  assert.ok(html.includes(">Comps Used</h2>"), "the comp table's heading is not Comps Used");
+  assert.ok(!html.includes(">Comparable Properties<"), "the comp table calls comps properties again");
+  const meta = html.slice(html.indexOf("function renderReportMeta("), html.indexOf("function metaLine("));
+  assert.ok(meta.includes('subj.textContent = "Your property";') && meta.indexOf("subj") < meta.indexOf("metaParts(meta)"),
+    "the header's first chip must name the building as Your property");
+  assert.ok(html.includes(".rd-chip.rd-chip-subj {"), "the Your property chip lost its weight");
+  // The PowerPoint export builds its own text, so it says the same thing itself.
+  assert.ok(html.includes("s.addText(`Your property · ${metaLine(meta)} · Generated ${dateStr}`"));
+  assert.ok(html.includes('"Comps used · leases"') && html.includes('"Comps used · sales"'));
+});

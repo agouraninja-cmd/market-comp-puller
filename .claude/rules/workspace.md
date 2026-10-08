@@ -127,9 +127,8 @@ paths:
 >   now goes through `refreshFirmBuildings()`, which redraws the map, so a
 >   new building shows in Properties at once (before, only after a reload).
 >   Everything below that describes the deleted sections is history.
-> - **Still to do:** the comp report's own "Your property" / "Comps used"
->   labels, left out because that page feeds the PNG, print and PowerPoint
->   exports.
+> - **Done:** the comp report's own "Your property" / "Comps Used" labels
+>   shipped in #387 (report-and-valuation.md).
 
 > Moved verbatim from CLAUDE.md on 2026-09-25. Claude Code loads this file
 > when it opens a file matching `paths` above; read it by hand before changing

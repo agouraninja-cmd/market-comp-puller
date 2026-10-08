@@ -1085,30 +1085,19 @@ test("Refresh survives a row whose report never landed", () => {
 // exactly as the nav links and the bulk run view are, so it is never in the
 // static bytes. The invariant is about the page a browser runs, which means it
 // has to be asserted against the SERVED page.
-test("the vault is a nav item, not a row inside the account menu", () => {
-  // It sat in the account dropdown until 2026-08-29. Under NAV_SHELL=rail that
-  // dropdown is pinned to the FOOT of a 224px sidebar and opens upward, so a
-  // broker's daily workspace was two clicks down a menu -- while "Workspace"
-  // itself sat one click away in the rail. The gate is unchanged; only the
-  // position moved.
-  const nav = html.slice(html.indexOf('id="myDeskLink"'), html.indexOf('id="acctMenuWrap"'));
-  assert.match(nav, /id="menuVaultLink"/, "the vault link is a sibling of Workspace in the rail nav");
-  assert.match(nav, /href="\/vault"/, "and still points at its own server-rendered page");
-  const menu = html.slice(html.indexOf('id="acctMenu"'), html.indexOf('id="signOutBtn"'));
-  assert.ok(!menu.includes("menuVaultLink"), "and it is no longer a row in the account menu");
-  // One link, one toggle: refreshBillingUI still owns it.
-  assert.equal(html.split('id="menuVaultLink"').length - 1, 1, "exactly one vault link");
-  // Shown to every signed-in member since 2026-09-01 ("Three Spaces"), where
-  // it was canUseVault before. /vault stopped being only the comp book that
-  // day: the member's portfolio and watchlist moved into it off the
-  // workspace, and neither was ever part of Pro. Gating the only door on the
-  // entitlement would leave a free member's own saved properties reachable by
-  // typing the URL and no other way. The PAGE still refuses the book, the
-  // pipeline and the hubs -- vaultReadPayload's 403 and #vaultLocked -- so
-  // this widened who can see the door, never what is behind it.
-  assert.ok(html.includes(`getElementById("menuVaultLink").classList.toggle("hidden", !currentUser)`),
-    "shown to any signed-in member, not gated on the vault entitlement");
+test("the vault has no rail row and no account-menu row; Home's tabs open it", () => {
+  // Draft C (2026-10-07): deals, holdings and comps are tabs of Home, and
+  // /vault is the workbench those tabs open into. It must not drift back into
+  // the account menu either, which is where it was buried before 2026-08-29.
+  const railNav = html.slice(html.indexOf('id="myDeskLink"'), html.indexOf('id="acctMenuWrap"'));
+  assert.ok(!railNav.includes('id="menuVaultLink"'), "the Data row is back in the rail");
+  const acctMenu = html.slice(html.indexOf('id="acctMenu"'), html.indexOf('id="signOutBtn"'));
+  assert.ok(!acctMenu.includes('href="/vault"'), "the vault is back inside the account menu");
+  const home = html.slice(html.indexOf('id="homeMap"'), html.indexOf('id="hmMap"'));
+  assert.match(home, /href="\/vault#book"/, "Home's Comps tab no longer opens the comps workbench");
+  assert.match(home, /href="\/vault#properties"/, "Home's Properties tab no longer opens the member's own properties");
 });
+
 
 // The workspace header's profile cluster is pinned by "the workspace header
 // does not say who you are at all" further down -- it started life as that

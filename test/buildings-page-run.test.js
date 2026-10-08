@@ -54,8 +54,8 @@ test("/buildings, served", async (t) => {
     // marketShell: the header is there, the CTA is dropped (a page a member
     // works IN), and the way back is the Workspace row.
     const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
-    assert.doesNotMatch(nav, /Run a report/);
-    assert.match(nav, /<a href="\/desk">Home<\/a>/);
+    assert.doesNotMatch(nav, /Run a (comp )?report/);
+    assert.match(nav, /<a href="\/desk">[\s\S]{0,400}?<span class="nvl">Home<\/span><\/a>/);
   });
 
   await t.test("a tagged link still reaches the page — pagePath, never req.url", async () => {

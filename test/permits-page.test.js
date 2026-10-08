@@ -147,16 +147,15 @@ test("the filters: every property type with its count, zero included, and a type
   assert.equal(html.includes('id="ptStrip"'), false, "the four number tiles are gone (their week counted eight days)");
 });
 
-test("Tools reads Market explorer, Comp report, Permit tracker on both nav authors", () => {
-  // The owner's order (2026-09-24): the permit tracker is the THIRD row.
-  for (const [name, src, bulk] of [["server.js", SERVER_JS, '<a id="navBulk" href="/bulk"'],
-    ["index.html", INDEX_HTML, '<a id="menuBulkLink" href="/bulk"']]) {
+test("the rail's last two rows are Markets, then Permits, on both nav authors", () => {
+  // Draft C (2026-10-07): the Comp report row left the rail, so Permits sits
+  // right after Markets, under the divider the Tools label draws.
+  for (const [name, src] of [["server.js", SERVER_JS], ["index.html", INDEX_HTML]]) {
     const label = src.indexOf('class="navsec">Tools<');
     const me = src.indexOf('<a href="/markets"', label);
-    const cr = src.indexOf(bulk, label);
     const pt = src.indexOf('<a href="/permits"', label);
-    assert.ok(label > -1 && me > label && cr > me && pt > cr, `${name}: Market explorer, then Comp report, then Permit tracker`);
-    assert.ok(pt - cr < 600, `${name}: Permit tracker sits right after Comp report`);
+    assert.ok(label > -1 && me > label && pt > me, `${name}: Markets, then Permits`);
+    assert.ok(!/<a/.test(src.slice(me + 1, pt)), `${name}: Permits sits right after Markets, with no row between`);
   }
   assert.ok(/CTA_FREE_PAGES = new Set\([^)]*"\/permits"/.test(SERVER_JS), "a working page drops the red CTA");
 });
@@ -237,7 +236,7 @@ test("the /permits route, signed out and signed in", async (t) => {
     assert.equal(boot.j.inFirm, true);
     assert.equal(boot.j.cities, "Boise, Meridian and Nampa");
     assert.equal(boot.j.stale, false);
-    assert.ok(html.includes('<a href="/permits" aria-current="page">Permit tracker<span id="navPermitDot" class="navdot" hidden'),
+    assert.ok(/<a href="\/permits" aria-current="page"><svg class="nvi"[\s\S]{0,400}?<span class="nvl">Permits<\/span><span id="navPermitDot" class="navdot" hidden/.test(html),
       "the Tools row marks the page, and carries its unread dot hidden until asked");
     assert.equal(boot.mine.s, 200, "Your permits rides the same boot");
     assert.deepEqual(boot.mine.j.watches, []);

@@ -2060,9 +2060,16 @@ test("the workspace is two columns of decks, and the top row is not a deck", () 
     const at = html.indexOf(`id="${id}"`);
     assert.ok(at > main && at < side, `#${id} sits in the main column`);
   }
-  for (const id of ["deskThreads", "deskCritical", "deskDealBoard", "deskPermits", "deskContacts"]) {
+  for (const id of ["deskThreads", "deskCritical", "deskDealBoard", "deskPermits"]) {
     assert.ok(html.indexOf(`id="${id}"`) > side, `#${id} is a card in the side column`);
   }
+  // Home as one map (2026-10-07): Contacts and the Sharing card moved INTO
+  // its People and Reports tabs, keeping their ids and their writers.
+  const people = html.indexOf('id="hmPanePeople"'), reports = html.indexOf('id="hmPaneReports"');
+  assert.ok(reports > 0 && html.indexOf('id="deskSharing"') > reports && html.indexOf('id="deskSharing"') < people,
+    "#deskSharing is the Reports tab's body");
+  assert.ok(people > 0 && html.indexOf('id="deskContacts"') > people && html.indexOf('id="deskContacts"') < html.indexOf('id="hmMap"'),
+    "#deskContacts is in the People tab");
   assert.match(html, /<div class="dk-col dk-side dk-deck" data-deck id="deckSide">/,
     "the side column is itself a deck, so it hides when every card in it is hidden");
   const top = html.slice(html.indexOf('<div class="dk-top">'), html.indexOf('<div class="dk-cols">'));
@@ -2371,8 +2378,8 @@ test("a member in no firm gets three start cards, the second chosen by plan so i
   early.draw();
   assert.equal(early.dom.el("deskStart2").href, "/permits");
   // And the card follows the config when it lands, beside the rail's row.
-  const at = html.indexOf('document.getElementById("menuBulkLink")\n      .classList.toggle(');
-  assert.ok(at > 0 && html.slice(at, at + 400).includes("syncStartCards();"), "refreshBillingUI re-decides the card with the rail row");
+  const rb = html.indexOf("function refreshBillingUI(");
+  assert.ok(rb > 0 && html.slice(rb, html.indexOf("\n  }\n", rb)).includes("syncStartCards();"), "refreshBillingUI re-decides the card when the config lands");
   assert.equal(ctx.dom.text("deskStart2T"), "Watch new permits");
   assert.equal(ctx.dom.hidden("deskStart2IcoReport"), true);
   assert.equal(ctx.dom.hidden("deskStart2IcoPermit"), false);

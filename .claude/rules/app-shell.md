@@ -15,6 +15,22 @@ paths:
 
 ## Configuration
 
+> **The icon rail (2026-10-07; Draft C of the Home and Data drafts).** The
+> rail is now an 84px dark strip (`--slab`, so literal white at stepped
+> opacities, the footer's reason) of five places, an icon over a word:
+> **Home, Messages, Reports | Markets, Permits.** Data (`#navVault` /
+> `#menuVaultLink`) and Comp report (`#navBulk` / `#menuBulkLink`) left the
+> rail and both pages' markup: a member's deals, holdings and comps are tabs
+> of Home, and running a comp report is Home's address box and its Reports
+> tab's button. Reports is `/desk#reports` on both sides. The icons are
+> `NAV_ICONS` in server.js and the same paths by hand in index.html
+> (`.nvi`, hidden outside the rail, so the phone bar reads as words), and
+> every row's label is `<span class="nvl">`. The rail hides the red call to
+> action (it is not a place). `RAIL_CSS` and index.html's rail block carry
+> twin "icon rail" rules; RAIL_CSS joined the colour tests' stylesheet list
+> for its white. Where the rest of this file says 224px, Workspace, Vault,
+> Market explorer or Comp report rows, read it as history.
+
 - `NAV_SHELL` — optional `rail` (**default**) or `bar`, added 2026-08-28. Which
   shape the SIGNED-IN chrome takes on every server-rendered page. `rail` lays
   the header out as a persistent 224px left sidebar at **900px and up**; `bar`

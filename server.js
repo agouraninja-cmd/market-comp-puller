@@ -11059,6 +11059,20 @@ function usd2(n) {
 // rule (every page in dark-mode scope) overrides it, and the four admin
 // dashboards, which deliberately do NOT carry that rule (own :root blocks,
 // out of dark-mode scope), keep rendering exactly as before untouched.
+// The rail's icons (2026-10-07, Draft C: the rail is a dark strip of five
+// places, an icon over a word). One string per row, used by marketBar and
+// restated by hand in index.html's nav, which test/nav-parity.test.js reads
+// together with this. Outside the rail they are hidden, so the bar a phone
+// or a stranger reads is the words alone, as it was.
+const NAV_ICON = (paths) => `<svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const NAV_ICONS = {
+  home: NAV_ICON('<path d="M3.5 9.2 10 4l6.5 5.2V16a1 1 0 0 1-1 1H12v-4.5H8V17H4.5a1 1 0 0 1-1-1z"/>'),
+  messages: NAV_ICON('<path d="M3.5 4.5h13v8.5h-7L5.5 16v-3h-2z"/><path d="M7 8.2h6M7 10.6h3.5"/>'),
+  reports: NAV_ICON('<path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/>'),
+  markets: NAV_ICON('<path d="M3 5.5l4.5-2 5 2 4.5-2v11l-4.5 2-5-2-4.5 2z"/><path d="M7.5 3.5v11M12.5 5.5v11"/>'),
+  permits: NAV_ICON('<path d="M5 2.8h10v14.4H5z"/><path d="M7.5 6h5M7.5 8.6h5"/><circle cx="10" cy="13" r="1.8"/>'),
+  pricing: NAV_ICON('<path d="M3 10.2V4h6.2l7.3 7.3-6.2 6.2z"/><circle cx="6.6" cy="7.6" r="1.1"/>'),
+};
 const CN_LOGO =
   `<svg class="cn-logo" viewBox="0 0 30 30" aria-hidden="true">` +
   `<rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>` +
@@ -11360,6 +11374,9 @@ const DESK_BOOT_URLS = [
   "/api/shares", "/api/hubs", "/api/branding", "/api/recents", "/api/messages/unread",
   // The Permit tracker's unread dot (2026-09-27).
   "/api/permits/unread",
+  // Home as one map (2026-10-07): the member's own deals are pins and rows
+  // there, so their read ships with the page like the rest.
+  "/api/sites",
 ];
 const DESK_BOOT_ORG_URLS = (id) => [
   `/api/org/members?id=${id}`, `/api/org/buildings?id=${id}`, "/api/messages",
@@ -11554,7 +11571,7 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
 // The signed-out href is the one written into the markup on purpose: it is the
 // common case, it is what a crawler follows, and it is what survives if the
 // hydration script never runs. The rewrite is the exception, not the rule.
-const ACCOUNT_NAV_PRICING = `<a id="navPricing" href="/pricing" hidden>Pricing</a>`;
+const ACCOUNT_NAV_PRICING = `<a id="navPricing" href="/pricing" hidden>${NAV_ICONS.pricing}<span class="nvl">Pricing</span></a>`;
 
 // --- The tester feedback badge, for every surface ---------------------------
 //
@@ -11759,7 +11776,6 @@ const ACCOUNT_NAV_JS =
   // navigation. The page itself still refuses the book, the pipeline and the
   // hubs; see vaultReadPayload and #vaultLocked.
   // This line is under `if(!me)return;` already, so it is members-only.
-  `show($("navVault"),true);` +
   // The unread dot (slice 8): its own endpoint, never a field on /api/config
   // (which runs on every page load and is under a standing rule against DB
   // reads). A 403 (no firm) or any failure leaves the dot hidden.
@@ -11777,7 +11793,6 @@ const ACCOUNT_NAV_JS =
   // already carries. Both links ship hidden and appear together once the
   // account resolves, which is why the rail is a fixed width — an item
   // arriving after paint must not reflow the page around it.
-  `show($("navBulk"),Boolean(pro.canBulkValue));` +
   // A Pro TRIAL keeps the upgrade (2026-09-25): it is Pro in every capability
   // and still somebody to sell to. index.html's offerUpgrade, restated.
   `show($("navUpgrade"),live&&(!isPro||Boolean(pro.trial)));` +
@@ -11942,8 +11957,8 @@ const RAIL_CSS = `
    This block WAS identical in MARKET_CSS and HOW_CSS, which were twins by
    design; edit them together or the two front doors drift. */
 @media (min-width:900px){
-  html.nav-rail body{padding-left:224px}
-  html.nav-rail .hdr{position:fixed;top:0;left:0;bottom:0;width:224px;
+  html.nav-rail body{padding-left:84px}
+  html.nav-rail .hdr{position:fixed;top:0;left:0;bottom:0;width:84px;
     border-bottom:0;border-right:1px solid var(--line);overflow-y:auto;
     /* Below the dropdowns (1100) and far below the modals, so an opened
        account menu and any overlay still cover the rail. */
@@ -12000,6 +12015,41 @@ const RAIL_CSS = `
   html.nav-rail .hdr nav>#navAcct{margin-top:auto;position:relative;
     padding:12px 20px 0;border-top:1px solid var(--hair)}
   html.nav-rail .hdr nav>#navAcct .dd{right:auto;left:16px;top:auto;bottom:calc(100% + 8px)}
+}
+/* --- The icon rail (2026-10-07; Draft C of the Home and Data drafts, the
+   owner's pick) -----------------------------------------------------------
+   The rail is a dark strip of five places, an icon over a word: Home,
+   Messages, Reports, Markets, Permits. Same element and same markup as
+   before, re-laid-out, and still nothing outside the 900px guard: below it
+   the icons are hidden and the bar reads as words, exactly as it did. 84px
+   is a literal for the 224px's reason. The strip sits on --slab, dark in
+   both themes, so its ink is literal white at stepped opacities (the
+   footer's FOOTER_DARK_CSS reason), and the wordmark gives way to the mark.
+   The red call to action is not a place, so the strip does not carry it:
+   Home's address box and its Reports tab run a comp report. index.html
+   carries the twin of every rule here. */
+.nvi{display:none}
+@media (min-width:900px){
+  html.nav-rail .hdr{background:var(--slab);border-right:0;overflow:visible}
+  html.nav-rail .hdr .wrap{padding:18px 0 16px;align-items:center}
+  html.nav-rail .hleft{padding:0 0 14px}
+  html.nav-rail .hdr .brand .wordmark{display:none}
+  html.nav-rail .hdr .brand svg{width:30px;height:30px}
+  html.nav-rail .hdr .brand{color:#fff}
+  html.nav-rail .hdr .cn-logo rect{fill:currentColor}
+  html.nav-rail .hdr nav{width:100%;gap:4px}
+  html.nav-rail .hdr nav>a,html.nav-rail .hdr nav>button{position:relative;display:flex;flex-direction:column;align-items:center;
+    gap:5px;margin:0 8px;padding:10px 2px 9px;border-left:0;border-radius:10px;text-align:center;
+    font-size:10.5px;font-weight:500;line-height:1.1;color:rgba(255,255,255,.68)}
+  html.nav-rail .hdr nav>a .nvi{display:block;width:22px;height:22px}
+  html.nav-rail .hdr nav>a:hover{background:rgba(255,255,255,.08);color:#fff}
+  html.nav-rail .hdr nav>a[aria-current="page"]{background:rgba(255,255,255,.13);color:#fff;font-weight:600}
+  html.nav-rail .hdr nav>.navsec{font-size:0;height:1px;margin:8px 18px;padding:0;border:0;background:rgba(255,255,255,.14)}
+  html.nav-rail .hdr nav>a.btn.sm{display:none}
+  html.nav-rail .hdr nav .navdot{position:absolute;top:4px;right:16px;margin:0}
+  html.nav-rail .hdr nav>#navAcct{display:flex;justify-content:center;padding:12px 0 0;border-top:1px solid rgba(255,255,255,.14)}
+  html.nav-rail .hdr nav>#navAcct .ini{background-color:rgba(255,255,255,.16)}
+  html.nav-rail .hdr nav>#navAcct .dd{left:calc(100% + 10px);right:auto;top:auto;bottom:0}
 }
 /* Paper has no sidebar. Without this the printed page carries a 224px empty
    column down its left edge on every server-rendered surface. */
@@ -12847,49 +12897,36 @@ const marketBar = (signedIn = false, current = "") =>
   // header link on any surface — it was reachable from the footers and from
   // one line inside the app. It renders for every visitor because it is the
   // cheapest thing a stranger can be shown that is actually the product.
-  // --- THE ORDER (owner's, 2026-08-29) -------------------------------------
+  // --- THE ORDER (owner's pick of Draft C, 2026-10-07) ----------------------
   //
-  //   Workspace, Vault, Market explorer, 1031 guide, Bulk valuation
+  //   Home, Messages, Reports | Markets, Permits
   //
-  // Identical on all three headers -- this one, index.html's and the one
-  // vault-page.js hand-writes -- so the sidebar does not reshuffle itself
-  // when a member navigates between them. That is the whole point of pinning
-  // it, and test/routes.test.js asserts the sequence rather than mere
-  // presence for exactly that reason.
+  // The rail is a dark strip of five places, an icon over a word, identical
+  // here and in index.html's nav so the sidebar does not reshuffle itself
+  // when a member moves between the app and a server-rendered page;
+  // test/routes.test.js asserts the SEQUENCE for that reason. Two rows left
+  // it that day: Data (a member's deals, holdings and comps are tabs of Home,
+  // and /vault is the workbench those tabs open into) and Comp report
+  // (running one is Home's address box and the button on its Reports tab).
+  // Before that the order was Workspace, Vault, Messages, Market explorer,
+  // Comp report, Permit tracker (2026-08-29 to 2026-10-06).
   //
-  // It costs a SPLIT ternary here, and the split is the honest way to pay it:
-  // Workspace and the vault are for members only, the middle two are public,
-  // and bulk is for members again. Interleaving a member-only pair, a public
-  // pair and a member-only tool cannot be expressed as one branch without
-  // either duplicating the public links into both arms or moving them out of
-  // the owner's order. A signed-out visitor simply reads the two public rows
-  // with nothing around them.
+  // The ternary is still split: the first three rows are members' only, the
+  // Pricing row between them and the Tools divider is anyone's, and the last
+  // two are members' again.
   (signedIn
-    ? `<a href="/desk">Home</a>` +
-      // Messages, its own tab (owner's, 2026-09-01). Deliberately NOT hidden
-      // and hydrated the way #navVault and #navBulk are: those two ask an
-      // ENTITLEMENT question, which is a database read this synchronous render
-      // must never make, while this one asks "are you signed in", which the
-      // render already knows. A member with no firm gets the page and an
-      // invitation to start one, which is a better answer than a missing row
-      // — and it costs nothing to render it for them.
-      // The vault, hydrated after paint by ACCOUNT_NAV_JS exactly as the
-      // account slots are — its entitlement is a database read this
-      // synchronous render must never make, so it ships hidden. Same for
-      // bulk, below the public pair.
-      `<a id="navVault" href="/vault"${current === "/vault" ? ' aria-current="page"' : ""} hidden>Data</a>` +
-      // BELOW the vault (owner's, 2026-09-01). It shipped above it for one
-      // afternoon; this is the placement.
-      //
-      // One consequence to know rather than fix: the vault row above ships
-      // hidden and is revealed by entitlement, so for a member without one
-      // Messages closes up directly under Workspace. That is the same thing
-      // that already happens to Bulk valuation, and it is why the order is
-      // pinned as a SEQUENCE rather than by position.
-      // The unread dot (slice 8) rides INSIDE the row: the rail lays every nav
-      // child out as a full-width row, so a sibling badge would be a red bar.
-      // Hidden until ACCOUNT_NAV_JS asks. index.html carries the twin.
-      `<a href="/messages"${current === "/messages" ? ' aria-current="page"' : ""}>Messages<span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>`
+    ? `<a href="/desk">${NAV_ICONS.home}<span class="nvl">Home</span></a>` +
+      // Messages, its own tab (owner's, 2026-09-01), rendered for every
+      // member: it asks "are you signed in", which this render already knows,
+      // never an entitlement. A member with no firm gets the page and an
+      // invitation to start one. The unread dot rides INSIDE the row, so in
+      // the strip it sits on the icon; ACCOUNT_NAV_JS fills it after paint and
+      // index.html carries the twin.
+      `<a href="/messages"${current === "/messages" ? ' aria-current="page"' : ""}>${NAV_ICONS.messages}<span class="nvl">Messages</span><span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>` +
+      // Reports (2026-10-07): Home's Reports tab, where the firm's shelf, what
+      // was sent to the member and the links they sent live, with the button
+      // that runs a new one. A fragment, so the app opens that tab in place.
+      `<a href="/desk#reports">${NAV_ICONS.reports}<span class="nvl">Reports</span></a>`
     : "") +
   // Pricing sits in the bar itself rather than one click inside Explore. It is
   // the question a prospect arrives with, and a B2B site that hides its price
@@ -12918,7 +12955,7 @@ const marketBar = (signedIn = false, current = "") =>
   // measures the SOURCE distance from the label to `<a href="/markets"`.
   `<span class="navsec">Tools</span>` +
   (signedIn
-    ? `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Market explorer</a>`
+    ? `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>${NAV_ICONS.markets}<span class="nvl">Markets</span></a>`
     : "") +
   (signedIn
     ? // /bulk had NO link anywhere on the site before 2026-08-29: not in a
@@ -12927,14 +12964,16 @@ const marketBar = (signedIn = false, current = "") =>
       // URL or by pasting a multi-line list into the main search and
       // discovering the mode by accident. A billed feature nobody can find is
       // one nobody buys.
-      `<a id="navBulk" href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""} hidden>Comp report</a>` +
+      // No Comp report row since 2026-10-07 (Draft C): running a comp report
+      // is the red button on Home's Reports tab, Home's address box, and the
+      // call to action below, not a place of its own.
       // The Permit tracker (2026-09-24, owner's: "it should be under tools"),
       // the THIRD Tools row, after Comp report (owner's order, same day).
       // Every member; index.html carries the twin row in the same place.
       // The unread dot (2026-09-27): a tracked permit's step completed. Same
       // shape and same after-paint fill as Messages' dot; index.html carries
       // the twin.
-      `<a href="/permits"${current === "/permits" ? ' aria-current="page"' : ""}>Permit tracker<span id="navPermitDot" class="navdot" hidden aria-label="permit updates"></span></a>` +
+      `<a href="/permits"${current === "/permits" ? ' aria-current="page"' : ""}>${NAV_ICONS.permits}<span class="nvl">Permits</span><span id="navPermitDot" class="navdot" hidden aria-label="permit updates"></span></a>` +
       // Dropped on the four working pages — see CTA_FREE_PAGES above.
       // POINTS AT /bulk since the evening of 2026-09-04 (owner's: Bulk
       // valuation is the comp-report tool). It pointed at `/` until that
@@ -12947,7 +12986,7 @@ const marketBar = (signedIn = false, current = "") =>
       // never the way home, which is why Workspace stays a row on every bar
       // that renders this. (/bulk is Pro-only; a free member gets its
       // upgrade card, which is the honest answer for a paid tool.)
-      (CTA_FREE_PAGES.has(current) ? "" : `<a class="btn sm" href="/bulk">Run a report</a>`)
+      (CTA_FREE_PAGES.has(current) ? "" : `<a class="btn sm" href="/bulk">Run a comp report</a>`)
     : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
   // The account circle hydrates after paint (ACCOUNT_NAV_JS) — the full menu
   // needs the member's email, which is a DB read this synchronous render must
@@ -30745,6 +30784,10 @@ const server = http.createServer((req, res) =>
     // page that calls it (the page degrades to the city photograph without
     // it, but a STALE copy would draw yesterday's rule).
     "/firm-skyline.js": { file: "firm-skyline.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // Home as one map (2026-10-07): the rules for its lists, through the
+    // global HOMEMAP. Same reason as the two above: never stale against the
+    // page that calls it.
+    "/home-map.js": { file: "home-map.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // The desktop/mobile install identity (PWA). Users "download" the app
     // from the site itself — Chrome/Edge offer Install once this manifest is
     // reachable — so there is no installer to host or code-sign anywhere.
@@ -31882,7 +31925,7 @@ const server = http.createServer((req, res) =>
       // could rebuild the head, the header and the footer by hand; all of that
       // is the shell's now, and the page renders a body.
       res.end(marketShell({
-        title: "Data · CompNinja",
+        title: "Your properties and comps · CompNinja",
         description: "Your own comps and deal data, private until you share them.",
         canonical: `${SITE_URL}/vault`,
         noindex: true,

@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-10-07",
+    "type": "feature",
+    "title": "Home is one map, and the side menu is five places",
+    "details": "Home and Data are now one screen. On the left, a list with tabs: Today (lease dates, your deal deadlines and unread messages, soonest first, each numbered), Properties (the firm’s buildings, your deals and what you own, one row per address, each saying whether the firm or only you can see it), Comps (your past sales and leases, each with its deal date and price per unit), Reports and People. On the right, every property on a map, with the same numbers on the pins and an aerial photo when you open one. The banner is gone. The side menu is a dark strip: Home, Messages, Reports, Markets, Permits. Your private page is now headed “Your properties and comps”, and Comps is called Comps for every kind of firm."
+  },
+  {
+    "date": "2026-10-07",
     "type": "improvement",
     "title": "Six market pages refreshed with current comps",
     "details": "Industrial in Ontario, Fontana, Phoenix, Las Vegas, Dallas and Atlanta now carry October comps and a fresh momentum read, good until January 5. The rest of the market pages still read as of July and their momentum badges go blank on October 12 until they are refreshed too."

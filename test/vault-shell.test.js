@@ -48,12 +48,13 @@ test("/vault is rendered by marketShell, header and footer included", async (t) 
   // it renders that the copy never did.
   assert.match(html, /<div class="hleft">/, "not marketBar's header");
   const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
-  for (const href of ["/desk", "/vault", "/markets", "/bulk"]) {
+  // Draft C's rail (2026-10-07): Home, Messages, Reports, Markets, Permits.
+  for (const href of ["/desk", "/messages", "/desk#reports", "/markets", "/permits"]) {
     assert.ok(nav.includes('href="' + href + '"'), "the vault's nav lost " + href);
   }
-  // Where the reader is, from marketShell's `current` rather than a literal.
-  assert.match(nav, /id="navVault"[^>]*aria-current="page"/,
-    "the vault does not mark its own row as the current page");
+  // No row is this page's own any more, so none claims to be current.
+  assert.doesNotMatch(nav, /aria-current="page"/,
+    "a rail row claims to be /vault, which is no longer a row");
   // The account cluster arrives with accountNavSlots. The theme toggle does
   // NOT, since later the same day (owner's call): the switch went back into
   // index.html's settings panel and out of every nav, so what this page owes

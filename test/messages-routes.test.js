@@ -203,26 +203,25 @@ test("Messages is a row on both rails, in the same place", () => {
   const INDEX_HTML = read("index.html");
   // The row's text may carry the unread dot after it (slice 8); the word is
   // what both authors must agree on.
-  assert.match(SERVER_JS, /<a href="\/messages"[^>]*>Messages(?:<span id="navMsgDot"[^>]*><\/span>)?<\/a>/,
+  // An icon over the word since 2026-10-07 (Draft C's rail).
+  assert.match(SERVER_JS, /<a href="\/messages"[^>]*>\$\{NAV_ICONS\.messages\}<span class="nvl">Messages<\/span>(?:<span id="navMsgDot"[^>]*><\/span>)?<\/a>/,
     "the shared rail has no Messages row");
-  assert.match(INDEX_HTML, /id="navMessagesLink" href="\/messages"[^>]*>Messages</,
+  assert.match(INDEX_HTML, /id="navMessagesLink" href="\/messages"[^>]*><svg class="nvi"[\s\S]{0,400}?<span class="nvl">Messages</,
     "the app's rail has no Messages row");
 
-  // Directly under VAULT on both (owner's placement, 2026-09-01 — it shipped
-  // above it for one afternoon), so the sidebar does not reshuffle itself when
-  // a member navigates between the app and a server-rendered page. Asserted as
-  // a SEQUENCE rather than by position, because the vault row above it ships
-  // hidden and closes up for a member without the entitlement.
-  const shared_ = SERVER_JS.slice(SERVER_JS.indexOf('<a href="/desk">Home</a>'));
-  assert.ok(shared_.indexOf('id="navVault"') < shared_.indexOf("/messages"),
-    "Messages must sit below Data on the shared rail");
-  assert.ok(shared_.indexOf("/messages") < shared_.indexOf('href="/markets"'),
-    "Messages must sit above Market explorer on the shared rail");
+  // Directly under Home on both since 2026-10-07 (Draft C: the Data row it
+  // sat under left the rail), so the sidebar does not reshuffle itself when a
+  // member navigates between the app and a server-rendered page.
+  const shared_ = SERVER_JS.slice(SERVER_JS.indexOf('<a href="/desk">${NAV_ICONS.home}'));
+  assert.ok(shared_.indexOf("/messages") > 0 && shared_.indexOf("/messages") < shared_.indexOf('href="/desk#reports"'),
+    "Messages must sit between Home and Reports on the shared rail");
+  assert.ok(shared_.indexOf('href="/desk#reports"') < shared_.indexOf('href="/markets"'),
+    "Reports must sit above Markets on the shared rail");
   const app = INDEX_HTML.slice(INDEX_HTML.indexOf('id="myDeskLink"'));
-  assert.ok(app.indexOf('id="menuVaultLink"') < app.indexOf("navMessagesLink"),
-    "Messages must sit below Vault in the app");
-  assert.ok(app.indexOf("navMessagesLink") < app.indexOf('href="/markets"'),
-    "Messages must sit above Market explorer in the app");
+  assert.ok(app.indexOf("navMessagesLink") > 0 && app.indexOf("navMessagesLink") < app.indexOf("navReportsLink"),
+    "Messages must sit between Home and Reports in the app");
+  assert.ok(app.indexOf("navReportsLink") < app.indexOf('href="/markets"'),
+    "Reports must sit above Markets in the app");
 
   // It is NOT hidden-and-hydrated like the vault and bulk rows: those ask an
   // entitlement question and this one does not.
@@ -246,9 +245,9 @@ test("a member reading their messages is not sold a report", () => {
 test("the unread dot sits beside Messages on BOTH rails, hidden until asked, and is hydrated from its own endpoint", () => {
   const SERVER_JS = read("server.js");
   const INDEX_HTML = read("index.html");
-  assert.match(SERVER_JS, /<a href="\/messages"[^>]*>Messages<span id="navMsgDot" class="navdot" hidden[^>]*><\/span><\/a>/,
+  assert.match(SERVER_JS, /<a href="\/messages"[^>]*>\$\{NAV_ICONS\.messages\}<span class="nvl">Messages<\/span><span id="navMsgDot" class="navdot" hidden[^>]*><\/span><\/a>/,
     "the shared rail has no unread dot inside its Messages row");
-  assert.match(INDEX_HTML, /id="navMessagesLink" href="\/messages"[^>]*>Messages<span id="navMsgDot" class="navdot" hidden[^>]*><\/span><\/a>/,
+  assert.match(INDEX_HTML, /id="navMessagesLink" href="\/messages"[^>]*>[\s\S]{0,400}?<span class="nvl">Messages<\/span><span id="navMsgDot" class="navdot" hidden[^>]*><\/span><\/a>/,
     "the app's rail has no unread dot inside its Messages row");
   // Fetched in the after-paint pass on both sides — never on /api/config,
   // which runs on every page load and is under a standing rule against DB

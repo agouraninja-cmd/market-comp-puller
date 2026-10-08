@@ -49,8 +49,10 @@ test("the app's rail says which row the reader is standing on", () => {
   // matter as much as the two view functions: assembly yields the workspace up
   // to a minute before renderResults repaints, and a highlight left standing
   // over a view that is gone is worse than no highlight at all.
-  assert.equal(INDEX_HTML.split("markNavCurrent();").length - 1, 4,
-    "every seam that hides or shows the workspace must re-mark the rail");
+  // And a fifth since 2026-10-07: Home's tabs, because its Reports tab is
+  // the rail's Reports row (setHomeTab), so changing tab changes the row.
+  assert.equal(INDEX_HTML.split("markNavCurrent();").length - 1, 5,
+    "every seam that hides or shows the workspace, and Home's tab switch, must re-mark the rail");
 });
 
 test("Workspace is a link on the app, as it is on every other page", () => {
@@ -157,15 +159,17 @@ test("the account circle sits in the same box on both rails", () => {
   }
 });
 
-test("the Data row is called the same thing on both sides of the click", () => {
-  // It read "Your vault" in the app and "Vault" everywhere else, so the row a
-  // member was looking at renamed itself the moment they clicked it.
-  assert.match(INDEX_HTML, /id="menuVaultLink"[^>]*>Data</,
-    "the app's vault row does not use the shared label");
+test("neither rail has a Data row, and no old label for it is back", () => {
+  // Draft C (2026-10-07): a member's deals, holdings and comps are tabs of
+  // Home, so the rail is Home, Messages, Reports, Markets, Permits on BOTH
+  // sides. A row on one side only is the seam this file exists to catch.
+  assert.ok(!INDEX_HTML.includes('id="menuVaultLink"'), "the app's rail grew a Data row back");
+  assert.ok(!SERVER_JS.includes('id="navVault"'), "the shared rail grew a Data row back");
   assert.ok(!/>Your vault<|>Vault</.test(INDEX_HTML),
     "the old label is still rendered somewhere in the app");
-  assert.match(SERVER_JS, /id="navVault"[^>]*>Data</,
-    "the shared rail's label moved; the app's copy now disagrees with it");
+  // Both say Reports for the same place.
+  assert.match(INDEX_HTML, /id="navReportsLink" href="\/desk#reports"[\s\S]{0,500}?<span class="nvl">Reports</);
+  assert.match(SERVER_JS, /<a href="\/desk#reports">\$\{NAV_ICONS\.reports\}<span class="nvl">Reports<\/span><\/a>/);
 });
 
 test("the theme switch is one control, in the settings panel, on neither rail", () => {

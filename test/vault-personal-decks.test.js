@@ -325,18 +325,17 @@ test("the vault page answers 200 to a free member, book locked and decks intact"
   });
 });
 
-test("the vault link is a nav row for a free member, not just for Pro", async () => {
+test("a free member's own properties are reached from Home, not from a gated rail row", async () => {
+  // Draft C (2026-10-07) took the Data row out of the rail; a member's
+  // properties are Home's Properties tab, open to every signed-in member, and
+  // its links lead here. What must not come back is a row gated on Pro.
   await withServer(false, async (srv) => {
     const html = await (await fetch(srv.base + "/vault", {
       headers: { cookie: `cn_session=${TOKEN}` },
     })).text();
-    // Their portfolio lives behind this link now. Gated on canUseVault it
-    // would be reachable by typing the URL and no other way -- the per-deck
-    // gate's own failure, moved into the navigation.
-    assert.ok(html.includes('id="navVault"'), "the rail lost its vault row");
-    assert.ok(html.includes(`show($("navVault"),true)`),
-      "the vault row must open to every signed-in member");
+    assert.ok(!html.includes('id="navVault"'), "the rail grew a Data row back");
     assert.ok(!html.includes(`show($("navVault"),Boolean(pro.canUseVault))`),
-      "and must not go back to being gated on the entitlement");
+      "and must never come back gated on the entitlement");
+    assert.match(html, /<a href="\/desk">/, "the way home is still a row");
   });
 });

@@ -1318,17 +1318,22 @@ test("Escape closes the Firm & branding panel and never falls through it", () =>
   for (const g of guards) assert.ok(g.includes('"firmModal"'), "an Escape guard does not name the panel: " + g);
 });
 
-test("the workspace opens on the firm strip, not a subtitle", () => {
+test("Home opens on its map, not a subtitle", () => {
   // The subtitle went on 2026-09-04 with the Ledger redesign: after four
   // rewrites it was a sentence about where things are NOT, above an empty
-  // form. The strip is the opening statement now — the first thing inside
-  // #myDesk, ahead of the firm deck, and outside every deck so that
-  // refreshDeckVisibility cannot be held open by it.
+  // form. The firm strip was the opening statement after it; since
+  // 2026-10-07 it is Home's one map, the first thing inside #myDesk (so the
+  // one-paint hold covers it), and the strip, the banner and the decks are
+  // gone rather than hidden.
   const desk = html.indexOf('<section id="myDesk"');
-  const strip = html.indexOf('id="deskStrip"');
-  const firm = html.indexOf('id="deckFirm"');
-  assert.ok(desk > 0 && strip > desk && strip < firm, "the strip is the first thing in #myDesk, before the firm deck");
-  assert.ok(!/data-deck[^>]*>[\s\S]{0,400}id="deskStrip"/.test(html), "the strip is not inside a deck");
+  const map = html.indexOf('id="homeMap"');
+  assert.ok(desk > 0 && map > desk, "#homeMap is inside #myDesk");
+  const before = html.slice(html.indexOf(">", desk) + 1, map).replace(/<!--[\s\S]*?-->/g, "");
+  assert.match(before, /^\s*<div $/, "#homeMap is the first element in #myDesk");
+  for (const id of ["deskStrip", "deskHero", "deckFirm", "deskAgenda", "deskBuildings"]) {
+    assert.ok(!html.includes(`id="${id}"`), `#${id} left with the old Home and must not come back`);
+  }
+  assert.ok(!html.includes("data-deck"), "Home has no decks");
   for (const gone of [
     "Your firm's buildings, conversations and shelf, and everything you have shared.",
     "Your firm's shelf, and everything you have shared.",
@@ -3054,7 +3059,10 @@ test("no inline class that sets display can outrank Tailwind's .hidden on an ele
   }
   assert.deepStrictEqual([...offenders], [],
     "each of these outranks .hidden on an element that toggles it; add `.<class>.hidden { display: none; }` beside the rule");
-  // And the two that were found this way stay pinned by name.
-  assert.match(style, /\.dk-strip\.hidden \{ display: none; \}/);
+  // And the ones that were found this way stay pinned by name. (The first,
+  // .dk-strip, left with the old Home on 2026-10-07; Home's chooser and start
+  // cards had the same fault before they shipped.)
   assert.match(style, /\.pr-cell\.hidden \{ display: none; \}/);
+  assert.match(style, /\.hm-ch\.hidden \{ display: none; \}/);
+  assert.match(style, /\.hm-st\.hidden \{ display: none; \}/);
 });

@@ -175,7 +175,7 @@ test("the stand-in precedes the desk in the markup and ships hidden", () => {
   const tag = html.slice(html.lastIndexOf("<", at), html.indexOf(">", at) + 1);
   assert.match(tag, /class="hidden dk-skel"/, "hidden until a fill starts, styled as a deck");
   assert.match(tag, /aria-hidden="true"/);
-  assert.ok(html.includes(".dk-skel-lab") && html.includes(".dk-skel-card"), "its two classes must be styled");
+  assert.ok(html.includes(".dk-skel-agenda") && html.includes(".dk-skel-card"), "its two classes must be styled");
 });
 
 test("the boot path decides the sign-in card and the stand-in on the cookie hint, not on currentUser", () => {
@@ -199,16 +199,15 @@ test("the firm-scoped reads run together, and only the two that need the buildin
   assert.ok(fn.includes("const bail = async (err) => {\n      await firmReady;\n      hideAll();"),
     "a shares failure must wait for the firm read before hideAll(), or the read undoes the hide");
   assert.ok(!/\n\s*hideAll\(\);\s*\n\s*errEl\.classList\.remove/.test(fn), "no bare hideAll-then-error path may remain");
-  // Buildings, conversations and the board go out together; the shelf and
-  // the contacts follow the buildings and nothing else.
-  const batch = fn.slice(fn.indexOf("const buildings = renderBuildings();"));
-  // (Your permits sits in the batch — it joined as New filings with permit
-  // signals slice 4 — and reads the membership and nothing else: the server
-  // resolves the board's addresses itself, so it need not wait for buildings.)
+  // Buildings and conversations go out together; the shelf and the contacts
+  // follow the buildings and nothing else.
+  const batch = fn.slice(fn.indexOf("const buildings = readFirmBuildings();"));
   // (The member's own deals joined on 2026-10-07 for Home's map. They read
-  // nothing of the firm's, so they go out with the rest and wait for nothing.)
-  assert.match(batch, /Promise\.all\(\[\s*sites,\s*buildings,\s*renderDeskThreads\(\),\s*renderYourPermits\(\),\s*renderDealBoard\(\),\s*buildings\.then\(\(\) => Promise\.all\(\[renderFirmShelf\(\), renderContacts\(\)\]\)\),\s*\]\)/,
+  // nothing of the firm's, so they go out with the rest and wait for nothing.
+  // Your permits and the deal board left the batch the same day, with the
+  // old Home sections they drew.)
+  assert.match(batch, /Promise\.all\(\[\s*sites,\s*buildings,\s*renderDeskThreads\(\),\s*buildings\.then\(\(\) => Promise\.all\(\[renderFirmShelf\(\), renderContacts\(\)\]\)\),\s*\]\)/,
     "the firm-scoped batch must keep this shape");
-  assert.ok(!fn.includes("await renderBuildings();"), "the sequential chain must not come back");
+  assert.ok(!fn.includes("await readFirmBuildings();"), "the sequential chain must not come back");
   assert.ok(!fn.includes("await renderDeskThreads();"));
 });

@@ -28,7 +28,7 @@
 //      owner's wording ask, 2026-10-07).
 //
 // Pure and dual-exported (Node for npm test, the browser global HOMEMAP for
-// index.html), like firm-skyline.js and valuation.js, and served with the
+// index.html), like valuation.js, and served with the
 // same maxAge: 0 rule. No clock reads: callers pass `today` as YYYY-MM-DD.
 (function (root, factory) {
   const api = factory();

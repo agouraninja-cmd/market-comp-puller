@@ -267,3 +267,16 @@ test("the geocoder is asked for the street line, with the city the portal left o
   assert.equal(F.geocodeLine("", "Boise", "ID"), "");
   assert.equal(F.geocodeLine(null, "Boise", "ID"), "");
 });
+
+test("mapPins: Home's Permits layer is the tracker feed's placed filings, and counts the rest", () => {
+  const view = (o) => Object.assign({ id: "f1", permitNumber: "BLD-1", type: "Tenant Improvement", stage: "open", status: "In Review",
+    description: "Racking", projectName: "", address: "8000 S FEDERAL WAY", city: "Boise", appliedDate: "2026-10-01",
+    daysAgo: 7, applicant: "Acme", contractor: "", sourceUrl: "https://x.example/1", onBoard: null, lat: 43.53, lng: -116.15,
+    zoning: "I-1", isIndustrial: true, market: "Boise, ID", jurisdiction: "boise" }, o);
+  const out = F.mapPins([view({}), view({ id: "f2", lat: null, lng: null }), view({ id: "f3", lat: 0, lng: 0 }), null]);
+  assert.equal(out.filed, 3, "every filing in the feed counts, placed or not");
+  assert.deepEqual(out.pins.map((p) => p.id), ["f1"], "no place (or Null Island) is no pin");
+  assert.equal(out.pins[0].zoning, undefined, "only what a pin and its card show");
+  assert.equal(out.pins[0].stage, "open");
+  assert.deepEqual(F.mapPins(undefined), { filed: 0, pins: [] });
+});

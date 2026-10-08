@@ -288,7 +288,7 @@ test("an invitation from an auto-sharing firm says so BEFORE it is accepted", ()
   // The spec's safeguard: joining a firm whose default is on changes what
   // happens to work not yet run, and being told after the accept is being
   // told too late.
-  const ctx = load(INVITES_RE, "this.fn = renderFirmInvites;", "function renderShares() {}");
+  const ctx = load(INVITES_RE, "this.fn = renderFirmInvites;", "function renderHomeFirm() {}");
   ctx.fn([{ orgId: "o1", name: "Colliers Boise", shareDefault: "reports" }]);
   const text = ctx.dom.text("firmInvites");
   assert.match(text, /Colliers Boise/);
@@ -298,7 +298,7 @@ test("an invitation from an auto-sharing firm says so BEFORE it is accepted", ()
 });
 
 test("an invitation from an ordinary firm makes no claim about sharing", () => {
-  const ctx = load(INVITES_RE, "this.fn = renderFirmInvites;", "function renderShares() {}");
+  const ctx = load(INVITES_RE, "this.fn = renderFirmInvites;", "function renderHomeFirm() {}");
   ctx.fn([{ orgId: "o1", name: "Colliers Boise", shareDefault: "none" }]);
   const text = ctx.dom.text("firmInvites");
   assert.match(text, /invited you/);
@@ -308,22 +308,22 @@ test("an invitation from an ordinary firm makes no claim about sharing", () => {
 test("accepting posts the invitation's own org id, and re-reads the desk", async () => {
   const fetch = makeFetch([["/api/org/accept", { body: { ok: true } }]]);
   const ctx = load(INVITES_RE, "this.fn = renderFirmInvites; this.reloaded = () => __n;",
-    "let __n = 0; async function renderShares() { __n++; }", { fetch });
+    "let __n = 0; async function renderHomeFirm() { __n++; }", { fetch });
   ctx.fn([{ orgId: "o-real", name: "Colliers Boise" }]);
   const btn = buttons(ctx.dom.el("firmInvites"))[0];
   assert.equal(btn.textContent, "Accept");
   await btn.fire("click");
   assert.equal(fetch.log.length, 1);
   assert.equal(JSON.parse(fetch.log[0].init.body).orgId, "o-real");
-  // Joining changes the firm section AND puts the firm's shelf on the desk,
-  // which come from two different endpoints — so the whole desk re-reads.
+  // Joining changes the firm section AND puts the firm's buildings, contacts
+  // and dates on Home, which come from several endpoints — so Home re-reads.
   assert.equal(ctx.reloaded(), 1, "accepting an invitation left the desk showing the pre-join state");
 });
 
 test("an accept that fails says so and gives the button back", async () => {
   const fetch = makeFetch([["/api/org/accept", { status: 500, body: {} }]]);
   const ctx = load(INVITES_RE, "this.fn = renderFirmInvites;",
-    "async function renderShares() {}", { fetch });
+    "async function renderHomeFirm() {}", { fetch });
   ctx.fn([{ orgId: "o1", name: "Colliers Boise" }]);
   const btn = buttons(ctx.dom.el("firmInvites"))[0];
   await btn.fire("click");
@@ -346,7 +346,7 @@ function loadMembers(body, status, extras) {
     " this.actions = memberCardActions; this.run = runMemberAction; this.card = renderMemberCard;",
     "const __confirms = [];\n" +
     "function confirm(m) { __confirms.push(m); return true; }\n" +
-    "async function renderShares() {}\n" +
+    "async function renderHomeFirm() {}\n" +
     "function openSettingsModal() {}\n" +
     "function renderFirmAutoShare() {} function renderFirmBilling() {}\n" +
     "function renderFirmShop() {}",
@@ -620,39 +620,6 @@ test("a firm with no billing block at all renders nothing rather than zeros", ()
 });
 
 // ---------------------------------------------------------------------------
-// The shelf
-// ---------------------------------------------------------------------------
-const SHELF_RE = /  let firmShelfItems = \[\];[\s\S]*?\n  function applyFirmShelfFilter\(\) \{[\s\S]*?\n  \}/;
-
-function loadShelf(opts) {
-  const o = opts || {};
-  const fetch = makeFetch([["/api/org/shelf", { status: o.status || 200, body: o.body }]]);
-  return load(SHELF_RE,
-    "this.render = renderFirmShelf; this.filter = applyFirmShelfFilter; this.items = () => firmShelfItems;" +
-    // The flag the type filter sets when a person changes it themselves.
-    " this.touch = () => { firmShelfTypeTouched = true; };" +
-    // What the shelf tells the Sharing card (2026-10-06): its count, and that
-    // it changed.
-    " this.cardCount = () => shareShelfCount; this.synced = () => __synced;",
-    "let currentUser = __user; function myFirm() { return __firm; }\n" +
-    "function fmtShareDate(s) { return 'Mar 14'; }\n" +
-    // The buildings door (slice 3) is a collaborator of a shelf row, stubbed
-    // here like fmtShareDate; its own tests are the buildings block below.
-    "function buildingDoor() { return null; }\n" +
-    // The Sharing card's two hooks, declared beside renderShares on the page.
-    // Take down is stubbed to a marked button; its own source test is below.
-    "let shareShelfCount = -1; let __synced = 0; function syncShareCard() { __synced++; }\n" +
-    "function shelfTakeDown(r) { const b = document.createElement('button'); b.className = 'dk-row-act'; b.textContent = 'Take down'; b.shareId = r.id; return b; }",
-    { fetch, __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
-      __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm });
-}
-
-const ITEM = (o) => Object.assign({
-  address: "500 Warehouse Way", market: "Boise, ID", type: "Industrial",
-  sharedBy: "Brad", mine: false, url: "/r/abc", createdAt: "2026-03-14T00:00:00Z",
-}, o);
-
-// ---------------------------------------------------------------------------
 // The firm's buildings (migration 046, Three Spaces slice 3). Presentation
 // only; org-buildings.js decides what may be stored. Since 2026-10-07 the
 // list draws on Home's map rather than in a table of its own, so these tests
@@ -715,14 +682,13 @@ test("the buildings add form ships closed, with one writer, behind Home's choose
 // renderer drifting back to its own idiom, which is how the same building
 // came to be a Georgia address on the shelf and an underlined sans one in
 // the old Buildings table.
-test("the shelf and contacts draw one row family", () => {
-  for (const fn of ["applyFirmShelfFilter", "contactRow"]) {
-    const at = html.indexOf(`function ${fn}(`);
-    const src = html.slice(at, html.indexOf("\n  }\n", at));
-    assert.ok(src.includes('className = "dk-row"'), `${fn} builds .dk-row`);
-    assert.ok(src.includes('"dk-row-meta"'), `${fn} puts the meta on .dk-row-meta`);
-    assert.ok(!src.includes("dk-shelf-") && !src.includes("db-row"), `${fn} left its old idiom`);
-  }
+test("the contacts draw the workspace's one row family", () => {
+  // The shelf drew it too until 2026-10-08, when it moved to Messages.
+  const at = html.indexOf("function contactRow(");
+  const src = html.slice(at, html.indexOf("\n  }\n", at));
+  assert.ok(src.includes('className = "dk-row"'), "contactRow builds .dk-row");
+  assert.ok(src.includes('"dk-row-meta"'), "contactRow puts the meta on .dk-row-meta");
+  assert.ok(!src.includes("dk-shelf-") && !src.includes("db-row"), "contactRow left its old idiom");
   assert.ok(!/\.dk-shelf-row\s*\{/.test(html), "the shelf's own row rule is retired");
 });
 
@@ -975,7 +941,7 @@ test("the leases read hands back the dates, or null when it could not read them 
 });
 
 test("the leases read starts beside the batch, lands before Home draws, and has one reader", () => {
-  const at = html.indexOf("async function renderShares()");
+  const at = html.indexOf("async function renderHomeFirm()");
   const fn = html.slice(at, html.indexOf("\n  }\n", at));
   assert.ok(fn.indexOf("const critical = readFirmCritical();") < fn.indexOf("const buildings = readFirmBuildings();"),
     "the leases read starts beside the batch, not after it");
@@ -992,131 +958,13 @@ test("the section is labelled Contacts — the tenant-rep shop it was named for 
   assert.doesNotMatch(html, /rd-lab">Tenant contacts</, "a broker shop or a development shop keeps a contact list too");
 });
 
-test("the shelf row's Discuss sends the report as a LINK, never a copy of it", () => {
-  assert.match(html, /talk\.href = "\/messages\?say=" \+ encodeURIComponent\("About the " \+ \(r\.type \? r\.type \+ " " : ""\) \+ "report on " \+ r\.address \+ ": " \+ r\.url\);/,
-    "the shelf's Discuss must carry the report's URL, so report-access.js stays the sole decider of who may read it");
-});
-
-test("the shelf's header count describes the WHOLE shelf, never the filtered view", async () => {
-  // /vault's rule, for its reasons: a count that shrinks with the search box
-  // is how a record stops being trusted as a record.
-  const ctx = loadShelf({ body: { items: [ITEM({}), ITEM({ address: "2 B St", market: "Meridian, ID" })] } });
-  await ctx.render();
-  assert.match(ctx.dom.text("firmShelfStats"), /2 reports · 2 markets/);
-  ctx.dom.el("firmShelfSearch").value = "warehouse";
-  ctx.filter();
-  assert.match(ctx.dom.text("firmShelfStats"), /2 reports/, "the header count followed the filter");
-  assert.equal(ctx.dom.text("firmShelfCount"), "1 of 2",
-    "the filtered count is stated separately, so nothing is silently hidden");
-});
-
-test("an empty shelf and a search with no hits are told apart", async () => {
-  // Showing the empty-shelf invitation to somebody whose search missed reads
-  // as the shelf having been wiped — the same misreport-absence-as-outage trap
-  // the vault's own filters had to fix.
-  const ctx = loadShelf({ body: { items: [ITEM({})] } });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("deskSharedWithFirmEmpty"), true);
-  assert.equal(ctx.dom.hidden("firmShelfNoMatch"), true);
-
-  ctx.dom.el("firmShelfSearch").value = "nothing like this";
-  ctx.filter();
-  assert.equal(ctx.dom.hidden("firmShelfNoMatch"), false);
-  assert.equal(ctx.dom.hidden("deskSharedWithFirmEmpty"), true,
-    "a search with no hits told the reader their firm has shared nothing");
-});
-
-test("your own share is on the shelf, attributed to you rather than to your name", async () => {
-  // Slice 1 excluded the caller's own shares, which is right for a
-  // "shared with you" list and wrong for a shelf: a record missing your own
-  // work cannot answer "has anybody here valued this building".
-  const ctx = loadShelf({ body: { items: [ITEM({ mine: true, sharedBy: "Brad" })] } });
-  await ctx.render();
-  const text = ctx.dom.text("sharedWithFirmRows");
-  assert.match(text, /shared by you/);
-  assert.doesNotMatch(text, /shared by Brad/);
-});
-
-test("your own shelf report can be taken down from the shelf, and only yours", async () => {
-  // Since the Sharing card (2026-10-06) a firm share is listed once, on the
-  // shelf, and no longer repeats in Your links, so the shelf carries its off
-  // switch. A colleague's report has none: revoking is the sharer's call, and
-  // the server's revoke is scoped to the sharer's own rows besides.
-  const ctx = loadShelf({ body: { items: [
-    ITEM({ id: "s-mine", mine: true, sharedBy: "Brad" }),
-    ITEM({ id: "s-theirs", address: "88 Chinden Blvd", sharedBy: "Mike" }),
-  ] } });
-  await ctx.render();
-  const [mine, theirs] = ctx.dom.el("sharedWithFirmRows").children;
-  const downs = (row) => row.children.filter((c) => c.textContent === "Take down");
-  assert.equal(downs(mine).length, 1, "your own report has a Take down");
-  assert.equal(downs(mine)[0].shareId, "s-mine", "and it takes down that report");
-  assert.equal(downs(theirs).length, 0, "a colleague's report has none");
-  // Discuss stays the last action on every row.
-  const acts = mine.children.filter((c) => /\bdk-row-act\b/.test(c.className));
-  assert.equal(acts[acts.length - 1].textContent, "Discuss");
-});
-
-test("the shelf tells the Sharing card its whole count on every outcome", async () => {
-  const ok = loadShelf({ body: { items: [ITEM({}), ITEM({ address: "2 B St" })] } });
-  await ok.render();
-  assert.equal(ok.cardCount(), 2);
-  assert.ok(ok.synced() > 0, "a drawn shelf re-syncs the card");
-  ok.dom.el("firmShelfSearch").value = "warehouse";
-  ok.filter();
-  assert.equal(ok.cardCount(), 2, "the tab counts the whole shelf, as its header line does");
-  for (const o of [{ firm: null, body: { items: [] } }, { status: 500, body: {} }]) {
-    const gone = loadShelf(o);
-    await gone.render();
-    assert.equal(gone.cardCount(), 0, "no shelf, no count");
-    assert.ok(gone.synced() > 0, "a shelf that went away still tells the card, so its tab goes with it");
+// The shelf's own tests (its counts, its saved view, Take down, Discuss)
+// moved with it to Messages on 2026-10-08: test/report-inbox.test.js runs
+// its rules, and test/messages-page.test.js pins the page's half.
+test("Home no longer reads or draws the firm's shelf", () => {
+  for (const gone of ["renderFirmShelf", "applyFirmShelfFilter", "firmShelfItems", 'id="deskSharedWithFirm"', "/api/org/shelf"]) {
+    assert.ok(!html.includes(gone), `index.html still carries ${gone}`);
   }
-});
-
-test("Take down revokes the share by id, after a confirm that names what cannot be undone", () => {
-  const fn = html.match(/  function shelfTakeDown\(r\) \{[\s\S]*?\n  \}/);
-  assert.ok(fn, "index.html must define shelfTakeDown()");
-  assert.match(fn[0], /if \(!confirm\(`Take \$\{r\.address\} off the firm shelf\?[^`]*cannot be put back\.`\)\) return;/);
-  assert.match(fn[0], /acctApi\("POST", "\/api\/shares\/revoke", \{ id: r\.id \}\)/,
-    "the same one-way revoke Your links' Turn off link sends");
-  assert.ok(fn[0].indexOf("confirm(") < fn[0].indexOf("acctApi("), "the confirm comes first");
-});
-
-test("a truncated shelf says so rather than under-reporting", async () => {
-  const ctx = loadShelf({ body: { items: [ITEM({})], truncated: true } });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("firmShelfTruncated"), false);
-});
-
-test("the shelf's search box is furniture under six rows", async () => {
-  const ctx = loadShelf({ body: { items: [ITEM({}), ITEM({})] } });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("firmShelfSearchWrap"), true);
-  const many = loadShelf({ body: { items: Array.from({ length: 6 }, () => ITEM({})) } });
-  await many.render();
-  assert.equal(many.dom.hidden("firmShelfSearchWrap"), false);
-});
-
-test("no firm means no shelf, and a signed-out desk does not even ask", async () => {
-  const noFirm = loadShelf({ firm: null, body: { items: [] } });
-  await noFirm.render();
-  assert.equal(noFirm.dom.hidden("deskSharedWithFirm"), true);
-
-  // currentUser is checked FIRST: a failed /api/org leaves the cached
-  // membership holding the last answer, and the one state where acting on
-  // that is wrong rather than merely stale is a signed-out page.
-  const out = loadShelf({ user: null, firm: { id: "o1", name: "Stale" }, body: { items: [] } });
-  await out.render();
-  assert.equal(out.dom.hidden("deskSharedWithFirm"), true);
-  assert.equal(out.fetch.log.length, 0, "the desk asked a signed-out browser's firm for its shelf");
-});
-
-test("a shelf read that fails hides it and drops the previous firm's rows", async () => {
-  const ctx = loadShelf({ status: 500, body: {} });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("deskSharedWithFirm"), true);
-  assert.deepEqual(ctx.items(), [],
-    "a failed read left the last firm's reports in memory for the next filter to paint");
 });
 
 // ---------------------------------------------------------------------------
@@ -1322,7 +1170,7 @@ test("every id the firm code reaches for exists in index.html", async () => {
   const firm = loadRenderFirm(STATE({ orgs: [{ id: "o1", name: "F" }], canCreate: true }));
   await firm.renderFirm();
   collect(firm);
-  const invites = load(INVITES_RE, "this.fn = renderFirmInvites;", "function renderShares() {}");
+  const invites = load(INVITES_RE, "this.fn = renderFirmInvites;", "function renderHomeFirm() {}");
   invites.fn([{ orgId: "o1", name: "F", shareDefault: "reports" }]);
   collect(invites);
   const members = loadMembers({ name: "F", canManage: true, members: [OWNER, MEMBER] });
@@ -1334,9 +1182,6 @@ test("every id the firm code reaches for exists in index.html", async () => {
   const billing = loadBilling({ o1: { seats: 5, used: 2, status: "active", canBill: true } });
   billing.fn({ id: "o1" });
   collect(billing);
-  const shelf = loadShelf({ body: { items: [ITEM({})], truncated: true } });
-  await shelf.render();
-  collect(shelf);
   const shop = loadShop();
   shop.fn({ name: "F", kind: "development", canManage: true });
   collect(shop);
@@ -1423,96 +1268,9 @@ test("a firm from before 036 reads as a broker shop rather than as nothing", () 
   assert.match(ctx.dom.text("firmShopState"), /comp sets, BOVs, market reports and lease abstracts/);
 });
 
-const LAND = (o) => ITEM(Object.assign({ type: "Land", address: "40 acres, Kuna" }, o));
-const sixItems = (type) => Array.from({ length: 6 }, (_, i) =>
-  ITEM({ type: i < 2 ? "Land" : type, address: `${i} Test St` }));
-
-test("a development shop's shelf opens on Land, and says how much it is not showing", async () => {
-  const ctx = loadShelf({
-    firm: { id: "o1", name: "Boise Land Partners", kind: "development" },
-    body: { items: sixItems("Industrial") },
-  });
-  await ctx.render();
-  assert.equal(ctx.dom.el("firmShelfType").value, "Land", "§6's saved view");
-  // The whole shelf in the header, the filtered slice named separately: a view
-  // the colleague did not choose must never read as the record having shrunk.
-  assert.match(ctx.dom.text("firmShelfStats"), /6 reports/);
-  assert.equal(ctx.dom.text("firmShelfCount"), "2 of 6");
-  assert.equal(ctx.dom.el("sharedWithFirmRows").children.length, 2);
-});
-
-test("a withdrawn kind's shelf opens on everything rather than on nothing", async () => {
-  // The shelf reads shelfType off the same map, so a retired kind must land
-  // on the broker default. The failure worth executing is a shelf filtered by
-  // `undefined`, which shows a colleague an empty record of their own firm.
-  const ctx = loadShelf({
-    firm: { id: "o1", name: "Ada Tenant Advisors", kind: "tenant_rep" },
-    body: { items: sixItems("Office") },
-  });
-  await ctx.render();
-  assert.equal(ctx.dom.el("firmShelfType").value, "");
-  assert.equal(ctx.dom.el("sharedWithFirmRows").children.length, 6);
-});
-
-test("a broker shop's shelf opens on everything", async () => {
-  const ctx = loadShelf({
-    firm: { id: "o1", name: "Colliers Boise", kind: "broker" },
-    body: { items: sixItems("Industrial") },
-  });
-  await ctx.render();
-  assert.equal(ctx.dom.el("firmShelfType").value, "");
-  assert.equal(ctx.dom.el("sharedWithFirmRows").children.length, 6);
-  assert.equal(ctx.dom.text("firmShelfCount"), "", "nothing is being filtered, so nothing is counted");
-});
-
-test("the saved view never hides rows while its own filter is off screen", async () => {
-  // The filter row is furniture under six rows and hides itself. If the
-  // default still applied, a five-report shelf would show two and offer no
-  // visible way to ask why — a record that appears to have lost something.
-  const ctx = loadShelf({
-    firm: { id: "o1", name: "Boise Land Partners", kind: "development" },
-    body: { items: [LAND({}), ITEM({ address: "1 A St" }), ITEM({ address: "2 B St" })] },
-  });
-  await ctx.render();
-  assert.equal(ctx.dom.hidden("firmShelfSearchWrap"), true);
-  assert.equal(ctx.dom.el("firmShelfType").value, "", "cleared, not merely hidden");
-  assert.equal(ctx.dom.el("sharedWithFirmRows").children.length, 3, "every row is on the shelf");
-});
-
-test("a colleague's own choice of filter survives the next render", async () => {
-  const ctx = loadShelf({
-    firm: { id: "o1", name: "Boise Land Partners", kind: "development" },
-    body: { items: sixItems("Retail") },
-  });
-  await ctx.render();
-  assert.equal(ctx.dom.el("firmShelfType").value, "Land");
-  // They widen it themselves. A default that undoes a person's own click is
-  // not a default, it is a fight — so the second render leaves it alone.
-  ctx.dom.el("firmShelfType").value = "";
-  ctx.touch();
-  await ctx.render();
-  assert.equal(ctx.dom.el("firmShelfType").value, "");
-  assert.equal(ctx.dom.el("sharedWithFirmRows").children.length, 6);
-});
-
-test("the type filter and the search box narrow together", async () => {
-  const ctx = loadShelf({
-    firm: { id: "o1", name: "Boise Land Partners", kind: "broker" },
-    body: { items: [LAND({ market: "Kuna, ID" }), LAND({ address: "80 acres, Nampa", market: "Nampa, ID" }),
-                    ITEM({ address: "500 Warehouse Way" })] },
-  });
-  await ctx.render();
-  ctx.dom.el("firmShelfType").value = "Land";
-  ctx.dom.el("firmShelfSearch").value = "nampa";
-  ctx.filter();
-  assert.equal(ctx.dom.el("sharedWithFirmRows").children.length, 1);
-  assert.equal(ctx.dom.text("firmShelfCount"), "1 of 3");
-  // An empty shelf and a filter with no hits are still told apart, now that
-  // either control can be the one that empties the list.
-  ctx.dom.el("firmShelfSearch").value = "nothing here";
-  ctx.filter();
-  assert.equal(ctx.dom.hidden("firmShelfNoMatch"), false);
-});
+// The shelf's saved view per shop (a development shop opens on Land) is
+// Messages' since 2026-10-08, read from org-access.js's SHOP_COPY on the
+// server (test/report-inbox.test.js runs the rule).
 
 // The create button, which is where the shop question is REQUIRED. Sliced as
 // the handler it is: the guard has to hold in the browser as well as on the
@@ -1525,7 +1283,7 @@ function loadCreate(opts) {
   const fetch = makeFetch([["/api/org", { status: o.status || 200, body: o.body || { id: "o1" } }]]);
   const copy = html.match(SHOP_COPY_RE);
   const ctx = load(CREATE_RE, "this.fetch = fetch;",
-    copy[0] + "\nasync function renderShares() {}\nfunction openUpgradePrompt() {}", { fetch });
+    copy[0] + "\nasync function renderHomeFirm() {}\nfunction openUpgradePrompt() {}", { fetch });
   ctx.dom.el("firmNameInput").value = o.name === undefined ? "Colliers Boise" : o.name;
   ctx.dom.el("firmKindSelect").value = o.kind === undefined ? "broker" : o.kind;
   ctx.click = () => ctx.dom.el("firmCreateBtn").fire("click");
@@ -1619,7 +1377,7 @@ test("the firm section lives in the panel, not on the workspace", () => {
   assert.ok(modalAt < deskAt && deskAt < myDeskAt,
     "#deskFirm is not inside #firmModal (which precedes the workspace markup)");
   assert.equal(html.split('id="deskFirm"').length - 1, 1, "exactly one firm section");
-  // renderShares still hides it on sign-out: the roster names colleagues.
+  // renderHomeFirm still hides it on sign-out: the roster names colleagues.
   assert.ok(html.includes('document.getElementById("deskFirm").classList.add("hidden");'),
     "a stale roster survives a sign-out");
 });
@@ -1708,7 +1466,7 @@ test("a Home left open turns to Good afternoon at noon, Good evening at 5, and a
 });
 
 test("a sign-out takes Home back down: no name, no timer, no firm", () => {
-  const at = html.indexOf("async function renderShares()");
+  const at = html.indexOf("async function renderHomeFirm()");
   const fn = html.slice(at, html.indexOf("\n  }\n", at));
   const hide = fn.slice(fn.indexOf("const hideAll = () => {"), fn.indexOf("};", fn.indexOf("const hideAll = () => {")));
   assert.ok(hide.includes("stopDeskClock();"),
@@ -1722,7 +1480,9 @@ test("a sign-out takes Home back down: no name, no timer, no firm", () => {
 });
 
 test("the empty lists are previews with one next step, and the preview holds no text that could read as data", () => {
-  for (const id of ["deskSharedWithFirmEmpty", "deskInboxEmpty", "deskSharesEmpty", "contactsEmpty"]) {
+  // The three Sharing card empties left with the card (2026-10-08); Messages
+  // says its own empty states.
+  for (const id of ["contactsEmpty"]) {
     const at = html.indexOf(`id="${id}"`);
     assert.ok(at > 0, id);
     const tag = html.slice(html.lastIndexOf("<", at), html.indexOf(">", at) + 1);
@@ -1766,245 +1526,20 @@ test("tracked permits stay off Home: no card, no Today entry, no boot read", () 
 });
 
 // ---------------------------------------------------------------------------
-// The Sharing card (2026-10-06; Draft C of the sharing drafts). The firm
-// shelf, what was sent to this member and their own links are three tabs of
-// one section. These run the card's own code against the fake page.
+// The Sharing card (2026-10-06 to 2026-10-08). Home's Reports tab held the
+// firm shelf, what was sent to the member and their own links; the owner
+// moved them into Messages on 2026-10-08. Its rules are report-inbox.js's
+// now (test/report-inbox.test.js); Home must carry none of it.
 // ---------------------------------------------------------------------------
-const SHARE_CARD_RE = /  let shareWithMe = \[\];[\s\S]*?\n  function syncShareCard\(\) \{[\s\S]*?\n  \}/;
-const SHARE_PANES = ["deskSharedWithFirm", "deskInbox", "deskShares"];
-
-function loadCard() {
-  return load(SHARE_CARD_RE,
-    "this.sync = syncShareCard;" +
-    " this.set = (o) => { shareShelfCount = o.shelf || 0; shareInboxCount = o.inbox || 0;" +
-    " shareInboxNew = o.fresh || 0; shareLiveLinks = o.links || 0; };" +
-    " this.pick = (p) => { shareTabPicked = p; };");
-}
-const offer = (ctx, ...ids) => ids.forEach((id) => ctx.dom.el(id).classList.remove("hidden"));
-const showing = (ctx) => SHARE_PANES.filter((id) => !ctx.dom.el(id).classList.contains("dk-off"));
-
-test("the Sharing card ships hidden, with every tab hidden until a pane applies", () => {
-  assert.equal(MARKUP_CLASSES.get("deskSharing").split(/\s+/).includes("hidden"), true);
-  for (const id of SHARE_PANES) {
-    assert.match(MARKUP_CLASSES.get(id), /\bhidden\b/, `${id} ships hidden; its renderer decides`);
-    assert.match(MARKUP_CLASSES.get(id), /\bdk-pane\b/);
+test("Home carries no Reports tab and no Sharing card, and reads no shares", () => {
+  for (const gone of ['id="hmTabReports"', 'id="hmPaneReports"', 'id="deskSharing"', 'id="shareTabs"', 'id="deskInbox"',
+    'id="sharesRows"', "syncShareCard", "renderSharesTable", "mergeShareInbox", "drawShareInbox", "addMyShareRow",
+    "renderDeskHubs", 'bootFetch("/api/shares")', 'bootFetch("/api/hubs")']) {
+    assert.ok(!html.includes(gone), `index.html still carries ${gone}`);
   }
-  for (const id of ["shareTabShelf", "shareTabIn", "shareTabOut"]) {
-    assert.match(html, new RegExp(`id="${id}"[^>]*\\shidden>`), `${id} ships hidden`);
-  }
-  // The three old headings that all began "Shared" are gone from the page.
-  for (const gone of [">Shared reports<", ">Shared with you<", ">Shared with your firm<"]) {
-    assert.ok(!html.includes(gone), `"${gone}" is back on the page`);
-  }
-});
-
-test("the card hides when no pane applies, and shows for a failed read's line alone", () => {
-  const ctx = loadCard();
-  ctx.sync();
-  assert.equal(ctx.dom.hidden("deskSharing"), true);
-  ctx.dom.el("deskSharesLoadError").classList.remove("hidden");
-  ctx.sync();
-  assert.equal(ctx.dom.hidden("deskSharing"), false, "the error line lives inside the card");
-});
-
-test("a firm member's card opens on the shelf, with all three tabs and their counts", () => {
-  const ctx = loadCard();
-  offer(ctx, ...SHARE_PANES);
-  ctx.set({ shelf: 4, inbox: 1, fresh: 1, links: 3 });
-  ctx.sync();
-  assert.equal(ctx.dom.hidden("deskSharing"), false);
-  assert.deepEqual(showing(ctx), ["deskSharedWithFirm"]);
-  assert.equal(ctx.dom.el("shareTabShelf").getAttribute("aria-selected"), "true");
-  assert.equal(ctx.dom.el("shareTabShelf").tabIndex, 0);
-  assert.equal(ctx.dom.el("shareTabIn").tabIndex, -1, "one tab stop for the whole tab list");
-  for (const id of ["shareTabShelf", "shareTabIn", "shareTabOut"]) assert.equal(ctx.dom.el(id).hidden, false);
-  assert.equal(ctx.dom.text("shareTabShelfN"), "4");
-  assert.equal(ctx.dom.text("shareTabInN"), "1");
-  assert.equal(ctx.dom.text("shareTabOutN"), "3");
-});
-
-test("with no firm it opens on Sent to you when something was sent, else on Your links", () => {
-  const ctx = loadCard();
-  offer(ctx, "deskInbox", "deskShares");
-  ctx.set({ inbox: 2, links: 0 });
-  ctx.sync();
-  assert.deepEqual(showing(ctx), ["deskInbox"]);
-  assert.equal(ctx.dom.el("shareTabShelf").hidden, true, "no firm, no shelf tab");
-  ctx.set({ inbox: 0, links: 1 });
-  ctx.sync();
-  assert.deepEqual(showing(ctx), ["deskShares"], "an empty inbox is not where a member starts");
-});
-
-test("a tab the member picked stays picked, and falls back when its pane goes away", () => {
-  const ctx = loadCard();
-  offer(ctx, ...SHARE_PANES);
-  ctx.pick("deskShares");
-  ctx.sync();
-  assert.deepEqual(showing(ctx), ["deskShares"]);
-  ctx.sync();
-  assert.deepEqual(showing(ctx), ["deskShares"], "a re-render keeps the pick");
-  ctx.dom.el("deskShares").classList.add("hidden");
-  ctx.sync();
-  assert.deepEqual(showing(ctx), ["deskSharedWithFirm"]);
-  assert.equal(ctx.dom.el("shareTabOut").hidden, true);
-});
-
-test("the count turns red only for something sent to you and not yet opened", () => {
-  const ctx = loadCard();
-  offer(ctx, ...SHARE_PANES);
-  ctx.set({ shelf: 9, inbox: 3, fresh: 0, links: 5 });
-  ctx.sync();
-  for (const id of ["shareTabShelfN", "shareTabInN", "shareTabOutN"]) {
-    assert.equal(ctx.dom.el(id).classList.contains("new"), false, id);
-  }
-  ctx.set({ shelf: 9, inbox: 3, fresh: 2, links: 5 });
-  ctx.sync();
-  assert.equal(ctx.dom.el("shareTabInN").classList.contains("new"), true);
-  assert.equal(ctx.dom.el("shareTabInN").title, "2 not opened yet");
-  assert.equal(ctx.dom.el("shareTabShelfN").classList.contains("new"), false, "the shelf never asks for anything");
-});
-
-// Your links and Sent to you, run together: the slice is the links table, the
-// inbox and the tab handlers, through the end of addMyShareRow.
-const SHARE_LISTS_RE = /  function renderSharesTable\(mine\) \{[\s\S]*?\n  function addMyShareRow\(tbody, r\) \{[\s\S]*?\n  \}\n/;
-function loadSharing(o) {
-  const opts = o || {};
-  return load(SHARE_LISTS_RE,
-    "this.table = renderSharesTable; this.merge = mergeShareInbox; this.inbox = drawShareInbox;" +
-    " this.live = () => shareLiveLinks; this.counts = () => [shareInboxCount, shareInboxNew];" +
-    " this.rooms = (r, failed) => { deskRooms = r; deskRoomsFailed = Boolean(failed); };" +
-    " this.withMe = (w) => { shareWithMe = w; };",
-    "let currentUser = { email: 'brad@foothillcre.com' }; function myFirm() { return __firm; }\n" +
-    "function fmtShareDate(s) { return 'D' + new Date(s).getUTCDate(); }\n" +
-    "let shareWithMe = []; let deskRooms = []; let deskRoomsFailed = false;\n" +
-    "let shareInboxCount = 0; let shareInboxNew = 0; let shareLiveLinks = 0; let shareTabPicked = '';\n" +
-    "function syncShareCard() {} function hubCreationAllowed() { return __hubs; }\n" +
-    "function acctApi() { return Promise.resolve({}); } function renderShares() {}\n" +
-    "function renderDeskHubs() {} function showHubInvites() {}\n" +
-    "document.addEventListener = function () {};",
-    { __firm: opts.firm === undefined ? { id: "o1", name: "Foothill Commercial" } : opts.firm,
-      __hubs: opts.hubs !== false });
-}
-const REPORT = (o) => Object.assign({
-  id: "s1", address: "1210 N 17th St, Boise, ID", type: "Industrial", from: "Brad Keller",
-  url: "/r/s1", invitedAt: "2026-10-02T10:00:00Z", viewedAt: "2026-10-03T10:00:00Z",
-}, o);
-const ROOM = (o) => Object.assign({
-  id: "h1", title: "1210 N 17th St, Boise, ID", subjectAddress: "1210 N 17th St, Boise, ID",
-  propertyType: "Industrial", from: "Brad Keller", updatedAt: "2026-10-05T10:00:00Z",
-  lastSeenAt: "2026-10-05T12:00:00Z", status: "open",
-}, o);
-
-test("a report and the deal room opened from it are ONE row in Sent to you", () => {
-  const ctx = loadSharing();
-  const rows = ctx.merge([REPORT({}), REPORT({ id: "s2", address: "2750 S Cole Rd, Boise, ID", invitedAt: "2026-09-24T10:00:00Z" })],
-    [ROOM({})]);
-  assert.equal(rows.length, 2);
-  assert.equal(rows[0].label, "1210 N 17th St, Boise, ID");
-  assert.ok(rows[0].report && rows[0].room, "one row, both doors");
-  assert.equal(rows[0].date, "2026-10-05T10:00:00Z", "dated by whichever moved last");
-  assert.equal(rows[1].room, null);
-  // The address match ignores punctuation and case; a different sender is
-  // a different conversation, so it does not merge.
-  const loose = ctx.merge([REPORT({})], [ROOM({ subjectAddress: "1210 n. 17th st boise id" })]);
-  assert.equal(loose.length, 1);
-  const other = ctx.merge([REPORT({})], [ROOM({ from: "Erin Walsh", title: "17th St co-broke" })]);
-  assert.equal(other.length, 2, "two senders, two rows");
-  assert.ok(other.some((r) => !r.report && r.label === "17th St co-broke"), "a room alone is labelled by its title");
-});
-
-test("New means a report not yet opened, or a room not seen since it last moved", () => {
-  const ctx = loadSharing();
-  const one = (reports, rooms) => ctx.merge(reports, rooms)[0].isNew;
-  assert.equal(one([REPORT({ viewedAt: null })], []), true, "never opened");
-  assert.equal(one([REPORT({})], []), false, "opened");
-  assert.equal(one([REPORT({ viewedAt: undefined })], []), false,
-    "an answer without the field must not light every row up");
-  assert.equal(one([], [ROOM({ lastSeenAt: null })]), true, "a room never opened");
-  assert.equal(one([], [ROOM({})]), false, "seen after it last moved");
-  assert.equal(one([], [ROOM({ lastSeenAt: "2026-10-04T00:00:00Z" })]), true, "moved since it was seen");
-  assert.equal(one([], [ROOM({ lastSeenAt: null, status: "closed" })]), false, "a closed room asks nothing");
-  assert.equal(one([REPORT({})], [ROOM({ lastSeenAt: null })]), true, "either door being new makes the row new");
-});
-
-test("Sent to you draws each row with who sent it, and links a room into Messages", () => {
-  const ctx = loadSharing();
-  ctx.withMe([REPORT({ viewedAt: null })]);
-  ctx.rooms([ROOM({}), ROOM({ id: "h2", title: "Overland co-broke", subjectAddress: "9 Overland Rd", from: "Erin Walsh", updatedAt: "2026-10-01T10:00:00Z" })]);
-  ctx.inbox();
-  const text = ctx.dom.text("deskInboxRows");
-  assert.match(text, /from Brad Keller/);
-  assert.match(text, /from Erin Walsh/);
-  assert.match(text, /New/);
-  assert.match(text, /Open report/);
-  assert.match(text, /Open the conversation/);
-  assert.equal(ctx.dom.hidden("deskInboxEmpty"), true);
-  assert.equal(ctx.dom.text("deskInboxStats"), "1 report · 2 deal rooms");
-  const [merged, roomOnly] = ctx.dom.el("deskInboxRows").children;
-  assert.equal(merged.children[0].children[0].href, "/r/s1", "a row with a report opens the report");
-  assert.equal(roomOnly.children[0].children[0].href, "/messages?x=h2", "a room alone opens in Messages");
-  assert.equal(ctx.counts()[0], 2);
-  assert.equal(ctx.counts()[1], 1, "only the unopened report is new");
-});
-
-test("an empty Sent to you says so only when both reads came back", () => {
-  const ctx = loadSharing();
-  ctx.withMe([]);
-  ctx.rooms([], false);
-  ctx.inbox();
-  assert.equal(ctx.dom.hidden("deskInboxEmpty"), false);
-  ctx.rooms([], true);
-  ctx.inbox();
-  assert.equal(ctx.dom.hidden("deskInboxEmpty"), true, "a failed rooms read is never told as 'nothing was sent to you'");
-});
-
-const LINK = (o) => Object.assign({
-  id: "l1", address: "77 E Fairview Ave", type: "Retail", visibility: "public", orgId: "",
-  firm: "", createdAt: "2026-09-27T00:00:00Z", url: "/r/l1", viewers: [],
-}, o);
-
-test("Your links lists what this member sent, minus the shares on the shelf they can see", () => {
-  const ctx = loadSharing();
-  ctx.table([
-    LINK({ id: "a", address: "500 Warehouse Way", visibility: "org", orgId: "o1", firm: "Foothill Commercial", createdAt: "2026-10-04T00:00:00Z" }),
-    LINK({ id: "b", address: "9 Old Firm Rd", visibility: "org", orgId: "o-old", firm: "Basin Partners", createdAt: "2026-10-03T00:00:00Z" }),
-    LINK({ id: "c", address: "1210 N 17th St", visibility: "invited", createdAt: "2026-10-02T00:00:00Z",
-      viewers: [{ email: "j@acme.com", firstViewedAt: "2026-10-03T00:00:00Z" }, { email: "o@acme.com" }] }),
-    LINK({ id: "d" }),
-    LINK({ id: "e", address: "6200 W Emerald St", revokedAt: "2026-09-10T00:00:00Z", createdAt: "2026-09-06T00:00:00Z" }),
-  ]);
-  const text = ctx.dom.text("sharesRows");
-  assert.doesNotMatch(text, /500 Warehouse Way/, "a share on this member's own shelf is listed there, not twice");
-  assert.match(text, /9 Old Firm Rd/);
-  assert.match(text, /Shared with Basin Partners/, "a left firm's share stays: the only place left to turn it off");
-  assert.match(text, /2 people/);
-  assert.match(text, /1 opened it/);
-  assert.match(text, /Anyone with the link/);
-  assert.match(text, /Turned off/);
-  const table = ctx.dom.el("sharesRows").children[0];
-  const head = table.children[0].children[0].children.map((th) => th.textContent);
-  assert.equal(head.join("|"), "Report|Who can open it|Sent|");
-  assert.equal(ctx.live(), 3, "turned-off links do not count as live");
-  assert.equal(ctx.dom.text("deskSharesStats"), "3 live · 1 turned off");
-  assert.equal(ctx.dom.hidden("deskSharesEmpty"), true);
-  // A deal room starts from a link that has people to invite, never a firm
-  // share (it has no viewer list, so the room would open with nobody in it).
-  const starts = buttons(table).filter((b) => b.textContent === "Start a deal room");
-  assert.equal(starts.length, 2, "on the invited and the public link, not the firm share or the dead one");
-  assert.equal(buttons(table).filter((b) => b.textContent === "Start a hub").length, 0, "Messages calls it a deal room");
-});
-
-test("Your links: a member of no firm sees their firm shares there, and an empty list says so", () => {
-  const ctx = loadSharing({ firm: null });
-  ctx.table([LINK({ visibility: "org", orgId: "o1", firm: "Foothill Commercial" })]);
-  assert.match(ctx.dom.text("sharesRows"), /Shared with Foothill Commercial/);
-  const empty = loadSharing();
-  empty.table([]);
-  assert.equal(empty.dom.hidden("deskSharesEmpty"), false);
-  assert.equal(empty.dom.text("deskSharesStats"), "");
-  assert.equal(empty.live(), 0);
-  const noVault = loadSharing({ hubs: false });
-  noVault.table([LINK({})]);
-  assert.equal(buttons(noVault.dom.el("sharesRows")).filter((b) => b.textContent === "Start a deal room").length, 0,
-    "only offered to a member who can open a deal room");
+  const serverSrc = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const list = serverSrc.match(/const DESK_BOOT_URLS = \[[\s\S]*?\n\];/)[0];
+  for (const url of ["/api/shares", "/api/hubs"]) assert.ok(!list.includes(`"${url}"`), `Home's boot still waits on ${url}`);
+  const org = serverSrc.match(/const DESK_BOOT_ORG_URLS = \(id\) => \[[\s\S]*?\n\];/)[0];
+  assert.ok(!org.includes("`/api/org/shelf?id=${id}`"), "Home's boot still waits on the shelf");
 });

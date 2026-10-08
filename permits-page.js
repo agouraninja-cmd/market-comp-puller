@@ -393,6 +393,8 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
   var items=[], CITY_LINE="these cities", WIN=30;
   var PROP_TYPES=["Industrial","Office","Retail","Multifamily","Mixed use","Other"];
   var KIND_NAMES={ti:"Tenant build-outs","new":"New buildings & additions",other:"Other work"};
+  // ⚠ Home's map card names a stage with home-map.js PERMIT_STAGES, a copy
+  // of this; test/home-map.test.js holds the two together.
   var STAGE_NAMES={open:"Open",attention:"Needs attention",approved:"Approved",issued:"Issued or finaled",ended:"Ended"};
   var LONG_DAYS=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   function wall(html){ var w=$("ptWall"); w.innerHTML=html; w.className="pt-wall"; $("ptApp").className="hide"; }
@@ -418,6 +420,8 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
   // The portals and the map lookup print some addresses in capitals
   // ("8000 S FEDERAL WAY"). Shown in ordinary case; directions, the state and
   // anything with a digit in it (83716, 5TH) keep their own form.
+  // ⚠ home-map.js tidyCaps is a copy, for Home's permit cards;
+  // test/home-map.test.js runs both on the same inputs.
   function tidy(s){
     s=String(s==null?"":s);
     if(!s||/[a-z]/.test(s))return s;

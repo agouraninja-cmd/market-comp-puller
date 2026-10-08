@@ -7,6 +7,8 @@ paths:
   - "buildings-page.js"
   - "messaging.js"
   - "messages-page.js"
+  - "report-inbox.js"
+  - "test/report-inbox.test.js"
   - "renewal-watch.js"
   - "test/org-*.test.js"
   - "test/building-sheet-run.test.js"
@@ -570,3 +572,68 @@ column, so only saving a title fails until it runs. Seven rules:
 Escape closes the card first (`memberCard` heads `MODAL_CANCELS`), closing the
 panel closes it, and a click outside it puts it away. Not built: opening the
 card from "shared by" on the firm shelf and from other names on the site.
+
+## Reports in Messages (2026-10-08)
+
+Owner's call: Home and its Reports tab were "literally the exact same thing",
+so the tab and its rail row went, and "the rest of reports" moved into
+Messages. The firm's shelf, what was sent to the member and the links they
+sent (Home's Sharing card, workspace.md) are now Messages' **Reports** view,
+beside **Chats**: a shared report is correspondence, somebody sent it to
+somebody. Rules in the pure **`report-inbox.js`** (`REPORTINBOX`,
+`test/report-inbox.test.js`, which carries the Sharing card's old tests);
+the page's half is pinned in `test/messages-page.test.js`. Eight rules:
+
+- **One file, emitted inside the page's one script.** messages-page.js
+  reads `report-inbox.js` once at load and interpolates it at the top of the
+  script, where it sets the global. No second request, and never a copy that
+  can drift from what the tests ran; a closing script tag anywhere in that
+  file (comments too) would end the page's script early, and a test checks.
+- **Two lists, `data-view` decides.** `#msgViewChats` / `#msgViewReports`
+  are a real tablist (arrow keys), with red counts: conversations with
+  something unread, and reports sent to the reader not yet opened. Which
+  list and which right-hand pane (`#msgMain` or `#msgRMain`) shows is
+  `#msgPage[data-view]`, NEVER a class: the chat code assigns the page's
+  `className` whole (`"msg-page on-thread"`), which would wipe a view class.
+  `/messages#reports` opens on Reports (and Home's day-old `/desk#reports`
+  lands there). Beside a list the newest report is open, as the newest
+  chat is; switching back to Chats opens the newest chat if none is
+  (`noOpen` skips that for a door that is about to open a room, so nothing
+  is marked read unseen).
+- **Three groups, in order** (`REPORTINBOX`): Sent to you (with the deal
+  room opened from that report as a second door, joined on the room's
+  title, which a room started from a report carries, and the sender's
+  name), the firm's shelf, Sent by you (minus a firm share on the shelf
+  being shown, listed once there with its Take down). A room with no report
+  is a chat and stays in Chats. The shelf's heading counts the whole shelf;
+  its line speaks only for an empty shelf, a filter (`Showing 2 of 6, Land
+  only`), no matches, or the 1,000 cap. Its type filter (`#msgShelfType`,
+  in the search row) appears from `MIN_FILTER` (6) and opens on the shop's
+  saved view, `SHELF_SAVED` from org-access.js `SHOP_COPY` on the server,
+  until the reader picks a type.
+- **Reads are GETs, once the list read has said which firm**:
+  `GET /api/shares` and `GET /api/org/shelf?id=` (`loadReports`, after
+  `refreshList`), again on returning to the view after a minute. A failed
+  read is said ("Couldn't load your shared reports just now. Nothing has
+  been lost. Refresh in a moment."), never drawn as an empty list. The
+  poll in Reports reads the chat list for its counts and opens nothing.
+- **Every action is the route the tab called.** Open the report (new tab),
+  Copy link, Discuss (the LINK, `discussText`, into the New panel's draft;
+  the reader still picks who and presses Send), Take down / Turn off link
+  (`POST /api/shares/revoke`, after an in-page question, Escape backs out),
+  Change who it is sent to (`PUT /api/shares/viewers`, the list replaced
+  whole), Start a deal room (`POST /api/hubs {fromShare}`, only with
+  `state.canAttach` and never on a firm share; its invite links show when
+  the emails did not go, then "Open the conversation" opens it in Chats).
+- **No firm is a page, not a wall.** A reader in no firm and no deal room
+  still gets 403 `no_firm` from `GET /api/messages`, which now also carries
+  `canAttachComps`; the page opens on it (`state.noFirm`), hides New, says
+  "Chats are for your firm" with doors to `/desk?firm=1` and
+  `/brokers-firms` in the Chats list, and lands on Reports when there is
+  anything there. The server boot's 403 `no_firm` starts the page instead
+  of gating it.
+- **Escaping.** Rows and the open report are HTML strings, so every typed
+  value (address, sender, sharer, email, URL) goes through `esc()`.
+- **Not moved:** the shelf rows' "Add to firm" door (Home's Properties tab
+  and the building sheet add buildings) and the Sharing card's per-tab
+  default (the groups are always all shown, Sent to you first).

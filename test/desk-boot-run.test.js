@@ -79,11 +79,17 @@ test("a member's page carries every workspace read, each equal to the route's ow
   assert.ok(boot, "a member's page must carry window.DESK_BOOT");
   const keys = Object.keys(boot.payload);
   const id = encodeURIComponent(ORG_ID);
-  for (const url of ["/api/config", "/api/account/me", "/api/portfolio", "/api/shares", "/api/org", "/api/branding",
+  for (const url of ["/api/config", "/api/account/me", "/api/portfolio", "/api/org", "/api/branding",
     "/api/recents", "/api/messages/unread", `/api/org/members?id=${id}`, `/api/org/buildings?id=${id}`,
-    "/api/messages", `/api/org/shelf?id=${id}`, `/api/org/contacts?id=${id}`,
+    "/api/messages", `/api/org/contacts?id=${id}`,
     `/api/org/leases?id=${id}`]) {
     assert.ok(keys.includes(url), `payload must carry ${url}; has ${keys.join(", ")}`);
+  }
+  // The shares, the deal rooms and the shelf left with Home's Reports tab on
+  // 2026-10-08 (Messages reads them now): a page that waits on a read nothing
+  // draws is TTFB for nothing.
+  for (const url of ["/api/shares", "/api/hubs", `/api/org/shelf?id=${id}`]) {
+    assert.ok(!keys.includes(url), `payload still carries ${url}, which Home no longer reads`);
   }
   // The claim: nothing here is a second copy of any read. Every entry is
   // what the route says to the same cookie.

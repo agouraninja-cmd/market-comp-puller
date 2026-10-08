@@ -730,3 +730,35 @@ permits" or "the list below", read "on its own tab". Seven rules:
   directions, the state and anything with a digit; an area alert's stored name
   and summary are tidied the same way on the page (`alCaps`). Nothing stored
   changes, and search still reads the raw text.
+
+## On Home's map (2026-10-08)
+
+Owner's ask: Home's map should "show where the properties, comps and permits
+are, and you can filter what you want to see". Home's switch has a Permits
+layer (workspace.md has the page's half); this is the read behind it.
+**`GET /api/permits/map`** is the Permit tracker's own feed
+(`permitTrackerPayload`: public record, the last 30 days of every swept city,
+each filing marked `onBoard` when it sits on the reader's firm board), cut by
+the pure **`PERMIT_FILINGS.mapPins`** to the filings that have a place, with
+only what a pin and its card show. Five rules:
+
+- **Any signed-in account**, like /permits itself (401 otherwise; 503 with no
+  database, no file fallback). Not a plan feature and not in Home's boot:
+  the page asks only once the member switches the layer on and the page is
+  showing, so a Home that never shows permits never pays for the read.
+- **A filing with no place is not a pin, and it is counted.** The answer
+  carries `filed` (every filing in the feed) beside `pins`, so the map says
+  "None of the 12 permits filed … has a map location yet" rather than "none
+  were filed" (§7: an empty answer never claims we looked, or found nothing,
+  when we did not).
+- **The board mark is the reader's own firm's**, from the same
+  `trackerFeed` match; another firm's building is never named
+  (`test/permit-sheet-run.test.js`, the two-firm case again).
+- **A city we do not read is said, not shown empty.** When no permit falls
+  in the part of the map being looked at, the map's note names the cities
+  CompNinja reads (`cities`, `citiesLine`) and offers "Show them".
+- **The tracker's words.** A permit's card shows the portal's own status in
+  the tracker's stage colours with the stage name beside it (home-map.js
+  `PERMIT_STAGES`, ⚠ permits-page.js `STAGE_NAMES`), and the street in the
+  tracker's case (`tidyCaps`, ⚠ permits-page.js `tidy`); both pairs are run
+  together in `test/home-map.test.js`.

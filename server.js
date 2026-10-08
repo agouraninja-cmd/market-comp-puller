@@ -8217,7 +8217,7 @@ function sendOrgInvites(emails, { firm, kind, fromName, fromEmail }) {
     sendOutboundEmail(to, `${firm || "A firm"} invited you on CompNinja`,
       `${who} invited you to join ${firm || "their firm"} on CompNinja.\n\n` +
       `A firm is a shared shelf: ${arrivals} a colleague shares with the firm ` +
-      `show up on your desk, while your own reports and dashboard stay yours.\n\n` +
+      `show up in your Messages, while your own reports and dashboard stay yours.\n\n` +
       `Accept here: ${SITE_URL}/desk\n\n` +
       `Sign in with this email address (${to}). A free account is all it takes. ` +
       `Nothing is shared with you until you accept, and you can leave at any time.\n\n` +
@@ -11344,9 +11344,11 @@ const DESK_BOOT_HEADER = "x-cn-desk-boot";
 // What index.html asks for on a workspace load, in the order it asks. Keep in
 // step with bootFetch's callers there — a URL listed here that nobody asks
 // for is wasted bytes; one asked for and not listed is one round trip.
+// /api/shares and /api/hubs left on 2026-10-08 with Home's Reports tab, the
+// one thing that read them (shared reports and deal rooms are Messages').
 const DESK_BOOT_URLS = [
   "/api/config", "/api/account/me", "/api/portfolio", "/api/org",
-  "/api/shares", "/api/hubs", "/api/branding", "/api/recents", "/api/messages/unread",
+  "/api/branding", "/api/recents", "/api/messages/unread",
   // The Permit tracker's unread dot (2026-09-27).
   "/api/permits/unread",
   // Home as one map (2026-10-07): the member's own deals are pins and rows
@@ -11355,7 +11357,8 @@ const DESK_BOOT_URLS = [
 ];
 const DESK_BOOT_ORG_URLS = (id) => [
   `/api/org/members?id=${id}`, `/api/org/buildings?id=${id}`, "/api/messages",
-  `/api/org/shelf?id=${id}`, `/api/org/contacts?id=${id}`,
+  // The shelf (/api/org/shelf) left on 2026-10-08 for Messages' Reports view.
+  `/api/org/contacts?id=${id}`,
   // The firm's lease dates (2026-09-04): Home's Today and its map.
   `/api/org/leases?id=${id}`,
   // /api/org/board (the deal board) and /api/org/permits (Your permits) left
@@ -11991,15 +11994,17 @@ const RAIL_CSS = `
 }
 /* --- The icon rail (2026-10-07; Draft C of the Home and Data drafts, the
    owner's pick) -----------------------------------------------------------
-   The rail is a dark strip of five places, an icon over a word: Home,
-   Messages, Reports, Markets, Permits. Same element and same markup as
+   The rail is a dark strip of places, an icon over a word: Home, Messages,
+   then Tools: Markets, Comp report, Permits (2026-10-08; Reports left the
+   rail for Messages that day). Same element and same markup as
    before, re-laid-out, and still nothing outside the 900px guard: below it
    the icons are hidden and the bar reads as words, exactly as it did. 84px
    is a literal for the 224px's reason. The strip sits on --slab, dark in
    both themes, so its ink is literal white at stepped opacities (the
    footer's FOOTER_DARK_CSS reason), and the wordmark gives way to the mark.
    The red call to action is not a place, so the strip does not carry it:
-   Home's address box and its Reports tab run a comp report. index.html
+   the Comp report row is the door there. A label too long for the 64px
+   column ("Comp report") wraps onto a second line, centred. index.html
    carries the twin of every rule here. */
 .nvi{display:none}
 @media (min-width:900px){
@@ -12877,23 +12882,24 @@ const marketBar = (signedIn = false, current = "") =>
   // header link on any surface — it was reachable from the footers and from
   // one line inside the app. It renders for every visitor because it is the
   // cheapest thing a stranger can be shown that is actually the product.
-  // --- THE ORDER (owner's pick of Draft C, 2026-10-07) ----------------------
+  // --- THE ORDER (owner's call, 2026-10-08) --------------------------------
   //
-  //   Home, Messages, Reports | Markets, Permits
+  //   Home, Messages | Markets, Comp report, Permits
   //
-  // The rail is a dark strip of five places, an icon over a word, identical
-  // here and in index.html's nav so the sidebar does not reshuffle itself
-  // when a member moves between the app and a server-rendered page;
-  // test/routes.test.js asserts the SEQUENCE for that reason. Two rows left
-  // it that day: Data (a member's deals, holdings and comps are tabs of Home,
-  // and /vault is the workbench those tabs open into) and Comp report
-  // (running one is Home's address box and the button on its Reports tab).
-  // Before that the order was Workspace, Vault, Messages, Market explorer,
-  // Comp report, Permit tracker (2026-08-29 to 2026-10-06).
+  // The rail is a dark strip of places, an icon over a word, identical here
+  // and in index.html's nav so the sidebar does not reshuffle itself when a
+  // member moves between the app and a server-rendered page;
+  // test/routes.test.js asserts the SEQUENCE for that reason. On 2026-10-08
+  // the Reports row left it ("the home and report sections are the exact
+  // same thing": it only opened a tab of Home) and the shared reports it held
+  // moved into Messages, and Comp report came back under Tools, second, where
+  // it sat before Draft C. History: Draft C (2026-10-07) was Home, Messages,
+  // Reports | Markets, Permits; before that, Workspace, Vault, Messages,
+  // Market explorer, Comp report, Permit tracker (2026-08-29 to 2026-10-06).
   //
-  // The ternary is still split: the first three rows are members' only, the
+  // The ternary is still split: the first two rows are members' only, the
   // Pricing row between them and the Tools divider is anyone's, and the last
-  // two are members' again.
+  // three are members' again.
   (signedIn
     ? `<a href="/desk">${NAV_ICONS.home}<span class="nvl">Home</span></a>` +
       // Messages, its own tab (owner's, 2026-09-01), rendered for every
@@ -12902,11 +12908,9 @@ const marketBar = (signedIn = false, current = "") =>
       // invitation to start one. The unread dot rides INSIDE the row, so in
       // the strip it sits on the icon; ACCOUNT_NAV_JS fills it after paint and
       // index.html carries the twin.
-      `<a href="/messages"${current === "/messages" ? ' aria-current="page"' : ""}>${NAV_ICONS.messages}<span class="nvl">Messages</span><span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>` +
-      // Reports (2026-10-07): Home's Reports tab, where the firm's shelf, what
-      // was sent to the member and the links they sent live, with the button
-      // that runs a new one. A fragment, so the app opens that tab in place.
-      `<a href="/desk#reports">${NAV_ICONS.reports}<span class="nvl">Reports</span></a>`
+      // Shared reports live here too since 2026-10-08 (its Reports view):
+      // what was sent to the member, the firm's shelf and the links they sent.
+      `<a href="/messages"${current === "/messages" ? ' aria-current="page"' : ""}>${NAV_ICONS.messages}<span class="nvl">Messages</span><span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>`
     : "") +
   // Pricing sits in the bar itself rather than one click inside Explore. It is
   // the question a prospect arrives with, and a B2B site that hides its price
@@ -12944,9 +12948,15 @@ const marketBar = (signedIn = false, current = "") =>
       // URL or by pasting a multi-line list into the main search and
       // discovering the mode by accident. A billed feature nobody can find is
       // one nobody buys.
-      // No Comp report row since 2026-10-07 (Draft C): running a comp report
-      // is the red button on Home's Reports tab, Home's address box, and the
-      // call to action below, not a place of its own.
+      // Comp report, back under Tools (owner's call, 2026-10-08: "we are
+      // moving the comp report back to tools"). It left the rail for one day
+      // with Draft C, when Home's address box and its Reports tab ran one;
+      // both came off Home with this row's return. Every member, unlike the
+      // row before Draft C, which hid until /api/config said canBulkValue: a
+      // free member opening /bulk gets its upgrade card, the honest answer
+      // for a paid tool, and a hidden row would leave them no door at all now
+      // that nothing on Home runs a report. index.html carries the twin.
+      `<a href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""}>${NAV_ICONS.reports}<span class="nvl">Comp report</span></a>` +
       // The Permit tracker (2026-09-24, owner's: "it should be under tools"),
       // the THIRD Tools row, after Comp report (owner's order, same day).
       // Every member; index.html carries the twin row in the same place.
@@ -21926,6 +21936,25 @@ const server = http.createServer((req, res) =>
     })().catch((err) => { console.error("permits unread error:", err.message); sendJson(res, 503, { error: "Permit tracking is unavailable right now." }); });
     return;
   }
+  // Home's map, its Permits layer (2026-10-08). The Permit tracker's own feed
+  // (permitTrackerPayload: public record, the last 30 days of every swept
+  // city, each filing marked when it sits on the reader's firm board), cut by
+  // PERMIT_FILINGS.mapPins to the filings that have a place. Any signed-in
+  // account, like /permits itself: not a plan feature. A READ, asked for
+  // only once a member switches the layer on and the page is showing, so a
+  // Home that never shows permits never pays for them. No file fallback, the
+  // filings live only in the database.
+  if (req.url.split("?")[0] === "/api/permits/map" && req.method === "GET") {
+    (async () => {
+      const user = await requireUser(req, res);
+      if (!user) return;
+      if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Permits are unavailable right now." });
+      const feed = await permitTrackerPayload(user);
+      const { filed, pins } = PERMIT_FILINGS.mapPins(feed.filings);
+      return sendJson(res, 200, { cities: feed.cities, windowDays: feed.windowDays, filed, pins, truncated: feed.truncated });
+    })().catch((err) => { console.error("permits map error:", err.message); sendJson(res, 503, { error: "Permits are unavailable right now." }); });
+    return;
+  }
   if (req.url.split("?")[0] === "/api/permits/mine" && req.method === "GET") {
     (async () => {
       const user = await requireUser(req, res);
@@ -27077,11 +27106,11 @@ const server = http.createServer((req, res) =>
         if (owned[0].visibility !== "invited") {
           // Two audiences reach this, and they need different sentences: a
           // public link has no list because everyone can already open it, and
-          // a firm share's list is the firm's membership — editable on the
-          // desk's firm section, never here, or removing somebody from one
+          // a firm share's list is the firm's membership — editable in the
+          // Firm & branding panel, never here, or removing somebody from one
           // report would read as removing them from the firm.
           if (owned[0].visibility === "org") {
-            return sendJson(res, 400, { error: "This report is shared with your firm. Manage who can see it from the firm section on your desk." });
+            return sendJson(res, 400, { error: "This report is shared with your firm, so everyone in the firm can open it. Manage who is in the firm under Firm & branding in your account menu." });
           }
           return sendJson(res, 400, { error: "This is a public link. Anyone with it can already open it, so there is no viewer list to edit." });
         }
@@ -28697,8 +28726,14 @@ const server = http.createServer((req, res) =>
           }
           // Rooms they deleted from their list are still rooms they are in: a
           // client who deleted every one of theirs gets an empty list, never
-          // the "Messages are for your firm" wall.
-          if (!external.length && !(await hasExternalRooms(g.user))) return sendJson(res, 403, NO_FIRM);
+          // the "Messages are for your firm" wall. Since Messages holds the
+          // reader's reports too (2026-10-08) the page opens on this answer,
+          // and its Reports view offers "Start a deal room" from a link they
+          // sent, so the answer says whether they may (the same flag the 200
+          // carries; the hubs route still decides).
+          if (!external.length && !(await hasExternalRooms(g.user))) {
+            return sendJson(res, 403, { ...NO_FIRM, canAttachComps: ent.canUseVault === true });
+          }
           return sendJson(res, 200, {
             ok: true,
             firm: null,
@@ -30617,8 +30652,7 @@ const server = http.createServer((req, res) =>
     // Home as one map (2026-10-07): the rules for its lists, through the
     // global HOMEMAP. Same reason as the ones above: never stale against the
     // page that calls it.
-    "/home-map.js": { file: "home-map.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
-    // The desktop/mobile install identity (PWA). Users "download" the app
+    "/home-map.js": { file: "home-map.js", type: "text/javascript; charset=utf-8", maxAge: 0 },    // The desktop/mobile install identity (PWA). Users "download" the app
     // from the site itself — Chrome/Edge offer Install once this manifest is
     // reachable — so there is no installer to host or code-sign anywhere.
     // Short max-age like the CSS: a renamed app or swapped icon should reach

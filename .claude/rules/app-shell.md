@@ -15,6 +15,21 @@ paths:
 
 ## Configuration
 
+> **The rail since 2026-10-08 (owner's call): Home, Messages | Markets, Comp
+> report, Permits.** Reports left: it was `/desk#reports`, which only opened
+> a tab of Home ("the home and report sections are literally the exact same
+> thing"), and the shared reports it held are Messages' Reports view now
+> (firms.md). Comp report came back under Tools, second, where it sat before
+> Draft C ("we are moving the comp report back to tools"): `<a href="/bulk">`
+> with `NAV_ICONS.reports` in marketBar, `#navBulkLink` with the same paths
+> in index.html, the label "Comp report", which fits the 64px column on one
+> line at 10.5px. Unlike the pre-Draft-C row it is **every member's, never
+> hidden and hydrated**: nothing on Home runs a report any more, so a row
+> hidden from a free member would leave them no door, and `/bulk` answers
+> them with its upgrade card. `markNavCurrent` marks Home for every Home
+> tab again. `test/nav-parity.test.js`, `test/routes.test.js` (the sequence)
+> and `test/messages-routes.test.js` pin both nav authors.
+
 > **The icon rail (2026-10-07; Draft C of the Home and Data drafts).** The
 > rail is now an 84px dark strip (`--slab`, so literal white at stepped
 > opacities, the footer's reason) of five places, an icon over a word:

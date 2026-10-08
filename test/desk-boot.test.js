@@ -80,11 +80,12 @@ test("every URL the server embeds is one the page asks for through bootFetch, an
   assert.ok(acct.includes("await bootFetch(url, {"), "acctApi must read through bootFetch");
   // The firm-scoped reads, built with the same encodeURIComponent on both
   // sides — exactly these: the deal board and Your permits left with the old
-  // Home sections that read them (2026-10-07), and nothing asks for them now.
+  // Home sections that read them (2026-10-07), and the shelf with Home's
+  // Reports tab (2026-10-08, to Messages); nothing on Home asks for them now.
   const orgList = server.match(/const DESK_BOOT_ORG_URLS = \(id\) => \[([\s\S]*?)\];/);
   assert.ok(orgList);
   const segs = [...orgList[1].matchAll(/\/api\/org\/([a-z]+)\?id=/g)].map((m) => m[1]);
-  assert.deepStrictEqual(segs.sort(), ["buildings", "contacts", "leases", "members", "shelf"]);
+  assert.deepStrictEqual(segs.sort(), ["buildings", "contacts", "leases", "members"]);
   for (const seg of segs) {
     assert.ok(orgList[1].includes(`/api/org/${seg}?id=\${id}`), `server embeds /api/org/${seg}`);
     assert.ok(html.includes(`bootFetch(\`/api/org/${seg}?id=\${encodeURIComponent(firm.id)}\`)`),

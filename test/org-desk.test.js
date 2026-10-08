@@ -2243,6 +2243,34 @@ test("a six-figure building size stays on one line wherever the grid is drawn", 
   }
 });
 
+test("a next date is never split, and the widest one fits wherever the grid is drawn", async () => {
+  // At 1.2fr the Next column was 78px at 1180 and 85px at 1440, and its one
+  // string broke wherever a space fell: "Notice Oct" over "26", "Expires Dec"
+  // over "10" (2026-10-07). The date is now its own unbreakable piece.
+  const ctx = loadBuildings({ body: { summary: "", truncated: false, buildings: [BLDG({}), BLDG({ id: "b2" })] } });
+  await ctx.render();
+  ctx.setCritical([{ buildingId: "b1", kind: "notice", date: "2027-09-30", days: 300, tenant: "Acme" }]);
+  ctx.decorate();
+  const cell = (i) => ctx.dom.el("buildingRows").children[i].children.find((c) => c.className.includes("dk-bc-next"));
+  const day = cell(0).children.find((c) => c.className === "dk-bc-day");
+  assert.ok(day, "the date is not its own piece, so a short column can split it");
+  assert.match(day.textContent, /^Sep 30(, 2027)?$/);
+  assert.match(cell(0).textContent, /^Notice Sep 30/, "the cell reads the same words as before");
+  assert.equal(cell(1).textContent, "—", "no date, no pieces");
+  assert.equal(cell(1).children.length, 0);
+  assert.match(html, /\.dk-bc-day \{ white-space: nowrap; \}/, "the date piece must not wrap");
+
+  // "Sep 30, 2027" at the cell's 12.5px, in red, measured in Chrome on the
+  // seeded Home page: the widest date the cell writes (a year is added only
+  // off this year). It must fit on its own line at the narrowest grid.
+  const WIDEST_DATE_PX = 81.9;
+  const cols = buildingColumnsAtNarrowest();
+  assert.ok(cols.next >= WIDEST_DATE_PX,
+    `the Next column is ${cols.next.toFixed(1)}px at a ${cols.narrowest}px container; "Sep 30, 2027" needs ${WIDEST_DATE_PX}px`);
+  assert.ok(html.includes('return d.toLocaleDateString("en-US", opts);') && html.includes('const opts = { month: "short", day: "numeric", timeZone: "UTC" };'),
+    "fmtDeskDay's format changed; re-measure WIDEST_DATE_PX and the Next column");
+});
+
 test("the empty board's own button opens the add form and never closes it", async () => {
   const ctx = loadBuildings({ body: { buildings: [], summary: "" } });
   await ctx.render();

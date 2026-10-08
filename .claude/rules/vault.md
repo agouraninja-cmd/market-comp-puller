@@ -1333,6 +1333,16 @@ Rules a future editor will otherwise break:
   miss is stamped and retried after three days, because the route answers a
   Census outage with the same `{}` as a real miss. `aerialTiles` is a ⚠
   pair with index.html's `aerialTileSpec`, and a test runs both.
+- **Arriving to add one (2026-10-07, Draft C).** Home's "Add a property"
+  links here as `/vault?add=buy#board` (a deal), `?add=own#properties` (a
+  property you own) or `?add=buy|own#sites` (a development firm). The page
+  reads `add` once, at boot, only beside a tab named in the hash
+  (`addAsk`/`addTab`), and takes it off the address with `replaceState` so a
+  reload does not reopen the form. It opens Properties' form
+  (`setPropAddOpen`), or hands `openAdd` to `DEALWALL.mount` (the form is
+  open and focused once the read lands, and only when it answers 200) or to
+  `SITESTAB.mount` (open, with "I own it" picked for `own`). The Sites tab's
+  add wording says "property", matching its Draft C tab name.
 - **Not built yet:** the Building read, the "turned on <date>" note, and the
   alert email when a market's read turns (the drafts showed all three). They
   need supply and cost signals and a stored history of each read.

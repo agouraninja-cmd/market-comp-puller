@@ -1095,7 +1095,23 @@ test("the vault has no rail row and no account-menu row; Home's tabs open it", (
   assert.ok(!acctMenu.includes('href="/vault"'), "the vault is back inside the account menu");
   const home = html.slice(html.indexOf('id="homeMap"'), html.indexOf('id="hmMap"'));
   assert.match(home, /href="\/vault#book"/, "Home's Comps tab no longer opens the comps workbench");
-  assert.match(home, /href="\/vault#properties"/, "Home's Properties tab no longer opens the member's own properties");
+  // "Add a property" asks which kind (2026-10-07): a deal opens The Board's
+  // add form, a property you own opens Properties' (HOMEMAP.addHref rewrites
+  // both for a development firm). One "Only you" link to Properties sent
+  // deals to a tab that cannot take them.
+  assert.ok(home.includes('<a id="hmAddDeal" class="hm-ch" href="/vault?add=buy#board">'), "no deal choice opening The Board's form");
+  assert.ok(home.includes('<a id="hmAddOwn" class="hm-ch" href="/vault?add=own#properties">'), "no own-it choice opening Properties' form");
+  assert.ok(!home.includes('id="hmAddMine"'), "the single Only-you choice is back");
+  assert.ok(html.includes('document.getElementById("hmAddDeal").href = HOMEMAP.addHref("buy", hmFirmKind());'));
+  assert.ok(html.includes('document.getElementById("hmAddOwn").href = HOMEMAP.addHref("own", hmFirmKind());'));
+  // The empty account's start card asks the same question in the same place.
+  assert.ok(home.includes('<a id="hmStartProp" class="hm-st" href="#properties">'));
+  const start = html.slice(html.indexOf('getElementById("hmStartProp").addEventListener('), html.indexOf("// ---- The map"));
+  assert.ok(start.includes('setHomeTab("properties");') && start.includes("hmSetAddChoice(true);"), "the start card no longer opens the chooser");
+  // Both kinds of card hide by class, so each needs its .hidden companion
+  // (without one, "Start a firm" showed to a member already in a firm).
+  assert.ok(html.includes(".hm-ch.hidden { display: none; }"));
+  assert.ok(html.includes(".hm-st.hidden { display: none; }"));
 });
 
 test("Home's Today reads new BOV requests without writing, and only once the page is shown", () => {

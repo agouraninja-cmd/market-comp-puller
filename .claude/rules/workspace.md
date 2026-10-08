@@ -52,9 +52,17 @@ paths:
 > - **The firm's working sections moved INTO the tabs rather than being
 >   rewritten:** `#deskSharing` is the Reports tab's body, `#deskContacts`
 >   sits in People under the roster, and `#buildingAddForm` is behind
->   Properties' "Add a property" → "One of the firm's buildings" (the other
->   choice, "Only you", opens `/vault#sites` for a development firm and
->   `/vault#properties` otherwise). Every id and writer is unchanged.
+>   Properties' "Add a property" → "One of the firm's buildings". Every id and
+>   writer is unchanged. The chooser's other two choices are the member's own
+>   (`HOMEMAP.addHref`): "A deal you're working on" opens
+>   `/vault?add=buy#board` and "A property you own" `/vault?add=own#properties`
+>   (both `#sites` for a development firm, whose Sites tab takes both), and
+>   vault-page.js opens that tab's add form on arrival (see vault.md). The
+>   empty account's "Add a property" start card switches to Properties with
+>   the chooser open, so the start cards show on Today only. `.hm-ch` and
+>   `.hm-st` set `display`, so each has a `.hidden` companion; without them
+>   "Start a firm" and "One of the firm's buildings" showed to members they
+>   did not apply to.
 > - **`html.hm-page`** is written by `markNavCurrent()` alone (a member's
 >   Home showing): the content container loses its gutter, the footer hides
 >   (the legal line is at the foot of the list), and the old banner, figure

@@ -153,6 +153,20 @@ test("a deal opens where the private page lists it: Sites for a development firm
   assert.equal(HM.dealsHref(undefined), "/vault#board");
 });
 
+test("adding a property of your own opens the form that takes it, already open", () => {
+  // Outside a development firm a deal is added on The Board's deal wall and a
+  // property you own on Properties; the Properties tab cannot take a deal.
+  assert.equal(HM.addHref("buy", "broker"), "/vault?add=buy#board");
+  assert.equal(HM.addHref("own", "broker"), "/vault?add=own#properties");
+  assert.equal(HM.addHref("buy", ""), "/vault?add=buy#board", "no firm at all");
+  assert.equal(HM.addHref("own", undefined), "/vault?add=own#properties");
+  // A development firm's Sites tab takes both, with the kind picked.
+  assert.equal(HM.addHref("buy", "development"), "/vault?add=buy#sites");
+  assert.equal(HM.addHref("own", "development"), "/vault?add=own#sites");
+  // The deal link and the add link agree on where deals live.
+  for (const k of ["development", "broker", ""]) assert.equal(HM.addHref("buy", k).replace("?add=buy", ""), HM.dealsHref(k));
+});
+
 test("the status line says what is due, never what the page is", () => {
   assert.match(HM.statusLine({ items: [{ n: -1 }, { n: 3 }] }), /^2 things this week/);
   assert.match(HM.statusLine({ items: [{ n: 20 }] }), /^Nothing due this week\. 1 date coming up\./);

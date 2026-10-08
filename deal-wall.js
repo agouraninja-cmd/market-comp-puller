@@ -238,7 +238,10 @@
     var el = ctx.root, esc = ctx.esc, escA = ctx.escA;
     var isDev = typeof ctx.isDev === "function" ? ctx.isDev : function () { return false; };
     var feed = typeof ctx.feed === "function" ? ctx.feed : function () { return []; };
-    var state = { s: 0, sites: [], today: "", stage: "all", city: "all", open: null, addOpen: false,
+    // ctx.openAdd: the page was opened to add a deal (Home's "Add a property",
+    // via /vault?add=buy), so the form is open once the read lands.
+    var focusAsked = !!ctx.openAdd;
+    var state = { s: 0, sites: [], today: "", stage: "all", city: "all", open: null, addOpen: !!ctx.openAdd,
       msg: "", msgBad: false, paneMsg: "", busy: false };
     var geo = {};
     try { geo = JSON.parse((G.localStorage && G.localStorage.getItem(GEO_KEY)) || "{}") || {}; } catch (e) { geo = {}; }
@@ -259,6 +262,7 @@
         state.s = r.s;
         if (r.s === 200) { state.sites = Array.isArray(r.j.sites) ? r.j.sites : []; state.today = r.j.today || state.today; }
         render();
+        if (focusAsked && r.s === 200) { focusAsked = false; focusAdd(); }
       });
     }
     function siteById(id) { for (var i = 0; i < state.sites.length; i++) if (state.sites[i].id === id) return state.sites[i]; return null; }

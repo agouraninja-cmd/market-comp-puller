@@ -31,9 +31,12 @@
     var el = ctx.root, esc = ctx.esc, escA = ctx.escA;
     var state = {
       loaded: false, sites: [], props: [], board: null, today: "",
-      sitesErr: "", propsErr: "", open: null, addOpen: false, addKind: "buy",
+      // ctx.openAdd ("buy" or "own"): the page was opened to add one (Home's
+      // "Add a property", via /vault?add=), so the form starts open on that kind.
+      sitesErr: "", propsErr: "", open: null, addOpen: !!ctx.openAdd, addKind: ctx.openAdd === "own" ? "own" : "buy",
       editing: null, dating: null, msg: "", msgBad: false, paneMsg: {},
     };
+    var focusAsked = !!ctx.openAdd;   // once, when the first read lands
     var STALE_MS = 365 * 24 * 60 * 60 * 1000;
     var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -162,6 +165,11 @@
         state.board = b && b.s === 200 && Array.isArray(b.j.buildings) ? b.j.buildings : null;
         state.loaded = true;
         render();
+        if (focusAsked) {
+          focusAsked = false;
+          var a = el.querySelector && el.querySelector('form[data-form="add"] input[name="address"]');
+          if (a && a.focus) a.focus();
+        }
       });
     }
 
@@ -226,7 +234,7 @@
       var soon = m.deals.filter(function (s) { var d = S.nextDeadline(s.dates, state.today); return d && S.daysUntil(d.on, state.today) <= 7; }).length;
       if (ctx.setCount) ctx.setCount(soon ? soon + " due this week" : (active || ""), soon > 0);
       if (ctx.addToggle) {
-        ctx.addToggle.textContent = state.addOpen ? "Close" : "+ Add a site";
+        ctx.addToggle.textContent = state.addOpen ? "Close" : "+ Add a property";
         ctx.addToggle.setAttribute("aria-expanded", state.addOpen ? "true" : "false");
       }
       var nothing = !active && !m.passed.length && !state.sitesErr && !state.propsErr;
@@ -248,7 +256,7 @@
         (nx ? ' &middot; next deadline <b class="st-hot">' + dayLabel(nx.on) + "</b>" : "");
       var body;
       if (state.sitesErr) body = '<div class="msg bad">' + esc(state.sitesErr) + "</div>";
-      else if (!d.length) body = '<p class="st-none">No deals in progress. Use <b>+ Add a site</b> for the next one you&rsquo;re looking at.</p>';
+      else if (!d.length) body = '<p class="st-none">No deals in progress. Use <b>+ Add a property</b> for the next one you&rsquo;re looking at.</p>';
       else body = '<div class="st-tw"><table class="st-tbl"><thead><tr><th>Site</th><th>Stage</th><th class="n">Acres</th>' +
         '<th class="n">Asking</th><th class="n">Per acre</th><th>Next deadline</th><th></th></tr></thead><tbody>' +
         d.map(dealRow).join("") + "</tbody></table></div>";
@@ -433,10 +441,10 @@
           '<label class="st-wide">Notes<input type="text" name="notes" maxlength="1000" placeholder="Optional"/></label>'
         : '<label class="st-wide">Property type<select name="property_type"><option value="">Choose one</option>' + types + "</select></label>" +
           '<p class="st-wide st-mute" style="margin:0">No search runs. Use Refresh on it when you want a value, or <a href="/">run a report</a>.</p>';
-      return '<form class="st-form" data-form="add"' + (first ? "" : ' aria-label="Add a site"') + ">" +
-        (first ? '<h3 class="st-fh">Add your first site</h3>' : "") + seg +
+      return '<form class="st-form" data-form="add"' + (first ? "" : ' aria-label="Add a property"') + ">" +
+        (first ? '<h3 class="st-fh">Add your first property</h3>' : "") + seg +
         '<label class="st-wide">Address<input type="text" name="address" maxlength="300" placeholder="Street, City, ST" required/></label>' + fields +
-        '<div class="st-wide st-fa"><button class="btn" type="submit">Add site</button>' +
+        '<div class="st-wide st-fa"><button class="btn" type="submit">Add property</button>' +
         (first ? "" : '<button class="btn ghost" type="button" data-addclose="1">Cancel</button>') + "</div>" +
         (state.msg && state.msgBad && first ? '<div class="msg bad st-wide">' + esc(state.msg) + "</div>" : "") + "</form>";
     }

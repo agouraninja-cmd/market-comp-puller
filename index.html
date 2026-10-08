@@ -2333,6 +2333,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-choice { display: grid; gap: 8px; margin: 2px 10px 12px; }
     .hm-choice.hidden { display: none; }
     .hm-ch { display: block; width: 100%; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font: inherit; text-align: left; color: inherit; cursor: pointer; text-decoration: none; }
+    .hm-ch.hidden { display: none; }
     .hm-ch:hover { border-color: var(--ink-3); }
     .hm-ch b { display: block; font-size: 14px; font-weight: 600; color: var(--ink); }
     .hm-ch small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink-3); }
@@ -2395,6 +2396,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-start { display: flex; flex-direction: column; gap: 10px; padding: 14px 10px 0; }
     .hm-start.hidden { display: none; }
     .hm-st { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 14px; width: 100%; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); font: inherit; text-align: left; color: inherit; cursor: pointer; text-decoration: none; }
+    .hm-st.hidden { display: none; }
     .hm-st:hover { border-color: var(--ink-3); }
     .hm-sti { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; background: var(--wash-2); color: var(--ink); }
     .hm-st b { display: block; font-size: 15px; font-weight: 600; color: var(--ink); }
@@ -3794,7 +3796,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <!-- Start here: an account with nothing on the map yet. -->
             <div id="hmStart" class="hidden hm-start">
               <a class="hm-st" href="/bulk"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/></svg></span><span><b>Value any address</b><small>A comp report in about a minute, with the sales behind the number.</small><span class="hm-btn red">Run a comp report</span></span></a>
-              <a id="hmStartProp" class="hm-st" href="/vault#properties"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg></span><span><b>Add a property</b><small>A building you own, manage or are buying. It gets a pin, a value and its dates.</small><span class="hm-btn">Add a property</span></span></a>
+              <a id="hmStartProp" class="hm-st" href="#properties"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg></span><span><b>Add a property</b><small>A building you own, manage or are buying. It gets a pin, a value and its dates.</small><span class="hm-btn">Add a property</span></span></a>
               <a id="hmStartComps" class="hm-st" href="/vault#book"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 16.5h14"/><path d="M5 16.5v-5M8.5 16.5v-8M12 16.5v-6M15.5 16.5v-10"/></svg></span><span><b>Add comps</b><small>Past sales and leases from a spreadsheet, PDF or photo. Only you can see them.</small><span class="hm-btn">Add comps</span></span></a>
               <button type="button" id="hmStartFirm" class="hm-st"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg></span><span><b>Bring your team</b><small>Start a firm to share buildings, reports and contacts with the people you work with.</small><span class="hm-btn">Start a firm</span></span></button>
             </div>
@@ -3810,7 +3812,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                 <button type="button" id="hmAddProp" class="hm-btn" aria-expanded="false" aria-controls="hmAddChoice">+ Add a property</button></div>
               <div id="hmAddChoice" class="hidden hm-choice">
                 <button type="button" id="hmAddFirm" class="hm-ch"><b>One of the firm's buildings</b><small>Everyone at <span id="hmAddFirmName">your firm</span> sees its address, size and lease dates.</small></button>
-                <a id="hmAddMine" class="hm-ch" href="/vault#properties"><b>Only you</b><small>A deal you are working on or a property you hold. Its numbers stay private to you.</small></a>
+                <a id="hmAddDeal" class="hm-ch" href="/vault?add=buy#board"><b>A deal you're working on</b><small>Only you can see it. It's tracked with its stage, asking price and next date.</small></a>
+                <a id="hmAddOwn" class="hm-ch" href="/vault?add=own#properties"><b>A property you own</b><small>Only you can see it. It gets a value you can refresh, and its numbers stay private.</small></a>
               </div>
               <form id="buildingAddForm" class="hidden mt-3 flex flex-wrap items-end gap-2">
                 <label class="flex-1 min-w-[10rem]">
@@ -15081,6 +15084,7 @@ async function renderMyDesk() {
   let hmLeadsAsked = false;
   let hmTab = "today";
   let hmRows = [], hmItems = [];
+  let hmNothing = false;     // an account with nothing on Home yet: Today shows the start cards
   let hmSel = "";            // the selected row's key
   let hmMap = null, hmPinLayer = null, hmBaseLayers = null, hmFitFor = "", hmOpenedOnce = false;
   const HM_TAB_IDS = { today: ["hmTabToday", "hmPaneToday"], properties: ["hmTabProps", "hmPaneProps"],
@@ -15221,7 +15225,7 @@ async function renderMyDesk() {
   function resetHomeMap() {
     deskSites = null; deskPortfolio = null; firmMembers = []; hmComps = null; hmCompsAsked = false;
     hmLeads = null; hmLeadsAsked = false;
-    hmRows = []; hmItems = []; hmSel = ""; hmFitFor = ""; hmOpenedOnce = false;
+    hmRows = []; hmItems = []; hmSel = ""; hmFitFor = ""; hmOpenedOnce = false; hmNothing = false;
     hmGeoTried.clear();
     if (hmPinLayer) hmPinLayer.clearLayers();
     if (hmMap) hmMap.closePopup();
@@ -15353,12 +15357,17 @@ async function renderMyDesk() {
 
     // An account with nothing on the map yet is shown where to start.
     const nothing = !hmRows.length && !hmItems.length && !comps.length;
-    document.getElementById("hmStart").classList.toggle("hidden", !nothing);
+    // Today's content, not every tab's: the start card's "Add a property"
+    // opens the Properties tab's own chooser, which the cards would bury.
+    hmNothing = nothing;
+    document.getElementById("hmStart").classList.toggle("hidden", !nothing || hmTab !== "today");
     document.getElementById("hmStartFirm").classList.toggle("hidden", !!firm);
     document.getElementById("hmStartComps").classList.toggle("hidden", !canComps);
-    const dev = !!(firm && firm.kind === "development");
-    document.getElementById("hmStartProp").href = dev ? "/vault#sites" : "/vault#properties";
-    document.getElementById("hmAddMine").href = dev ? "/vault#sites" : "/vault#properties";
+    // A property of the member's own opens the form that takes it, already
+    // open (HOMEMAP.addHref): The Board's for a deal, Properties' for one they
+    // own, a development firm's Sites tab for both.
+    document.getElementById("hmAddDeal").href = HOMEMAP.addHref("buy", hmFirmKind());
+    document.getElementById("hmAddOwn").href = HOMEMAP.addHref("own", hmFirmKind());
     document.getElementById("hmAddFirm").classList.toggle("hidden", !firm);
     document.getElementById("hmAddFirmName").textContent = firm ? firm.name : "your firm";
 
@@ -15438,6 +15447,7 @@ async function renderMyDesk() {
       b.tabIndex = k === tab ? 0 : -1;
       document.getElementById(paneId).classList.toggle("hidden", k !== tab);
     });
+    document.getElementById("hmStart").classList.toggle("hidden", !hmNothing || tab !== "today");
     if (tab === "comps") hmLoadComps();
     markNavCurrent();
     if (changed) { hmFitFor = ""; hmSel = ""; if (hmMap) hmMap.closePopup(); }
@@ -15470,12 +15480,22 @@ async function renderMyDesk() {
 
   // Add a property: the firm's list (the building form, moved here) or the
   // member's own (their Data page's add flow).
-  document.getElementById("hmAddProp").addEventListener("click", () => {
-    const box = document.getElementById("hmAddChoice");
-    const open = box.classList.contains("hidden");
-    box.classList.toggle("hidden", !open);
+  function hmSetAddChoice(open) {
+    document.getElementById("hmAddChoice").classList.toggle("hidden", !open);
     document.getElementById("hmAddProp").setAttribute("aria-expanded", String(open));
     if (!open) setBuildingAddOpen(false);
+  }
+  document.getElementById("hmAddProp").addEventListener("click", () => {
+    hmSetAddChoice(document.getElementById("hmAddChoice").classList.contains("hidden"));
+  });
+  // The start card's "Add a property" is the same question, asked where the
+  // answer lives: the Properties tab, chooser open.
+  document.getElementById("hmStartProp").addEventListener("click", (e) => {
+    e.preventDefault();
+    setHomeTab("properties");
+    hmSetAddChoice(true);
+    const first = [...document.querySelectorAll("#hmAddChoice .hm-ch")].find((c) => !c.classList.contains("hidden"));
+    if (first) first.focus();
   });
   document.getElementById("hmAddFirm").addEventListener("click", () => {
     document.getElementById("hmAddChoice").classList.add("hidden");

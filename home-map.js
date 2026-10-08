@@ -205,6 +205,17 @@
   // anyone outside a development firm and a #sites link would land on Comps.
   function dealsHref(firmKind) { return firmKind === "development" ? "/vault#sites" : "/vault#board"; }
 
+  // Where Home's "Add a property" sends a property that is only the member's,
+  // with the right form already open (vault-page.js reads ?add= once). A
+  // deal ("buy") is added where deals are listed (dealsHref); a property
+  // they own ("own") goes to Properties, except that a development firm's
+  // Sites tab takes both, with "I own it" picked.
+  function addHref(kind, firmKind) {
+    const own = kind === "own";
+    if (firmKind === "development") return `/vault?add=${own ? "own" : "buy"}#sites`;
+    return own ? "/vault?add=own#properties" : "/vault?add=buy#board";
+  }
+
   // What needs the member: unread conversations first, then new BOV requests
   // (newest first), then every lease date inside LEASE_DAYS and every deal
   // date inside DEAL_DAYS, soonest first.
@@ -297,5 +308,5 @@
   }
 
   return { LEASE_DAYS, DEAL_DAYS, BOV_DAYS, WEEK_DAYS, STAGES, addressKey, street, place, town, daysUntil, shortDate, inDays, money,
-    stageLabel, stageStep, lastValue, properties, scopeOf, dealsHref, agenda, thisWeek, compRow, statusLine };
+    stageLabel, stageStep, lastValue, properties, scopeOf, dealsHref, addHref, agenda, thisWeek, compRow, statusLine };
 });

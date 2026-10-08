@@ -3927,6 +3927,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     if(!sitesView){
       sitesView=window.SITESTAB.mount({
         root:$("sitesRoot"),addToggle:$("sitesAddToggle"),esc:esc,escA:escA,
+        openAdd:addTab==="sites"?addAsk:"",
         firm:myFirm,showValues:showValues,propTypes:PROP_TYPES,
         setCount:function(text,hot){tabCount("tabSitesN",text,hot)}
       });
@@ -4552,6 +4553,25 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     try{ h=String((window.location&&window.location.hash)||"").replace("#",""); }catch(e){}
     tabSettled=!!TAB_OF_HASH[h];
     setTab(TAB_OF_HASH[h]||"book",true);
+  })();
+  // Home's "Add a property" opens this page with the form that takes it
+  // already open (2026-10-07, Draft C): ?add=buy for a deal (The Board's
+  // wall, or Sites for a development firm), ?add=own for a property the member
+  // owns (Properties, or Sites with "I own it" picked). Read once, only with a
+  // tab named in the address, and taken off the address so a reload or a
+  // shared link does not open the form again. addTab is the tab it was meant
+  // for, so a form never opens on a tab the member did not ask for.
+  var addAsk="",addTab="";
+  (function(){
+    try{
+      var a=new URLSearchParams(window.location.search||"").get("add");
+      var t=TAB_OF_HASH[String(window.location.hash||"").replace("#","")];
+      if((a==="buy"||a==="own")&&t){
+        addAsk=a;addTab=t;
+        if(window.history&&window.history.replaceState)
+          window.history.replaceState(window.history.state,"",window.location.pathname+window.location.hash);
+      }
+    }catch(e){}
   })();
 
   var pending = null;   // {name, csv} held while the broker maps
@@ -6812,7 +6832,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   }
   // Stated at load, not only in the markup: the closed state is then a fact
   // the one writer made, wherever the page is drawn.
-  setPropAddOpen(false);
+  setPropAddOpen(addAsk==="own"&&addTab==="props");
   $("propAddToggle").addEventListener("click",function(){ setPropAddOpen(!propAddOpen); });
   $("pCancel").addEventListener("click",function(){ setPropAddOpen(false); });
   $("pAdd").addEventListener("click",function(){
@@ -6967,6 +6987,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     if(wallView||!window.DEALWALL||!window.SITES)return;
     wallView=window.DEALWALL.mount({
       root:$("wallRoot"),addToggle:$("wallAddToggle"),esc:esc,escA:escA,propTypes:PROP_TYPES,
+      openAdd:addAsk==="buy"&&addTab==="watch",
       isDev:function(){return !!(myFirm&&myFirm.kind==="development")},
       feed:function(){return mktItems},
       setCount:function(n){wallLive=n;boardCount()}

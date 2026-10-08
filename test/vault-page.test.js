@@ -5423,6 +5423,38 @@ test("The Board mounts the deal wall once and hands it the markets", async () =>
   assert.equal(String(doc.getElementById("tabWatchN").textContent), "1", "with none it counts the markets again");
 });
 
+test("Home's Add a property opens the form that takes it, already open, and only once", async () => {
+  // Draft C (2026-10-07): /vault?add=own#properties, ?add=buy#board, and a
+  // development firm's ?add=own#sites / ?add=buy#sites (HOMEMAP.addHref).
+  const LOC = (search, hash) => ({ search, hash, pathname: "/vault" });
+  const hist = () => { const urls = []; return { urls, state: null, replaceState(s, t, u) { urls.push(u); } }; };
+  const closed = (doc) => doc.getElementById("propAddForm").className.indexOf("hide") >= 0;
+
+  let h = hist();
+  let { doc } = await runPage([comp({})], null, { window: Object.assign(wallWindow([]), { location: LOC("?add=own", "#properties"), history: h }) });
+  assert.ok(!closed(doc), "a property you own: the Properties form must be open");
+  assert.deepEqual(h.urls, ["/vault#properties"], "?add= must come off the address, or a reload opens the form again");
+
+  const wall = [];
+  ({ doc } = await runPage([comp({})], null, { window: Object.assign(wallWindow(wall), { location: LOC("?add=buy", "#board"), history: hist() }) }));
+  assert.equal(wall[0].openAdd, true, "a deal: The Board's wall must open its form");
+  assert.ok(closed(doc), "and Properties' form stays shut");
+
+  const sites = [];
+  await runPage([comp({})], null, { firm: { id: "f1", name: "Ridgeline Development", kind: "development" },
+    window: Object.assign(sitesWindow(sites), { location: LOC("?add=own", "#sites"), history: hist() }) });
+  assert.equal(sites[0].openAdd, "own", "a development firm's Sites tab takes both, with the kind picked");
+
+  // An ask with no tab in the address, or an unknown kind, opens nothing.
+  for (const [search, hash] of [["?add=buy", ""], ["?add=sell", "#board"]]) {
+    const quiet = []; h = hist();
+    ({ doc } = await runPage([comp({})], null, { window: Object.assign(wallWindow(quiet), { location: LOC(search, hash), history: h }) }));
+    assert.equal(quiet[0].openAdd, false, search + hash);
+    assert.ok(closed(doc), search + hash);
+    assert.deepEqual(h.urls, [], "an address with nothing to act on is left alone");
+  }
+});
+
 test("each market on The Board is a tile with its buying read and the not-advice line", async () => {
   const { doc } = await runPage([comp({})], null, { feed: [FALLING], window: wallWindow([]) });
   const tiles = doc.getElementById("mktRows").innerHTML;

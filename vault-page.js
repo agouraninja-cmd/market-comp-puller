@@ -1634,7 +1634,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
          exactly what it was.
          ------------------------------------------------------------------ -->
     <div class="deck" id="deckSites">
-      <span class="dlab">Your sites</span><span class="dln"></span>
+      <span class="dlab">Your deals and holdings</span><span class="dln"></span>
       <button class="dact" id="sitesAddToggle" aria-expanded="false" aria-controls="sitesRoot">+ Add a property</button>
     </div>
     <section id="sitesSec"><div id="sitesRoot"></div></section>

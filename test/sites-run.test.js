@@ -158,7 +158,7 @@ test("an unrun migration costs the Sites tab and nothing else", async (t) => {
   const { srv } = await bootWith(t, { missingTables: ["user_sites"] });
   const r = await fetch(srv.base + "/api/sites", as("u-maya"));
   assert.equal(r.status, 503);
-  assert.match((await r.json()).error, /Couldn't load your sites/);
+  assert.match((await r.json()).error, /Couldn't load your properties/);
   // The Properties read the tab sits beside is untouched.
   const pf = await fetch(srv.base + "/api/portfolio", as("u-maya"));
   assert.equal(pf.status, 200);

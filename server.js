@@ -2125,11 +2125,11 @@ async function requireSites(req, res) {
   if (!user) return null;
   const ent = await entitlementsFor(req);
   if (!ent.canUseVault) {
-    sendJson(res, 403, { error: "Tracking the sites you're buying is part of Pro.", code: "pro_required" });
+    sendJson(res, 403, { error: "Tracking the properties you're buying is part of Pro.", code: "pro_required" });
     return null;
   }
   if (!DB_CONFIGURED) {
-    sendJson(res, 503, { error: "Your sites are unavailable right now. Please try again in a minute." });
+    sendJson(res, 503, { error: "Your properties are unavailable right now. Please try again in a minute." });
     return null;
   }
   return user;
@@ -23191,7 +23191,7 @@ const server = http.createServer((req, res) =>
         if (!isUuidish(id)) return sendJson(res, 400, { error: "Missing or malformed id." });
         const scope = `user_sites?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`;
         const existing = ((await sbRequest("GET", `${scope}&select=${SITES_SELECT}&limit=1`)) || [])[0];
-        if (!existing) return sendJson(res, 404, { error: "That site is not in your list." });
+        if (!existing) return sendJson(res, 404, { error: "That property is not in your list." });
         const v = SITES.validatePatch(existing, parsed, sitesOpts());
         if (!v.ok) return sendJson(res, 400, { error: v.error });
         if (v.patch.portfolio_item_id && !(await getPortfolioItem(user.id, v.patch.portfolio_item_id))) {
@@ -23229,7 +23229,7 @@ const server = http.createServer((req, res) =>
           return sendJson(res, 200, { sites: rows || [], today: sitesToday() });
         } catch (err) {
           console.error("sites read failed:", err.message);
-          return sendJson(res, 503, { error: "Couldn't load your sites. Please try again in a minute." });
+          return sendJson(res, 503, { error: "Couldn't load your properties. Please try again in a minute." });
         }
       })().catch((err) => { console.error("sites error:", err); sendJson(res, 500, { error: "Sites failed." }); });
       return;
@@ -23273,7 +23273,7 @@ const server = http.createServer((req, res) =>
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("site add failed:", err.message);
-          return sendJson(res, 503, { error: "Couldn't save that site. Please try again in a minute." });
+          return sendJson(res, 503, { error: "Couldn't save that property. Please try again in a minute." });
         }
       });
       return;
@@ -23295,7 +23295,7 @@ const server = http.createServer((req, res) =>
           return sendJson(res, 200, { ok: true });
         } catch (err) {
           console.error("site delete failed:", err.message);
-          return sendJson(res, 503, { error: "Couldn't remove that site. Please try again in a minute." });
+          return sendJson(res, 503, { error: "Couldn't remove that property. Please try again in a minute." });
         }
       })().catch((err) => { console.error("sites error:", err); sendJson(res, 500, { error: "Sites failed." }); });
       return;

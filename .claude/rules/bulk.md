@@ -56,7 +56,10 @@ paths:
   **The page is a desk since 2026-09-04** (owner's pick from a design canvas):
   headed "Run a report" — the door every bar and the workspace header call it
   by, while the rail row keeps "Bulk valuation" — with a two-cell strip
-  (LEFT TODAY / PER RUN, `renderCap`) top right, the form as ONE bordered
+  (LEFT TODAY / PER RUN, `renderCap`) top right (removed 2026-10-09, owner's
+  call: the limits still hold and the cost line still names the daily one
+  once a list runs past it; index.html's list-mode "Up to N per run, N left
+  today" line went the same day), the form as ONE bordered
   chamber in the report form's own anatomy (`BULK_CSS`: head row with the
   ready count, borderless address box, four settings on a hairline row, cost
   beside the solid red button on a wash footer), and Earlier runs as a ledger

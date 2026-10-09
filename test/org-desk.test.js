@@ -349,7 +349,7 @@ function loadMembers(body, status, extras) {
     "async function renderHomeFirm() {}\n" +
     "function openSettingsModal() {}\n" +
     "function renderFirmAutoShare() {} function renderFirmBilling() {}\n" +
-    "function renderFirmShop() {}",
+    "function renderFirmShop() {} function renderFirmName() {}",
     Object.assign({ fetch }, extras || {}));
 }
 
@@ -1221,6 +1221,39 @@ test("both report notices are dropped from the print and the PNG", () => {
 // ---------------------------------------------------------------------------
 const SHOP_COPY_RE = /  const SHOP_COPY = \{[\s\S]*?\n  const shopCopy = [^\n]*\n/;
 const SHOP_RE = /  function renderFirmShop\(firm\) \{[\s\S]*?\n  \}/;
+
+// The rename box (2026-10-09): offered to whoever the server lets rename,
+// hidden from everybody else, and never written over a draft being typed.
+const FIRM_NAME_RE = /  const firmNameOf = [^\n]*\n  function renderFirmName\(firm\) \{[\s\S]*?\n  \}/;
+
+test("an owner or admin gets the rename box; a colleague does not", () => {
+  const owner = load(FIRM_NAME_RE, "this.fn = renderFirmName;");
+  assert.equal(owner.dom.hidden("firmNameWrap"), true, "the markup ships it hidden");
+  owner.fn({ name: "Jacob R Adler", canManage: true });
+  assert.equal(owner.dom.hidden("firmNameWrap"), false);
+  assert.equal(owner.dom.el("firmRenameInput").value, "Jacob R Adler");
+  assert.equal(owner.dom.hidden("firmRenameBtn"), true, "no Rename button until the name changes");
+
+  const colleague = load(FIRM_NAME_RE, "this.fn = renderFirmName;");
+  colleague.fn({ name: "Jacob R Adler", canManage: false });
+  assert.equal(colleague.dom.hidden("firmNameWrap"), true,
+    "they read the name in the panel's heading; the server would refuse the box");
+});
+
+test("a redraw mid-edit keeps the name being typed", () => {
+  const ctx = load(FIRM_NAME_RE, "this.fn = renderFirmName;");
+  const input = ctx.dom.el("firmRenameInput");
+  input.value = "Adler Industrial";
+  ctx.dom.document.activeElement = input;
+  ctx.fn({ name: "Jacob R Adler", canManage: true });
+  assert.equal(input.value, "Adler Industrial", "Home refreshing must not wipe a draft");
+  assert.equal(ctx.dom.hidden("firmRenameBtn"), false, "and the draft can still be saved");
+
+  // Spacing alone is not a new name: the server would store the same string.
+  input.value = "  Jacob   R Adler ";
+  ctx.fn({ name: "Jacob R Adler", canManage: true });
+  assert.equal(ctx.dom.hidden("firmRenameBtn"), true);
+});
 
 function loadShop() {
   const copy = html.match(SHOP_COPY_RE);

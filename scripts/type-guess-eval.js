@@ -25,8 +25,8 @@
 // answers were.
 //
 // Usage:
-//   node scripts/type-guess-eval.js build [outDir] [--per-type 20] [--batch 11]
-//   node scripts/type-guess-eval.js run [dir] [--provider gemini|anthropic] [--no-search] [--model M] [--thinking low]
+//   node scripts/type-guess-eval.js build [outDir] [--per-type 20] [--batch 11] [--exclude set.json] [--seed N]
+//   node scripts/type-guess-eval.js run [dir] [--provider gemini|anthropic] [--no-search] [--prompt 2] [--model M] [--thinking low]
 //   node scripts/type-guess-eval.js score <set.json> <guesses.json> [more guesses.json ...]
 //
 // `run` asks the production provider (needs that provider's key in the env or
@@ -95,7 +95,7 @@ function seedRows(seed) {
 
 // Up to `perType` of each type, taken round-robin across that type's markets
 // so no one city dominates a type's score.
-function sampleSet(rows, perType) {
+function sampleSet(rows, perType, prefix = "t") {
   const byType = {};
   for (const r of rows) (byType[r.label] = byType[r.label] || []).push(r);
   const picked = [];
@@ -109,7 +109,7 @@ function sampleSet(rows, perType) {
     }
     picked.push(...take);
   }
-  return picked.map((r, i) => ({ id: "t" + String(i + 1).padStart(3, "0"), ...r }));
+  return picked.map((r, i) => ({ id: prefix + String(i + 1).padStart(3, "0"), ...r }));
 }
 
 function blindBatches(set, size, seed) {
@@ -120,29 +120,67 @@ function blindBatches(set, size, seed) {
 }
 
 // The one question every guesser is asked, word for word, whoever runs it (a
-// Claude subagent in the 2026-10-09 run, the `run` command against the
+// Claude subagent in the 2026-10-09 runs, the `run` command against the
 // production provider). The definitions are the app's own: Multifamily spans
 // duplexes to 300-unit communities, a condo or townhome is Residential
 // (report-and-valuation.md, flow 3a).
-function guessPrompt(batch, { search }) {
+const TYPE_LINES = [
+  "- Industrial: warehouse, distribution, logistics, manufacturing, flex / light industrial, industrial outdoor storage.",
+  "- Office: office building, office park, medical office.",
+  "- Retail: shopping center, strip center, store, restaurant, bank branch, gas station, single-tenant net-lease retail.",
+  "- Multifamily: apartment building or complex, duplex to large community (2+ rental units on one property).",
+  "- Land: vacant land, a lot or development site with no meaningful building.",
+  "- Residential: single-family home, condo, townhome.",
+];
+
+const ANSWER_LINES = (batch) => [
+  "Reply with ONLY a JSON array, one object per address, in this shape:",
+  "[{\"id\":\"t001\",\"type\":\"Office\",\"confidence\":\"high\",\"evidence\":\"one short sentence\"}]",
+  "",
+  "Addresses:",
+  ...batch.map((r) => `${r.id}: ${r.address}`),
+];
+
+// Version 1 is the first run's prompt, kept byte-identical so its committed
+// guesses stay reproducible. Version 2 is the fix for what version 1 got
+// wrong: all 13 of its misses were addresses it could not find, answered from
+// a neighbour or a tenant directory. So version 2 says how to search (drop
+// the street suffix, then deal words, then the parcel record), ranks the
+// evidence (a page about THIS street number beats a business listed there,
+// and a neighbour is not evidence), and says what to fall back on when
+// nothing is found. It was written after reading version 1's misses, so its
+// honest score is on the HOLDOUT set it never saw, not on the first 85.
+function guessPrompt(batch, { search, version = 1 }) {
+  if (version === 2) {
+    return [
+      "You are finding out what kind of property sits at each street address below, for a commercial real estate valuation tool. The tool's users mostly look up commercial property, so a single-family house is the least likely answer unless a page shows it is one.",
+      "Choose exactly one type:",
+      ...TYPE_LINES,
+      "",
+      "How to look each address up (at most 3 searches per address; stop as soon as you have a page about this exact building):",
+      "1. Search the street number, the street name WITHOUT its suffix, and the city, e.g. 1200 Elm Springfield. Pages write St/Street, Pkwy/Parkway, Rd/Road differently, so leave the suffix out.",
+      "2. If nothing is about this exact building, search the same words plus words a deal page uses: sold, for lease, LoopNet, Crexi, apartments.",
+      "3. If still nothing, search the county assessor or parcel record for the address.",
+      "",
+      "What counts as evidence:",
+      "- Strong: a page about THIS street number on THIS street: a sale or lease listing, a news story about its sale, an apartment community's own site, the assessor's land-use code, a building or center name.",
+      "- Weak: a business listed at the address (a doctor, a restaurant, a contractor). Businesses rent space in every kind of building: an office suite can sit in a warehouse, a restaurant can be a pad in a shopping center. Use it only to break a tie.",
+      "- Not evidence: a different street number, even next door.",
+      "- Building facts settle it: clear height, dock or loading doors -> Industrial; a unit count or 'apartments' -> Multifamily; a shopping center name, anchor tenants, a net-lease store -> Retail; suites on floors, Class A/B -> Office; acreage for sale with no building -> Land.",
+      "If nothing is about this exact building, answer from the street itself: business parks and streets named Commerce, Industrial, Distribution, Logistics, Trade Center or Business Park point to Industrial; otherwise use the land use you can see on the same street and in the ZIP.",
+      "Confidence: \"high\" only if you found a page about this exact street number; \"medium\" if what you found about it is weak or conflicting; \"low\" if you found nothing about it.",
+      ...ANSWER_LINES(batch),
+    ].join("\n");
+  }
   return [
     "You are classifying commercial real estate by address. For each address below, decide what the property AT THAT ADDRESS is today.",
     "Choose exactly one type:",
-    "- Industrial: warehouse, distribution, logistics, manufacturing, flex / light industrial, industrial outdoor storage.",
-    "- Office: office building, office park, medical office.",
-    "- Retail: shopping center, strip center, store, restaurant, bank branch, gas station, single-tenant net-lease retail.",
-    "- Multifamily: apartment building or complex, duplex to large community (2+ rental units on one property).",
-    "- Land: vacant land, a lot or development site with no meaningful building.",
-    "- Residential: single-family home, condo, townhome.",
+    ...TYPE_LINES,
     search
       ? "Look each address up on the web (at most 2 searches per address) and use what you find: listings, county records, news of the sale, the tenant's own site, the building's name."
       : "Do NOT search or use any tool. Answer from the address text alone (street name, city, ZIP, what you know about the area).",
     "Confidence: \"high\" only if you found (or know) what this exact address is; \"medium\" for strong indirect evidence; \"low\" for a guess.",
-    "Reply with ONLY a JSON array, one object per address, in this shape:",
-    "[{\"id\":\"t001\",\"type\":\"Office\",\"confidence\":\"high\",\"evidence\":\"one short sentence\"}]",
-    "",
-    "Addresses:",
-    ...batch.map((r) => `${r.id}: ${r.address}`),
+    ...ANSWER_LINES(batch),
   ].join("\n");
 }
 
@@ -276,7 +314,7 @@ const PROVIDERS = {
 // server.js uses. Every call is billed to the key's account (about 85
 // addresses, a few cents on Gemini Flash). Writes guesses-<provider>[-nosearch].json
 // next to the batches; score it like any other guesses file.
-async function runProvider(dir, { providerName, search, model, thinkingLevel }) {
+async function runProvider(dir, { providerName, search, model, thinkingLevel, version }) {
   const make = PROVIDERS[providerName];
   if (!make) throw new Error(`unknown provider "${providerName}" (gemini | anthropic)`);
   const provider = make();
@@ -289,8 +327,8 @@ async function runProvider(dir, { providerName, search, model, thinkingLevel }) 
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
     const body = provider.buildRequestBody({
-      model: useModel, prompt: guessPrompt(batch, { search }), maxComps: 12,
-      searchUses: batch.length * 2, thinkingLevel,
+      model: useModel, prompt: guessPrompt(batch, { search, version }), maxComps: 12,
+      searchUses: batch.length * (version === 2 ? 3 : 2), thinkingLevel,
     });
     if (!search) delete body.tools;
     const init = provider.requestInit({ apiKey, model: useModel });
@@ -301,7 +339,7 @@ async function runProvider(dir, { providerName, search, model, thinkingLevel }) 
     console.log(`batch ${i + 1}/${batches.length}: ${got.length}/${batch.length} answered`);
     all.push(...got);
   }
-  const out = path.join(dir, `guesses-${providerName}${search ? "" : "-nosearch"}.json`);
+  const out = path.join(dir, `guesses-${providerName}${search ? "" : "-nosearch"}${version === 2 ? "-v2" : ""}.json`);
   fs.writeFileSync(out, JSON.stringify(all, null, 1) + "\n");
   console.log(`${all.length} guesses -> ${out}`);
   return out;
@@ -314,14 +352,20 @@ function main(argv) {
     const perType = argValue(argv, "--per-type", 20);
     const size = argValue(argv, "--batch", 11);
     const seed = readJson(path.join(__dirname, "..", "market-seed.json"));
-    const set = sampleSet(seedRows(seed), perType);
+    // --exclude <set.json> builds a HOLDOUT: none of that set's addresses, so a
+    // prompt written after reading one set's misses is scored on addresses it
+    // was never tuned on.
+    const exIdx = argv.indexOf("--exclude");
+    const excluded = new Set(exIdx >= 0 ? readJson(argv[exIdx + 1]).map((r) => r.address.trim().toLowerCase()) : []);
+    const prefix = exIdx >= 0 ? "h" : "t";
+    const set = sampleSet(seedRows(seed).filter((r) => !excluded.has(r.address.toLowerCase())), perType, prefix);
     fs.mkdirSync(outDir, { recursive: true });
     const labeled = set.map((r) => ({
       id: r.id, address: r.address, label: r.label, market: r.market,
       source_url: r.comp.source_url || "", source_type: r.comp.source_type || "",
     }));
     fs.writeFileSync(path.join(outDir, "set.json"), JSON.stringify(labeled, null, 1) + "\n");
-    const batches = blindBatches(set, size, 20261009);
+    const batches = blindBatches(set, size, argValue(argv, "--seed", 20261009));
     fs.writeFileSync(path.join(outDir, "blind-batches.json"), JSON.stringify(batches, null, 1) + "\n");
     const counts = {};
     for (const r of set) counts[r.label] = (counts[r.label] || 0) + 1;
@@ -345,6 +389,7 @@ function main(argv) {
       search: !argv.includes("--no-search"),
       model: flag("--model"),
       thinkingLevel: flag("--thinking") || process.env.THINKING_LEVEL || undefined,
+      version: Number(flag("--prompt")) === 2 ? 2 : 1,
     }).then((out) => {
       console.log(formatReport(path.basename(out), score(readJson(path.join(dir, "set.json")), readJson(out))));
       return 0;

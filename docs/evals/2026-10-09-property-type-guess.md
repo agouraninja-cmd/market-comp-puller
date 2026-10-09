@@ -1,5 +1,10 @@
 # Can AI pick the property type from the address? (2026-10-09)
 
+> **Follow-up, same day:** a second, deeper lookup run only on the answers
+> that were not "high confidence" took this to 97 of 100 on two fresh sets
+> of addresses (`docs/superpowers/specs/2026-10-09-auto-property-type-design.md`).
+> That is the draft for removing the picker entirely.
+
 **Short answer: yes when it finds the building, no when it doesn't, and it
 knows which is which.** With web search, the AI got 72 of 85 real addresses
 right (85%). Every one of its 56 "high confidence" answers was right. All 13

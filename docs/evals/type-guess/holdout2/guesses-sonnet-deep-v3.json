@@ -1,0 +1,92 @@
+[
+ {
+  "id": "g002",
+  "type": "Industrial",
+  "confidence": "medium",
+  "evidence": "Business listings at 10951 W Emerald St show ATS Inland NW (HVAC/building automation contractor), Romar Electric and Idaho Inflatables (rental), in a West Boise industrial/flex corridor; no building page found."
+ },
+ {
+  "id": "g003",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "OfficeSpace.com and Showcase list 6660 Broughton Ave as a 1979 one-story industrial/cold-storage building with 20 dock doors and 30' clear."
+ },
+ {
+  "id": "g004",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "CityFeet lists 1812 Garden Spring Dr, Dallas 75253 as a ~12,000 SF warehouse for sale at $2,000,000."
+ },
+ {
+  "id": "g010",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "390 E Corporate Dr is the 17,004 SF two-story MBI Corporate Building, multi-tenant office plus some warehouse space; tenants are mostly office/service suites (consulting, home care, weight loss, business incubator) with one refinishing shop."
+ },
+ {
+  "id": "g011",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Wooten Plaza at 1710 Wooten Park Dr is a 1967 two-story 8-unit apartment building, listed on LoopNet as Multifamily for sale and on apartment sites."
+ },
+ {
+  "id": "g018",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Zillow, Redfin, Apartments.com and an MLS listing describe 74 W Moler St as an 8-unit multifamily building (built 1960) listed for sale at $775,000."
+ },
+ {
+  "id": "g020",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "LoopNet lists 4340 N Las Vegas Blvd as the 50-unit Nellis Gate(s) Apartments built 2002; Clark County business license shows NELLIS GATES APTS at this address."
+ },
+ {
+  "id": "g022",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "TDLR filings show 9900 Spectrum Dr as LegalZoom's Austin office building (interior renovation, cafe), sold in 2025 as an office building for about $38M."
+ },
+ {
+  "id": "g032",
+  "type": "Industrial",
+  "confidence": "medium",
+  "evidence": "Crexi listing for 7001 Lyons Ave (9,834 SF, 1950, vacant, 18' ceilings, fenced yard) is tagged Retail/Industrial (grocery store/distribution) but its marketing copy pitches it for commercial, warehousing or light industrial use; crexi.com itself was blocked for direct fetch, so this rests on search snippets."
+ },
+ {
+  "id": "g033",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Multiple store directories (Yelp, Yellow Pages, Foursquare) list an Ashley HomeStore furniture store at 9200 W Sahara Ave."
+ },
+ {
+  "id": "g035",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "LoopNet and Showcase list 5324-5338 N 7th Ave as a small shopping center (5,245 SF, built 1959) with tenants like Junior's Barber Parlor at 5324/5336."
+ },
+ {
+  "id": "g036",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Hanley Investment Group sale report identifies 10040-10064 Bruceville Rd as The Shops at Laguna Reserve, a 33,308 SF retail center (Starbucks, Bank of America, Round Table, pet hospital)."
+ },
+ {
+  "id": "g037",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Crexi identifies 7121 W US Hwy 90 as Gateway Plaza, a 179,327 SF shopping center (Dollar General, Dollar Tree); tenants Music Connection and Al's Hobbies are in the same strip mall."
+ },
+ {
+  "id": "g039",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Parcel and LoopNet records for 3511 (3507-3511) Houston Ave show a 1930 store building, land use Storebuilding, about 13,000 SF retail property."
+ },
+ {
+  "id": "g040",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Directory listings place the Hobby Lobby store at 625 N Stephanie St in the Whitney Ranch/Stephanie Street Power Center shopping center."
+ }
+]

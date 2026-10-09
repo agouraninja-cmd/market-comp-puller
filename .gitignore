@@ -51,6 +51,7 @@ comp-corpus.jsonl
 dev-ideas.json
 devlog-overrides.json
 subject-sizes.json
+property-types.json
 guest-quota.jsonl
 
 # Owner's local planning spreadsheets — not app code. Also covers the generated

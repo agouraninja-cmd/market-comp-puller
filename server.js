@@ -257,6 +257,10 @@ const PFDELTA = require("./portfolio-delta");
 // finished report is worth as a portfolio row, and what the totals say. Pure;
 // server.js owns the job tables, the worker and the search itself.
 const BULK = require("./bulk");
+// The property type, worked out from the address so nobody picks one
+// (2026-10-09): the measured prompts and the two-pass rules. Pure; the calls,
+// the memo and /api/property-type live here (resolvePropertyType).
+const PTYPE = require("./property-type");
 const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
 const { renderBuildingsBody, renderBuildingSheetBody } = require("./buildings-page");
 const { renderPermitsBody } = require("./permits-page");
@@ -4618,6 +4622,194 @@ function rememberSubjectSize(address, payload) {
       console.error("Subject-size file write failed:", err.message);
     }
   })().catch((err) => console.error("Subject-size save failed:", err.message));
+}
+
+// ---------------------------------------------------------------------------
+// The property type, worked out from the address (2026-10-09). Nobody picks a
+// type any more: the Comp report page's box silently started on Industrial and
+// valued offices against warehouses whenever it was left alone. Rules and the
+// measured prompts: property-type.js. Spec:
+// docs/superpowers/specs/2026-10-09-auto-property-type-design.md.
+//
+// Order: the memo (an address answered before), then the quick AI lookup, then
+// the deep one only when the quick one was not sure. The memo is the
+// subject_sizes pattern exactly (DB, then file, then memory; migrations/
+// 061-property-type-lookup.sql), and holds only the AI's own high/medium
+// answers. It deliberately does NOT read search_cache.prop_type or the
+// members' recents: those carry whatever type a report was RUN as, and the
+// silent Industrial default this replaces wrote a wrong type into both for
+// every office or apartment run it touched.
+// ---------------------------------------------------------------------------
+const PROPERTY_TYPES_FILE = path.join(DATA_DIR, "property-types.json");
+const propertyTypesMem = new Map();
+// One lookup per address at a time: the main form starts one the moment an
+// address is entered and /api/comps or a bulk row may ask again seconds later.
+// They share the billed call instead of paying for it twice.
+const propertyTypeInFlight = new Map();
+const PROPERTY_TYPE_QUICK_MS = 45_000;
+const PROPERTY_TYPE_DEEP_MS = 90_000;
+
+async function loadPropertyTypesFile() {
+  try {
+    return JSON.parse(await fs.promises.readFile(PROPERTY_TYPES_FILE, "utf8"));
+  } catch (_) {
+    return {};
+  }
+}
+
+// subjectSizeKey's normalization on purpose: one address, many typings, and
+// the same key a size and a type are remembered under.
+async function findKnownPropertyType(address) {
+  const key = subjectSizeKey(address);
+  if (!key) return null;
+  const mem = propertyTypesMem.get(key);
+  if (mem) return mem;
+  const hitFrom = (row) => {
+    const type = row && PTYPE.normType(row.property_type);
+    if (!type) return null;
+    return {
+      type,
+      confidence: PTYPE.normConfidence(row.confidence),
+      evidence: String(row.evidence || ""),
+      pass: String(row.pass || ""),
+    };
+  };
+  if (DB_CONFIGURED) {
+    try {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/subject_types?address_norm=eq.${encodeURIComponent(key)}&select=property_type,confidence,evidence,pass&limit=1`,
+        { headers: supabaseHeaders() }
+      );
+      if (r.ok) {
+        const hit = hitFrom((await r.json())[0]);
+        if (hit) { propertyTypesMem.set(key, hit); return hit; }
+      }
+    } catch (err) {
+      console.error("Property-type memo read failed (continuing without):", err.message);
+    }
+  }
+  const hit = hitFrom((await loadPropertyTypesFile())[key]);
+  if (hit) { propertyTypesMem.set(key, hit); return hit; }
+  return null;
+}
+
+// Fire-and-forget, like rememberSubjectSize: a failed save never costs the
+// request its answer.
+function rememberPropertyType(address, answer) {
+  (async () => {
+    const key = subjectSizeKey(address);
+    if (!key || !PTYPE.shouldRemember(answer)) return;
+    const row = {
+      property_type: answer.type, confidence: answer.confidence,
+      evidence: answer.evidence || "", pass: answer.pass || "",
+    };
+    propertyTypesMem.set(key, { type: answer.type, confidence: answer.confidence, evidence: row.evidence, pass: row.pass });
+    if (DB_CONFIGURED) {
+      try {
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/subject_types?on_conflict=address_norm`, {
+          method: "POST",
+          headers: { ...supabaseHeaders(), prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify({ address_norm: key, ...row, updated_at: new Date().toISOString() }),
+        });
+        if (r.ok) return;
+        console.error(`Property-type memo DB write failed (${r.status}) — falling back to file.`);
+      } catch (err) {
+        console.error("Property-type memo DB write failed — falling back to file:", err.message);
+      }
+    }
+    try {
+      const file = await loadPropertyTypesFile();
+      file[key] = row;
+      await fs.promises.writeFile(PROPERTY_TYPES_FILE, JSON.stringify(file));
+    } catch (err) {
+      console.error("Property-type memo file write failed:", err.message);
+    }
+  })().catch((err) => console.error("Property-type memo save failed:", err.message));
+}
+
+// One pass of the lookup: one billed call through the same provider seam as
+// the report search, never streamed (the answer is a few words). Returns the
+// normalized answer or null; throws only for a missing key, which the callers
+// check first. The deep pass may think harder than a report does: the
+// deployment's THINKING_LEVEL is set for report speed, and this call's whole
+// reason to run is that a quick look was not enough.
+async function askPropertyTypeOnce(address, pass) {
+  const deep = pass === "deep";
+  const batch = [{ id: "a1", address: String(address).trim() }];
+  const levels = PROVIDER.capabilities.thinkingLevels;
+  const thinkingLevel = deep && Array.isArray(levels) && levels.includes("medium") ? "medium" : THINKING_LEVEL;
+  const body = PROVIDER.buildRequestBody({
+    model: MODEL,
+    prompt: deep ? PTYPE.deepPrompt(batch) : PTYPE.quickPrompt(batch),
+    maxComps: 4,
+    searchUses: deep ? PTYPE.DEEP_SEARCHES : PTYPE.QUICK_SEARCHES,
+    stream: false,
+    thinkingLevel,
+  });
+  const init = PROVIDER.requestInit({ apiKey: providerApiKey(), stream: false });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), deep ? PROPERTY_TYPE_DEEP_MS : PROPERTY_TYPE_QUICK_MS);
+  const startedAt = Date.now();
+  try {
+    // SEARCH_API_URL is the test stub standing in for the vendor, exactly as
+    // for the report search (see callAnthropicOnce).
+    const r = await fetch(SEARCH_API_URL || init.url, {
+      method: "POST", headers: init.headers, body: JSON.stringify(body), signal: controller.signal,
+    });
+    if (!r.ok) {
+      let detail = "";
+      try { detail = (await r.json())?.error?.message || ""; } catch (_) {}
+      noteUpstreamFailure(r.status, detail);
+      console.error(`Property-type ${pass} lookup failed (${r.status}): ${String(detail).slice(0, 200)}`);
+      return null;
+    }
+    const parsed = PROVIDER.parseResponse(await r.json());
+    const answer = PTYPE.answerFrom(parsed.text, "a1");
+    console.log(`Property-type ${pass} lookup: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ` +
+      (answer ? `${answer.type} (${answer.confidence})` : "no usable answer"));
+    return answer;
+  } catch (err) {
+    console.error(`Property-type ${pass} lookup failed:`, err && err.name === "AbortError" ? "timed out" : err.message);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// The whole lookup. Resolves to { type, confidence, evidence, pass, source }
+// where source is "memo" or "lookup", or null when nothing could say what the
+// building is (no key, both calls failed). Never throws: every caller has its
+// own way to say "we could not tell", and none of them should 500.
+async function resolvePropertyType(address) {
+  const key = subjectSizeKey(address);
+  if (!key || !PTYPE.looksLikeStreetAddress(address)) return null;
+  const known = await findKnownPropertyType(address);
+  if (known) {
+    logEvent("type_lookup", { prop_type: known.type, market: marketOf(address), source: "memo" });
+    return { ...known, source: "memo" };
+  }
+  if (!providerApiKey()) return null;
+  if (propertyTypeInFlight.has(key)) return propertyTypeInFlight.get(key);
+  const job = (async () => {
+    const startedAt = Date.now();
+    const quick = await askPropertyTypeOnce(address, "quick");
+    const deep = PTYPE.needsDeep(quick) ? await askPropertyTypeOnce(address, "deep") : null;
+    const answer = PTYPE.finalAnswer(quick, deep);
+    logEvent("type_lookup", {
+      prop_type: answer ? answer.type : "", market: marketOf(address),
+      source: answer ? `${answer.pass}_${answer.confidence}` : "failed",
+      duration_ms: Date.now() - startedAt,
+    });
+    if (!answer) return null;
+    rememberPropertyType(address, answer);
+    return { ...answer, source: "lookup" };
+  })();
+  propertyTypeInFlight.set(key, job);
+  try {
+    return await job;
+  } finally {
+    propertyTypeInFlight.delete(key);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -19945,6 +20137,53 @@ const server = http.createServer((req, res) =>
   // listener — see bindRequestListeners for why a plain run() is not enough.
   bindRequestListeners(req);
   // --- API endpoint ---
+  // POST /api/property-type { address } — what kind of property is at this
+  // address (2026-10-09; resolvePropertyType). The browser asks the moment an
+  // address is entered, so the answer is usually back before Run is pressed,
+  // and no form asks a person to pick a type any more. Answers
+  // { type, confidence, evidence, pass, source } or { type: null } when
+  // nothing could tell, which the page treats as "show the type buttons".
+  // It spends a billed lookup, so it is gated like /api/comps: the password,
+  // a rate limit, and the guest gate (under the account wall, members only).
+  if (req.method === "POST" && req.url === "/api/property-type") {
+    let body = "";
+    req.on("data", (c) => {
+      body += c;
+      if (body.length > 4e3) req.destroy();   // one address
+    });
+    req.on("end", async () => {
+      try {
+        if (APP_PASSWORD && !passwordMatches(req.headers["x-app-password"])) {
+          return sendJson(res, 401, { error: "Unauthorized: incorrect or missing password." });
+        }
+        const user = await getSessionUser(req);
+        if (rateLimited("ptype:" + (user ? user.id : clientIp(req)), 30)) {
+          return sendJson(res, 429, { error: "Too many lookups from this connection. Please wait a few minutes." });
+        }
+        const { address } = JSON.parse(body || "{}");
+        const addr = String(address || "").trim();
+        if (!PTYPE.looksLikeStreetAddress(addr)) {
+          return sendJson(res, 400, { error: "A street address is required." });
+        }
+        const guestGate = await guestGateFor(req);
+        if (guestGate && guestGate.blocked) {
+          return sendJson(res, 403, { error: guestGateMessage("look up a property"), signin_required: true });
+        }
+        const found = await resolvePropertyType(addr);
+        if (!found) return sendJson(res, 200, { type: null });
+        return sendJson(res, 200, {
+          type: found.type, confidence: found.confidence, evidence: found.evidence,
+          pass: found.pass, source: found.source,
+        });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("property-type lookup error:", err.message);
+        return sendJson(res, 500, { error: "Could not look that address up." });
+      }
+    });
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/api/comps") {
     let body = "";
     req.on("data", (c) => {

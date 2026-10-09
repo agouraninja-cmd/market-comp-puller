@@ -45,6 +45,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const PT = require("../property-type.js");
 
 const TYPES = ["Industrial", "Office", "Retail", "Multifamily", "Land", "Residential"];
 const CONFIDENCE = ["high", "medium", "low"];
@@ -125,22 +126,9 @@ function blindBatches(set, size, seed) {
 // production provider). The definitions are the app's own: Multifamily spans
 // duplexes to 300-unit communities, a condo or townhome is Residential
 // (report-and-valuation.md, flow 3a).
-const TYPE_LINES = [
-  "- Industrial: warehouse, distribution, logistics, manufacturing, flex / light industrial, industrial outdoor storage.",
-  "- Office: office building, office park, medical office.",
-  "- Retail: shopping center, strip center, store, restaurant, bank branch, gas station, single-tenant net-lease retail.",
-  "- Multifamily: apartment building or complex, duplex to large community (2+ rental units on one property).",
-  "- Land: vacant land, a lot or development site with no meaningful building.",
-  "- Residential: single-family home, condo, townhome.",
-];
-
-const ANSWER_LINES = (batch) => [
-  "Reply with ONLY a JSON array, one object per address, in this shape:",
-  "[{\"id\":\"t001\",\"type\":\"Office\",\"confidence\":\"high\",\"evidence\":\"one short sentence\"}]",
-  "",
-  "Addresses:",
-  ...batch.map((r) => `${r.id}: ${r.address}`),
-];
+// The type list and the answer shape are production's own (property-type.js),
+// so a change there is a change to what this script measures.
+const { TYPE_LINES, ANSWER_LINES } = PT;
 
 // Version 1 is the first run's prompt, kept byte-identical so its committed
 // guesses stay reproducible. Version 2 is the fix for what version 1 got
@@ -156,43 +144,10 @@ function guessPrompt(batch, { search, version = 1 }) {
   // less than "high", i.e. ones it could not find. More searches, and the two
   // sources a quick pass skips: the county's parcel record (its land-use
   // code names the type) and the businesses listed at that exact number.
-  if (version === 3) {
-    return [
-      "A quick web lookup could not find a page about the exact building at each street address below. Find out what kind of property it is, for a commercial real estate valuation tool.",
-      "Choose exactly one type:",
-      ...TYPE_LINES,
-      "",
-      "Work through these, up to 6 searches per address, and open a promising page with WebFetch when the snippet is not enough:",
-      "1. The county's parcel or appraisal-district record for the address. Its land-use or property-class code names the type (e.g. warehouse, retail store, office, apartments, vacant land).",
-      "2. Listing and deal sites for this exact street number: LoopNet, Crexi, CityFeet, apartment sites, sale news.",
-      "3. The businesses listed at this exact street number (maps listings, directories). One tenant can mislead, but the mix tells you the building: shops, restaurants and personal services -> Retail; offices and clinics in suites -> Office; manufacturers, distributors, contractors and storage -> Industrial; an apartment community's name -> Multifamily.",
-      "4. Variants of the address: without the street suffix, with the ZIP, with the cross street.",
-      "A different street number, even next door, is not evidence about this building.",
-      "Confidence: \"high\" if a page about this exact street number settles it; \"medium\" if the evidence about it is indirect or mixed; \"low\" if you still found nothing about it (then give your best guess).",
-      ...ANSWER_LINES(batch),
-    ].join("\n");
-  }
-  if (version === 2) {
-    return [
-      "You are finding out what kind of property sits at each street address below, for a commercial real estate valuation tool. The tool's users mostly look up commercial property, so a single-family house is the least likely answer unless a page shows it is one.",
-      "Choose exactly one type:",
-      ...TYPE_LINES,
-      "",
-      "How to look each address up (at most 3 searches per address; stop as soon as you have a page about this exact building):",
-      "1. Search the street number, the street name WITHOUT its suffix, and the city, e.g. 1200 Elm Springfield. Pages write St/Street, Pkwy/Parkway, Rd/Road differently, so leave the suffix out.",
-      "2. If nothing is about this exact building, search the same words plus words a deal page uses: sold, for lease, LoopNet, Crexi, apartments.",
-      "3. If still nothing, search the county assessor or parcel record for the address.",
-      "",
-      "What counts as evidence:",
-      "- Strong: a page about THIS street number on THIS street: a sale or lease listing, a news story about its sale, an apartment community's own site, the assessor's land-use code, a building or center name.",
-      "- Weak: a business listed at the address (a doctor, a restaurant, a contractor). Businesses rent space in every kind of building: an office suite can sit in a warehouse, a restaurant can be a pad in a shopping center. Use it only to break a tie.",
-      "- Not evidence: a different street number, even next door.",
-      "- Building facts settle it: clear height, dock or loading doors -> Industrial; a unit count or 'apartments' -> Multifamily; a shopping center name, anchor tenants, a net-lease store -> Retail; suites on floors, Class A/B -> Office; acreage for sale with no building -> Land.",
-      "If nothing is about this exact building, answer from the street itself: business parks and streets named Commerce, Industrial, Distribution, Logistics, Trade Center or Business Park point to Industrial; otherwise use the land use you can see on the same street and in the ZIP.",
-      "Confidence: \"high\" only if you found a page about this exact street number; \"medium\" if what you found about it is weak or conflicting; \"low\" if you found nothing about it.",
-      ...ANSWER_LINES(batch),
-    ].join("\n");
-  }
+  // Versions 2 and 3 are production's quick and deep prompts, imported rather
+  // than copied so the measured text and the shipped text cannot drift.
+  if (version === 3) return PT.deepPrompt(batch);
+  if (version === 2) return PT.quickPrompt(batch);
   return [
     "You are classifying commercial real estate by address. For each address below, decide what the property AT THAT ADDRESS is today.",
     "Choose exactly one type:",

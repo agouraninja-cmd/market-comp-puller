@@ -15,10 +15,12 @@ Prices Here" card (model-supplied `value_drivers` + `market_trend`), a market
 position chart, a comp map, and the full sortable comp table with per-comp
 source-confidence badges (Verified / Public record / Listing / News /
 Estimate). Signed-in members land on **Home** (`/desk`), which since
-2026-10-07 is one screen: a list (Today, Properties, Comps, People) beside a
+2026-10-07 is one screen: a list (Today, Properties, People) beside a
 map of every property, the firm's and their own, each row saying who can see
-it, with a switch over the map that adds the member's comps and the swept
-cities' permits (2026-10-08; `home-map.js`; workspace.md). Home runs no comp
+it, with a switch over the map that adds the swept cities' permits
+(2026-10-08; `home-map.js`; workspace.md). Home holds no comps since
+2026-10-09 (no Comps tab, layer or start card; a member's comps are on
+`/vault`). Home runs no comp
 report and holds no shared reports since 2026-10-08: the comp report is the
 rail's **Comp report** row (`/bulk`), and the firm's shelf, what was sent to
 the member and the links they sent are Messages' **Reports** view
@@ -107,9 +109,12 @@ session that never reads it.
    cache key) or any public surface, and `/api/share` strips them. The
    signed-in portfolio is the one place they are stored, so any future
    share-from-portfolio must strip them too. [report-and-valuation.md]
-7. **A private comp's address never goes to a third party** — only our own
-   POST `/api/geocode` (Census behind it), never Nominatim, never in a URL.
-   [report-and-valuation.md, maps.md]
+7. **A private comp's address reaches a third party only through our own
+   server, and never in a URL** — POST `/api/geocode` (Census behind it) and,
+   since 2026-10-09 (the owner's call, for building photos), POST
+   `/api/building-photo` (Google Street View behind it). Never Nominatim, never
+   a browser-direct call, never in a URL: a photo's URL carries the address
+   sealed (`photo-token.js`). [report-and-valuation.md, maps.md]
 8. **"Verified" is reserved** for the badge the server awards, and
    `scrubUnearnedVerifiedClaims` stays outermost in `finishReport`. An unknown
    `source_type` normalizes to `estimate`: badges may under-claim provenance,
@@ -126,7 +131,8 @@ session that never reads it.
     `exportReportKey`; `normalizeBrandBlock` / `normalizeBrand`; `areaStyle` /
     `boundaryStyle`; `BULK_SUBJECT_FIELDS` / `TYPE_SUBJECT_FIELDS`; the vault
     page's refusal needles; home-map.js `PERMIT_STAGES` / `tidyCaps` and
-    permits-page.js `STAGE_NAMES` / `tidy`). Grep for ⚠ before changing either side.
+    permits-page.js `STAGE_NAMES` / `tidy`; index.html's `houseNumberOf` /
+    `unitDesignatorOf` and building-photo.js's copies). Grep for ⚠ before changing either side.
 12. **Nothing mails or sweeps on a timer.** The watchlist digest, the trial
     emails and the permit sweep are `ADMIN_KEY`-gated routes driven from
     outside the process. A ledger is marked only after the send, and opening
@@ -381,7 +387,7 @@ so they are trusted config and are never set in production.
 | `BULK_DAILY_ADDRESSES` | 200 | per-member daily ceiling on bulk-valuation addresses | bulk.md |
 | `ACCOUNT_WALL` | on | account-only app; anonymous `/` gets the home page and `GUEST_SEARCH_LIMIT` is forced to 0; `off` is the rollback | accounts.md |
 | `GUEST_SEARCH_LIMIT` | 1 (0 under the wall) | free searches per anonymous visitor before sign-in | accounts.md |
-| `GOOGLE_MAPS_API_KEY` | set on Render | Street View photos in map popups via `/api/streetview` | maps.md |
+| `GOOGLE_MAPS_API_KEY` | set on Render | Street View photos in map popups and on Home's and The Board's cards (`/api/streetview`, `/api/building-photo`); also the key photo tokens are sealed under | maps.md |
 | `GOOGLE_OAUTH_CLIENT_ID` + `_SECRET` | unset | "Continue with Google" | accounts.md |
 | `SEARCH_PROVIDER` | `gemini` | `gemini` or `anthropic`; an unknown value exits at boot; `MODEL` overrides the model; `/healthz` reports what is live | search-pipeline.md |
 | `THINKING_LEVEL` | unset (production: `low`, set on Render) | Gemini reasoning depth — the largest wall-clock and cost lever | search-pipeline.md |
@@ -397,7 +403,7 @@ so they are trusted config and are never set in production.
 | `STRIPE_PRICE_*` | — | price ids; each may be a comma list (first is sold, all are recognized), so a price change is `new_id,old_id`, never a swap | billing.md |
 | `STRIPE_PRICE_CHECK` | on | boot check that each sold price matches `PRICING`; a mismatch pauses that plan's checkout | billing.md |
 | `FREE_REPORTS_PER_MONTH` | 3 | a free account's monthly report allowance | billing.md |
-| `RESEND_API_URL`, `SEARCH_API_URL`, `GOOGLE_OAUTH_TOKEN_URL`, `CENSUS_API_URL`, `PERMIT_PORTAL_ORIGIN`, `SHIP_BOARD_BASE`, `LOGO_IMPORT_ALLOW_PRIVATE` | unset | **test-only** endpoint overrides and one guard switch | that feature's file |
+| `RESEND_API_URL`, `SEARCH_API_URL`, `GOOGLE_OAUTH_TOKEN_URL`, `CENSUS_API_URL`, `STREETVIEW_API_URL`, `PERMIT_PORTAL_ORIGIN`, `SHIP_BOARD_BASE`, `LOGO_IMPORT_ALLOW_PRIVATE` | unset | **test-only** endpoint overrides and one guard switch | that feature's file |
 
 ## Where everything else lives
 
@@ -429,7 +435,7 @@ gone. Document a new feature in its area's file, not here.
 | `permits.md` | the permit sweep, `/permits`, tracking your own permit (notices by email and on CompNinja), and Home's Permits layer (`/api/permits/map`) | `permit-*.js`, `pdf-text.js`, `permits-page.js` |
 | `watchlist-and-mail.md` | Resend and outbound mail settings, `/api/lead`, the watchlist digest, search demand | `watchlist-digest.js`, `search-demand.js`, `email-shell.js` |
 | `admin-and-analytics.md` | `/admin`, `/api/stats`, the visitor funnel, the `/dev` hub | `devlog.json`, `dev-returns.js` |
-| `maps.md` | the Google Maps key, `/api/geocode`, `/api/streetview` | `index.html`, `streetview-aim.js` |
+| `maps.md` | the Google Maps key, `/api/geocode`, `/api/streetview`, `/api/building-photo`, street photos on Home and The Board | `index.html`, `streetview-aim.js`, `building-photo.js`, `photo-token.js` |
 | `desktop.md` | `desktop.js`, the Electron app in `desktop-app/`, the installable web app | `desktop.js`, `desktop-app/**` |
 | `ship-board.md` | the nightly Google Chat post and `/dev/shipped` | `ship-board.js`, `scripts/ship-chat.js` |
 | `testing.md` | how tests are written here | `test/**` |

@@ -53,9 +53,104 @@ test("the streetview route aims with this module, never a nearest-pano guess", (
   const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
   const start = server.indexOf('req.url.split("?")[0] === "/api/streetview"');
   assert.ok(start !== -1, "server.js must define GET /api/streetview");
-  const route = server.slice(start, start + 2800);
-  assert.match(route, /SVAIM\.aimAt\(\{ lat, lng \}, panoLL\)/);
+  // The whole route and nothing after it: it ends where the next one begins.
+  const end = server.indexOf("\n  // --- ", start);
+  assert.ok(end > start, "could not find the end of the streetview route");
+  const route = server.slice(start, end);
+  assert.match(route, /SVAIM\.judgePano\(\{ lat, lng \}, mj, Date\.now\(\)\)/);
   assert.match(route, /radius=" \+ SVAIM\.MAX_PANO_M/);
   assert.match(route, /heading=" \+ Number\(aim\.heading\)\.toFixed\(1\)/);
+  assert.match(route, /fov=" \+ Number\(aim\.fov/);
   assert.doesNotMatch(route, /params\.get\("address"\)/);
+  // A photo looked up by address arrives as a sealed token, never an address.
+  assert.match(route, /PHOTOTOKEN\.open\(params\.get\("t"\), GOOGLE_MAPS_API_KEY\)/);
+});
+
+// ---- the quality gate (2026-10-09): "make sure they are actual good pictures"
+
+const NOW = Date.UTC(2026, 9, 9);   // 2026-10-09
+function meta(over) {
+  return Object.assign({
+    status: "OK",
+    copyright: "© Google",
+    date: "2023-06",
+    pano_id: "pano-abc",
+    location: { lat: STREET_SOUTH.lat, lng: STREET_SOUTH.lng },
+  }, over || {});
+}
+
+test("judgePano passes Google's own recent close camera, aimed and framed", () => {
+  const j = SV.judgePano(HOUSE, meta(), NOW);
+  assert.ok(j);
+  assert.ok(j.heading < 8 || j.heading > 352, `heading ${j.heading} should be ~0`);
+  assert.equal(j.panoId, "pano-abc");
+  assert.ok(j.fov >= SV.FOV_MIN && j.fov <= SV.FOV_MAX);
+  assert.ok(j.dist > 17 && j.dist < 19);
+});
+
+test("judgePano refuses a user's photosphere: it is outdoor, and not Google's", () => {
+  assert.equal(SV.judgePano(HOUSE, meta({ copyright: "© Jane Smith" }), NOW), null);
+  assert.equal(SV.judgePano(HOUSE, meta({ copyright: "" }), NOW), null);
+  assert.equal(SV.judgePano(HOUSE, meta({ copyright: undefined }), NOW), null);
+  // "© 2024 Google" is still Google's.
+  assert.ok(SV.judgePano(HOUSE, meta({ copyright: "© 2024 Google" }), NOW));
+});
+
+test("judgePano refuses imagery older than ten years, or with no date at all", () => {
+  assert.ok(SV.judgePano(HOUSE, meta({ date: "2016-10" }), NOW), "exactly ten years is kept");
+  assert.equal(SV.judgePano(HOUSE, meta({ date: "2016-09" }), NOW), null, "ten years and a month is not");
+  assert.equal(SV.judgePano(HOUSE, meta({ date: "2009-05" }), NOW), null);
+  assert.equal(SV.judgePano(HOUSE, meta({ date: "" }), NOW), null);
+  assert.equal(SV.judgePano(HOUSE, meta({ date: undefined }), NOW), null);
+  assert.ok(SV.judgePano(HOUSE, meta({ date: "2025" }), NOW), "a bare year is a date");
+  assert.ok(SV.judgePano(HOUSE, meta({ date: "2027-01" }), NOW), "a clock behind Google's is not old");
+  assert.equal(SV.MAX_PANO_AGE_YEARS, 10);
+});
+
+test("judgePano refuses no imagery, the neighbor, and a camera standing on the building", () => {
+  assert.equal(SV.judgePano(HOUSE, { status: "ZERO_RESULTS" }, NOW), null);
+  assert.equal(SV.judgePano(HOUSE, null, NOW), null);
+  assert.equal(SV.judgePano(HOUSE, meta({ location: NEIGHBOR }), NOW), null);
+  const onTop = { lat: HOUSE.lat - 2 / 111320, lng: HOUSE.lng };
+  assert.equal(SV.judgePano(HOUSE, meta({ location: onTop }), NOW), null);
+  assert.equal(SV.aimAt(HOUSE, onTop), null);
+  const justOut = { lat: HOUSE.lat - (SV.MIN_PANO_M + 0.5) / 111320, lng: HOUSE.lng };
+  assert.ok(SV.aimAt(HOUSE, justOut));
+});
+
+test("fovFor narrows the lens as the camera gets farther, inside 45-90 degrees", () => {
+  assert.equal(SV.fovFor(8), 90, "close: as wide as it goes");
+  assert.equal(SV.fovFor(15), 90);
+  assert.equal(SV.fovFor(35), 46);
+  assert.ok(SV.fovFor(20) > SV.fovFor(30));
+  assert.equal(SV.fovFor(500), 45, "never narrower than 45");
+  assert.equal(SV.fovFor(NaN), 90);
+  assert.equal(SV.fovFor(0), 90);
+});
+
+// ---- by address (2026-10-09): Home's and The Board's photos
+
+test("judgeAddressPano passes Google's own recent camera near our geocode", () => {
+  const near = { lat: HOUSE.lat, lng: HOUSE.lng };
+  const j = SV.judgeAddressPano(meta(), NOW, near);
+  assert.ok(j);
+  assert.equal(j.panoId, "pano-abc");
+  assert.ok(SV.judgeAddressPano(meta(), NOW, null), "no geocode of our own: Google's radius is the bound");
+});
+
+test("judgeAddressPano refuses a user's photo, an old one, and none at all", () => {
+  assert.equal(SV.judgeAddressPano(meta({ copyright: "© A. Stranger" }), NOW, null), null);
+  assert.equal(SV.judgeAddressPano(meta({ date: "2011-04" }), NOW, null), null);
+  assert.equal(SV.judgeAddressPano({ status: "ZERO_RESULTS" }, NOW, null), null);
+  assert.equal(SV.judgeAddressPano(null, NOW, null), null);
+});
+
+test("judgeAddressPano refuses Google's answer when it is in another town", () => {
+  // The same street name 2 km away: Google placed the address somewhere else.
+  const far = { lat: HOUSE.lat + 2000 / 111320, lng: HOUSE.lng };
+  assert.equal(SV.judgeAddressPano(meta({ location: far }), NOW, HOUSE), null);
+  const close = { lat: HOUSE.lat + 200 / 111320, lng: HOUSE.lng };
+  assert.ok(SV.judgeAddressPano(meta({ location: close }), NOW, HOUSE), "200 m from a street-centre geocode is the same place");
+  assert.equal(SV.ADDRESS_DRIFT_M, 250);
+  assert.equal(SV.ADDRESS_RADIUS_M, 75);
 });

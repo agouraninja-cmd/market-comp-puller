@@ -1332,7 +1332,15 @@ Rules a future editor will otherwise break:
   Coordinates are cached in the browser (`localStorage` `cnDealGeo1`); a
   miss is stamped and retried after three days, because the route answers a
   Census outage with the same `{}` as a real miss. `aerialTiles` is a ⚠
-  pair with index.html's `aerialTileSpec`, and a test runs both.
+  pair with index.html's `aerialTileSpec`, and a test runs both. Since
+  2026-10-09 a card lays a STREET photo of the building over its aerial
+  where Google has a good one (`building-photo.js`, the global `BLDGPHOTO`).
+  That lookup sends the deal's address to our own POST `/api/building-photo`,
+  which asks Google from the server: the owner's call that day, and the
+  second door rule 7 now names. The photo's URL carries the address sealed
+  (`photo-token.js`), never in the clear. A Land deal with no building keeps
+  its aerial and pin. `ctx.streetview` comes from `window.__CN_STREETVIEW__`,
+  which server.js sets when the key is. maps.md has the rules.
 - **Arriving to add one (2026-10-07, Draft C).** Home's "Add a property"
   links here as `/vault?add=buy#board` (a deal), `?add=own#properties` (a
   property you own) or `?add=buy|own#sites` (a development firm). The page

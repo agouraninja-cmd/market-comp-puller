@@ -2,10 +2,12 @@
 // Home and Data drafts, the owner's pick on 2026-10-07: "One map").
 //
 // Home is one screen: a list on the left with tabs (Today, Properties,
-// Comps, People) and a map on the right of every property, and of the
-// member's comps and the city's permits when they switch those on (2026-10-
-// 08; Reports left for Messages that day). This file decides what goes in
-// the lists and on the map; index.html draws them.
+// People) and a map on the right of every property, and of the city's
+// permits when they switch those on (2026-10-08; Reports left for Messages
+// that day). Comps left Home on 2026-10-09 (the owner's call: "Remove Comps
+// from the Homepage"): a member's comps are on their own page, /vault, so
+// Home no longer has a Comps tab, a Comps layer or a comp row. This file
+// decides what goes in the lists and on the map; index.html draws them.
 //
 // Three rules carry the design, and each is tested:
 //
@@ -23,11 +25,11 @@
 //      "both". The privacy wall itself is unchanged: these are separate reads
 //      the server already scopes, joined only in this member's own browser.
 //
-//   3. A PROPERTY IS LIVE, A COMP IS PAST. A property row always carries a
-//      status (Prospect, LOI, Under contract, Entitlements, Owned, Tracking,
-//      or Firm building). A comp row always carries its deal date and its
-//      price per unit, so the two can never be mistaken for each other (the
-//      owner's wording ask, 2026-10-07).
+//   3. A PROPERTY IS LIVE. A property row always carries a status (Prospect,
+//      LOI, Under contract, Entitlements, Owned, Tracking, or Firm building),
+//      so it can never be mistaken for a comp, a past deal (the owner's
+//      wording ask, 2026-10-07). Until 2026-10-09 Home listed comps too, each
+//      with its deal date and price per unit; they are /vault's now.
 //
 // Pure and dual-exported (Node for npm test, the browser global HOMEMAP for
 // index.html), like valuation.js, and served with the
@@ -274,41 +276,18 @@
   }
   function thisWeek(items) { return (Array.isArray(items) ? items : []).filter((x) => x.n <= WEEK_DAYS).length; }
 
-  // Rule 3: a comp is a past deal, said the same way every time.
-  function compRow(c) {
-    if (!c) return null;
-    const lease = str(c.transaction).toLowerCase() === "lease";
-    const land = str(c.property_type) === "Land";
-    let figure = "";
-    if (lease) {
-      const r = num(c.rent_psf_yr) != null ? num(c.rent_psf_yr) : (num(c.rent_psf) != null ? num(c.rent_psf) * (str(c.rent_basis) === "monthly" ? 12 : 1) : null);
-      if (r != null) figure = `$${r.toFixed(2)}/SF/yr`;
-    } else if (land && num(c.price_per_acre)) {
-      figure = `${money(c.price_per_acre)}/acre`;
-    } else if (num(c.price_per_sqft)) {
-      figure = `$${Math.round(num(c.price_per_sqft))}/SF`;
-    }
-    const size = num(c.lot_acres) && land ? `${num(c.lot_acres)} ac` : (num(c.size_sqft) ? `${Math.round(num(c.size_sqft)).toLocaleString("en-US")} SF` : "");
-    const m = /^(\d{4})-(\d{2})/.exec(str(c.deal_date));
-    return {
-      id: c.id, address: str(c.address), street: street(c.address), place: place(c.address),
-      type: str(c.property_type), deal: lease ? "Lease" : "Sale",
-      when: m ? `${MONTHS[Number(m[2]) - 1]} ${m[1]}` : "", whenIso: str(c.deal_date).slice(0, 10),
-      figure, price: lease ? "" : money(c.price), size,
-      lat: num(c.lat), lng: num(c.lng),
-    };
-  }
-
   // ---- What the map shows (2026-10-08) -------------------------------------
   // The owner's ask: the map "shows where the properties, comps and permits
-  // are, and you can filter what you want to see". Three layers, any mix on.
+  // are, and you can filter what you want to see". Layers, any mix on; a
+  // Comps layer was the third until 2026-10-09, when comps left Home, and a
+  // browser that stored it on simply has it dropped here.
   // The list's tabs choose the LIST and these choose the MAP; opening a tab
   // whose rows are pins of a layer turns that layer on (tabLayer), so a row
   // never opens a card over a map that hides its pin. The choice is kept per
   // browser as JSON; anything unreadable is the default, Properties alone,
   // which is how Draft C drew the switch and so the calm first map.
-  const LAYERS = ["properties", "comps", "permits"];
-  const LAYER_DEFAULT = Object.freeze({ properties: true, comps: false, permits: false });
+  const LAYERS = ["properties", "permits"];
+  const LAYER_DEFAULT = Object.freeze({ properties: true, permits: false });
   function readLayers(raw) {
     let o = raw;
     if (typeof raw === "string") { try { o = JSON.parse(raw); } catch (_) { o = null; } }
@@ -318,7 +297,7 @@
   }
   // Today draws its own numbered pins whatever the layers say (they are its
   // rows), and People has no pins, so neither turns anything on.
-  function tabLayer(tab) { return tab === "properties" ? "properties" : tab === "comps" ? "comps" : null; }
+  function tabLayer(tab) { return tab === "properties" ? "properties" : null; }
 
   // A permit as a pin: GET /api/permits/map's filing (public record, from the
   // sweep), cut to what its pin and card show. No place, no pin: the
@@ -369,16 +348,11 @@
   // to draw where the member is looking. Never a silent empty layer: a map
   // with no permit pins must not read as "nothing was filed" when the truth
   // is "we do not read this city" (permits.md, §7) or "the read failed".
-  // `comps` and `permits` are null while unread and false when the read
-  // failed; `show` says whether "Show them" can bring the pins into view.
-  function layerNotes({ layers = {}, comps = null, compsPlaced = 0, compsInView = 0,
-    permits = null, permitsFiled = 0, permitsInView = 0, cities = "", windowDays = 30 } = {}) {
+  // `permits` is null while unread and false when the read failed; `show`
+  // says whether "Show them" can bring the pins into view.
+  function layerNotes({ layers = {}, permits = null, permitsFiled = 0, permitsInView = 0,
+    cities = "", windowDays = 30 } = {}) {
     const out = [];
-    if (layers.comps) {
-      if (comps === false) out.push({ layer: "comps", text: "Couldn't read your comps just now. Nothing has been lost. Try again in a moment.", show: false });
-      else if (Array.isArray(comps) && comps.length && !compsPlaced) out.push({ layer: "comps", text: "None of your comps has a map location yet.", show: false });
-      else if (compsPlaced && !compsInView) out.push({ layer: "comps", text: "None of your comps is in this part of the map.", show: true });
-    }
     if (layers.permits) {
       const where = str(cities) || "the cities CompNinja reads";
       const days = `the last ${windowDays} days`;
@@ -405,6 +379,6 @@
   }
 
   return { LEASE_DAYS, DEAL_DAYS, BOV_DAYS, WEEK_DAYS, STAGES, addressKey, street, place, town, daysUntil, shortDate, inDays, money,
-    stageLabel, stageStep, lastValue, properties, scopeOf, dealsHref, addHref, agenda, thisWeek, compRow, statusLine,
+    stageLabel, stageStep, lastValue, properties, scopeOf, dealsHref, addHref, agenda, thisWeek, statusLine,
     LAYERS, LAYER_DEFAULT, readLayers, tabLayer, PERMIT_STAGES, tidyCaps, permitPin, permitStageLabel, permitAt, layerNotes };
 });

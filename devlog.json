@@ -1,5 +1,29 @@
 [
   {
+    "date": "2026-10-09",
+    "type": "improvement",
+    "title": "Street photos for nearly every building, looked up by address",
+    "details": "The first version of street photos only worked when the free public map had the building's street number, which most buildings don't, so Home stayed mostly satellite views. Photos are now found by address: CompNinja's server asks Google for its camera nearest the address, and Google turns that camera toward the building itself. The same quality check applies (Google's own camera, a recent photo, near where we placed the address), and anything that fails it keeps the satellite view. This covers your properties, your deals on The Board and your own comps, and a property gets its photo even before it has a pin on the map. The address goes to Google from CompNinja's server only, never from your browser, and the photo's web address carries it scrambled rather than readable."
+  },
+  {
+    "date": "2026-10-09",
+    "type": "improvement",
+    "title": "Comps are off Home",
+    "details": "Home no longer shows your comps. The Comps tab, the Comps switch on the map, the “Add comps” card for a new account and comp results in the search box are gone, so Home is about the properties you own, manage or are buying, the people you work with and what needs you today. Your comps are where they have always been kept, on your own page (Your properties and comps), and an old link to Home’s Comps tab now opens them there. The map’s switch is Properties and Permits."
+  },
+  {
+    "date": "2026-10-09",
+    "type": "feature",
+    "title": "Rename your firm",
+    "details": "The name you typed when you created your firm used to be permanent. Now a firm's owner or an admin can change it under Firm & branding: type the new name and press Rename. It changes everywhere at once, including on every colleague's Home and in new invitations. The firm's name and its type (broker or development shop) now sit together at the top of the settings."
+  },
+  {
+    "date": "2026-10-09",
+    "type": "feature",
+    "title": "Real street photos of buildings instead of the satellite view",
+    "details": "Home's property list, the cards on Home's map and the deal cards on The Board now show each building the way you'd see it from the street, using Google Street View, instead of a satellite picture of its roof. A photo only appears when we can prove it is the right building and a good picture: OpenStreetMap has to show a building carrying that exact street number, and Google's camera has to be Google's own (not a photo someone uploaded), taken in the last ten years, close to the building and pointed at it, with the lens zoomed to fit. The same check now applies to the photos on the report map's pins. Where no good photo exists (a piece of land with no building on it, a building the map doesn't know, an old or faraway camera) the satellite view stays, so nothing goes blank and nothing shows the wrong building. Addresses still never leave CompNinja: photos are looked up by map coordinates. Also fixed: Home's small property pictures were off-centre, with the property in the bottom-right corner."
+  },
+  {
     "date": "2026-10-08",
     "type": "feature",
     "title": "Home's map shows your properties, comps and permits, and shared reports moved into Messages",
@@ -4675,5 +4699,11 @@
     "type": "improvement",
     "title": "One Sharing section on Home, with tabs",
     "details": "Home had three sections whose names all started with “Shared”: Shared with your firm, Shared reports, and Shared with you. A report someone sent you and the deal room opened from it showed up under two of them with the same address, and a report you put on the firm shelf showed up twice. They are now one Sharing section with three tabs. Firm shelf is what your firm has put up. Sent to you lists what other people sent you, one row per property, tagged Report and Deal room, with who sent it. Your links lists what you sent and who can open each one. A red count on Sent to you means something you haven’t opened yet. Your own shelf reports get a Take down button, “Start a hub” is now “Start a deal room”, and on a phone each link’s buttons sit under it instead of off the edge of the screen."
+  },
+  {
+    "date": "2026-10-09",
+    "type": "improvement",
+    "title": "Comp report no longer shows “Left today” and “Per run”",
+    "details": "The two-number box in the top-right corner of the Comp report page is gone, and so is the “Up to 50 per run, 200 left today” line under the list box on the report form. The limits themselves haven’t changed: if a list goes past what you have left today, the line beside the Run button still tells you."
   }
 ]

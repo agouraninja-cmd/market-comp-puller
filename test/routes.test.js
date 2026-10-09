@@ -797,9 +797,10 @@ test("bare environment", async (t) => {
     // portfolio and watchlist and those were never Pro. Widened who sees the
     // door, never what is behind it -- vaultReadPayload still answers 403 and
     // the page renders #vaultLocked in place of the three gated decks.
-    // Home's Comps tab is offered off the same flag (hmCanComps).
-    assert.match(app, /const hmCanComps = \(\) => \{ try \{ return Boolean\(proConfig && proConfig\.canUseVault\)/,
-      "Home's Comps tab is not gated on the vault's own flag");
+    // Home's BOV requests are offered off the same flag (hmCanVault; it
+    // gated Home's Comps tab too until comps left Home on 2026-10-09).
+    assert.match(app, /const hmCanVault = \(\) => \{ try \{ return Boolean\(proConfig && proConfig\.canUseVault\)/,
+      "Home's BOV requests are not gated on the vault's own flag");
   });
 
   // The Market Explorer's example, rotated per page load (2026-08-24).

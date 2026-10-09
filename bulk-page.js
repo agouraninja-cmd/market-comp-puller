@@ -122,16 +122,6 @@ const BULK_CSS = `
 .bulk .lede{color:var(--ink);font-size:14px;line-height:1.55;margin:6px 0 0;max-width:62ch}
 .bulk .top{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
 .bulk .top h1{margin:0}
-/* The two-cell strip. Serif figures, like every headline number on the site. */
-.bulk .cap{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid var(--edge);
-  border-radius:6px;background:var(--card);overflow:hidden;width:300px;flex:0 0 300px;
-  box-shadow:0 1px 2px rgba(15,23,42,.04)}
-.bulk .cap div{padding:12px 16px}
-.bulk .cap div+div{border-left:1px solid var(--hair)}
-.bulk .cap .k{display:block;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
-  color:var(--ink);font-weight:600;margin-bottom:4px}
-.bulk .cap .v{display:block;font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:22px;
-  line-height:1.15;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink)}
 /* The chamber. */
 .bulk .desk{margin-top:28px;border:1px solid var(--edge);border-radius:6px;background:var(--card);
   box-shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px -18px rgba(15,23,42,.25);display:flex;flex-direction:column}
@@ -191,7 +181,6 @@ const BULK_CSS = `
   .bulk .row{grid-template-columns:1fr}
   .bulk .cell{border-right:0;border-bottom:1px solid var(--hair)}
   .bulk .cell:last-child{border-bottom:0}
-  .bulk .cap{width:100%;flex-basis:100%}
 }
 `;
 
@@ -281,12 +270,9 @@ function renderBulkPageBody(boot) {
         <p class="lede">One address opens its comp report. A list becomes a portfolio, every row
           linking to the report behind its number.</p>
       </div>
-      <!-- Two cells, not three (owner's call): "runs on file" was a weak number
-           to give that much weight. Both figures are written by renderCap(). -->
-      <div class="cap" aria-label="Your allowance">
-        <div><span class="k">Left today</span><span class="v" id="capLeft">&mdash;</span></div>
-        <div><span class="k">Per run</span><span class="v" id="capPer">&mdash;</span></div>
-      </div>
+      <!-- The LEFT TODAY / PER RUN strip that sat here came off on 2026-10-09
+           (owner's call): the limits still hold, and the cost line under the
+           box still says so the moment a list runs past what is left. -->
     </div>
 
     <div class="desk">
@@ -1010,14 +996,6 @@ function onRunState(job,items){
   location.href="/?recent="+encodeURIComponent(id);
 }
 
-// The two-cell strip: the daily allowance and the per-run cap, as figures.
-// A dash until the numbers are known rather than a zero that reads as "none
-// left" — the boot payload carries them, so the dash is rarely seen.
-function renderCap(){
-  $("capLeft").textContent=LEFT===null?"\\u2014":String(LEFT);
-  $("capPer").textContent=String(MAX);
-}
-
 // Fill the box with the example addresses.
 //
 // The examples live in the textarea's PLACEHOLDER and are read back out of it
@@ -1046,7 +1024,6 @@ function loadList(){
     if(d.maxAddresses){MAX=d.maxAddresses;BULKRUN.setMax(MAX);}
     if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
     if(d.types&&d.types.length&&!TYPES.length){TYPES=d.types;fillTypes();}
-    renderCap();
     BULKRUN.setJobs(d.jobs||[]);
     refreshCount();
     // Resume whatever is going: a member who closed the tab mid-run and came
@@ -1088,10 +1065,10 @@ function run(){
     BULKRUN.showRun(d);BULKRUN.poll(d.job.id);
   }).catch(function(e){
     BULKRUN.msg(e.message,true);
-    // A refusal carries the fresh number, so the hint above corrects itself
-    // rather than going on claiming an allowance the server just denied.
+    // A refusal carries the fresh number, so the cost line corrects itself
+    // rather than going on allowing a run the server just denied.
     if(e.data&&typeof e.data.left_today==="number"){
-      LEFT=e.data.left_today;DAILY=e.data.daily_limit;renderCap();}
+      LEFT=e.data.left_today;DAILY=e.data.daily_limit;}
     if(e.data)BULKRUN.showNotes(e.data);
     if(e.data&&e.data.job)BULKRUN.poll(e.data.job.id);
   }).then(function(){refreshCount();});
@@ -1148,7 +1125,6 @@ function start(boot){
   if(d.maxAddresses)MAX=d.maxAddresses;
   if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
   TYPES=d.types||[];fillTypes();
-  renderCap();
   BULKRUN.init({max:MAX,onState:onRunState,onList:loadList,onRunAgain:runAgain});
   BULKRUN.setJobs(d.jobs||[]);
   var live=(d.jobs||[]).filter(function(j){return j.status==="running";})[0];

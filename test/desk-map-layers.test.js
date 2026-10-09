@@ -6,10 +6,12 @@
 // Draft C drew and the build left out); "the home and report sections are
 // literally the exact same thing", so the Reports tab and its rail row went,
 // the rest of the reports moved into Messages, and "the run a comp report
-// section" came off Home because the comp report went back to Tools. What
-// each layer holds is home-map.js (test/home-map.test.js); these pin how
-// index.html wires it, by reading the source the way test/org-desk.test.js
-// does.
+// section" came off Home because the comp report went back to Tools. The
+// next day (2026-10-09) the owner said "Remove Comps from the Homepage", so
+// the Comps tab, the Comps layer, the "Add comps" start card and the comps
+// read left Home too; a member's comps are on /vault. What each layer holds
+// is home-map.js (test/home-map.test.js); these pin how index.html wires it,
+// by reading the source the way test/org-desk.test.js does.
 
 const test = require("node:test");
 const assert = require("node:assert");
@@ -24,20 +26,17 @@ const fnOf = (sig) => {
   return html.slice(at, html.indexOf("\n  }\n", at));
 };
 
-test("the map's switch is three toggles over the map, Comps hidden until the member may read comps", () => {
+test("the map's switch is two toggles over the map, Properties and Permits", () => {
   const at = html.indexOf('id="hmLayers"');
   assert.ok(at > 0, "the layer switch is gone");
   const box = html.slice(at, html.indexOf("</div>", at));
   assert.match(box, /role="group" aria-label="Show on the map"/);
   assert.match(box, /data-layer="properties" aria-pressed="true"/, "Properties is on before anything is read");
-  assert.match(box, /data-layer="comps" aria-pressed="false" hidden/, "Comps ships hidden: it is a Pro read");
   assert.match(box, /data-layer="permits" aria-pressed="false"/);
-  // The buttons set display, so the hidden attribute needs its own rule.
-  assert.ok(html.includes(".hm-layers button[hidden] { display: none; }"));
+  assert.equal((box.match(/data-layer="/g) || []).length, 2, "a third toggle is back on the map");
+  assert.doesNotMatch(box, /data-layer="comps"/, "the Comps toggle is back on Home's map");
   // The switch sits over the map, not in the list.
   assert.ok(at > html.indexOf('class="hm-mapw"') && at > html.indexOf('id="hmMap"'), "the switch is not on the map");
-  const draw = fnOf("function drawHomeMap() {");
-  assert.match(draw, /document\.getElementById\("hmLayerComps"\)\.hidden = !canComps;/);
 });
 
 test("one writer keeps the switch, this browser's copy and the pins in step, and storage can fail", () => {
@@ -45,11 +44,12 @@ test("one writer keeps the switch, this browser's copy and the pins in step, and
   const set = fnOf("function hmSetLayer(layer, on, { draw = true } = {}) {");
   assert.match(set, /try \{ localStorage\.setItem\(HM_LAYER_KEY, JSON\.stringify\(hmLayers\)\); \} catch \(_\)/);
   assert.match(set, /if \(on && layer === "permits"\) hmLoadPermits\(\);/);
-  assert.match(set, /if \(on && layer === "comps"\) hmLoadComps\(\);/);
   // Only hmSetLayer assigns the record (the initial read aside).
   assert.equal((html.match(/\bhmLayers = /g) || []).length, 3, "something else writes hmLayers");
-  // A Comps layer stored by an old visit never draws for a member who cannot read comps.
-  assert.match(html, /const hmLayerOn = \(layer\) => Boolean\(hmLayers\[layer\]\) && \(layer !== "comps" \|\| hmCanComps\(\)\);/);
+  // A layer is on when the record says so; the record only ever holds
+  // HOMEMAP.LAYERS (readLayers drops an old stored Comps).
+  assert.match(html, /const hmLayerOn = \(layer\) => Boolean\(hmLayers\[layer\]\);/);
+  assert.match(set, /if \(!HOMEMAP\.LAYERS\.includes\(layer\)\) return;/);
 });
 
 test("opening a tab turns its layer on once, on arrival, never on a redraw", () => {
@@ -72,7 +72,7 @@ test("a switched-on layer is drawn around the tab's subject, never fitted to, so
   const draw = fnOf("function hmDrawPins() {");
   assert.match(draw, /const fitTo = subject\.length \? subject : pts;/);
   assert.match(draw, /if \(hmLayerOn\("permits"\) && Array\.isArray\(hmPermits\)\) \{[\s\S]*?put\(p, false\);/, "permits are never the subject");
-  assert.match(draw, /put\(\{ lat: c\.lat, lng: c\.lng \}, hmTab === "comps"\);/, "comps are the subject only on their own tab");
+  assert.match(draw, /if \(showProps\) located\.forEach\(\(\{ r, ll \}\) => \{\s*put\(ll, true\);/, "the properties are the subject on every tab");
   // Today's numbered pins are its rows: drawn whatever the switch says.
   assert.match(draw, /if \(hmTab === "today"\) \{\s*hmItems\.forEach/);
   assert.match(draw, /hmSyncLayerNote\(\);/, "a layer with nothing to show here must say so");
@@ -81,8 +81,8 @@ test("a switched-on layer is drawn around the tab's subject, never fitted to, so
 });
 
 test("a permit's card is text a person or a portal wrote, so it is built with textContent", () => {
-  const sel = fnOf("function hmSelect(key, { item, comp, permit, from } = {}) {");
-  const branch = sel.slice(sel.indexOf("if (permit) {"), sel.indexOf("} else if (comp) {"));
+  const sel = fnOf("function hmSelect(key, { item, permit, from } = {}) {");
+  const branch = sel.slice(sel.indexOf("if (permit) {"), sel.indexOf("} else if (item && hmTab === \"today\") {"));
   assert.ok(branch.length > 100, "the permit branch moved");
   assert.doesNotMatch(branch, /innerHTML/);
   assert.match(branch, /rec\.target = "_blank"; rec\.rel = "noopener noreferrer";/, "the city's record opens away from Home");
@@ -96,8 +96,38 @@ test("Home runs no comp report: no start card, no find-box offer, no Reports tab
   assert.doesNotMatch(find, /Run a comp report on|\/bulk\?address=/, "the find box still offers to run a report");
   // An address that matches nothing is pointed at the Tools row instead.
   assert.match(find, /go\.href = "\/bulk";/);
-  assert.match(html, /placeholder="Find a property, comp or person"/);
   assert.ok(!html.includes('data-tab="reports"'), "Home's Reports tab is back");
   // The day-old rail link /desk#reports lands on Messages' Reports view.
   assert.match(html, /else if \(h === "reports" && \/\^\\\/desk\\\/\?\$\/\.test\(location\.pathname\) && !document\.prerendering\) location\.replace\("\/messages#reports"\);/);
+});
+
+test("Home holds no comps: no tab, no layer, no start card, no read of the book (2026-10-09)", () => {
+  // The owner's call: "Remove Comps from the Homepage". A member's comps are
+  // on their own page, /vault, and Home no longer lists, pins or reads them.
+  // What a member sees, so the history in the markup's comments is skipped.
+  const home = html.slice(html.indexOf('id="homeMap"'), html.indexOf('id="hmMapEmpty"')).replace(/<!--[\s\S]*?-->/g, "");
+  assert.ok(home.length > 1000, "Home's markup moved");
+  for (const id of ["hmTabComps", "hmPaneComps", "hmCompRows", "hmStartComps", "hmLayerComps", "hmLegendComps", "hmNComps"]) {
+    assert.ok(!html.includes(`id="${id}"`), `#${id} is back on Home`);
+  }
+  assert.ok(!html.includes('data-tab="comps"'), "Home's Comps tab is back");
+  assert.doesNotMatch(home, /Add comps|Your comps/, "Home offers comps again");
+  // Nothing on Home reads the member's book: GET /api/vault was the Comps
+  // tab's read, and HOMEMAP no longer builds a comp row.
+  const js = html.slice(html.indexOf("let deskSites = null;"), html.indexOf("async function renderHomeFirm() {"));
+  assert.ok(js.length > 5000, "Home's script moved");
+  assert.doesNotMatch(js, /fetch\("\/api\/vault"/, "Home reads the member's comps again");
+  assert.doesNotMatch(js, /HOMEMAP\.compRow|hmLoadComps|hmComps\b/, "Home's comps code is back");
+  // A map card has no comp branch: a `comp` left behind there is a
+  // ReferenceError on every card (the street-photo merge left one).
+  const sel = fnOf("function hmSelect(key, { item, permit, from } = {}) {");
+  assert.doesNotMatch(sel.replace(/\/\/.*$/gm, ""), /\bcomp\b/, "hmSelect still reads a comp");
+  assert.ok(html.includes('const HM_TAB_IDS = { today: ["hmTabToday", "hmPaneToday"], properties: ["hmTabProps", "hmPaneProps"],\n    people: ["hmTabPeople", "hmPanePeople"] };'));
+  // The find box finds properties, people and permits, and says so.
+  assert.match(html, /placeholder="Find a property or person" aria-label="Find a property or person on Home"/);
+  assert.match(html, /aria-label="Map of your properties and permits"/);
+  // A saved /desk#comps (the tab's address for two days) lands on the comps' own page.
+  assert.match(html, /else if \(h === "comps" && \/\^\\\/desk\\\/\?\$\/\.test\(location\.pathname\) && !document\.prerendering\) location\.replace\("\/vault#book"\);/);
+  // BOV requests keep the vault's own gate, which the Comps tab used to share.
+  assert.ok(html.includes('const hmCanLeads = () => hmCanVault() && !(myFirm() && myFirm().kind === "development");'));
 });

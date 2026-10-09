@@ -497,6 +497,34 @@ paths:
   suite pins it to the module's own words. The `/brokers-firms` page draws its
   shop row off `SHOP_KINDS` for the same reason, rather than typing the cards.
 
+## Renaming a firm (2026-10-09)
+
+Until this the name typed at Create firm was final: `/api/org/settings` took
+`shareDefault`, `kind` and `autoShare` and nothing wrote `orgs.name` again (the
+owner's own firm was named after its owner and had no way out). Now
+`POST /api/org/settings {orgId, name}` renames it. Four rules, tested in
+`test/org-run.test.js` ("an owner or an admin renames the firm") and
+`test/org-desk.test.js` (the box):
+- **Owner or admin** (`ORG.canManageMembers`), the shop's authority and for
+  the same reason: the name is on every colleague's Home and in every
+  invitation.
+- **The create route's rule, `ORG.validateOrgName`**, so a rename can never
+  produce a name no firm could have been created with. A non-string is a
+  400 before it reaches the cleaner. The answer carries the STORED name, and
+  the browser puts that back in the box rather than what was typed.
+- **One PATCH renames it everywhere** (`setOrgName`): every surface reads the
+  name live off `orgs` (`orgsByIds`, `findOrg`, `oldestActiveFirmFor`), and
+  no other table keeps a copy. Report branding's firm name is a separate
+  letterhead field in `org_branding` and is not touched. The branding card's
+  *suggested* name is read once per page load, so it catches up on the next.
+- **The box (`#firmNameWrap`, first row of Firm & branding's settings, beside
+  "This firm is a")** is HIDDEN for a plain member, not disabled: they read
+  the name in the panel's heading. Its **Rename** button shows only for a name
+  that differs after whitespace is folded, and `renderFirmName` never writes
+  over a box with focus, so a Home redraw mid-edit keeps the draft. A save
+  redraws through `renderHomeFirm()`, the firm-changed path accept and remove
+  already use.
+
 ## Changing roles (2026-09-29)
 
 Owner's call: "add make admin and make owner, for owner controls". Until then

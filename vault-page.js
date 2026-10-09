@@ -1041,6 +1041,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 #wallSec .dw-tiles{position:absolute;left:50%;top:50%}
 #wallSec .dw-tiles img{position:absolute;width:256px;height:256px;max-width:none}
 #wallSec .dw-pin{position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--red-fill);box-shadow:0 0 0 3px rgba(255,255,255,.85)}
+#wallSec .dw-sv .dw-pin{display:none}
 #wallSec .dw-credit{position:absolute;right:6px;bottom:5px;font-size:10px;color:#fff;background:rgba(17,24,39,.55);border-radius:3px;padding:0 4px}
 #wallSec .dw-stamp{position:absolute;z-index:1;left:8px;top:8px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:3px 8px;box-shadow:0 1px 3px rgba(0,0,0,.18)}
 #wallSec .dw-type{position:absolute;z-index:1;left:8px;bottom:8px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:#fff;background:rgba(17,24,39,.62);border-radius:4px;padding:2px 7px}
@@ -1919,6 +1920,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 <script src="/building-facts.js"></script>
 <script src="/sites.js"></script>
 <script src="/sites-tab.js"></script>
+<script src="/building-photo.js"></script>
 <script src="/deal-wall.js"></script>
 <script>
 (function(){
@@ -6988,6 +6990,9 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     wallView=window.DEALWALL.mount({
       root:$("wallRoot"),addToggle:$("wallAddToggle"),esc:esc,escA:escA,propTypes:PROP_TYPES,
       openAdd:addAsk==="buy"&&addTab==="watch",
+      // server.js writes the flag into the head when GOOGLE_MAPS_API_KEY is
+      // set: the deal cards' street photos (building-photo.js).
+      streetview:!!window.__CN_STREETVIEW__,
       isDev:function(){return !!(myFirm&&myFirm.kind==="development")},
       feed:function(){return mktItems},
       setCount:function(n){wallLive=n;boardCount()}

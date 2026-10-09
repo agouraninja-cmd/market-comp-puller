@@ -100,10 +100,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <script src="/dev-returns.js"></script>
   <script src="/explore-query.js"></script>
   <script src="/market-snapshot.js"></script>
-  <!-- Home as one map (2026-10-07): what goes in Today, Properties and Comps
+  <!-- Home as one map (2026-10-07): what goes in Today and Properties
        (HOMEMAP). maxAge 0 like the scripts above, and guarded with typeof:
        without it Home's list and map stay empty, never a broken page. -->
   <script src="/home-map.js"></script>
+  <!-- Street photos of buildings on Home (2026-10-09; BLDGPHOTO): looked up
+       by address through our own /api/building-photo. maxAge 0, and guarded
+       with typeof: without it Home's cards keep their aerials. -->
+  <script src="/building-photo.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -1825,7 +1829,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-chip.owned { background: var(--ok-bg); color: var(--ok-text); }
     .hm-chip.tracking { background: var(--wash-2); color: var(--ink-2); }
     .hm-chip.firm { background: var(--slab); color: #fff; }
-    .hm-chip.deal { background: var(--wash-2); color: var(--ink-2); }
     .hm-gh { display: flex; align-items: baseline; gap: 8px; padding: 16px 10px 4px; }
     .hm-gh b { font-family: Georgia, 'Times New Roman', serif; font-size: 17px; font-weight: 400; color: var(--ink); }
     .hm-gh span { font-size: 12px; font-weight: 600; color: var(--ink-3); }
@@ -1834,6 +1837,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-th { position: relative; width: 48px; height: 48px; overflow: hidden; border-radius: 9px; background: var(--wash-2); }
     .hm-th img, .hm-pop-ph img { position: absolute; width: 256px; height: 256px; max-width: none; }
     .hm-th.none { background: repeating-linear-gradient(135deg, var(--wash-2) 0 6px, var(--hair) 6px 12px); }
+    /* Credit on the map card's street photo (building-photo.js). It sits on
+       the photograph, so it is literal white on a dark chip in both themes,
+       like the report map's "© Google" and "© Esri" chips. */
+    .hm-credit { position: absolute; right: 0; bottom: 0; font-size: 9px; line-height: 1; color: #fff; background: rgb(0 0 0 / .45); padding: 2px 4px; border-radius: 3px 0 0 0; }
     .hm-val { text-align: right; white-space: nowrap; }
     .hm-val b { display: block; font-size: 14px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
     .hm-val small { font-size: 12px; color: var(--ink-3); }
@@ -1870,18 +1877,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-legend i.buy, .hm-pip.buy { background: var(--red-fill); }
     .hm-legend i.own, .hm-pip.own { background: var(--green); }
     .hm-legend i.firm, .hm-pip.firm { background: var(--ink); }
-    .hm-legend i.comp, .hm-pip.comp { background: var(--ink-3); }
     /* Permits are squares, the only square pins on the map, in the status
        palette's amber: a filing is a document, not a building. */
     .hm-legend i.permit, .hm-pip.permit { border-radius: 3px; background: var(--warn-text); }
-    /* What the map shows (2026-10-08): three toggles over the map's top-left
+    /* What the map shows (2026-10-08): toggles over the map's top-left
        corner, the place Draft C drew them. Pressed reads like the list's own
-       selected tab (ink, 600, a red rule under it), so any mix of the three
-       can be seen to be on at once. */
+       selected tab (ink, 600, a red rule under it), so both can be seen to
+       be on at once. (Three until 2026-10-09, when Comps left Home.) */
     .hm-layers { position: absolute; left: 14px; top: 14px; z-index: 500; display: flex; max-width: calc(100% - 70px); overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: 0 4px 16px -8px rgba(15, 23, 42, .35); }
     .hm-layers button { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 0; border-left: 1px solid var(--line); background: none; font: inherit; font-size: 13px; font-weight: 500; line-height: 1; color: var(--ink-3); white-space: nowrap; cursor: pointer; }
     .hm-layers button:first-child { border-left: 0; }
-    .hm-layers button[hidden] { display: none; }
     .hm-layers button:hover { color: var(--ink); background: var(--wash); }
     .hm-layers button[aria-pressed="true"] { color: var(--ink); font-weight: 600; background: var(--wash-2); box-shadow: inset 0 -2px 0 var(--red-fill); }
     .hm-layers button:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
@@ -1901,7 +1906,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-map-empty span { display: block; margin-top: 6px; font-size: 13.5px; color: var(--ink-3); }
     .hm-mk { background: none !important; border: 0 !important; }
     .hm-pip { display: block; width: 14px; height: 14px; border: 2.5px solid var(--card); border-radius: 99px; box-shadow: 0 1px 4px rgba(15, 23, 42, .4); }
-    .hm-pip.comp { width: 10px; height: 10px; border-width: 2px; margin: 2px; }
     .hm-pip.permit { width: 11px; height: 11px; border-width: 2px; border-radius: 3px; margin: 1.5px; }
     .hm-pip.on { box-shadow: 0 0 0 3px var(--red-fill), 0 1px 4px rgba(15, 23, 42, .4); }
     .hm-npin { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 2.5px solid var(--card); border-radius: 99px; background: var(--ink); color: var(--paper); font-size: 13px; font-weight: 700; box-shadow: 0 3px 10px rgba(15, 23, 42, .45); }
@@ -2650,13 +2654,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                the personal one is everybody's. Rendered by
                renderFirmAutoShare(). -->
           <div id="firmAutoShare" class="mt-3 space-y-1.5">
-            <label id="firmDefaultWrap" class="hidden flex items-center gap-2 text-sm text-[#4C5665] cursor-pointer">
-              <input id="firmDefaultToggle" type="checkbox" class="accent-[#B91C1C]" />
-              <span>Share new reports with the firm by default</span>
-            </label>
+            <!-- The firm's name (2026-10-09). Before this the name typed at
+                 Create firm could never be changed. Owner/admin, like the
+                 shop below, but HIDDEN rather than disabled for everyone
+                 else: they read the name in the heading above, and a greyed
+                 box would only say it twice. renderFirmName() is its one
+                 writer; the form is there so Enter saves. -->
+            <form id="firmNameWrap" class="hidden flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
+              <label for="firmRenameInput">Firm name</label>
+              <input id="firmRenameInput" type="text" maxlength="80" autocomplete="organization"
+                class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              <button id="firmRenameBtn" type="submit"
+                class="hidden btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 rounded-lg px-3 py-1.5">Rename</button>
+              <span id="firmRenameState" class="text-xs text-[#68707E]"></span>
+            </form>
             <!-- Which shop this firm is. An owner/admin control, because it
                  re-labels every colleague's desk; everyone else reads the
-                 answer as a line of text (renderFirmShop). -->
+                 answer as a line of text (renderFirmShop). Beside the name
+                 since 2026-10-09: the two say who the firm is, the two below
+                 say how it shares. -->
             <div id="firmShopWrap" class="flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
               <label for="firmShopSelect">This firm is a</label>
               <select id="firmShopSelect"
@@ -2666,6 +2682,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               </select>
               <span id="firmShopState" class="text-xs text-[#68707E]"></span>
             </div>
+            <label id="firmDefaultWrap" class="hidden flex items-center gap-2 text-sm text-[#4C5665] cursor-pointer">
+              <input id="firmDefaultToggle" type="checkbox" class="accent-[#B91C1C]" />
+              <span>Share new reports with the firm by default</span>
+            </label>
             <div class="flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
               <label for="firmAutoShareSelect">My new reports</label>
               <select id="firmAutoShareSelect"
@@ -3115,17 +3135,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <section id="myDesk" class="hidden mt-4">
       <!-- Home as one map (2026-10-07; Draft C of the Home and Data drafts,
            the owner's pick: "One map"). A list on the left (Today,
-           Properties, Comps, Reports, People) and every property on a map on
-           the right, each dated row numbered like its pin. What goes in the
-           lists is home-map.js (HOMEMAP), tested there; drawHomeMap() below is
-           its one writer here, and it draws ONLY from what the desk already
-           read, plus two reads of its own: the member's deals (/api/sites,
-           embedded with the page in DESK_BOOT) and their comps (/api/vault,
-           read once the page is SHOWN, never while it is prerendered).
-           The firm's sections that still have work to do moved INTO the tabs
-           rather than being rewritten: Sharing is the Reports tab, Contacts
-           is in People, and the add-a-building form is behind Properties'
-           "Add a property". Each keeps its id and its one writer. -->
+           Properties, People) and every property on a map on the right, each
+           dated row numbered like its pin. Reports left on 2026-10-08 and
+           Comps on 2026-10-09 (the owner's call: "Remove Comps from the
+           Homepage"); a member's comps are on their own page, /vault. What
+           goes in the lists is home-map.js (HOMEMAP), tested there;
+           drawHomeMap() below is its one writer here, and it draws ONLY from
+           what the desk already read, plus its own reads: the member's deals
+           (/api/sites, embedded with the page in DESK_BOOT), and BOV requests
+           and permits, each read once the page is SHOWN, never while it is
+           prerendered. The firm's sections that still have work to do moved
+           INTO the tabs rather than being rewritten: Contacts is in People,
+           and the add-a-building form is behind Properties' "Add a
+           property". Each keeps its id and its one writer. -->
       <div id="homeMap" class="hm">
         <div class="hm-panel">
           <div class="hm-head">
@@ -3136,28 +3158,30 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8.6" cy="8.6" r="5.4"/><path d="M12.8 12.8l4.2 4.2"/></svg>
               <!-- Finds what Home holds, and only that (2026-10-08): the comp
                    report went back to its own Tools row, so this box no longer
-                   offers to run one on whatever was typed. -->
+                   offers to run one on whatever was typed. It stopped finding
+                   comps on 2026-10-09, when they left Home. -->
               <input id="hmFind" type="search" autocomplete="off" spellcheck="false" maxlength="160"
-                placeholder="Find a property, comp or person" aria-label="Find a property, comp or person on Home"
+                placeholder="Find a property or person" aria-label="Find a property or person on Home"
                 aria-controls="hmFindRes" aria-expanded="false" />
               <div id="hmFindRes" class="hidden hm-find-res" role="listbox" aria-label="Matches"></div>
             </div>
             <div id="hmTabs" class="hm-tabs" role="tablist" aria-label="Home">
               <button type="button" role="tab" id="hmTabToday" data-tab="today" aria-controls="hmPaneToday" aria-selected="true">Today <b id="hmNToday"></b></button>
               <button type="button" role="tab" id="hmTabProps" data-tab="properties" aria-controls="hmPaneProps" aria-selected="false">Properties <b id="hmNProps"></b></button>
-              <button type="button" role="tab" id="hmTabComps" data-tab="comps" aria-controls="hmPaneComps" aria-selected="false" hidden>Comps <b id="hmNComps"></b></button>
               <!-- No Reports tab since 2026-10-08: the shelf, what was sent to
-                   you and your links are Messages' Reports view now. -->
+                   you and your links are Messages' Reports view now. No Comps
+                   tab since 2026-10-09: a member's comps are on /vault. -->
               <button type="button" role="tab" id="hmTabPeople" data-tab="people" aria-controls="hmPanePeople" aria-selected="false" hidden>People</button>
             </div>
           </div>
           <div class="hm-body">
             <!-- Start here: an account with nothing on the map yet. The first
                  card ran a comp report until 2026-10-08, when the comp report
-                 went back to its Tools row; adding a property leads now. -->
+                 went back to its Tools row; adding a property leads now. An
+                 "Add comps" card sat between these two until 2026-10-09, when
+                 comps left Home. -->
             <div id="hmStart" class="hidden hm-start">
               <a id="hmStartProp" class="hm-st" href="#properties"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg></span><span><b>Add a property</b><small>A building you own, manage or are buying. It gets a pin, a value and its dates.</small><span class="hm-btn red">Add a property</span></span></a>
-              <a id="hmStartComps" class="hm-st" href="/vault#book"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 16.5h14"/><path d="M5 16.5v-5M8.5 16.5v-8M12 16.5v-6M15.5 16.5v-10"/></svg></span><span><b>Add comps</b><small>Past sales and leases from a spreadsheet, PDF or photo. Only you can see them.</small><span class="hm-btn">Add comps</span></span></a>
               <button type="button" id="hmStartFirm" class="hm-st"><span class="hm-sti"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg></span><span><b>Bring your team</b><small>Start a firm to share buildings, reports and contacts with the people you work with.</small><span class="hm-btn">Start a firm</span></span></button>
             </div>
 
@@ -3200,14 +3224,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <p id="buildingMsg" class="hidden dk-msg"></p>
               <div id="hmPropRows" class="hm-rows"></div>
               <p id="hmPropsEmpty" class="hidden hm-empty">No properties yet. Add a building you own, manage or are buying, and it lands on the map with its value and its dates.</p>
-            </div>
-
-            <div id="hmPaneComps" class="hm-pane hidden" role="tabpanel" aria-labelledby="hmTabComps">
-              <div class="hm-ph"><p class="hm-what">Past sales and leases you value against. Only you can see them.</p>
-                <a class="hm-btn" href="/vault#book">+ Add comps</a></div>
-              <div id="hmCompRows" class="hm-rows"></div>
-              <p id="hmCompsEmpty" class="hidden hm-empty">No comps yet. Upload past sales and leases from a spreadsheet, PDF or photo, and they land here as pins. Only you can see them.</p>
-              <p id="hmCompsMore" class="hidden hm-more"><a href="/vault#book">All your comps, comp sets and imports →</a></p>
             </div>
 
             <div id="hmPanePeople" class="hm-pane hidden" role="tabpanel" aria-labelledby="hmTabPeople">
@@ -3264,24 +3280,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </div>
         </div>
         <div class="hm-mapw">
-          <div id="hmMap" class="hm-map" role="region" aria-label="Map of your properties, comps and permits"></div>
+          <div id="hmMap" class="hm-map" role="region" aria-label="Map of your properties and permits"></div>
           <!-- What the map shows (2026-10-08, the owner's ask: "shows where
                the properties, comps and permits are, and you can filter what
                you want to see"; the layer switch Draft C drew and the build
-               left out). Three toggles, not tabs: any mix can be on. The
-               list's tabs choose the LIST; these choose the MAP, and opening
-               the Comps tab turns Comps on so its rows have pins. Comps shows
-               only to a member the server would let read their comps
-               (hmCanComps); Permits to every member, as public record. -->
+               left out). Toggles, not tabs: both can be on. The list's tabs
+               choose the LIST; these choose the MAP, and opening Properties
+               turns Properties on so its rows have pins. Permits shows to
+               every member, as public record. A Comps toggle sat between the
+               two until 2026-10-09, when comps left Home. -->
           <div id="hmLayers" class="hm-layers" role="group" aria-label="Show on the map">
             <button type="button" id="hmLayerProps" data-layer="properties" aria-pressed="true"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg><span>Properties</span></button>
-            <button type="button" id="hmLayerComps" data-layer="comps" aria-pressed="false" hidden><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 16.5h14"/><path d="M5 16.5v-5M8.5 16.5v-8M12 16.5v-6M15.5 16.5v-10"/></svg><span>Comps</span></button>
             <button type="button" id="hmLayerPermits" data-layer="permits" aria-pressed="false"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h10v14.4H5z"/><path d="M7.5 6h5M7.5 8.6h5"/><circle cx="10" cy="13" r="1.8"/></svg><span>Permits</span></button>
           </div>
           <!-- Said when a layer is on and has nothing to draw here: never an
                empty map that could be read as "nothing was filed". -->
           <div id="hmLayerNote" class="hidden hm-layer-note" role="status"></div>
-          <div id="hmLegend" class="hidden hm-legend" aria-hidden="true"><span class="hm-lg-p"><i class="buy"></i>Your deals</span><span class="hm-lg-p"><i class="own"></i>You own</span><span class="hm-lg-p"><i class="firm"></i>Firm buildings</span><span id="hmLegendComps" class="hidden"><i class="comp"></i>Your comps</span><span id="hmLegendPermits" class="hidden"><i class="permit"></i>Permits, last 30 days</span></div>
+          <div id="hmLegend" class="hidden hm-legend" aria-hidden="true"><span class="hm-lg-p"><i class="buy"></i>Your deals</span><span class="hm-lg-p"><i class="own"></i>You own</span><span class="hm-lg-p"><i class="firm"></i>Firm buildings</span><span id="hmLegendPermits" class="hidden"><i class="permit"></i>Permits, last 30 days</span></div>
           <div id="hmMapEmpty" class="hidden hm-map-empty"><b>Your map is empty</b><span>Add a property on the left, and it lands here as your first pin.</span></div>
         </div>
       </div>
@@ -3364,7 +3379,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <textarea id="bkListText" rows="6" spellcheck="false" class="rd-in rd-in-list"></textarea>
               <div class="text-xs text-[#68707E] mt-1.5">
                 <span id="bkListCount"></span>
-                <span id="bkCapLine"></span>
                 <button type="button" id="bkListBack" class="underline text-[#B91C1C]">Value one address instead</button>
               </div>
             </div>
@@ -13963,24 +13977,23 @@ async function renderMyDesk() {
   // the pins, and it reads ONLY what the desk already parsed (firmBuildings,
   // deskCritical, deskThreadsStat, firmContacts, firmMembers, deskPortfolio)
   // plus the member's deals (deskSites, read beside the firm batch and
-  // embedded with the page) and, once the page is shown, their comps.
+  // embedded with the page) and, once the page is shown, their BOV requests
+  // and the permits. It read their comps too (GET /api/vault) until
+  // 2026-10-09, when comps left Home for the member's own page.
   // HOMEMAP (home-map.js) decides what each list holds; this half draws it.
   //
   // Three rules this half keeps:
   //   - Every row says who can see it (Firm / Only you), from HOMEMAP.scopeOf.
   //   - A private address is geocoded only through our own /api/geocode
-  //     (geocodeAddress with noThirdParty: CLAUDE.md's rule 7), and only for
-  //     properties: comps carry the coordinates their import gave them.
-  //   - Nothing here writes. The comps read waits for the page to be shown,
-  //     so a prerendered Home never asks for a member's book unseen.
+  //     (geocodeAddress with noThirdParty: CLAUDE.md's rule 7).
+  //   - Nothing here writes. The reads wait for the page to be shown, so a
+  //     prerendered Home never asks for a member's requests unseen.
   // Rendered with createElement/textContent: every address, name and note
   // is text a person typed (the desk's standing rule).
   // ---------------------------------------------------------------------------
   let deskSites = null;      // GET /api/sites' rows; null = not read, refused or failed
   let deskPortfolio = null;  // renderMyDesk's GET /api/portfolio items; null = not read
   let firmMembers = [];      // renderFirmMembers' roster, for People
-  let hmComps = null;        // GET /api/vault's comps once read; null until then
-  let hmCompsAsked = false;
   let hmLeads = null;        // GET /api/broker/leads' requests once read; null until then
   let hmLeadsAsked = false;
   let hmTab = "today";
@@ -13999,7 +14012,7 @@ async function renderMyDesk() {
   let hmPermitsAsked = false;
   let hmPermitsFiled = 0, hmPermitCities = "", hmPermitDays = 30;
   const HM_TAB_IDS = { today: ["hmTabToday", "hmPaneToday"], properties: ["hmTabProps", "hmPaneProps"],
-    comps: ["hmTabComps", "hmPaneComps"], people: ["hmTabPeople", "hmPanePeople"] };
+    people: ["hmTabPeople", "hmPanePeople"] };
   const HM_ICON = {
     lock: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="9" width="11" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg>',
     people: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg>',
@@ -14015,14 +14028,13 @@ async function renderMyDesk() {
     return isNaN(d) ? "" : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
   const hmTodayIso = () => hmLocalDay(Date.now());
-  // proConfig is a `let` declared far below, so the read is guarded for
-  // the temporal dead zone. Comps are the member's private book, offered to whoever
-  // the server would let read it.
-  const hmCanComps = () => { try { return Boolean(proConfig && proConfig.canUseVault); } catch (_) { return false; } };
   // BOV requests are the Pipeline's, and the private page has a Pipeline for
   // everyone but a development firm (vault-page.js's applyShop), behind the
-  // same Pro gate as the comps (requireBroker).
-  const hmCanLeads = () => hmCanComps() && !(myFirm() && myFirm().kind === "development");
+  // vault's own Pro gate (requireBroker), so they are offered to whoever the
+  // server would let read them. proConfig is a `let` declared far below, so
+  // the read is guarded for the temporal dead zone.
+  const hmCanVault = () => { try { return Boolean(proConfig && proConfig.canUseVault); } catch (_) { return false; } };
+  const hmCanLeads = () => hmCanVault() && !(myFirm() && myFirm().kind === "development");
   const hmFirmKind = () => (myFirm() ? myFirm().kind || "" : "");
   function hmEl(tag, cls, text) {
     const e = document.createElement(tag);
@@ -14064,6 +14076,94 @@ async function renderMyDesk() {
     }
     return box;
   }
+  // Street photos on Home (2026-10-09, the owner: "show the actual pictures
+  // of buildings instead of the birds eye view version", then, shown the
+  // first try, "it has to be a professional picture of the building"). A card
+  // shows the building from the street, looked up BY ADDRESS (BLDGPHOTO: our
+  // own POST /api/building-photo asks Google, which turns its camera toward
+  // the address, and refuses old, far or user-uploaded photos), and keeps the
+  // aerial where there is none. The aerial is also what shows while the
+  // answer comes in, except for a building whose photo has loaded before,
+  // which skips it. Places nobody has asked about yet are asked when their
+  // card scrolls into view (hmPhotoSeen), a batch at a time. A property with
+  // no coordinates yet can still have its photo: the address is enough.
+  const hmPhotosOn = () => streetviewEnabled && typeof BLDGPHOTO !== "undefined";
+  function hmPhoto(box, ll, address, w, h, z) {
+    box._bp = null;
+    box._bpDone = false;
+    if (!hmPhotosOn() || !BLDGPHOTO.eligible(address)) return hmAerial(box, ll, w, h, z);
+    const src = BLDGPHOTO.photo(address);
+    if (src && BLDGPHOTO.known(address)) {
+      box.textContent = "";
+      box.classList.remove("none");
+      hmStreetOn(box, address, src, true, () => hmAerial(box, ll, w, h, z));
+      return box;
+    }
+    hmAerial(box, ll, w, h, z);
+    if (src) hmStreetOn(box, address, src, false);
+    else if (src === undefined) {
+      box._bp = { address, ll };
+      hmPhotoSeen().observe(box);
+    }
+    return box;
+  }
+  function hmStreetOn(box, address, src, known, onFail) {
+    box._bpDone = true;
+    BLDGPHOTO.overlay(box, address, src, {
+      known, lazy: true, onFail,
+      // The map card is wide enough to say whose picture it is; a 48px
+      // thumbnail is not, and says nothing for its aerial either.
+      onLoad: () => {
+        box.classList.remove("none");
+        if (box.classList.contains("hm-pop-ph") && !box.querySelector(".hm-credit")) box.append(hmEl("span", "hm-credit", "© Google"));
+      },
+    });
+  }
+  let hmPhotoObs = null;
+  let hmPhotoTimer = 0;
+  const hmPhotoQueue = [];
+  function hmPhotoSeen() {
+    if (hmPhotoObs) return hmPhotoObs;
+    hmPhotoObs = typeof IntersectionObserver === "function"
+      ? new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (!e.isIntersecting) return;
+          hmPhotoObs.unobserve(e.target);
+          hmPhotoQueue.push(e.target);
+        });
+        hmPhotoFlushSoon();
+      }, { rootMargin: "200px 0px" })
+      : { observe: (box) => { hmPhotoQueue.push(box); hmPhotoFlushSoon(); }, unobserve() {}, disconnect() {} };
+    return hmPhotoObs;
+  }
+  function hmPhotoFlushSoon() {
+    clearTimeout(hmPhotoTimer);
+    hmPhotoTimer = setTimeout(hmPhotoFlush, 250);
+  }
+  async function hmPhotoFlush() {
+    const boxes = hmPhotoQueue.splice(0).filter((box) => box.isConnected && box._bp);
+    if (!boxes.length) return;
+    try { await BLDGPHOTO.lookup(boxes.map((box) => box._bp)); } catch (_) { return; }
+    hmPhotoUpgrade();
+  }
+  // A lookup answers for every card showing that place, including the ones
+  // Home drew again while it was out (it redraws as its reads land).
+  function hmPhotoUpgrade() {
+    document.querySelectorAll("#homeMap .hm-th, .hm-pop-ph").forEach((box) => {
+      const bp = box._bp;
+      if (!bp || box._bpDone) return;
+      const src = BLDGPHOTO.photo(bp.address);
+      if (src === undefined) return;
+      box._bpDone = true;
+      if (src) hmStreetOn(box, bp.address, src, false);
+    });
+  }
+  // The lists are rebuilt on every draw; the cards that left must not be
+  // held by the observer.
+  function hmPhotoForget() {
+    if (hmPhotoObs) hmPhotoObs.disconnect();
+    hmPhotoQueue.length = 0;
+  }
   function hmLL(row) {
     if (!row) return null;
     if (row.lat != null && row.lng != null) return { lat: row.lat, lng: row.lng };
@@ -14089,28 +14189,13 @@ async function renderMyDesk() {
     } catch (_) { /* no deals on the map; the rest of Home stands */ }
   }
 
-  // The comps and BOV-request reads: once per page view, and never while the
-  // page is being built speculatively (instant tab switching) — the fetch
-  // guard holds only writes, and nobody should read a member's book for a
-  // page they never saw.
+  // The BOV-request and permit reads: once per page view, and never while
+  // the page is being built speculatively (instant tab switching) — the fetch
+  // guard holds only writes, and nobody should read a member's requests for
+  // a page they never saw.
   function hmWhenShown(go) {
     if (document.prerendering) document.addEventListener("prerenderingchange", go, { once: true });
     else go();
-  }
-  function hmLoadComps() {
-    if (hmCompsAsked || !hmCanComps() || !currentUser) return;
-    hmCompsAsked = true;
-    hmWhenShown(async () => {
-      try {
-        const res = await fetch("/api/vault", { credentials: "same-origin" });
-        if (res.ok) {
-          const j = await res.json();
-          hmComps = Array.isArray(j && j.comps) ? j.comps : [];
-        }
-      } catch (_) { /* the tab says it could not read them */ }
-      if (hmComps == null) hmComps = false;
-      drawHomeMap();
-    });
   }
   // New BOV requests for Today, from the Pipeline's own inbox. ?noseed=1
   // because that route WRITES on a first open (it earns the member's
@@ -14159,14 +14244,15 @@ async function renderMyDesk() {
   }
 
   function resetHomeMap() {
-    deskSites = null; deskPortfolio = null; firmMembers = []; hmComps = null; hmCompsAsked = false;
+    deskSites = null; deskPortfolio = null; firmMembers = [];
     hmLeads = null; hmLeadsAsked = false;
     hmPermits = null; hmPermitsAsked = false; hmPermitsFiled = 0; hmPermitCities = ""; hmLayerTab = "";
     hmRows = []; hmItems = []; hmSel = ""; hmFitFor = ""; hmOpenedOnce = false; hmNothing = false;
     hmGeoTried.clear();
+    hmPhotoForget();
     if (hmPinLayer) hmPinLayer.clearLayers();
     if (hmMap) hmMap.closePopup();
-    ["hmTodayRows", "hmPropRows", "hmCompRows", "hmTeam"].forEach((id) => { const e = document.getElementById(id); if (e) e.textContent = ""; });
+    ["hmTodayRows", "hmPropRows", "hmTeam"].forEach((id) => { const e = document.getElementById(id); if (e) e.textContent = ""; });
     const t = document.getElementById("hmTitle"); if (t) t.textContent = "Home";
     const s = document.getElementById("hmSub"); if (s) s.textContent = "";
     const f = document.getElementById("hmFirm"); if (f) { f.textContent = ""; f.classList.add("hidden"); }
@@ -14207,7 +14293,7 @@ async function renderMyDesk() {
     const row = hmEl("div", "hm-row p" + (hmSel && r.key === hmSel ? " on" : ""));
     row.tabIndex = 0;
     row.dataset.key = r.key;
-    const th = hmAerial(hmEl("span", "hm-th"), hmLL(r), 96, 96, 17);
+    const th = hmPhoto(hmEl("span", "hm-th"), hmLL(r), r.address, 48, 48, 17);
     const rt = hmEl("span", "hm-rt");
     rt.append(hmEl("b", null, HOMEMAP.street(r.address)),
       hmEl("small", null, [HOMEMAP.town(r.address), r.type, r.acres ? `${r.acres} acres` : (r.size ? `${Number(r.size).toLocaleString("en-US")} SF` : "")].filter(Boolean).join(" · ")));
@@ -14229,25 +14315,6 @@ async function renderMyDesk() {
     }
     row.append(th, rt, val);
     const open = () => hmSelect(r.key, {});
-    row.addEventListener("click", open);
-    row.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
-    return row;
-  }
-
-  function hmCompRow(c) {
-    const row = hmEl("div", "hm-row p");
-    row.tabIndex = 0;
-    row.dataset.key = "comp:" + c.id;
-    const th = hmAerial(hmEl("span", "hm-th"), c.lat != null && c.lng != null ? { lat: c.lat, lng: c.lng } : null, 96, 96, 17);
-    const rt = hmEl("span", "hm-rt");
-    rt.append(hmEl("b", null, c.street), hmEl("small", null, [c.place, c.type, c.size].filter(Boolean).join(" · ")));
-    const tags = hmEl("span", "hm-tags");
-    tags.append(hmChip("deal", `${c.deal} · ${c.when || "date unknown"}`), hmScope("you"));
-    rt.append(tags);
-    const val = hmEl("span", "hm-val");
-    val.append(hmEl("b", null, c.figure || c.price || "—"), hmEl("small", null, c.figure && c.price ? c.price : (c.deal === "Lease" ? "rent" : "")));
-    row.append(th, rt, val);
-    const open = () => hmSelect(row.dataset.key, { comp: c });
     row.addEventListener("click", open);
     row.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
     return row;
@@ -14283,23 +14350,17 @@ async function renderMyDesk() {
     document.getElementById("hmSub").textContent = HOMEMAP.statusLine({ items: hmItems, hasFirm: !!firm, propertyCount: hmRows.length });
 
     // Which tabs apply, and their counts.
-    const canComps = hmCanComps();
-    if (canComps && !hmCompsAsked && deskFilledFor) hmLoadComps();
-    const comps = Array.isArray(hmComps) ? hmComps.map(HOMEMAP.compRow).filter(Boolean) : [];
-    document.getElementById("hmTabComps").hidden = !canComps;
     document.getElementById("hmTabPeople").hidden = !firm;
     document.getElementById("hmNToday").textContent = hmItems.length ? String(hmItems.length) : "";
     document.getElementById("hmNProps").textContent = hmRows.length ? String(hmRows.length) : "";
-    document.getElementById("hmNComps").textContent = comps.length ? String(comps.length) : "";
 
     // An account with nothing on the map yet is shown where to start.
-    const nothing = !hmRows.length && !hmItems.length && !comps.length;
+    const nothing = !hmRows.length && !hmItems.length;
     // Today's content, not every tab's: the start card's "Add a property"
     // opens the Properties tab's own chooser, which the cards would bury.
     hmNothing = nothing;
     document.getElementById("hmStart").classList.toggle("hidden", !nothing || hmTab !== "today");
     document.getElementById("hmStartFirm").classList.toggle("hidden", !!firm);
-    document.getElementById("hmStartComps").classList.toggle("hidden", !canComps);
     // A property of the member's own opens the form that takes it, already
     // open (HOMEMAP.addHref): The Board's for a deal, Properties' for one they
     // own, a development firm's Sites tab for both.
@@ -14328,6 +14389,7 @@ async function renderMyDesk() {
     document.getElementById("hmTodayPipe").classList.toggle("hidden", !canLeads);
 
     // Properties: your deals, what you own, the firm's other buildings.
+    hmPhotoForget();
     const props = document.getElementById("hmPropRows");
     props.textContent = "";
     [["buying", "Buying", "your deals"], ["owned", "Owned and tracking", "your numbers stay private"],
@@ -14339,21 +14401,8 @@ async function renderMyDesk() {
     });
     document.getElementById("hmPropsEmpty").classList.toggle("hidden", hmRows.length > 0);
 
-    // Comps.
-    const compBox = document.getElementById("hmCompRows");
-    compBox.textContent = "";
-    comps.slice(0, 200).forEach((c) => compBox.append(hmCompRow(c)));
-    const compsEmpty = document.getElementById("hmCompsEmpty");
-    compsEmpty.textContent = hmComps === false
-      ? "Couldn't read your comps just now. Nothing has been lost. Refresh in a moment."
-      : hmComps == null ? "Reading your comps…"
-      : "No comps yet. Upload past sales and leases from a spreadsheet, PDF or photo, and they land here as pins. Only you can see them.";
-    compsEmpty.classList.toggle("hidden", comps.length > 0);
-    document.getElementById("hmCompsMore").classList.toggle("hidden", !comps.length);
-
-    // The map's switch: Comps only for a member who can read their comps,
-    // and a Permits layer left on from a last visit is read again.
-    document.getElementById("hmLayerComps").hidden = !canComps;
+    // The map's switch: a Permits layer left on from a last visit is read
+    // again.
     if (hmLayers.permits && !hmPermitsAsked && deskFilledFor) hmLoadPermits();
     hmSyncLayerButtons();
 
@@ -14387,7 +14436,6 @@ async function renderMyDesk() {
       document.getElementById(paneId).classList.toggle("hidden", k !== tab);
     });
     document.getElementById("hmStart").classList.toggle("hidden", !hmNothing || tab !== "today");
-    if (tab === "comps") hmLoadComps();
     // A tab whose rows are pins of a layer turns that layer on, once per
     // arrival on the tab (never on a redraw, which would undo the member's
     // own switch), so a row never opens a card over a map hiding its pin.
@@ -14427,6 +14475,9 @@ async function renderMyDesk() {
     // reports are Messages' now, so a saved link of that day lands there.
     // Home's own address only: index.html also serves / and reports.
     else if (h === "reports" && /^\/desk\/?$/.test(location.pathname) && !document.prerendering) location.replace("/messages#reports");
+    // Home's Comps tab was /desk#comps from 2026-10-07 to 2026-10-09; the
+    // member's comps are on their own page, so a saved link lands there.
+    else if (h === "comps" && /^\/desk\/?$/.test(location.pathname) && !document.prerendering) location.replace("/vault#book");
   }
 
   // Add a property: the firm's list (the building form, moved here) or the
@@ -14501,9 +14552,9 @@ async function renderMyDesk() {
   // ---- What the map shows: the switch (2026-10-08) --------------------------
   // hmLayers is the one record of which layers are on; hmSetLayer is its one
   // writer, and it keeps the buttons, this browser's copy and the pins in
-  // step. A Comps layer for a member who cannot read comps is never drawn,
-  // whatever an old visit stored.
-  const hmLayerOn = (layer) => Boolean(hmLayers[layer]) && (layer !== "comps" || hmCanComps());
+  // step. A Comps layer an old visit stored (before 2026-10-09) is never
+  // drawn: HOMEMAP.readLayers keeps only the layers Home has.
+  const hmLayerOn = (layer) => Boolean(hmLayers[layer]);
   function hmSyncLayerButtons() {
     document.querySelectorAll("#hmLayers button[data-layer]").forEach((b) => {
       const layer = b.dataset.layer;
@@ -14517,20 +14568,19 @@ async function renderMyDesk() {
     if (!HOMEMAP.LAYERS.includes(layer)) return;
     hmLayers = { ...hmLayers, [layer]: Boolean(on) };
     try { localStorage.setItem(HM_LAYER_KEY, JSON.stringify(hmLayers)); } catch (_) { /* this visit only */ }
-    if (on && layer === "comps") hmLoadComps();
     if (on && layer === "permits") hmLoadPermits();
     // A card open on something that just left the map closes with it.
-    if (!on && hmSel && hmMap && ((layer === "comps" && hmSel.startsWith("comp:")) || (layer === "permits" && hmSel.startsWith("permit:")))) hmMap.closePopup();
+    if (!on && hmSel && hmMap && layer === "permits" && hmSel.startsWith("permit:")) hmMap.closePopup();
     hmSyncLayerButtons();
     if (draw) hmDrawPins();
   }
   document.getElementById("hmLayers").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-layer]");
-    if (b && !b.hidden) hmSetLayer(b.dataset.layer, b.getAttribute("aria-pressed") !== "true");
+    if (b) hmSetLayer(b.dataset.layer, b.getAttribute("aria-pressed") !== "true");
   });
 
   // The pins each layer drew last, for the note and its "Show them".
-  let hmLayerPts = { comps: [], permits: [] };
+  let hmLayerPts = { permits: [] };
   // Says, on the map, why a layer that is on shows nothing where the member
   // is looking (HOMEMAP.layerNotes decides the words). Re-said as the map
   // moves, so panning to the pins takes the note away.
@@ -14540,9 +14590,7 @@ async function renderMyDesk() {
     const bounds = hmMap ? hmMap.getBounds() : null;
     const inView = (pts) => (bounds ? pts.filter((p) => bounds.contains(p)).length : pts.length);
     const notes = HOMEMAP.layerNotes({
-      layers: { comps: hmLayerOn("comps"), permits: hmLayerOn("permits") },
-      comps: Array.isArray(hmComps) ? hmComps : hmComps === false ? false : null,
-      compsPlaced: hmLayerPts.comps.length, compsInView: inView(hmLayerPts.comps),
+      layers: { permits: hmLayerOn("permits") },
       permits: hmPermits, permitsFiled: hmPermitsFiled, permitsInView: inView(hmLayerPts.permits),
       cities: hmPermitCities, windowDays: hmPermitDays,
     });
@@ -14569,15 +14617,15 @@ async function renderMyDesk() {
     if (!hmEnsureMap()) return;
     hmPinLayer.clearLayers();
     // `subject` is what this tab is about, and what the map fits to; `pts` is
-    // everything drawn. Comps and permits a member switched on are drawn
-    // around the subject, never fitted to (so a switch never yanks the map),
-    // unless they are all there is.
+    // everything drawn. Permits a member switched on are drawn around the
+    // subject, never fitted to (so a switch never yanks the map), unless they
+    // are all there is.
     const subject = [], pts = [];
     const put = (ll, mine) => { const p = [ll.lat, ll.lng]; pts.push(p); if (mine) subject.push(p); };
     const showProps = hmLayerOn("properties");
     const located = hmRows.map((r) => ({ r, ll: hmLL(r) })).filter((x) => x.ll);
     if (showProps) located.forEach(({ r, ll }) => {
-      put(ll, hmTab !== "comps");
+      put(ll, true);
       const on = r.key === hmSel;
       if (hmTab === "properties" && r.value) {
         hmPin(ll, `<span class="hm-tag ${hmPipClass(r)}${on ? " on" : ""}">${HOMEMAP.money(r.value)}</span>`, [76, 28], () => hmSelect(r.key, { from: "map" }), on ? 900 : 100);
@@ -14598,15 +14646,7 @@ async function renderMyDesk() {
           () => hmSelect(key, { item: x, from: "map" }), 1000 - x.num);
       });
     }
-    hmLayerPts = { comps: [], permits: [] };
-    if (hmLayerOn("comps") && Array.isArray(hmComps)) {
-      hmComps.map(HOMEMAP.compRow).filter((c) => c && c.lat != null && c.lng != null).slice(0, 600).forEach((c) => {
-        put({ lat: c.lat, lng: c.lng }, hmTab === "comps");
-        hmLayerPts.comps.push([c.lat, c.lng]);
-        const key = "comp:" + c.id;
-        hmPin({ lat: c.lat, lng: c.lng }, `<span class="hm-pip comp${key === hmSel ? " on" : ""}"></span>`, [14, 14], () => hmSelect(key, { comp: c, from: "map" }), key === hmSel ? 900 : 10);
-      });
-    }
+    hmLayerPts = { permits: [] };
     if (hmLayerOn("permits") && Array.isArray(hmPermits)) {
       hmPermits.forEach((p) => {
         put(p, false);
@@ -14621,7 +14661,6 @@ async function renderMyDesk() {
     // The legend names what is drawn: the property kinds while Properties is
     // on, and a line for each other layer that put pins down.
     document.querySelectorAll("#hmLegend .hm-lg-p").forEach((e) => e.classList.toggle("hidden", !showProps));
-    document.getElementById("hmLegendComps").classList.toggle("hidden", !hmLayerPts.comps.length);
     document.getElementById("hmLegendPermits").classList.toggle("hidden", !hmLayerPts.permits.length);
     // Fit once per tab (and again when the subject grows), never on a redraw
     // that only moved the selection or switched a layer around it, so the
@@ -14670,7 +14709,7 @@ async function renderMyDesk() {
     document.querySelectorAll("#homeMap .hm-row").forEach((r) => r.classList.toggle("on", !!hmSel && r.dataset.key === hmSel));
   }
 
-  function hmSelect(key, { item, comp, permit, from } = {}) {
+  function hmSelect(key, { item, permit, from } = {}) {
     hmSel = key;
     hmMarkSelected();
     if (from === "map") {
@@ -14678,12 +14717,20 @@ async function renderMyDesk() {
       if (row) row.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
     if (!hmEnsureMap()) return;
-    const r = comp || permit ? null : hmRowByKey(key);
-    const ll = permit ? { lat: permit.lat, lng: permit.lng }
-      : comp ? (comp.lat != null ? { lat: comp.lat, lng: comp.lng } : null) : (r ? hmLL(r) : item ? hmLLForAddress(item.address) : null);
+    const r = permit ? null : hmRowByKey(key);
+    const ll = permit ? { lat: permit.lat, lng: permit.lng } : (r ? hmLL(r) : item ? hmLLForAddress(item.address) : null);
     if (!ll) return;
     const card = hmEl("div");
-    card.append(hmAerial(hmEl("div", "hm-pop-ph"), ll, 260, 104, 18));
+    // The card's photo is on screen the moment it opens, so its building is
+    // asked about now rather than when an observer gets round to it.
+    const where = permit ? [permit.street, permit.city].filter(Boolean).join(", ")
+      : r ? r.address : item ? item.address : "";
+    const ph = hmPhoto(hmEl("div", "hm-pop-ph"), ll, where, 260, 104, 18);
+    card.append(ph);
+    if (ph._bp) {
+      hmPhotoObs.unobserve(ph);
+      BLDGPHOTO.lookup([ph._bp]).then(hmPhotoUpgrade, () => {});
+    }
     const b = hmEl("div", "hm-pop-b");
     if (permit) {
       // A permit's card (2026-10-08): what was filed and where, its status
@@ -14716,17 +14763,6 @@ async function renderMyDesk() {
         rec.href = permit.href; rec.target = "_blank"; rec.rel = "noopener noreferrer";
         b.append(rec);
       }
-    } else if (comp) {
-      b.append(hmEl("b", null, comp.street), hmEl("small", null, [comp.place, comp.type, comp.size].filter(Boolean).join(" · ")));
-      const tags = hmEl("span", "hm-pop-r");
-      tags.append(hmChip("deal", `${comp.deal} · ${comp.when || "date unknown"}`), hmScope("you"));
-      b.append(tags);
-      const v = hmEl("span", "hm-pop-v");
-      v.append(hmEl("b", null, comp.figure || comp.price || "—"), comp.figure && comp.price ? comp.price : "");
-      b.append(v);
-      const a = hmEl("a", "hm-pop-a", "Open in your comps →");
-      a.href = "/vault#book";
-      b.append(a);
     } else if (item && hmTab === "today") {
       b.append(hmEl("b", null, item.label + (item.who ? ` · ${item.who}` : "")), hmEl("small", null, item.place));
       b.append(hmEl("span", "hm-pop-n" + (item.n <= HOMEMAP.WEEK_DAYS ? " hot" : ""), `${HOMEMAP.shortDate(item.date)} · ${HOMEMAP.inDays(item.n)}`));
@@ -14792,11 +14828,12 @@ async function renderMyDesk() {
   }
 
   // ---- The find box ------------------------------------------------------------
-  // Searches what Home already holds (properties, comps, contacts, and the
-  // permits once the Permits layer has read them) in the browser. It offered
-  // to run a comp report on whatever was typed until 2026-10-08, when the
-  // comp report went back to its own Tools row; an address that matches
-  // nothing is pointed there instead.
+  // Searches what Home already holds (properties, contacts, and the permits
+  // once the Permits layer has read them) in the browser. It offered to run
+  // a comp report on whatever was typed until 2026-10-08, when the comp
+  // report went back to its own Tools row; an address that matches nothing
+  // is pointed there instead. It found the member's comps until 2026-10-09,
+  // when they left Home.
   function hmFindResults(q) {
     const res = document.getElementById("hmFindRes");
     const input = document.getElementById("hmFind");
@@ -14813,8 +14850,6 @@ async function renderMyDesk() {
     };
     hmRows.filter((r) => hit([r.address, r.type, HOMEMAP.stageLabel(r.stage)].join(" "))).slice(0, 5).forEach((r) =>
       add(HOMEMAP.street(r.address), [HOMEMAP.place(r.address), HOMEMAP.stageLabel(r.stage)].filter(Boolean).join(" · "), () => { setHomeTab("properties"); hmSelect(r.key, {}); }));
-    (Array.isArray(hmComps) ? hmComps : []).map(HOMEMAP.compRow).filter((c) => c && hit([c.address, c.type].join(" "))).slice(0, 4).forEach((c) =>
-      add(c.street, `Comp · ${c.deal} · ${c.when}`, () => { setHomeTab("comps"); hmSelect("comp:" + c.id, { comp: c }); }));
     (Array.isArray(firmContacts) ? firmContacts : []).filter((c) => hit([c.name, c.company, c.email].join(" "))).slice(0, 3).forEach((c) =>
       add(c.name, ["Contact", c.company].filter(Boolean).join(" · "), () => setHomeTab("people")));
     (Array.isArray(hmPermits) ? hmPermits : []).filter((p) => hit([p.street, p.city, p.type, p.what, p.number].join(" "))).slice(0, 3).forEach((p) =>
@@ -15713,6 +15748,7 @@ async function renderMyDesk() {
     });
 
     document.getElementById("firmInviteWrap").classList.toggle("hidden", !data.canManage);
+    renderFirmName(firm);
     renderFirmShop(firm);
     renderFirmAutoShare(firm);
     renderFirmBilling(firm);
@@ -16036,6 +16072,21 @@ async function renderMyDesk() {
     closeMemberCard();
   });
 
+  // The firm's name, for the people allowed to change it (POST
+  // /api/org/settings refuses everyone else). A box being typed in is left
+  // alone, so a Home refresh landing mid-edit cannot wipe the draft.
+  const firmNameOf = (v) => String(v || "").replace(/\s+/g, " ").trim();
+  function renderFirmName(firm) {
+    if (!firm) return;
+    const input = document.getElementById("firmRenameInput");
+    document.getElementById("firmNameWrap").classList.toggle("hidden", !firm.canManage);
+    if (document.activeElement !== input) input.value = firm.name || "";
+    // The button appears only for a name that differs: a greyed-out Rename
+    // sitting there all the time read as broken.
+    document.getElementById("firmRenameBtn").classList.toggle("hidden",
+      firmNameOf(input.value) === firmNameOf(firm.name));
+  }
+
   // Which shop this firm is (036). The control is offered only to somebody who
   // may actually change it: /api/org/settings refuses everyone else, and a
   // select that always 403s is worse than a sentence. Everyone still READS the
@@ -16213,6 +16264,48 @@ async function renderMyDesk() {
       firm.kind = before;
       renderFirmShop(firm);
       state.textContent = err.message || "That didn't go through.";
+    }
+  });
+
+  // Rename: the button shows only for a name that differs from the current
+  // one, and the server's cleaned answer is what goes back in the box.
+  document.getElementById("firmRenameInput").addEventListener("input", () => {
+    const firm = myFirm();
+    document.getElementById("firmRenameState").textContent = "";
+    document.getElementById("firmRenameBtn").classList.toggle("hidden",
+      !firm || firmNameOf(document.getElementById("firmRenameInput").value) === firmNameOf(firm.name));
+  });
+  document.getElementById("firmNameWrap").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const firm = myFirm();
+    const btn = document.getElementById("firmRenameBtn");
+    const input = document.getElementById("firmRenameInput");
+    const state = document.getElementById("firmRenameState");
+    // Enter with nothing changed (the button hidden) saves nothing.
+    if (!firm || btn.disabled || btn.classList.contains("hidden")) return;
+    btn.disabled = true;
+    state.textContent = "Saving…";
+    try {
+      const res = await fetch("/api/org/settings", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orgId: firm.id, name: input.value }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "That didn't go through.");
+      if (typeof body.name === "string" && body.name) firm.name = body.name;
+      input.value = firm.name;
+      input.blur();
+      btn.classList.add("hidden");
+      btn.disabled = false;
+      state.textContent = "Saved";
+      setTimeout(() => { if (state.textContent === "Saved") state.textContent = ""; }, 4000);
+      // Every place that names the firm (this panel's heading, Home's top
+      // line and its lists, the auto-share sentence) redraws from a fresh read.
+      // Caught on its own: the rename landed, so a failed redraw is no error.
+      await renderHomeFirm().catch(() => {});
+    } catch (err) {
+      state.textContent = err.message || "That didn't go through.";
+      btn.disabled = false;
     }
   });
 
@@ -21762,14 +21855,11 @@ async function renderMyDesk() {
     sel.value = typeResolution === "explicit" ? src.value : "";
     bkRefreshCount();
     bkEl("bkListText").focus();
-    // The daily allowance is said while the list is being decided, not only
-    // when a run is refused — /api/config does not carry it, this does.
+    // The per-run cap and any run already going. The "Up to N per run, N
+    // left today" line that rode here came off on 2026-10-09 (owner's call):
+    // the limits still hold, and a refusal still says why.
     if (window.BULKRUN) {
       window.BULKRUN.api("GET", "/api/bulk").then((d) => {
-        if (typeof d.leftToday === "number") {
-          bkEl("bkCapLine").textContent =
-            "Up to " + d.maxAddresses + " per run, " + d.leftToday + " left today. ";
-        }
         if (d.maxAddresses) window.BULKRUN.setMax(d.maxAddresses);
         window.BULKRUN.setJobs(d.jobs || []);
         // A run already going is attached to rather than hidden: somebody who
@@ -21823,10 +21913,6 @@ async function renderMyDesk() {
         window.BULKRUN.poll(data.job.id);
       } else if (data && data.code === "daily_limit") {
         bkEl("bkListMsg").textContent = err.message;
-        if (typeof data.left_today === "number") {
-          bkEl("bkCapLine").textContent =
-            "Up to " + (data.daily_limit || "") + " per day, " + data.left_today + " left today. ";
-        }
       } else if (err && err.status === 401) {
         openAcctModal("signin", "Sign in to value a list of addresses.");
       } else {

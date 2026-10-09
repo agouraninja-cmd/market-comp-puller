@@ -453,6 +453,18 @@ const EXPORT_COLUMNS = [
 // without its title row still has to say whether it was a sales-only search.
 const EXPORT_SUBJECT_COLUMNS = ["asking_price", "noi", "cap_rate"];
 
+// A run with no picked type (2026-10-09): nobody chooses a type any more, so
+// a run is stored as "Auto" and every address carries the type looked up for
+// it (bulk_job_items.property_type, migration 061). This is the job-level
+// word for that, and the one place that turns it into words a person reads.
+const AUTO_TYPE = "Auto";
+function isAutoType(t) {
+  return String(t || "") === AUTO_TYPE;
+}
+function jobTypeLabel(t) {
+  return isAutoType(t) ? "type found per address" : String(t || "");
+}
+
 function exportCsv(job, items, opts) {
   const j = job || {};
   const list = Array.isArray(items) ? items : [];
@@ -475,12 +487,12 @@ function exportCsv(job, items, opts) {
   lines.push(VAULT.csvCell(
     `CompNinja comp report${j.label ? " — " + j.label : ""} · ` +
     `${sum.valued} of ${sum.total} valued · ` +
-    `${j.property_type || ""} · ${j.months || ""}-month lookback · ` +
+    `${jobTypeLabel(j.property_type)} · ${j.months || ""}-month lookback · ` +
     `automated estimates, not appraisals`));
   lines.push(columns.map(VAULT.csvCell).join(","));
   for (const it of list) {
     lines.push(columns.map((c) => VAULT.csvCell(
-      c === "property_type" ? (it && it.property_type) || j.property_type || ""
+      c === "property_type" ? (it && it.property_type) || (isAutoType(j.property_type) ? "" : j.property_type) || ""
         : c === "note" ? (it && it.error) || ""
         : EXPORT_COLUMNS.includes(c) ? (it ? it[c] : "")
         : subjectCell(it, c))).join(","));
@@ -496,6 +508,9 @@ function exportCsv(job, items, opts) {
 }
 
 module.exports = {
+  AUTO_TYPE,
+  isAutoType,
+  jobTypeLabel,
   MAX_ADDRESSES,
   JOB_STATUSES,
   ITEM_STATUSES,

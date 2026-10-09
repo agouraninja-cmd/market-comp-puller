@@ -130,8 +130,11 @@ const BULK_CSS = `
 .bulk .dlab{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink);font-weight:600;line-height:1.5}
 .bulk .count{font-size:12.5px;color:var(--ink)}
 .bulk .addr{padding:14px 16px 12px;display:flex;flex-direction:column;gap:6px}
-.bulk label{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+.bulk label,.bulk .flab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
   color:var(--ink);font-weight:600;margin:0 0 2px}
+/* The found type: text, not a control, at the height of the selects beside it. */
+.bulk .found{font-size:14px;line-height:1.45;padding:2px 0;color:var(--ink);min-height:21px}
+.bulk .found .sub{font-size:12px}
 .bulk label .opt{font-weight:400;letter-spacing:0;text-transform:none}
 /* Borderless fields: the card's hairlines draw the cells, so a box inside a
    box would be two borders for one input. */
@@ -299,9 +302,15 @@ function renderBulkPageBody(boot) {
       </div>
 
       <div class="row">
+        <!-- No type to pick (2026-10-09): CompNinja looks each address up
+             (POST /api/property-type, server.js resolvePropertyType). The
+             cell stays, as text, so the row still says what a run will be
+             searched as: the found type for one address, and for a list,
+             that each row gets its own. #bulkTypeFound has one writer,
+             refreshTypeLine(). -->
         <div class="cell">
-          <label for="bulkType">Property type</label>
-          <select id="bulkType"></select>
+          <span class="flab">Property type</span>
+          <div class="found" id="bulkTypeFound">Found from the address</div>
         </div>
         <div class="cell">
           <label for="bulkMonths">Lookback</label>
@@ -488,6 +497,11 @@ function renderTotals(sum){
     return '<div><div class="k">'+esc(c[0])+'</div><div class="v">'+c[1]+"</div></div>";}).join("");
 }
 
+// A run with no picked type is stored as "Auto" (2026-10-09) and each row
+// carries its own type; this is the run's type in words. bulk.js's
+// jobTypeLabel says the same thing in the CSV.
+function typeWords(t){return t==="Auto"?"Type found per address":String(t||"");}
+
 function rowHtml(it,i){
   var val=it.status==="done"&&Number(it.value_likely)>0
     ? money(it.value_likely)+'<div class="sub">'+money(it.value_low)+" \\u2013 "+money(it.value_high)+"</div>"
@@ -514,7 +528,9 @@ function rowHtml(it,i){
   var addr=openId
     ? '<a href="'+openId+'">'+esc(it.address)+"</a>"
     : esc(it.address);
-  var lbl=it.label?'<div class="sub">'+esc(it.label)+"</div>":"";
+  // The row's own found type, on a run where each address has its own.
+  var lbl=(it.label?'<div class="sub">'+esc(it.label)+"</div>":"")+
+    (it.property_type?'<div class="sub">'+esc(it.property_type)+"</div>":"");
   // Editable on any FINISHED row — not only an unsized one. A looked-up size
   // that is wrong is the most expensive figure in the report (it is what put a
   // $52,000 mobile home at $795,000), so correcting one matters as much as
@@ -562,7 +578,7 @@ function renderJob(){
   $("bkJobDeck").className="deck";
   $("bkJobTitle").textContent=job.label||"This run";
   var focus=job.tx_focus==="sales"?"Sales only \\u00b7 ":job.tx_focus==="leases"?"Leases only \\u00b7 ":"";
-  $("bkJobMeta").innerHTML=esc(job.property_type)+" \\u00b7 "+focus+esc(String(job.months))+"-month lookback \\u00b7 "+
+  $("bkJobMeta").innerHTML=esc(typeWords(job.property_type))+" \\u00b7 "+focus+esc(String(job.months))+"-month lookback \\u00b7 "+
     statusChip(job.status)+' <span class="sub">'+job.done_count+" of "+job.total+" done</span>";
   renderTotals(summary||{total:items.length,valued:0,failed:0,low:0,likely:0,high:0});
   $("bkRows").innerHTML="<thead><tr><th></th><th>Address</th><th>Likely value</th><th>$/SF</th>"+
@@ -694,9 +710,9 @@ function renderPast(){
     if(onRunAgain&&j.status!=="running")acts.push('<a href="#" data-again="'+esc(j.id)+'">Run again</a>');
     acts.push('<a href="#" data-rename="'+esc(j.id)+'">Rename</a>');
     if(j.status!=="running")acts.push('<a href="#" data-del="'+esc(j.id)+'">Delete</a>');
-    return "<tr><td>"+'<a href="#" data-job="'+esc(j.id)+'">'+esc(j.label||j.property_type+" run")+"</a>"+
+    return "<tr><td>"+'<a href="#" data-job="'+esc(j.id)+'">'+esc(j.label||(j.property_type==="Auto"?"Comp report run":j.property_type+" run"))+"</a>"+
       '<div class="sub">'+esc(String(j.created_at||"").slice(0,10))+"</div></td>"+
-      "<td>"+esc(j.property_type)+" \\u00b7 "+esc(String(j.months))+" months</td>"+
+      "<td>"+esc(typeWords(j.property_type))+" \\u00b7 "+esc(String(j.months))+" months</td>"+
       '<td class="n">'+j.total+"</td>"+
       '<td class="n">'+val+"</td>"+
       "<td>"+statusChip(j.status)+(j.status!=="running"&&j.done_count<j.total
@@ -818,7 +834,15 @@ const BULK_JS = `
 var BULKPAGE=(function(){
 "use strict";
 var $=function(i){return document.getElementById(i);};
-var MAX=50,TYPES=[],parsedCount=0;
+var MAX=50,parsedCount=0;
+// The type found for a ONE-address run (2026-10-09). Nobody picks a type: the
+// page asks POST /api/property-type as the address is typed, shows the answer
+// in the settings row, renders that type's own fields, and sends it with the
+// run so the report is searched as exactly what the row said. A list sends no
+// type and the server looks each row up (an "Auto" run). state is idle |
+// looking | found | none; addr is the address the answer belongs to, so a
+// late answer for an address since edited away is never shown or sent.
+var FOUND={addr:"",type:"",state:"idle",evidence:""},foundTimer=null;
 var LEFT=null,DAILY=null;
 // The id of a ONE-address run started from this page load, or null. When it
 // finishes with a report, the page opens that report instead of leaving a
@@ -912,8 +936,8 @@ function refreshMore(){
   parts.push(s.asking?"asking $"+Math.round(s.asking).toLocaleString("en-US"):"no asking price");
   parts.push(s.noi&&s.capRate?"NOI and cap rate set":s.noi?"NOI set":s.capRate?"cap rate set":"no NOI");
   var dn=Object.keys(s.details).length;
-  var type=($("bulkType")||{}).value||"";
-  if(dn)parts.push(dn+" "+type+" detail"+(dn===1?"":"s"));
+  var type=currentType();
+  if(dn)parts.push(dn+(type?" "+type:"")+" detail"+(dn===1?"":"s"));
   line.textContent=parts.join(" \\u00b7 ");
 }
 
@@ -926,19 +950,81 @@ function refreshPerAddress(){
   if(note){
     note.hidden=!list;
     if(list){
-      var type=($("bulkType")||{}).value||"";
-      var keys=(BULK_SUBJECT_FIELDS[type]||[]).map(function(f){return f.key;});
+      // Each row's type is found for it, so a list's file can carry any
+      // type's own columns; a row keeps only its own type's.
       note.innerHTML="For a list, each row brings its own facts through the file's columns: "+
         "<code>size_sqft</code>, <code>asking_price</code>, <code>noi</code>, <code>cap_rate</code>"+
-        (keys.length?" and "+keys.map(function(k){return "<code>"+esc(k)+"</code>";}).join(", "):"")+
-        ". Rows without them are looked up as usual.";
+        " and any type's own details, like <code>clear_height</code> or <code>units</code>"+
+        ". Each row's property type is found for it. Rows without these columns are looked up as usual.";
     }
   }
   refreshMore();
 }
 
+// The one address a one-address run is about, or "" when the box holds a
+// list (or a header row and a row: that is a file, and the server types it).
+function oneAddress(){
+  var lines=String($("bulkText").value||"").split(/\\r?\\n/)
+    .map(function(l){return l.trim();}).filter(Boolean);
+  return lines.length===1&&/^\\d/.test(lines[0])?lines[0].slice(0,300):"";
+}
+
+// The type a one-address run will be searched as, or "" (a list, or not
+// found yet: the server then finds it).
+function currentType(){
+  return FOUND.state==="found"&&FOUND.addr===oneAddress()?FOUND.type:"";
+}
+
+// #bulkTypeFound's one writer. Text only: there is nothing here to pick.
+function refreshTypeLine(){
+  var el=$("bulkTypeFound");if(!el)return;
+  var a=oneAddress();
+  if(parsedCount>1){el.textContent="Found for each address";el.title="";return;}
+  if(!a||FOUND.addr!==a){el.textContent="Found from the address";el.title="";return;}
+  if(FOUND.state==="looking"){el.textContent="Looking it up\\u2026";el.title="";return;}
+  if(FOUND.state==="found"){
+    // Said plainly, because the row used to be a box people set: the type
+    // shown here was found for them, not left over from last time.
+    el.innerHTML=esc(FOUND.type)+'<span class="sub"> \\u00b7 found from the address</span>';
+    // Where it came from, on hover: the lookup's own one-sentence evidence.
+    el.title=FOUND.evidence?"Found: "+FOUND.evidence:"";
+    return;
+  }
+  el.textContent="Found when the report runs";el.title="";
+}
+
+// Ask once the typing settles. A memo hit answers instantly and a new address
+// costs one small lookup; the server shares a lookup already in flight, so a
+// run pressed before the answer lands does not pay for it twice.
+function scheduleTypeLookup(){
+  var a=oneAddress();
+  if(FOUND.addr===a&&FOUND.state!=="idle")return;
+  if(foundTimer){clearTimeout(foundTimer);foundTimer=null;}
+  if(!a){
+    if(FOUND.state!=="idle"){FOUND={addr:"",type:"",state:"idle",evidence:""};renderSubjectFields("");}
+    refreshTypeLine();return;
+  }
+  foundTimer=setTimeout(function(){
+    foundTimer=null;
+    if(oneAddress()!==a)return;
+    FOUND={addr:a,type:"",state:"looking",evidence:""};refreshTypeLine();
+    fetch("/api/property-type",{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({address:a})})
+      .then(function(r){return r.ok?r.json():{type:null};})
+      .catch(function(){return {type:null};})
+      .then(function(d){
+        if(FOUND.addr!==a)return;   // edited away while it was asked
+        FOUND={addr:a,type:(d&&d.type)||"",state:d&&d.type?"found":"none",evidence:(d&&d.evidence)||""};
+        renderSubjectFields(FOUND.type);
+        refreshTypeLine();
+      });
+  },700);
+}
+
 function refreshCount(){
   parsedCount=Math.min(BULKRUN.countLines($("bulkText").value),MAX);
+  scheduleTypeLookup();
+  refreshTypeLine();
   $("count").textContent=parsedCount?parsedCount+" address"+(parsedCount===1?"":"es")+" ready":"";
   // The offer applies to an empty box only, so it leaves once there is
   // anything to lose — a control that would overwrite nothing is noise, and
@@ -1023,7 +1109,6 @@ function loadList(){
   return BULKRUN.api("GET","/api/bulk").then(function(d){
     if(d.maxAddresses){MAX=d.maxAddresses;BULKRUN.setMax(MAX);}
     if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
-    if(d.types&&d.types.length&&!TYPES.length){TYPES=d.types;fillTypes();}
     BULKRUN.setJobs(d.jobs||[]);
     refreshCount();
     // Resume whatever is going: a member who closed the tab mid-run and came
@@ -1049,8 +1134,10 @@ function run(){
   // The subject rides ONLY for a one-address run: the fields describe a
   // property, and a list's rows carry their own through the upload's columns
   // (the server enforces the same rule, so this is a courtesy, not a gate).
+  // The type rides only when the page found it for this exact address;
+  // otherwise none is sent and the server finds each row's ("Auto").
   var body={
-    text:$("bulkText").value,type:$("bulkType").value,
+    text:$("bulkText").value,type:currentType(),
     months:Number($("bulkMonths").value),note:$("bulkNote").value,label:$("bulkLabel").value,
     txFocus:$("bulkFocus").value
   };
@@ -1085,10 +1172,8 @@ function runAgain(j,its){
     .map(function(it){return it.address;}).filter(Boolean).join("\\n");
   var ta=$("bulkText");
   ta.value=text;
-  var sel=$("bulkType");
-  if(j&&j.property_type&&Array.prototype.some.call(sel.options,function(o){return o.value===j.property_type;})){
-    sel.value=j.property_type;renderSubjectFields(sel.value);
-  }
+  // No type to refill: a one-address refill is looked up again (from the
+  // memo, so free) and a list's rows are typed when it runs.
   var mo=$("bulkMonths");
   if(j&&Array.prototype.some.call(mo.options,function(o){return o.value===String(j.months);}))mo.value=String(j.months);
   $("bulkFocus").value=j&&j.tx_focus?j.tx_focus:"both";
@@ -1098,12 +1183,6 @@ function runAgain(j,its){
   BULKRUN.msg("Filled in from "+((j&&j.label)||"that run")+". Change anything, then run it.",false);
   window.scrollTo({top:0,behavior:"smooth"});
   ta.focus();
-}
-
-function fillTypes(){
-  $("bulkType").innerHTML=TYPES.map(function(t){
-    return '<option value="'+esc(t)+'">'+esc(t)+"</option>";}).join("");
-  renderSubjectFields($("bulkType").value);
 }
 
 function gate(msg,actionHtml){
@@ -1124,7 +1203,7 @@ function start(boot){
   var d=boot.j||{};
   if(d.maxAddresses)MAX=d.maxAddresses;
   if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
-  TYPES=d.types||[];fillTypes();
+  renderSubjectFields("");
   BULKRUN.init({max:MAX,onState:onRunState,onList:loadList,onRunAgain:runAgain});
   BULKRUN.setJobs(d.jobs||[]);
   var live=(d.jobs||[]).filter(function(j){return j.status==="running";})[0];
@@ -1136,7 +1215,6 @@ function start(boot){
   // search and the member still presses the button.
   try{var pre=new URLSearchParams(location.search).get("address");
     if(pre&&!$("bulkText").value){$("bulkText").value=String(pre).slice(0,200);refreshCount();$("bulkText").focus();}}catch(e){}
-  $("bulkType").addEventListener("change",function(){renderSubjectFields($("bulkType").value);refreshPerAddress();});
   ["bulkSize","bulkAsking","bulkNoi","bulkCap","bulkLabel"].forEach(function(id){
     $(id).addEventListener("input",refreshMore);});
   $("useExample").addEventListener("click",function(){fillExamples();});

@@ -157,7 +157,7 @@ test("BULKRUN reads no form, so it cannot throw on the homepage", () => {
 test("a one-address run opens its report; a list, a failure, and an old run do not", () => {
   const js = MOD.BULK_JS;
   const runAt = js.indexOf("function run(){");
-  const run = js.slice(runAt, js.indexOf("function fillTypes", runAt));
+  const run = js.slice(runAt, js.indexOf("function runAgain", runAt));
   assert.ok(run.includes("d.job.total===1"), "run() decides on the job's own total, not the pasted count");
   assert.ok(run.includes("singleJob=one?d.job.id:null"), "only a one-address run is remembered");
   const hookAt = js.indexOf("function onRunState(job,items){");

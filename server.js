@@ -10657,6 +10657,10 @@ function bulkItemRow(it) {
     position: Number(it.position) || 0,
     address: it.address,
     label: it.label || null,
+    // The row's own looked-up type on a run with no picked type (061); null
+    // on a typed run's rows and on any row written before 061, where the
+    // job's type is the row's type.
+    property_type: PTYPE.normType(it.property_type) || null,
     status: it.status,
     error: it.error || null,
     value_low: n(it.value_low), value_likely: n(it.value_likely), value_high: n(it.value_high),
@@ -10848,7 +10852,7 @@ async function runBulkItem(item, ctx) {
   // start, which is the honest reading of a job somebody committed to twenty
   // minutes ago — and the alternative, re-resolving per row, would leave a
   // portfolio half-valued with nothing on screen explaining why.
-  const { user, ent, job, shared, priv } = ctx;
+  const { user, ent, job, compsFor, corpusFor } = ctx;
   const address = String(item.address || "");
   const market = marketOf(address);
   const started = Date.now();
@@ -10856,9 +10860,38 @@ async function runBulkItem(item, ctx) {
   try {
     await patchBulkItem(user.id, item.id, { status: "running" });
 
+    // The row's own type (2026-10-09). A run with no picked type ("Auto")
+    // looks each address up before its search, so a list mixing warehouses
+    // and offices values each as what it is — the silent Industrial default
+    // this replaces valued every row as a warehouse. A row nothing can type
+    // fails alone, with words the member can act on (Retry is one click).
+    let type = job.property_type;
+    if (BULK.isAutoType(type)) {
+      const found = await resolvePropertyType(address);
+      if (!found) {
+        await patchBulkItem(user.id, item.id, {
+          status: "failed", finished_at: new Date().toISOString(), market,
+          error: "Couldn't tell what kind of property this is. Retry it, or run it on its own.",
+        });
+        return;
+      }
+      type = found.type;
+      // Its own PATCH, and a failure is only logged: until migration 061 runs
+      // the column does not exist, and the row must still be valued with the
+      // type it was found to be. Only the type shown beside it waits.
+      try {
+        await patchBulkItem(user.id, item.id, { property_type: type });
+      } catch (err) {
+        console.error("bulk row type write failed (row still valued):", err.message);
+      }
+    }
+    // Per market AND type now: two rows in one market can be two types.
+    const priv = await compsFor(market, type);
+    const corpusRadiusRows = await corpusFor(type);
+
     const size = Number(item.size_sqft) > 0 ? Math.round(Number(item.size_sqft)) : null;
     const searched = await runCompSearch({
-      address, type: job.property_type, note: job.note || "",
+      address, type, note: job.note || "",
       months: job.months,
       // The same 12 the single-property form asks for. A smaller ask would
       // make a bulk row's range thinner than the report it links to — the one
@@ -10871,7 +10904,7 @@ async function runBulkItem(item, ctx) {
       // cross-checks, and they travel into the recent search's meta.subject
       // in saveBulkValuationToRecents.
       txFocus: job.tx_focus || "both", subjectSizeSqft: size,
-      subjectDetails: sanitizeSubjectDetails(job.property_type, (item.subject && item.subject.details) || {}),
+      subjectDetails: sanitizeSubjectDetails(type, (item.subject && item.subject.details) || {}),
       // The per-market vault read the worker already holds (compsForMarket):
       // a bulk row is archive-assisted on exactly the evidence its own report
       // will blend. Firm-shared comps deliberately do NOT count — an admin
@@ -10890,9 +10923,9 @@ async function runBulkItem(item, ctx) {
     // exactly as they count toward their own report.
     const report = await finishReportForViewer(searched.report, {
       ent, internal: false,
-      addressOk: address, typeOk: job.property_type, noteOk: job.note || "",
+      addressOk: address, typeOk: type, noteOk: job.note || "",
       monthsOk: job.months, sizeOk: size,
-      corpusRadiusRows: shared.corpusRadiusRows,
+      corpusRadiusRows,
       vaultRows: (priv && priv.vault) || [],
       firmCompRows: (priv && priv.firm) || [],
     });
@@ -10901,7 +10934,7 @@ async function runBulkItem(item, ctx) {
       subjectSizeSqft: size,
       asOf: Date.now(),
       note: job.note || "",
-      propertyType: job.property_type,
+      propertyType: type,
     });
 
     if (!valued) {
@@ -10910,7 +10943,7 @@ async function runBulkItem(item, ctx) {
       // it is filed and linked exactly as a valued row's is (2026-09-04).
       let unvaluedRecentId = null;
       try {
-        unvaluedRecentId = await saveBulkValuationToRecents(user, job, item, report, null);
+        unvaluedRecentId = await saveBulkValuationToRecents(user, job, item, report, null, type);
       } catch (err) {
         console.error("bulk recent save failed:", err.message);
       }
@@ -10937,7 +10970,7 @@ async function runBulkItem(item, ctx) {
     // does.
     let recentItemId = null;
     try {
-      recentItemId = await saveBulkValuationToRecents(user, job, item, report, valued);
+      recentItemId = await saveBulkValuationToRecents(user, job, item, report, valued, type);
     } catch (err) {
       // This write must never lose a valuation that has already been paid
       // for. The row keeps its numbers and simply has no link.
@@ -10995,14 +11028,16 @@ function round2(v) {
  * everybody, and a full desk must not be able to silently swallow a row from a
  * run the member already paid for.
  */
-async function saveBulkValuationToRecents(user, job, item, report, valued) {
+async function saveBulkValuationToRecents(user, job, item, report, valued, rowType) {
+  // The row's own type (an Auto run looked it up); a typed run's job type.
+  const type = rowType || job.property_type;
   const payload = {
     // The shape index.html saves, field for field. A row written here has to
     // be indistinguishable from one written by a search, or the report it
     // reopens will render differently from every other one.
     meta: {
       address: item.address,
-      type: job.property_type,
+      type,
       note: job.note || "",
       months: job.months,
       txFocus: job.tx_focus || "both",
@@ -11018,7 +11053,9 @@ async function saveBulkValuationToRecents(user, job, item, report, valued) {
         priceMax: (item.subject && item.subject.asking) || null,
         noi: (item.subject && item.subject.noi) || null,
         capRate: (item.subject && item.subject.capRate) || null,
-        details: (item.subject && item.subject.details) || {},
+        // The row's own type's keys only: an Auto run read every type's
+        // detail columns, and a clear height must not ride on an office.
+        details: sanitizeSubjectDetails(type, (item.subject && item.subject.details) || {}),
       },
       assumptions: null,
       curation: null,
@@ -11033,10 +11070,10 @@ async function saveBulkValuationToRecents(user, job, item, report, valued) {
   // dialogs is not a workflow. Passing "" falls through to the typed-address
   // rule, and a later hand-run adopts the key.
   const saved = await saveRecentSearch(user.id, {
-    address: item.address, property_type: job.property_type,
+    address: item.address, property_type: type,
     payload, verifiedKey: "",
   });
-  logEvent("recent_add", { prop_type: job.property_type, market: marketOf(item.address), source: "bulk" });
+  logEvent("recent_add", { prop_type: type, market: marketOf(item.address), source: "bulk" });
   return saved ? saved.id : null;
 }
 
@@ -11065,26 +11102,43 @@ async function runBulkJob(job, items, user, ent, opts) {
   // key present, read the placeholder, and value themselves with an empty
   // vault — a broker's own comps silently missing from two rows in three,
   // which is invisible on screen because an empty vault is a normal state.
-  const marketReads = new Map();   // market -> Promise<{ vault, firm }>
-  const compsForMarket = (market) => {
-    if (!marketReads.has(market)) {
-      marketReads.set(market, Promise.all([
-        vaultCompsForReport(user, ent, { market, type: job.property_type, months: job.months }),
-        orgCompsForReport(ent, user, { market, type: job.property_type, months: job.months }),
+  //
+  // Keyed by market AND type since 2026-10-09: an Auto run (no picked type)
+  // can hold an office and a warehouse in one market, and each must see its
+  // own type's private comps. A typed run has one type, so it reads exactly
+  // what it always did.
+  const marketReads = new Map();   // "market|type" -> Promise<{ vault, firm }>
+  const compsFor = (market, type) => {
+    const key = `${market}|${type}`;
+    if (!marketReads.has(key)) {
+      marketReads.set(key, Promise.all([
+        vaultCompsForReport(user, ent, { market, type, months: job.months }),
+        orgCompsForReport(ent, user, { market, type, months: job.months }),
       ]).then(([vault, firm]) => ({ vault, firm }))
         // Both readers already swallow their own errors and return []; this is
         // the belt for a rejection neither anticipated. A missing private comp
         // must never fail a row that would otherwise value fine.
         .catch(() => ({ vault: [], firm: [] })));
     }
-    return marketReads.get(market);
+    return marketReads.get(key);
   };
-  const shared = { corpusRadiusRows: [] };
+  // The radius blend's whole-type corpus read, once per TYPE in the run.
+  const corpusReads = new Map();   // type -> Promise<rows>
+  const corpusFor = (type) => {
+    if (!CORPUS_RADIUS) return Promise.resolve([]);
+    if (!corpusReads.has(type)) {
+      corpusReads.set(type, corpusRowsForType(type, 2000).catch((err) => {
+        console.error("bulk radius corpus read failed:", err.message);
+        return [];
+      }));
+    }
+    return corpusReads.get(type);
+  };
 
   try {
-    if (CORPUS_RADIUS) {
-      shared.corpusRadiusRows = await corpusRowsForType(job.property_type, 2000);
-    }
+    // A typed run reads its one type's corpus up front, as it always did; an
+    // Auto run reads each type the first time a row turns out to be one.
+    if (!BULK.isAutoType(job.property_type)) await corpusFor(job.property_type);
   } catch (err) {
     console.error("bulk radius corpus read failed:", err.message);
   }
@@ -11097,8 +11151,7 @@ async function runBulkJob(job, items, user, ent, opts) {
       const item = queue.shift();
       if (!item) return;
       try {
-        const priv = await compsForMarket(marketOf(String(item.address || "")));
-        await runBulkItem(item, { user, ent, job, shared, priv });
+        await runBulkItem(item, { user, ent, job, compsFor, corpusFor });
       } catch (err) {
         // runBulkItem writes its own failures; this catches a failure to
         // WRITE one. One bad row never stops the rest of the list — the same
@@ -23847,10 +23900,22 @@ const server = http.createServer((req, res) =>
           }
 
           const { text, type, months, note, label, txFocus, subject } = JSON.parse(body || "{}");
-          const typeOk = VAULT.PROPERTY_TYPES.find((t) => t === String(type));
+          // No picked type (2026-10-09): the run is "Auto" and the worker looks
+          // up each address's own type before its search (runBulkItem), so a
+          // list mixing warehouses and offices values each as what it is. A
+          // sent type is still honored — a one-address run whose type the page
+          // already found sends it, and so does an older page — but an unknown
+          // one is refused by name, never coerced.
+          const typeSent = String(type || "").trim();
+          const typeOk = !typeSent || BULK.isAutoType(typeSent)
+            ? BULK.AUTO_TYPE
+            : VAULT.PROPERTY_TYPES.find((t) => t === typeSent);
           if (!typeOk) {
-            return sendJson(res, 400, { error: `Pick a property type: ${VAULT.PROPERTY_TYPES.join(", ")}.` });
+            return sendJson(res, 400, {
+              error: `Unknown property type "${typeSent.slice(0, 40)}". Leave it out and each address's type is found for you, or use one of: ${VAULT.PROPERTY_TYPES.join(", ")}.`,
+            });
           }
+          const autoType = BULK.isAutoType(typeOk);
           // The single form's Focus select, for the whole job (2026-09-04).
           // Refused by name rather than defaulted: the no-fallthrough rule.
           const txOk = BULK.normalizeTxFocus(txFocus);
@@ -23860,7 +23925,10 @@ const server = http.createServer((req, res) =>
           const monthsOk = ENT.clampLookback(months, ent);
           const noteOk = String(note || "").trim().slice(0, 200);
           const labelOk = String(label || "").trim().slice(0, 120);
-          const detailKeys = TYPE_COMP_FIELDS[typeOk].fields;
+          // An Auto run cannot know a row's type yet, so it reads every type's
+          // detail columns; the worker keeps only the row's own type's keys
+          // once that type is found (sanitizeSubjectDetails, as below).
+          const detailKeys = autoType ? ALL_TYPE_COMP_FIELDS : TYPE_COMP_FIELDS[typeOk].fields;
 
           const parsed = BULK.parseAddressList(text, { max: ent.bulkMaxAddresses, detailKeys });
           if (!parsed.rows.length) {
@@ -23883,7 +23951,7 @@ const server = http.createServer((req, res) =>
             if (sz > 0 && !one.size_sqft) one.size_sqft = Math.round(sz);
           }
           for (const r of parsed.rows) {
-            if (r.subject && r.subject.details) {
+            if (r.subject && r.subject.details && !autoType) {
               const clean = sanitizeSubjectDetails(typeOk, r.subject.details);
               if (Object.keys(clean).length) r.subject.details = clean; else delete r.subject.details;
               if (!Object.keys(r.subject).length) r.subject = null;
@@ -24200,7 +24268,8 @@ const server = http.createServer((req, res) =>
             // browser. updated_at is when this report was written.
             asOf: Date.parse(saved.updated_at || saved.created_at || "") || Date.now(),
             note: job.note || "",
-            propertyType: job.property_type,
+            // The row's own type on an Auto run, where the job has none.
+            propertyType: PTYPE.normType(item.property_type) || PTYPE.normType(saved.property_type) || job.property_type,
           });
           if (!valued) {
             return sendJson(res, 409, { error: "That report has no priced sale comps to value against." });
@@ -24326,8 +24395,11 @@ const server = http.createServer((req, res) =>
         });
         // The type's detail keys become columns after the classic sixteen
         // (bulk.js's EXPORT_SUBJECT_COLUMNS note); the file says its focus too.
+        // An Auto run's rows can be any type, so its file carries every type's
+        // detail columns; a row fills only its own type's.
         const spec = TYPE_COMP_FIELDS[job.property_type];
-        res.end(BULK.exportCsv(job, items.map(bulkItemRow), { detailKeys: spec ? spec.fields : [] }));
+        const detailKeys = BULK.isAutoType(job.property_type) ? ALL_TYPE_COMP_FIELDS : (spec ? spec.fields : []);
+        res.end(BULK.exportCsv(job, items.map(bulkItemRow), { detailKeys }));
       })().catch((err) => {
         console.error("bulk export error:", err.message);
         sendJson(res, 500, { error: "Could not build that file." });

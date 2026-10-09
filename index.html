@@ -3385,18 +3385,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </div>
           <div class="rd-row">
             <div class="rd-cell">
-              <label class="rd-lab" for="bkListType">Property type</label>
-            <!-- Its own required select rather than the form's hidden
-                 #propertyType. A run needs ONE type for every row, and
-                 typeResolution may still be null (nothing detected, nothing
-                 remembered) — there is no confirm dialog on this path to
-                 resolve it. Deliberately does NOT call setTypeProgrammatic:
-                 that resets the lookback and rebuilds the subject fields,
-                 which belong to the single-address form and must come back
-                 untouched when list mode is left. -->
-              <select id="bkListType" class="rd-in">
-                <option value="">Choose a property type…</option>
-              </select>
+              <span class="rd-lab">Property type</span>
+            <!-- No type to pick (2026-10-09): a list runs with none and the
+                 server looks each row up (an "Auto" run; server.js
+                 runBulkItem), so a list mixing warehouses and offices values
+                 each as what it is. Text, not a control. -->
+              <div id="bkListTypeLine" class="text-sm text-[#1A2433] py-1">Found for each address</div>
               <div id="bkListMsg" class="text-xs mt-1.5 text-[#B91C1C]"></div>
             </div>
           </div>
@@ -10120,6 +10114,45 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // (`typeResolution` itself is declared up beside `propertyTypeSel` — see the
   // temporal-dead-zone note there.)
 
+  // The AI lookup (2026-10-09): nobody picks a type any more, so when the map
+  // cannot say what a building is, the server finds it from the address
+  // (POST /api/property-type; server.js resolvePropertyType, rules in
+  // property-type.js). ONE request per address, shared by the address
+  // listener and the confirm dialog, so the dialog usually opens on an answer
+  // the listener already has and the two never pay twice. Answers null on a
+  // refusal, a failure or "nothing could tell", never throws; a null is not
+  // kept, so a blip is asked again next time.
+  const typeLookupCache = new Map();
+  let typeFoundEvidence = "";
+  function lookupPropertyType(address) {
+    const key = String(address || "").trim().toLowerCase();
+    if (!/^\d/.test(key)) return Promise.resolve(null);
+    if (typeLookupCache.has(key)) return typeLookupCache.get(key);
+    const p = fetch("/api/property-type", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-app-password": getStoredPassword() },
+      body: JSON.stringify({ address: String(address).trim() }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => (d && d.type && [...propertyTypeSel.options].some((o) => o.value === d.type))
+        ? { type: d.type, confidence: String(d.confidence || ""), evidence: String(d.evidence || "") }
+        : null)
+      .catch(() => null);
+    typeLookupCache.set(key, p);
+    p.then((v) => { if (!v) typeLookupCache.delete(key); });
+    return p;
+  }
+
+  // The lookup's answer becomes the form's type. "found", like "detected", is
+  // a machine state about ONE address: it resets on an address change, and a
+  // human's pick ("explicit") always outranks it.
+  function applyFoundType(found) {
+    setTypeProgrammatic(found.type);
+    typeResolution = "found";
+    typeFoundEvidence = found.evidence || "";
+    renderTypeStatus();
+  }
+
   // Mirrors the manual-change path: a type change without its recommended
   // lookback and its own subject fields was the bug applyDetectedType fixed.
   //
@@ -10207,6 +10240,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const v = propertyTypeSel.value;
     if (typeResolution === "detected") label.textContent = "Property type: " + v + " (detected).";
     else if (typeResolution === "remembered") label.textContent = "Property type: " + v + ", from your last run of this address.";
+    else if (typeResolution === "found") {
+      label.textContent = "Property type: " + v + " (found from the address).";
+      // Where it came from, on hover: the lookup's one-sentence evidence.
+      label.title = typeFoundEvidence ? "Found: " + typeFoundEvidence : "";
+    }
     else label.textContent = "Property type: " + v + ".";
     el.appendChild(label);
     el.appendChild(makeTypeChangeButton());
@@ -10297,7 +10335,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // anything about this one, so both machine states clear here and let this
     // address's own memory, then its own detection, answer again. Only
     // "explicit" (a human's pick) survives the edit.
-    if (typeResolution === "detected" || typeResolution === "remembered") { typeResolution = null; renderTypeStatus(); }
+    if (typeResolution === "detected" || typeResolution === "remembered" || typeResolution === "found") { typeResolution = null; renderTypeStatus(); }
     if (typeResolution === "explicit") return;
     // Above BOTH paths below, not just detection: either one can change the
     // type, and a type change re-renders the subject-fields container from
@@ -10326,7 +10364,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (typeResolution === "explicit" || searchInFlight) return;
     if (Object.keys(readSubjectDetails()).length) return;
     if (document.getElementById("address").value.trim() !== addr) return;
-    if (!guess || !guess.type) return logTypeAutofill(addr, (guess && guess.outcome) || "failed", "");
+    if (!guess || !guess.type) {
+      logTypeAutofill(addr, (guess && guess.outcome) || "failed", "");
+      // The map could not say, so ask the server (2026-10-09). Started here,
+      // on blur, so the answer is usually in before the confirm dialog opens;
+      // the dialog awaits the same request if it is not. Every guard is
+      // re-checked after the await, for the reason the detection's are.
+      const found = await lookupPropertyType(addr);
+      if (!found || typeResolution !== null || searchInFlight) return;
+      if (Object.keys(readSubjectDetails()).length) return;
+      if (document.getElementById("address").value.trim() !== addr) return;
+      applyFoundType(found);
+      return logTypeAutofill(addr, "found", found.type);
+    }
     if (guess.type === propertyTypeSel.value) {
       // Right answer already selected. Under type-at-verification this IS a
       // resolution: the building's own OSM tag agrees, so the dialog need
@@ -21479,9 +21529,97 @@ async function renderMyDesk() {
   let dialogResolvedBy = null;
   let dialogResolvedType = "";
 
-  function setConfirmRunEnabled(on) {
+  // `hint` (optional) replaces the line under the type: "" holds the run with
+  // no line at all, which is how the dialog waits on the lookup — it is not
+  // asking anything, so it must not say "pick".
+  function setConfirmRunEnabled(on, hint) {
     document.getElementById("confirmRunBtn").disabled = !on;
-    document.getElementById("confirmTypeHint").classList.toggle("hidden", on);
+    const h = document.getElementById("confirmTypeHint");
+    if (typeof hint === "string" && hint) h.textContent = hint;
+    h.classList.toggle("hidden", on || hint === "");
+  }
+
+  // The resolved row: the type, where it came from, and an optional "change".
+  // One writer for the dialog's settled state, whether the type was settled
+  // before the dialog opened or by the lookup while it was open.
+  function showConfirmTypeResolved() {
+    const typeResolvedEl = document.getElementById("confirmTypeResolved");
+    document.getElementById("confirmTypeButtons").classList.add("hidden");
+    typeResolvedEl.classList.remove("hidden");
+    typeResolvedEl.textContent = "";
+    const t = document.createElement("span");
+    // A remembered type gets its own parenthetical: the detected wording
+    // names a map lookup, and claiming one that never ran would misdescribe
+    // the evidence right where the visitor is checking it.
+    const provenance = typeResolution === "detected" ? " (detected from the building's map data) "
+      : typeResolution === "remembered" ? " (your usual type for this address) "
+      : typeResolution === "found" ? " (found from the address) "
+      : " ";
+    t.textContent = propertyTypeSel.value + provenance;
+    if (typeResolution === "found" && typeFoundEvidence) t.title = "Found: " + typeFoundEvidence;
+    const change = document.createElement("button");
+    change.type = "button";
+    change.textContent = "change";
+    change.className = "text-sm text-[#5A6473] underline hover:text-[#1A2433]";
+    change.addEventListener("click", () => {
+      setConfirmRunEnabled(false, "Pick the property type to run the report.");
+      showConfirmTypeButtons(propertyTypeSel.value);
+    });
+    typeResolvedEl.appendChild(t);
+    typeResolvedEl.appendChild(change);
+    setConfirmRunEnabled(true);
+  }
+
+  // Nothing settled the type before the dialog opened (2026-10-09): look it
+  // up instead of asking. The run waits on the answer — a few seconds, and
+  // usually none, since the address listener started the same request on
+  // blur. "pick it yourself" is there for whoever would rather not wait; the
+  // six buttons are otherwise only the fallback for an address nothing could
+  // type. `confirmLookupFor` ties a late answer to the dialog that asked: a
+  // dialog closed, reopened on another address, or switched to picking by
+  // hand never has its state overwritten by it.
+  let confirmLookupFor = null;
+  function showConfirmTypeLookup(typed) {
+    const key = pendingConfirmKey;
+    confirmLookupFor = key;
+    const resolvedEl = document.getElementById("confirmTypeResolved");
+    document.getElementById("confirmTypeButtons").classList.add("hidden");
+    resolvedEl.classList.remove("hidden");
+    resolvedEl.textContent = "";
+    const t = document.createElement("span");
+    t.textContent = "Finding it from the address\u2026 ";
+    const pick = document.createElement("button");
+    pick.type = "button";
+    pick.id = "confirmTypePickSelf";
+    pick.textContent = "pick it yourself";
+    pick.className = "text-sm font-normal text-[#5A6473] underline hover:text-[#1A2433]";
+    pick.addEventListener("click", () => {
+      confirmLookupFor = null;
+      setConfirmRunEnabled(false, "Pick the property type to run the report.");
+      showConfirmTypeButtons(null);
+    });
+    resolvedEl.appendChild(t);
+    resolvedEl.appendChild(pick);
+    setConfirmRunEnabled(false, "");
+    lookupPropertyType(typed).then((found) => {
+      if (confirmLookupFor !== key || pendingConfirmKey !== key) return;
+      confirmLookupFor = null;
+      if (found && typeResolution === null) {
+        applyFoundType(found);
+        dialogAskedType = false;   // the lookup settled it, not the dialog
+        dialogResolvedBy = "found";
+        dialogResolvedType = found.type;
+        logTypeAutofill(typed, "found", found.type);
+        const hadFocus = document.activeElement === pick;
+        showConfirmTypeResolved();
+        if (hadFocus || document.activeElement === document.body) document.getElementById("confirmRunBtn").focus();
+      } else if (typeResolution === null) {
+        setConfirmRunEnabled(false, "We couldn't tell what kind of property this is. Pick its type to run the report.");
+        showConfirmTypeButtons(null);
+        const firstType = document.getElementById("confirmTypeButtons").querySelector("button");
+        if (firstType) firstType.focus();
+      }
+    });
   }
 
   function buildTypeButtons(wrap, selected, onPick) {
@@ -21548,36 +21686,18 @@ async function renderMyDesk() {
     }
 
     // Property type: resolved shows a passive line with a change door;
-    // unresolved shows the six buttons and holds the run button until one
-    // is picked — the whole point is that nothing silently runs Industrial.
+    // unresolved is LOOKED UP (2026-10-09), never asked — the six buttons are
+    // only the fallback for an address nothing could type. Either way nothing
+    // silently runs Industrial: the run waits on a real answer.
     dialogTypePick = null;
     dialogAskedType = typeResolution === null;
     dialogResolvedBy = typeResolution;
     dialogResolvedType = propertyTypeSel.value;
-    const typeResolvedEl = document.getElementById("confirmTypeResolved");
-    const typeButtonsEl = document.getElementById("confirmTypeButtons");
-    typeButtonsEl.classList.add("hidden");
+    document.getElementById("confirmTypeButtons").classList.add("hidden");
     if (typeResolution === null) {
-      showConfirmTypeButtons(null);
+      showConfirmTypeLookup(typed);
     } else {
-      typeResolvedEl.classList.remove("hidden");
-      typeResolvedEl.textContent = "";
-      const t = document.createElement("span");
-      // A remembered type gets its own parenthetical: the detected wording
-      // names a map lookup, and claiming one that never ran would misdescribe
-      // the evidence right where the visitor is checking it.
-      const provenance = typeResolution === "detected" ? " (detected from the building's map data) "
-        : typeResolution === "remembered" ? " (your usual type for this address) "
-        : " ";
-      t.textContent = propertyTypeSel.value + provenance;
-      const change = document.createElement("button");
-      change.type = "button";
-      change.textContent = "change";
-      change.className = "text-sm text-[#5A6473] underline hover:text-[#1A2433]";
-      change.addEventListener("click", () => showConfirmTypeButtons(propertyTypeSel.value));
-      typeResolvedEl.appendChild(t);
-      typeResolvedEl.appendChild(change);
-      setConfirmRunEnabled(true);
+      showConfirmTypeResolved();
     }
 
     confirmModal.classList.remove("hidden");
@@ -21612,8 +21732,12 @@ async function renderMyDesk() {
     // the first type button stands in — it is the thing being asked for.
     const runBtn = document.getElementById("confirmRunBtn");
     if (!noMatch && runBtn.disabled) {
+      // While the type is being looked up, "pick it yourself" is the one
+      // thing to do; the lookup moves focus to Run when it lands.
       const firstType = document.getElementById("confirmTypeButtons").querySelector("button");
+      const pickSelf = document.getElementById("confirmTypePickSelf");
       if (firstType) firstType.focus();
+      else if (pickSelf) pickSelf.focus();
       else runBtn.focus();
     } else {
       document.getElementById(noMatch ? "confirmEditBtn" : "confirmRunBtn").focus();
@@ -21625,6 +21749,7 @@ async function renderMyDesk() {
     if (confirmMapInstance) { confirmMapInstance.remove(); confirmMapInstance = null; }
     pendingConfirmKey = null;
     // Escape or "edit address" resolves nothing, so the next submit asks again.
+    confirmLookupFor = null;
     dialogTypePick = null;
     dialogAskedType = false;
     dialogResolvedBy = null;
@@ -21662,6 +21787,12 @@ async function renderMyDesk() {
       // Undo link.
       else if (dialogResolvedBy === "detected" && dialogTypePick !== dialogResolvedType) {
         logTypeAutofill(document.getElementById("address").value.trim(), "undone", dialogResolvedType);
+      }
+      // The lookup's own correction signal (2026-10-09), counted the same way:
+      // a person overturning the type the AI found, logged as what it found.
+      // This is the live accuracy figure the 90% target is checked against.
+      else if (dialogResolvedBy === "found" && dialogTypePick !== dialogResolvedType) {
+        logTypeAutofill(document.getElementById("address").value.trim(), "lookup_changed", dialogResolvedType);
       }
     }
     closeConfirmModal();
@@ -21847,12 +21978,6 @@ async function renderMyDesk() {
     // property types feeds every picker on the page. Preselected only from an
     // EXPLICIT resolution — a detection or a recall was made about one address
     // and says nothing about a list of fifty.
-    const src = document.getElementById("propertyType");
-    const sel = bkEl("bkListType");
-    sel.innerHTML = '<option value="">Choose a property type…</option>' +
-      Array.prototype.map.call(src.options, (o) =>
-        '<option value="' + o.value + '">' + o.text + "</option>").join("");
-    sel.value = typeResolution === "explicit" ? src.value : "";
     bkRefreshCount();
     bkEl("bkListText").focus();
     // The per-run cap and any run already going. The "Up to N per run, N
@@ -21883,17 +22008,15 @@ async function renderMyDesk() {
   // by a deliberate click: a paste is not consent to spend.
   async function runBulkList() {
     const text = bkEl("bkListText").value;
-    const type = bkEl("bkListType").value;
     const n = window.BULKRUN ? window.BULKRUN.countLines(text) : 0;
     if (!n) { bkEl("bkListMsg").textContent = "No addresses in that list."; return; }
-    if (!type) { bkEl("bkListMsg").textContent = "Pick a property type — every address in a run shares one."; return; }
     bkEl("bkListMsg").textContent = "";
     const btn = document.getElementById("submitBtn");
     btn.disabled = true;
     try {
+      // No type: the server finds each row's (an "Auto" run).
       const d = await window.BULKRUN.api("POST", "/api/bulk", {
         text,
-        type,
         months: selectedLookbackMonths(),
         note: document.getElementById("marketNote").value.trim(),
         label: "",
@@ -21953,7 +22076,6 @@ async function renderMyDesk() {
 
   bkEl("bkListText").addEventListener("input", bkRefreshCount);
   bkEl("bkListBack").addEventListener("click", exitListMode);
-  bkEl("bkListType").addEventListener("change", () => { bkEl("bkListMsg").textContent = ""; });
 
   // disabled submit button alone can't stop a double fire.
   let searchInFlight = false;

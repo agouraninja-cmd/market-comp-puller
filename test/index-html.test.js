@@ -1387,8 +1387,33 @@ test("the form does not ask you to pick a property type before you have an addre
   assert.doesNotMatch(fn, /chosen when you run the report/);
   assert.doesNotMatch(fn, /pick it now/);
   assert.match(fn, /makeTypeChangeButton\(\)/);
-  // The confirm dialog is still the place an unresolved type is asked.
-  assert.match(html, /if \(typeResolution === null\) \{\s*showConfirmTypeButtons\(null\);/);
+  // The confirm dialog LOOKS an unresolved type up (2026-10-09) rather than
+  // asking; the six buttons are only the fallback for an address nothing
+  // could type.
+  assert.match(html, /if \(typeResolution === null\) \{\s*showConfirmTypeLookup\(typed\);/);
+});
+
+test("nobody is asked to pick a type: the dialog looks it up, and asks only when nothing could tell", () => {
+  const start = html.indexOf("function showConfirmTypeLookup(typed)");
+  const end = html.indexOf("function openConfirmModal(", start);
+  assert.ok(start >= 0 && end > start, "showConfirmTypeLookup moved");
+  const fn = html.slice(start, end);
+  assert.match(fn, /lookupPropertyType\(typed\)/, "the dialog asks the address lookup");
+  assert.match(fn, /setConfirmRunEnabled\(false, ""\)/, "the run waits on the lookup without a 'pick' line");
+  assert.match(fn, /confirmLookupFor !== key \|\| pendingConfirmKey !== key/,
+    "a late answer must never land in a dialog that closed or moved on");
+  assert.match(fn, /applyFoundType\(found\)/);
+  assert.match(fn, /We couldn't tell what kind of property this is\. Pick its type to run the report\./,
+    "the buttons are the fallback, and say why they are there");
+  // The lookup is one request per address, shared with the address listener.
+  const lk = html.slice(html.indexOf("function lookupPropertyType(address)"), html.indexOf("function applyFoundType(found)"));
+  assert.match(lk, /typeLookupCache\.has\(key\)/);
+  assert.match(lk, /"\/api\/property-type"/);
+  assert.match(lk, /if \(!v\) typeLookupCache\.delete\(key\)/, "a failed lookup is asked again, not remembered");
+  // "found" is a machine state about one address: it resets on an address edit.
+  assert.match(html, /typeResolution === "detected" \|\| typeResolution === "remembered" \|\| typeResolution === "found"\) \{ typeResolution = null;/);
+  // A person overturning the found type is the live accuracy signal.
+  assert.match(html, /dialogResolvedBy === "found" && dialogTypePick !== dialogResolvedType[\s\S]{0,200}"lookup_changed"/);
 });
 
 test("once pins settle, the hero re-runs so distance weighting actually moves the range", () => {

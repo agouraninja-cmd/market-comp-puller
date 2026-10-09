@@ -342,6 +342,11 @@ test("list mode does not disturb the single-address form's type machinery", () =
   // should do; writing it is what would leak list mode into the other form.
   assert.equal(/typeResolution\s*=(?!=)/.test(enter), false,
     "enterListMode assigns typeResolution");
-  assert.ok(enter.includes('typeResolution === "explicit"'),
-    "the type is preselected from something other than an explicit resolution");
+  // No type box at all since 2026-10-09: a list runs with no type and the
+  // server finds each row's, so list mode reads the form's type nowhere.
+  assert.equal(INDEX.includes('bkEl("bkListType")'), false, "list mode's type select is gone");
+  const runAt = INDEX.indexOf("async function runBulkList()");
+  const runFn = INDEX.slice(runAt, INDEX.indexOf("\n  }\n", runAt));
+  assert.equal(/\btype\b\s*[,:]/.test(runFn.slice(runFn.indexOf('"/api/bulk"'))), false,
+    "a list run must send no type, so the server types each row");
 });

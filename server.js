@@ -27150,7 +27150,11 @@ const server = http.createServer((req, res) =>
       try {
         if (rateLimited("tafill:" + clientIp(req), 60)) return;
         const p = JSON.parse(body || "{}");
-        const OUTCOMES = ["applied", "agreed", "no_address_match", "ambiguous", "failed", "dialog_pick", "undone"];
+        // "found" is the address lookup settling the type (2026-10-09) and
+        // "lookup_changed" a person overturning it in the confirm dialog: the
+        // live accuracy figure the lookup's 90% target is checked against.
+        const OUTCOMES = ["applied", "agreed", "no_address_match", "ambiguous", "failed", "dialog_pick", "undone",
+          "found", "lookup_changed"];
         const outcome = OUTCOMES.indexOf(String(p.outcome || "")) >= 0 ? String(p.outcome) : null;
         if (!outcome) return;
         const TYPES = ["Industrial", "Office", "Retail", "Multifamily", "Land", "Residential"];

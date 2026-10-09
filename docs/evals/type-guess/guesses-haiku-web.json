@@ -1,0 +1,512 @@
+[
+ {
+  "id": "t001",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "A sale record for 3940 Shirley Drive describes a 1973 multi-tenant shallow-bay warehouse of about 134,000 SF."
+ },
+ {
+  "id": "t002",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "6759 S Supply Way is a 31,500 SF industrial building (I-1 zoned, built 1997) leased to A-1 Industrial Supply, per the broker flyer."
+ },
+ {
+  "id": "t003",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "A sale record for 9560 Heartland Court describes a 350,000 SF industrial replenishment facility leased to Cardinal Health, though its ZIP code was not confirmed."
+ },
+ {
+  "id": "t004",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "A Bluehive provider directory lists suite #100 at 2501 Avenue J, which points to a professional or medical office tenant; no building record was found."
+ },
+ {
+  "id": "t005",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Traded records a 436,424 SF Class A distribution center at 11119 Juniper Ave, sold October 2025 and fully leased to Cencora."
+ },
+ {
+  "id": "t006",
+  "type": "Industrial",
+  "confidence": "medium",
+  "evidence": "No record for 16851 itself, but the neighboring Blue Ridge Commerce Dr addresses are large logistics warehouse and office/warehouse buildings."
+ },
+ {
+  "id": "t007",
+  "type": "Residential",
+  "confidence": "low",
+  "evidence": "Only a Redfin street directory lists this address, with typical lots of about 3,450 SF and taxes near $700 a year on Ewing St, which suggests a small house."
+ },
+ {
+  "id": "t008",
+  "type": "Retail",
+  "confidence": "medium",
+  "evidence": "An I-15 Exit 48 guide pairs 4080 N Pecos Rd with Famous Dave's restaurant, suggesting a restaurant tenant; no property record was found."
+ },
+ {
+  "id": "t009",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "5106 Tradeport Dr is AAON's roughly 787,000 SF manufacturing facility on 35.7 acres in Memphis, bought for $63M in 2024."
+ },
+ {
+  "id": "t010",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Commercial listings for 1938 E Franklin Rd show an 11,600 SF industrial flex building (built 2014, 16 ft clear, roll-up doors) for sale."
+ },
+ {
+  "id": "t011",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Listed as Vantage Industrial, a roughly 103,459 SF warehouse and distribution building on 5.9 acres in Nampa."
+ },
+ {
+  "id": "t012",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Listings for 2319 E Locust Ct describe a roughly 37,000 SF warehouse with dock-high doors offered for sale."
+ },
+ {
+  "id": "t013",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "3302 W Washington St is a roughly 101,800 SF vacant industrial building on 5.2 acres with dock-high doors, sold to IDI Logistics."
+ },
+ {
+  "id": "t014",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "No record found for 2078 Rustin Ave; a City of Riverside contact office is listed at 2085 Rustin Ave in the same block range."
+ },
+ {
+  "id": "t015",
+  "type": "Land",
+  "confidence": "low",
+  "evidence": "No record found for 125 Feldspar Dr; the closest parcel, 147 Feldspar Dr, is about 128 acres of vacant land in a planned industrial development."
+ },
+ {
+  "id": "t016",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Foxfield bought the 2975 Northwoods Pkwy site in Feb 2026 for shallow-bay industrial redevelopment, on a parcel with an existing roughly 86,000 SF warehouse."
+ },
+ {
+  "id": "t017",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Lee & Associates materials for 1345 E State St describe a 28,640 SF industrial building in Eagle, ID, later reported sold in June 2026."
+ },
+ {
+  "id": "t018",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Traded and Colliers records describe 1264 N Wilson Rd, a two-building 86,389 SF light industrial park that sold in October 2025."
+ },
+ {
+  "id": "t019",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "First Fence USA's showroom and office is at 429 W Kennedale Pkwy on a corridor with industrial storage nearby; the listing's property type is unreliable."
+ },
+ {
+  "id": "t020",
+  "type": "Residential",
+  "confidence": "low",
+  "evidence": "No record found for 13201 Dahlia St; Daylilly St, another flower-named street in ZIP 92337, is residential, so this is a guess."
+ },
+ {
+  "id": "t021",
+  "type": "Land",
+  "confidence": "low",
+  "evidence": "Xome lists 12451 W Overland Rd for sale at $556,000 as commercial property with no building details; it may be part of a larger parcel."
+ },
+ {
+  "id": "t022",
+  "type": "Land",
+  "confidence": "high",
+  "evidence": "A Commercial Exchange listing describes 12535 W Overland Rd as 5.594 acres of land with storage-facility plans and a grading permit, offered for sale."
+ },
+ {
+  "id": "t023",
+  "type": "Land",
+  "confidence": "medium",
+  "evidence": "Listing sites classify 3353 S Federal Way as vacant land of about 0.53 acres offered for sale or ground lease, though a stale 1965 build year conflicts."
+ },
+ {
+  "id": "t024",
+  "type": "Land",
+  "confidence": "high",
+  "evidence": "Listing sites classify 5033 W State St as vacant land of about 0.54 acres, already cleared and approved for an 18-unit apartment project."
+ },
+ {
+  "id": "t025",
+  "type": "Land",
+  "confidence": "medium",
+  "evidence": "A 2025 Lee & Associates listing markets 408 N Allumbaugh as a 0.94-acre fully entitled development site, though a directory lists a clinic there and the current status is unverified."
+ },
+ {
+  "id": "t026",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "1470 Sheridan Rd NE is Briarhill Apartment Homes, a 292-unit rental community in 15 buildings built in 1989."
+ },
+ {
+  "id": "t027",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "A for-sale listing titled with this exact address describes a 12-unit complex made of three fourplexes."
+ },
+ {
+  "id": "t028",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Rental listings show 2-bedroom units at 7015 Skye Bridge Way, identified as the Axis Berewick apartment community with 34 units available."
+ },
+ {
+  "id": "t029",
+  "type": "Residential",
+  "confidence": "low",
+  "evidence": "No direct record found; W Neff Ave in Merion Village has townhomes such as 37 W Neff (a 2BR townhouse), so this is a guess."
+ },
+ {
+  "id": "t030",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "1910 Bennett Ave is the Bennett Lofts apartment building (26 units, built 2002) with one-bedroom rentals listed."
+ },
+ {
+  "id": "t031",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "No record found for 2751 E Bonanza Rd; nearby addresses on the same stretch are commercial and civic, so this is a guess."
+ },
+ {
+  "id": "t032",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Courtney Village, a 368-unit apartment community, is located at 4848 E Roosevelt St in Phoenix."
+ },
+ {
+  "id": "t033",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "1702 W Cleveland St is a 2000-built apartment building with multiple two-bedroom units for rent."
+ },
+ {
+  "id": "t034",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Rental listing pages place this exact address at Village on the Green, an apartment community in Atlanta's Greenbriar area."
+ },
+ {
+  "id": "t035",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "A for-sale listing for this exact address describes a multi-unit (four-plex) residential building."
+ },
+ {
+  "id": "t036",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "4616 Stoney Trace Dr is Stoney Trace Apartments, a 380-unit apartment community that sold for $59.8M in late 2024."
+ },
+ {
+  "id": "t037",
+  "type": "Multifamily",
+  "confidence": "medium",
+  "evidence": "A listing for the 7270-7292 range shows 24 bedrooms in about 12,000 SF, which suggests a multi-unit building rather than a single house."
+ },
+ {
+  "id": "t038",
+  "type": "Multifamily",
+  "confidence": "medium",
+  "evidence": "The exact address was not found, but neighboring Bryan St addresses at 4915-4921 and 4928 are apartment complexes on this block."
+ },
+ {
+  "id": "t039",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "No record found for 2850 E Cedar Ave; neighboring 89101 Cedar Ave addresses are multi-unit rental buildings."
+ },
+ {
+  "id": "t040",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Renthop and Redfin list several apartment units at 4620 W McDowell Rd, a one-story multi-unit building in Maryvale."
+ },
+ {
+  "id": "t041",
+  "type": "Multifamily",
+  "confidence": "medium",
+  "evidence": "No exact match for 6608 S West Shore Blvd, but the surrounding 6200-6700 block is apartment communities such as Casa Bella on Westshore and Camden Preserve."
+ },
+ {
+  "id": "t042",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "369 Centennial Olympic Park Dr NW is Generation Atlanta, an apartment community with studio to two-bedroom rentals."
+ },
+ {
+  "id": "t043",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Listing describes a renovated four-unit townhome-style building with 2BD/1.5BA units, fully leased."
+ },
+ {
+  "id": "t044",
+  "type": "Residential",
+  "confidence": "low",
+  "evidence": "No page for this exact address was found, so this is a guess based on the mostly residential character of suburban Steele Creek Rd addresses in ZIP 28273."
+ },
+ {
+  "id": "t045",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "No record for 1212-1218 Wilson Ave was found; the paired-number range suggests a small multi-unit building, so this is a guess."
+ },
+ {
+  "id": "t046",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Described as a commercial office building in Vinings with Regus offices and law-practice tenants at 3330 Cumberland Blvd SE."
+ },
+ {
+  "id": "t047",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Listed as 401-405 Colorado, a 206,000 SF downtown Austin office tower with office tenants and a 14th-floor Sky Lounge amenity."
+ },
+ {
+  "id": "t048",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "440 South Church Street is the 15-story Class A office tower in Uptown Charlotte, also called the Ally Center."
+ },
+ {
+  "id": "t049",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "2601 Olive St is The Link, a roughly 292,000 SF Dallas office tower that sold for $218M in 2025."
+ },
+ {
+  "id": "t050",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "255 Fillmore is a seven-story Cherry Creek office building (about 90,000 SF of office plus ground-floor retail) that sold for $92.5M."
+ },
+ {
+  "id": "t051",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "A commercial listing describes 2 Music Square West as a multi-tenant Class B office building, and tour sites place ASCAP there."
+ },
+ {
+  "id": "t052",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "1420 Kettner Blvd is Kettner & Ash, a 7-story, 123,000 SF downtown office building that now hosts Regus and Spaces offices."
+ },
+ {
+  "id": "t053",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "1 N Dale Mabry Hwy is a 13-story Class A office tower at Kennedy Blvd, with CBRE office leasing listings and a 2025 sale."
+ },
+ {
+  "id": "t054",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "1100 Peachtree St NE is Eleven Hundred Peachtree, a 28-story Midtown office tower."
+ },
+ {
+  "id": "t055",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "111 Congress Ave is One Eleven Congress, a 30-story downtown office tower."
+ },
+ {
+  "id": "t056",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Listings tie 13320 Ballantyne Corporate Place to Ballantyne Tower, a Class A office building (JLL sale listing and an SPX FLOW HQ page)."
+ },
+ {
+  "id": "t057",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "2000 McKinney Ave is Texas Capital Center, a 21-story, 456,928 SF Uptown office tower that sold in September 2025."
+ },
+ {
+  "id": "t058",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "1701 Platte St is One Platte, a 2022 Denver mixed-use office and retail building anchored by bet365's US headquarters lease."
+ },
+ {
+  "id": "t059",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Nashville Post and Avison Young report the 2025 sale of 107 Kenner Ave, a 7,203 SF two-story office building."
+ },
+ {
+  "id": "t060",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "600 W Broadway is One American Plaza, a roughly 650,000 SF office tower with office suites and a $91M office loan on record."
+ },
+ {
+  "id": "t061",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "A provider directory places the Florida Orthopaedic Institute, a medical office, at 5901 East Fowler Avenue in Temple Terrace."
+ },
+ {
+  "id": "t062",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "101 Marietta St is the 36-story Centennial Tower, a Class A downtown Atlanta office building."
+ },
+ {
+  "id": "t063",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "601 W 2nd St is the 35-story, roughly 814,000 sq ft Class A office tower (formerly Block 185) in downtown Austin."
+ },
+ {
+  "id": "t064",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Marketed as INQ @ 2401, an East Forest office building in Charlotte, with office listings on PropertyShark and CommercialCafe."
+ },
+ {
+  "id": "t065",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "5005 LBJ Freeway is the 24-story, 549,170 SF Class A office tower known as 5005 LBJ Tower, formerly Occidental Tower and later Pinnacle Tower."
+ },
+ {
+  "id": "t066",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "5534 Albemarle Rd is the Eastland Promenade retail center, with a 5,156 SF flexible retail or restaurant space listed."
+ },
+ {
+  "id": "t067",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Deal record for 8302 Abrams Rd describes a net-leased 7-Eleven with ten fueling dispensers on about one acre."
+ },
+ {
+  "id": "t068",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No record found for 13606 Kuykendahl; nearby 13700 Kuykendahl is a metal warehouse business center, so the corridor reads industrial."
+ },
+ {
+  "id": "t069",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "A store directory and a CDC NPIN list both place an Albertsons grocery store at 7975 Blue Diamond Road."
+ },
+ {
+  "id": "t070",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "7720 Turkey Lake Rd is the Shoppes at Turkey Lake, a 19,213 SF triple-net retail center that sold in March 2026."
+ },
+ {
+  "id": "t071",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "No record for 2222 W Happy Valley Rd was found; the nearby 2000-block addresses are commercial units near Happy Valley Towne Center, so this is a guess."
+ },
+ {
+  "id": "t072",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "805-831 Harbor Blvd is Harbor Central, a roughly 22,000 SF neighborhood retail center with Vista Paint, Domino's, Subway and Raku Sushi as tenants."
+ },
+ {
+  "id": "t073",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "No record found for 5435 N Loop 1604 W; nearby 5418 is a three-story medical office building on the same corridor, though a unit 1213 at 5423 hints at some multi-unit use."
+ },
+ {
+  "id": "t074",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "A sale record for 12194 Johnston Rd describes an 8,008 SF multi-tenant retail strip leased to T-Mobile, MyEyeDr. and Trek."
+ },
+ {
+  "id": "t075",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "No record found for 1350 N Hampton; nearby 1322 N Hampton is a Sprouts grocery store, so the stretch looks like a retail corridor."
+ },
+ {
+  "id": "t076",
+  "type": "Multifamily",
+  "confidence": "medium",
+  "evidence": "The exact address was not found, but the adjacent 1343 Yale St is an apartment building with studio, one- and two-bedroom rent estimates and six complaints on file."
+ },
+ {
+  "id": "t077",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "4480 Paradise Rd is the address of Paradise Esplanade, a retail center with CVS and restaurant tenants on NNN leases."
+ },
+ {
+  "id": "t078",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "9350 S Orange Blossom Trl is listed as a 22,360 SF retail property built in 2008 with space available for lease."
+ },
+ {
+  "id": "t079",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "No record for 1775 N 99th Ave was found; nearby 99th Ave results are billboards and a charging station near Maryvale Village, so this is a guess."
+ },
+ {
+  "id": "t080",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "No record found for 2224 El Camino Ave; neighboring addresses on the corridor are retail and small office buildings."
+ },
+ {
+  "id": "t081",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Traded records a June 30, 2026 sale of 23110 Interstate 10 W, an 18,665 SF retail building, and it is listed among retail spaces in The Dominion."
+ },
+ {
+  "id": "t082",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Listed for sale as a single-tenant net-lease auto repair building at 4438 South Blvd, leased to Caliber Collision."
+ },
+ {
+  "id": "t083",
+  "type": "Retail",
+  "confidence": "medium",
+  "evidence": "A Showcase sale listing for 6520 N Central Expy describes a one-story auto repair building on an absolute net lease, which I mapped to single-tenant net-lease retail."
+ },
+ {
+  "id": "t084",
+  "type": "Retail",
+  "confidence": "medium",
+  "evidence": "A facility registry lists Al's Tire at 6908 Long Point Rd, a storefront auto business, though the registry's accuracy is unverified."
+ },
+ {
+  "id": "t085",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "No record found for 8671 W Charleston; nearby 8751 W Charleston is a mixed retail/office complex and 7881 is a Class A office building."
+ }
+]

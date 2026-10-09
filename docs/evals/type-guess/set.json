@@ -1,0 +1,682 @@
+[
+ {
+  "id": "t001",
+  "address": "3940 Shirley Dr, Atlanta, GA 30336",
+  "label": "Industrial",
+  "market": "industrial-atlanta-ga",
+  "source_url": "https://traded.co/deals/georgia/industrial/sale/3940-shirley-drive/",
+  "source_type": "news"
+ },
+ {
+  "id": "t002",
+  "address": "6759 S Supply Way, Boise, ID",
+  "label": "Industrial",
+  "market": "industrial-boise-id",
+  "source_url": "https://tokcommercial.com/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t003",
+  "address": "9560 Heartland Ct, Columbus, OH 43217",
+  "label": "Industrial",
+  "market": "industrial-columbus-oh",
+  "source_url": "https://www.commercialsearch.com/news/prologis-sells-columbus-facility/",
+  "source_type": "news"
+ },
+ {
+  "id": "t004",
+  "address": "2501 Avenue J, Arlington, TX 76006",
+  "label": "Industrial",
+  "market": "industrial-dallas-tx",
+  "source_url": "https://traded.co/deals/texas/industrial/sale/matthew-sullivan-of-beverly-lucas-acquires-industrial-asset-in-arlington-for-8-75m/",
+  "source_type": "news"
+ },
+ {
+  "id": "t005",
+  "address": "11119 Juniper Ave, Fontana, CA 92337",
+  "label": "Industrial",
+  "market": "industrial-fontana-ca",
+  "source_url": "https://www.jll.com/en-us/newsroom/sale-of-436k-sf-trophy-industrial-asset-in-socal-inland-empire-closes",
+  "source_type": "estimate"
+ },
+ {
+  "id": "t006",
+  "address": "16851 Blue Ridge Commerce Dr, Houston, TX 77489",
+  "label": "Industrial",
+  "market": "industrial-houston-tx",
+  "source_url": "https://www.trammellcrow.com/insights-and-news",
+  "source_type": "news"
+ },
+ {
+  "id": "t007",
+  "address": "1058 S Ewing St, Indianapolis, IN 46203",
+  "label": "Industrial",
+  "market": "industrial-indianapolis-in",
+  "source_url": "https://www.compass.com/listing/1058-south-ewing-street-indianapolis-in-46203/1643907572703816641/",
+  "source_type": "estimate"
+ },
+ {
+  "id": "t008",
+  "address": "4080 N Pecos Rd, Las Vegas, NV 89115",
+  "label": "Industrial",
+  "market": "industrial-las-vegas-nv",
+  "source_url": "https://www.loopnet.com/Listing/4080-N-Pecos-Rd-Las-Vegas-NV/37768910/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t009",
+  "address": "5106 Tradeport Dr, Memphis, TN 38141",
+  "label": "Industrial",
+  "market": "industrial-memphis-tn",
+  "source_url": "https://traded.co/deals/tennessee/memphis/industrial/5106-tradeport-drive/",
+  "source_type": "news"
+ },
+ {
+  "id": "t010",
+  "address": "1938 E Franklin Rd, Meridian, ID",
+  "label": "Industrial",
+  "market": "industrial-meridian-id",
+  "source_url": "https://www.loopnet.com/Listing/1938-E-Franklin-Rd-Meridian-ID/32958371/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t011",
+  "address": "1406 N Galleria Dr, Nampa, ID",
+  "label": "Industrial",
+  "market": "industrial-nampa-id",
+  "source_url": "https://www.loopnet.com/Listing/1406-N-Galleria-Dr-Nampa-ID/32185286/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t012",
+  "address": "2319 E Locust Ct, Ontario, CA 91761",
+  "label": "Industrial",
+  "market": "industrial-ontario-ca",
+  "source_url": "https://kylevizzo.com/deals/2319-e-locust-court-ontario",
+  "source_type": "news"
+ },
+ {
+  "id": "t013",
+  "address": "3302 W Washington St, Phoenix, AZ",
+  "label": "Industrial",
+  "market": "industrial-phoenix-az",
+  "source_url": "https://yourvalley.net/phoenix-independent/stories/phoenix-industrial-property-sold-for-20m,624734",
+  "source_type": "news"
+ },
+ {
+  "id": "t014",
+  "address": "2078 Rustin Ave, Riverside, CA 92507",
+  "label": "Industrial",
+  "market": "industrial-riverside-ca",
+  "source_url": "https://www.latimes.com/business/story/2024-12-06/hyundais-rotem-electric-acquires-riverside-warehouse-in-expansion",
+  "source_type": "estimate"
+ },
+ {
+  "id": "t015",
+  "address": "125 Feldspar Dr, Savannah, GA 31407",
+  "label": "Industrial",
+  "market": "industrial-savannah-ga",
+  "source_url": "https://rebusinessonline.com/jll-arranges-sale-of-491329-sf-industrial-facility-in-savannah/",
+  "source_type": "news"
+ },
+ {
+  "id": "t016",
+  "address": "2975 Northwoods Pkwy, Peachtree Corners, GA 30071",
+  "label": "Industrial",
+  "market": "industrial-atlanta-ga",
+  "source_url": "https://traded.co/deals/georgia/commercial-real-estate/sale/2975-northwoods-parkway/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t017",
+  "address": "1345 E State St, Eagle, ID",
+  "label": "Industrial",
+  "market": "industrial-boise-id",
+  "source_url": "https://www.loopnet.com/Listing/1345-E-State-St-Eagle-ID/36375809/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t018",
+  "address": "1264-1308 N Wilson Rd, Columbus, OH 43204",
+  "label": "Industrial",
+  "market": "industrial-columbus-oh",
+  "source_url": "https://www.cbre.com/press-releases/cbre-facilitates-18-7-million-sale-of-two-industrial-properties-in-columbus-ohio",
+  "source_type": "estimate"
+ },
+ {
+  "id": "t019",
+  "address": "429 W Kennedale Pkwy, Kennedale, TX 76060",
+  "label": "Industrial",
+  "market": "industrial-dallas-tx",
+  "source_url": "https://traded.co/deals/texas/industrial/sale/first-fence-us-inc-acquires-industrial-asset-at-429-west-kennedale-parkway-for-4-92m/",
+  "source_type": "news"
+ },
+ {
+  "id": "t020",
+  "address": "13201 Dahlia St, Fontana, CA 92337",
+  "label": "Industrial",
+  "market": "industrial-fontana-ca",
+  "source_url": "https://www.jll.com/en-us/newsroom/fully-leased-industrial-property-in-fontana-ca-sold-for-701m",
+  "source_type": "estimate"
+ },
+ {
+  "id": "t021",
+  "address": "12451 W Overland Rd, Boise, ID 83709",
+  "label": "Land",
+  "market": "land-boise-id",
+  "source_url": "https://idaho-realty.com/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t022",
+  "address": "12535 W Overland Rd, Boise, ID 83709",
+  "label": "Land",
+  "market": "land-boise-id",
+  "source_url": "https://www.loopnet.com/Listing/12535-W-Overland-Rd-Boise-ID/33423725/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t023",
+  "address": "3353 S Federal Way, Boise, ID 83705",
+  "label": "Land",
+  "market": "land-boise-id",
+  "source_url": "https://www.loopnet.com/Listing/3353-S-Federal-Way-Boise-ID/31754021/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t024",
+  "address": "5033 W State St, Boise, ID 83703",
+  "label": "Land",
+  "market": "land-boise-id",
+  "source_url": "https://www.realtor.com/realestateandhomes-detail/5033-W-State-St_Boise_ID_83703_M98997-948",
+  "source_type": "listing"
+ },
+ {
+  "id": "t025",
+  "address": "408 N Allumbaugh St, Boise, ID 83704",
+  "label": "Land",
+  "market": "land-boise-id",
+  "source_url": "https://www.crexi.com/properties/895067/idaho-408-n-allumbaugh-st",
+  "source_type": "listing"
+ },
+ {
+  "id": "t026",
+  "address": "1470 Sheridan Rd NE, Atlanta, GA 30324",
+  "label": "Multifamily",
+  "market": "multifamily-atlanta-ga",
+  "source_url": "https://traded.co/deals/georgia/atlanta/multifamily/sale/1470-sheridan-road-northeast/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t027",
+  "address": "2421 W Slaughter Ln, Austin, TX 78748",
+  "label": "Multifamily",
+  "market": "multifamily-austin-tx",
+  "source_url": "https://www.zillow.com/homedetails/2421-W-Slaughter-Ln-Austin-TX-78748/344779_zpid/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t028",
+  "address": "7015 Skye Bridge Way, Charlotte, NC 28278",
+  "label": "Multifamily",
+  "market": "multifamily-charlotte-nc",
+  "source_url": "https://traded.co/deals/north-carolina/multifamily/sale/7015-skye-bridge-way/",
+  "source_type": "news"
+ },
+ {
+  "id": "t029",
+  "address": "58-64 W Neff Ave, Columbus, OH 43207",
+  "label": "Multifamily",
+  "market": "multifamily-columbus-oh",
+  "source_url": "https://www.redfin.com/OH/Columbus/58-64-W-Neff-Ave-43207/home/186536647",
+  "source_type": "estimate"
+ },
+ {
+  "id": "t030",
+  "address": "1910 Bennett Ave, Dallas, TX 75206",
+  "label": "Multifamily",
+  "market": "multifamily-dallas-tx",
+  "source_url": "https://traded.co/deals/texas/dallas/multifamily/sale/1910-bennett-avenue/",
+  "source_type": "news"
+ },
+ {
+  "id": "t031",
+  "address": "2751 E Bonanza Rd, Las Vegas, NV 89101",
+  "label": "Multifamily",
+  "market": "multifamily-las-vegas-nv",
+  "source_url": "https://traded.co/deals/nevada/las-vegas/multifamily/bonanza-gardens-apartments/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t032",
+  "address": "4848 E Roosevelt St, Phoenix, AZ 85008",
+  "label": "Multifamily",
+  "market": "multifamily-phoenix-az",
+  "source_url": "https://batchgeo.com/map/apartmentssold",
+  "source_type": "public_record"
+ },
+ {
+  "id": "t033",
+  "address": "1702 W Cleveland St, Tampa, FL",
+  "label": "Multifamily",
+  "market": "multifamily-tampa-fl",
+  "source_url": "https://tbbwmagazine.com/2026/09/02/south-tampa-apartment-complex-sells-for-70-million/",
+  "source_type": "estimate"
+ },
+ {
+  "id": "t034",
+  "address": "2975 Continental Colony Pkwy SW, Atlanta, GA 30331",
+  "label": "Multifamily",
+  "market": "multifamily-atlanta-ga",
+  "source_url": "https://traded.co/deals/georgia/atlanta/multifamily/sale/2975-continental-colony-parkway-southwest/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t035",
+  "address": "2423 W Slaughter Ln, Austin, TX 78748",
+  "label": "Multifamily",
+  "market": "multifamily-austin-tx",
+  "source_url": "https://www.zillow.com/homedetails/2423-W-Slaughter-Ln-Austin-TX-78748/344778_zpid/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t036",
+  "address": "4616 Stoney Trace Dr, Charlotte, NC 28227",
+  "label": "Multifamily",
+  "market": "multifamily-charlotte-nc",
+  "source_url": "https://traded.co/deals/north-carolina/multifamily/sale/4616-stoney-trace-drive/",
+  "source_type": "news"
+ },
+ {
+  "id": "t037",
+  "address": "7270-7292 Broadwyn Dr, Reynoldsburg, OH 43068",
+  "label": "Multifamily",
+  "market": "multifamily-columbus-oh",
+  "source_url": "https://www.zillow.com/homedetails/7270-7292-Broadwyn-Dr-Reynoldsburg-OH-43068/33948792_zpid/",
+  "source_type": "estimate"
+ },
+ {
+  "id": "t038",
+  "address": "4927 Bryan St, Dallas, TX 75206",
+  "label": "Multifamily",
+  "market": "multifamily-dallas-tx",
+  "source_url": "https://traded.co/deals/texas/dallas/multifamily/sale/4927-bryan-street/",
+  "source_type": "news"
+ },
+ {
+  "id": "t039",
+  "address": "2850 E Cedar Ave, Las Vegas, NV 89101",
+  "label": "Multifamily",
+  "market": "multifamily-las-vegas-nv",
+  "source_url": "https://traded.co/deals/nevada/las-vegas/multifamily/cedar-village-apartments/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t040",
+  "address": "4620 W McDowell Rd, Phoenix, AZ 85035",
+  "label": "Multifamily",
+  "market": "multifamily-phoenix-az",
+  "source_url": "https://batchgeo.com/map/apartmentssold",
+  "source_type": "public_record"
+ },
+ {
+  "id": "t041",
+  "address": "6608 S West Shore Blvd, Tampa, FL",
+  "label": "Multifamily",
+  "market": "multifamily-tampa-fl",
+  "source_url": "https://www.connectcre.com/stories/tampa-apartments-sell-at-a-loss/",
+  "source_type": "news"
+ },
+ {
+  "id": "t042",
+  "address": "369 Centennial Olympic Park Dr NW, Atlanta, GA 30313",
+  "label": "Multifamily",
+  "market": "multifamily-atlanta-ga",
+  "source_url": "https://traded.co/deals/georgia/atlanta/multifamily/sale/369-centennial-olympic-park-drive-northwest/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t043",
+  "address": "3802 Southway Dr, Austin, TX 78704",
+  "label": "Multifamily",
+  "market": "multifamily-austin-tx",
+  "source_url": "https://www.zillow.com/homedetails/3802-Southway-Dr-Austin-TX-78704/1921746_zpid/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t044",
+  "address": "10525 Steele Creek Rd, Charlotte, NC 28273",
+  "label": "Multifamily",
+  "market": "multifamily-charlotte-nc",
+  "source_url": "https://www.northmarq.com/commercial-real-estate-news/steele-creek-apartments-multifamilygarden-apartments-sale-06-30",
+  "source_type": "estimate"
+ },
+ {
+  "id": "t045",
+  "address": "1212-1218 Wilson Ave, Columbus, OH 43206",
+  "label": "Multifamily",
+  "market": "multifamily-columbus-oh",
+  "source_url": "https://www.homes.com/property/1212-wilson-ave-columbus-oh/20h0d55e09y3h/",
+  "source_type": "estimate"
+ },
+ {
+  "id": "t046",
+  "address": "3330 Cumberland Blvd SE, Atlanta, GA 30339",
+  "label": "Office",
+  "market": "office-atlanta-ga",
+  "source_url": "https://oadevelopment.com/oa-development-acquires-50-4-million-office-building-in-atlanta/",
+  "source_type": "news"
+ },
+ {
+  "id": "t047",
+  "address": "405 Colorado St, Austin, TX 78701",
+  "label": "Office",
+  "market": "office-austin-tx",
+  "source_url": "https://therealdeal.com/texas/austin/2026/07/13/hines-snags-downtown-austin-office-high-rise-for-733-per-sf/",
+  "source_type": "news"
+ },
+ {
+  "id": "t048",
+  "address": "440 South Church Street, Charlotte, NC 28202",
+  "label": "Office",
+  "market": "office-charlotte-nc",
+  "source_url": "https://www.cbre.com/press-releases/cbre-facilitates-sale-of-trophy-office-tower-in-charlottes-central-business-district",
+  "source_type": "news"
+ },
+ {
+  "id": "t049",
+  "address": "2601 Olive St, Dallas, TX",
+  "label": "Office",
+  "market": "office-dallas-tx",
+  "source_url": "https://rebusinessonline.com/newmark-arranges-218m-sale-of-link-at-uptown-office-building-in-dallas/",
+  "source_type": "news"
+ },
+ {
+  "id": "t050",
+  "address": "255 Fillmore St, Denver, CO 80206",
+  "label": "Office",
+  "market": "office-denver-co",
+  "source_url": "https://www.9news.com/article/money/business/cherry-creek-office-building-sells-for-92-5-million-fillmore/73-d5d1433f-bfe1-4c6c-851f-be456d9a9eb2",
+  "source_type": "estimate"
+ },
+ {
+  "id": "t051",
+  "address": "2 Music Square West, Nashville, TN",
+  "label": "Office",
+  "market": "office-nashville-tn",
+  "source_url": "https://www.commercialsearch.com/news/nashville-office-market-starts-year-with-mixed-performance/",
+  "source_type": "news"
+ },
+ {
+  "id": "t052",
+  "address": "1420 Kettner Blvd, San Diego, CA",
+  "label": "Office",
+  "market": "office-san-diego-ca",
+  "source_url": "https://oceanwestcp.com/portfolio-posts/kettner-ash/",
+  "source_type": "news"
+ },
+ {
+  "id": "t053",
+  "address": "1 N Dale Mabry Hwy, Tampa, FL 33609",
+  "label": "Office",
+  "market": "office-tampa-fl",
+  "source_url": "https://traded.co/deals/florida/office/sale/1-north-dale-mabry-highway/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t054",
+  "address": "1100 Peachtree St NE, Atlanta, GA 30309",
+  "label": "Office",
+  "market": "office-atlanta-ga",
+  "source_url": "https://therealdeal.com/atlanta/2025/06/06/spear-street-buys-discounted-midtown-office-from-manulife/",
+  "source_type": "news"
+ },
+ {
+  "id": "t055",
+  "address": "111 Congress Ave, Austin, TX 78701",
+  "label": "Office",
+  "market": "office-austin-tx",
+  "source_url": "https://therealdeal.com/texas/austin/2026/07/31/canyon-creek-enters-austin-market-with-208m-purchase-of-one-eleven-congress/",
+  "source_type": "news"
+ },
+ {
+  "id": "t056",
+  "address": "13320 Ballantyne Corporate Place, Charlotte, NC 28277",
+  "label": "Office",
+  "market": "office-charlotte-nc",
+  "source_url": "https://traded.co/deals/north-carolina/office/sale/13320-ballantyne-corporate-place/",
+  "source_type": "news"
+ },
+ {
+  "id": "t057",
+  "address": "2000 McKinney Ave, Dallas, TX",
+  "label": "Office",
+  "market": "office-dallas-tx",
+  "source_url": "http://realtynewsreport.com/biggest-dallas-office-sale-since-2022/",
+  "source_type": "news"
+ },
+ {
+  "id": "t058",
+  "address": "1701 Platte St, Denver, CO 80202",
+  "label": "Office",
+  "market": "office-denver-co",
+  "source_url": "https://www.9news.com/article/money/business/bet365-buys-denver-headquarters-135-million/73-ff8964d5-8669-42b7-8ce6-a7970d494056",
+  "source_type": "estimate"
+ },
+ {
+  "id": "t059",
+  "address": "107 Kenner Ave, Nashville, TN",
+  "label": "Office",
+  "market": "office-nashville-tn",
+  "source_url": "https://traded.co/deals/tennessee/office/sale/107-kenner-avenue/",
+  "source_type": "news"
+ },
+ {
+  "id": "t060",
+  "address": "600 W Broadway, San Diego, CA",
+  "label": "Office",
+  "market": "office-san-diego-ca",
+  "source_url": "https://www.costar.com/article/1857943564/investment-firm-sells-san-diego-areas-tallest-building-for-120-million",
+  "source_type": "news"
+ },
+ {
+  "id": "t061",
+  "address": "5901 E Fowler Ave, Tampa, FL 33617",
+  "label": "Office",
+  "market": "office-tampa-fl",
+  "source_url": "https://floridamedspace.com/",
+  "source_type": "news"
+ },
+ {
+  "id": "t062",
+  "address": "101 Marietta St NW, Atlanta, GA 30303",
+  "label": "Office",
+  "market": "office-atlanta-ga",
+  "source_url": "https://www.bisnow.com/atlanta/news/commercial-real-estate/real-capital-solutions-debuts-in-atlanta-with-50m-purchase-of-101-marietta-124803",
+  "source_type": "news"
+ },
+ {
+  "id": "t063",
+  "address": "601 W 2nd St, Austin, TX 78701",
+  "label": "Office",
+  "market": "office-austin-tx",
+  "source_url": "https://rebusinessonline.com/cousins-properties-to-acquire-office-tower-in-downtown-austin-for-521-8m/",
+  "source_type": "news"
+ },
+ {
+  "id": "t064",
+  "address": "2401 Sardis Road North, Charlotte, NC 28227",
+  "label": "Office",
+  "market": "office-charlotte-nc",
+  "source_url": "https://traded.co/deals/north-carolina/office/sale/2401-sardis-road-north/",
+  "source_type": "news"
+ },
+ {
+  "id": "t065",
+  "address": "5005 Lyndon B Johnson Fwy, Dallas, TX",
+  "label": "Office",
+  "market": "office-dallas-tx",
+  "source_url": "https://traded.co/deals/texas/office/sale/5005-lyndon-b-johnson-freeway/",
+  "source_type": "news"
+ },
+ {
+  "id": "t066",
+  "address": "5534 Albemarle Rd, Charlotte, NC 28212",
+  "label": "Retail",
+  "market": "retail-charlotte-nc",
+  "source_url": "https://www.marcusmillichap.com/research/press-releases/marcus-and-millichap-brokers-6m-sale-of-retail-center-in-charlotte",
+  "source_type": "listing"
+ },
+ {
+  "id": "t067",
+  "address": "8302 Abrams Rd, Dallas, TX",
+  "label": "Retail",
+  "market": "retail-dallas-tx",
+  "source_url": "https://silberproperties.com/wp-content/uploads/2026/09/7-eleven.jpeg",
+  "source_type": "news"
+ },
+ {
+  "id": "t068",
+  "address": "13606 Kuykendahl Rd, Houston, TX 77090",
+  "label": "Retail",
+  "market": "retail-houston-tx",
+  "source_url": "https://davis-commercial.com/former-walgreens-and-beauty-supply-buildings-sold-for-new-retail-uses/",
+  "source_type": "public_record"
+ },
+ {
+  "id": "t069",
+  "address": "7975 Blue Diamond Rd, Las Vegas, NV 89178",
+  "label": "Retail",
+  "market": "retail-las-vegas-nv",
+  "source_url": "https://www.cbre.com/press-releases/cbre-arranges-50-3-million-sale-of-grocery-shadow-anchored-shopping-center-in-las-vegas-nevada",
+  "source_type": "news"
+ },
+ {
+  "id": "t070",
+  "address": "7720 Turkey Lake Rd, Orlando, FL",
+  "label": "Retail",
+  "market": "retail-orlando-fl",
+  "source_url": "https://www.marcusmillichap.com/research/press-releases/2026/03/marcus-millichap-brokers-sale-of-retail-center-in-orlandos-dr-phillips-area",
+  "source_type": "news"
+ },
+ {
+  "id": "t071",
+  "address": "2222 W Happy Valley Rd, Phoenix, AZ",
+  "label": "Retail",
+  "market": "retail-phoenix-az",
+  "source_url": "https://azbigmedia.com/real-estate/commercial-real-estate/retail/union-street-at-norterra-sells-for-843-per-square-foot/",
+  "source_type": "news"
+ },
+ {
+  "id": "t072",
+  "address": "805-831 Harbor Blvd, West Sacramento, CA 95691",
+  "label": "Retail",
+  "market": "retail-sacramento-ca",
+  "source_url": "https://shoppingcenterbusiness.com/cbre-brokers-6-2-million-sale-of-harbor-central-retail-center-in-west-sacramento/",
+  "source_type": "estimate"
+ },
+ {
+  "id": "t073",
+  "address": "5435 N Loop 1604 W, San Antonio, TX 78249",
+  "label": "Retail",
+  "market": "retail-san-antonio-tx",
+  "source_url": "https://traded.co/deals/texas/retail/sale/5435-north-loop-1604-west/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t074",
+  "address": "12194 Johnston Rd, Charlotte, NC 28277",
+  "label": "Retail",
+  "market": "retail-charlotte-nc",
+  "source_url": "https://shoppingcenterbusiness.com/marcus-millichap-brokers-4-2-million-sale-of-retail-center-in-charlotte-north-carolina/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t075",
+  "address": "1350 N Hampton Rd, Dallas, TX",
+  "label": "Retail",
+  "market": "retail-dallas-tx",
+  "source_url": "https://www.loopnet.com/Listing/1350-N-Hampton-Rd-Dallas-TX/33215560/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t076",
+  "address": "1344 Yale St, Houston, TX 77008",
+  "label": "Retail",
+  "market": "retail-houston-tx",
+  "source_url": "https://www.loopnet.com/Listing/1344-Yale-St-Houston-TX/",
+  "source_type": "public_record"
+ },
+ {
+  "id": "t077",
+  "address": "4480 Paradise Rd, Las Vegas, NV 89169",
+  "label": "Retail",
+  "market": "retail-las-vegas-nv",
+  "source_url": "https://www.jll.com/newsroom/premier-shopping-center-near-las-vegas-strip-trades-for-46-35m",
+  "source_type": "news"
+ },
+ {
+  "id": "t078",
+  "address": "9350 S Orange Blossom Trl, Orlando, FL",
+  "label": "Retail",
+  "market": "retail-orlando-fl",
+  "source_url": "https://www.marcusmillichap.com/research/press-releases/2026/05/marcus-millichap-arranges-sale-of-orlando-retail-center",
+  "source_type": "news"
+ },
+ {
+  "id": "t079",
+  "address": "1775 N 99th Ave, Phoenix, AZ",
+  "label": "Retail",
+  "market": "retail-phoenix-az",
+  "source_url": "https://shoppingcenterbusiness.com/phoenix-commercial-advisors-brokers-30-7-million-sale-of-sprouts-farmers-market-anchored-retail-center/",
+  "source_type": "news"
+ },
+ {
+  "id": "t080",
+  "address": "2224 El Camino Ave, Sacramento, CA 95821",
+  "label": "Retail",
+  "market": "retail-sacramento-ca",
+  "source_url": "https://sacramentocommercialre.com/property/2224-el-camino-ave/",
+  "source_type": "public_record"
+ },
+ {
+  "id": "t081",
+  "address": "23110 Interstate 10 W, San Antonio, TX 78257",
+  "label": "Retail",
+  "market": "retail-san-antonio-tx",
+  "source_url": "https://traded.co/deals/texas/retail/sale/23110-interstate-10-west/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t082",
+  "address": "4438 South Blvd, Charlotte, NC 28209",
+  "label": "Retail",
+  "market": "retail-charlotte-nc",
+  "source_url": "https://www.loopnet.com/Listing/4438-South-Blvd-Charlotte-NC/2608-West-Blvd/",
+  "source_type": "public_record"
+ },
+ {
+  "id": "t083",
+  "address": "6520 N Central Expy, Dallas, TX",
+  "label": "Retail",
+  "market": "retail-dallas-tx",
+  "source_url": "https://www.loopnet.com/Listing/6520-N-Central-Expy-Dallas-TX/33051410/",
+  "source_type": "listing"
+ },
+ {
+  "id": "t084",
+  "address": "6908 Long Point Rd, Houston, TX 77055",
+  "label": "Retail",
+  "market": "retail-houston-tx",
+  "source_url": "https://www.loopnet.com/",
+  "source_type": "public_record"
+ },
+ {
+  "id": "t085",
+  "address": "8671 W Charleston Blvd, Las Vegas, NV 89117",
+  "label": "Retail",
+  "market": "retail-las-vegas-nv",
+  "source_url": "https://traded.co/deals/nevada/retail/sale/8671-west-charleston-boulevard/",
+  "source_type": "listing"
+ }
+]

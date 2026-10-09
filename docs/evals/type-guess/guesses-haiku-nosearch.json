@@ -1,0 +1,512 @@
+[
+ {
+  "id": "t001",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Shirley Drive SW in south Atlanta is an industrial and warehouse area."
+ },
+ {
+  "id": "t002",
+  "type": "Industrial",
+  "confidence": "medium",
+  "evidence": "South Supply Way in Boise is a warehouse and distribution street near the airport."
+ },
+ {
+  "id": "t003",
+  "type": "Industrial",
+  "confidence": "medium",
+  "evidence": "Heartland Court in southwest Columbus is a business and distribution park street."
+ },
+ {
+  "id": "t004",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Avenue J in Arlington runs through light industrial and warehouse uses."
+ },
+ {
+  "id": "t005",
+  "type": "Industrial",
+  "confidence": "medium",
+  "evidence": "Juniper Avenue in Fontana is within the city's industrial warehouse district."
+ },
+ {
+  "id": "t006",
+  "type": "Industrial",
+  "confidence": "medium",
+  "evidence": "Blue Ridge Commerce Drive in Fort Bend County is a business-park street of warehouses."
+ },
+ {
+  "id": "t007",
+  "type": "Residential",
+  "confidence": "low",
+  "evidence": "South Ewing Street in Indianapolis's Fountain Square area is mostly single-family and small rental homes."
+ },
+ {
+  "id": "t008",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "North Pecos Road in North Las Vegas has light industrial and flex frontage."
+ },
+ {
+  "id": "t009",
+  "type": "Industrial",
+  "confidence": "medium",
+  "evidence": "Tradeport Drive is inside the Memphis Tradeport industrial park near the airport."
+ },
+ {
+  "id": "t010",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "East Franklin Road in Meridian is a retail strip corridor."
+ },
+ {
+  "id": "t011",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Galleria Drive in Nampa is a commercial and light industrial area near the freeway."
+ },
+ {
+  "id": "t012",
+  "type": "Industrial",
+  "confidence": "medium",
+  "evidence": "Locust Court in Ontario is inside the airport-area industrial district."
+ },
+ {
+  "id": "t013",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "West Washington Street in west Phoenix runs past light industrial and warehouse uses."
+ },
+ {
+  "id": "t014",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Rustin Avenue in Riverside is a light-industrial and commercial street; no specific knowledge of this address."
+ },
+ {
+  "id": "t015",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Feldspar Drive in Savannah's west side industrial area suggests warehouse or manufacturing use."
+ },
+ {
+  "id": "t016",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "Northwoods Parkway in Peachtree Corners is a technology-park street with office and flex buildings."
+ },
+ {
+  "id": "t017",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "State Street in Eagle is a retail and commercial highway corridor."
+ },
+ {
+  "id": "t018",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "North Wilson Road in Columbus has multi-tenant commercial strips."
+ },
+ {
+  "id": "t019",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "West Kennedale Parkway in Kennedale is a small-town commercial strip corridor."
+ },
+ {
+  "id": "t020",
+  "type": "Industrial",
+  "confidence": "medium",
+  "evidence": "Dahlia Street in Fontana sits inside the city's industrial warehouse zone."
+ },
+ {
+  "id": "t021",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "West Overland Road in west Boise near Cloverdale has industrial and flex uses."
+ },
+ {
+  "id": "t022",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "West Overland Road in west Boise, a few hundred feet from t021's address, suggests the same light industrial frontage."
+ },
+ {
+  "id": "t023",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "South Federal Way in Boise is an industrial and flex corridor near the airport."
+ },
+ {
+  "id": "t024",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "West State Street in Boise is a commercial corridor of strip retail and auto uses."
+ },
+ {
+  "id": "t025",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Allumbaugh Street in Boise is a light-industrial street near the airport."
+ },
+ {
+  "id": "t026",
+  "type": "Residential",
+  "confidence": "low",
+  "evidence": "Sheridan Road NE in Atlanta's Lindbergh area is a residential street."
+ },
+ {
+  "id": "t027",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "West Slaughter Lane in south Austin is a commercial strip corridor."
+ },
+ {
+  "id": "t028",
+  "type": "Residential",
+  "confidence": "low",
+  "evidence": "Skye Bridge Way in Charlotte's northern suburbs reads as a residential development street."
+ },
+ {
+  "id": "t029",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "The 58-64 numbering suggests a small multi-unit building on West Neff Avenue in Columbus."
+ },
+ {
+  "id": "t030",
+  "type": "Residential",
+  "confidence": "low",
+  "evidence": "Bennett Avenue in East Dallas is a residential street of single-family homes and duplexes."
+ },
+ {
+  "id": "t031",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "East Bonanza Road near downtown Las Vegas has light-industrial and service-commercial uses."
+ },
+ {
+  "id": "t032",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "East Roosevelt Street in Phoenix has light-industrial and commercial uses."
+ },
+ {
+  "id": "t033",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "West Cleveland Street in Tampa runs through a mixed commercial and light industrial area."
+ },
+ {
+  "id": "t034",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Continental Colony Parkway SW is an Atlanta business park with warehouse and flex space."
+ },
+ {
+  "id": "t035",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "West Slaughter Lane in south Austin is a commercial corridor of strip centers and small offices."
+ },
+ {
+  "id": "t036",
+  "type": "Residential",
+  "confidence": "low",
+  "evidence": "Stoney Trace Drive in east Charlotte is a residential street of townhomes and single-family homes."
+ },
+ {
+  "id": "t037",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Broadwyn Drive in Reynoldsburg is a business-park street that likely holds flex or warehouse buildings."
+ },
+ {
+  "id": "t038",
+  "type": "Residential",
+  "confidence": "low",
+  "evidence": "Bryan Street in East Dallas is a residential street of houses and small apartments."
+ },
+ {
+  "id": "t039",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "East Cedar Avenue in Las Vegas is an industrial area south of downtown."
+ },
+ {
+  "id": "t040",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "West McDowell Road in west Phoenix is a mixed commercial corridor."
+ },
+ {
+  "id": "t041",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "South West Shore Boulevard in Tampa's Westshore area mixes office and commercial uses."
+ },
+ {
+  "id": "t042",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "Centennial Olympic Park Drive frontage in downtown Atlanta is mostly office and mixed-use."
+ },
+ {
+  "id": "t043",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Southway Drive in south Austin is a light industrial street."
+ },
+ {
+  "id": "t044",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Steele Creek Road in southwest Charlotte runs through an industrial and distribution area."
+ },
+ {
+  "id": "t045",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "A 1212-1218 address range on Wilson Avenue in Columbus suggests a small multi-unit residential building."
+ },
+ {
+  "id": "t046",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "Cumberland Boulevard in the Cumberland district of Atlanta is an office-heavy submarket."
+ },
+ {
+  "id": "t047",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "405 Colorado Street sits in downtown Austin's office core."
+ },
+ {
+  "id": "t048",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "440 South Church Street is an uptown Charlotte office tower address."
+ },
+ {
+  "id": "t049",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "Olive Street in downtown Dallas is mostly office and mixed-use towers."
+ },
+ {
+  "id": "t050",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "Fillmore Street in the Cheesman Park and Congress Park area of Denver is dominated by older apartment buildings."
+ },
+ {
+  "id": "t051",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "Music Square West is a Music Row office address in Nashville."
+ },
+ {
+  "id": "t052",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "Kettner Boulevard in Little Italy is a mixed office and commercial corridor."
+ },
+ {
+  "id": "t053",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "North Dale Mabry Highway in Tampa is an office and commercial corridor."
+ },
+ {
+  "id": "t054",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "1100 Peachtree Street NE is a Midtown Atlanta office tower."
+ },
+ {
+  "id": "t055",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "111 Congress Avenue is in downtown Austin's office tower corridor."
+ },
+ {
+  "id": "t056",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "Ballantyne Corporate Place is a corporate office park address in southeast Charlotte."
+ },
+ {
+  "id": "t057",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "2000 McKinney Avenue is an Uptown Dallas office building address."
+ },
+ {
+  "id": "t058",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Platte Street in Denver's Platte River area has warehouse and flex buildings."
+ },
+ {
+  "id": "t059",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Kenner Avenue in Nashville is in an industrial and warehouse pocket."
+ },
+ {
+  "id": "t060",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "600 West Broadway is a downtown San Diego office tower address."
+ },
+ {
+  "id": "t061",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "East Fowler Avenue near USF in Tampa is a commercial strip corridor."
+ },
+ {
+  "id": "t062",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "101 Marietta Tower is a downtown Atlanta office tower."
+ },
+ {
+  "id": "t063",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "West 2nd Street in downtown Austin's Second Street area has many newer apartment towers."
+ },
+ {
+  "id": "t064",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "Sardis Road North in Charlotte has suburban office and retail uses."
+ },
+ {
+  "id": "t065",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "LBJ Freeway in north Dallas is an office corridor."
+ },
+ {
+  "id": "t066",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "Albemarle Road in east Charlotte is a strip-retail and gas-station corridor."
+ },
+ {
+  "id": "t067",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "Abrams Road in Dallas's Lake Highlands area has neighborhood retail and office frontage."
+ },
+ {
+  "id": "t068",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "Kuykendahl Road in north Houston has a mix of retail centers and office frontage."
+ },
+ {
+  "id": "t069",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "Blue Diamond Road in southwest Las Vegas is mostly neighborhood retail frontage."
+ },
+ {
+  "id": "t070",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "Turkey Lake Road near I-4 in Orlando is a retail and commercial corridor."
+ },
+ {
+  "id": "t071",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "Happy Valley Road in north Phoenix is a commercial corridor with retail centers."
+ },
+ {
+  "id": "t072",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "Harbor Boulevard in West Sacramento has retail and commercial frontage, and the 805-831 range suggests a strip center."
+ },
+ {
+  "id": "t073",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "Loop 1604 West in northwest San Antonio has office and medical frontage near Culebra."
+ },
+ {
+  "id": "t074",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "Johnston Road in the Ballantyne area of Charlotte has suburban office parks."
+ },
+ {
+  "id": "t075",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "North Hampton Road in south Dallas runs through light industrial and warehouse frontage."
+ },
+ {
+  "id": "t076",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Yale Street near Houston's Heights and I-10 has light industrial and warehouse frontage."
+ },
+ {
+  "id": "t077",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "Paradise Road near the Las Vegas Convention Center corridor is mostly office and hotel frontage."
+ },
+ {
+  "id": "t078",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "South Orange Blossom Trail is a commercial corridor of strip centers and auto-oriented retail."
+ },
+ {
+  "id": "t079",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "99th Avenue in west Phoenix is an industrial and warehouse corridor."
+ },
+ {
+  "id": "t080",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "El Camino Avenue in north Sacramento is a commercial corridor of strip retail and small offices; no specific knowledge of this address."
+ },
+ {
+  "id": "t081",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "Interstate 10 West frontage in northwest San Antonio is a highway retail and commercial corridor."
+ },
+ {
+  "id": "t082",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "South Boulevard in Charlotte is a strip-retail corridor."
+ },
+ {
+  "id": "t083",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "North Central Expressway in north Dallas is an office corridor."
+ },
+ {
+  "id": "t084",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "Long Point Road in Houston's Memorial-area corridor is lined with strip centers."
+ },
+ {
+  "id": "t085",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "West Charleston Boulevard in the 89117 ZIP has a mix of medical and professional office buildings."
+ }
+]

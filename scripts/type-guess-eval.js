@@ -1,0 +1,363 @@
+#!/usr/bin/env node
+// Can an AI tell a property's type from its address alone?
+//
+// WHY THIS EXISTS. The Comp report page (/bulk) asks for a property type in a
+// <select> that silently defaults to its first option, Industrial, so a run
+// where nobody touched it values an office building, a strip center or an
+// apartment complex against warehouse comps. The owner wants the picker gone
+// and the type guessed instead. This script measures whether that guess is
+// good enough before anything is built on it.
+//
+// GROUND TRUTH is market-seed.json: 247 real deals the search pipeline found
+// for the market pages, each found by a search FOR one type (an Industrial
+// market page's comps were searched for as Industrial), most of them carrying
+// that type's own fields (clear height and dock doors, unit counts, anchor
+// tenants). The label is therefore "what kind of deal this was found as",
+// which is close to but not exactly the truth: an industrial search can turn
+// up a flex building. Every disagreement is checked by hand in the write-up,
+// rather than the label being trusted blindly.
+//
+// THE GUESSER SEES ONLY THE ADDRESS. `build` writes two files: the labeled set
+// (kept away from the guesser) and blind batches of { id, address } shuffled
+// across types and markets, so a batch cannot be read as "these are all
+// Ontario warehouses". `score` reads the guesses back and reports accuracy,
+// per-type recall, the confusion matrix and how accurate the confident
+// answers were.
+//
+// Usage:
+//   node scripts/type-guess-eval.js build [outDir] [--per-type 20] [--batch 11]
+//   node scripts/type-guess-eval.js run [dir] [--provider gemini|anthropic] [--no-search] [--model M] [--thinking low]
+//   node scripts/type-guess-eval.js score <set.json> <guesses.json> [more guesses.json ...]
+//
+// `run` asks the production provider (needs that provider's key in the env or
+// .env; it is billed). The 2026-10-09 results were produced without one, by
+// Claude subagents given the exact guessPrompt() text, and are committed in
+// docs/evals/type-guess/.
+//
+// A guesses file is a JSON array of { id, type, confidence, evidence }, where
+// confidence is "high" | "medium" | "low". Several files are merged by id.
+//
+// Requiring this module starts nothing; the pure helpers are exported for
+// test/type-guess-eval.test.js.
+
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+
+const TYPES = ["Industrial", "Office", "Retail", "Multifamily", "Land", "Residential"];
+const CONFIDENCE = ["high", "medium", "low"];
+
+// mulberry32: a seeded shuffle, so `build` writes the same set every time and
+// a rerun is comparable with the last one.
+function rng(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffle(list, seed) {
+  const out = list.slice();
+  const r = rng(seed);
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(r() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+// A person types a street address. A comp written as a submarket or a
+// district ("Financial District (general submarket estimate)") is not one, so
+// it is not a fair question to ask.
+function isStreetAddress(address) {
+  return /^\s*\d+[A-Za-z]?(?:-\d+)?\s+\S/.test(String(address || ""));
+}
+
+// Every comp in the seed, flattened, deduped by address, street addresses only.
+function seedRows(seed) {
+  const seen = new Set();
+  const rows = [];
+  for (const [market, page] of Object.entries(seed)) {
+    for (const c of page.comps || []) {
+      const key = String(c.address || "").trim().toLowerCase();
+      if (!isStreetAddress(c.address) || seen.has(key)) continue;
+      seen.add(key);
+      rows.push({ market, label: page.type, address: String(c.address).trim(), comp: c });
+    }
+  }
+  return rows;
+}
+
+// Up to `perType` of each type, taken round-robin across that type's markets
+// so no one city dominates a type's score.
+function sampleSet(rows, perType) {
+  const byType = {};
+  for (const r of rows) (byType[r.label] = byType[r.label] || []).push(r);
+  const picked = [];
+  for (const type of Object.keys(byType).sort()) {
+    const byMarket = {};
+    for (const r of byType[type]) (byMarket[r.market] = byMarket[r.market] || []).push(r);
+    const queues = Object.keys(byMarket).sort().map((m) => byMarket[m].slice());
+    const take = [];
+    while (take.length < perType && queues.some((q) => q.length)) {
+      for (const q of queues) if (q.length && take.length < perType) take.push(q.shift());
+    }
+    picked.push(...take);
+  }
+  return picked.map((r, i) => ({ id: "t" + String(i + 1).padStart(3, "0"), ...r }));
+}
+
+function blindBatches(set, size, seed) {
+  const order = shuffle(set.map((r) => ({ id: r.id, address: r.address })), seed);
+  const out = [];
+  for (let i = 0; i < order.length; i += size) out.push(order.slice(i, i + size));
+  return out;
+}
+
+// The one question every guesser is asked, word for word, whoever runs it (a
+// Claude subagent in the 2026-10-09 run, the `run` command against the
+// production provider). The definitions are the app's own: Multifamily spans
+// duplexes to 300-unit communities, a condo or townhome is Residential
+// (report-and-valuation.md, flow 3a).
+function guessPrompt(batch, { search }) {
+  return [
+    "You are classifying commercial real estate by address. For each address below, decide what the property AT THAT ADDRESS is today.",
+    "Choose exactly one type:",
+    "- Industrial: warehouse, distribution, logistics, manufacturing, flex / light industrial, industrial outdoor storage.",
+    "- Office: office building, office park, medical office.",
+    "- Retail: shopping center, strip center, store, restaurant, bank branch, gas station, single-tenant net-lease retail.",
+    "- Multifamily: apartment building or complex, duplex to large community (2+ rental units on one property).",
+    "- Land: vacant land, a lot or development site with no meaningful building.",
+    "- Residential: single-family home, condo, townhome.",
+    search
+      ? "Look each address up on the web (at most 2 searches per address) and use what you find: listings, county records, news of the sale, the tenant's own site, the building's name."
+      : "Do NOT search or use any tool. Answer from the address text alone (street name, city, ZIP, what you know about the area).",
+    "Confidence: \"high\" only if you found (or know) what this exact address is; \"medium\" for strong indirect evidence; \"low\" for a guess.",
+    "Reply with ONLY a JSON array, one object per address, in this shape:",
+    "[{\"id\":\"t001\",\"type\":\"Office\",\"confidence\":\"high\",\"evidence\":\"one short sentence\"}]",
+    "",
+    "Addresses:",
+    ...batch.map((r) => `${r.id}: ${r.address}`),
+  ].join("\n");
+}
+
+function normType(t) {
+  const s = String(t || "").trim().toLowerCase();
+  return TYPES.find((x) => x.toLowerCase() === s) || null;
+}
+
+function normConfidence(c) {
+  const s = String(c || "").trim().toLowerCase();
+  return CONFIDENCE.includes(s) ? s : "low";
+}
+
+function pct(n, d) {
+  return d ? Math.round((1000 * n) / d) / 10 : null;
+}
+
+// The whole report, as data. A guess for an id not in the set is ignored; an
+// id with no guess counts as wrong, never as skipped, because a guesser that
+// silently drops the hard ones would otherwise score better than it is.
+function score(set, guesses) {
+  const byId = new Map();
+  for (const g of guesses) if (g && g.id) byId.set(g.id, g);
+  const labels = [...new Set(set.map((r) => r.label))].sort((a, b) => TYPES.indexOf(a) - TYPES.indexOf(b));
+  const cols = TYPES.slice();
+  const matrix = {};
+  for (const l of labels) { matrix[l] = {}; for (const c of cols.concat(["(none)"])) matrix[l][c] = 0; }
+  const perType = {};
+  const byConf = {};
+  for (const c of CONFIDENCE) byConf[c] = { n: 0, right: 0 };
+  const misses = [];
+  let right = 0;
+  for (const r of set) {
+    const g = byId.get(r.id);
+    const guess = g ? normType(g.type) : null;
+    const conf = g ? normConfidence(g.confidence) : "low";
+    const ok = guess === r.label;
+    matrix[r.label][guess || "(none)"]++;
+    const p = (perType[r.label] = perType[r.label] || { n: 0, right: 0 });
+    p.n++;
+    byConf[conf].n++;
+    if (ok) { right++; p.right++; byConf[conf].right++; }
+    else misses.push({ id: r.id, address: r.address, market: r.market, label: r.label, guess: guess || "(none)", confidence: conf, evidence: g ? String(g.evidence || "") : "" });
+  }
+  for (const t of Object.keys(perType)) perType[t].pct = pct(perType[t].right, perType[t].n);
+  for (const c of CONFIDENCE) byConf[c].pct = pct(byConf[c].right, byConf[c].n);
+  // The product question: if only a HIGH-confidence guess sets the type and
+  // anything less asks the user, how often does it ask, and how often is an
+  // automatic answer wrong?
+  const auto = byConf.high;
+  return {
+    n: set.length,
+    right,
+    accuracy: pct(right, set.length),
+    perType,
+    byConfidence: byConf,
+    autoPick: { answered: auto.n, coverage: pct(auto.n, set.length), wrong: auto.n - auto.right, accuracy: auto.pct },
+    matrix,
+    misses,
+  };
+}
+
+function formatReport(name, rep) {
+  const lines = [];
+  lines.push(`## ${name}`);
+  lines.push(`Overall: ${rep.right}/${rep.n} right (${rep.accuracy}%)`);
+  lines.push("");
+  lines.push("Per type:");
+  for (const [t, p] of Object.entries(rep.perType)) lines.push(`  ${t.padEnd(12)} ${p.right}/${p.n} (${p.pct}%)`);
+  lines.push("");
+  lines.push("By confidence:");
+  for (const c of CONFIDENCE) {
+    const b = rep.byConfidence[c];
+    lines.push(`  ${c.padEnd(7)} ${b.right}/${b.n}${b.n ? ` (${b.pct}%)` : ""}`);
+  }
+  lines.push(`Auto-pick on high only: answers ${rep.autoPick.coverage}% of addresses, wrong ${rep.autoPick.wrong} times (${rep.autoPick.accuracy}% right); the rest ask the user.`);
+  lines.push("");
+  const cols = TYPES.concat(["(none)"]).filter((c) => Object.values(rep.matrix).some((row) => row[c]));
+  lines.push("Confusion (rows = label, columns = guess):");
+  lines.push("  " + "".padEnd(12) + cols.map((c) => c.slice(0, 6).padStart(7)).join(""));
+  for (const [l, row] of Object.entries(rep.matrix)) lines.push("  " + l.padEnd(12) + cols.map((c) => String(row[c] || 0).padStart(7)).join(""));
+  if (rep.misses.length) {
+    lines.push("");
+    lines.push("Misses:");
+    for (const m of rep.misses) lines.push(`  ${m.id} [${m.label} -> ${m.guess}, ${m.confidence}] ${m.address} :: ${m.evidence}`);
+  }
+  return lines.join("\n");
+}
+
+function readJson(p) {
+  return JSON.parse(fs.readFileSync(p, "utf8"));
+}
+
+function argValue(argv, flag, fallback) {
+  const i = argv.indexOf(flag);
+  return i >= 0 && argv[i + 1] ? Number(argv[i + 1]) : fallback;
+}
+
+// The model's reply is meant to be a bare JSON array, but a model that wraps
+// it in a sentence or a code fence should not cost the whole batch.
+function parseGuesses(text) {
+  const s = String(text || "");
+  const a = s.indexOf("["), b = s.lastIndexOf("]");
+  if (a < 0 || b <= a) return [];
+  try {
+    const out = JSON.parse(s.slice(a, b + 1));
+    return Array.isArray(out) ? out.filter((g) => g && typeof g === "object" && g.id) : [];
+  } catch (_) { return []; }
+}
+
+// server.js's .env rule: fill only what is undefined, so an empty string set
+// by the caller stays empty.
+function loadDotEnv() {
+  try {
+    const envPath = path.join(__dirname, "..", ".env");
+    if (!fs.existsSync(envPath)) return;
+    for (const line of fs.readFileSync(envPath, "utf8").split("\n")) {
+      const m = line.match(/^\s*([\w.-]+)\s*=\s*(.*)\s*$/);
+      if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+    }
+  } catch (_) { /* no .env, no keys */ }
+}
+
+const PROVIDERS = {
+  gemini: () => require("../search-provider-gemini.js"),
+  anthropic: () => require("../search-provider-anthropic.js"),
+};
+
+// Asks the PRODUCTION provider the same question the 2026-10-09 run asked a
+// Claude subagent, one batch per call, through the same provider modules
+// server.js uses. Every call is billed to the key's account (about 85
+// addresses, a few cents on Gemini Flash). Writes guesses-<provider>[-nosearch].json
+// next to the batches; score it like any other guesses file.
+async function runProvider(dir, { providerName, search, model, thinkingLevel }) {
+  const make = PROVIDERS[providerName];
+  if (!make) throw new Error(`unknown provider "${providerName}" (gemini | anthropic)`);
+  const provider = make();
+  loadDotEnv();
+  const apiKey = (process.env[provider.apiKeyEnv] || "").trim();
+  if (!apiKey) throw new Error(`${provider.apiKeyEnv} is not set (env or .env)`);
+  const batches = readJson(path.join(dir, "blind-batches.json"));
+  const useModel = model || process.env.MODEL || provider.defaultModel;
+  const all = [];
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i];
+    const body = provider.buildRequestBody({
+      model: useModel, prompt: guessPrompt(batch, { search }), maxComps: 12,
+      searchUses: batch.length * 2, thinkingLevel,
+    });
+    if (!search) delete body.tools;
+    const init = provider.requestInit({ apiKey, model: useModel });
+    const res = await fetch(init.url, { method: "POST", headers: init.headers, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(`batch ${i + 1}: HTTP ${res.status} ${JSON.stringify(data).slice(0, 300)}`);
+    const got = parseGuesses(provider.parseResponse(data).text);
+    console.log(`batch ${i + 1}/${batches.length}: ${got.length}/${batch.length} answered`);
+    all.push(...got);
+  }
+  const out = path.join(dir, `guesses-${providerName}${search ? "" : "-nosearch"}.json`);
+  fs.writeFileSync(out, JSON.stringify(all, null, 1) + "\n");
+  console.log(`${all.length} guesses -> ${out}`);
+  return out;
+}
+
+function main(argv) {
+  const cmd = argv[0];
+  if (cmd === "build") {
+    const outDir = argv[1] && !argv[1].startsWith("--") ? argv[1] : "docs/evals/type-guess";
+    const perType = argValue(argv, "--per-type", 20);
+    const size = argValue(argv, "--batch", 11);
+    const seed = readJson(path.join(__dirname, "..", "market-seed.json"));
+    const set = sampleSet(seedRows(seed), perType);
+    fs.mkdirSync(outDir, { recursive: true });
+    const labeled = set.map((r) => ({
+      id: r.id, address: r.address, label: r.label, market: r.market,
+      source_url: r.comp.source_url || "", source_type: r.comp.source_type || "",
+    }));
+    fs.writeFileSync(path.join(outDir, "set.json"), JSON.stringify(labeled, null, 1) + "\n");
+    const batches = blindBatches(set, size, 20261009);
+    fs.writeFileSync(path.join(outDir, "blind-batches.json"), JSON.stringify(batches, null, 1) + "\n");
+    const counts = {};
+    for (const r of set) counts[r.label] = (counts[r.label] || 0) + 1;
+    console.log(`${set.length} addresses`, counts, `in ${batches.length} blind batches -> ${outDir}`);
+    return 0;
+  }
+  if (cmd === "score") {
+    const [setPath, ...guessPaths] = argv.slice(1);
+    if (!setPath || !guessPaths.length) { console.error("usage: score <set.json> <guesses.json> [...]"); return 2; }
+    const set = readJson(setPath);
+    const guesses = guessPaths.flatMap((p) => readJson(p));
+    const rep = score(set, guesses);
+    console.log(formatReport(guessPaths.map((p) => path.basename(p)).join(" + "), rep));
+    return 0;
+  }
+  if (cmd === "run") {
+    const dir = argv[1] && !argv[1].startsWith("--") ? argv[1] : "docs/evals/type-guess";
+    const flag = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : undefined; };
+    return runProvider(dir, {
+      providerName: flag("--provider") || process.env.SEARCH_PROVIDER || "gemini",
+      search: !argv.includes("--no-search"),
+      model: flag("--model"),
+      thinkingLevel: flag("--thinking") || process.env.THINKING_LEVEL || undefined,
+    }).then((out) => {
+      console.log(formatReport(path.basename(out), score(readJson(path.join(dir, "set.json")), readJson(out))));
+      return 0;
+    });
+  }
+  console.error("usage: node scripts/type-guess-eval.js build|run|score ...");
+  return 2;
+}
+
+module.exports = { TYPES, rng, shuffle, isStreetAddress, seedRows, sampleSet, blindBatches, guessPrompt, parseGuesses, normType, normConfidence, score, formatReport };
+
+if (require.main === module) {
+  Promise.resolve(main(process.argv.slice(2))).then(
+    (code) => { process.exitCode = code; },
+    (err) => { console.error(err.message || err); process.exitCode = 1; });
+}

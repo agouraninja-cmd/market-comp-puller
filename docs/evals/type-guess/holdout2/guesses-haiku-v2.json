@@ -1,0 +1,242 @@
+[
+ {
+  "id": "g001",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "A LoopNet property record for 1400 Beaver Ruin Rd lists a warehouse on a 9.92-acre M1 site with about 74,475 SF."
+ },
+ {
+  "id": "g002",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No page found for 10951 W Emerald after three searches, and the W Emerald corridor's listings are flex, warehouse and industrial space, with some office."
+ },
+ {
+  "id": "g003",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Nothing found for 6660 Broughton Ave; the same street's 6611 Broughton Ave is an industrial warehouse and distribution listing with 32-34 ft clear heights and dock doors, so street land use points to Industrial."
+ },
+ {
+  "id": "g004",
+  "type": "Land",
+  "confidence": "low",
+  "evidence": "No page or assessor record found for 1812 Garden Spring Dr, and the nearby ZIP 75253 results were vacant lots on Garden Grove Dr, a different street."
+ },
+ {
+  "id": "g005",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Multiple listings for 10681 Production Ave in Fontana describe a 1.1M SF warehouse campus with 32-foot clear height and 220 dock-high doors, plus a Traded sale record."
+ },
+ {
+  "id": "g006",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "A 2021 NAI Partners sale report on the Intercontinental Crossing industrial park names 18405 as a 25,000 SF freestanding warehouse with dock-high loading."
+ },
+ {
+  "id": "g007",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "A Crexi listing for 6230 Corporate Dr describes a one-story 11,600 SF distribution/flex building with 20-foot ceilings and 2 loading docks."
+ },
+ {
+  "id": "g008",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Traded.co records 3130 North Lamb Boulevard as a closed industrial sale of about 104,440 SF in September 2025, and a Sunrise Manor industrial rental directory lists the address."
+ },
+ {
+  "id": "g009",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Colliers lists 2315 Pier Street as a crane-served manufacturing facility of about 105,943 SF on President's Island, 100% leased to Morgan Steel."
+ },
+ {
+  "id": "g010",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Nothing found about 390 E Corporate Dr or its parcel, so this rests on the street: the same street's 499 E Corporate Dr is an industrial flex park."
+ },
+ {
+  "id": "g011",
+  "type": "Multifamily",
+  "confidence": "medium",
+  "evidence": "A Redfin rental lists Unit 104 at 1710 Wooten Park Dr as a 2-bed, 2-bath unit, and the adjoining 1720 Wooten Park is a 36-unit apartment property, though a broker page tags 1710 as commercial."
+ },
+ {
+  "id": "g012",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "A sale listing for 2054 N 4th St describes a seven-unit brick townhome building with all units rented."
+ },
+ {
+  "id": "g013",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Rental listings for 4810 Gaston Ave, including a Gaston Twelve Apartments building page, offer 1- and 2-bedroom apartment units."
+ },
+ {
+  "id": "g014",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Several rental listing pages for 109 Orland St show one- and two-bedroom apartment units with unit numbers, a pool and on-site laundry, which is an apartment complex."
+ },
+ {
+  "id": "g015",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Redfin rental listings name Maryland Greens at 749 E Maryland Ave, and a JLL sale brochure describes it as a 78-unit garden-style apartment community."
+ },
+ {
+  "id": "g016",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Redfin ties 17220 Heart of Palms Dr to The Preserve at Tampa Palms, and past rent listings show multiple two-bedroom apartment units at this address."
+ },
+ {
+  "id": "g017",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Listings for 2411 S 5th St describe a six-unit apartment building with units for rent, and an MF-4 zoned sale listing covers the same property."
+ },
+ {
+  "id": "g018",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "Nothing found about 74 W Moler itself, but several apartment listings sit on the same Moler Street block, so the street reads as apartments."
+ },
+ {
+  "id": "g019",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Listings for 5313-5317 Reiger Ave describe a multifamily property for sale (14 to 26 units, MF-2 zoning) and apartment rentals at 5313 Reiger Ave."
+ },
+ {
+  "id": "g020",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "Nothing found about 4340 N Las Vegas Blvd after three searches; the nearest same-street record is 4330 N Las Vegas Blvd, a 60-unit apartment complex for sale, which is a different number and not evidence for this address."
+ },
+ {
+  "id": "g021",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "A realmo listing for 1360 Peachtree St NE offers about 14,356 SF of ready-to-occupy office space on a 1.88-acre lot, NNN, marketed by Cushman & Wakefield."
+ },
+ {
+  "id": "g022",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "A 2013-14 Texas renovation record for a 9900 Spectrum facility names LegalZoom as the project, a corporate tenant, with no use label; no parcel record was found."
+ },
+ {
+  "id": "g023",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "CommercialCafe lists 1942 East 7th Street as an office property of about 103,500 SF with available office spaces, and Novant Health has a medical office suite there."
+ },
+ {
+  "id": "g024",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Trinity Place, a 17-story downtown office tower at 1801 Broadway, is marketed for sale by JLL and for office lease by Cushman & Wakefield."
+ },
+ {
+  "id": "g025",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Cushman & Wakefield lease listings for 424 Church Street, the Fifth Third Center, a Class A office tower of about 487,000 SF with open office suites."
+ },
+ {
+  "id": "g026",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "A CoStar article on the sale of the 24-story office tower at 401 B St (Wells Fargo Plaza) names this exact address, and a CBIZ office suite is listed there."
+ },
+ {
+  "id": "g027",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Traded.co records a closed August 2025 sale of 4900 Memorial Highway, Fountain Square III, a 176,150 SF four-story Class A office building per CBRE."
+ },
+ {
+  "id": "g028",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "200 4th Avenue South is a 30-story downtown commercial office tower that consolidated about 1,700 workers."
+ },
+ {
+  "id": "g029",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "501 W Broadway is described as a 21-story downtown office tower with Regus suites and a law-firm sublease flyer for Suite 730."
+ },
+ {
+  "id": "g030",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Several provider pages name the 17 Davis Medical Building (Seventeen Davis) at 17 Davis Blvd, Tampa, a medical office building."
+ },
+ {
+  "id": "g031",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "A listing for 4323-4331 Maple Ave describes a vacant 4,686 SF retail building at Maple and Wycliff with a 7-Eleven suite on a net lease."
+ },
+ {
+  "id": "g032",
+  "type": "Retail",
+  "confidence": "medium",
+  "evidence": "A Crexi listing for 7001 Lyons Ave describes a vacant 1950 single-story building of about 9,800 SF with retail (grocery) and industrial (distribution) subtypes, so the type is conflicting."
+ },
+ {
+  "id": "g033",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "Nothing found about 9200 W Sahara after three searches; the W Sahara 89117 corridor shows mainly professional office and suite listings (7900, 8100 and 9340 W Sahara), so Office is a street-level guess."
+ },
+ {
+  "id": "g034",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "JLL lists West Colonial Oaks at 7150-7300 W Colonial Dr, a 161,333 SF shopping center with small suites for lease."
+ },
+ {
+  "id": "g035",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "Nothing found about 5324-5338 N 7th Ave after three searches; the N 7th corridor in 85013 and 85014 returns mostly apartment communities (5242, 5303 and 5145 N 7th), so Multifamily is a street-level guess."
+ },
+ {
+  "id": "g036",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "No page about 10040-10064 Bruceville Rd; the nearby Elk Grove Commons shopping center and a new commercial site at Bruceville and Sheldon suggest commercial frontage, and the multi-address range fits a strip of suites."
+ },
+ {
+  "id": "g037",
+  "type": "Retail",
+  "confidence": "medium",
+  "evidence": "Only a Redfin unit record (#231) and conflicting restaurant and shop directory entries at this number, so the multi-unit numbering and small-business mix on US 90 point to a strip-type retail center."
+ },
+ {
+  "id": "g038",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "A listing for 8702 S Lancaster Rd describes a 17,009 SF suburban strip center (Lancaster Retail Plaza) with named tenants Mint Dentistry, Metro by T-Mobile and Cricket."
+ },
+ {
+  "id": "g039",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "No page found for 3511 Houston Ave or its street after three searches, so this is a low-confidence guess for an inner-city arterial."
+ },
+ {
+  "id": "g040",
+  "type": "Retail",
+  "confidence": "medium",
+  "evidence": "A Hobby Lobby store page places a store at 625 N Stephanie in Whitney Ranch Shopping Center, which points to a retail center."
+ }
+]

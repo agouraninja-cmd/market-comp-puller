@@ -34,11 +34,13 @@ before the rest of the file, which it extends.
   that field of view, ONE size for every surface so a building is one URL and
   one bill per browser. A refusal is a cached miss on the server, as before.
   This tightened the report map's pin popups too.
-- **Home's list thumbnails and map cards, and The Board's deal cards, show
-  the street photo** where one is proven good, and keep the aerial where it is
+- **Home's list thumbnails and map cards show the street photo** (and The
+  Board's deal cards did, until the deal wall left on 2026-10-09) where one
+  is proven good, and keep the aerial where it is
   not (a Land deal with no building, an unmapped parcel, no good pano). The
   rules are `building-photo.js` (browser global `BLDGPHOTO`, dual-exported,
-  `maxAge: 0`, loaded by index.html and by /vault ahead of deal-wall.js), and
+  `maxAge: 0`, loaded by index.html; /vault loaded it for the deal wall until
+  2026-10-09), and
   it is **stricter than the report map's snap**: a footprint must CARRY the
   house number (and street, where tagged) or there is no street photo. The
   report snap may fall back to the main mass near the pin where nothing
@@ -58,10 +60,10 @@ before the rest of the file, which it extends.
 - **Privacy is unchanged in kind.** Overpass gets coordinates only (as the
   aerial's tile URLs and the report snap already disclose), the address is
   compared in the browser, and `/api/streetview` gets the building's
-  coordinates, never an address. The Board learns the key is set from
-  `window.__CN_STREETVIEW__`, which the /vault route writes into the page's
-  `head` (renderVaultBody still takes the boot payload alone); Home reads
-  `/api/config`'s `streetview`, like the report map.
+  coordinates, never an address. Home reads `/api/config`'s `streetview`,
+  like the report map. (The Board read `window.__CN_STREETVIEW__` from the
+  /vault route's `head` until the deal wall left on 2026-10-09; the route no
+  longer writes it.)
 - **⚠ `building-photo.js` carries copies of index.html's `houseNumberOf`,
   `osmNumberMatches`, `streetLooksSame` and `unitDesignatorOf`**, because
   /vault cannot load index.html's script; `test/building-photo.test.js` runs

@@ -136,9 +136,11 @@ test("⚠ houseNumberOf / osmNumberMatches / streetLooksSame / unitDesignatorOf 
 
 // ---- served and loaded ----------------------------------------------------------
 
-test("served with maxAge 0 and loaded by both pages that draw building photos", () => {
+test("served with maxAge 0 and loaded by the page that draws building photos", () => {
   assert.match(server, /"\/building-photo\.js": \{ file: "building-photo\.js", type: "text\/javascript; charset=utf-8", maxAge: 0 \}/);
   assert.match(html, /<script src="\/building-photo\.js"><\/script>/);
+  // /vault loaded it for The Board's deal cards until the deal wall left
+  // (2026-10-09); nothing there draws a building photo now.
   const vault = fs.readFileSync(path.join(ROOT, "vault-page.js"), "utf8");
-  assert.match(vault, /<script src="\/building-photo\.js"><\/script>[\s\S]*<script src="\/deal-wall\.js"><\/script>/);
+  assert.doesNotMatch(vault, /building-photo\.js|__CN_STREETVIEW__/);
 });

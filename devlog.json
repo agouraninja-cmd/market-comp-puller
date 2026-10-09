@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-10-09",
+    "type": "feature",
+    "title": "A development firm works its deals right on Home",
+    "details": "If you’re in a development firm, the deals you’re buying and the properties you own or track are worked on Home’s Properties tab now, instead of on a tab of their own. Click one of your rows and it opens in place under the row: for a deal, the five steps from Prospect to Owned with the day you reached each, one click to move it on or pass on it, its asking price, acres, zoning and seller, its key dates with a countdown, notes, Edit and Run a land report; for a property you hold, its likely value, how it changed, a chart of every check, how the market moved since, and Open report, Refresh value and Add to firm. “+ Add a property” adds a deal, or a property you own or track, right there, and deals you passed on fold away under Passed at the foot of the list. Clicking a deal’s pin or one of its dates in Today opens it too. Deal tracking is for development firms only, so it’s gone from The Board, which is back to being the markets you follow, and from your own comps page, which for a development firm is now your comps and The Board."
+  },
+  {
+    "date": "2026-10-09",
     "type": "improvement",
     "title": "Comps are off Home",
     "details": "Home no longer shows your comps. The Comps tab, the Comps switch on the map, the “Add comps” card for a new account and comp results in the search box are gone, so Home is about the properties you own, manage or are buying, the people you work with and what needs you today. Your comps are where they have always been kept, on your own page (Your properties and comps), and an old link to Home’s Comps tab now opens them there. The map’s switch is Properties and Permits."

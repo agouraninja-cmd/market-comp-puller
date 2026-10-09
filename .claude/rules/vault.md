@@ -20,11 +20,10 @@ paths:
   - "test/blend-comps.test.js"
   - "test/xlsx.test.js"
   - "sites.js"
-  - "sites-tab.js"
   - "test/sites.test.js"
   - "test/sites-run.test.js"
-  - "deal-wall.js"
-  - "test/deal-wall.test.js"
+  - "buying-read.js"
+  - "test/buying-read.test.js"
 ---
 # The broker vault and lead inbox
 
@@ -1160,6 +1159,43 @@ paths:
 
 ## Sites, for a development firm (2026-10-05)
 
+> **Moved to Home on 2026-10-09 (the owner's call: "Development firms only
+> and integrate it into the property section of the home page. Remove it
+> from the board and the vault ... also"). Read this box first; the notes
+> below describe the /vault tab as it was.**
+> - **Where it lives now.** Home's Properties tab (`index.html`, rules in
+>   workspace.md's "Deals on Home" bullet). A development firm's member opens
+>   one of their own rows (a deal, or a property they own or track) and its
+>   working pane opens IN PLACE under the row: `home-sites.js` (the global
+>   `HOMESITES`, browser-drawn with createElement, pure helpers
+>   dual-exported and tested in `test/home-sites.test.js`). It is the old
+>   `sites-tab.js` (renamed with git mv) rebuilt for the list's column:
+>   the tracker, Move to / Pass / Back to Prospect, key terms, key dates,
+>   notes, Edit, Run a land report, Remove; for a held property its value,
+>   change, chart, the market since, the firm door, How you bought it, Open
+>   report, Refresh value, Mark as Tracking/Owned, Remove. Home's "+ Add a
+>   property" opens its add form ("I'm buying it" / "I own it" / "I'm
+>   tracking it") under the chooser. Passed deals fold away under "Passed"
+>   at the foot of the list.
+> - **Development firms only.** `HOMEMAP.dealsOn(firmKind)` is the one
+>   rule: a deal is listed, dated in Today and offered in the chooser for a
+>   member of a development firm and nobody else. A status row (Owned or
+>   Tracking on a held property) still describes that property for anyone.
+>   The SERVER keeps no firm-kind rule (`requireSites` is still signed
+>   in, Pro, a database): the rows are the member's own and private, and a
+>   member who leaves a development firm still owns every row. **Rows a
+>   non-development member made on The Board's deal wall (2026-10-07 to
+>   2026-10-09) are kept in `user_sites` and shown nowhere.**
+> - **Gone from /vault:** the Sites tab (`tab-sites`, `panelSites`, the
+>   `#sitesSec` styles, the SITESTAB mount, `/sites.js` and
+>   `/sites-tab.js` on that page). For a development firm's member
+>   `applyShop` hides Pipeline AND Properties (their properties are on
+>   Home), and a link naming either, or the old `#sites` (read as
+>   Properties for everyone else), sends them to `/desk#properties`
+>   (`askedTab`; never from a prerendered page). Comps is the opening tab
+>   and the bare address for everyone. The page's header line for that firm
+>   says "Your properties are on Home".
+
 The owner's pick "M2" of the Sites drafts
 (https://claude.ai/artifact/BMeJY9d3vegjmDxcAPtxzR, rounds 1-3). Migration
 `060-user-sites.sql` (**run before deploying**; deploy-first costs only the
@@ -1288,6 +1324,22 @@ only: nothing about storage or import changed.
   `test/vault-page.test.js`.
 
 ## The Board's deal wall (2026-10-07)
+
+> **Removed on 2026-10-09** with the Sites tab (above): deals are a
+> development firm's, worked on Home. The owner: "the board is meant to be
+> kind of like a stock portfolio watch list for properties and markets".
+> The Board is the market tiles again. What survived: **the buying read**,
+> now `buying-read.js` (git mv of `deal-wall.js`, cut to
+> `priceMove`/`buyingRead`/`LEANS`/`FLAT_PCT`, the global
+> `BUYINGREAD`, `maxAge: 0`, tested in `test/buying-read.test.js`),
+> which `renderMarkets` reads for each tile, and `buildWatchlistFeed`'s
+> `direction`. Gone: `#wallSec`/`#wallRoot`/`#wallAddToggle`, the
+> `#wallSec` styles, `mountWall`, `/building-photo.js` and
+> `window.__CN_STREETVIEW__` on /vault, the `aerialTiles` ⚠ copy of
+> index.html's `aerialTileSpec`, and `?add=buy` (the tab counts markets
+> again). Not built, and the obvious next step: properties on The Board as
+> a stock-style watchlist beside the markets. The rest of this section is
+> the wall as it was.
 
 The owner's pick "C, Deal wall" of the Board drafts
 (https://claude.ai/artifact/YXWid51XCmpwwyBxjTmsrY), from a partner's idea of

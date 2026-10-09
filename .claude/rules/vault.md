@@ -1332,7 +1332,14 @@ Rules a future editor will otherwise break:
   Coordinates are cached in the browser (`localStorage` `cnDealGeo1`); a
   miss is stamped and retried after three days, because the route answers a
   Census outage with the same `{}` as a real miss. `aerialTiles` is a ⚠
-  pair with index.html's `aerialTileSpec`, and a test runs both.
+  pair with index.html's `aerialTileSpec`, and a test runs both. Since
+  2026-10-09 a card lays a STREET photo over its aerial where one is proven
+  good (`building-photo.js`, the global `BLDGPHOTO`: a footprint must carry
+  the address, and the server's `judgePano` must pass the pano; maps.md has
+  the rules). OpenStreetMap is asked by coordinates, `/api/streetview` by the
+  building's coordinates; the address never leaves the browser. A Land deal
+  with no building keeps its aerial and pin. `ctx.streetview` comes from
+  `window.__CN_STREETVIEW__`, which server.js sets when the key is.
 - **Arriving to add one (2026-10-07, Draft C).** Home's "Add a property"
   links here as `/vault?add=buy#board` (a deal), `?add=own#properties` (a
   property you own) or `?add=buy|own#sites` (a development firm). The page

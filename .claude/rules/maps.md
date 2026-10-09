@@ -2,7 +2,10 @@
 paths:
   - "index.html"
   - "streetview-aim.js"
+  - "building-photo.js"
   - "test/streetview-aim.test.js"
+  - "test/streetview-run.test.js"
+  - "test/building-photo.test.js"
 ---
 # Maps, geocoding and Street View
 
@@ -10,6 +13,66 @@ paths:
 > when it opens a file matching `paths` above; read it by hand before changing
 > this area's code in `server.js`. The never-break rules stay in CLAUDE.md.
 > Add new notes for this area here, not there.
+
+## Street photos instead of the aerial (2026-10-09)
+
+The owner: "show the actual pictures of buildings instead of the birds eye
+view version ... make sure they are actual good pictures though." Read this
+before the rest of the file, which it extends.
+
+- **Every street photo on the site passes ONE gate, `judgePano` in
+  `streetview-aim.js`**, which `GET /api/streetview` runs on Google's free
+  metadata answer before it ever asks for the billed image. On top of the
+  old distance rule it refuses imagery that is not Google's own (`copyright`
+  must name Google: a user's photosphere is "outdoor" too, and is the tilted,
+  smeared kind), imagery captured more than `MAX_PANO_AGE_YEARS` (10) ago or
+  with no date (soft and dim, and on a new building it shows the empty lot),
+  and a camera nearer than `MIN_PANO_M` (4 m: standing on the building, where
+  the heading means nothing). What passes it frames: `fovFor` narrows the lens
+  from 90° to 45° as the camera gets farther off, so a house 30 m back fills
+  the frame. The image is now 640x384 (the API's widest, the popup's 5:3) at
+  that field of view, ONE size for every surface so a building is one URL and
+  one bill per browser. A refusal is a cached miss on the server, as before.
+  This tightened the report map's pin popups too.
+- **Home's list thumbnails and map cards, and The Board's deal cards, show
+  the street photo** where one is proven good, and keep the aerial where it is
+  not (a Land deal with no building, an unmapped parcel, no good pano). The
+  rules are `building-photo.js` (browser global `BLDGPHOTO`, dual-exported,
+  `maxAge: 0`, loaded by index.html and by /vault ahead of deal-wall.js), and
+  it is **stricter than the report map's snap**: a footprint must CARRY the
+  house number (and street, where tagged) or there is no street photo. The
+  report snap may fall back to the main mass near the pin where nothing
+  nearby is addressed, because the report also checks the geocoder matched
+  the typed address (`geoLabelMatches`); Home and The Board place pins from
+  stored coordinates with no label to check. Same `eligible` gates as the
+  popup: a street number, and not one unit of a site.
+- **Lookups are lazy and batched.** Home asks OpenStreetMap about a card only
+  when it scrolls into view (`hmPhotoSeen`, an IntersectionObserver, 25
+  points per Overpass query), and a map card the moment it opens; The Board
+  asks once per render for the cards it painted. The answers are kept in this
+  browser (`bldgPhoto.v1`, per point and address; an Overpass outage is not
+  stored), and so is whether each building's photo came back
+  (`bldgPhotoState.v1`: a good one skips the aerial on the next visit, a
+  refused one is not asked again for 7 days). A photo fades in over the
+  aerial the first time; any image error removes it and the aerial stays.
+- **Privacy is unchanged in kind.** Overpass gets coordinates only (as the
+  aerial's tile URLs and the report snap already disclose), the address is
+  compared in the browser, and `/api/streetview` gets the building's
+  coordinates, never an address. The Board learns the key is set from
+  `window.__CN_STREETVIEW__`, which the /vault route writes into the page's
+  `head` (renderVaultBody still takes the boot payload alone); Home reads
+  `/api/config`'s `streetview`, like the report map.
+- **⚠ `building-photo.js` carries copies of index.html's `houseNumberOf`,
+  `osmNumberMatches`, `streetLooksSame` and `unitDesignatorOf`**, because
+  /vault cannot load index.html's script; `test/building-photo.test.js` runs
+  both copies over the same addresses.
+- **`STREETVIEW_API_URL`** (test-only, unset in production) points the route
+  at a stand-in; `test/streetview-run.test.js` proves a refused pano is never
+  followed by an image request, and `test/helpers/boot.js` now blanks
+  `GOOGLE_MAPS_API_KEY` so no suite can bill Google from a developer's `.env`.
+- **Found while building it:** Home's 48px thumbnails were drawn from a 96px
+  aerial crop, so the property sat in the thumbnail's bottom-right corner.
+  They are now cropped to their own size, centred.
 
 ## Configuration
 

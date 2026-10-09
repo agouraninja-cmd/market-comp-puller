@@ -178,6 +178,13 @@ async function bootOnce(env) {
       // outage to that caller, so it skips and nothing else changes; a suite
       // that means to assert on a lookup passes its own stub.
       CENSUS_API_URL: "http://127.0.0.1:9/census-unset",
+      // Street View, both halves, for the same reason (2026-10-09): a key in
+      // a developer's .env would make /api/streetview call Google, and bill,
+      // from any suite that asked for a photo. Blank key = the route 404s,
+      // which is what every suite but test/streetview-run.test.js expects;
+      // that one passes a key and its own stand-in.
+      GOOGLE_MAPS_API_KEY: "",
+      STREETVIEW_API_URL: "http://127.0.0.1:9/streetview-unset",
       // The new-account Pro trial, OFF by default here (2026-09-25). In
       // production it is on for 14 days, which means every account a suite
       // creates would be Pro for the whole test — and dozens of suites sign up

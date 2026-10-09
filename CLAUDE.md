@@ -128,7 +128,8 @@ session that never reads it.
     `exportReportKey`; `normalizeBrandBlock` / `normalizeBrand`; `areaStyle` /
     `boundaryStyle`; `BULK_SUBJECT_FIELDS` / `TYPE_SUBJECT_FIELDS`; the vault
     page's refusal needles; home-map.js `PERMIT_STAGES` / `tidyCaps` and
-    permits-page.js `STAGE_NAMES` / `tidy`). Grep for ⚠ before changing either side.
+    permits-page.js `STAGE_NAMES` / `tidy`; index.html's address-proving
+    helpers and building-photo.js's copies). Grep for ⚠ before changing either side.
 12. **Nothing mails or sweeps on a timer.** The watchlist digest, the trial
     emails and the permit sweep are `ADMIN_KEY`-gated routes driven from
     outside the process. A ledger is marked only after the send, and opening
@@ -399,7 +400,7 @@ so they are trusted config and are never set in production.
 | `STRIPE_PRICE_*` | — | price ids; each may be a comma list (first is sold, all are recognized), so a price change is `new_id,old_id`, never a swap | billing.md |
 | `STRIPE_PRICE_CHECK` | on | boot check that each sold price matches `PRICING`; a mismatch pauses that plan's checkout | billing.md |
 | `FREE_REPORTS_PER_MONTH` | 3 | a free account's monthly report allowance | billing.md |
-| `RESEND_API_URL`, `SEARCH_API_URL`, `GOOGLE_OAUTH_TOKEN_URL`, `CENSUS_API_URL`, `PERMIT_PORTAL_ORIGIN`, `SHIP_BOARD_BASE`, `LOGO_IMPORT_ALLOW_PRIVATE` | unset | **test-only** endpoint overrides and one guard switch | that feature's file |
+| `RESEND_API_URL`, `SEARCH_API_URL`, `GOOGLE_OAUTH_TOKEN_URL`, `CENSUS_API_URL`, `STREETVIEW_API_URL`, `PERMIT_PORTAL_ORIGIN`, `SHIP_BOARD_BASE`, `LOGO_IMPORT_ALLOW_PRIVATE` | unset | **test-only** endpoint overrides and one guard switch | that feature's file |
 
 ## Where everything else lives
 
@@ -431,7 +432,7 @@ gone. Document a new feature in its area's file, not here.
 | `permits.md` | the permit sweep, `/permits`, tracking your own permit (notices by email and on CompNinja), and Home's Permits layer (`/api/permits/map`) | `permit-*.js`, `pdf-text.js`, `permits-page.js` |
 | `watchlist-and-mail.md` | Resend and outbound mail settings, `/api/lead`, the watchlist digest, search demand | `watchlist-digest.js`, `search-demand.js`, `email-shell.js` |
 | `admin-and-analytics.md` | `/admin`, `/api/stats`, the visitor funnel, the `/dev` hub | `devlog.json`, `dev-returns.js` |
-| `maps.md` | the Google Maps key, `/api/geocode`, `/api/streetview` | `index.html`, `streetview-aim.js` |
+| `maps.md` | the Google Maps key, `/api/geocode`, `/api/streetview`, street photos on Home and The Board | `index.html`, `streetview-aim.js`, `building-photo.js` |
 | `desktop.md` | `desktop.js`, the Electron app in `desktop-app/`, the installable web app | `desktop.js`, `desktop-app/**` |
 | `ship-board.md` | the nightly Google Chat post and `/dev/shipped` | `ship-board.js`, `scripts/ship-chat.js` |
 | `testing.md` | how tests are written here | `test/**` |

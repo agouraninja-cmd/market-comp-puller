@@ -118,6 +118,10 @@ test("Home holds no comps: no tab, no layer, no start card, no read of the book 
   assert.ok(js.length > 5000, "Home's script moved");
   assert.doesNotMatch(js, /fetch\("\/api\/vault"/, "Home reads the member's comps again");
   assert.doesNotMatch(js, /HOMEMAP\.compRow|hmLoadComps|hmComps\b/, "Home's comps code is back");
+  // A map card has no comp branch: a `comp` left behind there is a
+  // ReferenceError on every card (the street-photo merge left one).
+  const sel = fnOf("function hmSelect(key, { item, permit, from } = {}) {");
+  assert.doesNotMatch(sel.replace(/\/\/.*$/gm, ""), /\bcomp\b/, "hmSelect still reads a comp");
   assert.ok(html.includes('const HM_TAB_IDS = { today: ["hmTabToday", "hmPaneToday"], properties: ["hmTabProps", "hmPaneProps"],\n    people: ["hmTabPeople", "hmPanePeople"] };'));
   // The find box finds properties, people and permits, and says so.
   assert.match(html, /placeholder="Find a property or person" aria-label="Find a property or person on Home"/);

@@ -5235,6 +5235,37 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       chip.textContent = part;
       metaBox.appendChild(chip);
     });
+    // "Wrong type?" (2026-10-09). Nobody picks a type before a report any
+    // more — it is found from the address — so the report is where a wrong one
+    // is put right: six buttons, and a pick re-runs the report as that type
+    // through the ordinary confirm dialog (rerunHistory). The visitor's OWN
+    // report only, never a shared /r/ link (somebody else's report) or the
+    // sample (re-running it would bill a real search of a made-up example),
+    // and never in the PNG or print, which photograph this header.
+    if (!sharedViewMeta && !meta.sample) {
+      const wrong = document.createElement("button");
+      wrong.type = "button";
+      wrong.id = "reportWrongType";
+      wrong.className = "no-print no-capture text-xs text-[#5A6473] underline hover:text-[#1A2433] mr-1.5 mt-1.5";
+      wrong.textContent = "Wrong type?";
+      const picker = document.createElement("div");
+      picker.id = "reportTypePicker";
+      picker.className = "hidden no-print no-capture w-full mt-1.5 flex flex-wrap gap-1.5";
+      wrong.addEventListener("click", () => {
+        if (!picker.classList.contains("hidden")) { picker.classList.add("hidden"); return; }
+        picker.classList.remove("hidden");
+        buildTypeButtons(picker, meta.type, (v) => {
+          picker.classList.add("hidden");
+          if (v === meta.type) return;
+          // The other half of the lookup's live accuracy figure: a report
+          // that was the wrong type, logged as the type it was run as.
+          logTypeAutofill(meta.address, "report_retyped", meta.type);
+          rerunHistory({ ...meta, type: v });
+        });
+      });
+      metaBox.appendChild(wrong);
+      metaBox.appendChild(picker);
+    }
     const printDate = document.getElementById("printDate");
     if (printDate) printDate.textContent = "Generated " + dateStr;
   }

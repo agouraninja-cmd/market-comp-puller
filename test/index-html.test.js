@@ -3038,3 +3038,21 @@ test("the report names the building it values and the comps it used, in Home's w
   assert.ok(html.includes("s.addText(`Your property · ${metaLine(meta)} · Generated ${dateStr}`"));
   assert.ok(html.includes('"Comps used · leases"') && html.includes('"Comps used · sales"'));
 });
+
+// "Wrong type?" (2026-10-09): nobody picks a type before a report, so the
+// report is where a wrong one is put right.
+test("a report offers Wrong type?, on the visitor's own report only, and re-runs as the pick", () => {
+  const start = html.indexOf("function renderReportMeta(meta)");
+  const end = html.indexOf("function metaLine(meta)", start);
+  assert.ok(start >= 0 && end > start, "renderReportMeta moved");
+  const fn = html.slice(start, end);
+  assert.match(fn, /if \(!sharedViewMeta && !meta\.sample\) \{/,
+    "never on a shared /r/ link (somebody else's report) or the sample (a re-run would bill a real search)");
+  assert.match(fn, /wrong\.textContent = "Wrong type\?"/);
+  assert.match(fn, /wrong\.className = "no-print no-capture /, "the PNG and print photograph this header");
+  assert.match(fn, /picker\.className = "hidden no-print no-capture /);
+  assert.match(fn, /buildTypeButtons\(picker, meta\.type,/);
+  assert.match(fn, /if \(v === meta\.type\) return;/, "picking the same type re-runs nothing");
+  assert.match(fn, /rerunHistory\(\{ \.\.\.meta, type: v \}\)/, "the re-run goes through the ordinary confirm dialog");
+  assert.match(fn, /logTypeAutofill\(meta\.address, "report_retyped", meta\.type\)/);
+});

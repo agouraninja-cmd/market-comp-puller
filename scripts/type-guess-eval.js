@@ -151,6 +151,26 @@ const ANSWER_LINES = (batch) => [
 // nothing is found. It was written after reading version 1's misses, so its
 // honest score is on the HOLDOUT set it never saw, not on the first 85.
 function guessPrompt(batch, { search, version = 1 }) {
+  // Version 3 is the DEEP pass: only for addresses a quick pass answered with
+  // less than "high", i.e. ones it could not find. More searches, and the two
+  // sources a quick pass skips: the county's parcel record (its land-use
+  // code names the type) and the businesses listed at that exact number.
+  if (version === 3) {
+    return [
+      "A quick web lookup could not find a page about the exact building at each street address below. Find out what kind of property it is, for a commercial real estate valuation tool.",
+      "Choose exactly one type:",
+      ...TYPE_LINES,
+      "",
+      "Work through these, up to 6 searches per address, and open a promising page with WebFetch when the snippet is not enough:",
+      "1. The county's parcel or appraisal-district record for the address. Its land-use or property-class code names the type (e.g. warehouse, retail store, office, apartments, vacant land).",
+      "2. Listing and deal sites for this exact street number: LoopNet, Crexi, CityFeet, apartment sites, sale news.",
+      "3. The businesses listed at this exact street number (maps listings, directories). One tenant can mislead, but the mix tells you the building: shops, restaurants and personal services -> Retail; offices and clinics in suites -> Office; manufacturers, distributors, contractors and storage -> Industrial; an apartment community's name -> Multifamily.",
+      "4. Variants of the address: without the street suffix, with the ZIP, with the cross street.",
+      "A different street number, even next door, is not evidence about this building.",
+      "Confidence: \"high\" if a page about this exact street number settles it; \"medium\" if the evidence about it is indirect or mixed; \"low\" if you still found nothing about it (then give your best guess).",
+      ...ANSWER_LINES(batch),
+    ].join("\n");
+  }
   if (version === 2) {
     return [
       "You are finding out what kind of property sits at each street address below, for a commercial real estate valuation tool. The tool's users mostly look up commercial property, so a single-family house is the least likely answer unless a page shows it is one.",
@@ -328,7 +348,7 @@ async function runProvider(dir, { providerName, search, model, thinkingLevel, ve
     const batch = batches[i];
     const body = provider.buildRequestBody({
       model: useModel, prompt: guessPrompt(batch, { search, version }), maxComps: 12,
-      searchUses: batch.length * (version === 2 ? 3 : 2), thinkingLevel,
+      searchUses: batch.length * (version === 3 ? 6 : version === 2 ? 3 : 2), thinkingLevel,
     });
     if (!search) delete body.tools;
     const init = provider.requestInit({ apiKey, model: useModel });
@@ -339,7 +359,7 @@ async function runProvider(dir, { providerName, search, model, thinkingLevel, ve
     console.log(`batch ${i + 1}/${batches.length}: ${got.length}/${batch.length} answered`);
     all.push(...got);
   }
-  const out = path.join(dir, `guesses-${providerName}${search ? "" : "-nosearch"}${version === 2 ? "-v2" : ""}.json`);
+  const out = path.join(dir, `guesses-${providerName}${search ? "" : "-nosearch"}${version > 1 ? "-v" + version : ""}.json`);
   fs.writeFileSync(out, JSON.stringify(all, null, 1) + "\n");
   console.log(`${all.length} guesses -> ${out}`);
   return out;
@@ -389,7 +409,7 @@ function main(argv) {
       search: !argv.includes("--no-search"),
       model: flag("--model"),
       thinkingLevel: flag("--thinking") || process.env.THINKING_LEVEL || undefined,
-      version: Number(flag("--prompt")) === 2 ? 2 : 1,
+      version: [2, 3].includes(Number(flag("--prompt"))) ? Number(flag("--prompt")) : 1,
     }).then((out) => {
       console.log(formatReport(path.basename(out), score(readJson(path.join(dir, "set.json")), readJson(out))));
       return 0;

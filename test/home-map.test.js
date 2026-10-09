@@ -138,7 +138,7 @@ test("new BOV requests come after messages, newest first, with no number and no 
   assert.equal(bov[1].who, "1031 exchange");
   assert.equal(bov[2].place, "Industrial · 24,000 SF · Boise, ID");
   assert.equal(bov[1].place, "Retail · Meridian, ID", "no size, no size");
-  assert.ok(bov.every((x) => x.scope === "you" && x.href === "/vault#pipeline"), "the member's own pipeline");
+  assert.ok(bov.every((x) => x.scope === "you" && x.href === "/pipeline"), "the member's own pipeline");
   assert.equal(items[4].num, 1, "the first dated row is still pin 1");
   assert.equal(HM.inDays(-1), "yesterday");
 });
@@ -146,10 +146,10 @@ test("new BOV requests come after messages, newest first, with no number and no 
 test("a deal opens where the private page lists it: Sites for a development firm, The Board for everyone else", () => {
   const deal = (firmKind) => HM.agenda({ today: TODAY, firmKind,
     sites: [SITE({ dates: [{ on: "2026-10-10", label: "Call" }] })] })[0].href;
-  assert.equal(deal("development"), "/vault#sites");
+  assert.equal(deal("development"), "/sites");
   assert.equal(deal("broker"), "/vault#board", "vault-page.js hides Sites outside a development firm; #sites would open Comps");
   assert.equal(deal(""), "/vault#board", "no firm at all");
-  assert.equal(HM.dealsHref("development"), "/vault#sites");
+  assert.equal(HM.dealsHref("development"), "/sites");
   assert.equal(HM.dealsHref(undefined), "/vault#board");
 });
 
@@ -161,8 +161,8 @@ test("adding a property of your own opens the form that takes it, already open",
   assert.equal(HM.addHref("buy", ""), "/vault?add=buy#board", "no firm at all");
   assert.equal(HM.addHref("own", undefined), "/vault?add=own#properties");
   // A development firm's Sites tab takes both, with the kind picked.
-  assert.equal(HM.addHref("buy", "development"), "/vault?add=buy#sites");
-  assert.equal(HM.addHref("own", "development"), "/vault?add=own#sites");
+  assert.equal(HM.addHref("buy", "development"), "/sites?add=buy");
+  assert.equal(HM.addHref("own", "development"), "/sites?add=own");
   // The deal link and the add link agree on where deals live.
   for (const k of ["development", "broker", ""]) assert.equal(HM.addHref("buy", k).replace("?add=buy", ""), HM.dealsHref(k));
 });

@@ -74,7 +74,9 @@
 // product's, and a stranger reading a marketing page should not cost the
 // server six database-backed renders by sweeping a pointer across a header.
 
-const TAB_PATHS = ["/", "/desk", "/vault", "/messages", "/markets", "/bulk", "/permits", "/buildings"];
+// /pipeline and /sites (2026-10-09) are the vault page opened on that tab,
+// each a rail row of its own; server.js's VAULT_PAGE_PATHS serves all three.
+const TAB_PATHS = ["/", "/desk", "/vault", "/pipeline", "/sites", "/messages", "/markets", "/bulk", "/permits", "/buildings"];
 // GET routes that WRITE, which the fetch guard would otherwise wave through
 // from a page nobody has opened (audited 2026-09-26, every GET in server.js).
 // The two that matter most treat a read as evidence somebody is looking:

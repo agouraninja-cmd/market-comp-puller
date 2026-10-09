@@ -206,10 +206,12 @@ paths:
 >   is. `HOMEMAP.agenda` lists a request while it is inside `BOV_DAYS` (14)
 >   and has no intro request, after messages and newest first, with no number
 >   and no pin (the server already anonymized it: type, size, market, date).
->   The row opens `/vault#pipeline`, and Today's foot gains "Your BOV
->   pipeline →".
-> - **A deal opens where /vault lists it** (`HOMEMAP.dealsHref`): `#sites` for
->   a development firm, `#board` (the deal wall) for everyone else, because
+>   The row opens `/pipeline` (`/vault#pipeline` until 2026-10-09, when
+>   Pipeline became a rail row with a path of its own), and Today's foot
+>   gains "Your BOV pipeline →".
+> - **A deal opens where /vault lists it** (`HOMEMAP.dealsHref`): `/sites` for
+>   a development firm (`/vault#sites` until 2026-10-09; `addHref` is
+>   `/sites?add=` to match), `#board` (the deal wall) for everyone else, because
 >   `applyShop` hides Sites outside a development firm and `#sites` would land
 >   on Comps. Today's deal rows and a deal's map card both read it.
 > - **The Board's door is on the Markets pages** (it has no rail row now):

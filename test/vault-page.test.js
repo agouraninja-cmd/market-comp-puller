@@ -570,7 +570,13 @@ function stubElement() {
     },
     click() { (on.click || []).forEach((fn) => fn({})); },
     focus() {}, scrollIntoView() {},
-    getAttribute() { return null; }, setAttribute() {},
+    // Attributes are recorded for the tests that read them (`attrs`), but
+    // getAttribute still answers null: the page reads attributes off click
+    // targets the tests build by hand, never off these.
+    attrs: {},
+    getAttribute() { return null; },
+    setAttribute(k, v) { this.attrs[k] = String(v); },
+    removeAttribute(k) { delete this.attrs[k]; },
     closest() { return null; },
   };
 }
@@ -4907,17 +4913,68 @@ test("Sites leads a development firm's bar, and a link that names a tab still wi
   let { doc } = await runPage([comp({})], null, { firm: DEV_FIRM, window: sitesWindow([]) });
   doc.getElementById("vaultTabs").fire("keydown", { key: "ArrowRight", preventDefault() {} });
   assert.equal(doc.getElementById("panelBook").className, "vt-panel on", "the arrow key skipped Comps");
-  // A link to the Comps tab opens there; Sites, the home tab, is the bare path.
+  // A link to the Comps tab opens there. Sites, the home tab, writes its own
+  // path since it became a rail row (2026-10-09), and Comps is a hash on /vault.
   const replaced = [];
   ({ doc } = await runPage([comp({})], null, { firm: DEV_FIRM, window: Object.assign(sitesWindow([]), {
     location: { hash: "#book", pathname: "/vault" }, history: { replaceState: (s, t, u) => replaced.push(u) },
   }) }));
   assert.equal(doc.getElementById("panelBook").className, "vt-panel on", "a #book link was overridden");
   const press = (tab) => doc.getElementById("vaultTabs").fire("click", { target: { closest: () => ({ getAttribute: () => tab }) } });
-  press("sites"); assert.equal(replaced.pop(), "/vault");
-  press("book"); assert.equal(replaced.pop(), "#book");
+  press("sites"); assert.equal(replaced.pop(), "/sites");
+  press("book"); assert.equal(replaced.pop(), "/vault#book");
   // Decided once: a later read (after an import) never moves the member.
   assert.match(js, /var first=!tabSettled; tabSettled=true;/);
+});
+
+// Pipeline and Sites, rows of the rail (2026-10-09): each tab has a path of
+// its own, the page opens on the tab its path names, and the rail row that
+// names the tab on screen is the current one.
+test("/pipeline opens the Pipeline tab, marks its rail row, and the path follows the tab", async () => {
+  const replaced = [];
+  const { doc } = await runPage([comp({})], null, { window: {
+    location: { hash: "", pathname: "/pipeline", search: "" }, history: { replaceState: (s, t, u) => replaced.push(u) },
+  } });
+  assert.equal(doc.getElementById("panelPipe").className, "vt-panel on", "/pipeline did not open the Pipeline tab");
+  assert.equal(doc.getElementById("panelBook").className, "vt-panel");
+  assert.equal(doc.getElementById("navPipe").attrs["aria-current"], "page", "the Pipeline row is not marked");
+  assert.equal(doc.getElementById("navSites").attrs["aria-current"], undefined);
+  const press = (tab) => doc.getElementById("vaultTabs").fire("click", { target: { closest: () => ({ getAttribute: () => tab }) } });
+  press("book");
+  assert.equal(replaced.pop(), "/vault", "Comps, the home tab, is the bare /vault");
+  assert.equal(doc.getElementById("navPipe").attrs["aria-current"], undefined, "the mark stayed on a tab that left");
+  press("props"); assert.equal(replaced.pop(), "/vault#properties");
+  press("pipe");
+  assert.equal(replaced.pop(), "/pipeline", "the Pipeline tab must write the path its rail row links");
+  assert.equal(doc.getElementById("navPipe").attrs["aria-current"], "page");
+});
+
+test("/sites opens a development firm on Sites and tells the rail it is one; a broker's page says Pipeline", async () => {
+  const told = [];
+  const { doc } = await runPage([comp({})], null, { firm: DEV_FIRM, window: Object.assign(sitesWindow([]), {
+    location: { hash: "", pathname: "/sites", search: "" }, history: { replaceState() {} },
+    cnShopNav: (dev) => told.push(dev),
+  }) });
+  assert.equal(doc.getElementById("panelSites").className, "vt-panel on");
+  assert.equal(doc.getElementById("navSites").attrs["aria-current"], "page", "the Sites row is not marked");
+  assert.equal(told[told.length - 1], true, "the rail was not told this is a development firm");
+  // A development member following an old Pipeline link lands on Sites, and
+  // the mark moves with them.
+  const dev = await runPage([comp({})], null, { firm: DEV_FIRM, window: Object.assign(sitesWindow([]), {
+    location: { hash: "", pathname: "/pipeline", search: "" }, history: { replaceState() {} },
+  }) });
+  assert.equal(dev.doc.getElementById("panelSites").className, "vt-panel on");
+  assert.equal(dev.doc.getElementById("navSites").attrs["aria-current"], "page");
+  assert.equal(dev.doc.getElementById("navPipe").attrs["aria-current"], undefined);
+  // A broker firm: Pipeline, and a /sites link opens Comps.
+  const broker = [];
+  const b = await runPage([comp({})], null, { firm: { id: "f2", name: "Summit Brokerage", kind: "broker" },
+    window: Object.assign(sitesWindow([]), {
+      location: { hash: "", pathname: "/sites", search: "" }, history: { replaceState() {} },
+      cnShopNav: (d) => broker.push(d),
+    }) });
+  assert.equal(broker[broker.length - 1], false, "a broker firm's rail must read Pipeline");
+  assert.equal(b.doc.getElementById("panelBook").className, "vt-panel on");
 });
 
 test("without its script, a development firm keeps the old tabs rather than an empty one", async () => {
@@ -5444,6 +5501,13 @@ test("Home's Add a property opens the form that takes it, already open, and only
   await runPage([comp({})], null, { firm: { id: "f1", name: "Ridgeline Development", kind: "development" },
     window: Object.assign(sitesWindow(sites), { location: LOC("?add=own", "#sites"), history: hist() }) });
   assert.equal(sites[0].openAdd, "own", "a development firm's Sites tab takes both, with the kind picked");
+  // Home sends a development firm to /sites?add= since Sites became a rail
+  // row (2026-10-09): the path names the tab, and only ?add= comes off.
+  const atPath = []; h = hist();
+  await runPage([comp({})], null, { firm: { id: "f1", name: "Ridgeline Development", kind: "development" },
+    window: Object.assign(sitesWindow(atPath), { location: { search: "?add=buy", hash: "", pathname: "/sites" }, history: h }) });
+  assert.equal(atPath[0].openAdd, "buy", "/sites?add=buy did not open the Sites form");
+  assert.deepEqual(h.urls.slice(0, 1), ["/sites"], "?add= must come off and the path stay");
 
   // An ask with no tab in the address, or an unknown kind, opens nothing.
   for (const [search, hash] of [["?add=buy", ""], ["?add=sell", "#board"]]) {

@@ -207,7 +207,8 @@
   // development firm has a Sites tab for them; for everyone else they are the
   // deal wall on The Board, because vault-page.js's applyShop hides Sites from
   // anyone outside a development firm and a #sites link would land on Comps.
-  function dealsHref(firmKind) { return firmKind === "development" ? "/vault#sites" : "/vault#board"; }
+  // Sites has its own address since 2026-10-09 (it is a rail row now).
+  function dealsHref(firmKind) { return firmKind === "development" ? "/sites" : "/vault#board"; }
 
   // Where Home's "Add a property" sends a property that is only the member's,
   // with the right form already open (vault-page.js reads ?add= once). A
@@ -216,7 +217,7 @@
   // Sites tab takes both, with "I own it" picked.
   function addHref(kind, firmKind) {
     const own = kind === "own";
-    if (firmKind === "development") return `/vault?add=${own ? "own" : "buy"}#sites`;
+    if (firmKind === "development") return `/sites?add=${own ? "own" : "buy"}`;
     return own ? "/vault?add=own#properties" : "/vault?add=buy#board";
   }
 
@@ -246,7 +247,7 @@
       // tomorrow, and a request is never in the future: it is today.
       out.push({ kind: "bov", n: Math.min(n, 0), date: str(l.ts).slice(0, 10), label: "BOV request", who: l.is_1031 ? "1031 exchange" : "",
         address: "", place: [str(l.type), size ? `${Math.round(size).toLocaleString("en-US")} SF` : "", str(l.market)].filter(Boolean).join(" · "),
-        scope: "you", act: "Open your pipeline", href: "/vault#pipeline", id: l.id });
+        scope: "you", act: "Open your pipeline", href: "/pipeline", id: l.id });
     });
     (Array.isArray(critical) ? critical : []).forEach((c) => {
       if (!c || !c.date) return;

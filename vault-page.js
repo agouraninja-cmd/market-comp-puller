@@ -3831,14 +3831,31 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 
   // ---- The tabs ---------------------------------------------------------------
   // setTab is the one writer of which panel shows. A tab's address is a plain
-  // hash (#pipeline, #properties...), so a link can open the vault on one;
-  // the old section ids are read too, since that is what a link would have
-  // named before there were tabs.
+  // hash (#properties, #board...), so a link can open the vault on one; the
+  // old section ids are read too, since that is what a link would have named
+  // before there were tabs. Pipeline and Sites have paths instead (below).
   var TABS=["book","sites","pipe","props","watch","contrib"];
   var PANEL={book:"panelBook",sites:"panelSites",pipe:"panelPipe",props:"panelProps",watch:"panelWatch",contrib:"panelContrib"};
   var HASH_OF_TAB={book:"book",sites:"sites",pipe:"pipeline",props:"properties",watch:"board",contrib:"contributions"};
   var TAB_OF_HASH={book:"book",sites:"sites",pipeline:"pipe",properties:"props",board:"watch",watchlist:"watch",contributions:"contrib",
     compsSec:"book",sitesSec:"sites",pipeSec:"pipe",propsSec:"props",mktSec:"watch",contribSec:"contrib"};
+  // Pipeline and Sites are rows of the rail (2026-10-09), so each has a path
+  // of its own: /pipeline and /sites serve this page opened on that tab
+  // (server.js's VAULT_PAGE_PATHS), and switching to one writes its path back,
+  // so the address always names a row the rail can mark. server.js marks the
+  // row for the path it served; setTab moves the mark as the tabs change.
+  var PATH_OF_TAB={pipe:"/pipeline",sites:"/sites"};
+  var TAB_OF_PATH={"/pipeline":"pipe","/sites":"sites"};
+  var RAIL_OF_TAB={pipe:"navPipe",sites:"navSites"};
+  function tabUrl(t){
+    return PATH_OF_TAB[t]||(t===homeTab?"/vault":"/vault#"+HASH_OF_TAB[t]);
+  }
+  function markRail(t){
+    Object.keys(RAIL_OF_TAB).forEach(function(k){
+      var a=$(RAIL_OF_TAB[k]); if(!a)return;
+      if(k===t)a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current");
+    });
+  }
   var curTab="book";
   // The tab the page opens on, and the one whose address is the bare path:
   // Sites for a development firm, the Book for everybody else (applyShop).
@@ -3870,8 +3887,9 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       if(bookView==="map")drawPins(bmRows,true);
       if(emptyMap)emptyMap.invalidateSize();
     }
+    markRail(t);
     if(!quiet&&window.history&&window.history.replaceState&&window.location){
-      try{ window.history.replaceState(null,"",t===homeTab?window.location.pathname:"#"+HASH_OF_TAB[t]); }catch(e){}
+      try{ window.history.replaceState(null,"",tabUrl(t)); }catch(e){}
     }
   }
   $("vaultTabs").addEventListener("click",function(e){
@@ -3911,6 +3929,10 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   function applyShop(){
     if(wallView)wallView.refresh();
     var shop=!!(myFirm&&myFirm.kind==="development");
+    // The rail's row under Messages follows the same answer: Sites for a
+    // development firm, Pipeline for everyone else (server.js SHOP_NAV_JS,
+    // which also remembers it for the next page's first paint).
+    if(window.cnShopNav)window.cnShopNav(shop);
     var dev=shop&&!!(window.SITESTAB&&window.SITES);
     var first=!tabSettled; tabSettled=true;
     noPublish=shop&&!pubCount;
@@ -4551,10 +4573,15 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 
   setBookView(bookView);
   (function(){
-    var h="";
-    try{ h=String((window.location&&window.location.hash)||"").replace("#",""); }catch(e){}
-    tabSettled=!!TAB_OF_HASH[h];
-    setTab(TAB_OF_HASH[h]||"book",true);
+    var h="",p="";
+    try{
+      h=String((window.location&&window.location.hash)||"").replace("#","");
+      p=String((window.location&&window.location.pathname)||"");
+    }catch(e){}
+    // A hash still wins: it is the older and the more specific of the two.
+    var t0=TAB_OF_HASH[h]||TAB_OF_PATH[p];
+    tabSettled=!!t0;
+    setTab(t0||"book",true);
   })();
   // Home's "Add a property" opens this page with the form that takes it
   // already open (2026-10-07, Draft C): ?add=buy for a deal (The Board's
@@ -4567,7 +4594,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   (function(){
     try{
       var a=new URLSearchParams(window.location.search||"").get("add");
-      var t=TAB_OF_HASH[String(window.location.hash||"").replace("#","")];
+      var t=TAB_OF_HASH[String(window.location.hash||"").replace("#","")]||TAB_OF_PATH[String(window.location.pathname||"")];
       if((a==="buy"||a==="own")&&t){
         addAsk=a;addTab=t;
         if(window.history&&window.history.replaceState)

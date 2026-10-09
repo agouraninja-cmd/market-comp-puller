@@ -27,8 +27,11 @@ the member and the links they sent are Messages' **Reports** view
 (`report-inbox.js`; firms.md). Their private workbench is `/vault`,
 headed "Your properties and comps" and opened from Home's tabs; it was the
 **Data** rail row from 2026-10-04 until the rail became places (since
-2026-10-08: Home, Messages | Markets, Comp report, Permits; app-shell.md). Its tabs with no rail row
-have doors instead: new BOV requests land in Home's Today (the Pipeline), and
+2026-10-09: Home, Messages, **Pipeline** | Markets, Comp report, Permits, with
+**Sites** in Pipeline's place for a development firm; app-shell.md). Pipeline
+and Sites are `/vault`'s tabs at paths of their own, `/pipeline` and `/sites`
+(vault.md). Its other tabs have doors instead: new BOV requests also land in
+Home's Today, and
 The Board is linked from `/markets` and every market page. In copy a **property** is
 something you own, manage or are buying and a **comp** is a past deal you value
 against. Code, routes and the rules files still say "desk"/"workspace" and

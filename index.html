@@ -2975,6 +2975,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              opened a tab of Home, so it left the rail; marketBar carries the
              same decision. -->
         <a id="navMessagesLink" href="/messages" class="hover:text-[#1A2433] font-medium"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13v8.5h-7L5.5 16v-3h-2z"/><path d="M7 8.2h6M7 10.6h3.5"/></svg><span class="nvl">Messages</span><span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>
+        <!-- Pipeline, under Messages (owner's call, 2026-10-09), and Sites in
+             its place for a development firm. Both rows ship; the shop-dev
+             class on <html> shows one (SHOP_NAV_CSS and SHOP_NAV_JS, which
+             authBoot hands this page; loadMyFirms writes the answer). The
+             ids are marketBar's own, so one rule styles both rails. Never
+             current here: they open /pipeline and /sites, the vault page. -->
+        <a id="navPipe" href="/pipeline" class="hover:text-[#1A2433]"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h14l-5.2 6.2V16l-3.6-1.6v-4.2z"/></svg><span class="nvl">Pipeline</span></a>
+        <a id="navSites" href="/sites" class="hover:text-[#1A2433]"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 17V3.5"/><path d="M6.5 4h8l-2 2.6 2 2.6h-8"/><path d="M3 17h14"/></svg><span class="nvl">Sites</span></a>
         <!-- The tools group's label. Rail-only, and present for every visitor
              so the two nav authors keep emitting the same shape -- see
              server.js's marketBar and RAIL_CSS for the twin. -->
@@ -3188,7 +3196,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div id="hmPaneToday" class="hm-pane" role="tabpanel" aria-labelledby="hmTabToday">
               <div id="hmTodayRows" class="hm-rows"></div>
               <p id="hmTodayEmpty" class="hidden hm-empty"></p>
-              <p id="hmTodayMore" class="hidden hm-more"><a id="hmTodayLeases" href="/buildings">All lease dates →</a><a id="hmTodayMsgs" href="/messages">All conversations →</a><a id="hmTodayPipe" class="hidden" href="/vault#pipeline">Your BOV pipeline →</a></p>
+              <p id="hmTodayMore" class="hidden hm-more"><a id="hmTodayLeases" href="/buildings">All lease dates →</a><a id="hmTodayMsgs" href="/messages">All conversations →</a><a id="hmTodayPipe" class="hidden" href="/pipeline">Your BOV pipeline →</a></p>
             </div>
 
             <div id="hmPaneProps" class="hm-pane hidden" role="tabpanel" aria-labelledby="hmTabProps">
@@ -13430,6 +13438,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     pendingLogo = "";
     brandingLoadToken++;
     renderReportBrand();
+    // The rail's Sites-or-Pipeline note described the account that just left.
+    if (window.cnShopNav) window.cnShopNav(false);
     document.getElementById("acctMenu").classList.add("hidden");
     refreshAccountUI();
     // Entitlements are per-user: the signed-in answer must not survive the
@@ -13452,6 +13462,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     pendingLogo = "";
     brandingLoadToken++;
     renderReportBrand();
+    if (window.cnShopNav) window.cnShopNav(false);
     document.getElementById("acctMenu").classList.add("hidden");
     refreshAccountUI();
     refreshProConfig();
@@ -15532,6 +15543,11 @@ async function renderMyDesk() {
           invites: Array.isArray(data.invites) ? data.invites : [],
           billing: (data.billing && typeof data.billing === "object") ? data.billing : {},
         };
+        // The rail's Pipeline row reads Sites for a development firm
+        // (2026-10-09). This read is the one that knows, on the page a member
+        // lands on after signing in, so it writes the note every other page
+        // stamps from (server.js's SHOP_NAV_JS, through authBoot).
+        if (window.cnShopNav) window.cnShopNav(Boolean(myFirm() && myFirm().kind === "development"));
         return firmState;
       } catch (_) {
         // Deliberately leaves firmState alone rather than writing an empty

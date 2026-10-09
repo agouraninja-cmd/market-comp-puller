@@ -24,7 +24,10 @@
 // PRIVACY: a deal's address goes to our own POST /api/geocode (Census behind
 // it) and nowhere else -- CLAUDE.md never-break rule 7. The photo is then
 // fetched by coordinates from the same Esri imagery the comp map's pin
-// popups use. Coordinates are cached in this browser only.
+// popups use. Coordinates are cached in this browser only. Since 2026-10-09
+// a street photo is laid over it where one can be proven good
+// (building-photo.js): OpenStreetMap is asked by coordinates, and our own
+// /api/streetview by the building's coordinates, never the address.
 //
 // PURE where it can be and dual-exported, like sites.js: Node gets the
 // helpers (test/deal-wall.test.js), the browser gets the global DEALWALL,
@@ -381,6 +384,56 @@
           return '<img src="' + t.src + '" alt="" loading="lazy" style="left:' + t.left + "px;top:" + t.top + 'px" onerror="this.style.display=\'none\'">';
         }).join("") + '<i class="dw-pin"></i></span><span class="dw-credit">Esri</span>');
       box.classList.add("dw-has");
+      street(box, ll);
+    }
+    // The building from the street (2026-10-09; building-photo.js, the global
+    // BLDGPHOTO): laid over the aerial once OpenStreetMap proves which
+    // building the address is and the server finds a good photo of it, the
+    // way Home's cards do. Where either answer is no (a Land deal with no
+    // building on it, most of all) the aerial stays. The building is looked
+    // up by coordinates only; the address is compared in this browser.
+    var wanted = [], snapTimer = 0;
+    function streetOn() { return !!(ctx.streetview && G.BLDGPHOTO); }
+    function street(box, ll) {
+      if (!streetOn()) return;
+      var addr = box.getAttribute("data-ph") || "";
+      var b = G.BLDGPHOTO.building(ll, addr);
+      if (b === undefined) {
+        box._bp = { ll: ll, address: addr };
+        wanted.push(box._bp);
+        clearTimeout(snapTimer);
+        snapTimer = setTimeout(function () {
+          G.BLDGPHOTO.snap(wanted.splice(0)).then(upgrade, function () {});
+        }, 200);
+        return;
+      }
+      if (b && G.BLDGPHOTO.photoState(b) !== "fail") lay(box, b);
+    }
+    function lay(box, b) {
+      if (box._svDone) return;
+      box._svDone = true;
+      G.BLDGPHOTO.overlay(box, b, {
+        known: G.BLDGPHOTO.photoState(b) === "ok", lazy: true,
+        before: box.querySelector(".dw-credit"),
+        onLoad: function () {
+          box.classList.add("dw-sv");
+          var credit = box.querySelector(".dw-credit");
+          if (credit) credit.textContent = "Google";
+        },
+      });
+    }
+    // A lookup answers for every card showing that place, including the ones
+    // drawn again while it was out (the wall re-renders on every change).
+    function upgrade() {
+      var boxes = el.querySelectorAll("[data-ph]");
+      for (var i = 0; i < boxes.length; i++) {
+        var bp = boxes[i]._bp;
+        if (!bp || boxes[i]._svDone) continue;
+        var b = G.BLDGPHOTO.building(bp.ll, bp.address);
+        if (b === undefined) continue;
+        if (b && G.BLDGPHOTO.photoState(b) !== "fail") lay(boxes[i], b);
+        else boxes[i]._svDone = true;
+      }
     }
     function photos() {
       if (!el.querySelectorAll) return;

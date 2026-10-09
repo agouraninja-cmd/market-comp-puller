@@ -19,6 +19,17 @@ paths:
 > (Since 2026-10-07 the rail no longer has a Data row, and /vault's heading
 > reads "Your properties and comps"; see below.)
 
+> **Street photos on Home's cards (2026-10-09, owner's ask).** A property's
+> or comp's thumbnail and the map card show the building from the street
+> where `building-photo.js` proves which building it is and the server's
+> quality gate passes the photo; the aerial stays everywhere else, and is
+> what shows while the answer comes in. `hmPhoto` is the one writer for both
+> (it replaced `hmAerial` at those three call sites); lookups wait for a card
+> to scroll into view (`hmPhotoSeen`), and `hmPhotoForget` drops the observer's
+> hold on cards each redraw throws away. The thumbnails are 48px crops now
+> (they were the top-left of a 96px crop). Rules and privacy: maps.md, "Street
+> photos instead of the aerial".
+
 > **The map's layers, and Reports leaving Home (2026-10-08, owner's call).**
 > Read this before the box below, which it amends. The owner's words: Home
 > should "show where the properties, comps and permits are, and you can

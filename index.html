@@ -104,6 +104,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        (HOMEMAP). maxAge 0 like the scripts above, and guarded with typeof:
        without it Home's list and map stay empty, never a broken page. -->
   <script src="/home-map.js"></script>
+  <!-- Street photos of buildings on Home (2026-10-09; BLDGPHOTO): which
+       building a photo shows. maxAge 0, and guarded with typeof: without it
+       Home's cards keep their aerials. -->
+  <script src="/building-photo.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -1834,6 +1838,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-th { position: relative; width: 48px; height: 48px; overflow: hidden; border-radius: 9px; background: var(--wash-2); }
     .hm-th img, .hm-pop-ph img { position: absolute; width: 256px; height: 256px; max-width: none; }
     .hm-th.none { background: repeating-linear-gradient(135deg, var(--wash-2) 0 6px, var(--hair) 6px 12px); }
+    /* Credit on the map card's street photo (building-photo.js). It sits on
+       the photograph, so it is literal white on a dark chip in both themes,
+       like the report map's "© Google" and "© Esri" chips. */
+    .hm-credit { position: absolute; right: 0; bottom: 0; font-size: 9px; line-height: 1; color: #fff; background: rgb(0 0 0 / .45); padding: 2px 4px; border-radius: 3px 0 0 0; }
     .hm-val { text-align: right; white-space: nowrap; }
     .hm-val b { display: block; font-size: 14px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
     .hm-val small { font-size: 12px; color: var(--ink-3); }
@@ -14064,6 +14072,94 @@ async function renderMyDesk() {
     }
     return box;
   }
+  // Street photos on Home (2026-10-09, the owner: "show the actual pictures
+  // of buildings instead of the birds eye view version ... make sure they
+  // are actual good pictures"). A card shows the building from the street
+  // (BLDGPHOTO, through the same /api/streetview as the report map's pins)
+  // once OpenStreetMap proves which building the address is AND the server
+  // finds a good photo of it; until then, and wherever either answer is no,
+  // the aerial above. A building already known to have a good photo skips
+  // the aerial (the image is in the browser's cache); one known to have none
+  // skips the photo. Places nobody has asked about yet are asked when their
+  // card scrolls into view (hmPhotoSeen), a batch at a time, so a list of
+  // two hundred comps is not two hundred lookups on arrival.
+  const hmPhotosOn = () => streetviewEnabled && typeof BLDGPHOTO !== "undefined";
+  function hmPhoto(box, ll, address, w, h, z) {
+    box._bp = null;
+    box._bpDone = false;
+    if (!ll || !hmPhotosOn()) return hmAerial(box, ll, w, h, z);
+    const b = BLDGPHOTO.building(ll, address);
+    const state = b ? BLDGPHOTO.photoState(b) : undefined;
+    if (b && state === "ok") {
+      box.textContent = "";
+      box.classList.remove("none");
+      hmStreetOn(box, b, true, () => hmAerial(box, ll, w, h, z));
+      return box;
+    }
+    hmAerial(box, ll, w, h, z);
+    if (b && state !== "fail") hmStreetOn(box, b, false);
+    else if (b === undefined) {
+      box._bp = { ll, address };
+      hmPhotoSeen().observe(box);
+    }
+    return box;
+  }
+  function hmStreetOn(box, b, known, onFail) {
+    box._bpDone = true;
+    BLDGPHOTO.overlay(box, b, {
+      known, lazy: true, onFail,
+      // The map card is wide enough to say whose picture it is; a 48px
+      // thumbnail is not, and says nothing for its aerial either.
+      onLoad: () => {
+        if (box.classList.contains("hm-pop-ph") && !box.querySelector(".hm-credit")) box.append(hmEl("span", "hm-credit", "© Google"));
+      },
+    });
+  }
+  let hmPhotoObs = null;
+  let hmPhotoTimer = 0;
+  const hmPhotoQueue = [];
+  function hmPhotoSeen() {
+    if (hmPhotoObs) return hmPhotoObs;
+    hmPhotoObs = typeof IntersectionObserver === "function"
+      ? new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (!e.isIntersecting) return;
+          hmPhotoObs.unobserve(e.target);
+          hmPhotoQueue.push(e.target);
+        });
+        hmPhotoFlushSoon();
+      }, { rootMargin: "200px 0px" })
+      : { observe: (box) => { hmPhotoQueue.push(box); hmPhotoFlushSoon(); }, unobserve() {}, disconnect() {} };
+    return hmPhotoObs;
+  }
+  function hmPhotoFlushSoon() {
+    clearTimeout(hmPhotoTimer);
+    hmPhotoTimer = setTimeout(hmPhotoFlush, 250);
+  }
+  async function hmPhotoFlush() {
+    const boxes = hmPhotoQueue.splice(0).filter((box) => box.isConnected && box._bp);
+    if (!boxes.length) return;
+    try { await BLDGPHOTO.snap(boxes.map((box) => box._bp)); } catch (_) { return; }
+    hmPhotoUpgrade();
+  }
+  // A lookup answers for every card showing that place, including the ones
+  // Home drew again while it was out (it redraws as its reads land).
+  function hmPhotoUpgrade() {
+    document.querySelectorAll("#homeMap .hm-th, .hm-pop-ph").forEach((box) => {
+      const bp = box._bp;
+      if (!bp || box._bpDone) return;
+      const b = BLDGPHOTO.building(bp.ll, bp.address);
+      if (b === undefined) return;
+      box._bpDone = true;
+      if (b && BLDGPHOTO.photoState(b) !== "fail") hmStreetOn(box, b, false);
+    });
+  }
+  // The lists are rebuilt on every draw; the cards that left must not be
+  // held by the observer.
+  function hmPhotoForget() {
+    if (hmPhotoObs) hmPhotoObs.disconnect();
+    hmPhotoQueue.length = 0;
+  }
   function hmLL(row) {
     if (!row) return null;
     if (row.lat != null && row.lng != null) return { lat: row.lat, lng: row.lng };
@@ -14164,6 +14260,7 @@ async function renderMyDesk() {
     hmPermits = null; hmPermitsAsked = false; hmPermitsFiled = 0; hmPermitCities = ""; hmLayerTab = "";
     hmRows = []; hmItems = []; hmSel = ""; hmFitFor = ""; hmOpenedOnce = false; hmNothing = false;
     hmGeoTried.clear();
+    hmPhotoForget();
     if (hmPinLayer) hmPinLayer.clearLayers();
     if (hmMap) hmMap.closePopup();
     ["hmTodayRows", "hmPropRows", "hmCompRows", "hmTeam"].forEach((id) => { const e = document.getElementById(id); if (e) e.textContent = ""; });
@@ -14207,7 +14304,7 @@ async function renderMyDesk() {
     const row = hmEl("div", "hm-row p" + (hmSel && r.key === hmSel ? " on" : ""));
     row.tabIndex = 0;
     row.dataset.key = r.key;
-    const th = hmAerial(hmEl("span", "hm-th"), hmLL(r), 96, 96, 17);
+    const th = hmPhoto(hmEl("span", "hm-th"), hmLL(r), r.address, 48, 48, 17);
     const rt = hmEl("span", "hm-rt");
     rt.append(hmEl("b", null, HOMEMAP.street(r.address)),
       hmEl("small", null, [HOMEMAP.town(r.address), r.type, r.acres ? `${r.acres} acres` : (r.size ? `${Number(r.size).toLocaleString("en-US")} SF` : "")].filter(Boolean).join(" · ")));
@@ -14238,7 +14335,7 @@ async function renderMyDesk() {
     const row = hmEl("div", "hm-row p");
     row.tabIndex = 0;
     row.dataset.key = "comp:" + c.id;
-    const th = hmAerial(hmEl("span", "hm-th"), c.lat != null && c.lng != null ? { lat: c.lat, lng: c.lng } : null, 96, 96, 17);
+    const th = hmPhoto(hmEl("span", "hm-th"), c.lat != null && c.lng != null ? { lat: c.lat, lng: c.lng } : null, c.address, 48, 48, 17);
     const rt = hmEl("span", "hm-rt");
     rt.append(hmEl("b", null, c.street), hmEl("small", null, [c.place, c.type, c.size].filter(Boolean).join(" · ")));
     const tags = hmEl("span", "hm-tags");
@@ -14328,6 +14425,7 @@ async function renderMyDesk() {
     document.getElementById("hmTodayPipe").classList.toggle("hidden", !canLeads);
 
     // Properties: your deals, what you own, the firm's other buildings.
+    hmPhotoForget();
     const props = document.getElementById("hmPropRows");
     props.textContent = "";
     [["buying", "Buying", "your deals"], ["owned", "Owned and tracking", "your numbers stay private"],
@@ -14683,7 +14781,16 @@ async function renderMyDesk() {
       : comp ? (comp.lat != null ? { lat: comp.lat, lng: comp.lng } : null) : (r ? hmLL(r) : item ? hmLLForAddress(item.address) : null);
     if (!ll) return;
     const card = hmEl("div");
-    card.append(hmAerial(hmEl("div", "hm-pop-ph"), ll, 260, 104, 18));
+    // The card's photo is on screen the moment it opens, so its building is
+    // asked about now rather than when an observer gets round to it.
+    const where = permit ? [permit.street, permit.city].filter(Boolean).join(", ")
+      : comp ? comp.address : r ? r.address : item ? item.address : "";
+    const ph = hmPhoto(hmEl("div", "hm-pop-ph"), ll, where, 260, 104, 18);
+    card.append(ph);
+    if (ph._bp) {
+      hmPhotoObs.unobserve(ph);
+      BLDGPHOTO.snap([ph._bp]).then(hmPhotoUpgrade, () => {});
+    }
     const b = hmEl("div", "hm-pop-b");
     if (permit) {
       // A permit's card (2026-10-08): what was filed and where, its status

@@ -1136,10 +1136,17 @@ const ADMIN_KEY = (process.env.ADMIN_KEY || "").trim();
 // popups (served through GET /api/streetview so the key never reaches the
 // browser). Unset = the route 404s and popups stay on the aerial close-up.
 const GOOGLE_MAPS_API_KEY = (process.env.GOOGLE_MAPS_API_KEY || "").trim();
-// loc -> false | { heading, panoId, plat, plng }. The honesty gate
-// (streetview-aim.js) runs on the metadata response, so a far pano is a
-// cached miss, not a billed image of the neighbor. In-memory, capped.
+// loc -> false | { heading, fov, panoId, plat, plng }. The honesty and
+// quality gate (streetview-aim.js judgePano) runs on the metadata response,
+// so a far, old or user-uploaded pano is a cached miss, not a billed image.
+// In-memory, capped.
 const STREETVIEW_META_CACHE = new Map();
+// Test-only, unset in production: where the Street View calls go (the image
+// at this URL, the metadata at URL + "/metadata"). CENSUS_API_URL's reason:
+// without it the suite could prove the gate's rules but never that the route
+// obeys them, which is the half that bills.
+const STREETVIEW_API_URL = (process.env.STREETVIEW_API_URL ||
+  "https://maps.googleapis.com/maps/api/streetview").trim().replace(/\/+$/, "");
 
 // Optional "Continue with Google" (dark until BOTH are set). Created in the
 // Google Cloud console — project "compninja", the one that already holds the
@@ -25567,12 +25574,15 @@ const server = http.createServer((req, res) =>
     return;
   }
 
-  // --- Street View photo proxy. Aerial is already in the popup; this
-  // overlays a street-level shot ONLY when a camera sits within
-  // SVAIM.MAX_PANO_M of the snapped building and we can aim it at that
-  // building. A far pano (fence, neighbor, warehouse street) 404s and the
-  // aerial stays. Coords only — address aiming photographed the road on
-  // unmapped parcels. Dark when GOOGLE_MAPS_API_KEY is unset. ---
+  // --- Street View photo proxy, for every street photo on the site (the
+  // report map's pin popups, Home's lists and map cards, The Board's deal
+  // cards). It answers with a photo ONLY when SVAIM.judgePano passes: a
+  // camera of Google's own, captured within the last ten years, standing
+  // within SVAIM.MAX_PANO_M of the snapped building, aimed at it, the lens
+  // fitted to the distance. Anything else (a fence or the neighbor, a 2009
+  // capture, a user's photosphere) 404s and the page shows its aerial.
+  // Coords only — address aiming photographed the road on unmapped parcels.
+  // Dark when GOOGLE_MAPS_API_KEY is unset. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/streetview") {
     const params = new URL(req.url, "http://localhost").searchParams;
     // Number(null) is 0, so missing params must not masquerade as 0,0.
@@ -25583,7 +25593,10 @@ const server = http.createServer((req, res) =>
       return sendJson(res, 400, { error: "lat and lng are required." });
     }
     if (!GOOGLE_MAPS_API_KEY) { res.writeHead(404); return res.end(); }
-    // A report has <= ~9 pins; 60/window is generous for a human reader.
+    // A report has <= ~9 pins; Home and The Board load their photos lazily,
+    // a screenful at a time, and a browser keeps each for 30 days. 60 per
+    // window is generous for a human reader and is also the spend guard: a
+    // 429 is an img error, which the page answers with its aerial.
     if (rateLimited("streetview:" + clientIp(req), 60)) {
       return sendJson(res, 429, { error: "Too many photo requests. Please wait a few minutes." });
     }
@@ -25593,32 +25606,25 @@ const server = http.createServer((req, res) =>
         let aim = STREETVIEW_META_CACHE.get(loc);
         if (aim === undefined) {
           const mr = await fetch(
-            "https://maps.googleapis.com/maps/api/streetview/metadata?location=" + loc +
+            STREETVIEW_API_URL + "/metadata?location=" + loc +
               "&source=outdoor&radius=" + SVAIM.MAX_PANO_M +
               "&key=" + GOOGLE_MAPS_API_KEY,
             { signal: AbortSignal.timeout(6000) }
           );
           const mj = await mr.json();
-          const panoLL = mj && mj.status === "OK" && mj.location
-            ? { lat: Number(mj.location.lat), lng: Number(mj.location.lng) }
-            : null;
-          const aimed = SVAIM.aimAt({ lat, lng }, panoLL);
-          aim = aimed
-            ? {
-                heading: aimed.heading,
-                panoId: String(mj.pano_id || ""),
-                plat: panoLL.lat,
-                plng: panoLL.lng,
-              }
-            : false;
+          aim = SVAIM.judgePano({ lat, lng }, mj, Date.now()) || false;
           if (STREETVIEW_META_CACHE.size >= 500) {
             STREETVIEW_META_CACHE.delete(STREETVIEW_META_CACHE.keys().next().value);
           }
           STREETVIEW_META_CACHE.set(loc, aim);
         }
         if (!aim) { res.writeHead(404); return res.end(); }
-        let imgUrl = "https://maps.googleapis.com/maps/api/streetview?size=600x360"
-          + "&source=outdoor&fov=80&pitch=6"
+        // 640 is the API's widest; 5:3 is the popup's shape, and the other
+        // cards crop it with object-fit. ONE size on purpose: every surface
+        // asks for the same URL, so a building is billed once per browser.
+        let imgUrl = STREETVIEW_API_URL + "?size=640x384"
+          + "&source=outdoor&pitch=6"
+          + "&fov=" + Number(aim.fov || 80)
           + "&heading=" + Number(aim.heading).toFixed(1)
           + "&key=" + GOOGLE_MAPS_API_KEY;
         if (aim.panoId) {
@@ -30652,7 +30658,12 @@ const server = http.createServer((req, res) =>
     // Home as one map (2026-10-07): the rules for its lists, through the
     // global HOMEMAP. Same reason as the ones above: never stale against the
     // page that calls it.
-    "/home-map.js": { file: "home-map.js", type: "text/javascript; charset=utf-8", maxAge: 0 },    // The desktop/mobile install identity (PWA). Users "download" the app
+    "/home-map.js": { file: "home-map.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // Street photos of buildings (2026-10-09): which building a photo shows,
+    // through the global BLDGPHOTO, for Home's cards (index.html) and The
+    // Board's (deal-wall.js on /vault). Same maxAge: 0 rule as the others.
+    "/building-photo.js": { file: "building-photo.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // The desktop/mobile install identity (PWA). Users "download" the app
     // from the site itself — Chrome/Edge offer Install once this manifest is
     // reachable — so there is no installer to host or code-sign anywhere.
     // Short max-age like the CSS: a renamed app or swapped icon should reach
@@ -31810,7 +31821,11 @@ const server = http.createServer((req, res) =>
         // than copied into vault-page.js, so the vault cannot drift onto
         // another version of either. Without them the map says it could not
         // load and every comp is still in the list.
-        head: INTER_FONT_HEAD + LEAFLET_HEAD + `<script>${BASEMAP_JS}</script>\n`,
+        // + whether Street View is configured (2026-10-09), so The Board's
+        // deal cards know they may ask /api/streetview for a street photo
+        // (deal-wall.js, building-photo.js). A constant, not the visitor's.
+        head: INTER_FONT_HEAD + LEAFLET_HEAD + `<script>${BASEMAP_JS}</script>\n`
+          + `<script>window.__CN_STREETVIEW__=${GOOGLE_MAPS_API_KEY ? "true" : "false"};</script>\n`,
         testerBadge: true,
         body: renderVaultBody(boot) + visitTag,
       }));

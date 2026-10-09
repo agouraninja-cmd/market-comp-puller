@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-10-09",
+    "type": "feature",
+    "title": "Real street photos of buildings instead of the satellite view",
+    "details": "Home's property and comp lists, the cards on Home's map and the deal cards on The Board now show each building the way you'd see it from the street, using Google Street View, instead of a satellite picture of its roof. A photo only appears when we can prove it is the right building and a good picture: OpenStreetMap has to show a building carrying that exact street number, and Google's camera has to be Google's own (not a photo someone uploaded), taken in the last ten years, close to the building and pointed at it, with the lens zoomed to fit. The same check now applies to the photos on the report map's pins. Where no good photo exists (a piece of land with no building on it, a building the map doesn't know, an old or faraway camera) the satellite view stays, so nothing goes blank and nothing shows the wrong building. Addresses still never leave CompNinja: photos are looked up by map coordinates. Also fixed: Home's small property pictures were off-centre, with the property in the bottom-right corner."
+  },
+  {
     "date": "2026-10-08",
     "type": "feature",
     "title": "Home's map shows your properties, comps and permits, and shared reports moved into Messages",

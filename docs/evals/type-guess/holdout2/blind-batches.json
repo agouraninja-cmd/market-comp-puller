@@ -1,0 +1,170 @@
+[
+ [
+  {
+   "id": "g005",
+   "address": "10681 Production Ave, Fontana, CA 92337"
+  },
+  {
+   "id": "g033",
+   "address": "9200 W Sahara Ave, Las Vegas, NV 89117"
+  },
+  {
+   "id": "g026",
+   "address": "401 B St, San Diego, CA"
+  },
+  {
+   "id": "g038",
+   "address": "8702 S Lancaster Rd, Dallas, TX"
+  },
+  {
+   "id": "g030",
+   "address": "17 Davis Blvd, Tampa, FL 33606"
+  },
+  {
+   "id": "g031",
+   "address": "4323-4331 Maple Ave, Dallas, TX"
+  },
+  {
+   "id": "g020",
+   "address": "4340 Las Vegas Blvd N, Las Vegas, NV 89115"
+  },
+  {
+   "id": "g035",
+   "address": "5324-5338 N 7th Ave, Phoenix, AZ"
+  },
+  {
+   "id": "g006",
+   "address": "18405 Intercontinental Crossing Dr, Houston, TX 77073"
+  },
+  {
+   "id": "g019",
+   "address": "5313 Reiger Ave, Dallas, TX 75214"
+  }
+ ],
+ [
+  {
+   "id": "g004",
+   "address": "1812 Garden Spring Dr, Dallas, TX 75253"
+  },
+  {
+   "id": "g007",
+   "address": "6230 Corporate Dr, Indianapolis, IN 46278"
+  },
+  {
+   "id": "g010",
+   "address": "390 E Corporate Dr, Meridian, ID"
+  },
+  {
+   "id": "g013",
+   "address": "4810 Gaston Ave, Dallas, TX 75246"
+  },
+  {
+   "id": "g001",
+   "address": "1400 Beaver Ruin Rd, Norcross, GA 30093"
+  },
+  {
+   "id": "g028",
+   "address": "200 4th Ave S, Nashville, TN"
+  },
+  {
+   "id": "g029",
+   "address": "501 W Broadway, San Diego, CA"
+  },
+  {
+   "id": "g015",
+   "address": "749 E Maryland Ave, Phoenix, AZ 85014"
+  },
+  {
+   "id": "g012",
+   "address": "2054 N 4th St, Columbus, OH 43201"
+  },
+  {
+   "id": "g016",
+   "address": "17220 Heart of Palms Dr, Tampa, FL"
+  }
+ ],
+ [
+  {
+   "id": "g025",
+   "address": "424 Church St, Nashville, TN"
+  },
+  {
+   "id": "g037",
+   "address": "7121 W US Highway 90, San Antonio, TX 78227"
+  },
+  {
+   "id": "g008",
+   "address": "3130 N Lamb Blvd, North Las Vegas, NV 89115"
+  },
+  {
+   "id": "g017",
+   "address": "2411 S 5th St, Austin, TX 78704"
+  },
+  {
+   "id": "g034",
+   "address": "7150 W Colonial Dr, Orlando, FL"
+  },
+  {
+   "id": "g009",
+   "address": "2315 Pier St, Memphis, TN 38113"
+  },
+  {
+   "id": "g027",
+   "address": "4900 Memorial Hwy, Tampa, FL 33634"
+  },
+  {
+   "id": "g036",
+   "address": "10040-10064 Bruceville Rd, Elk Grove, CA 95757"
+  },
+  {
+   "id": "g021",
+   "address": "1360 Peachtree St NE, Atlanta, GA 30309"
+  },
+  {
+   "id": "g003",
+   "address": "6660 Broughton Ave, Columbus, OH 43213"
+  }
+ ],
+ [
+  {
+   "id": "g040",
+   "address": "625 N Stephanie St, Henderson, NV 89014"
+  },
+  {
+   "id": "g024",
+   "address": "1801 Broadway, Denver, CO 80202"
+  },
+  {
+   "id": "g023",
+   "address": "1942 East 7th Street, Charlotte, NC 28204"
+  },
+  {
+   "id": "g018",
+   "address": "74 W Moler St, Columbus, OH 43207"
+  },
+  {
+   "id": "g039",
+   "address": "3511 Houston Ave, Houston, TX 77009"
+  },
+  {
+   "id": "g002",
+   "address": "10951 W Emerald St, Boise, ID"
+  },
+  {
+   "id": "g011",
+   "address": "1710 Wooten Park Dr, Austin, TX 78757"
+  },
+  {
+   "id": "g022",
+   "address": "9900 Spectrum Dr, Austin, TX 78717"
+  },
+  {
+   "id": "g032",
+   "address": "7001 Lyons Ave, Houston, TX 77020"
+  },
+  {
+   "id": "g014",
+   "address": "109 Orland St, Las Vegas, NV 89107"
+  }
+ ]
+]

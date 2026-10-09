@@ -1,0 +1,362 @@
+[
+ {
+  "id": "h001",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Traded records the August 2026 sale of the 54,672 SF small-bay flex industrial building at 6435 Shiloh Road."
+ },
+ {
+  "id": "h002",
+  "type": "Industrial",
+  "confidence": "medium",
+  "evidence": "Parcel record for 50 S Adkins Way (1.29 acres) gives no building type; the same street has a commercial flex property at 150 S."
+ },
+ {
+  "id": "h003",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "Nothing found about 1568 itself; nearby Georgesville Square Dr addresses (1560, and the Applebee's at 1590) point to a shopping-center street."
+ },
+ {
+  "id": "h004",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Listing for 9822 Monroe Dr: 5,040 SF standalone manufacturing building, 12-ft clear, two docks and a drive-in door."
+ },
+ {
+  "id": "h005",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No page about 15521 Slover found; a nearby 15594 Slover Ave listing is an industrial site in the Fontana industrial corridor."
+ },
+ {
+  "id": "h006",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No page about 7916 Hall found (only 7916 Grow Ln, a different street); a guess, unverified."
+ },
+ {
+  "id": "h007",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Sale listing for 6550 Guion Rd: an 11,610 SF industrial/flex building with multiple overhead doors."
+ },
+ {
+  "id": "h008",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Listing for 3051 Coleman St: about 15,330 SF office/warehouse building, 21-ft ceiling, dock-high door, M-2 zoning."
+ },
+ {
+  "id": "h009",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No page about 4971 Southridge Blvd turned up; the nearby 4800-4905 Southridge Blvd buildings are all industrial."
+ },
+ {
+  "id": "h010",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "A sale flyer for 363 N Linder Rd describes two industrial buildings with I-L zoning, 22 to 26 ft ceilings and overhead doors."
+ },
+ {
+  "id": "h011",
+  "type": "Industrial",
+  "confidence": "medium",
+  "evidence": "A search summary describes a light-industrial building listed for sale at 80 N Happy Valley Rd (about 5,054 SF, 22-foot ceiling), but the Crexi page could not be opened to confirm the address."
+ },
+ {
+  "id": "h012",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Listing for 1260 S Dupont Ave: about 27,800 SF Class C industrial facility with 24-ft clear height."
+ },
+ {
+  "id": "h013",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "Searches returned only street index pages for 43rd Ave in Phoenix and nothing about 4475 N 43rd Ave itself, so the type is a guess."
+ },
+ {
+  "id": "h014",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No page about 7240 Sycamore Canyon Blvd; the neighboring 7275 and 7372 addresses are industrial buildings with dock doors and clear heights, and no assessor record was found."
+ },
+ {
+  "id": "h015",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Prologis's Crossroads 405 listing, a 116,250 SF building with a 27 ft clear height and 12 dock doors, matches this address."
+ },
+ {
+  "id": "h016",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Sale and listing pages for 4375 Cascade Rd SW describe a 260-unit apartment community (FortyThree 75 / Parks at UTOY Creek)."
+ },
+ {
+  "id": "h017",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "A Matthews offering memorandum is for Woodrow Apartments at exactly 5624 Woodrow Ave, Austin."
+ },
+ {
+  "id": "h018",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No page about 2509 itself; the nearest record on the street, 2514 N Davidson (a different number), is industrial-zoned, so this is a street-level guess."
+ },
+ {
+  "id": "h019",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "No page or parcel record for 978-980 Harrison Ave turned up; the paired numbering suggests a two-unit building, so this is a guess."
+ },
+ {
+  "id": "h020",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Marcus & Millichap markets 660 Yorktown St as Infinity on Yorktown, a 226-unit apartment community."
+ },
+ {
+  "id": "h021",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No page found; a guess from the 89101 ZIP, unverified."
+ },
+ {
+  "id": "h022",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "Only an address index page lists 11025 S 51st St in ZIP 85044, with no building page found, so the type is a guess."
+ },
+ {
+  "id": "h023",
+  "type": "Multifamily",
+  "confidence": "medium",
+  "evidence": "Rental pages for 15350 Amberly Dr show several rental units (941 SF one-bedroom and 1,671 SF three-bedroom) called apartments, though one listing calls unit 3914 a townhome."
+ },
+ {
+  "id": "h024",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Rental listings for 750 Avondale Creek Dr show a furnished apartment community with about 10 floorplans, a pool and a fitness center."
+ },
+ {
+  "id": "h025",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "LoopNet and Showcase list 6300 Monsanto Dr as a 12-unit apartment building for sale."
+ },
+ {
+  "id": "h026",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Rental listings for 2301 Julia Ave, including unit #4, are advertised as apartments, which implies multiple units at this address."
+ },
+ {
+  "id": "h027",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "No page found; the hyphenated 1669-1671 range suggests two units, which would be a duplex."
+ },
+ {
+  "id": "h028",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Apartment listings for Melville at 11201 E Lake Highlands Dr show 38 units available."
+ },
+ {
+  "id": "h029",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Redfin listings for the Mirasol apartment community at 2180 E Warm Springs Rd, 89119, show its units and rents."
+ },
+ {
+  "id": "h030",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Redfin rental listing for Portola Red Mountain at 600 N 53rd St with 3- and 4-bedroom units, plus unit numbers #12, #15 and #19 on the same street address."
+ },
+ {
+  "id": "h031",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "CityFeet lease listing for 2849 Paces Ferry Rd SE describes a 142,000 SF Class A office building built in 1982."
+ },
+ {
+  "id": "h032",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "No page found; a guess for a MoPac frontage address in 78746, unverified."
+ },
+ {
+  "id": "h033",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Charlotte Plaza, a 27-story Class A office tower, occupies 201 S College St, with office suites listed for lease."
+ },
+ {
+  "id": "h034",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Walnut Glen Tower at 8144 Walnut Hill Ln has about 3,519 SF of office space listed for lease."
+ },
+ {
+  "id": "h035",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Office-Hub lists offices for lease at 2301 Blake St, and Spaces and Regus run suites in the converted former warehouse."
+ },
+ {
+  "id": "h036",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Avison Young sale news for 110 Westwood Place: a vacant two-story 24,372 SF office building sold for $6 million in January 2026."
+ },
+ {
+  "id": "h037",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "Only a law office at 1450 Frazee Rd Suite 310 surfaced, a weak business-at-address clue, but suites on upper floors point to office."
+ },
+ {
+  "id": "h038",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Medical offices at 3500 E Fletcher Ave (USF Health suites, Suite 302 clinic) and University Professional Center are listed at this address."
+ },
+ {
+  "id": "h039",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "Low-quality pages title 1349 W Peachtree St NW as 'Two Midtown Plaza' and a Socotec tenant is listed in suite 1010, which points to an office building, but the sources are weak."
+ },
+ {
+  "id": "h040",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Connect CRE reports the City of Austin's purchase of a roughly 207,000 SF office building at this address, and CommercialSearch lists about 206,657 SF of office space for lease there."
+ },
+ {
+  "id": "h041",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Cityfeet lease listing for 5510 77 Center Dr: a Class B office building (21,816 SF) with an 8,169 SF office suite available."
+ },
+ {
+  "id": "h042",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "Only a dental practice in Suite 1205 at 4144 N Central Expy was found, which suggests a suited office building."
+ },
+ {
+  "id": "h043",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "No page found; a guess for a downtown Denver 80202 address, unverified."
+ },
+ {
+  "id": "h044",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "Nothing found for 5314 itself; other Maryland Way addresses (5121, 5217, 5310) are office listings in the Maryland Farms area."
+ },
+ {
+  "id": "h045",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Cushman & Wakefield listing for 9797 Aero Dr: Class A office building of about 92,000 SF built 1995, atrium lobby, leased suites on floors."
+ },
+ {
+  "id": "h046",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "CityFeet lists retail suites at 6401 Carnegie Blvd in the Specialty Shops SouthPark center, which Traded reports as sold for $60M."
+ },
+ {
+  "id": "h047",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "A sale listing for 2211 S Beckley Ave describes a 5,797 SF, 100% leased retail building with three tenants."
+ },
+ {
+  "id": "h048",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No page about 15150 North Fwy; neighboring North Fwy listings are an industrial lease at 14908 and a Richey Business Park building at 0 North Fwy, so the street reads as industrial."
+ },
+ {
+  "id": "h049",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Cushman & Wakefield leases 4701 West Sahara Avenue as a retail site with restaurant pads and retail suites."
+ },
+ {
+  "id": "h050",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Traded lists a retail property at 8025 Lee Vista Blvd that sold for $4.1M (13,813 SF)."
+ },
+ {
+  "id": "h051",
+  "type": "Retail",
+  "confidence": "medium",
+  "evidence": "An I-17 exit guide lists restaurants (Salad and Go, Firehouse Subs) at 3434 W Greenway Rd, weak business evidence that suggests a shopping-center pad."
+ },
+ {
+  "id": "h052",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "No page about 4011 Sunrise Blvd turned up; the nearby 4000 block is retail (Walgreens at 4050, Sunridge Plaza at 4030, the Anatolia pad at 4041)."
+ },
+ {
+  "id": "h053",
+  "type": "Land",
+  "confidence": "low",
+  "evidence": "No page covers 22135 Bulverde Rd, and the nearby 22111 Bulverde Rd is vacant land of about 0.64 acre offered for lease."
+ },
+ {
+  "id": "h054",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "A commercial listing for 323 Unionville Indian Trail Road offers about 4,200 SF of street retail space."
+ },
+ {
+  "id": "h055",
+  "type": "Land",
+  "confidence": "low",
+  "evidence": "No page covers 10110 Royal Ln, so I went by the street: the nearby 10024 Royal Ln is a vacant one-acre parcel offered for lease."
+ },
+ {
+  "id": "h056",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No page about 5104 Lockwood Dr turned up; the one commercial Lockwood Dr listing I could read (947 Lockwood, 77020) is an industrial building."
+ },
+ {
+  "id": "h057",
+  "type": "Retail",
+  "confidence": "medium",
+  "evidence": "CityFeet lease listing for 171 N Gibson Rd labels a 1,293 SF unit office/retail, and its tenants (Dunkin', Manna, a vape shop, a salon) point to a retail strip."
+ },
+ {
+  "id": "h058",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "No page about 2625 N Hiawassee; nearby addresses on the same road are a J-Mart shopping center (2768) and a church (2425), so the corridor reads as retail."
+ },
+ {
+  "id": "h059",
+  "type": "Retail",
+  "confidence": "medium",
+  "evidence": "A night club is listed at 4139 W Bell Rd in a restaurant directory, weak business evidence that suggests a strip-center suite."
+ },
+ {
+  "id": "h060",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No page found; a guess for an Enterprise Dr address in 95825, unverified."
+ }
+]

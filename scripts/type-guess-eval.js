@@ -25,9 +25,10 @@
 // answers were.
 //
 // Usage:
-//   node scripts/type-guess-eval.js build [outDir] [--per-type 20] [--batch 11] [--exclude set.json] [--seed N]
+//   node scripts/type-guess-eval.js build [outDir] [--per-type 20] [--batch 11] [--exclude a.json,b.json] [--seed N] [--prefix h]
 //   node scripts/type-guess-eval.js run [dir] [--provider gemini|anthropic] [--no-search] [--prompt 2] [--model M] [--thinking low]
-//   node scripts/type-guess-eval.js score <set.json> <guesses.json> [more guesses.json ...]
+//                                       [--two-step [--deep-model M] [--deep-thinking medium]]
+//   node scripts/type-guess-eval.js score <set.json> <guesses.json> [more guesses.json ...]   (later files win by id)
 //
 // `run` asks the production provider (needs that provider's key in the env or
 // .env; it is billed). The 2026-10-09 results were produced without one, by
@@ -329,23 +330,21 @@ const PROVIDERS = {
   anthropic: () => require("../search-provider-anthropic.js"),
 };
 
-// Asks the PRODUCTION provider the same question the 2026-10-09 run asked a
-// Claude subagent, one batch per call, through the same provider modules
-// server.js uses. Every call is billed to the key's account (about 85
-// addresses, a few cents on Gemini Flash). Writes guesses-<provider>[-nosearch].json
-// next to the batches; score it like any other guesses file.
-async function runProvider(dir, { providerName, search, model, thinkingLevel, version }) {
+// Asks the PRODUCTION provider the same questions the 2026-10-09 runs asked
+// Claude subagents, through the same provider modules server.js uses. Every
+// call is billed to the key's account (a few cents a set on Gemini Flash).
+async function askProvider(batches, { providerName, search, model, thinkingLevel, version }) {
   const make = PROVIDERS[providerName];
   if (!make) throw new Error(`unknown provider "${providerName}" (gemini | anthropic)`);
   const provider = make();
   loadDotEnv();
   const apiKey = (process.env[provider.apiKeyEnv] || "").trim();
   if (!apiKey) throw new Error(`${provider.apiKeyEnv} is not set (env or .env)`);
-  const batches = readJson(path.join(dir, "blind-batches.json"));
   const useModel = model || process.env.MODEL || provider.defaultModel;
   const all = [];
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
+    const started = Date.now();
     const body = provider.buildRequestBody({
       model: useModel, prompt: guessPrompt(batch, { search, version }), maxComps: 12,
       searchUses: batch.length * (version === 3 ? 6 : version === 2 ? 3 : 2), thinkingLevel,
@@ -356,13 +355,36 @@ async function runProvider(dir, { providerName, search, model, thinkingLevel, ve
     const data = await res.json().catch(() => null);
     if (!res.ok) throw new Error(`batch ${i + 1}: HTTP ${res.status} ${JSON.stringify(data).slice(0, 300)}`);
     const got = parseGuesses(provider.parseResponse(data).text);
-    console.log(`batch ${i + 1}/${batches.length}: ${got.length}/${batch.length} answered`);
+    const secs = ((Date.now() - started) / 1000).toFixed(1);
+    console.log(`v${version} batch ${i + 1}/${batches.length}: ${got.length}/${batch.length} answered in ${secs}s`);
     all.push(...got);
   }
-  const out = path.join(dir, `guesses-${providerName}${search ? "" : "-nosearch"}${version > 1 ? "-v" + version : ""}.json`);
-  fs.writeFileSync(out, JSON.stringify(all, null, 1) + "\n");
-  console.log(`${all.length} guesses -> ${out}`);
-  return out;
+  return all;
+}
+
+// The design under test (docs/superpowers/specs/2026-10-09-auto-property-type-design.md):
+// a quick pass on every address, then the deep pass (version 3) on every
+// answer that came back less than "high". --deep-model / --deep-thinking let
+// the deep pass think harder than the quick one.
+async function runProvider(dir, opts) {
+  const batches = readJson(path.join(dir, "blind-batches.json"));
+  const tag = `${opts.providerName}${opts.search ? "" : "-nosearch"}${opts.version > 1 ? "-v" + opts.version : ""}`;
+  const quick = await askProvider(batches, opts);
+  const quickOut = path.join(dir, `guesses-${tag}.json`);
+  fs.writeFileSync(quickOut, JSON.stringify(quick, null, 1) + "\n");
+  console.log(`${quick.length} guesses -> ${quickOut}`);
+  if (!opts.twoStep) return [quickOut];
+  const byId = new Map(batches.flat().map((r) => [r.id, r]));
+  const unsure = quick.filter((g) => normConfidence(g.confidence) !== "high" && byId.has(g.id)).map((g) => byId.get(g.id));
+  const deepBatches = [];
+  for (let i = 0; i < unsure.length; i += 6) deepBatches.push(unsure.slice(i, i + 6));
+  const deep = await askProvider(deepBatches, {
+    ...opts, version: 3, model: opts.deepModel || opts.model, thinkingLevel: opts.deepThinking || opts.thinkingLevel,
+  });
+  const deepOut = path.join(dir, `guesses-${tag}-deep.json`);
+  fs.writeFileSync(deepOut, JSON.stringify(deep, null, 1) + "\n");
+  console.log(`${unsure.length} unsure -> ${deep.length} deep guesses -> ${deepOut}`);
+  return [quickOut, deepOut];
 }
 
 function main(argv) {
@@ -376,8 +398,12 @@ function main(argv) {
     // prompt written after reading one set's misses is scored on addresses it
     // was never tuned on.
     const exIdx = argv.indexOf("--exclude");
-    const excluded = new Set(exIdx >= 0 ? readJson(argv[exIdx + 1]).map((r) => r.address.trim().toLowerCase()) : []);
-    const prefix = exIdx >= 0 ? "h" : "t";
+    // Comma-separate several sets to exclude all of them.
+    const excluded = new Set(exIdx >= 0
+      ? argv[exIdx + 1].split(",").flatMap((p) => readJson(p)).map((r) => r.address.trim().toLowerCase())
+      : []);
+    const pIdx = argv.indexOf("--prefix");
+    const prefix = pIdx >= 0 ? argv[pIdx + 1] : exIdx >= 0 ? "h" : "t";
     const set = sampleSet(seedRows(seed).filter((r) => !excluded.has(r.address.toLowerCase())), perType, prefix);
     fs.mkdirSync(outDir, { recursive: true });
     const labeled = set.map((r) => ({
@@ -410,8 +436,13 @@ function main(argv) {
       model: flag("--model"),
       thinkingLevel: flag("--thinking") || process.env.THINKING_LEVEL || undefined,
       version: [2, 3].includes(Number(flag("--prompt"))) ? Number(flag("--prompt")) : 1,
-    }).then((out) => {
-      console.log(formatReport(path.basename(out), score(readJson(path.join(dir, "set.json")), readJson(out))));
+      twoStep: argv.includes("--two-step"),
+      deepModel: flag("--deep-model"),
+      deepThinking: flag("--deep-thinking"),
+    }).then((outs) => {
+      // Later files win by id, so quick + deep scores the two-step result.
+      const guesses = outs.flatMap((p) => readJson(p));
+      console.log(formatReport(outs.map((p) => path.basename(p)).join(" + "), score(readJson(path.join(dir, "set.json")), guesses)));
       return 0;
     });
   }

@@ -1,0 +1,322 @@
+[
+ {
+  "id": "g001",
+  "address": "1400 Beaver Ruin Rd, Norcross, GA 30093",
+  "label": "Industrial",
+  "market": "industrial-atlanta-ga",
+  "source_url": "https://traded.co/deals/georgia/commercial-real-estate/sale/1400-beaver-ruin-road/",
+  "source_type": "news"
+ },
+ {
+  "id": "g002",
+  "address": "10951 W Emerald St, Boise, ID",
+  "label": "Industrial",
+  "market": "industrial-boise-id",
+  "source_url": "https://stark.realestate/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g003",
+  "address": "6660 Broughton Ave, Columbus, OH 43213",
+  "label": "Industrial",
+  "market": "industrial-columbus-oh",
+  "source_url": "https://traded.co/deals/ohio/industrial/sale/6660-broughton-ave/",
+  "source_type": "news"
+ },
+ {
+  "id": "g004",
+  "address": "1812 Garden Spring Dr, Dallas, TX 75253",
+  "label": "Industrial",
+  "market": "industrial-dallas-tx",
+  "source_url": "https://www.loopnet.com/Listing/1812-Garden-Spring-Dr-Dallas-TX/37277578/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g005",
+  "address": "10681 Production Ave, Fontana, CA 92337",
+  "label": "Industrial",
+  "market": "industrial-fontana-ca",
+  "source_url": "https://rebusinessonline.com/bridge-logistics-properties-buys-1-1-msf-distribution-facility-in-fontana-california-for-174m/",
+  "source_type": "news"
+ },
+ {
+  "id": "g006",
+  "address": "18405 Intercontinental Crossing Dr, Houston, TX 77073",
+  "label": "Industrial",
+  "market": "industrial-houston-tx",
+  "source_url": "https://partnersrealestate.com/research/houston-industrial-q3-2025/",
+  "source_type": "news"
+ },
+ {
+  "id": "g007",
+  "address": "6230 Corporate Dr, Indianapolis, IN 46278",
+  "label": "Industrial",
+  "market": "industrial-indianapolis-in",
+  "source_url": "https://www.loopnet.com/Listing/6230-Corporate-Dr-Indianapolis-IN/41479403/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g008",
+  "address": "3130 N Lamb Blvd, North Las Vegas, NV 89115",
+  "label": "Industrial",
+  "market": "industrial-las-vegas-nv",
+  "source_url": "https://rebusinessonline.com/",
+  "source_type": "news"
+ },
+ {
+  "id": "g009",
+  "address": "2315 Pier St, Memphis, TN 38113",
+  "label": "Industrial",
+  "market": "industrial-memphis-tn",
+  "source_url": "https://www.loopnet.com/Listing/2315-Pier-St-Memphis-TN/42336098/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g010",
+  "address": "390 E Corporate Dr, Meridian, ID",
+  "label": "Industrial",
+  "market": "industrial-meridian-id",
+  "source_url": "https://www.loopnet.com/Listing/390-E-Corporate-Dr-Meridian-ID/30969286/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g011",
+  "address": "1710 Wooten Park Dr, Austin, TX 78757",
+  "label": "Multifamily",
+  "market": "multifamily-austin-tx",
+  "source_url": "https://www.loopnet.com/Listing/1710-Wooten-Park-Dr-Austin-TX/37624933/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g012",
+  "address": "2054 N 4th St, Columbus, OH 43201",
+  "label": "Multifamily",
+  "market": "multifamily-columbus-oh",
+  "source_url": "https://www.zillow.com/homedetails/2054-N-4th-St-Columbus-OH-43201/226023679_zpid/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g013",
+  "address": "4810 Gaston Ave, Dallas, TX 75246",
+  "label": "Multifamily",
+  "market": "multifamily-dallas-tx",
+  "source_url": "https://www.loopnet.com/Listing/4810-Gaston-Ave-Dallas-TX/31998592/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g014",
+  "address": "109 Orland St, Las Vegas, NV 89107",
+  "label": "Multifamily",
+  "market": "multifamily-las-vegas-nv",
+  "source_url": "https://traded.co/deals/nevada/las-vegas/multifamily/westland-orland-apartments/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g015",
+  "address": "749 E Maryland Ave, Phoenix, AZ 85014",
+  "label": "Multifamily",
+  "market": "multifamily-phoenix-az",
+  "source_url": "https://www.jll.com/en-us/newsroom/jll-closes-two-private-capital-multifamily-assets-in-metro-phoenix-totaling-20-65m",
+  "source_type": "estimate"
+ },
+ {
+  "id": "g016",
+  "address": "17220 Heart of Palms Dr, Tampa, FL",
+  "label": "Multifamily",
+  "market": "multifamily-tampa-fl",
+  "source_url": "https://tbbwmagazine.com/2026/06/17/tampa-palms-apartment-community-sells-for-67-5m/",
+  "source_type": "estimate"
+ },
+ {
+  "id": "g017",
+  "address": "2411 S 5th St, Austin, TX 78704",
+  "label": "Multifamily",
+  "market": "multifamily-austin-tx",
+  "source_url": "https://www.crexi.com/properties/2432359/texas-2411-s-5th-st",
+  "source_type": "listing"
+ },
+ {
+  "id": "g018",
+  "address": "74 W Moler St, Columbus, OH 43207",
+  "label": "Multifamily",
+  "market": "multifamily-columbus-oh",
+  "source_url": "https://www.zillow.com/homedetails/74-W-Moler-St-Columbus-OH-43207/226030094_zpid/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g019",
+  "address": "5313 Reiger Ave, Dallas, TX 75214",
+  "label": "Multifamily",
+  "market": "multifamily-dallas-tx",
+  "source_url": "https://www.nuhomesource.com/listing/21387328-5313-reiger-avenue-dallas-tx-75214/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g020",
+  "address": "4340 Las Vegas Blvd N, Las Vegas, NV 89115",
+  "label": "Multifamily",
+  "market": "multifamily-las-vegas-nv",
+  "source_url": "https://traded.co/deals/nevada/las-vegas/multifamily/nellis-gate-apartments/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g021",
+  "address": "1360 Peachtree St NE, Atlanta, GA 30309",
+  "label": "Office",
+  "market": "office-atlanta-ga",
+  "source_url": "https://trinity-partners.com/news/one-two-midtown-plaza-atlanta-leasing-won-by-trinity-partners/",
+  "source_type": "news"
+ },
+ {
+  "id": "g022",
+  "address": "9900 Spectrum Dr, Austin, TX 78717",
+  "label": "Office",
+  "market": "office-austin-tx",
+  "source_url": "https://therealdeal.com/texas/austin/2025/04/03/round-rock-school-district-pays-38m-for-austin-area-office/",
+  "source_type": "news"
+ },
+ {
+  "id": "g023",
+  "address": "1942 East 7th Street, Charlotte, NC 28204",
+  "label": "Office",
+  "market": "office-charlotte-nc",
+  "source_url": "https://traded.co/deals/north-carolina/office/sale/1942-east-7th-street/",
+  "source_type": "news"
+ },
+ {
+  "id": "g024",
+  "address": "1801 Broadway, Denver, CO 80202",
+  "label": "Office",
+  "market": "office-denver-co",
+  "source_url": "https://www.bisnow.com/denver/news/office/downtown-denver-office-tower-sells-for-6m-an-85-loss-122409",
+  "source_type": "news"
+ },
+ {
+  "id": "g025",
+  "address": "424 Church St, Nashville, TN",
+  "label": "Office",
+  "market": "office-nashville-tn",
+  "source_url": "https://traded.co/deals/tennessee/office/sale/424-church-street/",
+  "source_type": "news"
+ },
+ {
+  "id": "g026",
+  "address": "401 B St, San Diego, CA",
+  "label": "Office",
+  "market": "office-san-diego-ca",
+  "source_url": "https://www.ocbj.com/real-estate/irvine-co-sells-another-san-diego-high-rise/",
+  "source_type": "news"
+ },
+ {
+  "id": "g027",
+  "address": "4900 Memorial Hwy, Tampa, FL 33634",
+  "label": "Office",
+  "market": "office-tampa-fl",
+  "source_url": "https://traded.co/deals/florida/office/sale/4900-memorial-highway/",
+  "source_type": "public_record"
+ },
+ {
+  "id": "g028",
+  "address": "200 4th Ave S, Nashville, TN",
+  "label": "Office",
+  "market": "office-nashville-tn",
+  "source_url": "https://www.commercialsearch.com/news/highwoods-cashes-in-255m-for-nashville-tower/",
+  "source_type": "news"
+ },
+ {
+  "id": "g029",
+  "address": "501 W Broadway, San Diego, CA",
+  "label": "Office",
+  "market": "office-san-diego-ca",
+  "source_url": "https://commercialobserver.com/2025/10/irvine-company-sells-final-san-diego-office-tower-discount/",
+  "source_type": "estimate"
+ },
+ {
+  "id": "g030",
+  "address": "17 Davis Blvd, Tampa, FL 33606",
+  "label": "Office",
+  "market": "office-tampa-fl",
+  "source_url": "https://www.loopnet.com/Listing/17-Davis-Blvd-Tampa-FL/29801862/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g031",
+  "address": "4323-4331 Maple Ave, Dallas, TX",
+  "label": "Retail",
+  "market": "retail-dallas-tx",
+  "source_url": "https://www.crexi.com/properties/2594037/texas-4323-4331-maple-ave",
+  "source_type": "estimate"
+ },
+ {
+  "id": "g032",
+  "address": "7001 Lyons Ave, Houston, TX 77020",
+  "label": "Retail",
+  "market": "retail-houston-tx",
+  "source_url": "https://www.crexi.com/properties/",
+  "source_type": "public_record"
+ },
+ {
+  "id": "g033",
+  "address": "9200 W Sahara Ave, Las Vegas, NV 89117",
+  "label": "Retail",
+  "market": "retail-las-vegas-nv",
+  "source_url": "https://www.mdlgroup.com/first-quarter-2025-las-vegas-retail-market-report/",
+  "source_type": "news"
+ },
+ {
+  "id": "g034",
+  "address": "7150 W Colonial Dr, Orlando, FL",
+  "label": "Retail",
+  "market": "retail-orlando-fl",
+  "source_url": "https://newportcp.com/west-colonial-oaks-sale/",
+  "source_type": "estimate"
+ },
+ {
+  "id": "g035",
+  "address": "5324-5338 N 7th Ave, Phoenix, AZ",
+  "label": "Retail",
+  "market": "retail-phoenix-az",
+  "source_url": "https://realestatedaily-news.com/orion-investment-real-estate-announces-successful-sale-of-prime-retail-center-in-uptown-phoenix/",
+  "source_type": "estimate"
+ },
+ {
+  "id": "g036",
+  "address": "10040-10064 Bruceville Rd, Elk Grove, CA 95757",
+  "label": "Retail",
+  "market": "retail-sacramento-ca",
+  "source_url": "https://www.connectcre.com/stories/la-investor-acquires-sacramento-area-shopping-center/",
+  "source_type": "estimate"
+ },
+ {
+  "id": "g037",
+  "address": "7121 W US Highway 90, San Antonio, TX 78227",
+  "label": "Retail",
+  "market": "retail-san-antonio-tx",
+  "source_url": "https://traded.co/deals/texas/retail/sale/7121-west-us-highway-90/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g038",
+  "address": "8702 S Lancaster Rd, Dallas, TX",
+  "label": "Retail",
+  "market": "retail-dallas-tx",
+  "source_url": "https://www.loopnet.com/Listing/8702-S-Lancaster-Rd-Dallas-TX/33319020/",
+  "source_type": "listing"
+ },
+ {
+  "id": "g039",
+  "address": "3511 Houston Ave, Houston, TX 77009",
+  "label": "Retail",
+  "market": "retail-houston-tx",
+  "source_url": "https://www.loopnet.com/",
+  "source_type": "public_record"
+ },
+ {
+  "id": "g040",
+  "address": "625 N Stephanie St, Henderson, NV 89014",
+  "label": "Retail",
+  "market": "retail-las-vegas-nv",
+  "source_url": "https://www.mdlgroup.com/first-quarter-2026-las-vegas-retail-market-report/",
+  "source_type": "news"
+ }
+]

@@ -1,0 +1,362 @@
+[
+ {
+  "id": "h001",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "No record found for 6435 Shiloh Rd; nearby Shiloh Rd addresses are corporate office and flex condos, so this is a guess from the area."
+ },
+ {
+  "id": "h002",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "Search not run because the usage limit was hit; blind guess for an address in Meridian's downtown office area."
+ },
+ {
+  "id": "h003",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "No listing or record for 1568 Georgesville Rd was found; the guess rests only on the commercial character of the Georgesville Rd corridor."
+ },
+ {
+  "id": "h004",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "A listing for 9822 Monroe Dr describes a 5,040 SF freestanding industrial building with drive-in and dock access, zoned LI."
+ },
+ {
+  "id": "h005",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Search was unavailable for this address; Slover Ave in Fontana sits in a warehouse-heavy corridor, so this is a guess from the area."
+ },
+ {
+  "id": "h006",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Traded.co sale record for 7916 Hall Road describes an industrial building of about 139,000 SF that sold in December 2024."
+ },
+ {
+  "id": "h007",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "A commercial listing for 6550 Guion Rd describes an 11,610 sf manufacturing building with shop and warehouse space and a smaller office section."
+ },
+ {
+  "id": "h008",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "A listing offering memorandum titled for 3051 Coleman St describes a 15,330 SF single-tenant M-2 office/warehouse building."
+ },
+ {
+  "id": "h009",
+  "type": "Industrial",
+  "confidence": "medium",
+  "evidence": "No listing for this exact address was found, but 4800 and 4905 Southridge Blvd in Parkway Village are both large industrial buildings; the search budget ran out before a second lookup."
+ },
+ {
+  "id": "h010",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "A broker flyer for 363 N Linder Rd offers two industrial/warehouse buildings totaling 20,596 SF, zoned I-L light industrial."
+ },
+ {
+  "id": "h011",
+  "type": "Land",
+  "confidence": "low",
+  "evidence": "Search failed with a rate limit; blind guess for a low-numbered address on the Nampa outskirts."
+ },
+ {
+  "id": "h012",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Listings for 1260 S Dupont Ave describe a roughly 27,801 SF single-tenant Class C industrial building."
+ },
+ {
+  "id": "h013",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "No listing for this exact address was found; nearby N 43rd Ave hits are commercial lots and strip frontage, so this is a low-confidence guess, and the search budget ran out before a second lookup."
+ },
+ {
+  "id": "h014",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No listing found for 7240 Sycamore Canyon Blvd; neighboring buildings on the street are industrial and cold-storage, so this is a guess from the area."
+ },
+ {
+  "id": "h015",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No record found for 405 Expansion Rd; the surrounding 31408 Export Blvd area is industrial and warehouse, so this is a guess from the area."
+ },
+ {
+  "id": "h016",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "4375 Cascade Rd SW is FortyThree 75 Apartments, a 260-unit apartment complex per LoopNet and listing data."
+ },
+ {
+  "id": "h017",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Woodrow Apartments at 5624 Woodrow Ave is marketed for sale as a multi-unit building with six 1BR units; public record shows 2 units, still multifamily."
+ },
+ {
+  "id": "h018",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "A Redfin rentals page lists NoDa Flats, an apartment community, at 2509 N Davidson St."
+ },
+ {
+  "id": "h019",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "No record of 978-980 Harrison Ave was found; the two-number range suggests a two-unit building, an unverified guess."
+ },
+ {
+  "id": "h020",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "660 Yorktown St is Infinity on Yorktown, a 226-unit apartment complex in Dallas."
+ },
+ {
+  "id": "h021",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No search results for 1591 Chartered Cir (search budget exhausted); a guess for a downtown Las Vegas business-park address."
+ },
+ {
+  "id": "h022",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "No property record found; Redfin's street index lists two units (Unit 1 and Unit 2) at this address, which suggests a duplex, and the search budget ran out before a second lookup."
+ },
+ {
+  "id": "h023",
+  "type": "Residential",
+  "confidence": "low",
+  "evidence": "Search was unavailable for this address; a numbered Drive with no ZIP suggests a residential street, so this is a guess."
+ },
+ {
+  "id": "h024",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "750 Avondale Creek Dr is a furnished apartment building with about ten floorplans, leased through Landing as Avondale Hills."
+ },
+ {
+  "id": "h025",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Listings describe 6300 Monsanto Dr as a 12-unit apartment building, all studios, built 1972, offered for sale."
+ },
+ {
+  "id": "h026",
+  "type": "Multifamily",
+  "confidence": "medium",
+  "evidence": "Rental listings show individual units at this address, including a #4 unit, which points to a multi-unit building; the search budget ran out before a second lookup."
+ },
+ {
+  "id": "h027",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "No listing found for 1669-1671 Oak St; the paired numbers suggest a two-unit building, and nearby 1685-1687 Oak is a commercial listing."
+ },
+ {
+  "id": "h028",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Transaction records describe a 356-unit garden-style apartment complex at this address, which recently sold and is marketed for rent."
+ },
+ {
+  "id": "h029",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Redfin rental listings identify 2180 E Warm Springs Rd as Mirasol, an apartment community with several unit types."
+ },
+ {
+  "id": "h030",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "Redfin lists unit-level entries (#12, #15, #19) at 600 N 53rd St, suggesting a multi-unit building, but no building name or type was found."
+ },
+ {
+  "id": "h031",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "CityFeet lease listing names 2849 Paces Ferry Rd SE as an office property built in 1982 with multiple suites available."
+ },
+ {
+  "id": "h032",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "1501 S MoPac is One Barton Skyway, an office building owned by Brandywine Realty Trust."
+ },
+ {
+  "id": "h033",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "201 S College St is Charlotte Plaza, a 27-story Class A office tower in Uptown with office suites listed for lease."
+ },
+ {
+  "id": "h034",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Walnut Glen Tower at 8144 Walnut Hill Ln is an office building with multiple professional suites (medical practices and a law office) and office space for lease."
+ },
+ {
+  "id": "h035",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "2301 Blake St is a multi-tenant brick office building in Denver's Ballpark area, leased as Spaces flexible office space."
+ },
+ {
+  "id": "h036",
+  "type": "Residential",
+  "confidence": "low",
+  "evidence": "Search was unavailable for this address; a low-numbered Place in Brentwood is likely a residential street, so this is a guess."
+ },
+ {
+  "id": "h037",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Axis 1450 is a seven-story, roughly 140,000 SF office building at 1450 Frazee Rd in Mission Valley, leased to multiple tenants."
+ },
+ {
+  "id": "h038",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "Search failed with a rate limit; blind guess for an E Fletcher Ave address near the USF area."
+ },
+ {
+  "id": "h039",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "Midtown directory listings show several office tenants at this address (a bank, a law practice and a life-safety firm in Suite 1010); the building name is unverified."
+ },
+ {
+  "id": "h040",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "Search was unavailable for this address; the IH-35 frontage near UT Austin has many student apartment complexes, so this is a guess."
+ },
+ {
+  "id": "h041",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "5510 77 Center Dr is an office suite listing in TheXchange (Montclaire South), a 21,816 SF Class B office building offered for lease."
+ },
+ {
+  "id": "h042",
+  "type": "Office",
+  "confidence": "medium",
+  "evidence": "Reflections Dental is listed at 4144 N Central Expy Suite 1205, a suite in a multi-tenant building, though the building itself was not identified."
+ },
+ {
+  "id": "h043",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "1600 Stout St is a downtown Denver office tower marketed for lease, with law firms as occupants."
+ },
+ {
+  "id": "h044",
+  "type": "Office",
+  "confidence": "low",
+  "evidence": "No record found for 5314 Maryland Way; neighboring Maryland Way addresses are office buildings."
+ },
+ {
+  "id": "h045",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Search not run because the usage limit was hit; blind guess that Aero Dr in San Diego is a light industrial and flex area."
+ },
+ {
+  "id": "h046",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "6401 Carnegie Blvd is the Specialty Shops SouthPark retail center, 65,276 SF, reported sold in a deal-tracker item."
+ },
+ {
+  "id": "h047",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "2211 S Beckley Ave is Beckley Center, a 5,797 SF 100% leased strip retail building with service tenants."
+ },
+ {
+  "id": "h048",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No listing found for 15150 North Fwy; nearby 77090 North Freeway properties are industrial and flex space, so this is a guess from the area."
+ },
+ {
+  "id": "h049",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Cushman and Wakefield lists multiple retail spaces for lease at 4701 W Sahara Ave in a 44,560 SF building with restaurant pads and drive-thru access."
+ },
+ {
+  "id": "h050",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "A Traded sale record describes a 13,813 SF retail property at this address that sold for $4.1M in Nov 2025, and a CVS MinuteClinic is listed there."
+ },
+ {
+  "id": "h051",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No search results for 3434 W Greenway Rd (search budget exhausted); a guess based on the Greenway Road west Phoenix industrial corridor."
+ },
+ {
+  "id": "h052",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "No search results for 4011 Sunrise Blvd (search budget exhausted); a guess based on the Sunrise Blvd retail corridor in Rancho Cordova."
+ },
+ {
+  "id": "h053",
+  "type": "Land",
+  "confidence": "low",
+  "evidence": "No record found for this exact address; nearest hit 22111 Bulverde Rd is vacant land, so this stretch looks undeveloped."
+ },
+ {
+  "id": "h054",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "A commercial listing for 323 Unionville Indian Trail Rd offers a 4,200 SF street-retail space for lease, though it also lists office and medical uses."
+ },
+ {
+  "id": "h055",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "Search not run because the usage limit was hit; blind guess for a Royal Ln street address in Dallas."
+ },
+ {
+  "id": "h056",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "Search not run because the usage limit was hit; blind guess based on the Lockwood Dr industrial corridor in Houston's East End."
+ },
+ {
+  "id": "h057",
+  "type": "Retail",
+  "confidence": "medium",
+  "evidence": "Directory listings place a Dunkin', Manna Mediterranean, a vape shop and a salon at 171 N Gibson Rd, which looks like a multi-tenant retail center; occupancy is unconfirmed."
+ },
+ {
+  "id": "h058",
+  "type": "Multifamily",
+  "confidence": "low",
+  "evidence": "Search not run because the usage limit was hit; blind guess for an N Hiawassee Rd address in Orlando."
+ },
+ {
+  "id": "h059",
+  "type": "Retail",
+  "confidence": "low",
+  "evidence": "No search results for 4139 W Bell Rd (search budget exhausted); a guess based on the Bell Rd retail corridor in northwest Phoenix."
+ },
+ {
+  "id": "h060",
+  "type": "Industrial",
+  "confidence": "low",
+  "evidence": "No record for 985 Enterprise Dr; nearby 947 Enterprise Dr had interior demolition work, which suggests a commercial building."
+ }
+]

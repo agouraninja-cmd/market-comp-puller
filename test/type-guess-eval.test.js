@@ -52,6 +52,22 @@ test("parseGuesses survives a code fence and refuses junk", () => {
   assert.deepEqual(E.parseGuesses("[not json]"), []);
 });
 
+test("score lets a later guess for the same id win, which is how quick + deep is scored", () => {
+  const set = [{ id: "a", label: "Retail", address: "1 A St" }, { id: "b", label: "Office", address: "2 B St" }];
+  const quick = [{ id: "a", type: "Industrial", confidence: "low" }, { id: "b", type: "Office", confidence: "high" }];
+  const deep = [{ id: "a", type: "Retail", confidence: "high" }];
+  assert.equal(E.score(set, quick).right, 1);
+  assert.equal(E.score(set, quick.concat(deep)).right, 2);
+});
+
+test("the deep prompt (version 3) asks for the parcel record and the businesses at the number", () => {
+  const deep = E.guessPrompt([{ id: "t001", address: "1 A St, Boise, ID" }], { search: true, version: 3 });
+  assert.match(deep, /parcel or appraisal-district record/);
+  assert.match(deep, /businesses listed at this exact street number/);
+  assert.match(deep, /up to 6 searches per address/);
+  assert.match(deep, /t001: 1 A St, Boise, ID/);
+});
+
 test("score counts a missing guess as wrong and splits accuracy by confidence", () => {
   const set = [
     { id: "a", label: "Industrial", address: "1 A St" },

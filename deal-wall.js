@@ -25,9 +25,11 @@
 // it) and nowhere else -- CLAUDE.md never-break rule 7. The photo is then
 // fetched by coordinates from the same Esri imagery the comp map's pin
 // popups use. Coordinates are cached in this browser only. Since 2026-10-09
-// a street photo is laid over it where one can be proven good
-// (building-photo.js): OpenStreetMap is asked by coordinates, and our own
-// /api/streetview by the building's coordinates, never the address.
+// a street photo of the building is laid over it where Google has a good one
+// (building-photo.js). That lookup sends the address to our own
+// /api/building-photo, which asks Google from the server: the owner's call
+// that day, and the second place rule 7 now lets an address go. The photo's
+// own URL carries the address sealed, never in the clear.
 //
 // PURE where it can be and dual-exported, like sites.js: Node gets the
 // helpers (test/deal-wall.test.js), the browser gets the global DEALWALL,
@@ -378,47 +380,51 @@
     var queue = [], active = 0, asked = {};
     function saveGeo() { try { if (G.localStorage) G.localStorage.setItem(GEO_KEY, JSON.stringify(geo)); } catch (e) {} }
     function paint(box, ll) {
+      // A street photo that has already loaded is the picture; the aerial
+      // under it would only add a second credit.
+      if (/(^|\s)dw-sv(\s|$)/.test(box.className)) { box.classList.add("dw-has"); return; }
       var big = box.className.indexOf("dw-pane-ph") >= 0, w = big ? 720 : 480, h = big ? 640 : 160;
       box.insertAdjacentHTML("afterbegin", '<span class="dw-tiles" style="width:' + w + "px;height:" + h + "px;margin-left:-" + (w / 2) + "px;margin-top:-" + (h / 2) + 'px" aria-hidden="true">' +
         aerialTiles(ll, w, h, ZOOM).map(function (t) {
           return '<img src="' + t.src + '" alt="" loading="lazy" style="left:' + t.left + "px;top:" + t.top + 'px" onerror="this.style.display=\'none\'">';
         }).join("") + '<i class="dw-pin"></i></span><span class="dw-credit">Esri</span>');
       box.classList.add("dw-has");
-      street(box, ll);
     }
     // The building from the street (2026-10-09; building-photo.js, the global
-    // BLDGPHOTO): laid over the aerial once OpenStreetMap proves which
-    // building the address is and the server finds a good photo of it, the
-    // way Home's cards do. Where either answer is no (a Land deal with no
-    // building on it, most of all) the aerial stays. The building is looked
-    // up by coordinates only; the address is compared in this browser.
-    var wanted = [], snapTimer = 0;
+    // BLDGPHOTO): looked up BY ADDRESS through our own /api/building-photo,
+    // which asks Google and refuses old, far or user-uploaded photos. It is
+    // laid over the aerial, or stands alone on a card whose address has not
+    // been placed on the map yet. Where the answer is no (a Land deal with no
+    // building on it, most of all) the aerial stays.
+    var wanted = [], lookTimer = 0;
     function streetOn() { return !!(ctx.streetview && G.BLDGPHOTO); }
-    function street(box, ll) {
-      if (!streetOn()) return;
+    function street(box) {
+      if (!streetOn() || box._svDone) return;
       var addr = box.getAttribute("data-ph") || "";
-      var b = G.BLDGPHOTO.building(ll, addr);
-      if (b === undefined) {
-        box._bp = { ll: ll, address: addr };
-        wanted.push(box._bp);
-        clearTimeout(snapTimer);
-        snapTimer = setTimeout(function () {
-          G.BLDGPHOTO.snap(wanted.splice(0)).then(upgrade, function () {});
-        }, 200);
-        return;
-      }
-      if (b && G.BLDGPHOTO.photoState(b) !== "fail") lay(box, b);
+      if (!G.BLDGPHOTO.eligible(addr)) { box._svDone = true; return; }
+      var src = G.BLDGPHOTO.photo(addr);
+      if (src) return lay(box, addr, src);
+      if (src === null) { box._svDone = true; return; }
+      box._bp = addr;
+      wanted.push({ address: addr });
+      clearTimeout(lookTimer);
+      lookTimer = setTimeout(function () {
+        G.BLDGPHOTO.lookup(wanted.splice(0)).then(upgrade, function () {});
+      }, 200);
     }
-    function lay(box, b) {
+    function lay(box, addr, src) {
       if (box._svDone) return;
       box._svDone = true;
-      G.BLDGPHOTO.overlay(box, b, {
-        known: G.BLDGPHOTO.photoState(b) === "ok", lazy: true,
+      G.BLDGPHOTO.overlay(box, addr, src, {
+        known: G.BLDGPHOTO.known(addr), lazy: true,
         before: box.querySelector(".dw-credit"),
         onLoad: function () {
           box.classList.add("dw-sv");
+          // The credit names the photograph, and sits on it.
           var credit = box.querySelector(".dw-credit");
-          if (credit) credit.textContent = "Google";
+          if (!credit) { credit = G.document.createElement("span"); credit.className = "dw-credit"; }
+          credit.textContent = "Google";
+          box.appendChild(credit);
         },
       });
     }
@@ -427,11 +433,11 @@
     function upgrade() {
       var boxes = el.querySelectorAll("[data-ph]");
       for (var i = 0; i < boxes.length; i++) {
-        var bp = boxes[i]._bp;
-        if (!bp || boxes[i]._svDone) continue;
-        var b = G.BLDGPHOTO.building(bp.ll, bp.address);
-        if (b === undefined) continue;
-        if (b && G.BLDGPHOTO.photoState(b) !== "fail") lay(boxes[i], b);
+        var addr = boxes[i]._bp;
+        if (!addr || boxes[i]._svDone) continue;
+        var src = G.BLDGPHOTO.photo(addr);
+        if (src === undefined) continue;
+        if (src) lay(boxes[i], addr, src);
         else boxes[i]._svDone = true;
       }
     }
@@ -441,6 +447,7 @@
       for (var i = 0; i < boxes.length; i++) {
         var key = String(boxes[i].getAttribute("data-ph") || "").trim().toLowerCase();
         if (!key) continue;
+        street(boxes[i]);
         var hit = geo[key];
         if (hit && hit.length === 2) paint(boxes[i], { lat: hit[0], lng: hit[1] });
         else if (!(typeof hit === "number" && Date.now() - hit < MISS_MS) && queue.indexOf(key) < 0 && !asked[key]) queue.push(key);

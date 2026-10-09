@@ -249,6 +249,7 @@ const MARKETAREA = require("./market-area");
 const HEROQUALITY = require("./market-hero-quality");
 const HEROREVIEW = require("./market-hero-review");
 const SVAIM = require("./streetview-aim");
+const PHOTOTOKEN = require("./photo-token");
 // "The market under this saved property moved since you last looked" — the
 // desk's only figure that changes without the owner re-running anything.
 // Pure and tested; server.js owns the corpus read and passes in dated sales.
@@ -1142,12 +1143,40 @@ const GOOGLE_MAPS_API_KEY = (process.env.GOOGLE_MAPS_API_KEY || "").trim();
 // so a far, old or user-uploaded pano is a cached miss, not a billed image.
 // In-memory, capped.
 const STREETVIEW_META_CACHE = new Map();
+// The same, for photos looked up BY ADDRESS (Home's and The Board's cards,
+// 2026-10-09): sha256(normalized address) -> false | { panoId, plat, plng }.
+// Keyed by a hash so the process holds no list of addresses either.
+const STREETVIEW_ADDR_CACHE = new Map();
 // Test-only, unset in production: where the Street View calls go (the image
 // at this URL, the metadata at URL + "/metadata"). CENSUS_API_URL's reason:
 // without it the suite could prove the gate's rules but never that the route
 // obeys them, which is the half that bills.
 const STREETVIEW_API_URL = (process.env.STREETVIEW_API_URL ||
   "https://maps.googleapis.com/maps/api/streetview").trim().replace(/\/+$/, "");
+// Is there a good street photo of this (normalized) address? Google's free
+// metadata call, judged by SVAIM.judgeAddressPano and remembered per address.
+// `near` is the caller's own geocode, or null. A failed call is not
+// remembered (the next ask tries again); a refusal is.
+async function judgeAddressPhoto(address, near) {
+  const key = crypto.createHash("sha256").update(address).digest("hex");
+  if (STREETVIEW_ADDR_CACHE.has(key)) return STREETVIEW_ADDR_CACHE.get(key);
+  const mr = await fetch(STREETVIEW_API_URL + "/metadata?source=outdoor"
+    + "&radius=" + SVAIM.ADDRESS_RADIUS_M
+    + "&location=" + encodeURIComponent(address)
+    + "&key=" + GOOGLE_MAPS_API_KEY, { signal: AbortSignal.timeout(6000) });
+  const mj = await mr.json();
+  // Google refusing US (quota, a key problem) says nothing about the address:
+  // thrown, so it is neither remembered here nor told to the page as "no photo".
+  if (!mj || /^(OVER_QUERY_LIMIT|REQUEST_DENIED|UNKNOWN_ERROR)$/.test(String(mj.status))) {
+    throw new Error("Street View metadata: " + String(mj && mj.status));
+  }
+  const judged = SVAIM.judgeAddressPano(mj, Date.now(), near) || false;
+  if (STREETVIEW_ADDR_CACHE.size >= 2000) {
+    STREETVIEW_ADDR_CACHE.delete(STREETVIEW_ADDR_CACHE.keys().next().value);
+  }
+  STREETVIEW_ADDR_CACHE.set(key, judged);
+  return judged;
+}
 
 // Optional "Continue with Google" (dark until BOTH are set). Created in the
 // Google Cloud console — project "compninja", the one that already holds the
@@ -25589,6 +25618,71 @@ const server = http.createServer((req, res) =>
     return;
   }
 
+  // --- Street photos BY ADDRESS (2026-10-09; Home's cards and The Board's).
+  // The owner, shown Home still full of aerials: "it has to be a professional
+  // picture of the building". Finding the building from OpenStreetMap
+  // footprints failed most addresses (most US footprints carry no house
+  // number), so the address itself now goes to Google, from this server, and
+  // Google aims its camera at where it places that address. The owner's call,
+  // the same day, for every property, deal and private comp: CLAUDE.md rule 7
+  // now names this route beside /api/geocode as where an address may go.
+  //
+  // POST, the addresses in the BODY (/api/geocode's reason: never in a URL).
+  // Signed-in only: Home and The Board are member pages, and each answer can
+  // become a billed image. Up to 25 places a call, each { address, lat?, lng? }
+  // (lat/lng: the caller's own geocode, for SVAIM.judgeAddressPano's
+  // same-town check). Answers { photos: [src | null, ...] } in the same order,
+  // (null = no good photo; 0 = could not ask Google just now, try later),
+  // where src is GET /api/streetview?t=<token>: the address SEALED
+  // (photo-token.js), so the img URL names no address. Only Google's free
+  // metadata call runs here; the billed image waits for the img. Dark (404)
+  // without GOOGLE_MAPS_API_KEY. ---
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/building-photo") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 3e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (!GOOGLE_MAPS_API_KEY) return sendJson(res, 404, { error: "Street photos are not set up." });
+        const user = await requireUser(req, res);
+        if (!user) return;
+        if (rateLimited("bphoto:" + clientIp(req), 40)) {
+          return sendJson(res, 429, { error: "Too many photo requests. Please wait a few minutes." });
+        }
+        const places = JSON.parse(body || "{}").places;
+        if (!Array.isArray(places) || !places.length || places.length > 25) {
+          return sendJson(res, 400, { error: "places must list 1 to 25 addresses." });
+        }
+        const photos = new Array(places.length).fill(null);
+        let next = 0;
+        const worker = async () => {
+          while (next < places.length) {
+            const i = next++;
+            const p = places[i] || {};
+            const address = PHOTOTOKEN.normalizeAddress(p.address);
+            // A street number, or it is a road or a district, not a building.
+            if (!/^\d+\s+\S/.test(address)) continue;
+            const near = { lat: Number(p.lat), lng: Number(p.lng) };
+            try {
+              const ok = await judgeAddressPhoto(address,
+                p.lat != null && p.lng != null && isFinite(near.lat) && isFinite(near.lng) ? near : null);
+              if (ok) photos[i] = "/api/streetview?t=" + PHOTOTOKEN.seal(address, GOOGLE_MAPS_API_KEY);
+            } catch (_) {
+              // Google slow or down: 0 is "ask again later", which the page
+              // must not remember as "no photo" the way it remembers null.
+              photos[i] = 0;
+            }
+          }
+        };
+        await Promise.all([worker(), worker(), worker(), worker()]);
+        return sendJson(res, 200, { photos });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        return sendJson(res, 200, { photos: [] });
+      }
+    });
+    return;
+  }
+
   // --- Street View photo proxy, for every street photo on the site (the
   // report map's pin popups, Home's lists and map cards, The Board's deal
   // cards). It answers with a photo ONLY when SVAIM.judgePano passes: a
@@ -25600,6 +25694,40 @@ const server = http.createServer((req, res) =>
   // Dark when GOOGLE_MAPS_API_KEY is unset. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/streetview") {
     const params = new URL(req.url, "http://localhost").searchParams;
+    // ?t=<token>: a photo looked up by address (POST /api/building-photo
+    // minted the token). Opened here, judged (from the cache, or Google's
+    // free metadata again after a restart), then asked for with NO heading,
+    // which is what turns Google's camera toward the address.
+    if (params.get("t") !== null) {
+      if (!GOOGLE_MAPS_API_KEY) { res.writeHead(404); return res.end(); }
+      const address = PHOTOTOKEN.open(params.get("t"), GOOGLE_MAPS_API_KEY);
+      if (!address) { res.writeHead(404); return res.end(); }
+      if (rateLimited("streetview:" + clientIp(req), 60)) {
+        return sendJson(res, 429, { error: "Too many photo requests. Please wait a few minutes." });
+      }
+      (async () => {
+        try {
+          if (!(await judgeAddressPhoto(address, null))) { res.writeHead(404); return res.end(); }
+          const ir = await fetch(STREETVIEW_API_URL + "?size=640x384&source=outdoor"
+            + "&radius=" + SVAIM.ADDRESS_RADIUS_M
+            + "&fov=" + SVAIM.ADDRESS_FOV + "&pitch=" + SVAIM.ADDRESS_PITCH
+            + "&location=" + encodeURIComponent(address)
+            + "&key=" + GOOGLE_MAPS_API_KEY, { signal: AbortSignal.timeout(8000) });
+          if (!ir.ok) { res.writeHead(404); return res.end(); }
+          const buf = Buffer.from(await ir.arrayBuffer());
+          res.writeHead(200, {
+            "Content-Type": ir.headers.get("content-type") || "image/jpeg",
+            "Content-Length": buf.length,
+            "Cache-Control": "public, max-age=2592000",
+          });
+          return res.end(buf);
+        } catch (_) {
+          res.writeHead(404);
+          return res.end();
+        }
+      })();
+      return;
+    }
     // Number(null) is 0, so missing params must not masquerade as 0,0.
     const lat = params.get("lat") === null ? NaN : Number(params.get("lat"));
     const lng = params.get("lng") === null ? NaN : Number(params.get("lng"));

@@ -53,12 +53,17 @@ test("the streetview route aims with this module, never a nearest-pano guess", (
   const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
   const start = server.indexOf('req.url.split("?")[0] === "/api/streetview"');
   assert.ok(start !== -1, "server.js must define GET /api/streetview");
-  const route = server.slice(start, start + 3200);
+  // The whole route and nothing after it: it ends where the next one begins.
+  const end = server.indexOf("\n  // --- ", start);
+  assert.ok(end > start, "could not find the end of the streetview route");
+  const route = server.slice(start, end);
   assert.match(route, /SVAIM\.judgePano\(\{ lat, lng \}, mj, Date\.now\(\)\)/);
   assert.match(route, /radius=" \+ SVAIM\.MAX_PANO_M/);
   assert.match(route, /heading=" \+ Number\(aim\.heading\)\.toFixed\(1\)/);
   assert.match(route, /fov=" \+ Number\(aim\.fov/);
   assert.doesNotMatch(route, /params\.get\("address"\)/);
+  // A photo looked up by address arrives as a sealed token, never an address.
+  assert.match(route, /PHOTOTOKEN\.open\(params\.get\("t"\), GOOGLE_MAPS_API_KEY\)/);
 });
 
 // ---- the quality gate (2026-10-09): "make sure they are actual good pictures"
@@ -121,4 +126,31 @@ test("fovFor narrows the lens as the camera gets farther, inside 45-90 degrees",
   assert.equal(SV.fovFor(500), 45, "never narrower than 45");
   assert.equal(SV.fovFor(NaN), 90);
   assert.equal(SV.fovFor(0), 90);
+});
+
+// ---- by address (2026-10-09): Home's and The Board's photos
+
+test("judgeAddressPano passes Google's own recent camera near our geocode", () => {
+  const near = { lat: HOUSE.lat, lng: HOUSE.lng };
+  const j = SV.judgeAddressPano(meta(), NOW, near);
+  assert.ok(j);
+  assert.equal(j.panoId, "pano-abc");
+  assert.ok(SV.judgeAddressPano(meta(), NOW, null), "no geocode of our own: Google's radius is the bound");
+});
+
+test("judgeAddressPano refuses a user's photo, an old one, and none at all", () => {
+  assert.equal(SV.judgeAddressPano(meta({ copyright: "© A. Stranger" }), NOW, null), null);
+  assert.equal(SV.judgeAddressPano(meta({ date: "2011-04" }), NOW, null), null);
+  assert.equal(SV.judgeAddressPano({ status: "ZERO_RESULTS" }, NOW, null), null);
+  assert.equal(SV.judgeAddressPano(null, NOW, null), null);
+});
+
+test("judgeAddressPano refuses Google's answer when it is in another town", () => {
+  // The same street name 2 km away: Google placed the address somewhere else.
+  const far = { lat: HOUSE.lat + 2000 / 111320, lng: HOUSE.lng };
+  assert.equal(SV.judgeAddressPano(meta({ location: far }), NOW, HOUSE), null);
+  const close = { lat: HOUSE.lat + 200 / 111320, lng: HOUSE.lng };
+  assert.ok(SV.judgeAddressPano(meta({ location: close }), NOW, HOUSE), "200 m from a street-centre geocode is the same place");
+  assert.equal(SV.ADDRESS_DRIFT_M, 250);
+  assert.equal(SV.ADDRESS_RADIUS_M, 75);
 });

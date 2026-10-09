@@ -117,7 +117,43 @@ function judgePano(target, meta, now) {
   };
 }
 
+// ---- By address (2026-10-09, the owner: "it has to be a professional picture
+// of the building"). Home's and The Board's photos are looked up by ADDRESS:
+// Google places an address on its parcel and, asked for an image with no
+// heading, turns the camera from the nearest pano toward it, which frames the
+// building where a point on the street in front of it framed the road. The
+// distance rules above need a point for the building, which an address-only
+// ask does not have; Google's own `radius` (ADDRESS_RADIUS_M, sent with both
+// calls) bounds how far from the address the camera may stand instead. What
+// this still checks is everything else: Google's own camera, a recent one,
+// and, when the caller knows roughly where the address is (our own geocode),
+// that Google's camera is somewhere near it, so the same street name in the
+// next town over is refused rather than photographed.
+// 75, not Google's default 50: a warehouse or an office park is set back from
+// the street, and its address point (where Google aims) can sit past 50 m from
+// the nearest camera. The camera still turns toward the building.
+const ADDRESS_RADIUS_M = 75;
+const ADDRESS_DRIFT_M = 250;
+// No distance to fit, so one lens that suits a facade from across a street:
+// tighter than Google's 90° default, lifted a little for a second storey.
+const ADDRESS_FOV = 72;
+const ADDRESS_PITCH = 8;
+
+// meta = Google's metadata answer for location=<address>; now = ms since
+// epoch; near = { lat, lng } of our own geocode of that address, or null.
+// null = no photo worth showing; otherwise the pano it will be taken from.
+function judgeAddressPano(meta, now, near) {
+  if (!meta || meta.status !== "OK" || !meta.location) return null;
+  if (!isGoogleImagery(meta.copyright)) return null;
+  if (!panoAgeOk(meta.date, now)) return null;
+  const pano = { lat: Number(meta.location.lat), lng: Number(meta.location.lng) };
+  if (!finiteLL(pano)) return null;
+  if (finiteLL(near) && metersBetween(pano, near) > ADDRESS_DRIFT_M) return null;
+  return { panoId: String(meta.pano_id || ""), plat: pano.lat, plng: pano.lng };
+}
+
 module.exports = {
   MAX_PANO_M, MIN_PANO_M, MAX_PANO_AGE_YEARS, FOV_MIN, FOV_MAX,
-  metersBetween, headingDeg, aimAt, isGoogleImagery, panoAgeOk, fovFor, judgePano,
+  ADDRESS_RADIUS_M, ADDRESS_DRIFT_M, ADDRESS_FOV, ADDRESS_PITCH,
+  metersBetween, headingDeg, aimAt, isGoogleImagery, panoAgeOk, fovFor, judgePano, judgeAddressPano,
 };

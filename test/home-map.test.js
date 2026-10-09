@@ -174,24 +174,10 @@ test("the status line says what is due, never what the page is", () => {
   assert.match(HM.statusLine({ items: [], propertyCount: 0, hasFirm: false }), /lands on this map/);
 });
 
-test("a comp always reads as a past deal: its date and its price per unit", () => {
-  const sale = HM.compRow({ id: "c1", address: "3400 S Meridian Rd, Meridian, ID 83642", property_type: "Industrial", transaction: "sale",
-    deal_date: "2026-08-14", price: 2400000, size_sqft: 16000, price_per_sqft: 150 });
-  assert.equal(sale.deal, "Sale");
-  assert.equal(sale.when, "Aug 2026");
-  assert.equal(sale.figure, "$150/SF");
-  assert.equal(sale.price, "$2.4M");
-  assert.equal(sale.size, "16,000 SF");
-  const land = HM.compRow({ address: "1730 W Amity Rd, Meridian, ID", property_type: "Land", transaction: "sale", deal_date: "2025-12-02",
-    price: 3920000, lot_acres: 24.5, price_per_acre: 160000 });
-  assert.equal(land.figure, "$160K/acre");
-  assert.equal(land.size, "24.5 ac");
-  const lease = HM.compRow({ address: "5795 W Ustick Rd, Meridian, ID", property_type: "Industrial", transaction: "lease", deal_date: "2025-11-01",
-    rent_psf: 0.86, rent_basis: "monthly", size_sqft: 29500 });
-  assert.equal(lease.deal, "Lease");
-  assert.equal(lease.figure, "$10.32/SF/yr", "a monthly rent is shown a year at a time");
-  assert.equal(lease.price, "", "a lease has no sale price");
-  assert.equal(HM.compRow(null), null);
+test("Home lists no comps: a comp row left with the Comps tab (2026-10-09)", () => {
+  // The owner's call: "Remove Comps from the Homepage". A member's comps are
+  // on /vault; Home has no comp row to build, so nothing can draw one.
+  assert.equal(HM.compRow, undefined);
 });
 
 test("money and dates read the way the rest of the site writes them", () => {
@@ -212,19 +198,22 @@ test("money and dates read the way the rest of the site writes them", () => {
 // ---- What the map shows (2026-10-08) ----------------------------------------
 
 test("the map's layers: Properties alone by default, and anything unreadable is the default", () => {
-  assert.deepEqual(HM.readLayers(null), { properties: true, comps: false, permits: false });
+  assert.deepEqual(HM.readLayers(null), { properties: true, permits: false });
   assert.deepEqual(HM.readLayers(""), HM.LAYER_DEFAULT);
   assert.deepEqual(HM.readLayers("{not json"), HM.LAYER_DEFAULT, "a corrupt stored value is the default, never a throw");
-  assert.deepEqual(HM.readLayers('{"comps":true,"permits":true}'), { properties: true, comps: true, permits: true });
-  assert.deepEqual(HM.readLayers({ properties: false, permits: true }), { properties: false, comps: false, permits: true });
-  assert.deepEqual(HM.readLayers('{"comps":"yes","permits":1,"extra":true}'), HM.LAYER_DEFAULT,
+  assert.deepEqual(HM.readLayers('{"permits":true}'), { properties: true, permits: true });
+  assert.deepEqual(HM.readLayers({ properties: false, permits: true }), { properties: false, permits: true });
+  assert.deepEqual(HM.readLayers('{"permits":1,"extra":true}'), HM.LAYER_DEFAULT,
     "only real booleans count, and an unknown key is dropped");
-  assert.deepEqual(HM.LAYERS, ["properties", "comps", "permits"]);
+  // Comps was a layer until 2026-10-09: a browser that stored it on keeps
+  // its other choices and simply loses that one.
+  assert.deepEqual(HM.readLayers('{"properties":false,"comps":true,"permits":true}'), { properties: false, permits: true });
+  assert.deepEqual(HM.LAYERS, ["properties", "permits"]);
 });
 
 test("opening a tab turns on the layer its rows are pins of, and Today and People turn on nothing", () => {
   assert.equal(HM.tabLayer("properties"), "properties");
-  assert.equal(HM.tabLayer("comps"), "comps");
+  assert.equal(HM.tabLayer("comps"), null, "Comps is not a tab of Home any more");
   assert.equal(HM.tabLayer("today"), null, "Today's numbered pins are its own rows, drawn whatever the layers say");
   assert.equal(HM.tabLayer("people"), null);
   assert.equal(HM.tabLayer("reports"), null, "Reports is not a tab of Home any more");
@@ -279,32 +268,27 @@ test("a permit is at one of your properties only on the same street line in the 
 });
 
 test("a layer that is on and has nothing to draw here says why, and never reads as 'nothing was filed'", () => {
-  const on = { properties: true, comps: true, permits: true };
+  const on = { properties: true, permits: true };
   const cities = "Boise, Meridian and Nampa";
-  assert.deepEqual(HM.layerNotes({ layers: on, comps: null, permits: null }), [], "nothing is said while a read is still out");
-  assert.deepEqual(HM.layerNotes({ layers: { properties: true }, comps: false, permits: false }), [],
+  assert.deepEqual(HM.layerNotes({ layers: on, permits: null }), [], "nothing is said while a read is still out");
+  assert.deepEqual(HM.layerNotes({ layers: { properties: true }, permits: false }), [],
     "a layer that is off says nothing");
-  const [failed] = HM.layerNotes({ layers: on, comps: [], permits: false, cities });
+  const [failed] = HM.layerNotes({ layers: on, permits: false, cities });
   assert.equal(failed.layer, "permits");
   assert.match(failed.text, /Couldn't read permits/);
-  assert.match(HM.layerNotes({ layers: on, comps: false, permits: null })[0].text, /Couldn't read your comps/);
   // Our cities, nothing filed: said as such, naming the cities.
-  assert.equal(HM.layerNotes({ layers: on, comps: [], permits: [], permitsFiled: 0, cities })[0].text,
+  assert.equal(HM.layerNotes({ layers: on, permits: [], permitsFiled: 0, cities })[0].text,
     "No commercial permits were filed in Boise, Meridian and Nampa in the last 30 days.");
   // Filed, but none placed: never "none were filed".
-  assert.match(HM.layerNotes({ layers: on, comps: [], permits: [], permitsFiled: 12, cities })[0].text,
+  assert.match(HM.layerNotes({ layers: on, permits: [], permitsFiled: 12, cities })[0].text,
     /^None of the 12 permits filed in Boise, Meridian and Nampa .* has a map location yet\.$/);
   // Pins exist, none in view (a member in Dallas): names where we read, and can show them.
-  const away = HM.layerNotes({ layers: on, comps: [], permits: [{}], permitsInView: 0, cities });
+  const away = HM.layerNotes({ layers: on, permits: [{}], permitsInView: 0, cities });
   assert.equal(away[0].show, true);
   assert.match(away[0].text, /in this part of the map .* CompNinja reads permits in Boise, Meridian and Nampa\./);
-  assert.deepEqual(HM.layerNotes({ layers: on, comps: [], permits: [{}], permitsInView: 3, cities }), []);
-  // Comps: unplaced versus out of view.
-  assert.equal(HM.layerNotes({ layers: on, comps: [{}, {}], compsPlaced: 0, permits: null })[0].text, "None of your comps has a map location yet.");
-  const compsAway = HM.layerNotes({ layers: on, comps: [{}], compsPlaced: 1, compsInView: 0, permits: null });
-  assert.equal(compsAway[0].show, true);
-  assert.deepEqual(HM.layerNotes({ layers: on, comps: [], compsPlaced: 0, permits: null }), [],
-    "no comps at all is the Comps tab's empty card to say, not the map's");
+  assert.deepEqual(HM.layerNotes({ layers: on, permits: [{}], permitsInView: 3, cities }), []);
+  // Comps left Home on 2026-10-09: an old caller's Comps layer says nothing.
+  assert.deepEqual(HM.layerNotes({ layers: { comps: true }, comps: false }), []);
 });
 
 test("a portal's capitals read the way the permit tracker shows them", () => {

@@ -15,10 +15,12 @@ Prices Here" card (model-supplied `value_drivers` + `market_trend`), a market
 position chart, a comp map, and the full sortable comp table with per-comp
 source-confidence badges (Verified / Public record / Listing / News /
 Estimate). Signed-in members land on **Home** (`/desk`), which since
-2026-10-07 is one screen: a list (Today, Properties, Comps, People) beside a
+2026-10-07 is one screen: a list (Today, Properties, People) beside a
 map of every property, the firm's and their own, each row saying who can see
-it, with a switch over the map that adds the member's comps and the swept
-cities' permits (2026-10-08; `home-map.js`; workspace.md). Home runs no comp
+it, with a switch over the map that adds the swept cities' permits
+(2026-10-08; `home-map.js`; workspace.md). Home holds no comps since
+2026-10-09 (no Comps tab, layer or start card; a member's comps are on
+`/vault`). Home runs no comp
 report and holds no shared reports since 2026-10-08: the comp report is the
 rail's **Comp report** row (`/bulk`), and the firm's shelf, what was sent to
 the member and the links they sent are Messages' **Reports** view

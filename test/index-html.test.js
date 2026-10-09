@@ -1016,16 +1016,17 @@ test("Refresh survives a row whose report never landed", () => {
 // exactly as the nav links and the bulk run view are, so it is never in the
 // static bytes. The invariant is about the page a browser runs, which means it
 // has to be asserted against the SERVED page.
-test("the vault has no rail row and no account-menu row; Home's tabs open it", () => {
-  // Draft C (2026-10-07): deals, holdings and comps are tabs of Home, and
-  // /vault is the workbench those tabs open into. It must not drift back into
-  // the account menu either, which is where it was buried before 2026-08-29.
+test("the vault has no rail row and no account-menu row; Home's Properties tab opens it", () => {
+  // Draft C (2026-10-07): deals and holdings are a tab of Home, and /vault is
+  // the workbench that tab opens into (comps were a tab too until
+  // 2026-10-09, when they left Home for /vault alone). It must not drift back
+  // into the account menu either, which is where it was buried before
+  // 2026-08-29.
   const railNav = html.slice(html.indexOf('id="myDeskLink"'), html.indexOf('id="acctMenuWrap"'));
   assert.ok(!railNav.includes('id="menuVaultLink"'), "the Data row is back in the rail");
   const acctMenu = html.slice(html.indexOf('id="acctMenu"'), html.indexOf('id="signOutBtn"'));
   assert.ok(!acctMenu.includes('href="/vault"'), "the vault is back inside the account menu");
   const home = html.slice(html.indexOf('id="homeMap"'), html.indexOf('id="hmMap"'));
-  assert.match(home, /href="\/vault#book"/, "Home's Comps tab no longer opens the comps workbench");
   // "Add a property" asks which kind (2026-10-07): a deal opens The Board's
   // add form, a property you own opens Properties' (HOMEMAP.addHref rewrites
   // both for a development firm). One "Only you" link to Properties sent
@@ -1050,17 +1051,17 @@ test("Home's Today reads new BOV requests without writing, and only once the pag
   // requests come to Today instead. GET /api/broker/leads seeds the member's
   // coverage on a first open, which is a WRITE: Home asks with ?noseed=1 so
   // only the Pipeline's own first open ever does that, and it waits for a
-  // prerendered Home to be shown (CLAUDE.md's rule 15) like the comps read.
+  // prerendered Home to be shown (CLAUDE.md's rule 15) like the permits read.
   const at = html.indexOf("function hmLoadLeads(");
   assert.ok(at > 0, "hmLoadLeads is gone");
   const body = html.slice(at, html.indexOf("\n  }\n", at));
   assert.ok(body.includes('fetch("/api/broker/leads?noseed=1"'), "Home must never seed coverage");
   assert.ok(body.includes("hmWhenShown("), "the read must wait for a prerendered page to be shown");
-  const shown = html.slice(html.indexOf("function hmWhenShown("), html.indexOf("function hmLoadComps("));
+  const shown = html.slice(html.indexOf("function hmWhenShown("), html.indexOf("function hmLoadLeads("));
   assert.match(shown, /document\.prerendering[\s\S]*prerenderingchange/);
   // A development firm has no Pipeline (vault-page.js's applyShop), so it is
   // never asked; and a deal opens where the private page lists it.
-  assert.ok(html.includes('const hmCanLeads = () => hmCanComps() && !(myFirm() && myFirm().kind === "development");'));
+  assert.ok(html.includes('const hmCanLeads = () => hmCanVault() && !(myFirm() && myFirm().kind === "development");'));
   assert.ok(html.includes('a.textContent = "Open the deal →"; a.href = HOMEMAP.dealsHref(hmFirmKind());'));
   assert.ok(!html.includes('"Open the deal →"; a.href = "/vault#sites"'), "#sites opens Comps for anyone outside a development firm");
 });

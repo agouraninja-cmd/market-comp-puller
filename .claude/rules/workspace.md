@@ -19,6 +19,38 @@ paths:
 > (Since 2026-10-07 the rail no longer has a Data row, and /vault's heading
 > reads "Your properties and comps"; see below.)
 
+> **Comps leave Home (2026-10-09, owner's call: "Remove Comps from the
+> Homepage").** Read this before the boxes below, which it amends: where they
+> describe a Comps tab, a Comps layer, `hmComps`, `hmLoadComps` or
+> `HOMEMAP.compRow`, that is history. A member's comps live on their own page,
+> `/vault` ("Your properties and comps"), and Home no longer lists, pins,
+> finds or reads them.
+> - **Tabs are Today, Properties, People.** `#hmTabComps`, `#hmPaneComps`
+>   (its rows, empty card and "All your comps" link), the "Add comps" start
+>   card (`#hmStartComps`), `hmCompRow`, the comp branch of `hmSelect` and its
+>   `.hm-chip.deal` / `.hm-pip.comp` / legend CSS are DELETED from index.html.
+>   The empty account's start cards are "Add a property" and, outside a firm,
+>   "Bring your team".
+> - **The map's switch is two toggles, Properties and Permits.** `#hmLayerComps`
+>   and `#hmLegendComps` are gone, and so is `.hm-layers button[hidden]`
+>   (Comps was the only toggle that hid). In home-map.js `LAYERS` is
+>   `["properties", "permits"]`, `tabLayer` names only Properties, and
+>   `layerNotes` speaks for Permits alone; `readLayers` keeps only `LAYERS`, so
+>   a browser that stored `comps: true` keeps its other choices and simply
+>   drops that one. `hmLayerOn` is a plain read of the record.
+> - **No read of the member's book.** `GET /api/vault` was the Comps tab's
+>   read (`hmLoadComps`); Home asks for it nowhere now. The vault's own flag
+>   still gates Today's BOV requests, as **`hmCanVault`** (was `hmCanComps`):
+>   `hmCanLeads = hmCanVault() && not a development firm`.
+> - **The find box** finds properties, contacts and (once read) permits; its
+>   placeholder is "Find a property or person". The map is labelled "Map of
+>   your properties and permits".
+> - **A saved `/desk#comps`** (the tab's address for two days) is
+>   `location.replace`d to `/vault#book`, /vault's Comps tab, the way
+>   `/desk#reports` goes to `/messages#reports`. Home's own address only.
+> - Pinned in `test/desk-map-layers.test.js` ("Home holds no comps") and
+>   `test/home-map.test.js`.
+
 > **The map's layers, and Reports leaving Home (2026-10-08, owner's call).**
 > Read this before the box below, which it amends. The owner's words: Home
 > should "show where the properties, comps and permits are, and you can

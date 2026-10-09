@@ -4904,6 +4904,15 @@ async function setOrgKind(orgId, value) {
     { kind: value }, { prefer: "return=minimal" });
 }
 
+// The firm's name (2026-10-09). Every surface reads it live off this row
+// (orgsByIds, findOrg) and no other table keeps a copy, so one PATCH renames
+// the firm everywhere at once. Report branding's firm name is a separate
+// letterhead field in org_branding and is deliberately left alone.
+async function setOrgName(orgId, value) {
+  return sbRequest("PATCH", `orgs?id=eq.${encodeURIComponent(orgId)}`,
+    { name: value }, { prefer: "return=minimal" });
+}
+
 // The member's own override (migration 031). Scoped by BOTH the org and the
 // caller's own email IN THE QUERY, never checked after the fact: this is the
 // switch that lets somebody refuse an admin's decision about their work, so
@@ -28278,6 +28287,21 @@ const server = http.createServer((req, res) =>
           await setOrgKind(orgId, shop.kind);
           changed = true;
         }
+        let renamed = null;
+        if (body.name !== undefined) {
+          // Owner/admin again: the name is on every colleague's Home and in
+          // every invitation. The rule is the create route's, so a name this
+          // refuses is one a new firm could not have been given either.
+          if (!ORG.canManageMembers(membership)) {
+            return sendJson(res, 403, { error: "Only a firm's owner or an admin can change this." });
+          }
+          if (typeof body.name !== "string") return sendJson(res, 400, { error: "Unrecognized setting." });
+          const check = ORG.validateOrgName(body.name);
+          if (!check.ok) return sendJson(res, 400, { error: check.error });
+          await setOrgName(orgId, check.name);
+          renamed = check.name;
+          changed = true;
+        }
         if (body.autoShare !== undefined) {
           const value = ORG.autoShareValue(body.autoShare);
           // `undefined` is the refusal and `null` is a real value ("follow"),
@@ -28298,6 +28322,8 @@ const server = http.createServer((req, res) =>
         const org = (await orgsByIds([orgId])).get(String(orgId)) || null;
         return sendJson(res, 200, {
           ok: true,
+          // The stored name, cleaned; the cleaned input if the re-read failed.
+          name: org ? org.name : renamed,
           kind: ORG.kindOf(org),
           shareDefault: ORG.shareDefaultOf(org),
           autoShare: mine && mine.auto_share === true ? "always"

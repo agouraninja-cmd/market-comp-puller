@@ -2654,13 +2654,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                the personal one is everybody's. Rendered by
                renderFirmAutoShare(). -->
           <div id="firmAutoShare" class="mt-3 space-y-1.5">
-            <label id="firmDefaultWrap" class="hidden flex items-center gap-2 text-sm text-[#4C5665] cursor-pointer">
-              <input id="firmDefaultToggle" type="checkbox" class="accent-[#B91C1C]" />
-              <span>Share new reports with the firm by default</span>
-            </label>
+            <!-- The firm's name (2026-10-09). Before this the name typed at
+                 Create firm could never be changed. Owner/admin, like the
+                 shop below, but HIDDEN rather than disabled for everyone
+                 else: they read the name in the heading above, and a greyed
+                 box would only say it twice. renderFirmName() is its one
+                 writer; the form is there so Enter saves. -->
+            <form id="firmNameWrap" class="hidden flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
+              <label for="firmRenameInput">Firm name</label>
+              <input id="firmRenameInput" type="text" maxlength="80" autocomplete="organization"
+                class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              <button id="firmRenameBtn" type="submit"
+                class="hidden btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 rounded-lg px-3 py-1.5">Rename</button>
+              <span id="firmRenameState" class="text-xs text-[#68707E]"></span>
+            </form>
             <!-- Which shop this firm is. An owner/admin control, because it
                  re-labels every colleague's desk; everyone else reads the
-                 answer as a line of text (renderFirmShop). -->
+                 answer as a line of text (renderFirmShop). Beside the name
+                 since 2026-10-09: the two say who the firm is, the two below
+                 say how it shares. -->
             <div id="firmShopWrap" class="flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
               <label for="firmShopSelect">This firm is a</label>
               <select id="firmShopSelect"
@@ -2670,6 +2682,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               </select>
               <span id="firmShopState" class="text-xs text-[#68707E]"></span>
             </div>
+            <label id="firmDefaultWrap" class="hidden flex items-center gap-2 text-sm text-[#4C5665] cursor-pointer">
+              <input id="firmDefaultToggle" type="checkbox" class="accent-[#B91C1C]" />
+              <span>Share new reports with the firm by default</span>
+            </label>
             <div class="flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
               <label for="firmAutoShareSelect">My new reports</label>
               <select id="firmAutoShareSelect"
@@ -15732,6 +15748,7 @@ async function renderMyDesk() {
     });
 
     document.getElementById("firmInviteWrap").classList.toggle("hidden", !data.canManage);
+    renderFirmName(firm);
     renderFirmShop(firm);
     renderFirmAutoShare(firm);
     renderFirmBilling(firm);
@@ -16055,6 +16072,21 @@ async function renderMyDesk() {
     closeMemberCard();
   });
 
+  // The firm's name, for the people allowed to change it (POST
+  // /api/org/settings refuses everyone else). A box being typed in is left
+  // alone, so a Home refresh landing mid-edit cannot wipe the draft.
+  const firmNameOf = (v) => String(v || "").replace(/\s+/g, " ").trim();
+  function renderFirmName(firm) {
+    if (!firm) return;
+    const input = document.getElementById("firmRenameInput");
+    document.getElementById("firmNameWrap").classList.toggle("hidden", !firm.canManage);
+    if (document.activeElement !== input) input.value = firm.name || "";
+    // The button appears only for a name that differs: a greyed-out Rename
+    // sitting there all the time read as broken.
+    document.getElementById("firmRenameBtn").classList.toggle("hidden",
+      firmNameOf(input.value) === firmNameOf(firm.name));
+  }
+
   // Which shop this firm is (036). The control is offered only to somebody who
   // may actually change it: /api/org/settings refuses everyone else, and a
   // select that always 403s is worse than a sentence. Everyone still READS the
@@ -16232,6 +16264,48 @@ async function renderMyDesk() {
       firm.kind = before;
       renderFirmShop(firm);
       state.textContent = err.message || "That didn't go through.";
+    }
+  });
+
+  // Rename: the button shows only for a name that differs from the current
+  // one, and the server's cleaned answer is what goes back in the box.
+  document.getElementById("firmRenameInput").addEventListener("input", () => {
+    const firm = myFirm();
+    document.getElementById("firmRenameState").textContent = "";
+    document.getElementById("firmRenameBtn").classList.toggle("hidden",
+      !firm || firmNameOf(document.getElementById("firmRenameInput").value) === firmNameOf(firm.name));
+  });
+  document.getElementById("firmNameWrap").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const firm = myFirm();
+    const btn = document.getElementById("firmRenameBtn");
+    const input = document.getElementById("firmRenameInput");
+    const state = document.getElementById("firmRenameState");
+    // Enter with nothing changed (the button hidden) saves nothing.
+    if (!firm || btn.disabled || btn.classList.contains("hidden")) return;
+    btn.disabled = true;
+    state.textContent = "Saving…";
+    try {
+      const res = await fetch("/api/org/settings", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orgId: firm.id, name: input.value }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "That didn't go through.");
+      if (typeof body.name === "string" && body.name) firm.name = body.name;
+      input.value = firm.name;
+      input.blur();
+      btn.classList.add("hidden");
+      btn.disabled = false;
+      state.textContent = "Saved";
+      setTimeout(() => { if (state.textContent === "Saved") state.textContent = ""; }, 4000);
+      // Every place that names the firm (this panel's heading, Home's top
+      // line and its lists, the auto-share sentence) redraws from a fresh read.
+      // Caught on its own: the rename landed, so a failed redraw is no error.
+      await renderHomeFirm().catch(() => {});
+    } catch (err) {
+      state.textContent = err.message || "That didn't go through.";
+      btn.disabled = false;
     }
   });
 

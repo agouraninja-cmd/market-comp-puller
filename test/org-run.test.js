@@ -1000,6 +1000,79 @@ test("a firm is one of two shops, and says which", async (t) => {
 });
 
 // ---------------------------------------------------------------------------
+// Renaming a firm (2026-10-09). The name typed at Create firm used to be
+// final. Changing it is an owner's or an admin's call on the same settings
+// route as the shop, and it goes through the create route's own rule, so a
+// name it refuses is one no firm could have been created with.
+// ---------------------------------------------------------------------------
+test("an owner or an admin renames the firm; a member cannot", async (t) => {
+  const tables = seedTables();
+  const ctx = await bootWithDb(tables);
+  t.after(() => ctx.stop());
+  const { srv } = ctx;
+  const myOrg = async (user) => (await (await fetch(srv.base + "/api/org", as(user))).json());
+
+  const org = await (await fetch(srv.base + "/api/org", as(BRAD, {
+    method: "POST", body: JSON.stringify({ name: "Jacob R Adler", kind: "broker" }),
+  }))).json();
+  const orgId = org.id;
+  await fetch(srv.base + "/api/org/invite",
+    as(BRAD, { method: "POST", body: JSON.stringify({ orgId, emails: [MIKE.email] }) }));
+  await fetch(srv.base + "/api/org/accept",
+    as(MIKE, { method: "POST", body: JSON.stringify({ orgId }) }));
+  const settings = (user, body) => fetch(srv.base + "/api/org/settings",
+    as(user, { method: "POST", body: JSON.stringify({ orgId, ...body }) }));
+
+  await t.test("a plain member is refused, and nothing changes", async () => {
+    const r = await settings(MIKE, { name: "Mike's Shop" });
+    assert.equal(r.status, 403);
+    assert.equal(tables.orgs[0].name, "Jacob R Adler");
+  });
+
+  await t.test("the owner renames it, cleaned the create route's way", async () => {
+    const r = await settings(BRAD, { name: "  Adler   Industrial\nPartners " });
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).name, "Adler Industrial Partners",
+      "the answer is the stored name, so the browser shows what was kept");
+    assert.equal(tables.orgs[0].name, "Adler Industrial Partners");
+    assert.equal((await myOrg(MIKE)).orgs[0].name, "Adler Industrial Partners",
+      "a colleague reads the new name on their next read");
+    const roster = await (await fetch(srv.base + "/api/org/members?id=" + orgId, as(MIKE))).json();
+    assert.equal(roster.name, "Adler Industrial Partners", "and so does the panel's heading");
+  });
+
+  await t.test("a name the create route would refuse is refused here too", async () => {
+    for (const junk of ["", "   ", "x", "x".repeat(81), 42, true, null, ["Adler"]]) {
+      const r = await settings(BRAD, { name: junk });
+      assert.equal(r.status, 400, JSON.stringify(junk));
+    }
+    const short = await settings(BRAD, { name: "x" });
+    assert.match((await short.json()).error, /firm's name/, "the create route's own words");
+    assert.equal(tables.orgs[0].name, "Adler Industrial Partners", "a refused name changed nothing");
+  });
+
+  await t.test("an admin may rename it too", async () => {
+    const mikeRow = tables.org_members.find((m) => m.email === MIKE.email);
+    const promote = await fetch(`${srv.base}/api/org/member?org=${orgId}&id=${mikeRow.id}`,
+      as(BRAD, { method: "PATCH", body: JSON.stringify({ role: "admin" }) }));
+    assert.equal(promote.status, 200);
+    const r = await settings(MIKE, { name: "Adler Partners" });
+    assert.equal(r.status, 200);
+    assert.equal((await myOrg(BRAD)).orgs[0].name, "Adler Partners");
+  });
+
+  await t.test("an outsider cannot rename a firm by knowing its id", async () => {
+    const r = await settings(OUTSIDER, { name: "Taken Over" });
+    assert.notEqual(r.status, 200);
+    assert.equal(tables.orgs[0].name, "Adler Partners");
+  });
+
+  await t.test("the fake never had to guess at a query it did not understand", () => {
+    assert.deepEqual(ctx.db.unparsed, []);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The deal board's attribution after somebody leaves (038).
 //
 // This is the split the snapshot column exists to close. `org_comps` has

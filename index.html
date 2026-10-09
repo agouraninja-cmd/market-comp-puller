@@ -3364,7 +3364,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <textarea id="bkListText" rows="6" spellcheck="false" class="rd-in rd-in-list"></textarea>
               <div class="text-xs text-[#68707E] mt-1.5">
                 <span id="bkListCount"></span>
-                <span id="bkCapLine"></span>
                 <button type="button" id="bkListBack" class="underline text-[#B91C1C]">Value one address instead</button>
               </div>
             </div>
@@ -21762,14 +21761,11 @@ async function renderMyDesk() {
     sel.value = typeResolution === "explicit" ? src.value : "";
     bkRefreshCount();
     bkEl("bkListText").focus();
-    // The daily allowance is said while the list is being decided, not only
-    // when a run is refused — /api/config does not carry it, this does.
+    // The per-run cap and any run already going. The "Up to N per run, N
+    // left today" line that rode here came off on 2026-10-09 (owner's call):
+    // the limits still hold, and a refusal still says why.
     if (window.BULKRUN) {
       window.BULKRUN.api("GET", "/api/bulk").then((d) => {
-        if (typeof d.leftToday === "number") {
-          bkEl("bkCapLine").textContent =
-            "Up to " + d.maxAddresses + " per run, " + d.leftToday + " left today. ";
-        }
         if (d.maxAddresses) window.BULKRUN.setMax(d.maxAddresses);
         window.BULKRUN.setJobs(d.jobs || []);
         // A run already going is attached to rather than hidden: somebody who
@@ -21823,10 +21819,6 @@ async function renderMyDesk() {
         window.BULKRUN.poll(data.job.id);
       } else if (data && data.code === "daily_limit") {
         bkEl("bkListMsg").textContent = err.message;
-        if (typeof data.left_today === "number") {
-          bkEl("bkCapLine").textContent =
-            "Up to " + (data.daily_limit || "") + " per day, " + data.left_today + " left today. ";
-        }
       } else if (err && err.status === 401) {
         openAcctModal("signin", "Sign in to value a list of addresses.");
       } else {

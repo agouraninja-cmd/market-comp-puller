@@ -4675,5 +4675,11 @@
     "type": "improvement",
     "title": "One Sharing section on Home, with tabs",
     "details": "Home had three sections whose names all started with “Shared”: Shared with your firm, Shared reports, and Shared with you. A report someone sent you and the deal room opened from it showed up under two of them with the same address, and a report you put on the firm shelf showed up twice. They are now one Sharing section with three tabs. Firm shelf is what your firm has put up. Sent to you lists what other people sent you, one row per property, tagged Report and Deal room, with who sent it. Your links lists what you sent and who can open each one. A red count on Sent to you means something you haven’t opened yet. Your own shelf reports get a Take down button, “Start a hub” is now “Start a deal room”, and on a phone each link’s buttons sit under it instead of off the edge of the screen."
+  },
+  {
+    "date": "2026-10-09",
+    "type": "improvement",
+    "title": "Comp report no longer shows “Left today” and “Per run”",
+    "details": "The two-number box in the top-right corner of the Comp report page is gone, and so is the “Up to 50 per run, 200 left today” line under the list box on the report form. The limits themselves haven’t changed: if a list goes past what you have left today, the line beside the Run button still tells you."
   }
 ]

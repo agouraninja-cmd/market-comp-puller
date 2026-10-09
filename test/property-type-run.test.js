@@ -28,6 +28,24 @@ const SCRIPT = {
   },
 };
 
+// The report a search returns. Comps cite loopnet.com, a host link-check.js
+// never fetches, and the subject carries coordinates so the radius blend never
+// geocodes: nothing leaves the machine.
+const sale = (n, price, size, date) => ({
+  address: `${n} Main St, Boise, ID 83702`, date, transaction: "Sale",
+  size_sqft: String(size), price_or_rate: `$${price.toLocaleString("en-US")}`,
+  source_type: "public_record", source_url: "https://www.loopnet.com/Listing/example",
+  notes: "Arms-length sale.",
+});
+const REPORT = {
+  summary: "Office sales near the subject have been steady.",
+  value_drivers: ["Vacancy is easing."], market_trend: "Flat.",
+  subject_size_sqft: "20000", subject_size_source: "county records",
+  subject_lat: 43.615, subject_lng: -116.2023,
+  comps: [sale(10, 4000000, 20000, "2026-05-10"), sale(20, 4200000, 21000, "2026-03-02"),
+    sale(30, 3900000, 19500, "2025-12-14"), sale(40, 4100000, 20500, "2026-06-20")],
+};
+
 async function startStub() {
   const calls = [];
   const server = http.createServer((req, res) => {
@@ -36,6 +54,16 @@ async function startStub() {
     req.on("end", () => {
       const sent = JSON.parse(body || "{}");
       const prompt = String(sent.messages && sent.messages[0].content[0].text || "");
+      // A report search, not a type question: answer with a small report.
+      if (!prompt.includes("What counts as evidence:") && !prompt.includes("parcel or appraisal-district record")) {
+        calls.push({ pass: "report", prompt });
+        res.writeHead(200, { "content-type": "application/json" });
+        return res.end(JSON.stringify({
+          stop_reason: "end_turn",
+          usage: { input_tokens: 1000, output_tokens: 500 },
+          content: [{ type: "text", text: JSON.stringify(REPORT) }],
+        }));
+      }
       const pass = prompt.includes("parcel or appraisal-district record") ? "deep" : "quick";
       const address = Object.keys(SCRIPT).find((a) => prompt.includes(a));
       calls.push({ pass, address, maxUses: sent.tools && sent.tools[0] && sent.tools[0].max_uses, prompt });
@@ -172,5 +200,59 @@ test("with no provider key the lookup answers type null and calls nobody", async
   const r = await ask(srv, "100 Office Tower Way, Boise, ID");
   assert.equal(r.status, 200);
   assert.deepEqual(await r.json(), { type: null });
+  assert.equal(stub.calls.length, 0);
+});
+
+test("/api/comps with no type works the type out first", async (t) => {
+  const stub = await startStub();
+  // Several searches from one anonymous connection: the one-free-search guest
+  // gate is beside the point here (the next test covers the gate).
+  const srv = await bootWith(stub, { GUEST_SEARCH_LIMIT: "off" });
+  t.after(async () => { srv.stop(); await stub.stop(); });
+  const comps = (body) => fetch(srv.base + "/api/comps", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+
+  await t.test("the report is searched as the found type and says how it was found", async () => {
+    const r = await comps({ address: "100 Office Tower Way, Boise, ID", months: 24 });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.ok(Array.isArray(body.comps) && body.comps.length > 0);
+    assert.equal(body.property_type_found.type, "Office");
+    assert.equal(body.property_type_found.pass, "quick");
+    const order = stub.calls.map((c) => c.pass);
+    assert.deepEqual(order.slice(0, 2), ["quick", "report"], "the type is looked up before the search");
+    const report = stub.calls.find((c) => c.pass === "report");
+    assert.match(report.prompt, /Office/);
+  });
+
+  await t.test("a sent type is never second-guessed", async () => {
+    const before = stub.calls.length;
+    const r = await comps({ address: "500 Medium Ave, Tampa, FL", type: "Retail", months: 24 });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.equal(body.property_type_found, undefined);
+    assert.deepEqual(stub.calls.slice(before).map((c) => c.pass), ["report"]);
+  });
+
+  await t.test("an address nobody can type answers 422 and runs no search", async () => {
+    const before = stub.calls.length;
+    const r = await comps({ address: "999 Nowhere Rd, Boise, ID", months: 24 });
+    assert.equal(r.status, 422);
+    assert.equal((await r.json()).code, "type_unknown");
+    assert.ok(!stub.calls.slice(before).some((c) => c.pass === "report"));
+  });
+});
+
+test("/api/comps with no type refuses a blocked guest before the billed lookup", async (t) => {
+  const stub = await startStub();
+  const srv = await bootWith(stub, { ACCOUNT_WALL: "on" });
+  t.after(async () => { srv.stop(); await stub.stop(); });
+  const r = await fetch(srv.base + "/api/comps", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ address: "100 Office Tower Way, Boise, ID", months: 24 }),
+  });
+  assert.equal(r.status, 403);
+  assert.equal((await r.json()).signin_required, true);
   assert.equal(stub.calls.length, 0);
 });

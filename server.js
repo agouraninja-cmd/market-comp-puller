@@ -20203,7 +20203,38 @@ const server = http.createServer((req, res) =>
             error: "Too many searches from this connection. Please wait a few minutes and try again.",
           });
         }
-        const { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, stream, fresh } = JSON.parse(body || "{}");
+        const { address, type: typeSent, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, stream, fresh } = JSON.parse(body || "{}");
+        // No type sent (2026-10-09): nobody picks one any more, so the route
+        // works it out from the address itself (resolvePropertyType), before
+        // anything below reads it — the report id, the entitlements, the
+        // cache key, the vault and corpus reads and the prompt all key on the
+        // type. The page normally asks /api/property-type first and sends the
+        // answer; this is the path for a caller that did not. A sent type is
+        // never second-guessed. A blocked guest is refused BEFORE the billed
+        // lookup, exactly as the search itself refuses them further down.
+        let type = typeSent;
+        let typeFound = null;
+        if (address && !String(typeSent || "").trim()) {
+          if (!providerApiKey()) {
+            return sendJson(res, 500, { error: `Server is missing the ${PROVIDER.apiKeyEnv} environment variable.` });
+          }
+          if (!(ADMIN_KEY && req.headers["x-admin-key"] === ADMIN_KEY)) {
+            const earlyGate = await guestGateFor(req);
+            if (earlyGate && earlyGate.blocked) {
+              logEvent("signup_gate", { prop_type: "", market: marketOf(String(address)) });
+              if (!earlyGate.cookieSpent) setGuestCookie(res, req);
+              return sendJson(res, 403, { error: guestGateMessage("keep searching"), signin_required: true });
+            }
+          }
+          typeFound = await resolvePropertyType(String(address));
+          if (!typeFound) {
+            return sendJson(res, 422, {
+              error: "We couldn't tell what kind of property is at this address.",
+              code: "type_unknown",
+            });
+          }
+          type = typeFound.type;
+        }
         // Entitlements are resolved BEFORE anything else reads the body's
         // knobs: the lookback ceiling below depends on them, and every exit
         // from here on serializes through gateReport().
@@ -20232,8 +20263,10 @@ const server = http.createServer((req, res) =>
         // gen-market-seed.js (the other /api/comps caller) simply never sends
         // the flag, so it keeps getting one plain JSON body.
         wantsStream = stream === true;
+        // `type` is always set by here when an address was sent: either the
+        // caller's or the one found above.
         if (!address || !type) {
-          return sendJson(res, 400, { error: "address and property type are required." });
+          return sendJson(res, 400, { error: "An address is required." });
         }
         if (!providerApiKey()) {
           return sendJson(res, 500, {
@@ -20423,6 +20456,16 @@ const server = http.createServer((req, res) =>
         // /api/explore-market has always had this ordering right (it consumes
         // only on a published 200); this is the same rule at the sibling exit.
         const served = await gate(searched.report);
+        // How the type was found, when this route found it: per request, set
+        // on the served copy beside reports_remaining and never on the cached
+        // report, so the page can say "Valued as an office building (found
+        // on …)" without a second round trip.
+        if (typeFound) {
+          served.property_type_found = {
+            type: typeFound.type, confidence: typeFound.confidence,
+            evidence: typeFound.evidence, pass: typeFound.pass, source: typeFound.source,
+          };
+        }
         consumeGuestSearch(Boolean(sse));
         // Spend the allowance only now, with a report in hand, and only for a
         // limited account running a report not already counted this month.

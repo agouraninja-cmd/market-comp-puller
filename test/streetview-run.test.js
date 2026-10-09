@@ -24,7 +24,7 @@ function startGoogle(meta) {
     hits.push({ path: u.pathname, q: Object.fromEntries(u.searchParams) });
     if (u.pathname.endsWith("/metadata")) {
       res.writeHead(200, { "content-type": "application/json" });
-      return res.end(JSON.stringify(meta));
+      return res.end(JSON.stringify(typeof meta === "function" ? meta(Object.fromEntries(u.searchParams)) : meta));
     }
     res.writeHead(200, { "content-type": "image/jpeg" });
     res.end(JPEG);
@@ -99,5 +99,101 @@ test("no key: the route 404s without calling anyone", async (t) => {
   const srv = await shared.boot({ GOOGLE_MAPS_API_KEY: "", STREETVIEW_API_URL: google.url });
   t.after(async () => { srv.stop(); await google.stop(); });
   assert.equal((await fetch(photoUrl(srv.base))).status, 404);
+  assert.equal(google.hits.length, 0);
+});
+
+// ---- by address (2026-10-09): POST /api/building-photo, then ?t=<token> ----
+
+async function signUp(srv) {
+  const email = `photos-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
+  const r = await fetch(srv.base + "/api/account/signup", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, password: "correct-horse-battery", name: "Photo Tester" }),
+  });
+  assert.equal(r.status, 200, "signup must succeed");
+  return String(r.headers.get("set-cookie") || "").split(";")[0];
+}
+const askPhotos = (srv, cookie, places) => fetch(srv.base + "/api/building-photo", {
+  method: "POST",
+  headers: Object.assign({ "content-type": "application/json" }, cookie ? { cookie } : {}),
+  body: JSON.stringify({ places }),
+});
+
+// Google's metadata by address: the Peachtree building has Google's own
+// recent camera, the Main St house only a stranger's photosphere, and the
+// quota address answers Google's own refusal of US.
+function byAddress(q) {
+  const loc = String(q.location || "");
+  if (/peachtree/.test(loc)) return goodMeta();
+  if (/main st/.test(loc)) return Object.assign(goodMeta(), { copyright: "© A. Stranger" });
+  if (/quota/.test(loc)) return { status: "OVER_QUERY_LIMIT" };
+  return { status: "ZERO_RESULTS" };
+}
+
+test("a photo by address: signed in only, sealed in the URL, aimed by Google, billed only when shown", async (t) => {
+  const { google, srv } = await bootWith(t, byAddress);
+  const places = [
+    { address: "2300 Peachtree Rd NE, Atlanta, GA 30309" },
+    { address: "18 Main St, Boise, ID 83702" },
+    { address: "Peachtree Industrial Blvd corridor" },
+    { address: "99 Quota Way, Boise, ID" },
+  ];
+
+  assert.equal((await askPhotos(srv, null, places)).status, 401, "signed out is refused");
+
+  const cookie = await signUp(srv);
+  const r = await askPhotos(srv, cookie, places);
+  assert.equal(r.status, 200);
+  const { photos } = await r.json();
+  assert.match(photos[0], /^\/api\/streetview\?t=[A-Za-z0-9_-]+$/, "the good one is a sealed photo URL");
+  assert.ok(!/peachtree|2300|atlanta/i.test(photos[0]), "no address in the URL");
+  assert.equal(photos[1], null, "a stranger's photosphere is no photo");
+  assert.equal(photos[2], null, "no street number is no photo, and Google is never asked");
+  assert.equal(photos[3], 0, "Google refusing us is 'ask later', not 'no photo'");
+  assert.equal(google.images().length, 0, "asking costs nothing: only the free metadata ran");
+  const asked = google.hits.filter((h) => h.path.endsWith("/metadata")).map((h) => h.q.location);
+  assert.ok(!asked.some((a) => /corridor/.test(a)), "a numberless address never leaves the server");
+  const meta = google.hits.find((h) => /peachtree/.test(h.q.location || ""));
+  assert.equal(meta.q.radius, "75");
+  assert.equal(meta.q.source, "outdoor");
+
+  const img = await fetch(srv.base + photos[0]);
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get("content-type"), "image/jpeg");
+  assert.match(String(img.headers.get("cache-control")), /max-age=2592000/);
+  const imgs = google.images();
+  assert.equal(imgs.length, 1, "one billed image, when the img asked");
+  assert.equal(imgs[0].q.location, "2300 peachtree rd ne, atlanta, ga 30309");
+  assert.equal(imgs[0].q.heading, undefined, "no heading: Google turns the camera toward the address");
+  assert.equal(imgs[0].q.size, "640x384");
+});
+
+test("a token the server did not mint is a 404 and never reaches Google", async (t) => {
+  const { google, srv } = await bootWith(t, byAddress);
+  const cookie = await signUp(srv);
+  const { photos } = await (await askPhotos(srv, cookie, [{ address: "2300 Peachtree Rd NE, Atlanta, GA" }])).json();
+  const before = google.hits.length;
+  const forged = photos[0].slice(0, -3) + (photos[0].endsWith("AAA") ? "BBB" : "AAA");
+  assert.equal((await fetch(srv.base + forged)).status, 404);
+  assert.equal((await fetch(srv.base + "/api/streetview?t=1notatoken")).status, 404);
+  assert.equal(google.hits.length, before, "nothing was asked of Google");
+});
+
+test("an address Google places far from our own geocode is refused", async (t) => {
+  // Google's camera for this address stands 2 km from where our own geocoder
+  // put it: the same street name in another part of town.
+  const { srv } = await bootWith(t, byAddress);
+  const cookie = await signUp(srv);
+  const r = await askPhotos(srv, cookie, [{ address: "2300 Peachtree Rd NE", lat: 43.6, lng: -116.2 }]);
+  assert.deepEqual((await r.json()).photos, [null]);
+});
+
+test("no key: the address route is dark and Google is never asked", async (t) => {
+  const google = await startGoogle(byAddress);
+  const srv = await shared.boot({ GOOGLE_MAPS_API_KEY: "", STREETVIEW_API_URL: google.url });
+  t.after(async () => { srv.stop(); await google.stop(); });
+  const cookie = await signUp(srv);
+  assert.equal((await askPhotos(srv, cookie, [{ address: "2300 Peachtree Rd NE" }])).status, 404);
   assert.equal(google.hits.length, 0);
 });

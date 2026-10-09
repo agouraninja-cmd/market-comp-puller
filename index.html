@@ -104,9 +104,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        (HOMEMAP). maxAge 0 like the scripts above, and guarded with typeof:
        without it Home's list and map stay empty, never a broken page. -->
   <script src="/home-map.js"></script>
-  <!-- Street photos of buildings on Home (2026-10-09; BLDGPHOTO): which
-       building a photo shows. maxAge 0, and guarded with typeof: without it
-       Home's cards keep their aerials. -->
+  <!-- Street photos of buildings on Home (2026-10-09; BLDGPHOTO): looked up
+       by address through our own /api/building-photo. maxAge 0, and guarded
+       with typeof: without it Home's cards keep their aerials. -->
   <script src="/building-photo.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
@@ -14077,44 +14077,44 @@ async function renderMyDesk() {
     return box;
   }
   // Street photos on Home (2026-10-09, the owner: "show the actual pictures
-  // of buildings instead of the birds eye view version ... make sure they
-  // are actual good pictures"). A card shows the building from the street
-  // (BLDGPHOTO, through the same /api/streetview as the report map's pins)
-  // once OpenStreetMap proves which building the address is AND the server
-  // finds a good photo of it; until then, and wherever either answer is no,
-  // the aerial above. A building already known to have a good photo skips
-  // the aerial (the image is in the browser's cache); one known to have none
-  // skips the photo. Places nobody has asked about yet are asked when their
-  // card scrolls into view (hmPhotoSeen), a batch at a time, so a list of
-  // two hundred comps is not two hundred lookups on arrival.
+  // of buildings instead of the birds eye view version", then, shown the
+  // first try, "it has to be a professional picture of the building"). A card
+  // shows the building from the street, looked up BY ADDRESS (BLDGPHOTO: our
+  // own POST /api/building-photo asks Google, which turns its camera toward
+  // the address, and refuses old, far or user-uploaded photos), and keeps the
+  // aerial where there is none. The aerial is also what shows while the
+  // answer comes in, except for a building whose photo has loaded before,
+  // which skips it. Places nobody has asked about yet are asked when their
+  // card scrolls into view (hmPhotoSeen), a batch at a time. A property with
+  // no coordinates yet can still have its photo: the address is enough.
   const hmPhotosOn = () => streetviewEnabled && typeof BLDGPHOTO !== "undefined";
   function hmPhoto(box, ll, address, w, h, z) {
     box._bp = null;
     box._bpDone = false;
-    if (!ll || !hmPhotosOn()) return hmAerial(box, ll, w, h, z);
-    const b = BLDGPHOTO.building(ll, address);
-    const state = b ? BLDGPHOTO.photoState(b) : undefined;
-    if (b && state === "ok") {
+    if (!hmPhotosOn() || !BLDGPHOTO.eligible(address)) return hmAerial(box, ll, w, h, z);
+    const src = BLDGPHOTO.photo(address);
+    if (src && BLDGPHOTO.known(address)) {
       box.textContent = "";
       box.classList.remove("none");
-      hmStreetOn(box, b, true, () => hmAerial(box, ll, w, h, z));
+      hmStreetOn(box, address, src, true, () => hmAerial(box, ll, w, h, z));
       return box;
     }
     hmAerial(box, ll, w, h, z);
-    if (b && state !== "fail") hmStreetOn(box, b, false);
-    else if (b === undefined) {
-      box._bp = { ll, address };
+    if (src) hmStreetOn(box, address, src, false);
+    else if (src === undefined) {
+      box._bp = { address, ll };
       hmPhotoSeen().observe(box);
     }
     return box;
   }
-  function hmStreetOn(box, b, known, onFail) {
+  function hmStreetOn(box, address, src, known, onFail) {
     box._bpDone = true;
-    BLDGPHOTO.overlay(box, b, {
+    BLDGPHOTO.overlay(box, address, src, {
       known, lazy: true, onFail,
       // The map card is wide enough to say whose picture it is; a 48px
       // thumbnail is not, and says nothing for its aerial either.
       onLoad: () => {
+        box.classList.remove("none");
         if (box.classList.contains("hm-pop-ph") && !box.querySelector(".hm-credit")) box.append(hmEl("span", "hm-credit", "© Google"));
       },
     });
@@ -14143,7 +14143,7 @@ async function renderMyDesk() {
   async function hmPhotoFlush() {
     const boxes = hmPhotoQueue.splice(0).filter((box) => box.isConnected && box._bp);
     if (!boxes.length) return;
-    try { await BLDGPHOTO.snap(boxes.map((box) => box._bp)); } catch (_) { return; }
+    try { await BLDGPHOTO.lookup(boxes.map((box) => box._bp)); } catch (_) { return; }
     hmPhotoUpgrade();
   }
   // A lookup answers for every card showing that place, including the ones
@@ -14152,10 +14152,10 @@ async function renderMyDesk() {
     document.querySelectorAll("#homeMap .hm-th, .hm-pop-ph").forEach((box) => {
       const bp = box._bp;
       if (!bp || box._bpDone) return;
-      const b = BLDGPHOTO.building(bp.ll, bp.address);
-      if (b === undefined) return;
+      const src = BLDGPHOTO.photo(bp.address);
+      if (src === undefined) return;
       box._bpDone = true;
-      if (b && BLDGPHOTO.photoState(b) !== "fail") hmStreetOn(box, b, false);
+      if (src) hmStreetOn(box, bp.address, src, false);
     });
   }
   // The lists are rebuilt on every draw; the cards that left must not be
@@ -14729,7 +14729,7 @@ async function renderMyDesk() {
     card.append(ph);
     if (ph._bp) {
       hmPhotoObs.unobserve(ph);
-      BLDGPHOTO.snap([ph._bp]).then(hmPhotoUpgrade, () => {});
+      BLDGPHOTO.lookup([ph._bp]).then(hmPhotoUpgrade, () => {});
     }
     const b = hmEl("div", "hm-pop-b");
     if (permit) {

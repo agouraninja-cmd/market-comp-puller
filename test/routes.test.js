@@ -1860,6 +1860,37 @@ test("admin gating", async (t) => {
       "an undone row must not enter the attempts denominator");
   });
 
+  // The address lookup's score (2026-10-09) rides the same ping route, so the
+  // same two places must agree: the allowlist accepts "found_retyped" and the
+  // aggregation counts it under typeLookup. And a lookup ping is not a map
+  // detector attempt: counted there, every lookup would read as a detector
+  // miss on the Type from the map tile.
+  await t.test("a found_retyped ping counts against the lookup, never the map detector", async () => {
+    const read = async () => (await (await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": ADMIN } })).json());
+    const start = await read();
+    assert.equal(typeof start.typeLookup.retyped, "number", "the tile needs a Wrong type? counter");
+    for (const outcome of ["found", "lookup_changed", "found_retyped", "report_retyped"]) {
+      const post = await fetch(srv.base + "/api/type-autofill", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ outcome, type: "Retail", address: "123 Test St, Dallas, TX" }),
+      });
+      assert.equal(post.status, 204);
+    }
+    let now = start;
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      now = await read();
+      if (now.typeLookup.retyped === start.typeLookup.retyped + 1 &&
+          now.typeLookup.changed === start.typeLookup.changed + 1) break;
+      await new Promise((res) => setTimeout(res, 75));
+    }
+    assert.equal(now.typeLookup.retyped, start.typeLookup.retyped + 1);
+    assert.equal(now.typeLookup.changed, start.typeLookup.changed + 1);
+    assert.equal(now.typeAutofill.attempts, start.typeAutofill.attempts,
+      "a lookup ping must not enter the map detector's attempts");
+  });
+
   await t.test("the ?key= form still works for machine callers", async () => {
     const r = await fetch(srv.base + "/api/stats?key=" + encodeURIComponent(ADMIN));
     assert.equal(r.status, 200);

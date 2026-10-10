@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-10-09",
+    "type": "improvement",
+    "title": "Analytics shows how often the property type lookup is right",
+    "details": "The Analytics page has a new Type lookup tile: how many addresses the lookup answered, how many it settled on the first look or needed a second, how many it already remembered, how long a lookup takes, and the share of its answers nobody changed. An answer counts as changed when someone picks a different type in the address check or presses Wrong type? on a report whose type the lookup chose. The tile for the older map-based type check is now called Type from the map, and its percentage no longer counts the lookup's activity as its own misses."
+  },
+  {
+    "date": "2026-10-09",
     "type": "feature",
     "title": "A development firm works its deals right on Home",
     "details": "If you’re in a development firm, the deals you’re buying and the properties you own or track are worked on Home’s Properties tab now, instead of on a tab of their own. Click one of your rows and it opens in place under the row: for a deal, the five steps from Prospect to Owned with the day you reached each, one click to move it on or pass on it, its asking price, acres, zoning and seller, its key dates with a countdown, notes, Edit and Run a land report; for a property you hold, its likely value, how it changed, a chart of every check, how the market moved since, and Open report, Refresh value and Add to firm. “+ Add a property” adds a deal, or a property you own or track, right there, and deals you passed on fold away under Passed at the foot of the list. Clicking a deal’s pin or one of its dates in Today opens it too. Deal tracking is for development firms only, so it’s gone from The Board, which is back to being the markets you follow, and from your own comps page, which for a development firm is now your comps and The Board."

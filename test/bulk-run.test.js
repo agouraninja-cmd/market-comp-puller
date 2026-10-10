@@ -381,6 +381,9 @@ test("a one-address run carries the form's focus and subject into the search and
   const saved = tables.recent_searches.find((x) => x.id === row.recent_item_id);
   assert.ok(saved, "the row links to its stored report");
   assert.equal(saved.payload.meta.txFocus, "sales");
+  // The page has no type box, so a row's type is the lookup's: "Wrong type?"
+  // on the reopened report counts against the lookup.
+  assert.equal(saved.payload.meta.typeBy, "found");
   assert.deepEqual(saved.payload.meta.subject, {
     sizeMin: 21000, sizeMax: 21000, priceMin: 3125000, priceMax: 3125000,
     noi: 210000, capRate: 6.25, details: { clear_height: "32", dock_doors: "6" },

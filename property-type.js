@@ -179,8 +179,50 @@ function looksLikeStreetAddress(address) {
   return /^\s*\d/.test(String(address || "")) && String(address).trim().length <= 300;
 }
 
+// The live score for /admin. `rows` are analytics events: the server's
+// `type_lookup` (one per resolution; source "memo", "<pass>_<confidence>" or
+// "failed") and the browser's `type_autofill` pings. Only two pings count
+// against the lookup: "lookup_changed" (a person overturned the type it found,
+// in the address check) and "found_retyped" ("Wrong type?" on a report whose
+// type it chose). "report_retyped" is a report typed by a person or the map,
+// and is not the lookup's mistake.
+//
+// keptPct is the share of answers nobody overturned. It is an UPPER bound on
+// accuracy (a wrong type nobody notices is never corrected), so it is the
+// number to watch fall, not proof that 90% holds. correctedPct is NOT clamped:
+// the two counts are independent tallies over one capped window, so a
+// correction can outlive the answer it was about, and over 100 means unpaired
+// rows, which is worth seeing (the type-autofill tile's rule).
+function lookupStats(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const looks = list.filter((r) => r && r.kind === "type_lookup");
+  const src = (r) => String(r.source || "");
+  const count = (test) => looks.filter((r) => test(src(r))).length;
+  const memo = count((s) => s === "memo");
+  const failed = count((s) => s === "failed");
+  const firstLook = count((s) => s.startsWith("quick_"));
+  const secondLook = count((s) => s.startsWith("deep_"));
+  const sure = count((s) => s.endsWith("_high"));
+  const answered = looks.length - failed;
+  const pings = list.filter((r) => r && r.kind === "type_autofill");
+  const changed = pings.filter((r) => src(r) === "lookup_changed").length;
+  const retyped = pings.filter((r) => src(r) === "found_retyped").length;
+  const corrected = changed + retyped;
+  const correctedPct = answered ? Math.round((corrected / answered) * 1000) / 10 : 0;
+  const times = looks
+    .filter((r) => src(r) !== "memo" && Number.isFinite(r.duration_ms))
+    .map((r) => r.duration_ms)
+    .sort((a, b) => a - b);
+  return {
+    lookups: looks.length, answered, memo, failed, firstLook, secondLook, sure,
+    changed, retyped, corrected, correctedPct,
+    keptPct: answered ? Math.max(0, Math.round((100 - correctedPct) * 10) / 10) : 0,
+    medianMs: times.length ? times[Math.floor((times.length - 1) / 2)] : null,
+  };
+}
+
 module.exports = {
   TYPES, CONFIDENCE, QUICK_SEARCHES, DEEP_SEARCHES, TYPE_LINES, ANSWER_LINES,
   quickPrompt, deepPrompt, normType, normConfidence, parseAnswers, answerFrom,
-  needsDeep, finalAnswer, shouldRemember, looksLikeStreetAddress,
+  needsDeep, finalAnswer, shouldRemember, looksLikeStreetAddress, lookupStats,
 };

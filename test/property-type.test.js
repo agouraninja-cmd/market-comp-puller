@@ -82,3 +82,48 @@ test("only a street address is looked up", () => {
   assert.equal(PT.looksLikeStreetAddress(""), false);
   assert.equal(PT.looksLikeStreetAddress("1 " + "x".repeat(400)), false);
 });
+
+// The /admin score. Only a person overturning a type the LOOKUP chose counts
+// against it; a report typed by a person or the map ("report_retyped") and the
+// map detector's own pings never do.
+test("the live score counts the lookup's answers and only its own corrections", () => {
+  const look = (source, duration_ms) => ({ kind: "type_lookup", source, duration_ms });
+  const ping = (source) => ({ kind: "type_autofill", source });
+  const s = PT.lookupStats([
+    look("quick_high", 3000), look("quick_high", 5000), look("deep_medium", 20000),
+    look("deep_high", 18000), look("memo", null), look("failed", 40000),
+    ping("found"), ping("lookup_changed"), ping("found_retyped"),
+    ping("report_retyped"), ping("undone"), ping("applied"),
+    { kind: "search", source: "quick_high" },
+  ]);
+  assert.equal(s.lookups, 6);
+  assert.equal(s.answered, 5, "a failed lookup answered nothing");
+  assert.equal(s.memo, 1);
+  assert.equal(s.failed, 1);
+  assert.equal(s.firstLook, 2);
+  assert.equal(s.secondLook, 2);
+  assert.equal(s.sure, 3);
+  assert.equal(s.changed, 1);
+  assert.equal(s.retyped, 1, "report_retyped is not the lookup's mistake");
+  assert.equal(s.corrected, 2);
+  assert.equal(s.correctedPct, 40);
+  assert.equal(s.keptPct, 60);
+  assert.equal(s.medianMs, 18000, "remembered answers cost no time and are left out");
+});
+
+test("the live score never divides by nothing, and never reads below zero", () => {
+  const empty = PT.lookupStats([]);
+  assert.equal(empty.answered, 0);
+  assert.equal(empty.keptPct, 0);
+  assert.equal(empty.medianMs, null);
+  assert.equal(PT.lookupStats(null).lookups, 0);
+  // Corrections can outlive the answers they were about in a capped window:
+  // the corrected share shows it, and "kept" stops at zero.
+  const s = PT.lookupStats([
+    { kind: "type_lookup", source: "quick_high" },
+    { kind: "type_autofill", source: "lookup_changed" },
+    { kind: "type_autofill", source: "found_retyped" },
+  ]);
+  assert.equal(s.correctedPct, 200);
+  assert.equal(s.keptPct, 0);
+});

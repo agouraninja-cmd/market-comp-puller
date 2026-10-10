@@ -11047,6 +11047,11 @@ async function saveBulkValuationToRecents(user, job, item, report, valued, rowTy
       note: job.note || "",
       months: job.months,
       txFocus: job.tx_focus || "both",
+      // The address lookup chose this type: an Auto run's row was looked up
+      // by the worker, and since 2026-10-09 the Comp report page has no type
+      // box, so a typed run's one type is the page's own lookup. The report's
+      // "Wrong type?" counts a correction here against the lookup.
+      typeBy: "found",
       // The row's own facts (051) land where a hand-run report keeps them, so
       // the reopened report shows its income approach, its asking-price
       // check and its per-type details exactly as if they had been typed.
@@ -16792,7 +16797,11 @@ function aggregateStats(rows) {
       // `undone` is a VERDICT on an attempt, not an attempt of its own. In the
       // denominator it would dock the applied rate twice for one wrong guess:
       // once for being wrong, once for the row saying so.
-      const attempts = a.length - n("undone");
+      // Only the map detector's own outcomes are attempts: the address
+      // lookup's pings (found, lookup_changed, found_retyped, report_retyped;
+      // 2026-10-09) ride the same route and are scored by typeLookup below.
+      const attempts = ["applied", "agreed", "dialog_pick", "no_address_match", "ambiguous", "failed"]
+        .reduce((sum, o) => sum + n(o), 0);
       const asserted = n("applied") + n("agreed");
       return {
         attempts,
@@ -16807,6 +16816,10 @@ function aggregateStats(rows) {
         undonePct: asserted ? Math.round((n("undone") / asserted) * 1000) / 10 : 0,
       };
     })(),
+    // The address lookup's live score (2026-10-09): how often it answered,
+    // how sure, how fast, and how often a person overturned it. The rules
+    // are property-type.js's lookupStats.
+    typeLookup: PTYPE.lookupStats(rows),
     // Vault funnel (2026-08-10): visits by outcome, template downloads, and
     // import attempts by outcome. Exists because the vault had zero uploads
     // and nothing saying WHERE brokers fall off — never reaching /vault, the
@@ -17171,6 +17184,8 @@ function render(d){
   var c=d.corpus||{hits:0,billedReport:0,pct:0,health:{}};
   // Absent on a stale /api/stats from before this tile existed.
   var ta=d.typeAutofill||{attempts:0,applied:0,agreed:0,dialogPick:0,noAddressMatch:0,ambiguous:0,failed:0,undone:0,pct:0,undonePct:0};
+  // The address lookup's score (2026-10-09). Absent on a stale /api/stats.
+  var tl=d.typeLookup||null;
   // null only on a stale /api/stats response from before the cost tiles existed.
   // Render an em-dash rather than $0.00, which would read as "searches are free".
   var sp=d.spend||null;
@@ -17303,7 +17318,7 @@ function render(d){
     "<div class=tile><div class=k>Cache hit rate</div><div class=v>"+hit+"%</div></div>"+
     "<div class=tile><div class=k>Corpus hit rate</div><div class=v>"+c.pct+"%</div><div class=muted style='margin-top:2px'>"+c.hits+" of "+c.billedReport+" billed</div></div>"+
     "<div class=tile title='applied = set the type. agreed = already correct. dialog_pick = the visitor picked it in the confirm dialog. no match = OpenStreetMap has no building at that house number. ambiguous = building mapped but untyped. failed = Overpass down or rate-limiting us. corrected = the visitor overturned a type the detector asserted (Undo, or the confirm dialog change door) — the accuracy signal, and the one figure here where lower is better.'>"+
-      "<div class=k>Type autofill</div><div class=v>"+ta.pct+"%</div>"+
+      "<div class=k>Type from the map</div><div class=v>"+ta.pct+"%</div>"+
       "<div class=muted style='margin-top:2px'>"+ta.applied+" applied of "+ta.attempts+"</div>"+
       (ta.attempts?"<div class=muted style='margin-top:2px'>"+ta.agreed+" agreed &middot; "+(ta.dialogPick||0)+" dialog &middot; "+ta.noAddressMatch+
         " no match &middot; "+ta.ambiguous+" ambiguous &middot; "+ta.failed+" failed</div>":"")+
@@ -17318,6 +17333,20 @@ function render(d){
       ((ta.applied+ta.agreed)?"<div class=muted style='margin-top:2px'><b>"+(ta.undonePct||0)+"% corrected</b> &middot; "+
         (ta.undone||0)+" undone, "+(ta.applied+ta.agreed)+" asserted</div>":"")+
     "</div>"+
+    // The lookup that replaced the type picker (2026-10-09). The headline is
+    // the share of its answers nobody overturned: an UPPER bound on accuracy,
+    // since a wrong type nobody notices is never corrected, so the number to
+    // watch is it falling below 90, not it sitting above. Corrections are two
+    // counts, never "N of M", for the type-autofill tile's reason.
+    (tl?"<div class=tile title='Kept = answers nobody overturned, out of every answer the address lookup gave (remembered ones included). It can only overstate accuracy: a wrong type nobody notices is never corrected. First look = settled by the quick lookup; second look = the deeper one ran because the first was unsure. Sure = a high-confidence answer. Corrected = a person changed the type it found in the address check, or pressed Wrong type? on a report whose type it chose. Goal: right at least 9 times in 10.'>"+
+      "<div class=k>Type lookup</div><div class=v>"+(tl.answered?tl.keptPct+"%":"&mdash;")+"</div>"+
+      "<div class=muted style='margin-top:2px'>"+(tl.answered?"kept of "+tl.answered+" answered":"no lookups yet")+"</div>"+
+      (tl.lookups?"<div class=muted style='margin-top:2px'>"+tl.firstLook+" first look &middot; "+tl.secondLook+" second look &middot; "+
+        tl.memo+" remembered &middot; "+tl.failed+" failed</div>"+
+        "<div class=muted style='margin-top:2px'>"+tl.sure+" sure"+(tl.medianMs!=null?" &middot; "+secs(tl.medianMs)+" median":"")+"</div>":"")+
+      (tl.answered?"<div class=muted style='margin-top:2px'><b>"+tl.correctedPct+"% corrected</b> &middot; "+
+        tl.changed+" in the check, "+tl.retyped+" via Wrong type?</div>":"")+
+    "</div>":"")+
     "<div class=tile><div class=k>Avg comp search</div><div class=v>"+(sp?money(sp.avgReport):"&mdash;")+"</div><div class=muted style='margin-top:2px'>"+
       (sp ? sp.reportSearches+" billed · "+money(sp.reportTotal)+" est"+
             (sp.avgReport < sp.listPriceReport ? " · corpus saving" : "")
@@ -27157,12 +27186,14 @@ const server = http.createServer((req, res) =>
         if (rateLimited("tafill:" + clientIp(req), 60)) return;
         const p = JSON.parse(body || "{}");
         // "found" is the address lookup settling the type (2026-10-09),
-        // "lookup_changed" a person overturning it in the confirm dialog and
-        // "report_retyped" a report re-run as another type from its own
-        // "Wrong type?": the live accuracy figure the 90% target is checked
-        // against.
+        // "lookup_changed" a person overturning it in the confirm dialog,
+        // "found_retyped" a report whose type the lookup chose re-run as
+        // another from its own "Wrong type?", and "report_retyped" the same
+        // on a report typed by a person or the map. The first three are the
+        // live accuracy figure the 90% target is checked against (typeLookup
+        // on /admin).
         const OUTCOMES = ["applied", "agreed", "no_address_match", "ambiguous", "failed", "dialog_pick", "undone",
-          "found", "lookup_changed", "report_retyped"];
+          "found", "lookup_changed", "report_retyped", "found_retyped"];
         const outcome = OUTCOMES.indexOf(String(p.outcome || "")) >= 0 ? String(p.outcome) : null;
         if (!outcome) return;
         const TYPES = ["Industrial", "Office", "Retail", "Multifamily", "Land", "Residential"];

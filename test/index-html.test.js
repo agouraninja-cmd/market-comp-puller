@@ -3089,5 +3089,17 @@ test("a report offers Wrong type?, on the visitor's own report only, and re-runs
   assert.match(fn, /buildTypeButtons\(picker, meta\.type,/);
   assert.match(fn, /if \(v === meta\.type\) return;/, "picking the same type re-runs nothing");
   assert.match(fn, /rerunHistory\(\{ \.\.\.meta, type: v \}\)/, "the re-run goes through the ordinary confirm dialog");
-  assert.match(fn, /logTypeAutofill\(meta\.address, "report_retyped", meta\.type\)/);
+  assert.match(fn, /logTypeAutofill\(meta\.address, meta\.typeBy === "found" \? "found_retyped" : "report_retyped", meta\.type\)/,
+    "only a report whose type the lookup chose counts against the lookup");
+});
+
+// The report remembers that the lookup chose its type, read at the moment the
+// search runs (the confirm dialog may have settled it a beat earlier), so
+// "Wrong type?" can tell the lookup's mistakes from a person's change of mind.
+test("a search run on a found type tags its report typeBy: found", () => {
+  const start = html.indexOf('document.getElementById("compForm").addEventListener("submit"');
+  assert.ok(start > 0);
+  const body = html.slice(start, start + 12000);
+  assert.match(body, /const type = document\.getElementById\("propertyType"\)\.value;\s*\/\/[^\n]*\n[^\n]*\n\s*const typeFound = typeResolution === "found";/);
+  assert.match(body, /renderResults\(parsed, \{\s*address, type, note, months, txFocus,\s*\.\.\.\(typeFound \? \{ typeBy: "found" \} : \{\}\),/);
 });

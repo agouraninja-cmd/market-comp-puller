@@ -13,6 +13,13 @@ paths:
 
 ## Architecture
 
+- **Two property-type tiles (2026-10-09).** "Type from the map" (was "Type
+  autofill"; `typeAutofill`) scores the OpenStreetMap detector and counts
+  only its own six outcomes as attempts. "Type lookup" (`typeLookup`,
+  `PTYPE.lookupStats` in `property-type.js`) scores the address lookup that
+  replaced the type picker; its rules are in search-pipeline.md. Both ride
+  `POST /api/type-autofill` pings plus the server's own `type_lookup` events.
+
 - `GET /admin`, `GET /api/stats` — a small analytics dashboard. Every search,
   lead, share, and comp submission is logged as a **PII-free** event (`ts`,
   `kind`, `prop_type`, `market` = city+state only, `source`, `cached`) via

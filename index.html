@@ -5349,7 +5349,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           if (v === meta.type) return;
           // The other half of the lookup's live accuracy figure: a report
           // that was the wrong type, logged as the type it was run as.
-          logTypeAutofill(meta.address, "report_retyped", meta.type);
+          // "found_retyped" only when the lookup chose that type (the main
+          // form, or a Comp report row); anything else was a person's or the
+          // map's choice and must not count against the lookup.
+          logTypeAutofill(meta.address, meta.typeBy === "found" ? "found_retyped" : "report_retyped", meta.type);
           rerunHistory({ ...meta, type: v });
         });
       });
@@ -22376,6 +22379,9 @@ async function renderMyDesk() {
     // footprint pass then estimates the NEW building into the empty box.
     dropStaleMachineSize(address);
     const type = document.getElementById("propertyType").value;
+    // Whether the address lookup chose this type, so the report's "Wrong
+    // type?" can count against the lookup only what the lookup decided.
+    const typeFound = typeResolution === "found";
     const note = document.getElementById("marketNote").value.trim();
     const months = selectedLookbackMonths();
     const txFocus = document.getElementById("txFocus").value;
@@ -22548,6 +22554,7 @@ async function renderMyDesk() {
       }
       renderResults(parsed, {
         address, type, note, months, txFocus,
+        ...(typeFound ? { typeBy: "found" } : {}),
         // Subject inputs ride along in meta so saved/reopened reports can
         // re-render the comparison and value cards without the form.
         subject: {

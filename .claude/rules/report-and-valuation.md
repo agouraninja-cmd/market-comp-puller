@@ -563,8 +563,12 @@ and exporting each slide to PNG (a PowerShell one-liner, no dependency).
      **The report carries "Wrong type?"** (`renderReportMeta`, `no-print
      no-capture`, never on a shared `/r/` view or the sample): a pick re-runs
      through `rerunHistory`. The live accuracy signals ride `/api/type-autofill`:
-     `found`, `lookup_changed` (overturned in the dialog) and `report_retyped`
-     (from "Wrong type?"). Pinned in `test/index-html.test.js`.
+     `found`, `lookup_changed` (overturned in the dialog) and, from "Wrong
+     type?", `found_retyped` when the report's `meta.typeBy` is `"found"`
+     (the submit handler tags a search run while `typeResolution` was
+     "found"; every Comp report row is tagged server-side), else
+     `report_retyped`. They feed `/admin`'s Type lookup tile
+     (search-pipeline.md). Pinned in `test/index-html.test.js`.
    - **The type dropdown is gone from the visible form** (2026-08-08): a hidden
      `#propertyType` select remains the single source of truth, and the type is
      resolved at verification — OSM detection, per-address memory

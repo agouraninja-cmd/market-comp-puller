@@ -66,6 +66,18 @@ paths:
 > - Who calls it: the main form (index.html: the address listener when the
 >   map cannot say, and the confirm dialog), `/bulk` for a one-address run,
 >   and the bulk worker for every row of an "Auto" run (bulk.md).
+> - **Its live score is the "Type lookup" tile on `/admin`**
+>   (`PTYPE.lookupStats`, `typeLookup` in `/api/stats`): answers, first or
+>   second look, remembered, failed, sure, median seconds, and the share
+>   nobody overturned. Only two pings count against it: `lookup_changed`
+>   (changed in the address check) and `found_retyped` ("Wrong type?" on a
+>   report whose `meta.typeBy` is `"found"`: a main-form search run on a
+>   found type, and every Comp report row, `saveBulkValuationToRecents`).
+>   `report_retyped` is a person's or the map's type and does not count.
+>   "Kept" can only OVERSTATE accuracy (a wrong type nobody notices is never
+>   corrected), so watch it fall below 90, not sit above. The map
+>   detector's tile ("Type from the map") counts only its own six outcomes
+>   as attempts; until this it counted the lookup's pings too.
 
 > Moved verbatim from CLAUDE.md on 2026-09-25. Claude Code loads this file
 > when it opens a file matching `paths` above; read it by hand before changing

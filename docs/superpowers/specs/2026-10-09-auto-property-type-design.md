@@ -12,13 +12,15 @@ draft in five places:
   `/bulk` or in the server's lookup.
 - **Step 4 (the double-check field) was not built.** The report instead
   has a "Wrong type?" button beside its header that re-runs it as the type
-  picked, and logs `report_retyped`.
+  picked, and logs `found_retyped` (or `report_retyped` when the type was
+  not the lookup's).
 - **A `/bulk` run with no type is stored as `Auto`**, not "Mixed", and
   reads "type found per address"; each row stores and shows its own type.
-- **No accuracy line on `/admin` yet.** Every lookup logs a `type_lookup`
-  event (memo, `quick_high`, `deep_medium`, `failed` …) and the main form
-  logs `found`, `lookup_changed` and `report_retyped` through
-  `/api/type-autofill`, so the line can be drawn from data already kept.
+- **The accuracy line is a "Type lookup" tile on `/admin`** (built the
+  same day): the share of answers nobody overturned, with how many were
+  settled on the first look, needed the second, were remembered or failed,
+  and the median seconds. A correction counts only when the lookup chose
+  the type (`lookup_changed`, `found_retyped`).
 
 The Gemini gate below has **not** been run (this workspace cannot reach
 Google); run it before the deploy. Rules live in

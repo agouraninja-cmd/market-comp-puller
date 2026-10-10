@@ -1,0 +1,170 @@
+{
+  "day": "2026-10-06",
+  "updatedAt": "2026-10-07T13:13:27.274Z",
+  "period": {
+    "start": "2026-09-24",
+    "end": "2026-10-07",
+    "index": 13,
+    "length": 14,
+    "days": [
+      "2026-09-24",
+      "2026-09-25",
+      "2026-09-26",
+      "2026-09-27",
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30",
+      "2026-10-01",
+      "2026-10-02",
+      "2026-10-03",
+      "2026-10-04",
+      "2026-10-05",
+      "2026-10-06",
+      "2026-10-07"
+    ]
+  },
+  "resetsOn": "2026-10-08",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 9,
+        "prs": 9
+      },
+      "periodTotal": 82,
+      "periodPrs": 66,
+      "points": [
+        11,
+        26,
+        4,
+        0,
+        0,
+        11,
+        3,
+        9,
+        1,
+        0,
+        6,
+        2,
+        9,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 2,
+      "periodPrs": 1,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 371,
+      "title": "Data page: Comps, no publishing, and Sites first for a development firm",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 372,
+      "title": "Data page: price land comps per acre",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 373,
+      "title": "Home: one Sharing section with tabs (Draft C)",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 374,
+      "title": "Home banner: a far city behind the skyline",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 375,
+      "title": "Home banner: solid, sky-lit buildings",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 376,
+      "title": "Home banner: far city drawn to match the skyline",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 377,
+      "title": "Home banner: dim the far city on an empty board",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 378,
+      "title": "Rename the watchlist to The Board; Home's buildings stop saying \"board\"",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 379,
+      "title": "design-drafts skill: use Home, Data and The Board in page copy",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    }
+  ]
+}

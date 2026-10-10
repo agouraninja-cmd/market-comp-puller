@@ -1027,15 +1027,20 @@ test("the vault has no rail row and no account-menu row; Home's Properties tab o
   const acctMenu = html.slice(html.indexOf('id="acctMenu"'), html.indexOf('id="signOutBtn"'));
   assert.ok(!acctMenu.includes('href="/vault"'), "the vault is back inside the account menu");
   const home = html.slice(html.indexOf('id="homeMap"'), html.indexOf('id="hmMap"'));
-  // "Add a property" asks which kind (2026-10-07): a deal opens The Board's
-  // add form, a property you own opens Properties' (HOMEMAP.addHref rewrites
-  // both for a development firm). One "Only you" link to Properties sent
+  // "Add a property" asks which kind (2026-10-07). Since 2026-10-09 a deal
+  // is a development firm's alone, added here on Home (home-sites.js's form
+  // in #hmMineAdd), so the deal choice starts hidden and shows for that
+  // member only; a property you own opens the member's own page's form,
+  // except for a development firm's member, who adds it here too
+  // (HOMEMAP.addWhere decides both). One "Only you" link to Properties sent
   // deals to a tab that cannot take them.
-  assert.ok(home.includes('<a id="hmAddDeal" class="hm-ch" href="/vault?add=buy#board">'), "no deal choice opening The Board's form");
+  assert.ok(home.includes('<a id="hmAddDeal" class="hm-ch hidden" href="#properties">'), "the deal choice must start hidden");
   assert.ok(home.includes('<a id="hmAddOwn" class="hm-ch" href="/vault?add=own#properties">'), "no own-it choice opening Properties' form");
+  assert.ok(home.includes('<div id="hmMineAdd"></div>'), "no place for Home's own add form");
   assert.ok(!home.includes('id="hmAddMine"'), "the single Only-you choice is back");
-  assert.ok(html.includes('document.getElementById("hmAddDeal").href = HOMEMAP.addHref("buy", hmFirmKind());'));
-  assert.ok(html.includes('document.getElementById("hmAddOwn").href = HOMEMAP.addHref("own", hmFirmKind());'));
+  assert.ok(!home.includes("?add=buy"), "a deal added on The Board's wall, which is gone");
+  assert.ok(html.includes('const dealAt = HOMEMAP.addWhere("buy", hmFirmKind()), ownAt = HOMEMAP.addWhere("own", hmFirmKind());'));
+  assert.ok(html.includes('document.getElementById("hmAddDeal").classList.toggle("hidden", !(dealAt === "home" && here));'));
   // The empty account's start card asks the same question in the same place.
   assert.ok(home.includes('<a id="hmStartProp" class="hm-st" href="#properties">'));
   const start = html.slice(html.indexOf('getElementById("hmStartProp").addEventListener('), html.indexOf("// ---- The map"));
@@ -1060,10 +1065,40 @@ test("Home's Today reads new BOV requests without writing, and only once the pag
   const shown = html.slice(html.indexOf("function hmWhenShown("), html.indexOf("function hmLoadLeads("));
   assert.match(shown, /document\.prerendering[\s\S]*prerenderingchange/);
   // A development firm has no Pipeline (vault-page.js's applyShop), so it is
-  // never asked; and a deal opens where the private page lists it.
+  // never asked.
   assert.ok(html.includes('const hmCanLeads = () => hmCanVault() && !(myFirm() && myFirm().kind === "development");'));
-  assert.ok(html.includes('a.textContent = "Open the deal →"; a.href = HOMEMAP.dealsHref(hmFirmKind());'));
-  assert.ok(!html.includes('"Open the deal →"; a.href = "/vault#sites"'), "#sites opens Comps for anyone outside a development firm");
+});
+
+test("a development firm's deals are worked in place on Home's Properties tab, and nobody else's page links to them (2026-10-09)", () => {
+  // The owner's call: "Development firms only and integrate it into the
+  // property section of the home page." /vault's Sites tab and The Board's
+  // deal wall are gone, so no Home link may point at either.
+  assert.ok(!html.includes("/vault#sites") && !html.includes("?add=buy"), "a link to the old Sites tab or the wall's form");
+  assert.ok(!/dealsHref|addHref/.test(html), "the old link helpers are back");
+  // Both scripts load, guarded: without them the rows list and open nothing.
+  assert.match(html, /<script src="\/home-map\.js"><\/script>[\s\S]*<script src="\/sites\.js"><\/script>\s*<script src="\/home-sites\.js"><\/script>/);
+  assert.ok(html.includes('const hmWorkHere = () => HOMEMAP.dealsOn(hmFirmKind()) && typeof HOMESITES !== "undefined" && typeof SITES !== "undefined";'));
+  // Deals are listed and dated only for that member (HOMEMAP decides).
+  assert.match(html, /HOMEMAP\.properties\(\{[^}]*firmKind: hmFirmKind\(\) \}\)/);
+  assert.match(html, /HOMEMAP\.agenda\(\{[\s\S]{0,400}firmKind: hmFirmKind\(\), today \}\)/);
+  // A row of the member's own opens its pane; every row still opens its map card.
+  const row = html.slice(html.indexOf("function hmPropRow("), html.indexOf("function hmGroupHead("));
+  assert.ok(row.includes("row._hm = r;") && row.includes("const works = hmWorkHere() && (r.siteId != null || r.portfolioId != null);"));
+  assert.ok(row.includes("const open = () => { hmSelect(r.key, {}); if (works) hmOpenWork(r.key, { toggle: true }); };"));
+  // A redraw (a geocode landing, say) puts the open pane back with whatever
+  // is half typed in it: the focus is noted before the list is cleared.
+  const draw = html.slice(html.indexOf("function drawHomeMap("), html.indexOf("function setHomeTab("));
+  assert.ok(draw.indexOf("const hmFocus = document.activeElement;") < draw.indexOf('props.textContent = "";'));
+  assert.ok(draw.includes("hmPlaceWork(hmFocus);"));
+  // After a write the deals and holdings are read fresh, and a failed read
+  // keeps what was on screen: an outage is never an absence.
+  const reload = html.slice(html.indexOf("async function hmReloadMine("), html.indexOf("function hmOpenWork("));
+  assert.ok(reload.includes("if (deskSites == null) deskSites = before;"));
+  assert.ok(reload.includes('acctApi("GET", "/api/portfolio")') && reload.includes("portfolioKeys.clear();"));
+  // The pane's styles use the theme's tokens only, so dark mode holds.
+  const css = html.slice(html.indexOf(".hm-chip.passed {"), html.indexOf("@media (max-width: 420px) { .hs-kind"));
+  assert.ok(css.length > 2000, "the pane's styles moved");
+  assert.doesNotMatch(css.replace(/rgba\(15, 23, 42, \.\d+\)/g, ""), /#[0-9a-f]{3,6}\b|rgba?\(/i, "a literal colour in the pane's styles");
 });
 
 

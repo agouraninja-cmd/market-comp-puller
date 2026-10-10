@@ -7,6 +7,8 @@ const assert = require("node:assert");
 const HM = require("../home-map.js");
 
 const TODAY = "2026-10-07";
+// Deals are a development firm's (2026-10-09): a test that lists one says so.
+const DEV = "development";
 const B = (o) => Object.assign({ id: "b1", address: "1450 S Eagle Rd, Meridian, ID 83642", type: "Industrial", sizeSqft: 48000, lat: null, lng: null }, o);
 const SITE = (o) => Object.assign({ id: "s1", address: "2410 W Amity Rd, Meridian, ID 83642", property_type: "Land", stage: "contract",
   acres: 18.4, asking_price: 3450000, dates: [], portfolio_item_id: null }, o);
@@ -36,7 +38,7 @@ test("one row per property: a firm building that is also yours is one row that k
 });
 
 test("every row says who can see it", () => {
-  const rows = HM.properties({ today: TODAY,
+  const rows = HM.properties({ today: TODAY, firmKind: DEV,
     buildings: [B({ id: "b9", address: "615 S Capitol Blvd, Boise, ID 83702" })],
     sites: [SITE({})],
   });
@@ -46,7 +48,7 @@ test("every row says who can see it", () => {
 });
 
 test("a deal's next date is its soonest date still ahead; a passed deal is left out", () => {
-  const rows = HM.properties({ today: TODAY, sites: [
+  const rows = HM.properties({ today: TODAY, firmKind: DEV, sites: [
     SITE({ dates: [{ on: "2026-09-21", label: "Under contract" }, { on: "2026-12-21", label: "Closing" }, { on: "2026-10-21", label: "Due diligence ends" }] }),
     SITE({ id: "s2", address: "2600 E Gowen Rd, Boise, ID", stage: "passed" }),
   ] });
@@ -89,7 +91,7 @@ test("a building's coordinates are used only when both are real", () => {
 });
 
 test("rows sort: deals first by deadline, then what you own, then the firm's other buildings", () => {
-  const rows = HM.properties({ today: TODAY,
+  const rows = HM.properties({ today: TODAY, firmKind: DEV,
     buildings: [B({ id: "f", address: "615 S Capitol Blvd, Boise, ID" })],
     portfolio: [HELD({})],
     sites: [SITE({ dates: [{ on: "2026-10-21", label: "DD" }] }), SITE({ id: "s9", address: "12500 W Floating Feather Rd, Star, ID", stage: "prospect", dates: [{ on: "2026-10-10", label: "Call" }] })],
@@ -98,7 +100,7 @@ test("rows sort: deals first by deadline, then what you own, then the firm's oth
 });
 
 test("the agenda: unread first, then lease dates inside 90 days and deal dates inside 30, soonest first, numbered", () => {
-  const items = HM.agenda({ today: TODAY,
+  const items = HM.agenda({ today: TODAY, firmKind: DEV,
     threads: [{ id: "t1", label: "Jordan Lee", preview: "Want me to call Dana?", unread: 1 }, { id: "t2", label: "Old", unread: 0 }],
     critical: [
       { buildingId: "b1", address: "1450 S Eagle Rd, Meridian, ID", date: "2026-10-26", kind: "notice", tenant: "Acme", suite: "A" },
@@ -118,7 +120,7 @@ test("the agenda: unread first, then lease dates inside 90 days and deal dates i
 });
 
 test("new BOV requests come after messages, newest first, with no number and no pin", () => {
-  const items = HM.agenda({ today: TODAY,
+  const items = HM.agenda({ today: TODAY, firmKind: DEV,
     threads: [{ id: "t1", label: "Jordan Lee", unread: 1 }],
     leads: [
       { id: "l1", ts: "2026-10-01T15:00:00Z", type: "Industrial", size_sqft: 24000, market: "Boise, ID", is_1031: false, intro_requested: false },
@@ -143,28 +145,44 @@ test("new BOV requests come after messages, newest first, with no number and no 
   assert.equal(HM.inDays(-1), "yesterday");
 });
 
-test("a deal opens where the private page lists it: Sites for a development firm, The Board for everyone else", () => {
-  const deal = (firmKind) => HM.agenda({ today: TODAY, firmKind,
-    sites: [SITE({ dates: [{ on: "2026-10-10", label: "Call" }] })] })[0].href;
-  assert.equal(deal("development"), "/vault#sites");
-  assert.equal(deal("broker"), "/vault#board", "vault-page.js hides Sites outside a development firm; #sites would open Comps");
-  assert.equal(deal(""), "/vault#board", "no firm at all");
-  assert.equal(HM.dealsHref("development"), "/vault#sites");
-  assert.equal(HM.dealsHref(undefined), "/vault#board");
+test("deals are a development firm's: listed, dated and passed on only for its member (2026-10-09)", () => {
+  const sites = [
+    SITE({ dates: [{ on: "2026-10-10", label: "Call the owner back" }] }),
+    SITE({ id: "s2", address: "2600 E Gowen Rd, Boise, ID", stage: "passed", updated_at: "2026-10-01" }),
+    SITE({ id: "s4", address: "900 N Ten Mile Rd, Meridian, ID", stage: "passed", updated_at: "2026-10-05" }),
+    SITE({ id: "s3", address: "2850 S Cole Rd, Boise, ID 83709", stage: "tracking", portfolio_item_id: "p2" }),
+  ];
+  const portfolio = [HELD({ id: "p2", address: "2850 S Cole Rd, Boise, ID 83709" })];
+  assert.ok(HM.dealsOn("development"));
+  for (const k of ["broker", "", undefined]) {
+    assert.ok(!HM.dealsOn(k));
+    const rows = HM.properties({ today: TODAY, firmKind: k, sites, portfolio });
+    assert.deepEqual(rows.map((r) => r.group), ["owned"], "no Buying row outside a development firm");
+    // A status row is the PROPERTY's, so it still says Tracking for anyone.
+    assert.equal(rows[0].stage, "tracking");
+    assert.deepEqual(HM.agenda({ today: TODAY, firmKind: k, sites }), [], "and no deal dates in Today");
+    assert.deepEqual(HM.passedDeals({ sites, firmKind: k }), []);
+  }
+  const rows = HM.properties({ today: TODAY, firmKind: DEV, sites, portfolio });
+  assert.deepEqual(rows.map((r) => r.group), ["buying", "owned"]);
+  // A deal's date opens the deal itself, on Home's Properties tab.
+  const due = HM.agenda({ today: TODAY, firmKind: DEV, sites });
+  assert.deepEqual(due.map((x) => [x.kind, x.href]), [["deal", "/desk#properties"]]);
+  // Passed deals, newest first, for the fold; a passed status row is no deal.
+  assert.deepEqual(HM.passedDeals({ sites, firmKind: DEV }).map((s) => s.id), ["s4", "s2"]);
+  assert.equal(HM.stageLabel("passed"), "Passed");
 });
 
-test("adding a property of your own opens the form that takes it, already open", () => {
-  // Outside a development firm a deal is added on The Board's deal wall and a
-  // property you own on Properties; the Properties tab cannot take a deal.
-  assert.equal(HM.addHref("buy", "broker"), "/vault?add=buy#board");
-  assert.equal(HM.addHref("own", "broker"), "/vault?add=own#properties");
-  assert.equal(HM.addHref("buy", ""), "/vault?add=buy#board", "no firm at all");
-  assert.equal(HM.addHref("own", undefined), "/vault?add=own#properties");
-  // A development firm's Sites tab takes both, with the kind picked.
-  assert.equal(HM.addHref("buy", "development"), "/vault?add=buy#sites");
-  assert.equal(HM.addHref("own", "development"), "/vault?add=own#sites");
-  // The deal link and the add link agree on where deals live.
-  for (const k of ["development", "broker", ""]) assert.equal(HM.addHref("buy", k).replace("?add=buy", ""), HM.dealsHref(k));
+test("adding a property of your own: on Home for a development firm, your own page for one you own, no deal elsewhere", () => {
+  assert.equal(HM.addWhere("buy", "development"), "home");
+  assert.equal(HM.addWhere("own", "development"), "home");
+  assert.equal(HM.addWhere("own", "broker"), "/vault?add=own#properties");
+  assert.equal(HM.addWhere("own", undefined), "/vault?add=own#properties", "no firm at all");
+  assert.equal(HM.addWhere("buy", "broker"), "", "a deal is not offered outside a development firm");
+  assert.equal(HM.addWhere("buy", ""), "");
+  // The Board's deal wall and /vault's Sites tab are gone: nothing links to them.
+  assert.equal(HM.dealsHref, undefined);
+  assert.equal(HM.addHref, undefined);
 });
 
 test("the status line says what is due, never what the page is", () => {
@@ -256,7 +274,7 @@ test("a permit's stage reads in the tracker's own words", () => {
 });
 
 test("a permit is at one of your properties only on the same street line in the same city", () => {
-  const rows = HM.properties({ today: TODAY, buildings: [B({})], sites: [SITE({})] });
+  const rows = HM.properties({ today: TODAY, firmKind: DEV, buildings: [B({})], sites: [SITE({})] });
   const pin = HM.permitPin(FILING({}));
   assert.equal(HM.permitAt(pin, rows).key, "1450 s eagle rd|meridian", "the portal's capitals and its missing comma do not split one building");
   assert.equal(HM.permitAt(HM.permitPin(FILING({ address: "1450 S EAGLE RD, Boise ID 83709", city: "Boise" })), rows), null,

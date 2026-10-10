@@ -2,7 +2,9 @@
 paths:
   - "index.html"
   - "home-map.js"
+  - "home-sites.js"
   - "test/home-map.test.js"
+  - "test/home-sites.test.js"
   - "test/org-desk.test.js"
   - "test/desk-*.test.js"
   - "test/auth-boot.test.js"
@@ -167,10 +169,11 @@ paths:
 >   sits in People under the roster, and `#buildingAddForm` is behind
 >   Properties' "Add a property" → "One of the firm's buildings". Every id and
 >   writer is unchanged. The chooser's other two choices are the member's own
->   (`HOMEMAP.addHref`): "A deal you're working on" opens
->   `/vault?add=buy#board` and "A property you own" `/vault?add=own#properties`
->   (both `#sites` for a development firm, whose Sites tab takes both), and
->   vault-page.js opens that tab's add form on arrival (see vault.md). The
+>   (`HOMEMAP.addWhere`, 2026-10-09): for a development firm's member both
+>   open `home-sites.js`'s add form here; for anyone else "A deal you're
+>   working on" is hidden and "A property you own" opens
+>   `/vault?add=own#properties`, whose form vault-page.js opens on arrival
+>   (see vault.md). The
 >   empty account's "Add a property" start card switches to Properties with
 >   the chooser open, so the start cards show on Today only. `.hm-ch` and
 >   `.hm-st` set `display`, so each has a `.hidden` companion; without them
@@ -208,10 +211,33 @@ paths:
 >   and no pin (the server already anonymized it: type, size, market, date).
 >   The row opens `/vault#pipeline`, and Today's foot gains "Your BOV
 >   pipeline →".
-> - **A deal opens where /vault lists it** (`HOMEMAP.dealsHref`): `#sites` for
->   a development firm, `#board` (the deal wall) for everyone else, because
->   `applyShop` hides Sites outside a development firm and `#sites` would land
->   on Comps. Today's deal rows and a deal's map card both read it.
+> - **Deals on Home, a development firm's only (2026-10-09, the owner's
+>   call: "Development firms only and integrate it into the property section
+>   of the home page").** `HOMEMAP.dealsOn(firmKind)` is the rule:
+>   `properties()` lists a deal, `agenda()` dates one, and `addWhere()`
+>   offers one, only when `firmKind` is "development" (both take
+>   `firmKind` now). For that member, a row of their own (`r.siteId` or
+>   `r.portfolioId`) opens a working pane in place under it
+>   (`hmOpenWork` → `hmPlaceWork` → `HOMESITES.pane(row)`,
+>   `home-sites.js`; vault.md's Sites box has what is in it), the map card
+>   reads "Open the deal →"/"Open the property →" and opens that pane (a row
+>   that is also the firm's keeps its building-sheet link and adds "Your
+>   deal →"), Today's deal date opens it too, the chooser's two "Only you"
+>   choices open the add form in `#hmMineAdd` instead of leaving Home, the
+>   Buying heading carries the acres and asking total, and passed deals fold
+>   under "Passed" (`HOMEMAP.passedDeals`, keyed `passed:<id>`, stage
+>   chip "Passed"). Writes are plain fetches from `home-sites.js`; after
+>   one, `hmReloadMine` re-reads `/api/sites` and `/api/portfolio`
+>   (never the boot copy; a failed read keeps what was on screen, and
+>   `portfolioKeys` is refreshed) and draws Home again. **A redraw keeps a
+>   half-typed form:** `pane()` returns the SAME element while the row's
+>   data is unchanged, and `drawHomeMap` notes the focus before it clears
+>   the list (`hmFocus`) and hands it back. Everyone else's rows open the
+>   map card only, as before; their deals are not listed (the deal wall that
+>   took them is gone) and "A deal you're working on" is hidden. Without
+>   `/sites.js` or `/home-sites.js` (`hmWorkHere`) the rows list and
+>   open nothing, and neither "Only you" choice shows. `dealsHref` and
+>   `addHref` are gone.
 > - **The Board's door is on the Markets pages** (it has no rail row now):
 >   `/markets` carries a `.mboard` band for a signed-in member only (the
 >   anonymous page is publicly cached), and a market page's "Add to The

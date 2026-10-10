@@ -23,8 +23,8 @@ view version ... make sure they are actual good pictures though", and then,
 shown Home still almost all aerial, "it has to be a professional picture of
 the building". Read this before the rest of the file, which it extends.
 
-- **Home's thumbnails and map cards and The Board's deal cards are looked up
-  BY ADDRESS.** The first build (PR #392, the same morning) found the building
+- **Home's thumbnails and map cards are looked up BY ADDRESS** (and The
+  Board's deal cards were, until the deal wall left on 2026-10-09). The first build (PR #392, the same morning) found the building
   from OpenStreetMap footprints and failed most addresses: most US footprints
   carry no house number, and a big commercial building's middle sits beyond
   the 35 m camera rule. Google places an address on its parcel and, asked for
@@ -54,7 +54,8 @@ the building". Read this before the rest of the file, which it extends.
   key invalidates every token: those cards fall back to the aerial and ask
   again.
 - **`building-photo.js`** (browser global `BLDGPHOTO`, dual-exported,
-  `maxAge: 0`, loaded by index.html and by /vault ahead of deal-wall.js) asks
+  `maxAge: 0`, loaded by index.html; /vault loaded it for the deal wall until
+  2026-10-09) asks
   the route a batch at a time, remembers each address's answer in
   `localStorage` `bldgPhoto.v2` (a src, `ok` once it has loaded, or a miss
   retried after 7 days; a refused call and a `0` are not remembered), and lays
@@ -66,10 +67,8 @@ the building". Read this before the rest of the file, which it extends.
   `bldgPhotoState.v1` keys.
 - **Home** (`hmPhoto`) asks when a card scrolls into view (`hmPhotoSeen`) and
   a map card the moment it opens; a property with no coordinates yet can
-  still have its photo, since the address is enough. **The Board**
-  (`deal-wall.js` `street`) asks for every card it draws, before and without
-  the Census geocode its aerial waits on, and moves the credit onto the photo
-  ("Google").
+  still have its photo, since the address is enough. (The Board's deal
+  cards asked the same way until the deal wall left on 2026-10-09.)
 - **The report map's pin popups are unchanged**: they still aim by the snapped
   OSM footprint (`judgePano`, below), because the report's own geocoder label
   check makes that route sound there.
@@ -78,8 +77,9 @@ the building". Read this before the rest of the file, which it extends.
   (10), a camera 4-35 m (`MIN_PANO_M`, `MAX_PANO_M`) from the building, aimed
   at it, the lens fitted by `fovFor`. By address, `judgeAddressPano` above.
 - **⚠ `building-photo.js` carries copies of index.html's `houseNumberOf` and
-  `unitDesignatorOf`**, because /vault cannot load index.html's script;
-  `test/building-photo.test.js` runs both copies over the same addresses.
+  `unitDesignatorOf`**, written when /vault (which cannot load index.html's
+  script) drew deal cards; `test/building-photo.test.js` runs both copies
+  over the same addresses.
 - **`STREETVIEW_API_URL`** (test-only, unset in production) points both
   routes at a stand-in. `test/streetview-run.test.js` proves: signed out is
   refused, the URL names no address, a numberless address never leaves the

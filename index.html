@@ -104,6 +104,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        (HOMEMAP). maxAge 0 like the scripts above, and guarded with typeof:
        without it Home's list and map stay empty, never a broken page. -->
   <script src="/home-map.js"></script>
+  <!-- A development firm's deals, worked on Home's Properties tab
+       (2026-10-09): their rules (SITES, the copy the routes validate with)
+       and the working pane under an open row (HOMESITES). maxAge 0, and
+       guarded with typeof: without them the rows still list, and open
+       nothing. -->
+  <script src="/sites.js"></script>
+  <script src="/home-sites.js"></script>
   <!-- Street photos of buildings on Home (2026-10-09; BLDGPHOTO): looked up
        by address through our own /api/building-photo. maxAge 0, and guarded
        with typeof: without it Home's cards keep their aerials. -->
@@ -1941,6 +1948,85 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-chip.pm-issued { background: var(--ok-bg); color: var(--ok-text); }
     .hm-chip.pm-attention { background: var(--warn-bg); color: var(--warn-text); }
     .hm-chip.pm-ended { background: var(--err-bg); color: var(--err-text); }
+    /* A development firm's deals, worked in place on Properties (2026-10-09;
+       home-sites.js). An open row and its pane read as one card: the row
+       keeps its sides and top, the pane carries the rest. Sized for the
+       list's column (468px beside the map, the full width on a phone).
+       Theme tokens only, so dark mode needs nothing of its own. */
+    .hm-chip.passed { background: var(--err-bg); color: var(--err-text); }
+    #hmPaneProps #hmPropMsg { margin: 0 10px 10px; }
+    .hm-row.p[aria-expanded="true"] { border-radius: 12px 12px 0 0; background: var(--card); box-shadow: inset 1px 0 0 var(--edge), inset -1px 0 0 var(--edge), inset 0 1px 0 var(--edge); }
+    .hs-pane { margin: 0 0 10px; padding: 14px 14px 12px; border: 1px solid var(--edge); border-top-color: var(--hair); border-radius: 0 0 12px 12px; background: var(--card); box-shadow: 0 10px 22px -18px rgba(15, 23, 42, .4); }
+    .hs-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .hs-steps li { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding-right: 4px; min-width: 0; }
+    .hs-steps li::before { content: ""; position: absolute; top: 7px; left: 16px; right: 0; height: 2px; background: var(--line); }
+    .hs-steps li:last-child::before { display: none; }
+    .hs-steps li.done::before { background: var(--ink); }
+    .hs-dot { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 2px solid var(--ink-4); border-radius: 50%; background: var(--card); color: var(--card); }
+    .hs-steps li.done .hs-dot { background: var(--ink); border-color: var(--ink); }
+    .hs-steps li.now .hs-dot { border-color: var(--red-fill); box-shadow: 0 0 0 3px var(--err-bg); }
+    .hs-steps li.now .hs-dot::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--red-fill); }
+    /* A phone's fifth of the column is narrower than "Entitlements": it
+       hyphenates there (the page is lang="en") rather than splitting off an s. */
+    .hs-sl { font-size: 11.5px; font-weight: 600; line-height: 1.25; color: var(--ink-2); -webkit-hyphens: auto; hyphens: auto; }
+    .hs-steps li.now .hs-sl { color: var(--ink); }
+    .hs-steps li:not(.done):not(.now) .hs-sl { color: var(--ink-3); font-weight: 500; }
+    .hs-sd { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+    .hs-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .hs-pane .hm-btn[disabled], .hs-add .hm-btn[disabled] { opacity: .6; cursor: default; }
+    .hs-pane .dk-msg { margin-top: 10px; }
+    .hs-grid { display: grid; gap: 12px; margin-top: 14px; }
+    .hs-blk { min-width: 0; padding-top: 12px; border-top: 1px solid var(--hair); }
+    .hs-blk h4 { margin: 0 0 8px; font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+    .hs-terms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 0; }
+    .hs-terms dt { font-size: 12px; color: var(--ink-3); }
+    .hs-terms dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .hs-dates { list-style: none; margin: 0 0 6px; padding: 0; }
+    .hs-dates li { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 5px 0; font-size: 13px; color: var(--ink); }
+    .hs-dates li.past { color: var(--ink-3); }
+    .hs-dd { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .hs-dw { min-width: 0; overflow-wrap: anywhere; }
+    .hs-xs { padding: 0 2px; border: 0; background: none; font-size: 16px; line-height: 1; color: var(--ink-3); cursor: pointer; }
+    .hs-xs:hover { color: var(--red); }
+    .hs-chip { display: inline-block; padding: 3px 7px; border-radius: 999px; background: var(--wash); box-shadow: inset 0 0 0 1px var(--line); font-size: 11px; font-weight: 600; line-height: 1; color: var(--ink-2); white-space: nowrap; }
+    .hs-chip.hot { background: var(--err-bg); box-shadow: inset 0 0 0 1px var(--err-rule); color: var(--err-text); }
+    .hs-chip.warn { background: var(--warn-bg); box-shadow: inset 0 0 0 1px var(--warn-rule); color: var(--warn-text); }
+    .hs-dform { display: grid; grid-template-columns: 148px minmax(0, 1fr); gap: 8px; align-items: center; margin-top: 6px; }
+    .hs-dform .hm-btn { justify-self: start; }
+    .hs-lnk { padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--red); cursor: pointer; }
+    .hs-lnk:hover { text-decoration: underline; }
+    .hs-notes { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--ink-body); overflow-wrap: anywhere; }
+    .hs-mute { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+    .hs-passed { margin-top: 10px; }
+    .hs-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hair); }
+    .hs-rm { margin-left: auto; padding: 0; border: 0; background: none; font: inherit; font-size: 13px; color: var(--ink-3); cursor: pointer; }
+    .hs-rm:hover { color: var(--red); text-decoration: underline; }
+    .hs-note { margin-top: 8px; }
+    .hs-val { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; }
+    .hs-vl { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+    .hs-vb { display: block; margin-top: 2px; font-family: Georgia, 'Times New Roman', serif; font-size: 24px; font-weight: 400; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .hs-vs { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink-3); }
+    .hs-vc { display: block; margin: 2px 0 4px; font-size: 15px; font-weight: 600; color: var(--ink); }
+    .hs-up { font-weight: 600; color: var(--green); }
+    .hs-dn { font-weight: 600; color: var(--red); }
+    .hs-chart { display: block; width: 100%; height: auto; }
+    .hs-chart text { font-family: inherit; font-size: 11px; fill: var(--ink-3); }
+    .hs-chart text.hs-cv { font-weight: 600; fill: var(--ink-2); }
+    .hs-add { margin: 2px 10px 14px; padding: 14px; border: 1px solid var(--edge); border-radius: 12px; background: var(--card); }
+    .hs-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+    .hs-form label { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+    .hs-pane input, .hs-pane select, .hs-add input, .hs-add select { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--edge); border-radius: 8px; background: var(--card); font: inherit; font-size: 14px; letter-spacing: 0; text-transform: none; font-weight: 400; color: var(--ink); }
+    .hs-pane input:focus, .hs-pane select:focus, .hs-add input:focus, .hs-add select:focus { outline: none; border-color: var(--ink-3); box-shadow: 0 0 0 3px var(--hair); }
+    .hs-wide { grid-column: 1 / -1; }
+    .hs-fa { display: flex; align-items: center; gap: 14px; }
+    .hs-kind { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--wash-2); }
+    .hs-kind button { flex: 1; padding: 7px 6px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13px; font-weight: 500; color: var(--ink-3); white-space: nowrap; cursor: pointer; }
+    .hs-kind button.on { background: var(--card); font-weight: 600; color: var(--ink); box-shadow: 0 1px 3px rgba(15, 23, 42, .15); }
+    .hs-kind button:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
+    .hm-fold { margin-top: 10px; }
+    .hm-fold > summary { padding: 10px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+    .hm-fold > summary span { margin-left: 4px; font-weight: 600; color: var(--ink-3); }
+    @media (max-width: 420px) { .hs-kind button { font-size: 12px; padding: 7px 4px; } .hs-form { grid-template-columns: minmax(0, 1fr); } .hs-sl { font-size: 10.5px; } }
   </style>
 </head>
 <body class="bg-[#FBFBF9] text-[#1A2433] min-h-screen">
@@ -3196,9 +3282,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                 <button type="button" id="hmAddProp" class="hm-btn" aria-expanded="false" aria-controls="hmAddChoice">+ Add a property</button></div>
               <div id="hmAddChoice" class="hidden hm-choice">
                 <button type="button" id="hmAddFirm" class="hm-ch"><b>One of the firm's buildings</b><small>Everyone at <span id="hmAddFirmName">your firm</span> sees its address, size and lease dates.</small></button>
-                <a id="hmAddDeal" class="hm-ch" href="/vault?add=buy#board"><b>A deal you're working on</b><small>Only you can see it. It's tracked with its stage, asking price and next date.</small></a>
+                <a id="hmAddDeal" class="hm-ch hidden" href="#properties"><b>A deal you're working on</b><small>Only you can see it. It's tracked with its stage, asking price and next date.</small></a>
                 <a id="hmAddOwn" class="hm-ch" href="/vault?add=own#properties"><b>A property you own</b><small>Only you can see it. It gets a value you can refresh, and its numbers stay private.</small></a>
               </div>
+              <!-- A development firm's add form (home-sites.js), opened here
+                   by the two choices above rather than on another page. -->
+              <div id="hmMineAdd"></div>
               <form id="buildingAddForm" class="hidden mt-3 flex flex-wrap items-end gap-2">
                 <label class="flex-1 min-w-[10rem]">
                   <span class="rd-lab">Address</span>
@@ -3222,6 +3311,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                 <button type="submit" class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add</button>
               </form>
               <p id="buildingMsg" class="hidden dk-msg"></p>
+              <p id="hmPropMsg" class="hidden dk-msg" role="status"></p>
               <div id="hmPropRows" class="hm-rows"></div>
               <p id="hmPropsEmpty" class="hidden hm-empty">No properties yet. Add a building you own, manage or are buying, and it lands on the map with its value and its dates.</p>
             </div>
@@ -10730,9 +10820,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // when Street View 404s a far pano — it is not stacked under a loading
   // facade. (First shipped 2026-07-13 as 427ff44.)
   // Tile math lives in one place so prefetch after the building snap hits
-  // the same URLs the popup will request.
-  // ⚠ deal-wall.js aerialTiles runs the same math for The Board's card
-  // photos. Change both together.
+  // the same URLs the popup will request (and Home's cards, hmAerial). The
+  // Board's deal cards ran a copy of it until the deal wall left, 2026-10-09.
   function aerialTileSpec(ll, w, h, z) {
     const scale = 256 * Math.pow(2, z);
     const x = ((ll.lng + 180) / 360) * scale;
@@ -14117,6 +14206,88 @@ async function renderMyDesk() {
   const hmCanVault = () => { try { return Boolean(proConfig && proConfig.canUseVault); } catch (_) { return false; } };
   const hmCanLeads = () => hmCanVault() && !(myFirm() && myFirm().kind === "development");
   const hmFirmKind = () => (myFirm() ? myFirm().kind || "" : "");
+
+  // A development firm's deals, worked on Properties (2026-10-09, the
+  // owner's call: "Development firms only and integrate it into the property
+  // section of the home page"). Their member's own rows (a deal, or a
+  // property they own or track) open a working pane in place under the row
+  // (home-sites.js, the global HOMESITES): the tracker, the terms and dates,
+  // the value. Everyone else's rows open the map card only, as before, and
+  // they have no deals (HOMEMAP.dealsOn). Without the script (stale, failed)
+  // the rows still list and simply open nothing.
+  let hmSites = null;        // HOMESITES' mount, made the first time it is needed
+  let hmWork = "";           // the key of the row whose pane is open
+  let hmPassedOpen = false;  // the Passed fold stays open across redraws
+  const hmWorkHere = () => HOMEMAP.dealsOn(hmFirmKind()) && typeof HOMESITES !== "undefined" && typeof SITES !== "undefined";
+  const HM_TYPES = ["Industrial", "Office", "Retail", "Multifamily", "Land", "Residential"];
+  function hmSitesView() {
+    if (!hmWorkHere()) return null;
+    if (hmSites) return hmSites;
+    hmSites = HOMESITES.mount({
+      propTypes: HM_TYPES,
+      data: () => ({ sites: deskSites || [], portfolio: deskPortfolio || [], buildings: myFirm() ? firmBuildings : [],
+        firm: myFirm(), showValues: (() => { try { return Boolean(proConfig && proConfig.portfolioValues); } catch (_) { return false; } })(),
+        today: hmTodayIso() }),
+      reload: hmReloadMine,
+      open: (key) => { hmWork = key || ""; },
+      keyOf: (address) => HOMEMAP.addressKey(address),
+      say: hmSay,
+      closeAdd: () => { document.getElementById("hmMineAdd").textContent = ""; },
+      addToFirm: async (input) => { const out = await addBuildingToFirm(input); await refreshFirmBuildings(); return out; },
+    });
+    return hmSites;
+  }
+  // The line under Properties' heading: what a write just did.
+  function hmSay(text) {
+    const p = document.getElementById("hmPropMsg");
+    p.textContent = text || "";
+    p.classList.toggle("hidden", !text);
+  }
+  // After a write from a pane or the add form: the deals and the holdings
+  // read again (never the boot copy: bootFetch hands that out once), then
+  // Home draws again with the open row's pane back under it.
+  async function hmReloadMine() {
+    const before = deskSites;
+    await readDeskSites();
+    if (deskSites == null) deskSites = before;
+    try {
+      const items = (await acctApi("GET", "/api/portfolio")).items || [];
+      deskPortfolio = items;
+      portfolioKeys.clear();
+      items.forEach((item) => markPortfolioSaved(item.address, item.property_type));
+      syncPortfolioButton();
+    } catch (_) { /* the last read stands: an outage is never an absence */ }
+    try { drawHomeMap(); } catch (err) { console.error("Home map draw failed:", err); }
+  }
+  // Open (or, from its own row, close) a row's working pane, and bring it
+  // into view. From the map or Today the Properties tab is shown first.
+  function hmOpenWork(key, { toggle = false } = {}) {
+    if (!hmSitesView()) return;
+    if (hmTab !== "properties") setHomeTab("properties");
+    hmWork = toggle && hmWork === key ? "" : key;
+    hmPlaceWork();
+    const row = hmWork && document.querySelector(`#hmPaneProps .hm-row[data-key="${CSS.escape(hmWork)}"]`);
+    if (row) {
+      if (row.closest("details")) row.closest("details").open = true;
+      row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }
+  // Put the open row's pane under it (and only that one). The pane is the
+  // same element while its data has not changed, so a redraw keeps whatever
+  // is half typed in it, and the cursor where it was.
+  function hmPlaceWork(focusedBefore) {
+    const focused = focusedBefore || document.activeElement;
+    document.querySelectorAll("#hmPaneProps .hs-pane").forEach((e) => e.remove());
+    document.querySelectorAll('#hmPaneProps .hm-row[aria-expanded="true"]').forEach((e) => e.setAttribute("aria-expanded", "false"));
+    const view = hmSitesView();
+    if (!view || !hmWork) return;
+    const row = document.querySelector(`#hmPaneProps .hm-row[data-key="${CSS.escape(hmWork)}"]`);
+    const pane = row && row._hm ? view.pane(row._hm) : null;
+    if (!pane) { if (!row) hmWork = ""; return; }
+    row.after(pane);
+    row.setAttribute("aria-expanded", "true");
+    if (focused && pane.contains(focused) && focused !== document.activeElement) focused.focus({ preventScroll: true });
+  }
   function hmEl(tag, cls, text) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -14326,6 +14497,9 @@ async function renderMyDesk() {
 
   function resetHomeMap() {
     deskSites = null; deskPortfolio = null; firmMembers = [];
+    hmSites = null; hmWork = ""; hmPassedOpen = false;
+    { const a = document.getElementById("hmMineAdd"); if (a) a.textContent = ""; }
+    { const m = document.getElementById("hmPropMsg"); if (m) { m.textContent = ""; m.classList.add("hidden"); } }
     hmLeads = null; hmLeadsAsked = false;
     hmPermits = null; hmPermitsAsked = false; hmPermitsFiled = 0; hmPermitCities = ""; hmLayerTab = "";
     hmRows = []; hmItems = []; hmSel = ""; hmFitFor = ""; hmOpenedOnce = false; hmNothing = false;
@@ -14395,7 +14569,14 @@ async function renderMyDesk() {
       val.append(hmEl("b", null, HOMEMAP.shortDate(r.next.on)), hmEl("small", null, "next date"));
     }
     row.append(th, rt, val);
-    const open = () => hmSelect(r.key, {});
+    // The row's own data, for the working pane (hmPlaceWork). A row that is
+    // the member's (a deal, or a property they own or track) opens its pane
+    // in place for a development firm's member; every row still opens its
+    // card on the map.
+    row._hm = r;
+    const works = hmWorkHere() && (r.siteId != null || r.portfolioId != null);
+    if (works) row.setAttribute("aria-expanded", "false");
+    const open = () => { hmSelect(r.key, {}); if (works) hmOpenWork(r.key, { toggle: true }); };
     row.addEventListener("click", open);
     row.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
     return row;
@@ -14414,7 +14595,7 @@ async function renderMyDesk() {
     const firm = myFirm();
     const today = hmTodayIso();
     hmRows = HOMEMAP.properties({ buildings: firm ? firmBuildings : [], sites: deskSites || [], portfolio: deskPortfolio || [],
-      critical: firm && Array.isArray(deskCritical) ? deskCritical : [], today });
+      critical: firm && Array.isArray(deskCritical) ? deskCritical : [], today, firmKind: hmFirmKind() });
     const canLeads = hmCanLeads();
     if (canLeads && !hmLeadsAsked && deskFilledFor) hmLoadLeads();
     hmItems = HOMEMAP.agenda({ critical: firm && Array.isArray(deskCritical) ? deskCritical : [],
@@ -14442,11 +14623,17 @@ async function renderMyDesk() {
     hmNothing = nothing;
     document.getElementById("hmStart").classList.toggle("hidden", !nothing || hmTab !== "today");
     document.getElementById("hmStartFirm").classList.toggle("hidden", !!firm);
-    // A property of the member's own opens the form that takes it, already
-    // open (HOMEMAP.addHref): The Board's for a deal, Properties' for one they
-    // own, a development firm's Sites tab for both.
-    document.getElementById("hmAddDeal").href = HOMEMAP.addHref("buy", hmFirmKind());
-    document.getElementById("hmAddOwn").href = HOMEMAP.addHref("own", hmFirmKind());
+    // A property of the member's own opens the form that takes it
+    // (HOMEMAP.addWhere): here on Home for a development firm's member, a
+    // deal or one they own; for anyone else a property they own opens their
+    // own page's form, and a deal is not offered (deals are a development
+    // firm's). "home" without the script offers neither: that member's own
+    // page has no Properties tab to fall back to.
+    const dealAt = HOMEMAP.addWhere("buy", hmFirmKind()), ownAt = HOMEMAP.addWhere("own", hmFirmKind());
+    const here = !!hmSitesView();
+    document.getElementById("hmAddDeal").classList.toggle("hidden", !(dealAt === "home" && here));
+    document.getElementById("hmAddOwn").classList.toggle("hidden", ownAt === "home" && !here);
+    document.getElementById("hmAddOwn").href = ownAt === "home" ? "#properties" : ownAt;
     document.getElementById("hmAddFirm").classList.toggle("hidden", !firm);
     document.getElementById("hmAddFirmName").textContent = firm ? firm.name : "your firm";
 
@@ -14469,18 +14656,39 @@ async function renderMyDesk() {
     document.getElementById("hmTodayMsgs").classList.toggle("hidden", !firm);
     document.getElementById("hmTodayPipe").classList.toggle("hidden", !canLeads);
 
-    // Properties: your deals, what you own, the firm's other buildings.
+    // Properties: your deals, what you own, the firm's other buildings, and
+    // (a development firm's) the deals passed on, folded away. The focus is
+    // noted first: clearing the list takes it from an open pane's form, and
+    // hmPlaceWork gives it back.
     hmPhotoForget();
+    const hmFocus = document.activeElement;
     const props = document.getElementById("hmPropRows");
     props.textContent = "";
-    [["buying", "Buying", "your deals"], ["owned", "Owned and tracking", "your numbers stay private"],
+    const mine = hmSitesView();
+    const buyNote = mine ? ["your deals", HOMESITES.figuresLine((deskSites || []).filter((s) => s && s.portfolio_item_id == null && SITES.isBuying(s.stage)), today)].filter(Boolean).join(" · ") : "your deals";
+    [["buying", "Buying", buyNote], ["owned", "Owned and tracking", "your numbers stay private"],
       ["firm", "Firm buildings", firm ? `on ${firm.name}'s list` : ""]].forEach(([g, title, note]) => {
       const list = hmRows.filter((r) => r.group === g);
       if (!list.length) return;
       props.append(hmGroupHead(title, list.length, note));
       list.forEach((r) => props.append(hmPropRow(r)));
     });
-    document.getElementById("hmPropsEmpty").classList.toggle("hidden", hmRows.length > 0);
+    const passed = mine ? HOMEMAP.passedDeals({ sites: deskSites || [], firmKind: hmFirmKind() }) : [];
+    if (passed.length) {
+      const fold = hmEl("details", "hm-fold");
+      fold.open = hmPassedOpen || passed.some((s) => hmWork === "passed:" + s.id);
+      fold.addEventListener("toggle", () => { hmPassedOpen = fold.open; });
+      const sum = hmEl("summary", null, "Passed");
+      sum.append(hmEl("span", null, String(passed.length)));
+      fold.append(sum);
+      passed.forEach((s) => fold.append(hmPropRow({ key: "passed:" + s.id, address: s.address, type: s.property_type || "Land",
+        group: "passed", stage: "passed", firm: false, you: true, siteId: s.id, portfolioId: null, buildingId: null,
+        acres: s.acres == null ? null : Number(s.acres), size: null, value: Number(s.asking_price) || null,
+        valueNote: Number(s.asking_price) ? "asking" : "", change: null, next: null, lat: null, lng: null })));
+      props.append(fold);
+    }
+    hmPlaceWork(hmFocus);
+    document.getElementById("hmPropsEmpty").classList.toggle("hidden", hmRows.length > 0 || passed.length > 0);
 
     // The map's switch: a Permits layer left on from a last visit is read
     // again.
@@ -14567,6 +14775,8 @@ async function renderMyDesk() {
     document.getElementById("hmAddChoice").classList.toggle("hidden", !open);
     document.getElementById("hmAddProp").setAttribute("aria-expanded", String(open));
     if (!open) setBuildingAddOpen(false);
+    // Asking again puts away a form already open from the last answer.
+    else document.getElementById("hmMineAdd").textContent = "";
   }
   document.getElementById("hmAddProp").addEventListener("click", () => {
     hmSetAddChoice(document.getElementById("hmAddChoice").classList.contains("hidden"));
@@ -14583,7 +14793,22 @@ async function renderMyDesk() {
   document.getElementById("hmAddFirm").addEventListener("click", () => {
     document.getElementById("hmAddChoice").classList.add("hidden");
     document.getElementById("hmAddProp").setAttribute("aria-expanded", "false");
+    document.getElementById("hmMineAdd").textContent = "";
     setBuildingAddOpen(true);
+  });
+  // A development firm's member adds a deal, or a property they own, here
+  // (home-sites.js's form, under the chooser), not on another page.
+  [["hmAddDeal", "buy"], ["hmAddOwn", "own"]].forEach(([id, kind]) => {
+    document.getElementById(id).addEventListener("click", (e) => {
+      const view = hmSitesView();
+      if (!view || HOMEMAP.addWhere(kind, hmFirmKind()) !== "home") return;
+      e.preventDefault();
+      hmSetAddChoice(false);
+      const box = document.getElementById("hmMineAdd");
+      box.replaceChildren(view.addForm(kind));
+      const first = box.querySelector('input[name="address"]');
+      if (first) first.focus();
+    });
   });
   document.getElementById("hmInvite").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
   document.getElementById("hmStartFirm").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
@@ -14852,6 +15077,16 @@ async function renderMyDesk() {
       b.append(tags);
       const a = hmEl("a", "hm-pop-a", item.act + " →");
       a.href = item.href;
+      // A deal's date opens the deal itself, on Properties (a development
+      // firm's member is the only one Today shows deal dates to).
+      if (item.kind === "deal") {
+        a.addEventListener("click", (e) => {
+          if (!hmSitesView()) return;
+          e.preventDefault();
+          if (hmMap) hmMap.closePopup();
+          hmOpenWork(HOMEMAP.addressKey(item.address));
+        });
+      }
       b.append(a);
     } else if (r) {
       b.append(hmEl("b", null, HOMEMAP.street(r.address)),
@@ -14871,11 +15106,25 @@ async function renderMyDesk() {
       const filedHere = hmLayerOn("permits") && Array.isArray(hmPermits)
         ? hmPermits.filter((p) => HOMEMAP.permitAt(p, [r])).sort((x, y) => y.filed.localeCompare(x.filed))[0] : null;
       if (filedHere) b.append(hmEl("span", "hm-pop-at", `Permit filed ${HOMEMAP.shortDate(filedHere.filed)}: ${filedHere.type} (${filedHere.status || HOMEMAP.permitStageLabel(filedHere.stage)})`));
+      // A development firm's own row opens its working pane in the list
+      // (hmOpenWork); a firm building opens its sheet, and a property anyone
+      // else owns opens on their own page. A row that is both the firm's and
+      // the member's offers both.
       const a = hmEl("a", "hm-pop-a");
+      const works = hmWorkHere() && (r.siteId != null || r.portfolioId != null);
+      const workLink = (el, text) => {
+        el.textContent = text; el.href = "#properties";
+        el.addEventListener("click", (e) => { e.preventDefault(); if (hmMap) hmMap.closePopup(); hmOpenWork(r.key); });
+      };
       if (r.buildingId != null) { a.textContent = "Open the building sheet →"; a.href = "/building/" + encodeURIComponent(r.buildingId); }
-      else if (r.group === "buying") { a.textContent = "Open the deal →"; a.href = HOMEMAP.dealsHref(hmFirmKind()); }
+      else if (works) workLink(a, r.group === "buying" ? "Open the deal →" : "Open the property →");
       else { a.textContent = "Open in your properties →"; a.href = "/vault#properties"; }
       b.append(a);
+      if (r.buildingId != null && works) {
+        const mineA = hmEl("a", "hm-pop-a2");
+        workLink(mineA, r.group === "buying" ? "Your deal →" : "Your numbers →");
+        b.append(mineA);
+      }
     } else return;
     card.append(b);
     // A card always pans clear of the switch over the map's top-left corner

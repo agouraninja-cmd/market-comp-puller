@@ -11107,6 +11107,10 @@ const NAV_ICONS = {
   reports: NAV_ICON('<path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/>'),
   markets: NAV_ICON('<path d="M3 5.5l4.5-2 5 2 4.5-2v11l-4.5 2-5-2-4.5 2z"/><path d="M7.5 3.5v11M12.5 5.5v11"/>'),
   permits: NAV_ICON('<path d="M5 2.8h10v14.4H5z"/><path d="M7.5 6h5M7.5 8.6h5"/><circle cx="10" cy="13" r="1.8"/>'),
+  // A funnel for the pipeline and a flag on a plot for a development firm's
+  // sites (2026-10-09). index.html restates both by hand.
+  pipeline: NAV_ICON('<path d="M3 4h14l-5.2 6.2V16l-3.6-1.6v-4.2z"/>'),
+  sites: NAV_ICON('<path d="M6.5 17V3.5"/><path d="M6.5 4h8l-2 2.6 2 2.6h-8"/><path d="M3 17h14"/>'),
   pricing: NAV_ICON('<path d="M3 10.2V4h6.2l7.3 7.3-6.2 6.2z"/><circle cx="6.6" cy="7.6" r="1.1"/>'),
 };
 const CN_LOGO =
@@ -11277,6 +11281,35 @@ const INSTANT_NAV_MARKER = "<!--INSTANT_NAV-->";
 // /api/bulk enforces the entitlement, so what lands here is presentation only.
 const BULK_RUN_MARKER = "<!--BULK_RUN-->";
 
+// --- Pipeline or Sites: the rail row a firm's kind decides (2026-10-09) -------
+// The owner's call: a broker's BOV pipeline gets its own rail row, directly
+// under Messages, and a development firm (which writes no BOVs; vault.md's
+// Sites section) gets a Sites row in that same place instead, opening Home's
+// Properties tab, where its sites are worked (/desk#properties). Both rows are
+// in the markup on both nav authors (marketBar and index.html, ids navPipe
+// and navSites on both) and ONE class on <html>, `shop-dev`, decides which
+// shows, so neither nav grows a branch.
+//
+// Who knows the kind: GET /api/org (orgs[].kind) and /api/vault's firm block,
+// both of them database reads that no synchronous render may wait on. So the
+// two pages that already make those reads write the answer down
+// (window.cnShopNav, called by index.html's loadMyFirms and vault-page.js's
+// applyShop) and every page stamps the class from that note in <head>, before
+// first paint, so a development member never sees "Pipeline" turn into
+// "Sites" under them. The note is a per-browser convenience, never a gate:
+// it is corrected on every Home load (where a member lands after signing in),
+// a member without it simply reads Pipeline, and /pipeline opens a
+// development firm's vault on Sites anyway (applyShop). A visitor with no
+// session has it cleared by ACCOUNT_NAV_JS.
+const SHOP_NAV_KEY = "cnShop";
+const SHOP_NAV_CSS =
+  `html:not(.shop-dev) #navSites,html.shop-dev #navPipe{display:none!important}`;
+const SHOP_NAV_JS =
+  `(function(){var d=document.documentElement,k=${JSON.stringify(SHOP_NAV_KEY)};` +
+  `window.cnShopNav=function(dev){d.classList.toggle("shop-dev",!!dev);` +
+  `try{if(dev)localStorage.setItem(k,"development");else localStorage.removeItem(k);}catch(e){}};` +
+  `try{if(localStorage.getItem(k)==="development")d.classList.add("shop-dev");}catch(e){}})();`;
+
 // --- "We already know who this is" (2026-08-23) ------------------------------
 // index.html ships one set of bytes and then corrects them from two fetches
 // (/api/config and /api/account/me), so until those land a signed-in member is
@@ -11320,7 +11353,10 @@ const AUTH_BOOT_CSS =
   // a shared report or the ?auth= door — /desk redirects and `/` renders the
   // landing page — so this never fights applySearchLock's own /desk branch.
   `html.cn-locked #searchSection{display:none!important}` +
-  `html.cn-locked #searchLock{display:block!important}`;
+  `html.cn-locked #searchLock{display:block!important}` +
+  // Pipeline or Sites (see SHOP_NAV_CSS above): the app's rail carries both
+  // rows too, and this is the one stylesheet the server hands index.html.
+  SHOP_NAV_CSS;
 const AUTH_BOOT_MARKER = "<!--AUTH_BOOT-->";
 // Inline in <head>, before first paint, so nothing is drawn and then taken
 // away. The <script> hands the same two facts to the page as data as well:
@@ -11348,6 +11384,9 @@ function authBoot(signedIn) {
   return `<style>${AUTH_BOOT_CSS}</style>\n` +
     `<script>window.CN_AUTH_BOOT=${JSON.stringify({ signedIn, wall: ACCOUNT_WALL, rail: Boolean(NAV_SHELL_CLASS) })};` +
     (cls ? `document.documentElement.className+=${JSON.stringify(cls)};` : "") +
+    // For every visitor, not only a cookie: this page signs a member in IN
+    // PLACE, and loadMyFirms then needs window.cnShopNav to write the row.
+    SHOP_NAV_JS +
     `</script>\n`;
 }
 
@@ -11499,6 +11538,8 @@ const ACCOUNT_NAV_CSS = `
    [hidden] attribute's UA display:none, so every slot below would render
    signed-out chrome and signed-in chrome at once without this line. */
 .hdr nav [hidden]{display:none!important}
+/* Pipeline or Sites, one of the two (SHOP_NAV_CSS, 2026-10-09). */
+${SHOP_NAV_CSS}
 /* The unread dot inside the Messages row (Three Spaces, slice 8). Ships
    hidden; ACCOUNT_NAV_JS fills it from GET /api/messages/unread in the same
    after-paint pass that reveals the vault row, so it never blinks for a
@@ -11792,6 +11833,9 @@ const ACCOUNT_NAV_JS =
   // forbids outright. Removed only, never added: a member's copy was stamped
   // server-side before first paint and must not flicker in after it.
   `if(!me)document.documentElement.classList.remove("nav-rail");` +
+  // And the note that picks Sites over Pipeline (SHOP_NAV_JS): it describes
+  // a member, and there is no member here.
+  `if(!me&&window.cnShopNav)window.cnShopNav(false);` +
   `if(!me)return;` +
   // Pricing's href, for members only — see ACCOUNT_NAV_PRICING above. It sits
   // UNDER the `if(!me)return;` guard deliberately: that one line is what makes
@@ -12853,7 +12897,12 @@ function nextMarketExample() {
 // /bulk is where the CTA POINTS (since the evening of 2026-09-04), so it is in
 // the list for the plainest reason of all: a button offering to take you where
 // you already are is a button that does nothing.
-const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/bulk", "/buildings", "/building", "/permits", "/permits/compare"]);
+// The two addresses the vault page answers at (2026-10-09): /vault, and
+// /pipeline, its Pipeline tab, which is a row of the rail. One list for the
+// route, this CTA rule and the tests. (A development firm's Sites row opens
+// Home's Properties tab, where their sites are: index.html serves it.)
+const VAULT_PAGE_PATHS = new Set(["/vault", "/pipeline"]);
+const CTA_FREE_PAGES = new Set([...VAULT_PAGE_PATHS, "/messages", "/markets", "/bulk", "/buildings", "/building", "/permits", "/permits/compare"]);
 
 const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
@@ -12938,9 +12987,10 @@ const marketBar = (signedIn = false, current = "") =>
   // header link on any surface — it was reachable from the footers and from
   // one line inside the app. It renders for every visitor because it is the
   // cheapest thing a stranger can be shown that is actually the product.
-  // --- THE ORDER (owner's call, 2026-10-08) --------------------------------
+  // --- THE ORDER (owner's call, 2026-10-08; Pipeline added 2026-10-09) -----
   //
-  //   Home, Messages | Markets, Comp report, Permits
+  //   Home, Messages, Pipeline (Sites for a development firm)
+  //   | Markets, Comp report, Permits
   //
   // The rail is a dark strip of places, an icon over a word, identical here
   // and in index.html's nav so the sidebar does not reshuffle itself when a
@@ -12953,7 +13003,7 @@ const marketBar = (signedIn = false, current = "") =>
   // Reports | Markets, Permits; before that, Workspace, Vault, Messages,
   // Market explorer, Comp report, Permit tracker (2026-08-29 to 2026-10-06).
   //
-  // The ternary is still split: the first two rows are members' only, the
+  // The ternary is still split: the first three rows are members' only, the
   // Pricing row between them and the Tools divider is anyone's, and the last
   // three are members' again.
   (signedIn
@@ -12966,7 +13016,21 @@ const marketBar = (signedIn = false, current = "") =>
       // index.html carries the twin.
       // Shared reports live here too since 2026-10-08 (its Reports view):
       // what was sent to the member, the firm's shelf and the links they sent.
-      `<a href="/messages"${current === "/messages" ? ' aria-current="page"' : ""}>${NAV_ICONS.messages}<span class="nvl">Messages</span><span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>`
+      `<a href="/messages"${current === "/messages" ? ' aria-current="page"' : ""}>${NAV_ICONS.messages}<span class="nvl">Messages</span><span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>` +
+      // Pipeline, under Messages (owner's call, 2026-10-09): a broker's BOV
+      // requests and engagements, from a new lead to won or lost. Its tab on
+      // /vault had no rail row, so the only way in was a line on Home's
+      // Today. A development firm writes no BOVs and reads Sites in this
+      // place instead (the owner: "Have the sites under messages for
+      // development firms and Pipeline for brokerage firms"); both rows
+      // render and the `shop-dev` class shows one (SHOP_NAV_CSS above).
+      // Sites opens Home's Properties tab, where a development firm's sites
+      // have been worked since that evening (home-sites.js), so it is never
+      // current here: index.html's markNavCurrent marks it. Every member,
+      // like Comp report: /pipeline answers a free member with the vault's
+      // Pro invitation. index.html carries both twins with the same ids.
+      `<a id="navPipe" href="/pipeline"${current === "/pipeline" ? ' aria-current="page"' : ""}>${NAV_ICONS.pipeline}<span class="nvl">Pipeline</span></a>` +
+      `<a id="navSites" href="/desk#properties">${NAV_ICONS.sites}<span class="nvl">Sites</span></a>`
     : "") +
   // Pricing sits in the bar itself rather than one click inside Explore. It is
   // the question a prospect arrives with, and a B2B site that hides its price
@@ -14439,6 +14503,9 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     THEME_BOOT +
     INAPP_BOOT +
     (signedIn ? INSTANT_NAV_SHELL : "") +
+    // Pipeline or Sites, decided before first paint (SHOP_NAV_JS). Members
+    // only: a stranger's bar has neither row.
+    (signedIn ? `<script>${SHOP_NAV_JS}</script>\n` : "") +
     `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn, current || "")}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n` +
     // Opt-in, never on every page: this is a WORK surface affordance, and a
     // marketing page read by a stranger is not that. The block ships hidden
@@ -32040,7 +32107,14 @@ const server = http.createServer((req, res) =>
     return;
   }
 
-  if (req.method === "GET" && req.url.split("?")[0] === "/vault") {
+  // /pipeline is the same page opened on that tab (2026-10-09): Pipeline is
+  // a row of the rail now, under Messages, and a rail row needs an address
+  // of its own. A #fragment would not do: instant-nav.js refuses to
+  // prerender a link carrying one, and the server could not mark the row,
+  // since a fragment never reaches it. vault-page.js reads the path for the
+  // first tab and writes it back when the member switches to that tab.
+  const vaultPagePath = req.url.split("?")[0];
+  if (req.method === "GET" && VAULT_PAGE_PATHS.has(vaultPagePath)) {
     (async () => {
       let boot = null;
       try {
@@ -32085,13 +32159,15 @@ const server = http.createServer((req, res) =>
       res.end(marketShell({
         title: "Your properties and comps · CompNinja",
         description: "Your own comps and deal data, private until you share them.",
-        canonical: `${SITE_URL}/vault`,
+        canonical: `${SITE_URL}${vaultPagePath}`,
         noindex: true,
         // Cookie PRESENCE, the wall's own cheap rule and what every other
         // marketShell page uses -- the real gate is the boot payload above,
         // resolved through vaultReadPayload. This only picks the chrome.
         signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
-        current: "/vault",
+        // The path asked for, so /pipeline marks the Pipeline row; /vault
+        // itself has no row and marks none until the page shows that tab.
+        current: vaultPagePath,
         // Inter, which marketShell does not load and this page has always
         // used. MARKET_CSS names the family in body{}, so without this the
         // vault would silently fall back to system-ui -- the one visible

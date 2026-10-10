@@ -570,7 +570,13 @@ function stubElement() {
     },
     click() { (on.click || []).forEach((fn) => fn({})); },
     focus() {}, scrollIntoView() {},
-    getAttribute() { return null; }, setAttribute() {},
+    // Attributes are recorded for the tests that read them (`attrs`), but
+    // getAttribute still answers null: the page reads attributes off click
+    // targets the tests build by hand, never off these.
+    attrs: {},
+    getAttribute() { return null; },
+    setAttribute(k, v) { this.attrs[k] = String(v); },
+    removeAttribute(k) { delete this.attrs[k]; },
     closest() { return null; },
   };
 }
@@ -4898,7 +4904,50 @@ test("the Comps tab is the bare address for everyone, and a link that names a ta
   assert.equal(doc.getElementById("panelPipe").className, "vt-panel on", "a #pipeline link was overridden");
   const press = (tab) => doc.getElementById("vaultTabs").fire("click", { target: { closest: () => ({ getAttribute: () => tab }) } });
   press("book"); assert.equal(replaced.pop(), "/vault");
-  press("pipe"); assert.equal(replaced.pop(), "#pipeline");
+  // Written as full addresses since Pipeline got a path of its own
+  // (2026-10-09): the Pipeline tab writes /pipeline, its rail row's address,
+  // and a hash alone would otherwise land on /pipeline#properties.
+  press("pipe"); assert.equal(replaced.pop(), "/pipeline");
+  press("props"); assert.equal(replaced.pop(), "/vault#properties");
+});
+
+// Pipeline, a row of the rail (2026-10-09): the tab has a path of its own,
+// the page opens on the tab its path names, and the rail row is current
+// while that tab shows.
+test("/pipeline opens the Pipeline tab, marks its rail row, and the path follows the tab", async () => {
+  const replaced = [];
+  const { doc } = await runPage([comp({})], null, { window: {
+    location: { hash: "", pathname: "/pipeline", search: "" }, history: { replaceState: (s, t, u) => replaced.push(u) },
+  } });
+  assert.equal(doc.getElementById("panelPipe").className, "vt-panel on", "/pipeline did not open the Pipeline tab");
+  assert.equal(doc.getElementById("panelBook").className, "vt-panel");
+  assert.equal(doc.getElementById("navPipe").attrs["aria-current"], "page", "the Pipeline row is not marked");
+  const press = (tab) => doc.getElementById("vaultTabs").fire("click", { target: { closest: () => ({ getAttribute: () => tab }) } });
+  press("book");
+  assert.equal(replaced.pop(), "/vault", "Comps, the home tab, is the bare /vault");
+  assert.equal(doc.getElementById("navPipe").attrs["aria-current"], undefined, "the mark stayed on a tab that left");
+  press("props"); assert.equal(replaced.pop(), "/vault#properties");
+  press("pipe");
+  assert.equal(replaced.pop(), "/pipeline", "the Pipeline tab must write the path its rail row links");
+  assert.equal(doc.getElementById("navPipe").attrs["aria-current"], "page");
+});
+
+test("the rail is told which kind of firm this is; /pipeline sends a development firm's member to Home", async () => {
+  const told = [], went = [];
+  await runPage([comp({})], null, { firm: DEV_FIRM, window: {
+    location: { hash: "", pathname: "/pipeline", search: "", replace: (u) => went.push(u) },
+    history: { replaceState() {} }, cnShopNav: (dev) => told.push(dev),
+  } });
+  assert.equal(told[told.length - 1], true, "the rail was not told this is a development firm");
+  assert.deepEqual(went, ["/desk#properties"], "a developer has no Pipeline: their properties are on Home");
+  const broker = [], stayed = [];
+  const b = await runPage([comp({})], null, { firm: { id: "f2", name: "Summit Brokerage", kind: "broker" }, window: {
+    location: { hash: "", pathname: "/pipeline", search: "", replace: (u) => stayed.push(u) },
+    history: { replaceState() {} }, cnShopNav: (d) => broker.push(d),
+  } });
+  assert.equal(broker[broker.length - 1], false, "a broker firm's rail must read Pipeline");
+  assert.deepEqual(stayed, []);
+  assert.equal(b.doc.getElementById("panelPipe").className, "vt-panel on");
 });
 
 test("the tabs count what is in them, and new owner requests are red", async () => {

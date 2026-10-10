@@ -3473,6 +3473,23 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   var TAB_OF_HASH={book:"book",sites:"props",pipeline:"pipe",properties:"props",contributions:"contrib",
     compsSec:"book",sitesSec:"props",pipeSec:"pipe",propsSec:"props",contribSec:"contrib"};
   var BOARD_HASHES={board:1,watchlist:1,mktSec:1};
+  // Pipeline is a row of the rail (2026-10-09), so it has a path of its own:
+  // /pipeline serves this page opened on that tab (server.js's
+  // VAULT_PAGE_PATHS), and switching to it writes the path back, so the
+  // address always names a row the rail can mark. server.js marks the row
+  // for the path it served; setTab moves the mark as the tabs change.
+  var PATH_OF_TAB={pipe:"/pipeline"};
+  var TAB_OF_PATH={"/pipeline":"pipe"};
+  var RAIL_OF_TAB={pipe:"navPipe"};
+  function tabUrl(t){
+    return PATH_OF_TAB[t]||(t===homeTab?"/vault":"/vault#"+HASH_OF_TAB[t]);
+  }
+  function markRail(t){
+    Object.keys(RAIL_OF_TAB).forEach(function(k){
+      var a=$(RAIL_OF_TAB[k]); if(!a)return;
+      if(k===t)a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current");
+    });
+  }
   var curTab="book";
   // The tab whose address is the bare path: Comps, for everyone since
   // 2026-10-09 (a development firm's page opened on Sites until Sites moved
@@ -3499,8 +3516,9 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       if(bookView==="map")drawPins(bmRows,true);
       if(emptyMap)emptyMap.invalidateSize();
     }
+    markRail(t);
     if(!quiet&&window.history&&window.history.replaceState&&window.location){
-      try{ window.history.replaceState(null,"",t===homeTab?window.location.pathname:"#"+HASH_OF_TAB[t]); }catch(e){}
+      try{ window.history.replaceState(null,"",tabUrl(t)); }catch(e){}
     }
   }
   $("vaultTabs").addEventListener("click",function(e){
@@ -3535,6 +3553,11 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // comp never looks private and can always be taken back.
   function applyShop(){
     var shop=!!(myFirm&&myFirm.kind==="development");
+    // The rail's row under Messages follows the same answer: Sites (Home's
+    // Properties) for a development firm, Pipeline for everyone else
+    // (server.js SHOP_NAV_JS, which also remembers it for the next page's
+    // first paint).
+    if(window.cnShopNav)window.cnShopNav(shop);
     noPublish=shop&&!pubCount;
     // One word for one thing on every kind of firm (2026-10-07): it was the
     // Book for a broker and Comps for a development shop.
@@ -4169,15 +4192,19 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 
   setBookView(bookView);
   (function(){
-    var h="";
-    try{ h=String((window.location&&window.location.hash)||"").replace("#",""); }catch(e){}
+    var h="",p="";
+    try{
+      h=String((window.location&&window.location.hash)||"").replace("#","");
+      p=String((window.location&&window.location.pathname)||"");
+    }catch(e){}
     // A saved link to The Board opens it where it lives now. Never from a
     // page built ahead of being seen (instant tab switching).
     if(BOARD_HASHES[h]&&!document.prerendering&&window.location&&window.location.replace){
       window.location.replace("/markets#board");
       return;
     }
-    askedTab=TAB_OF_HASH[h]||"";
+    // A hash still wins: it is the older and the more specific of the two.
+    askedTab=TAB_OF_HASH[h]||TAB_OF_PATH[p]||"";
     setTab(askedTab||"book",true);
   })();
   // Home's "Add a property" opens this page with the form that takes it

@@ -3061,6 +3061,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              opened a tab of Home, so it left the rail; marketBar carries the
              same decision. -->
         <a id="navMessagesLink" href="/messages" class="hover:text-[#1A2433] font-medium"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13v8.5h-7L5.5 16v-3h-2z"/><path d="M7 8.2h6M7 10.6h3.5"/></svg><span class="nvl">Messages</span><span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>
+        <!-- Pipeline, under Messages (owner's call, 2026-10-09), and Sites in
+             its place for a development firm. Both rows ship; the shop-dev
+             class on <html> shows one (SHOP_NAV_CSS and SHOP_NAV_JS, which
+             authBoot hands this page; loadMyFirms writes the answer). The
+             ids are marketBar's own, so one rule styles both rails.
+             Pipeline opens /pipeline, the vault page, so it is never current
+             here; Sites opens this page's Properties tab, where a
+             development firm's sites are worked, and markNavCurrent marks
+             it while that tab shows for them. -->
+        <a id="navPipe" href="/pipeline" class="hover:text-[#1A2433]"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h14l-5.2 6.2V16l-3.6-1.6v-4.2z"/></svg><span class="nvl">Pipeline</span></a>
+        <a id="navSites" href="/desk#properties" class="hover:text-[#1A2433]"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 17V3.5"/><path d="M6.5 4h8l-2 2.6 2 2.6h-8"/><path d="M3 17h14"/></svg><span class="nvl">Sites</span></a>
         <!-- The tools group's label. Rail-only, and present for every visitor
              so the two nav authors keep emitting the same shape -- see
              server.js's marketBar and RAIL_CSS for the twin. -->
@@ -3274,7 +3285,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div id="hmPaneToday" class="hm-pane" role="tabpanel" aria-labelledby="hmTabToday">
               <div id="hmTodayRows" class="hm-rows"></div>
               <p id="hmTodayEmpty" class="hidden hm-empty"></p>
-              <p id="hmTodayMore" class="hidden hm-more"><a id="hmTodayLeases" href="/buildings">All lease dates →</a><a id="hmTodayMsgs" href="/messages">All conversations →</a><a id="hmTodayPipe" class="hidden" href="/vault#pipeline">Your BOV pipeline →</a></p>
+              <p id="hmTodayMore" class="hidden hm-more"><a id="hmTodayLeases" href="/buildings">All lease dates →</a><a id="hmTodayMsgs" href="/messages">All conversations →</a><a id="hmTodayPipe" class="hidden" href="/pipeline">Your BOV pipeline →</a></p>
             </div>
 
             <div id="hmPaneProps" class="hm-pane hidden" role="tabpanel" aria-labelledby="hmTabProps">
@@ -13519,6 +13530,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     pendingLogo = "";
     brandingLoadToken++;
     renderReportBrand();
+    // The rail's Sites-or-Pipeline note described the account that just left.
+    if (window.cnShopNav) window.cnShopNav(false);
     document.getElementById("acctMenu").classList.add("hidden");
     refreshAccountUI();
     // Entitlements are per-user: the signed-in answer must not survive the
@@ -13541,6 +13554,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     pendingLogo = "";
     brandingLoadToken++;
     renderReportBrand();
+    if (window.cnShopNav) window.cnShopNav(false);
     document.getElementById("acctMenu").classList.add("hidden");
     refreshAccountUI();
     refreshProConfig();
@@ -13928,11 +13942,21 @@ async function renderMyDesk() {
     const link = document.getElementById("myDeskLink");
     if (!link) return;
     const showing = !document.getElementById("deskView").classList.contains("hidden");
-    // Every tab of Home is Home (2026-10-08). For one day the Reports tab
-    // marked a Reports row of its own; that row and that tab went to
-    // Messages together.
-    if (showing) link.setAttribute("aria-current", "page");
+    // Every tab of Home is Home (2026-10-08), with one exception since
+    // 2026-10-09: a development firm's Properties tab is the rail's Sites
+    // row (their sites are worked there). Read off the tab button and the
+    // shop-dev class, never Home's tab variable: it is declared below this,
+    // so reading it would be a temporal-dead-zone throw from the boot path.
+    const propsTab = document.getElementById("hmTabProps");
+    const onSites = showing && !!propsTab && propsTab.getAttribute("aria-selected") === "true"
+      && document.documentElement.classList.contains("shop-dev");
+    if (showing && !onSites) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
+    const sites = document.getElementById("navSites");
+    if (sites) {
+      if (onSites) sites.setAttribute("aria-current", "page");
+      else sites.removeAttribute("aria-current");
+    }
     // Home as one map takes the whole page beside the rail (2026-10-07):
     // no content gutter, no footer. A member's Home only; every other view,
     // and a signed-out /desk, keeps the page as it was.
@@ -14038,6 +14062,14 @@ async function renderMyDesk() {
     enterDesk({ markSeen: true });
     // The Home row is Home's first tab, whichever tab was showing.
     if (hmHas()) setHomeTab("today");
+  });
+  // The Sites row (a development firm's, 2026-10-09) is Home's Properties
+  // tab, swapped in place the same way, so it works from a report too.
+  document.getElementById("navSites").addEventListener("click", (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    enterDesk({ markSeen: true });
+    if (hmHas()) setHomeTab("properties");
   });
   document.getElementById("deskSignInBtn").addEventListener("click", () => openAcctModal("signin"));
   // (The rail's Reports row and its in-place handler, 2026-10-07, left with
@@ -15781,6 +15813,14 @@ async function renderMyDesk() {
           invites: Array.isArray(data.invites) ? data.invites : [],
           billing: (data.billing && typeof data.billing === "object") ? data.billing : {},
         };
+        // The rail's Pipeline row reads Sites for a development firm
+        // (2026-10-09). This read is the one that knows, on the page a member
+        // lands on after signing in, so it writes the note every other page
+        // stamps from (server.js's SHOP_NAV_JS, through authBoot).
+        if (window.cnShopNav) window.cnShopNav(Boolean(myFirm() && myFirm().kind === "development"));
+        // Which row is current can turn on that answer (Sites is a
+        // development firm's Properties tab).
+        markNavCurrent();
         return firmState;
       } catch (_) {
         // Deliberately leaves firmState alone rather than writing an empty

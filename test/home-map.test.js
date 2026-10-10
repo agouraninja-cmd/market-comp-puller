@@ -152,7 +152,7 @@ test("new BOV requests come after messages, newest first, with no number and no 
   assert.equal(bov[1].who, "1031 exchange");
   assert.equal(bov[2].place, "Industrial · 24,000 SF · Boise, ID");
   assert.equal(bov[1].place, "Retail · Meridian, ID", "no size, no size");
-  assert.ok(bov.every((x) => x.scope === "you" && x.href === "/vault#pipeline"), "the member's own pipeline");
+  assert.ok(bov.every((x) => x.scope === "you" && x.href === "/pipeline"), "the member's own pipeline");
   assert.equal(items[4].num, 1, "the first dated row is still pin 1");
   assert.equal(HM.inDays(-1), "yesterday");
 });

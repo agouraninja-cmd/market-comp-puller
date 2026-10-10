@@ -280,7 +280,7 @@
       // tomorrow, and a request is never in the future: it is today.
       out.push({ kind: "bov", n: Math.min(n, 0), date: str(l.ts).slice(0, 10), label: "BOV request", who: l.is_1031 ? "1031 exchange" : "",
         address: "", place: [str(l.type), size ? `${Math.round(size).toLocaleString("en-US")} SF` : "", str(l.market)].filter(Boolean).join(" · "),
-        scope: "you", act: "Open your pipeline", href: "/vault#pipeline", id: l.id });
+        scope: "you", act: "Open your pipeline", href: "/pipeline", id: l.id });
     });
     (Array.isArray(critical) ? critical : []).forEach((c) => {
       if (!c || !c.date) return;

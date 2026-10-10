@@ -209,8 +209,9 @@ paths:
 >   is. `HOMEMAP.agenda` lists a request while it is inside `BOV_DAYS` (14)
 >   and has no intro request, after messages and newest first, with no number
 >   and no pin (the server already anonymized it: type, size, market, date).
->   The row opens `/vault#pipeline`, and Today's foot gains "Your BOV
->   pipeline →".
+>   The row opens `/pipeline` (`/vault#pipeline` until 2026-10-09, when
+>   Pipeline became a rail row with a path of its own), and Today's foot
+>   gains "Your BOV pipeline →".
 > - **Deals on Home, a development firm's only (2026-10-09, the owner's
 >   call: "Development firms only and integrate it into the property section
 >   of the home page").** `HOMEMAP.dealsOn(firmKind)` is the rule:
@@ -237,7 +238,10 @@ paths:
 >   took them is gone) and "A deal you're working on" is hidden. Without
 >   `/sites.js` or `/home-sites.js` (`hmWorkHere`) the rows list and
 >   open nothing, and neither "Only you" choice shows. `dealsHref` and
->   `addHref` are gone.
+>   `addHref` are gone. **The rail's Sites row** (development firms only,
+>   in Pipeline's place under Messages; app-shell.md) opens this tab:
+>   `/desk#properties`, marked current by `markNavCurrent` while
+>   Properties shows for that member.
 > - **The Board is on the Markets page** (2026-10-09; markets.md): drawn on
 >   `/markets` for a signed-in member, where its `.mboard` door was, and a
 >   market page's "Add to The Board" has "Open The Board →" under it.

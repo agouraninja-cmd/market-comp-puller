@@ -51,8 +51,10 @@ test("the app's rail says which row the reader is standing on", () => {
   // over a view that is gone is worse than no highlight at all.
   // And a fifth since 2026-10-07: Home's tabs, because its Reports tab is
   // the rail's Reports row (setHomeTab), so changing tab changes the row.
-  assert.equal(INDEX_HTML.split("markNavCurrent();").length - 1, 5,
-    "every seam that hides or shows the workspace, and Home's tab switch, must re-mark the rail");
+  // And a sixth since 2026-10-09: loadMyFirms, because the firm's kind
+  // decides whether Home's Properties tab is the Sites row.
+  assert.equal(INDEX_HTML.split("markNavCurrent();").length - 1, 6,
+    "every seam that hides or shows the workspace, Home's tab switch and the firm's kind must re-mark the rail");
 });
 
 test("Workspace is a link on the app, as it is on every other page", () => {
@@ -338,4 +340,70 @@ test("Firm & branding is one row under Settings on both sides of the rail", () =
   assert.match(body, /if \(currentUser\) openFirmModal\(\);/,
     "the firm panel opened for a visitor with no account to show a firm for");
   assert.match(body, /qs\.delete\("firm"\)/, "the param is not cleared, so a reload reopens the panel");
+});
+
+test("Pipeline sits under Messages on both rails, and Sites takes its place for a development firm", () => {
+  // Sites opens Home's Properties tab, where a development firm's sites are
+  // worked since 2026-10-09 (home-sites.js); the app marks it there.
+  // Owner's call, 2026-10-09. Both rows ship on both nav authors with the
+  // SAME ids, so one rule (SHOP_NAV_CSS) decides which shows on every page,
+  // and one script (SHOP_NAV_JS) stamps the class before first paint. A row
+  // on one side only, or a rule reaching one side only, is this file's seam.
+  for (const [name, src, msgRow] of [
+    ["server.js", SERVER_JS, '<a href="/messages"'],
+    ["index.html", INDEX_HTML, '<a id="navMessagesLink" href="/messages"'],
+  ]) {
+    const msg = src.indexOf(msgRow);
+    const pipe = src.indexOf('<a id="navPipe" href="/pipeline"');
+    const sites = src.indexOf('<a id="navSites" href="/desk#properties"');
+    const tools = src.indexOf('class="navsec">Tools<');
+    assert.ok(msg > -1 && pipe > -1 && sites > -1, name + " is missing the Messages, Pipeline or Sites row");
+    assert.ok(msg < pipe && pipe < sites && sites < tools,
+      name + " does not put Pipeline, then Sites, directly under Messages and above Tools");
+    assert.equal(src.split('id="navPipe"').length - 1, 1, name + " renders the Pipeline row twice");
+    assert.equal(src.split('id="navSites"').length - 1, 1, name + " renders the Sites row twice");
+  }
+  // The same words and the same icons on both sides.
+  const icon = (name) => {
+    const m = SERVER_JS.match(new RegExp(name + ": NAV_ICON\\('([^']*)'\\)"));
+    assert.ok(m, "NAV_ICONS has no " + name + " icon");
+    return m[1];
+  };
+  assert.match(SERVER_JS, /\$\{NAV_ICONS\.pipeline\}<span class="nvl">Pipeline<\/span><\/a>/);
+  assert.match(SERVER_JS, /\$\{NAV_ICONS\.sites\}<span class="nvl">Sites<\/span><\/a>/);
+  const appPipe = INDEX_HTML.slice(INDEX_HTML.indexOf('<a id="navPipe"'), INDEX_HTML.indexOf("</a>", INDEX_HTML.indexOf('<a id="navPipe"')));
+  const appSites = INDEX_HTML.slice(INDEX_HTML.indexOf('<a id="navSites"'), INDEX_HTML.indexOf("</a>", INDEX_HTML.indexOf('<a id="navSites"')));
+  assert.ok(appPipe.includes(icon("pipeline")) && appPipe.includes('<span class="nvl">Pipeline</span>'),
+    "the app's Pipeline row differs from marketBar's");
+  assert.ok(appSites.includes(icon("sites")) && appSites.includes('<span class="nvl">Sites</span>'),
+    "the app's Sites row differs from marketBar's");
+
+  // One rule, reaching both stylesheets: ACCOUNT_NAV_CSS for every
+  // server-rendered page and AUTH_BOOT_CSS, the one the server hands
+  // index.html. Neither file restates it by hand.
+  assert.match(SERVER_JS, /const SHOP_NAV_CSS =\s*`html:not\(\.shop-dev\) #navSites,html\.shop-dev #navPipe\{display:none!important\}`;/);
+  assert.match(SERVER_JS, /\.hdr nav \[hidden\]\{display:none!important\}\n\/\*[^*]*\*\/\n\$\{SHOP_NAV_CSS\}/,
+    "ACCOUNT_NAV_CSS no longer carries the rule");
+  assert.match(SERVER_JS, /`html\.cn-locked #searchLock\{display:block!important\}` \+\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*SHOP_NAV_CSS;/,
+    "AUTH_BOOT_CSS no longer carries the rule, so the app shows both rows");
+  assert.ok(!INDEX_HTML.includes(".shop-dev"), "index.html restates the shop rule by hand");
+  // The script reaches both too: marketShell's <head> and authBoot's.
+  assert.match(SERVER_JS, /\(signedIn \? `<script>\$\{SHOP_NAV_JS\}<\/script>\\n` : ""\)/);
+  assert.match(SERVER_JS, /SHOP_NAV_JS \+\s*`<\/script>\\n`;/);
+  // The app marks Sites while a development firm's Properties tab shows,
+  // reading the tab button and the class (never hmTab, declared below
+  // markNavCurrent), and swaps the tab in place on a plain click.
+  const at = INDEX_HTML.indexOf("function markNavCurrent() {");
+  const body = INDEX_HTML.slice(at, INDEX_HTML.indexOf("\n  }\n", at));
+  assert.match(body, /getElementById\("hmTabProps"\)/, "markNavCurrent no longer reads which Home tab shows");
+  assert.match(body, /classList\.contains\("shop-dev"\)/, "markNavCurrent marks Sites for a firm that is not a developer");
+  assert.match(body, /getElementById\("navSites"\)/, "markNavCurrent never marks the Sites row");
+  assert.ok(!/\bhmTab\b/.test(body), "markNavCurrent reads hmTab, a TDZ throw from the boot path");
+  assert.match(INDEX_HTML, /getElementById\("navSites"\)\.addEventListener\("click"[\s\S]{0,400}?setHomeTab\("properties"\)/,
+    "the app's Sites row does not open Home's Properties tab in place");
+  // And the two pages that know the firm's kind write it down.
+  assert.match(INDEX_HTML, /if \(window\.cnShopNav\) window\.cnShopNav\(Boolean\(myFirm\(\) && myFirm\(\)\.kind === "development"\)\);/,
+    "loadMyFirms no longer tells the rail which kind of firm this is");
+  assert.match(VAULT_JS, /if\(window\.cnShopNav\)window\.cnShopNav\(shop\);/,
+    "applyShop no longer tells the rail which kind of firm this is");
 });

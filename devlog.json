@@ -4717,5 +4717,11 @@
     "type": "improvement",
     "title": "Comp report no longer shows “Left today” and “Per run”",
     "details": "The two-number box in the top-right corner of the Comp report page is gone, and so is the “Up to 50 per run, 200 left today” line under the list box on the report form. The limits themselves haven’t changed: if a list goes past what you have left today, the line beside the Run button still tells you."
+  },
+  {
+    "date": "2026-10-09",
+    "type": "feature",
+    "title": "Pipeline has its own spot in the left rail, under Messages",
+    "details": "Your BOV pipeline (owner requests in the markets you watch, through to won or lost) is now one click away on every page: a Pipeline row sits right under Messages, at its own address, /pipeline. If your firm is a development firm you see Sites in that spot instead, and it opens your sites on Home's Properties tab. The row lights up while you're there, and Home's “Your BOV pipeline →” link and its BOV request rows go to /pipeline too."
   }
 ]

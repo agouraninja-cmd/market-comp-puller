@@ -388,7 +388,15 @@ paths:
       the tab bar (label and rule hidden), so each part keeps its one action
       where the tabs are. A tab's address is a plain hash (#pipeline,
       #properties, #watchlist, #contributions; the old section ids are read
-      too). The Pro lock (`lockVaultDecks`) opens on Properties, and the
+      too). **Since 2026-10-09 Pipeline is a rail row and has a path
+      instead:** `/pipeline` serves this page (`VAULT_PAGE_PATHS`), the first
+      tab is read from the path when no hash names one (`TAB_OF_PATH`, into
+      `askedTab`, so a development firm's member is sent to Home from it as
+      from `#pipeline`; a hash still wins), and `setTab` writes `/pipeline`,
+      `/vault` (the home tab) or `/vault#<tab>` through `tabUrl`, and moves
+      the rail's `aria-current` (`markRail`). `applyShop` tells the rail
+      whether to show Pipeline or a development firm's Sites row
+      (`window.cnShopNav`; app-shell.md). The Pro lock (`lockVaultDecks`) opens on Properties, and the
       Contributions tab exists only while its deck does.
     - **The tabs count what they hold**, each from its own renderer: Book
       from `apply`, Pipeline from `renderPipeline` (owner requests nobody

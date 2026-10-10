@@ -2,6 +2,12 @@
   {
     "date": "2026-10-09",
     "type": "feature",
+    "title": "The Board is a watchlist on the Markets page",
+    "details": "The Board has moved to the top of the Markets page and reads like a stock watchlist. Each market you follow is a row with its median sale price per square foot, how much it moved against the six months before, a trend line of the last two years by quarter, and whether conditions look Favorable, Mixed or Tough for buying. Next to your markets you can now watch any property by typing its address: it shows its estimated value from your last check, how that changed, a line of every check, and how its market moved since. Click a row for the reasons behind the buying read, the new comps in that market, or a property’s value range and its report. Type a market like “Boise, ID” or a full address into “+ Add to The Board”. Properties you own stay on Home; a building you only watch lives on The Board, and “I own it” moves it to Home. Old links to The Board, including the one in the digest email, open it here."
+  },
+  {
+    "date": "2026-10-09",
+    "type": "feature",
     "title": "A development firm works its deals right on Home",
     "details": "If you’re in a development firm, the deals you’re buying and the properties you own or track are worked on Home’s Properties tab now, instead of on a tab of their own. Click one of your rows and it opens in place under the row: for a deal, the five steps from Prospect to Owned with the day you reached each, one click to move it on or pass on it, its asking price, acres, zoning and seller, its key dates with a countdown, notes, Edit and Run a land report; for a property you hold, its likely value, how it changed, a chart of every check, how the market moved since, and Open report, Refresh value and Add to firm. “+ Add a property” adds a deal, or a property you own or track, right there, and deals you passed on fold away under Passed at the foot of the list. Clicking a deal’s pin or one of its dates in Today opens it too. Deal tracking is for development firms only, so it’s gone from The Board, which is back to being the markets you follow, and from your own comps page, which for a development firm is now your comps and The Board."
   },

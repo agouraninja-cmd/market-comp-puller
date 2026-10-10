@@ -14585,7 +14585,7 @@ async function renderMyDesk() {
     props.textContent = "";
     const mine = hmSitesView();
     const buyNote = mine ? ["your deals", HOMESITES.figuresLine((deskSites || []).filter((s) => s && s.portfolio_item_id == null && SITES.isBuying(s.stage)), today)].filter(Boolean).join(" · ") : "your deals";
-    [["buying", "Buying", buyNote], ["owned", "Owned and tracking", "your numbers stay private"],
+    [["buying", "Buying", buyNote], ["owned", "Owned", "your numbers stay private"],
       ["firm", "Firm buildings", firm ? `on ${firm.name}'s list` : ""]].forEach(([g, title, note]) => {
       const list = hmRows.filter((r) => r.group === g);
       if (!list.length) return;

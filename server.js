@@ -208,6 +208,10 @@ const BOVSVC = require("./bov-log");
 // /api/sites write goes through. Dual-exported; the browser reads the same
 // copy at /sites.js.
 const SITES = require("./sites");
+// The Board, on the Markets page (2026-10-09): a watchlist of markets and
+// watched properties. Dual-exported; the server takes its quarterSeries for
+// the feed's trend line, and the browser reads the same copy at /board.js.
+const BOARD = require("./board");
 // Corpus audit — the structural integrity rules for the comp corpus. It also
 // owns the source_type badge rule (enforcedSourceType + isAggregateAddress),
 // which USED to live inline below: the audit has to detect rows that predate a
@@ -2630,6 +2634,11 @@ async function buildWatchlistFeed(user, ent, cutoffOf, opts) {
     const priWin = datedSales.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
     const median_trend = curWin.length >= 3 && priWin.length >= 3
       ? { current: medianPsfOf(curWin), prior: medianPsfOf(priWin) } : null;
+    // The Board's trend line (2026-10-09): the median sale $/SF of each of
+    // the last eight calendar quarters with at least two dated sales
+    // (board.js quarterSeries). Two points or it is left off; the digest
+    // ignores the key.
+    const spark = BOARD.quarterSeries(datedSales, nowFrac);
     // The watched market's standing /market/<slug> page, when one exists —
     // the desk's feed section links each market it reports on to the page
     // that covers it. Absent key = no page = no link; the digest builder
@@ -2647,6 +2656,7 @@ async function buildWatchlistFeed(user, ent, cutoffOf, opts) {
       ...(marketPage ? { market_page: marketPage } : {}),
       ...(direction ? { direction } : {}),
       ...(median_trend ? { median_trend } : {}),
+      ...(spark.length >= 2 ? { spark } : {}),
       // Always present for a subscriber, including at zero — "nobody searched
       // this market in 30 days" is a true answer and a useful one, and an
       // omitted field would blank the line on exactly the quiet markets worth
@@ -12472,13 +12482,8 @@ table.stmt th[aria-sort="ascending"]::after{content:" ▲";font-size:.8em}
    template call. node --check still passes when that happens; the server dies
    at startup instead. */
 .vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
-/* The Board's door on /markets, for a signed-in member (Draft C took The
-   Board's row off the rail, and this is the page the rail's Markets row opens). */
-.mboard{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;border:1px solid var(--edge);background:var(--card);
-  border-radius:6px;padding:12px 16px;margin:-6px 0 24px;font-size:14px;color:var(--ink-2);box-shadow:var(--lift)}
-.mboard b{color:var(--ink);font-weight:600}
-.mboard a{margin-left:auto;font-weight:600;color:var(--ink);text-decoration:underline;text-decoration-color:var(--edge)}
-.mboard a:hover{text-decoration-color:var(--ink)}
+/* The Board's door on /markets (a band) left on 2026-10-09: The Board is
+   drawn there itself now (BOARD_CSS, beside renderMarketDirectoryHTML). */
 .mfilter{margin-top:24px;max-width:420px}
 .mfilter input{width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--edge);border-radius:6px;
   padding:10px 12px;font-family:inherit;font-size:16px;color:var(--ink)}
@@ -15160,7 +15165,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     ? `<div class="cta"><h2>Use this ${escHtml(p.type.toLowerCase())} market in your work</h2>` +
       `<p>Put it on The Board, or take these comps with you. Automated estimates, not an appraisal.</p>` +
       `<button type="button" class="btn" id="mktWatch" data-market="${escHtml(p.city + ", " + p.state)}" data-type="${escHtml(p.type)}">Add to The Board</button>` +
-      `<div><a class="alt" href="/vault#board">Open The Board &rarr;</a></div>` +
+      `<div><a class="alt" href="/markets#board">Open The Board &rarr;</a></div>` +
       (compRows
         ? `<p style="margin:14px 0 0"><button type="button" class="alt" id="mktCsv" data-slug="${escHtml(slug)}">Download these comps as CSV</button></p>`
         : "") +
@@ -15210,6 +15215,121 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     ogImage: cityHero.ogImage,
   });
 }
+
+// The Board on the Markets page (2026-10-09), for a signed-in member: the
+// section /board.js draws into, the two scripts it needs (the buying read,
+// then the Board), and the mount. No member data in it: the same bytes for
+// every member, and /board.js reads the rest. id="board" is the address
+// every door uses (/markets#board: the market pages, the digest email).
+const BOARD_SECTION =
+  `<section id="board" class="bd" aria-label="The Board"><p class="bd-mute">Loading The Board&hellip;</p></section>` +
+  `<script src="/buying-read.js"></script><script src="/board.js"></script>` +
+  `<script>(function(){var r=document.getElementById("board");if(!r||!window.BOARD)return;` +
+  `var B=window.BUYINGREAD;window.BOARD.mount({root:r,readOf:B?B.buyingRead:null,leans:B?B.LEANS:null});})();</script>`;
+
+// The Board's styles: a watchlist table, one row per market or property, a
+// detail row under the open one; on a phone each row is a two-column card.
+// Theme tokens only, so dark mode needs nothing of its own. A move up is
+// green and down is red, a price list's convention; whether that helps a
+// BUYER is the Buying column's job, not the colour's. MARKET_CSS gives every
+// table min-width:640px (a wide statement scrolls sideways on a phone); The
+// Board's list is a stack of cards there instead, so it sets its own to 0,
+// or its price and change columns sit off the screen. Its row rules use child
+// selectors, so an open market's comps table inside a row keeps its own.
+// No backticks in here: this is a template literal.
+const BOARD_CSS = `
+.bd{margin:6px 0 30px;border:1px solid var(--edge);border-radius:10px;background:var(--card);box-shadow:var(--lift);padding:18px 20px 14px}
+.bd-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 16px;margin-bottom:12px}
+.bd-head h2{margin:0;font-family:var(--serif);font-weight:500;font-size:24px;line-height:1.2;color:var(--ink)}
+.bd-sum{margin:4px 0 0;font-size:13.5px;color:var(--ink-3)}
+.bd-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.bd-seg{display:inline-flex;padding:3px;border-radius:8px;background:var(--wash)}
+.bd-seg button{font:inherit;font-size:13px;padding:6px 12px;border:0;border-radius:6px;background:none;color:var(--ink-3);cursor:pointer}
+.bd-seg button[aria-pressed="true"]{background:var(--card);color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(15,23,42,.15)}
+.bd-seg button:focus-visible,.bd-btn:focus-visible{outline:2px solid var(--red);outline-offset:1px}
+.bd .btn.bd-addbtn{padding:8px 16px;font-size:13.5px}
+.bd-add{display:grid;grid-template-columns:minmax(0,1fr) 170px auto auto;gap:10px;align-items:end;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--wash);margin-bottom:12px}
+.bd-add label{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--ink-3)}
+.bd-add input,.bd-add select{font:inherit;font-size:14px;letter-spacing:0;text-transform:none;font-weight:400;color:var(--ink);background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:8px 10px;min-width:0}
+.bd .btn.bd-go{padding:9px 22px}
+.bd-lnk{font:inherit;font-size:13.5px;background:none;border:0;color:var(--ink-3);cursor:pointer;padding:9px 4px}
+.bd-lnk:hover{color:var(--ink)}
+.bd-msg{margin:0 0 10px;font-size:13.5px;color:var(--ok-text)}
+.bd-msg.bad{color:var(--err-text)}
+.bd-mute{color:var(--ink-3);font-size:13px}
+.bd-empty{margin:4px 0 6px}
+.bd-tw{overflow-x:auto}
+.bd-tbl{width:100%;min-width:0;border-collapse:collapse;font-size:14px}
+.bd-tbl th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;background:none}
+.bd-tbl th.n,.bd-tbl td.n{text-align:right}
+.bd-tbl td{padding:11px 10px;border-bottom:1px solid var(--hair);vertical-align:middle;background:none}
+.bd-row{cursor:pointer}
+.bd-row:hover > td,.bd-row.on > td{background:var(--wash)}
+.bd-row:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
+.bd-name b{display:block;color:var(--ink);font-weight:600}
+.bd-name small,.bd-price small,.bd-chg small{display:block;margin-top:1px;font-size:12px;color:var(--ink-3);white-space:nowrap}
+.bd-new{color:var(--red);font-weight:600}
+.bd-price b,.bd-chg b{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink);white-space:nowrap}
+.bd-chg b.bd-up{color:var(--ok-text)}
+.bd-chg b.bd-down{color:var(--err-text)}
+.bd-spark{display:block}
+.bd-spark polyline{stroke:var(--ink-3)}
+.bd-spark circle{fill:var(--ink-3)}
+.bd-spark.up polyline{stroke:var(--ok-text)}
+.bd-spark.up circle{fill:var(--ok-text)}
+.bd-spark.dn polyline{stroke:var(--err-text)}
+.bd-spark.dn circle{fill:var(--err-text)}
+.bd-nospark{color:var(--ink-4)}
+.bd-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 10px 2px 8px;font-size:12.5px;font-weight:600;white-space:nowrap}
+.bd-pill i{width:8px;height:8px;border-radius:50%;background:currentColor}
+.bd-pill.bd-good{background:var(--ok-bg);color:var(--ok-text)}
+.bd-pill.bd-mid{background:var(--warn-bg);color:var(--warn-text)}
+.bd-pill.bd-bad{background:var(--err-bg);color:var(--err-text)}
+.bd-cv{width:18px;color:var(--ink-4);font-size:18px;line-height:1}
+.bd-row.on .bd-cv{color:var(--ink)}
+.bd-gh > td{padding:16px 10px 6px;border-bottom:1px solid var(--line);cursor:default}
+.bd-gh b{font-family:var(--serif);font-weight:500;font-size:17px;color:var(--ink)}
+.bd-gh span{margin-left:8px;font-size:12px;font-weight:600;color:var(--ink-3)}
+.bd-gh small{margin-left:8px;font-size:12px;color:var(--ink-3)}
+.bd-gh a{font-size:12px;font-weight:600}
+.bd-open > td{padding:4px 12px 16px;background:var(--wash);cursor:default}
+.bd-why h4{margin:8px 0 6px;font-size:13px;color:var(--ink)}
+.bd-why ul{list-style:none;margin:0 0 8px;padding:0;font-size:13px;line-height:1.5;color:var(--ink-2)}
+.bd-why b{margin-right:6px;font-size:9px;color:var(--ink-3)}
+.bd-comps{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0;background:var(--card)}
+.bd-comps th,.bd-comps td{padding:6px 8px;border-bottom:1px solid var(--hair);text-align:left;background:none}
+.bd-comps th.n,.bd-comps td.n{text-align:right}
+.bd-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.bd-btn{display:inline-block;font:inherit;font-size:13px;font-weight:600;color:var(--ink);background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:6px 12px;cursor:pointer;text-decoration:none}
+.bd-btn:hover{border-color:var(--ink-3);color:var(--ink)}
+.bd-btn[disabled]{opacity:.6;cursor:default}
+.bd-rm{margin-left:auto;font:inherit;font-size:13px;background:none;border:0;color:var(--ink-3);cursor:pointer}
+.bd-rm:hover{color:var(--red);text-decoration:underline}
+.bd-line{margin:8px 0 0;font-size:13.5px;line-height:1.5;color:var(--ink-2)}
+.bd-line b{color:var(--ink)}
+.bd-line small{display:block;font-size:12px;color:var(--ink-3)}
+.bd-attn{margin:8px 0 0;font-size:13px;color:var(--warn-text);background:var(--warn-bg);border:1px solid var(--warn-rule);border-radius:6px;padding:6px 10px}
+.bd-fine{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--ink-3);max-width:90ch}
+@media (max-width:700px){
+  .bd{padding:14px 12px 10px}
+  .bd-add{grid-template-columns:minmax(0,1fr) auto}
+  .bd-add .bd-q{grid-column:1/-1}
+  .bd-tbl > thead{display:none}
+  .bd-tbl,.bd-tbl > tbody,.bd-gh,.bd-gh > td,.bd-open,.bd-open > td{display:block}
+  .bd-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:10px 6px;border-bottom:1px solid var(--hair)}
+  .bd-row > td{border:0;padding:0}
+  .bd-row:hover > td,.bd-row.on > td{background:none}
+  .bd-row.on{background:var(--wash)}
+  .bd-row .bd-name{grid-column:1;grid-row:1}
+  .bd-row .bd-price{grid-column:2;grid-row:1}
+  .bd-row .bd-trend{grid-column:1;grid-row:2}
+  .bd-row .bd-chg{grid-column:2;grid-row:2}
+  .bd-row .bd-read{grid-column:1/-1;grid-row:3}
+  .bd-row .bd-read .bd-mute{display:none}
+  .bd-row .bd-cv{display:none}
+  .bd-open .bd-comps{min-width:520px}
+}
+`;
 
 function renderMarketDirectoryHTML(signedIn) {
   const merged = allMarketPages();
@@ -15460,14 +15580,12 @@ function renderMarketDirectoryHTML(signedIn) {
   const body =
     `<h1>Commercial Real Estate Market Snapshots</h1>` +
     `<p class="sub">Recent price-per-square-foot and cap-rate snapshots by market, built from real comparable sales. Pick a market, or run a free valuation for your own building.</p>` +
-    // The Board's door (Draft C, 2026-10-07): it has no rail row of its own,
-    // and the markets a member follows are added from these pages, so this
-    // is where a member looks for it. Members only; the anonymous page is
-    // cached publicly and has no Board.
-    (signedIn
-      ? `<div class="mboard"><span><b>The Board</b> · The markets you follow, and the properties you're trying to buy.</span>` +
-        `<a href="/vault#board">Open The Board &rarr;</a></div>`
-      : "") +
+    // The Board itself (2026-10-09; it was a door to /vault#board from
+    // 2026-10-07): the owner's "stock portfolio watch list for properties
+    // and markets", drawn by /board.js from the member's own reads, so this
+    // HTML is the same for every member and carries nothing of theirs.
+    // Members only: the anonymous page is cached publicly and has no Board.
+    (signedIn ? BOARD_SECTION : "") +
     // The rankings, above the directory grid. Ordering is deliberate: the grid
     // below answers "what do you have on this city", the card answers "which
     // cities should I be looking at", and the second question comes first.
@@ -15485,7 +15603,8 @@ function renderMarketDirectoryHTML(signedIn) {
     // so without it the class links render as bare text and the band pills lose
     // their colour. Only when there IS a card — an unconfigured install ships
     // no unused stylesheet.
-    head: (mapUi ? LEAFLET_HEAD : "") + (RANK_ENTRY ? `<style>${RANKPAGE.RANK_CSS}</style>` : ""),
+    head: (mapUi ? LEAFLET_HEAD : "") + (RANK_ENTRY ? `<style>${RANKPAGE.RANK_CSS}</style>` : "") +
+      (signedIn ? `<style>${BOARD_CSS}</style>` : ""),
     current: "/markets",
   });
 }
@@ -21676,7 +21795,7 @@ const server = http.createServer((req, res) =>
             });
             const mail = DIGEST.buildDigest({
               items: feed,
-              deskUrl: `${SITE_URL}/vault#board`,
+              deskUrl: `${SITE_URL}/markets#board`,
               unsubscribeUrl: unsubscribeUrlFor(account.id),
             });
             if (!mail) { summary.nothingNew += 1; continue; }
@@ -21839,9 +21958,9 @@ const server = http.createServer((req, res) =>
           body: `<div class="wrap"><h1>${resubscribe ? "These emails are back on" : "That&rsquo;s done"}</h1>` +
             `<p>${resubscribe
               ? "You will get a digest again when a market on The Board has new comps."
-              : "You will not get another Board digest. The Board itself is untouched, and the same markets are still on it in your Data."}</p>` +
+              : "You will not get another Board digest. The Board itself is untouched, and the same markets are still on it, on the Markets page."}</p>` +
             `<p><a href="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "" : "&amp;on=1"}">` +
-            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/vault#board">Go to The Board</a></p></div>`,
+            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/markets#board">Go to The Board</a></p></div>`,
         }));
       }
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
@@ -30809,6 +30928,9 @@ const server = http.createServer((req, res) =>
     // The buying read on The Board's market tiles (the global BUYINGREAD),
     // called by /vault's inline script on the same terms.
     "/buying-read.js": { file: "buying-read.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // The Board on the Markets page (the global BOARD), mounted by that
+    // page's inline script for a signed-in member. Same maxAge: 0 rule.
+    "/board.js": { file: "board.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },

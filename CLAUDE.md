@@ -28,13 +28,15 @@ the member and the links they sent are Messages' **Reports** view
 headed "Your properties and comps" and opened from Home's tabs; it was the
 **Data** rail row from 2026-10-04 until the rail became places (since
 2026-10-08: Home, Messages | Markets, Comp report, Permits; app-shell.md). Its tabs with no rail row
-have doors instead: new BOV requests land in Home's Today (the Pipeline), and
-The Board is linked from `/markets` and every market page. In copy a **property** is
+have doors instead: new BOV requests land in Home's Today (the Pipeline).
+**The Board** is not on it since 2026-10-09: it is a stock-style watchlist of
+markets and watched properties drawn on `/markets` itself for a signed-in
+member (`board.js`; markets.md), and every market page links there. In copy a **property** is
 something you own, manage or are buying and a **comp** is a past deal you value
 against. Code, routes and the rules files still say "desk"/"workspace" and
 "vault", and copy must never say "Workspace" or "Vault" again.
 The markets a member follows are **The Board** in copy since 2026-10-06
-(the Data tab, the digest email, settings, the market pages' button); code,
+(the Markets page, the digest email, settings, the market pages' button); code,
 routes, tables and `watchlist-digest.js` still say "watchlist", and copy
 must never say "Watchlist" again. "The board" is now that one thing, so the
 firm's buildings on Home are "buildings", never "the board", and Home's old

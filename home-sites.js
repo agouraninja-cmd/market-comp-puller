@@ -8,18 +8,21 @@
 // moved, and The Board went back to being the markets a member follows.
 //
 // Home already lists every property once (home-map.js): the deals, what the
-// member owns or tracks, and the firm's buildings. This file adds the WORKING
-// half under a row the member opens, in place in that list:
+// member owns, and the firm's buildings. This file adds the WORKING half
+// under a row the member opens, in place in that list:
 //   * a deal (a user_sites row on Prospect, LOI, Under contract, Entitlements,
 //     or Passed): the five-step tracker with the day each step was reached,
 //     Move to <next> / Pass / Back to Prospect, key terms, key dates, notes,
 //     Edit, Run a land report, Remove;
-//   * a property they hold (portfolio_items, Owned unless a user_sites status
-//     row says Tracking): its likely value, change and history, when it was
+//   * a property they own (portfolio_items, Owned unless a user_sites status
+//     row says Tracking, which puts it on The Board): its likely value,
+//     change and history, when it was
 //     checked, the market since, the firm door, how they bought it, Open
-//     report, Refresh value, Mark as Tracking/Owned, Remove;
-// plus the add form ("I'm buying it", "I own it", "I'm tracking it") that
-// Home's "+ Add a property" opens for a development firm's member.
+//     report, Refresh value, Watch it on The Board instead, Remove;
+// plus the add form ("I'm buying it", "I own it") that Home's "+ Add a
+// property" opens for a development firm's member. A building watched
+// rather than owned (a Tracking status) is The Board's since 2026-10-09
+// (board.js, on the Markets page), so it is neither listed nor added here.
 //
 // Rules this file keeps:
 //   * It DRAWS and asks; it decides nothing it can read from SITES (sites.js,
@@ -375,7 +378,6 @@
     // ---- a property they hold ----
     function heldPane(key, it, status) {
       const d = data(), show = !!d.showValues, m = held(it, status);
-      const other = m.stage === "owned" ? "tracking" : "owned";
       const href = "/?property=" + encodeURIComponent(it.id);
       const out = [];
       if (show) {
@@ -408,7 +410,9 @@
       out.push(h("div", { class: "hs-foot" },
         h("a", { class: "hm-btn", href, title: "Open this report (no new search, no cost)" }, "Open report"),
         h("a", { class: "hm-btn", href: href + "&refresh=1", title: "Runs a new live search for this property" }, "Refresh value"),
-        btn("Mark as " + S.labelOf(other), "", (e) => { e.currentTarget.disabled = true; setHeld(key, it, status, other); }),
+        // A building watched rather than owned is The Board's (board.js, on
+        // the Markets page, since 2026-10-09): this moves it there.
+        btn("Watch it on The Board instead", "", (e) => { e.currentTarget.disabled = true; setHeld(key, it, status, "tracking"); }),
         h("button", { type: "button", class: "hs-rm", onclick: () => removeHeld(key, it, status) }, "Remove")));
       out.push(h("p", { class: "hs-mute hs-note" }, "Opening a report costs nothing. Refresh runs a new search."));
       return out;
@@ -420,7 +424,10 @@
       return done.then((r) => {
         if (r.s !== 200) return fail(key, r.j.error || "That didn't save. Nothing has been lost.");
         delete state.msg[key];
-        return after(key, street(it.address) + (to === "tracking" ? " is one you track now." : " is one you own now."));
+        // A watched building leaves Home for The Board, so its pane closes.
+        return to === "tracking"
+          ? after(null, street(it.address) + " is on The Board now, on the Markets page.")
+          : after(key, street(it.address) + " is one you own now.");
       });
     }
     function removeHeld(key, it, status) {
@@ -478,7 +485,7 @@
 
     // ---- the add form ----
     function addForm(kind) {
-      state.addKind = kind === "own" || kind === "track" ? kind : "buy";
+      state.addKind = kind === "own" ? "own" : "buy";
       state.addMsg = "";
       liveAdd = h("div", { class: "hs-add" });
       drawAdd();
@@ -504,7 +511,7 @@
       if (!liveAdd) return;
       const k = state.addKind;
       const seg = h("div", { class: "hs-kind hs-wide", role: "radiogroup", "aria-label": "What is it" },
-        [["buy", "I'm buying it"], ["own", "I own it"], ["track", "I'm tracking it"]].map(([v, t]) =>
+        [["buy", "I'm buying it"], ["own", "I own it"]].map(([v, t]) =>
           h("button", { type: "button", role: "radio", "aria-checked": k === v ? "true" : "false", class: k === v ? "on" : null,
             onclick: () => {
               const kept = keep(); state.addKind = v; drawAdd(); restore(kept);
@@ -520,7 +527,7 @@
           field("What it is", input("next_label", "", { maxlength: 80, placeholder: "Due diligence ends" })),
           field("Notes", input("notes", "", { maxlength: 1000, placeholder: "Optional" }), true)]
         : [field("Property type", select("property_type", typeOpts, ""), true),
-          h("p", { class: "hs-wide hs-mute" }, "No search runs. Use Refresh on it when you want a value.")];
+          h("p", { class: "hs-wide hs-mute" }, "No search runs. Use Refresh on it when you want a value. A building you only want to watch goes on The Board, on the Markets page.")];
       liveAdd.replaceChildren(h("form", { class: "hs-form", "aria-label": "Add a property", onsubmit: submitAdd },
         seg,
         field("Address", input("address", "", { maxlength: 300, placeholder: "Street, City, ST", required: true, autocomplete: "off" }), true),
@@ -555,12 +562,10 @@
       const type = v("property_type");
       if (!type) return addFail("Which kind of property is it?");
       state.busy = true;
-      const tracking = state.addKind === "track";
       send("POST", "/api/portfolio", { address, propertyType: type }).then((r) => {
         if (r.s !== 200 || !r.j.id) return addFail(r.j.error || "That didn't save. Nothing has been lost.");
-        return (tracking ? send("POST", "/api/sites", { address, property_type: type, stage: "tracking", portfolio_item_id: r.j.id }) : Promise.resolve(null))
-          .then(() => added(r.j.existed ? street(address) + " was already with your properties."
-            : "Added " + street(address) + ". Use Refresh on it when you want a value."));
+        return added(r.j.existed ? street(address) + " was already with your properties."
+          : "Added " + street(address) + ". Use Refresh on it when you want a value.");
       });
     }
 

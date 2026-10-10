@@ -58,15 +58,27 @@ test("a deal's next date is its soonest date still ahead; a passed deal is left 
   assert.equal(rows[0].valueNote, "asking");
 });
 
-test("Owned and Tracking are the status of a held property, not a second row", () => {
-  const rows = HM.properties({ today: TODAY,
-    portfolio: [HELD({ id: "p2", address: "2850 S Cole Rd, Boise, ID 83709" })],
-    sites: [SITE({ id: "s3", address: "2850 S Cole Rd, Boise, ID 83709", stage: "tracking", portfolio_item_id: "p2" })],
-  });
+test("Owned is the status of a held property, not a second row; a Tracking one is The Board's, not Home's", () => {
+  const cole = HELD({ id: "p2", address: "2850 S Cole Rd, Boise, ID 83709" });
+  let rows = HM.properties({ today: TODAY, portfolio: [cole],
+    sites: [SITE({ id: "s3", address: "2850 S Cole Rd, Boise, ID 83709", stage: "owned", portfolio_item_id: "p2" })] });
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].stage, "tracking");
+  assert.equal(rows[0].stage, "owned");
   assert.equal(rows[0].group, "owned");
   assert.equal(rows[0].portfolioId, "p2");
+  assert.equal(rows[0].siteId, "s3");
+  // Watched, not owned (2026-10-09): on The Board, so not listed here, and
+  // not listed again as a plain holding either.
+  rows = HM.properties({ today: TODAY, portfolio: [cole],
+    sites: [SITE({ id: "s3", address: "2850 S Cole Rd, Boise, ID 83709", stage: "tracking", portfolio_item_id: "p2" })] });
+  assert.deepEqual(rows, []);
+  // The NEWEST status decides, whichever order the read returns them in.
+  const two = [SITE({ id: "a", stage: "tracking", portfolio_item_id: "p2", updated_at: "2026-10-01" }),
+    SITE({ id: "b", stage: "owned", portfolio_item_id: "p2", updated_at: "2026-10-08" })];
+  assert.deepEqual(HM.properties({ today: TODAY, portfolio: [cole], sites: two }).map((r) => [r.stage, r.siteId]), [["owned", "b"]]);
+  assert.deepEqual(HM.properties({ today: TODAY, portfolio: [cole], sites: two.slice().reverse() }).map((r) => [r.stage, r.siteId]), [["owned", "b"]]);
+  two[1].updated_at = "2026-09-01";
+  assert.deepEqual(HM.properties({ today: TODAY, portfolio: [cole], sites: two }), [], "watched since it was owned");
 });
 
 test("a firm building's next date is its soonest lease date", () => {
@@ -157,14 +169,14 @@ test("deals are a development firm's: listed, dated and passed on only for its m
   for (const k of ["broker", "", undefined]) {
     assert.ok(!HM.dealsOn(k));
     const rows = HM.properties({ today: TODAY, firmKind: k, sites, portfolio });
-    assert.deepEqual(rows.map((r) => r.group), ["owned"], "no Buying row outside a development firm");
-    // A status row is the PROPERTY's, so it still says Tracking for anyone.
-    assert.equal(rows[0].stage, "tracking");
+    // No Buying row outside a development firm; and the Tracking status is
+    // the PROPERTY's, read for anyone: it puts Cole Rd on The Board.
+    assert.deepEqual(rows, []);
     assert.deepEqual(HM.agenda({ today: TODAY, firmKind: k, sites }), [], "and no deal dates in Today");
     assert.deepEqual(HM.passedDeals({ sites, firmKind: k }), []);
   }
   const rows = HM.properties({ today: TODAY, firmKind: DEV, sites, portfolio });
-  assert.deepEqual(rows.map((r) => r.group), ["buying", "owned"]);
+  assert.deepEqual(rows.map((r) => r.group), ["buying"]);
   // A deal's date opens the deal itself, on Home's Properties tab.
   const due = HM.agenda({ today: TODAY, firmKind: DEV, sites });
   assert.deepEqual(due.map((x) => [x.kind, x.href]), [["deal", "/desk#properties"]]);

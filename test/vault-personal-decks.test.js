@@ -23,7 +23,9 @@ const DAY = 86400000;
 const TOKEN = "vault-decks-token";
 const TOKEN_HASH = crypto.createHash("sha256").update(TOKEN).digest("hex");
 
-const PERSONAL = ["deckProps", "propsSec", "deckMarkets", "mktSec"];
+// The Board was the second personal deck until 2026-10-09, when it moved to
+// the Markets page (board.js); its ids must not come back here either.
+const PERSONAL = ["deckProps", "propsSec"];
 // Two decks since 2026-09-04: the hubs deck left for /messages, and its ids
 // must NOT come back into this list, or the lock would name elements that no
 // longer exist and the test would prove nothing about them.
@@ -56,7 +58,7 @@ test("the emitted script compiles in every boot state, refusals included", () =>
   }
 });
 
-test("both personal decks are in the markup for every visitor", () => {
+test("the personal deck is in the markup for every visitor", () => {
   // The markup is one set of bytes whatever the boot says; which decks SHOW is
   // decided by the script. So a refusal must not be able to drop the elements
   // the personal decks render into, or a later 200 would have nowhere to draw.
@@ -149,10 +151,11 @@ test("no heading collides with the two market-ish ones this page already had", (
   // #rollupSec's h2 "Your markets" is where this broker's COMPS are, and
   // #covBox's summary "Markets you watch" is where they want LEADS from. Both
   // predate the watchlist. A third called either would put two identical
-  // headings on one screen meaning different things.
+  // headings on one screen meaning different things. (The Board, the
+  // watchlist's deck, is on the Markets page since 2026-10-09.)
   const labels = [...html.matchAll(/<span class="dlab">([^<]+)</g)].map((m) => m[1]);
   assert.equal(new Set(labels).size, labels.length, `duplicate deck labels: ${labels}`);
-  assert.ok(labels.includes("The Board"), "The Board deck (the watchlist) lost its name");
+  assert.ok(!labels.includes("The Board"), "The Board is back on this page");
   assert.ok(!labels.includes("Your markets"),
     "'Your markets' is #rollupSec's h2 — a deck by that name is a collision");
 });

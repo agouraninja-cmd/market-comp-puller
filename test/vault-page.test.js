@@ -636,9 +636,8 @@ async function runPage(comps, benchResult, opts, identity) {
   const html = renderVaultHTML(bootPayload, CHROME);
   const script = pageScript(html);
   const doc = stubDocument();
-  // opts.window adds globals the page reads off window: The Board's tests
-  // hand in BUYINGREAD here, standing in for /buying-read.js, which loads as
-  // its own script and is not in this one, and a location and history.
+  // opts.window adds globals the page reads off window: a location and a
+  // history, for the tests about which tab an address opens.
   const win = Object.assign({ __VAULT_BOOT__: bootPayload }, opts.window || {});
   const fakeFetch = (url, init) => {
     const u = String(url);
@@ -3476,10 +3475,10 @@ test("a development shop's header names its own work, and the promise still hold
   // rates and feasibility calculations the page has no tab for. Since
   // 2026-10-09 its properties are on Home, and the line says where.
   assert.equal(els.deckSub.textContent,
-    "The comps you value against, and the markets you follow. Your properties are on Home. Visible only to you.");
+    "The comps you value against. Your properties are on Home. Visible only to you.");
   els = runFirmPrivacy(DEV, 2);
   assert.match(els.deckSub.textContent,
-    /^The comps you value against, and the markets you follow\. Your properties are on Home\. 2 shared with Ridgeline Development; the rest visible only to you\.$/);
+    /^The comps you value against\. Your properties are on Home\. 2 shared with Ridgeline Development; the rest visible only to you\.$/);
   // A broker shop names the BOV requests its Pipeline holds; a member whose
   // firm kind is unknown reads as a broker (org-access.js kindOf's rule).
   for (const firm of [FIRM, { ...FIRM, kind: "broker" }]) {
@@ -4696,9 +4695,10 @@ test("the contributions deck is outside the vault lock, and the lock still names
   assert.ok(decks, "VAULT_DECKS is gone");
   assert.ok(!/contrib/i.test(decks[1]),
     "the contributions deck was added to VAULT_DECKS — a free contributor would lose it behind the Pro lock");
-  // It loads with the two other personal decks, on every exit but 401.
-  assert.match(js, /personalLoaded=true; loadProps\(\); loadMarkets\(\); loadContribs\(\);/,
-    "loadContribs must run where loadProps and loadMarkets do, so the 403 and 503 exits reach it");
+  // It loads with the other personal deck, on every exit but 401 (The Board
+  // was the third until it moved to the Markets page, 2026-10-09).
+  assert.match(js, /personalLoaded=true; loadProps\(\); loadContribs\(\);/,
+    "loadContribs must run where loadProps does, so the 403 and 503 exits reach it");
   assert.match(js, /fetch\("\/api\/broker\/me"/, "the deck reads /api/broker/me");
 });
 
@@ -4736,7 +4736,7 @@ const LEAD = (o) => Object.assign({ id: "L1", market: "Boise, ID", type: "Indust
 const BOV = (o) => Object.assign({ id: "B1", market: "Meridian, ID", property_type: "Industrial", status: "open",
   source: "referral", size_sqft: 31000, received_on: isoIn(-30), address: null, notes: null }, o);
 
-test("the vault's five parts are tabs, and each panel holds its own sections", () => {
+test("the vault's parts are tabs, and each panel holds its own sections", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
   const panel = (id) => {
     const a = html.indexOf('id="' + id + '"');
@@ -4744,8 +4744,8 @@ test("the vault's five parts are tabs, and each panel holds its own sections", (
     const b = html.indexOf('class="vt-panel', a + 1);
     return html.slice(a, b > a ? b : html.indexOf("</main>") > 0 ? html.indexOf("</main>") : undefined);
   };
-  for (const [tab, pid] of [["book", "panelBook"], ["pipe", "panelPipe"], ["props", "panelProps"],
-    ["watch", "panelWatch"], ["contrib", "panelContrib"]]) {
+  // The Board was a fifth until 2026-10-09: it is on the Markets page now.
+  for (const [tab, pid] of [["book", "panelBook"], ["pipe", "panelPipe"], ["props", "panelProps"], ["contrib", "panelContrib"]]) {
     assert.match(html, new RegExp('id="tab-' + tab + '" data-tab="' + tab + '"[^>]*aria-controls="' + pid + '"'),
       "the " + tab + " tab does not control #" + pid);
   }
@@ -4755,7 +4755,7 @@ test("the vault's five parts are tabs, and each panel holds its own sections", (
   }
   assert.ok(panel("panelPipe").includes('id="pipeSec"') && panel("panelPipe").includes('id="deckPipe"'));
   assert.ok(panel("panelProps").includes('id="propsSec"'));
-  assert.ok(panel("panelWatch").includes('id="mktSec"'));
+  for (const id of ["tab-watch", "panelWatch", "mktSec", "tabWatchN"]) assert.ok(!html.includes('id="' + id + '"'), "#" + id + " is back");
   assert.ok(panel("panelContrib").includes('id="contribSec"'));
   // The Book opens first, and Contributions ships hidden with its deck.
   assert.match(html, /<div class="vt-panel on" id="panelBook"/);
@@ -4773,7 +4773,7 @@ test("the vault's five parts are tabs, and each panel holds its own sections", (
 test("setTab is the one writer of which panel shows, and the locked vault opens on Properties", async () => {
   const { doc } = await runPage([comp({})], null, {});
   assert.equal(doc.getElementById("panelBook").className, "vt-panel on");
-  for (const id of ["panelPipe", "panelProps", "panelWatch", "panelContrib"]) {
+  for (const id of ["panelPipe", "panelProps", "panelContrib"]) {
     assert.equal(doc.getElementById(id).className, "vt-panel", "#" + id + " is showing on first paint");
   }
   const js = pageScript(renderVaultHTML(boot([comp({})]), CHROME));
@@ -4813,7 +4813,6 @@ test("a development firm's member has no Pipeline and no Properties here: both a
   const { doc } = await runPage([comp({})], null, { firm: DEV_FIRM });
   assert.ok(doc.getElementById("tab-pipe").classList.contains("vt-off"), "a developer sees the BOV pipeline");
   assert.ok(doc.getElementById("tab-props").classList.contains("vt-off"), "Properties shows, though theirs are on Home");
-  assert.ok(!doc.getElementById("tab-watch").classList.contains("vt-off"), "The Board went missing");
   assert.equal(doc.getElementById("panelBook").className, "vt-panel on", "the page opens on Comps");
 });
 
@@ -4825,9 +4824,9 @@ test("a link to Pipeline, Properties or the old Sites tab takes a development fi
   }
   // A link to a tab they do have opens it; and nobody else is ever sent away.
   let went = [];
-  const { doc } = await runPage([comp({})], null, { firm: DEV_FIRM, window: { location: Object.assign(LOC("#board"), { replace: (u) => went.push(u) }) } });
+  const { doc } = await runPage([comp({})], null, { firm: DEV_FIRM, window: { location: Object.assign(LOC("#book"), { replace: (u) => went.push(u) }) } });
   assert.deepEqual(went, []);
-  assert.equal(doc.getElementById("panelWatch").className, "vt-panel on");
+  assert.equal(doc.getElementById("panelBook").className, "vt-panel on");
   for (const firm of [{ id: "f2", name: "Colliers Boise", kind: "broker" }, null]) {
     went = [];
     const r = await runPage([comp({})], null, { firm: firm || undefined, window: { location: Object.assign(LOC("#sites"), { replace: (u) => went.push(u) }) } });
@@ -4893,13 +4892,13 @@ test("a development firm with something published keeps every publishing control
 
 test("the Comps tab is the bare address for everyone, and a link that names a tab opens it", async () => {
   const replaced = [];
-  const { doc } = await runPage([comp({})], null, { firm: DEV_FIRM, window: {
-    location: LOC("#board"), history: { replaceState: (st, t, u) => replaced.push(u) },
+  const { doc } = await runPage([comp({})], null, { window: {
+    location: LOC("#pipeline"), history: { replaceState: (st, t, u) => replaced.push(u) },
   } });
-  assert.equal(doc.getElementById("panelWatch").className, "vt-panel on", "a #board link was overridden");
+  assert.equal(doc.getElementById("panelPipe").className, "vt-panel on", "a #pipeline link was overridden");
   const press = (tab) => doc.getElementById("vaultTabs").fire("click", { target: { closest: () => ({ getAttribute: () => tab }) } });
   press("book"); assert.equal(replaced.pop(), "/vault");
-  press("watch"); assert.equal(replaced.pop(), "#board");
+  press("pipe"); assert.equal(replaced.pop(), "#pipeline");
 });
 
 test("the tabs count what is in them, and new owner requests are red", async () => {
@@ -5358,30 +5357,32 @@ test("the set's CSV carries acreage and $/acre only when the set holds land", as
 });
 
 // ---------------------------------------------------------------------------
-// The Board (2026-10-07): the markets a member follows, each a tile with its
-// buying read (buying-read.js, test/buying-read.test.js). The deal wall that
-// sat under the tiles left on 2026-10-09 (deals are a development firm's, on
-// Home); these pin that it is gone and that the tiles stand on their own.
+// The Board left this page for the Markets page on 2026-10-09 (board.js,
+// test/board.test.js): the owner's stock-style watchlist of markets and
+// watched properties. These pin that it is gone from here, and that a saved
+// link to it still opens it.
 // ---------------------------------------------------------------------------
 
-const BUYINGREAD_MOD = require("../buying-read");
-const FALLING = { id: "w1", market: "Boise, ID", property_type: "Industrial", new_count: 3, median_psf: 165,
-  median_trend: { current: 165, prior: 173 } };
-
-test("The Board is markets only: the deal wall, its action and its scripts are gone", () => {
+test("The Board is not on this page any more: no tab, no panel, no deal wall, no scripts", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
-  for (const id of ["wallSec", "wallRoot", "wallAddToggle"]) assert.ok(!html.includes('id="' + id + '"'), "#" + id + " is back");
-  for (const src of ["/deal-wall.js", "/building-photo.js"]) assert.ok(!html.includes('<script src="' + src + '">'), src + " loads again");
-  assert.ok(!/DEALWALL|mountWall|wallView|#wallSec|__CN_STREETVIEW__/.test(html), "deal-wall code is back");
-  const inline = html.indexOf("<script>\n(function(){");
-  const read = html.indexOf('<script src="/buying-read.js"></script>');
-  assert.ok(read > 0 && read < inline, "/buying-read.js must load before the page's script");
+  for (const id of ["tab-watch", "panelWatch", "deckMarkets", "mktSec", "mktRows", "watchForm", "wallSec", "wallRoot", "wallAddToggle"]) {
+    assert.ok(!html.includes('id="' + id + '"'), "#" + id + " is back");
+  }
+  for (const src of ["/deal-wall.js", "/building-photo.js", "/buying-read.js", "/board.js"]) {
+    assert.ok(!html.includes('<script src="' + src + '">'), src + " loads on /vault again");
+  }
+  assert.ok(!/DEALWALL|BUYINGREAD|mountWall|loadMarkets|renderMarkets|#mktSec|__CN_STREETVIEW__/.test(html), "Board code is back");
 });
 
-test("The Board's tab counts the markets on it", async () => {
-  const { doc } = await runPage([comp({})], null, { feed: [FALLING, Object.assign({}, FALLING, { id: "w2", market: "Nampa, ID" })],
-    window: { BUYINGREAD: BUYINGREAD_MOD } });
-  assert.equal(String(doc.getElementById("tabWatchN").textContent), "2");
+test("a saved link to The Board opens it on the Markets page", async () => {
+  for (const hash of ["#board", "#watchlist", "#mktSec"]) {
+    const went = [];
+    await runPage([comp({})], null, { window: { location: Object.assign(LOC(hash), { replace: (u) => went.push(u) }) } });
+    assert.deepEqual(went, ["/markets#board"], hash);
+  }
+  // Never from a page built ahead of being seen (instant tab switching).
+  assert.match(pageScript(renderVaultHTML(boot([comp({})]), CHROME)),
+    /if\(BOARD_HASHES\[h\]&&!document\.prerendering&&/);
 });
 
 test("Home's Add a property opens Properties' form, already open, and only once; a deal opens nothing here", async () => {
@@ -5397,27 +5398,10 @@ test("Home's Add a property opens Properties' form, already open, and only once;
   assert.deepEqual(h.urls, ["/vault#properties"], "?add= must come off the address, or a reload opens the form again");
 
   // A deal, an ask with no tab in the address, or an unknown kind, opens nothing.
-  for (const [search, hash] of [["?add=buy", "#board"], ["?add=own", ""], ["?add=sell", "#properties"]]) {
+  for (const [search, hash] of [["?add=buy", "#pipeline"], ["?add=own", ""], ["?add=sell", "#properties"]]) {
     h = hist();
     ({ doc } = await runPage([comp({})], null, { window: { location: LOC(hash, search), history: h } }));
     assert.ok(closed(doc), search + hash);
     assert.deepEqual(h.urls, [], "an address with nothing to act on is left alone: " + search + hash);
   }
-});
-
-test("each market on The Board is a tile with its buying read and the not-advice line", async () => {
-  const { doc } = await runPage([comp({})], null, { feed: [FALLING], window: { BUYINGREAD: BUYINGREAD_MOD } });
-  const tiles = doc.getElementById("mktRows").innerHTML;
-  assert.match(tiles, /class="dw-pill dw-good"><i><\/i>Buying: Favorable</);
-  assert.match(tiles, /Prices down 4.6% in six months \(\$173 to \$165\/SF\)/);
-  assert.match(tiles, /Not investment advice/);
-  assert.match(tiles, /data-unwatch="w1"/);
-  assert.match(tiles, /id="wAddTile"/);
-});
-
-test("without the read's script The Board keeps its markets, and invents no read", async () => {
-  const { doc } = await runPage([comp({})], null, { feed: [FALLING] });
-  const tiles = doc.getElementById("mktRows").innerHTML;
-  assert.ok(!/dw-pill|investment advice/.test(tiles), "a read appeared with nothing to compute it");
-  assert.match(tiles, /▼ 4.6% vs the six months before/);
 });

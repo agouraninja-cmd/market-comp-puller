@@ -348,7 +348,7 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
     }
     assert.ok(!/id="mktWatch"/.test(html), "Watch is signed-in chrome, not on the cached SEO body");
     assert.ok(!/id="mktCsv"/.test(html), "CSV is signed-in chrome, not on the cached SEO body");
-    assert.ok(!html.includes('href="/vault#board"'), "The Board is a member's; the cached SEO body has no door to it");
+    assert.ok(!html.includes('href="/markets#board"'), "The Board is a member's; the cached SEO body has no door to it");
     assert.match(html, /Get my free valuation/, "anonymous visitors still get the owner CTA");
   });
 
@@ -383,8 +383,10 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
     assert.match(html, /data-type="Industrial"/);
     assert.match(html, /id="mktCsv"/);
     // Draft C (2026-10-07) took The Board's row off the rail; the market page
-    // that adds to it is one of its doors.
-    assert.ok(html.includes('<a class="alt" href="/vault#board">Open The Board &rarr;</a>'), "no door to The Board beside Add to The Board");
+    // that adds to it is one of its doors, and since 2026-10-09 The Board is
+    // on the Markets page itself.
+    assert.ok(html.includes('<a class="alt" href="/markets#board">Open The Board &rarr;</a>'), "no door to The Board beside Add to The Board");
+    assert.ok(!html.includes("/vault#board"), "a door to where The Board used to be");
     assert.ok(!/see it in Data/.test(html), "the Data row left the rail, so the button cannot send people there");
     assert.ok(!/Get my free valuation/.test(html), "the owner funnel is for anonymous SEO traffic");
     assert.match(html, /href="\/\?explore=/, "members skip the signup door on the Address Explorer link");
@@ -392,18 +394,29 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
   });
 });
 
-test("/markets is The Board's door for a member, and only for a member", async (t) => {
-  // The rail's Markets row opens /markets, and The Board has no row of its
-  // own since Draft C (2026-10-07). The anonymous page is cached publicly,
-  // so the door must never be baked into it.
+test("The Board is on /markets for a member, and only for a member", async (t) => {
+  // 2026-10-09 (the owner: "where it is right now in the market explorer"):
+  // The Board itself, where its door to /vault#board was. The anonymous page
+  // is cached publicly, so neither The Board nor its scripts are baked into
+  // it, and the member's copy carries nothing of theirs: /board.js reads it.
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
   const member = await (await fetch(srv.base + "/markets", { headers: SESSION })).text();
-  const band = member.slice(member.indexOf('<div class="mboard">'));
-  assert.ok(member.includes('<div class="mboard">') && band.slice(0, band.indexOf("</div>")).includes('<a href="/vault#board">Open The Board &rarr;</a>'),
-    "a member's /markets has no door to The Board");
+  assert.ok(member.includes('<section id="board" class="bd" aria-label="The Board">'), "a member's /markets has no Board");
+  const at = member.indexOf('<section id="board"');
+  const scripts = member.slice(at, member.indexOf("})();</script>", at) + 14);
+  assert.ok(scripts.indexOf('<script src="/buying-read.js"></script>') < scripts.indexOf('<script src="/board.js"></script>'),
+    "the buying read must load before The Board");
+  assert.match(scripts, /window\.BOARD\.mount\(\{root:r,readOf:B\?B\.buyingRead:null/);
+  assert.ok(at < member.indexOf('class="grid"'), "The Board sits above the market directory");
+  assert.match(member, /\.bd-tbl\{/, "The Board's styles ride with it");
+  assert.ok(!member.includes("mboard") && !member.includes("/vault#board"), "the old door is back");
   const anon = await (await fetch(srv.base + "/markets")).text();
-  assert.ok(!anon.includes('class="mboard"') && !anon.includes("/vault#board"), "no Board door on the public page");
+  assert.ok(!anon.includes('id="board"') && !anon.includes("/board.js") && !anon.includes(".bd-tbl{"), "a Board on the public page");
+  // Served, with the same never-stale rule as the scripts beside it.
+  const js = await fetch(srv.base + "/board.js");
+  assert.equal(js.status, 200);
+  assert.match(js.headers.get("cache-control") || "", /max-age=0/);
 });
 
 test("a lost visitor gets a page, not a bare string", async (t) => {

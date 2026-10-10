@@ -7,6 +7,8 @@ paths:
   - "gen-market-seed.js"
   - "explore-*.js"
   - "broker-directory.js"
+  - "board.js"
+  - "test/board.test.js"
   - "scripts/*market*.js"
   - "scripts/fetch-city-bounds.js"
   - ".github/workflows/market-*.yml"
@@ -26,7 +28,45 @@ paths:
 
 ## Architecture
 
-- **The Board's door (2026-10-07, Draft C).** The rail lost its Data row, so
+- **The Board, on /markets (2026-10-09; the owner: "the board is meant to be
+  kind of like a stock portfolio watch list for properties and markets",
+  and, asked where it should live, "where it is right now in the market
+  explorer").** The band below became The Board itself: for a signed-in
+  member only, `renderMarketDirectoryHTML` writes `BOARD_SECTION` (an
+  empty `<section id="board">`, `/buying-read.js`, `/board.js`, the
+  mount) above the rankings card, and `BOARD_CSS` into the head. The HTML
+  is the same bytes for every member: `board.js` (the global `BOARD`,
+  createElement only, pure helpers tested in `test/board.test.js`) reads
+  `/api/watchlist/feed`, `/api/portfolio` and `/api/sites` itself.
+  - **One watchlist, two kinds of row.** A MARKET (`watchlist_items`): its
+    six-month median sale $/SF, the move against the six months before
+    (`median_trend`), a line of quarterly medians (the feed's new
+    `spark`, `BOARD.quarterSeries`: the last eight calendar quarters with
+    at least two dated sales, two points or the key is left off), the
+    Favorable/Mixed/Tough buying read and its new comps. A PROPERTY the
+    member watches: a `portfolio_items` row whose NEWEST `user_sites`
+    status is Tracking (no new table, no migration): its likely value at
+    the last check, the move against the check before, every check as its
+    line, and the market since (`movement`). Owned ones are Home's.
+  - **The add box** takes "Boise, ID" (a market: POST `/api/watchlist`) or
+    a full address (a property: POST `/api/portfolio` then a Tracking
+    status). Refuses rather than guesses (`parseAdd`). An address the
+    member already OWNS is left on Home, and a refused status takes a new
+    item back out, so a half-failed add changes nothing.
+  - **Gates are the routes':** following a market is free (itemised comps
+    are the plan's, as before); watching a property needs Pro, Tracking's
+    old gate (`requireSites` 403s, and the Properties group says so). No
+    search runs from The Board: a value is Open report → Refresh, the same
+    billed search as anywhere.
+  - Reading the feed still POSTs `/api/watchlist/seen` when there is
+    news, so the digest does not mail what was read here.
+  - Every door points here: a market page's "Open The Board →", the
+    digest's link and its unsubscribe page all go to `/markets#board`, and
+    /vault sends `#board`, `#watchlist` and `#mktSec` here
+    (`BOARD_HASHES`). The `.mboard` band and its CSS are gone.
+
+- **The Board's door (2026-10-07, Draft C; replaced by The Board itself on
+  2026-10-09, above).** The rail lost its Data row, so
   The Board (a /vault tab) is reached from here: `/markets` renders a
   `.mboard` band ("Open The Board →", `/vault#board`) for a signed-in member
   only — the anonymous page is cached publicly and must never carry it — and

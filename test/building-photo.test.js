@@ -44,7 +44,102 @@ test("under Node the browser half is inert: nothing known, nothing asked", async
   assert.equal(BP.photo("6728 W Fairview Ave Trailer 51"), null, "an ineligible address is a known no");
   assert.equal(BP.known("2300 Peachtree Rd NE"), false);
   assert.equal(BP.overlay(null, "x", "/api/streetview?t=1a"), null);
+  assert.equal(BP.pending("2300 Peachtree Rd NE"), false);
   assert.equal(await BP.lookup([]), undefined);
+});
+
+// ---- Home never shows the aerial first ----------------------------------------
+// 2026-10-10, the owner: "it is showing birds eye view first, then the
+// building make it just show the building". Home's photo code (hmAerial to
+// hmPhotoForget) is lifted out of index.html and run against stand-ins: a
+// card waiting on its answer is an empty box, and the aerial is drawn only
+// once there is no photo to show.
+function homePhotos(answers) {
+  const from = html.indexOf("function hmAerial(box, ll, w, h, z)");
+  const to = html.indexOf("function hmLL(row)");
+  assert.ok(from > 0 && to > from, "could not bound Home's photo block");
+  const cards = [];
+  const overlays = [];
+  const inFlight = new Set();
+  const stub = {
+    eligible: () => true,
+    photo: (a) => answers[a],
+    known: () => false,
+    pending: (a) => inFlight.has(a),
+    lookup: async () => {},
+    overlay: (box, address, src, o) => { overlays.push({ box, src, o }); box.kids.push({ street: src }); },
+  };
+  const doc = {
+    createElement: () => ({ style: {}, addEventListener() {} }),
+    querySelectorAll: () => cards.filter((c) => c.isConnected),
+  };
+  const aerialTileSpec = () => [{ src: "https://server.arcgisonline.com/tile/18/1/1", left: 0, top: 0 }];
+  const api = new Function("aerialTileSpec", "streetviewEnabled", "BLDGPHOTO", "document", "hmEl",
+    "IntersectionObserver", "setTimeout", "clearTimeout",
+    html.slice(from, to) + "; return { hmPhoto, hmPhotoFlush, hmPhotoUpgrade };")(
+    aerialTileSpec, true, stub, doc, () => ({}), undefined, () => 0, () => {});
+  const card = () => {
+    const box = { kids: [], cls: new Set(), isConnected: true, querySelector: () => null };
+    Object.defineProperty(box, "textContent", { set() { box.kids = []; } });
+    box.classList = { add: (c) => box.cls.add(c), remove: (c) => box.cls.delete(c), contains: (c) => box.cls.has(c) };
+    box.append = (...n) => box.kids.push(...n);
+    cards.push(box);
+    return box;
+  };
+  const aerial = (box) => box.kids.filter((k) => !k.street).length;
+  return { ...api, stub, inFlight, overlays, card, aerial };
+}
+
+test("Home: a card waiting on its photo is an empty box, then the building, never the aerial first", async () => {
+  const answers = {};
+  const H = homePhotos(answers);
+  const ll = { lat: 33.8, lng: -84.4 };
+  const box = H.hmPhoto(H.card(), ll, "2300 Peachtree Rd NE", 48, 48, 17);
+  assert.equal(H.aerial(box), 0, "no aerial while the answer comes in");
+  assert.equal(box.kids.length, 0);
+  H.stub.lookup = async () => { answers["2300 Peachtree Rd NE"] = "/api/streetview?t=1a"; };
+  await H.hmPhotoFlush();
+  assert.equal(H.overlays.length, 1);
+  assert.equal(H.aerial(box), 0, "the photo goes into an empty box, not over an aerial");
+  // The image would not load: only now does the aerial appear.
+  box.kids = [];
+  H.overlays[0].o.onFail();
+  assert.equal(H.aerial(box), 1);
+});
+
+test("Home: the aerial only where there is no photo to show", async () => {
+  const ll = { lat: 33.8, lng: -84.4 };
+  // Already known to have no photo: the aerial straight away.
+  let H = homePhotos({ "1 No Photo Rd": null });
+  assert.equal(H.aerial(H.hmPhoto(H.card(), ll, "1 No Photo Rd", 48, 48, 17)), 1);
+  // Asked, and Google has none.
+  const answers = {};
+  H = homePhotos(answers);
+  let box = H.hmPhoto(H.card(), ll, "2 Empty Lot Rd", 48, 48, 17);
+  H.stub.lookup = async () => { answers["2 Empty Lot Rd"] = null; };
+  await H.hmPhotoFlush();
+  assert.equal(H.aerial(box), 1);
+  // Asked, and our route could not answer (signed out, a rate limit).
+  H = homePhotos({});
+  box = H.hmPhoto(H.card(), ll, "3 Refused Rd", 48, 48, 17);
+  await H.hmPhotoFlush();
+  assert.equal(H.aerial(box), 1, "a refused call must not leave an empty box for good");
+});
+
+test("Home: a card drawn again mid-lookup keeps waiting for the answer in flight", async () => {
+  const answers = {};
+  const H = homePhotos(answers);
+  const ll = { lat: 33.8, lng: -84.4 };
+  const box = H.hmPhoto(H.card(), ll, "4 Redrawn Rd", 48, 48, 17);
+  // Another card's lookup is already asking about this address.
+  H.inFlight.add("4 Redrawn Rd");
+  await H.hmPhotoFlush();
+  assert.equal(H.aerial(box), 0, "in flight is not 'could not be asked'");
+  H.inFlight.delete("4 Redrawn Rd");
+  answers["4 Redrawn Rd"] = "/api/streetview?t=4d";
+  H.hmPhotoUpgrade();
+  assert.equal(H.overlays.length, 1);
+  assert.equal(H.aerial(box), 0);
 });
 
 // ---- ⚠ the copies agree with index.html's ---------------------------------------

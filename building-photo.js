@@ -16,9 +16,12 @@
 // What the page gets back is an image URL with the address SEALED in it
 // (photo-token.js), so no address is ever in a URL, plus null for "no good
 // photo". This file remembers both per address in the browser, asks about
-// a batch at a time, and lays the photo over the aerial the page already
-// drew. Where the answer is no (a parcel with no building, no camera near,
-// only an old or a user's photo) the aerial stays: no card goes blank.
+// a batch at a time, and lays the photo into the card. Where the answer is
+// no (a parcel with no building, no camera near, only an old or a user's
+// photo) the page draws the aerial instead: no card stays blank. It never
+// draws the aerial first and the photo over it (2026-10-10, the owner: "it
+// is showing birds eye view first, then the building make it just show the
+// building"); while the answer comes in, the card is an empty box.
 //
 // An address qualifies only with a street number (no number is a road or a
 // district, not a building) that names a whole property, not one unit of a
@@ -121,7 +124,7 @@
     if (isPhotoSrc(hit.s)) return hit.s;
     return Date.now() - Number(hit.at || 0) < MISS_MS ? null : undefined;
   }
-  // Has this address's photo loaded before? Then the page can skip the aerial.
+  // Has this address's photo loaded before? Then it shows without a fade.
   function known(address) {
     const hit = all()[keyFor(address)];
     return !!(hit && hit.ok && isPhotoSrc(hit.s));
@@ -139,6 +142,12 @@
   // asked) are NOT remembered: the next visit asks again. Resolves when every
   // asked address is settled.
   const inFlight = new Set();
+  // Is a lookup asking about this address right now? A card the page drew
+  // again mid-lookup asks too, finds it in flight, and must keep waiting
+  // rather than read "no answer" as "the route could not be asked".
+  function pending(address) {
+    return inFlight.has(keyFor(address));
+  }
   async function lookup(items) {
     const todo = [];
     const seen = new Set();
@@ -176,13 +185,12 @@
     }
   }
 
-  // Lays the photo over `box` (an element already holding the aerial, or
-  // nothing when `known` says it has loaded before). It fades in over the
-  // aerial on its first load and is simply there from then on. On an error
-  // it removes itself, the address is remembered as having no photo for a
-  // while, the aerial stays, and `onFail` repaints the aerial when the box
-  // was left empty for a known photo. `onLoad` lets a page swap its credit
-  // line. `before`: a child that must stay painted above the photo.
+  // Lays the photo into `box` (an empty element, never one holding the
+  // aerial). It fades in on its first load and is simply there once `known`.
+  // On an error it removes itself, the address is remembered as having no
+  // photo for a while, and `onFail` draws the aerial. `onLoad` lets a page
+  // swap its credit line. `before`: a child that must stay painted above
+  // the photo.
   function overlay(box, address, src, opts) {
     const o = opts || {};
     if (!box || !isPhotoSrc(src) || !root || !root.document) return null;
@@ -212,6 +220,6 @@
   return {
     BATCH, MISS_MS, STORE_KEY,
     houseNumberOf, unitDesignatorOf, eligible, keyFor, isPhotoSrc,
-    photo, known, noteLoaded, noteFailed, lookup, overlay,
+    photo, known, noteLoaded, noteFailed, pending, lookup, overlay,
   };
 });

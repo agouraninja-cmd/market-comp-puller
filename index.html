@@ -14284,36 +14284,37 @@ async function renderMyDesk() {
   // first try, "it has to be a professional picture of the building"). A card
   // shows the building from the street, looked up BY ADDRESS (BLDGPHOTO: our
   // own POST /api/building-photo asks Google, which turns its camera toward
-  // the address, and refuses old, far or user-uploaded photos), and keeps the
-  // aerial where there is none. The aerial is also what shows while the
-  // answer comes in, except for a building whose photo has loaded before,
-  // which skips it. Places nobody has asked about yet are asked when their
-  // card scrolls into view (hmPhotoSeen), a batch at a time. A property with
-  // no coordinates yet can still have its photo: the address is enough.
+  // the address, and refuses old, far or user-uploaded photos), and draws the
+  // aerial where there is none. While the answer comes in the card is an
+  // empty box, never the aerial (2026-10-10, the owner: "it is showing birds
+  // eye view first, then the building make it just show the building"): the
+  // aerial is drawn only once there is no photo to show, because Google has
+  // none, the image would not load, or our route could not be asked. Places
+  // nobody has asked about yet are asked when their card scrolls into view
+  // (hmPhotoSeen), a batch at a time. A property with no coordinates yet can
+  // still have its photo: the address is enough.
   const hmPhotosOn = () => streetviewEnabled && typeof BLDGPHOTO !== "undefined";
   function hmPhoto(box, ll, address, w, h, z) {
     box._bp = null;
     box._bpDone = false;
+    box._bpAsked = false;
     if (!hmPhotosOn() || !BLDGPHOTO.eligible(address)) return hmAerial(box, ll, w, h, z);
     const src = BLDGPHOTO.photo(address);
-    if (src && BLDGPHOTO.known(address)) {
-      box.textContent = "";
-      box.classList.remove("none");
-      hmStreetOn(box, address, src, true, () => hmAerial(box, ll, w, h, z));
-      return box;
-    }
-    hmAerial(box, ll, w, h, z);
-    if (src) hmStreetOn(box, address, src, false);
-    else if (src === undefined) {
+    if (src === null) return hmAerial(box, ll, w, h, z);
+    box.textContent = "";
+    box.classList.remove("none");
+    box._bpAerial = () => hmAerial(box, ll, w, h, z);
+    if (src) hmStreetOn(box, address, src, BLDGPHOTO.known(address));
+    else {
       box._bp = { address, ll };
       hmPhotoSeen().observe(box);
     }
     return box;
   }
-  function hmStreetOn(box, address, src, known, onFail) {
+  function hmStreetOn(box, address, src, known) {
     box._bpDone = true;
     BLDGPHOTO.overlay(box, address, src, {
-      known, lazy: true, onFail,
+      known, lazy: true, onFail: box._bpAerial,
       // The map card is wide enough to say whose picture it is; a 48px
       // thumbnail is not, and says nothing for its aerial either.
       onLoad: () => {
@@ -14346,19 +14347,23 @@ async function renderMyDesk() {
   async function hmPhotoFlush() {
     const boxes = hmPhotoQueue.splice(0).filter((box) => box.isConnected && box._bp);
     if (!boxes.length) return;
-    try { await BLDGPHOTO.lookup(boxes.map((box) => box._bp)); } catch (_) { return; }
+    boxes.forEach((box) => { box._bpAsked = true; });
+    try { await BLDGPHOTO.lookup(boxes.map((box) => box._bp)); } catch (_) { /* the upgrade settles them */ }
     hmPhotoUpgrade();
   }
   // A lookup answers for every card showing that place, including the ones
-  // Home drew again while it was out (it redraws as its reads land).
+  // Home drew again while it was out (it redraws as its reads land). A card
+  // that was asked about and still has no answer, with nothing in flight for
+  // it, could not be asked (signed out, a rate limit, Google refusing us):
+  // it gets the aerial rather than staying an empty box.
   function hmPhotoUpgrade() {
     document.querySelectorAll("#homeMap .hm-th, .hm-pop-ph").forEach((box) => {
       const bp = box._bp;
       if (!bp || box._bpDone) return;
       const src = BLDGPHOTO.photo(bp.address);
-      if (src === undefined) return;
-      box._bpDone = true;
+      if (src === undefined && (!box._bpAsked || BLDGPHOTO.pending(bp.address))) return;
       if (src) hmStreetOn(box, bp.address, src, false);
+      else { box._bpDone = true; box._bpAerial(); }
     });
   }
   // The lists are rebuilt on every draw; the cards that left must not be
@@ -14986,7 +14991,8 @@ async function renderMyDesk() {
     card.append(ph);
     if (ph._bp) {
       hmPhotoObs.unobserve(ph);
-      BLDGPHOTO.lookup([ph._bp]).then(hmPhotoUpgrade, () => {});
+      ph._bpAsked = true;
+      BLDGPHOTO.lookup([ph._bp]).then(hmPhotoUpgrade, hmPhotoUpgrade);
     }
     const b = hmEl("div", "hm-pop-b");
     if (permit) {

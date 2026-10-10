@@ -59,8 +59,16 @@ the building". Read this before the rest of the file, which it extends.
   the route a batch at a time, remembers each address's answer in
   `localStorage` `bldgPhoto.v2` (a src, `ok` once it has loaded, or a miss
   retried after 7 days; a refused call and a `0` are not remembered), and lays
-  the photo over the aerial (`overlay`: fades in the first time, simply there
-  once known, removes itself on an image error and the aerial stays). An
+  the photo into an empty card (`overlay`: fades in the first time, simply
+  there once known, removes itself on an image error and the page draws the
+  aerial). **The aerial is never drawn first and the photo over it**
+  (2026-10-10, the owner: "it is showing birds eye view first, then the
+  building make it just show the building"): Home's card is an empty box
+  until the answer, and gets the aerial only when there is no photo to show
+  (Google has none, the image will not load, or the route could not be asked;
+  `pending` tells a card Home drew again mid-lookup to keep waiting instead).
+  `test/building-photo.test.js` runs Home's photo code against stand-ins to
+  hold this. An
   address qualifies only with a street number naming a whole property
   (`eligible`, `unitDesignatorOf`), the popup's rule. It replaced the
   footprint version outright, and drops its old `bldgPhoto.v1` /

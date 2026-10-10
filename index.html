@@ -10499,6 +10499,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (Object.keys(readSubjectDetails()).length) return;
       if (document.getElementById("address").value.trim() !== addr) return;
       applyFoundType(found);
+      confirmTypeSettled();   // a dialog opened meanwhile is waiting on this answer
       return logTypeAutofill(addr, "found", found.type);
     }
     if (guess.type === propertyTypeSel.value) {
@@ -10507,9 +10508,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // not ask.
       typeResolution = "detected";
       renderTypeStatus();
+      confirmTypeSettled();
       return logTypeAutofill(addr, "agreed", guess.type);
     }
     applyDetectedType(guess.type, guess.label);
+    confirmTypeSettled();
     logTypeAutofill(addr, "applied", guess.type);
   });
 
@@ -21862,6 +21865,38 @@ async function renderMyDesk() {
   // dialog closed, reopened on another address, or switched to picking by
   // hand never has its state overwritten by it.
   let confirmLookupFor = null;
+  // True while the six buttons are up only because the lookup came back
+  // empty, and nobody has picked from them yet: the one other dialog state a
+  // late answer may settle (confirmTypeSettled). "pick it yourself" and
+  // "change" are a person choosing to pick, so nothing lands on top of them.
+  let confirmTypeFallback = false;
+
+  // The form's type was settled while the dialog had none: by the map's tags,
+  // or by the address listener applying the lookup's answer before the
+  // dialog's own copy of that same request heard it (both await one shared
+  // request, and whichever asked first hears first). Before this the dialog
+  // never learned, and sat on "Finding it from the address…" with Run held
+  // until someone clicked "pick it yourself" (found 2026-10-10). Called from
+  // the address listener as each answer lands, and from the dialog's lookup.
+  // Event-time only: it reads this block's `let`s, which are still in their
+  // temporal dead zone while the page first runs — renderTypeStatus runs
+  // then, which is why the listener calls this and renderTypeStatus does not.
+  function confirmTypeSettled() {
+    if (pendingConfirmKey === null || typeResolution === null) return;
+    const waiting = confirmLookupFor === pendingConfirmKey;
+    if (!waiting && !(confirmTypeFallback && !dialogTypePick)) return;
+    confirmLookupFor = null;
+    confirmTypeFallback = false;
+    dialogTypePick = null;
+    dialogAskedType = false;   // settled before anyone picked: the dialog decided nothing
+    dialogResolvedBy = typeResolution;
+    dialogResolvedType = propertyTypeSel.value;
+    const typeArea = [document.getElementById("confirmTypeResolved"), document.getElementById("confirmTypeButtons")];
+    const hadFocus = typeArea.some((el) => el.contains(document.activeElement));
+    showConfirmTypeResolved();
+    if (hadFocus || document.activeElement === document.body) document.getElementById("confirmRunBtn").focus();
+  }
+
   function showConfirmTypeLookup(typed) {
     const key = pendingConfirmKey;
     confirmLookupFor = key;
@@ -21885,8 +21920,10 @@ async function renderMyDesk() {
     setConfirmRunEnabled(false, "");
     lookupPropertyType(typed).then((found) => {
       if (confirmLookupFor !== key || pendingConfirmKey !== key) return;
+      // Settled some other way while this waited: show that, never nothing.
+      if (typeResolution !== null) return confirmTypeSettled();
       confirmLookupFor = null;
-      if (found && typeResolution === null) {
+      if (found) {
         applyFoundType(found);
         dialogAskedType = false;   // the lookup settled it, not the dialog
         dialogResolvedBy = "found";
@@ -21895,9 +21932,10 @@ async function renderMyDesk() {
         const hadFocus = document.activeElement === pick;
         showConfirmTypeResolved();
         if (hadFocus || document.activeElement === document.body) document.getElementById("confirmRunBtn").focus();
-      } else if (typeResolution === null) {
+      } else {
         setConfirmRunEnabled(false, "We couldn't tell what kind of property this is. Pick its type to run the report.");
         showConfirmTypeButtons(null);
+        confirmTypeFallback = true;
         const firstType = document.getElementById("confirmTypeButtons").querySelector("button");
         if (firstType) firstType.focus();
       }
@@ -21921,6 +21959,7 @@ async function renderMyDesk() {
 
   function showConfirmTypeButtons(preselected) {
     dialogTypePick = preselected || null;
+    confirmTypeFallback = false;   // the lookup's fallback sets it back after this
     document.getElementById("confirmTypeResolved").classList.add("hidden");
     const wrap = document.getElementById("confirmTypeButtons");
     wrap.classList.remove("hidden");
@@ -21972,6 +22011,7 @@ async function renderMyDesk() {
     // only the fallback for an address nothing could type. Either way nothing
     // silently runs Industrial: the run waits on a real answer.
     dialogTypePick = null;
+    confirmTypeFallback = false;
     dialogAskedType = typeResolution === null;
     dialogResolvedBy = typeResolution;
     dialogResolvedType = propertyTypeSel.value;
@@ -22034,6 +22074,7 @@ async function renderMyDesk() {
     pendingConfirmKey = null;
     // Escape or "edit address" resolves nothing, so the next submit asks again.
     confirmLookupFor = null;
+    confirmTypeFallback = false;
     dialogTypePick = null;
     dialogAskedType = false;
     dialogResolvedBy = null;

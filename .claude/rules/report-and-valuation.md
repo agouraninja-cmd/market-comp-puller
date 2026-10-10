@@ -558,7 +558,16 @@ and exporting each slide to PNG (a PowerShell one-liner, no dependency).
      closed or re-aimed dialog is never written to. The six buttons survive
      only as the fallback when nothing could type the address, and behind
      "pick it yourself" for whoever will not wait; `setConfirmRunEnabled(on,
-     hint)` holds Run with no "pick" line while it waits. List mode's
+     hint)` holds Run with no "pick" line while it waits. **Anything that
+     settles the type while the dialog waits must tell it** through
+     `confirmTypeSettled()` (2026-10-10): the address listener calls it after
+     the OSM detection lands and after it applies the lookup's answer, because
+     the listener and the dialog await one shared request and whoever asked
+     first hears first. Without it the dialog sat on "Finding it from the
+     address…" with Run held for good. It also settles the untouched "couldn't
+     tell" buttons (`confirmTypeFallback`), never a hand pick. Never call it
+     from `renderTypeStatus`, which runs at first paint while the dialog's
+     `let`s are still in their temporal dead zone. List mode's
      `#bkListType` is gone: a list runs with no type (bulk.md, "Auto").
      **The report carries "Wrong type?"** (`renderReportMeta`, `no-print
      no-capture`, never on a shared `/r/` view or the sample): a pick re-runs

@@ -1451,6 +1451,30 @@ test("nobody is asked to pick a type: the dialog looks it up, and asks only when
   assert.match(html, /dialogResolvedBy === "found" && dialogTypePick !== dialogResolvedType[\s\S]{0,200}"lookup_changed"/);
 });
 
+test("a type settled while the dialog waits reaches the dialog, whoever heard it first", () => {
+  // Found 2026-10-10: the address listener and the dialog await one shared
+  // lookup, and the map can settle the type mid-wait. Either way the dialog
+  // missed it and sat on "Finding it from the address…" with Run held.
+  const start = html.indexOf("function confirmTypeSettled()");
+  const end = html.indexOf("function showConfirmTypeLookup(typed)", start);
+  assert.ok(start >= 0 && end > start, "confirmTypeSettled moved");
+  const fn = html.slice(start, end);
+  assert.match(fn, /confirmLookupFor === pendingConfirmKey/, "a dialog waiting on the lookup is settled");
+  assert.match(fn, /confirmTypeFallback && !dialogTypePick/, "so is the untouched fallback, never a hand pick");
+  assert.match(fn, /showConfirmTypeResolved\(\)/);
+  assert.match(fn, /dialogResolvedBy = typeResolution/, "the Run handler's correction logs still see what settled it");
+  // The dialog's own lookup shows a type settled some other way, not nothing.
+  const lk = html.slice(html.indexOf("function showConfirmTypeLookup(typed)"), html.indexOf("function openConfirmModal("));
+  assert.match(lk, /if \(typeResolution !== null\) return confirmTypeSettled\(\);/);
+  // Every listener path that settles the type tells the dialog.
+  const ls = html.slice(html.indexOf("const guess = await detectPropertyType(addr);"), html.indexOf("// Building snap"));
+  assert.equal((ls.match(/confirmTypeSettled\(\);/g) || []).length, 3, "found, agreed and applied each tell the dialog");
+  // Never from renderTypeStatus: it runs while the page first loads, when the
+  // dialog's lets are still in their temporal dead zone.
+  const rs = html.slice(html.indexOf("function renderTypeStatus"), html.indexOf("function addrTypeStore"));
+  assert.doesNotMatch(rs, /confirmTypeSettled/);
+});
+
 test("once pins settle, the hero re-runs so distance weighting actually moves the range", () => {
   const fn = html.match(/function refreshDistances\(\) \{[\s\S]*?\n  \}/);
   assert.ok(fn, "index.html must define refreshDistances()");

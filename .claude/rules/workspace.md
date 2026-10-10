@@ -186,6 +186,24 @@ paths:
 >   hides (the legal line is at the foot of the list). At 900px and up under
 >   `nav-rail` the list and map share the viewport; below, or in the bar
 >   shell, the map is a 300px strip above the list and the page scrolls.
+> - **Two fingers on a trackpad (2026-10-10, the owner's ask):** a swipe
+>   pans Home's map and a pinch zooms it; a mouse wheel's notch still zooms
+>   through Leaflet's own `scrollWheelZoom`. `HOMEMAP.wheelGesture` tells
+>   them apart (ctrlKey is a pinch; lines, notches of 120 or a Mac mouse's
+>   4.000244140625px steps are a mouse; anything else, or anything sideways,
+>   is a swipe; a burst keeps its first event's kind so a swipe never zooms
+>   mid-pan). `hmOnWheel` is added BEFORE `L.map()` so it runs ahead of
+>   Leaflet's listener on the same element and stops it for a swipe or a
+>   pinch. The pinch drives Leaflet 1.9.4's private TouchZoom path
+>   (`_moveStart`, `_move` with `pinch: true`, `_animateZoom`) and settles on
+>   a whole level (`pinchSnap`, so the raster labels stay sharp): a Leaflet
+>   upgrade must re-check `hmPinchStart`/`To`/`End`. Safari pinches with
+>   `gesture*` events (`hmOnGesture`), left to TouchZoom while a finger is on
+>   a touch screen (`hmTouches`). `.hm-map-empty` is `pointer-events: none`,
+>   so a pinch over the empty map's card zooms the map, not the page. Home's
+>   map only: the report, market, vault and permit maps sit in scrolling
+>   pages with `scrollWheelZoom: false`, where a swipe must scroll the page.
+>   Pinned in `test/home-map.test.js` and `test/desk-map-layers.test.js`.
 > - **Tabs are the URL fragment** (`#properties`, `#comps`, `#people`;
 >   Today is the bare path). Every tab is Home to `markNavCurrent` since
 >   2026-10-08; for one day the rail's Reports row was `/desk#reports` and

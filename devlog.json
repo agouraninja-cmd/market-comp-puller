@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-10-10",
+    "type": "improvement",
+    "title": "Home's map pans with a two-finger swipe and zooms with a pinch",
+    "details": "On a laptop trackpad, sliding two fingers across Home's map now moves it around, and pinching zooms in and out around the spot under your fingers, the way map apps on a laptop work. It settles on the nearest sharp zoom level when you let go. A mouse wheel still zooms, as before. Pinching over the \"Your map is empty\" card zooms the map now instead of the whole page."
+  },
+  {
     "date": "2026-10-09",
     "type": "feature",
     "title": "The Board is a watchlist on the Markets page",

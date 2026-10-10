@@ -339,3 +339,55 @@ test("a portal's capitals read the way the permit tracker shows them", () => {
   assert.equal(HM.tidyCaps("1450 S EAGLE RD"), "1450 S Eagle Rd");
   assert.equal(HM.permitPin(FILING({})).street, "1450 S Eagle Rd", "a permit's card shows the tidied street");
 });
+
+// Two fingers on a trackpad (2026-10-10): a swipe pans, a pinch zooms, and a
+// mouse wheel's notch still zooms through Leaflet's own handler.
+test("a trackpad pinch, a trackpad swipe and a mouse notch are told apart", () => {
+  const G = (ev, last, now) => HM.wheelGesture(ev, last, now);
+  assert.equal(G({ ctrlKey: true, deltaY: -3.2 }), "pinch", "a pinch arrives with ctrlKey");
+  assert.equal(G({ ctrlKey: true, deltaY: 100, wheelDeltaY: -120 }), "pinch", "Ctrl plus a mouse notch zooms too");
+  assert.equal(G({ deltaY: 100, wheelDeltaY: -120 }), "wheel", "Chrome and Edge: a mouse notch is 120");
+  assert.equal(G({ deltaY: 300, wheelDeltaY: -360 }), "wheel", "a fast spin is whole notches");
+  assert.equal(G({ deltaY: 3, deltaMode: 1 }), "wheel", "Firefox counts a mouse in lines");
+  assert.equal(G({ deltaY: 4.000244140625 * 3, wheelDeltaY: -36 }), "wheel", "a Mac mouse moves in its own steps");
+  assert.equal(G({ deltaY: 7.5, wheelDeltaY: -9 }), "swipe", "a trackpad's deltas are fine-grained");
+  assert.equal(G({ deltaX: 12, deltaY: 0, wheelDeltaY: 0 }), "swipe", "anything sideways is a swipe");
+  assert.equal(G({ deltaY: 4 }), "swipe", "with no legacy field a small pixel delta is a trackpad");
+  assert.equal(G({ deltaY: 100 }), "wheel", "and a whole hundred is a mouse");
+});
+
+test("a burst keeps its kind, so a swipe never turns into a zoom mid-pan", () => {
+  const swipe = { kind: "swipe", at: 1000 };
+  assert.equal(HM.wheelGesture({ deltaY: 100, wheelDeltaY: -120 }, swipe, 1016), "swipe",
+    "a swipe event that looks like a notch stays a swipe");
+  assert.equal(HM.wheelGesture({ deltaY: 100, wheelDeltaY: -120 }, swipe, 1000 + HM.WHEEL_BURST_MS), "wheel",
+    "after a pause the next event is read fresh");
+  assert.equal(HM.wheelGesture({ deltaY: 7.5, wheelDeltaY: -9 }, { kind: "wheel", at: 1000 }, 1040), "wheel",
+    "a mouse burst stays a mouse");
+  assert.equal(HM.wheelGesture({ deltaX: 40, deltaY: 0 }, { kind: "wheel", at: 1000 }, 1040), "swipe",
+    "but a sideways event is a swipe");
+  assert.equal(HM.wheelGesture({ ctrlKey: true, deltaY: 2 }, swipe, 1016), "pinch", "a pinch is read from every event");
+  assert.equal(HM.wheelGesture({ deltaY: 7.5, wheelDeltaY: -9 }, { kind: "pinch", at: 1000 }, 1016), "swipe",
+    "a swipe right after a pinch is read fresh");
+});
+
+test("a swipe moves the map the way the page would scroll", () => {
+  assert.deepEqual(HM.swipePan({ deltaX: 12, deltaY: -30 }), { x: 12, y: -30 });
+  assert.deepEqual(HM.swipePan({ deltaX: 0, deltaY: 2, deltaMode: 1 }), { x: 0, y: 32 }, "lines are pixels");
+  assert.deepEqual(HM.swipePan({}), { x: 0, y: 0 });
+});
+
+test("a pinch keeps the map under the fingers and settles on a whole level", () => {
+  // Chrome sends a pinch of scale s as deltaY = -100·ln(s): doubling is one level.
+  assert.ok(Math.abs(HM.pinchZoomBy({ ctrlKey: true, deltaY: -100 * Math.log(2) }) - 1) < 1e-9, "spreading to twice the size is one level in");
+  assert.ok(Math.abs(HM.pinchZoomBy({ ctrlKey: true, deltaY: 100 * Math.log(2) }) + 1) < 1e-9, "and pinching to half is one out");
+  assert.equal(HM.pinchZoomBy({ ctrlKey: true, deltaY: 100 }), -1, "Ctrl plus a mouse notch is one level, never more");
+  assert.equal(HM.pinchZoomBy({ ctrlKey: true, deltaY: -1000 }), 1);
+  assert.equal(HM.pinchZoomBy({ ctrlKey: true, deltaY: 0 }), 0);
+  assert.equal(HM.pinchSnap(10, 11.7), 12, "the nearest level");
+  assert.equal(HM.pinchSnap(10, 11.3), 11);
+  assert.equal(HM.pinchSnap(10, 10.3), 11, "a short pinch still lands a level on");
+  assert.equal(HM.pinchSnap(10, 9.7), 9, "out as well as in");
+  assert.equal(HM.pinchSnap(10, 10.1), 10, "a brush of the fingers changes nothing");
+  assert.equal(HM.pinchSnap(10, 10), 10);
+});

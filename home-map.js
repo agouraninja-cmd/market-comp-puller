@@ -412,7 +412,64 @@
     return hasFirm ? "Add your first property and it shows up here, on the map." : "Everything you add lands on this map.";
   }
 
+  // ---- Two fingers on a trackpad (2026-10-10, the owner's ask) -------------
+  // On a trackpad a two-finger swipe pans the map and a pinch zooms it, the
+  // way a laptop's map apps behave. A mouse wheel's notch still zooms, as it
+  // always has. Browsers send all three as the same `wheel` event, so
+  // `wheelGesture` tells them apart by the event's own fields:
+  //   - a pinch carries ctrlKey (Chrome, Edge and Firefox; Ctrl plus a mouse
+  //     wheel reads as one too, and zooms). Safari sends its own gesture
+  //     events for a pinch, which index.html reads directly;
+  //   - a mouse notch counts in lines (deltaMode 1, Firefox), in whole
+  //     notches of 120 (wheelDeltaY, Chrome and Edge), or in steps of
+  //     MAC_NOTCH_PX (Chrome and Safari on a Mac);
+  //   - anything else, and anything with a sideways part, is a swipe.
+  // A burst (events under WHEEL_BURST_MS apart) keeps the kind its first
+  // event had, so a swipe event that happens to look like a notch never
+  // zooms the map mid-pan. A pinch is read fresh from every event.
+  // `last` is { kind, at } of the event before; `now` is this one's time.
+  const WHEEL_BURST_MS = 250;
+  const MAC_NOTCH_PX = 4.000244140625;
+  function wheelGesture(ev = {}, last = null, now = 0) {
+    if (ev.ctrlKey) return "pinch";
+    if (last && last.kind !== "pinch" && now - last.at < WHEEL_BURST_MS) {
+      return last.kind === "wheel" && ev.deltaX ? "swipe" : last.kind;
+    }
+    if (ev.deltaMode) return "wheel";
+    if (ev.deltaX) return "swipe";
+    const dy = Number(ev.deltaY) || 0;
+    if (dy && dy % MAC_NOTCH_PX === 0) return "wheel";
+    const notch = Number(ev.wheelDeltaY) || 0;
+    if (notch) return notch % 120 === 0 ? "wheel" : "swipe";
+    return Number.isInteger(dy) && Math.abs(dy) >= 50 ? "wheel" : "swipe";
+  }
+  // A wheel event's deltas in pixels (Firefox can count lines or pages).
+  const wheelUnit = (ev) => (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? 800 : 1);
+  // How far a swipe moves the map, in pixels: the way the page would scroll.
+  function swipePan(ev = {}) {
+    const u = wheelUnit(ev);
+    return { x: (Number(ev.deltaX) || 0) * u, y: (Number(ev.deltaY) || 0) * u };
+  }
+  // How many zoom levels one pinch event moves. Chrome reports a pinch's
+  // scale s as deltaY = -100·ln(s), so this keeps the place under the
+  // fingers under them. At most a level per event, so Ctrl plus a mouse
+  // notch (100px) is one level.
+  function pinchZoomBy(ev = {}) {
+    const dz = -(Number(ev.deltaY) || 0) * wheelUnit(ev) / (100 * Math.LN2);
+    return Math.max(-1, Math.min(1, dz));
+  }
+  // Where a pinch settles once the fingers stop: the nearest whole zoom
+  // level, where the basemap's tiles and labels are sharp. A pinch that
+  // moved a fifth of a level or more lands at least one level on, so a
+  // short pinch is never undone.
+  function pinchSnap(start, zoom) {
+    const moved = zoom - start;
+    const to = Math.round(zoom);
+    return to === start && Math.abs(moved) >= 0.2 ? start + Math.sign(moved) : to;
+  }
+
   return { LEASE_DAYS, DEAL_DAYS, BOV_DAYS, WEEK_DAYS, STAGES, addressKey, street, place, town, daysUntil, shortDate, inDays, money,
     stageLabel, stageStep, lastValue, dealsOn, properties, scopeOf, passedDeals, addWhere, agenda, thisWeek, statusLine,
-    LAYERS, LAYER_DEFAULT, readLayers, tabLayer, PERMIT_STAGES, tidyCaps, permitPin, permitStageLabel, permitAt, layerNotes };
+    LAYERS, LAYER_DEFAULT, readLayers, tabLayer, PERMIT_STAGES, tidyCaps, permitPin, permitStageLabel, permitAt, layerNotes,
+    WHEEL_BURST_MS, MAC_NOTCH_PX, wheelGesture, swipePan, pinchZoomBy, pinchSnap };
 });

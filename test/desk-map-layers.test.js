@@ -131,3 +131,25 @@ test("Home holds no comps: no tab, no layer, no start card, no read of the book 
   // BOV requests keep the vault's own gate, which the Comps tab used to share.
   assert.ok(html.includes('const hmCanLeads = () => hmCanVault() && !(myFirm() && myFirm().kind === "development");'));
 });
+
+// Two fingers on a trackpad (2026-10-10, the owner's ask): a swipe pans and a
+// pinch zooms; a mouse wheel's notch is still Leaflet's. Which is which is
+// home-map.js's wheelGesture (test/home-map.test.js); this pins the wiring.
+test("a trackpad swipe pans Home's map and a pinch zooms it, ahead of Leaflet's own wheel", () => {
+  const ensure = fnOf("function hmEnsureMap()");
+  const listen = ensure.indexOf('el.addEventListener("wheel", hmOnWheel, { passive: false })');
+  assert.ok(listen > 0, "Home's map no longer reads the trackpad");
+  assert.ok(listen < ensure.indexOf("L.map(el"),
+    "the wheel listener must be added before L.map(), or Leaflet's runs first and zooms on a swipe");
+  assert.match(ensure, /L\.map\(el, \{[^}]*scrollWheelZoom: true/, "a mouse wheel must still zoom (Leaflet's handler)");
+  assert.match(ensure, /"gesturestart", "gesturechange", "gestureend"\]\.forEach\(\(t\) => el\.addEventListener\(t, hmOnGesture\)\)/,
+    "Safari's pinch is its own gesture events");
+  const onWheel = fnOf("function hmOnWheel(e)");
+  assert.match(onWheel, /HOMEMAP\.wheelGesture\(e, hmWheelLast, e\.timeStamp\)/);
+  assert.match(onWheel, /if \(kind === "wheel"\) return;\n    e\.preventDefault\(\);\n    e\.stopImmediatePropagation\(\);/,
+    "a mouse notch is left to Leaflet, and only a swipe or a pinch is taken from it");
+  // The pinch rides Leaflet 1.9.4's private pinch path, so the pinned version is part of the contract.
+  assert.ok(html.includes("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"), "Leaflet moved off 1.9.4: re-check hmPinchStart/To/End");
+  // The empty map's card lets a gesture through to the map under it.
+  assert.match(html, /\.hm-map-empty \{[^}]*pointer-events: none;/, "a pinch over the empty map's card zooms the whole page");
+});

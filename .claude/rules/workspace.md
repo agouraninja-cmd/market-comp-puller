@@ -56,8 +56,10 @@ paths:
 > **Street photos on Home's cards (2026-10-09, owner's ask).** A property's
 > thumbnail and the map card show the building from the street, looked up BY
 > ADDRESS through our own POST `/api/building-photo` (Google behind it, the
-> owner's call; rule 7 names the route); the aerial stays where Google has no
-> good photo, and is what shows while the answer comes in. `hmPhoto` is the
+> owner's call; rule 7 names the route); the aerial is drawn where Google has
+> no good photo. While the answer comes in the card is an empty box, never the
+> aerial (2026-10-10, the owner: "it is showing birds eye view first, then the
+> building make it just show the building"). `hmPhoto` is the
 > one writer for both; lookups wait for a card to scroll into view
 > (`hmPhotoSeen`), and `hmPhotoForget` drops the observer's hold on cards each
 > redraw throws away. A property with no coordinates yet can still have its

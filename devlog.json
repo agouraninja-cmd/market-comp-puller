@@ -4723,5 +4723,11 @@
     "type": "feature",
     "title": "Pipeline has its own spot in the left rail, under Messages",
     "details": "Your BOV pipeline (owner requests in the markets you watch, through to won or lost) is now one click away on every page: a Pipeline row sits right under Messages, at its own address, /pipeline. If your firm is a development firm you see Sites in that spot instead, and it opens your sites on Home's Properties tab. The row lights up while you're there, and Home's “Your BOV pipeline →” link and its BOV request rows go to /pipeline too."
+  },
+  {
+    "date": "2026-10-10",
+    "type": "fix",
+    "title": "Building pictures on Home show the building, not a bird’s-eye view first",
+    "details": "Property thumbnails and the map card on Home used to show a satellite view of the roof first, then swap to the street photo of the building once it arrived. Now the picture space stays blank for that moment and the first thing you see is the building itself. A building Google has no good street photo for still gets the satellite view, so no card is left empty."
   }
 ]

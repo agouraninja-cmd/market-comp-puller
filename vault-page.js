@@ -816,34 +816,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   #compSheet tr{break-inside:avoid}
   #compSheet .vd-sh-foot{margin-top:14px;font-size:8pt;color:dimgray}
 }
-/* ---- The Board: market tiles (2026-10-07) ----------------------------------
-   #mktSec draws each market on The Board as a tile with its buying read
-   (/buying-read.js). The deal wall that sat under the tiles left on
-   2026-10-09 (deals are a development firm's, on Home). Every rule is scoped
-   under #mktSec: it outranks this page's bare table/section rules and keeps
-   the dw- names out of MARKET_CSS's way. Tokens only, so both themes hold. */
-#mktSec .dw-tiles-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(236px,1fr));gap:10px;margin-top:var(--s4)}
-#mktSec .dw-tile{background:var(--card);border:1px solid var(--edge);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
-#mktSec .dw-tt{font-family:var(--serif);font-size:16px;color:var(--ink);line-height:1.3}
-#mktSec .dw-tt a{color:inherit;text-decoration:none}
-#mktSec .dw-tt a:hover{text-decoration:underline;text-underline-offset:3px}
-#mktSec .dw-tt span{font-size:13.5px;color:var(--ink-3)}
-#mktSec .dw-pill{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;border-radius:999px;padding:2px 10px 2px 8px;font-size:12.5px;font-weight:600}
-#mktSec .dw-pill i{width:8px;height:8px;border-radius:50%;background:currentColor}
-#mktSec .dw-pill.dw-good{background:var(--ok-bg);color:var(--ok-text)}
-#mktSec .dw-pill.dw-mid{background:var(--warn-bg);color:var(--warn-text)}
-#mktSec .dw-pill.dw-bad{background:var(--err-bg);color:var(--err-text)}
-#mktSec .dw-why{list-style:none;margin:0;padding:0;font-size:12.5px;line-height:1.45;color:var(--ink-2)}
-#mktSec .dw-why li{margin:2px 0}
-#mktSec .dw-why b{font-weight:400;font-size:9px;color:var(--ink-3);margin-right:5px;position:relative;top:-1px}
-#mktSec .dw-tf{margin:0;font-size:12.5px;color:var(--ink-3)}
-#mktSec .dw-tile details{font-size:13px}
-#mktSec .dw-tile summary{cursor:pointer;color:var(--ink-2)}
-#mktSec .dw-tile .tw{margin-top:8px}
-#mktSec .dw-tfoot{margin-top:auto;padding-top:6px}
-#mktSec .dw-addt{font:inherit;font-size:13.5px;color:var(--ink-2);background:none;border:1px dashed var(--ink-4);border-radius:8px;padding:12px 14px;cursor:pointer;min-height:84px}
-#mktSec .dw-addt:hover{color:var(--ink);border-color:var(--ink-3)}
-#mktSec .dw-fine{margin:12px 0 0;font-size:12px;color:var(--ink-3);max-width:80ch}
 </style>
   <p class="kicker">Private to you</p>
   <!-- "Your properties and comps" since 2026-10-07 (Draft C, "One map"): the
@@ -880,7 +852,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     <div id="vaultLocked" class="invite hide">
       <p><strong>Your book and your pipeline are part of Pro.</strong>
         Upload closed deals, keep them private, and see them inside your own reports.</p>
-      <p>Your properties and The Board are in their own tabs either way &mdash; those are yours.</p>
+      <p>Your properties are in their own tab either way &mdash; those are yours.</p>
       <p style="margin:0"><a class="btn" href="/desk">See your plan</a></p>
     </div>
     <!-- ------------------------------------------------------------------
@@ -903,7 +875,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       <button type="button" role="tab" class="vt-tab on" id="tab-book" data-tab="book" aria-selected="true" aria-controls="panelBook"><span id="tabBookL">Comps</span> <b id="tabBookN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-pipe" data-tab="pipe" aria-selected="false" aria-controls="panelPipe">Pipeline <b id="tabPipeN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-props" data-tab="props" aria-selected="false" aria-controls="panelProps">Properties <b id="tabPropsN"></b></button>
-      <button type="button" role="tab" class="vt-tab" id="tab-watch" data-tab="watch" aria-selected="false" aria-controls="panelWatch">The Board <b id="tabWatchN"></b></button>
       <button type="button" role="tab" class="vt-tab vt-off" id="tab-contrib" data-tab="contrib" aria-selected="false" aria-controls="panelContrib">Contributions <b id="tabContribN"></b></button>
     </div>
     <div class="vt-panel on" id="panelBook" data-panel="book" role="tabpanel" aria-labelledby="tab-book">
@@ -1522,53 +1493,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       </table></div>
     </section>
     </div>
-    <div class="vt-panel" id="panelWatch" data-panel="watch" role="tabpanel" aria-labelledby="tab-watch">
-    <!-- ------------------------------------------------------------------
-         The Board (2026-10-07): the markets a member follows, each a tile
-         with its buying read (/buying-read.js). This deck was "Your
-         watchlist" until 2026-10-06; its code still says watchlist. The deal
-         wall that sat under the tiles (the owner's pick "C, Deal wall" of the
-         Board drafts) left on 2026-10-09, the owner's call: deals are a
-         development firm's, worked on Home's Properties tab, and The Board
-         "is meant to be kind of like a stock portfolio watch list for
-         properties and markets".
-
-         NOT "Your markets": that heading is already taken on this page by
-         #rollupSec, which breaks a broker's own COMPS down by market, and
-         #covBox's "Markets you watch" is a third thing again (the markets
-         they want LEADS from). Three market-ish labels is what this page has
-         and two of them are pre-existing; naming this one after either would
-         put two identical headings on one screen meaning different things.
-
-         The feed is
-         read from /api/watchlist/feed, which gates ITEMISED comps on the
-         plan but leaves the market-level figures (new count, median, trend)
-         free, so a free member sees a real feed rather than a locked one.
-         ------------------------------------------------------------------ -->
-    <div class="deck" id="deckMarkets">
-      <span class="dlab">The Board</span><span class="dln"></span>
-    </div>
-
-    <section id="mktSec">
-      <p class="sub hide" id="mktIntro" style="margin-top:0">Your markets, with how conditions look for buying there.
-        Comps other people search turn up here first.</p>
-      <div class="form hide" id="watchForm" style="margin-top:var(--s4)">
-        <label>City <input id="wCity" type="text" placeholder="Boise"/></label>
-        <label>State <input id="wState" type="text" maxlength="2" placeholder="ID"/></label>
-        <label>Type <select id="wType"></select></label>
-        <div class="formact">
-          <button class="btn" id="wAdd">Add to The Board</button>
-        </div>
-      </div>
-      <div id="mktMsg"></div>
-      <div class="msg bad hide" id="mktErr">Couldn&rsquo;t load your markets just now.
-        Nothing has been lost. Refresh in a moment.</div>
-      <div class="invite hide" id="mktEmpty">
-        <p>No markets on The Board yet. Add one above to see its new comps and how conditions look for buying there.</p>
-      </div>
-      <div id="mktRows"></div>
-    </section>
-    </div>
     <div class="vt-panel" id="panelContrib" data-panel="contrib" role="tabpanel" aria-labelledby="tab-contrib">
     <!-- ------------------------------------------------------------------
          Your contributions (2026-09-04). The comps this member handed to the
@@ -1625,7 +1549,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 <script>window.__VAULT_BOOT__=${bootJson};</script>
 <script src="/gut-check.js"></script>
 <script src="/building-facts.js"></script>
-<script src="/buying-read.js"></script>
 <script>
 (function(){
   var $=function(id){return document.getElementById(id)};
@@ -1912,7 +1835,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     if(curTab==="book"||curTab==="pipe")setTab("props",true);
     // The page subtitle describes the book and the pipeline. With both
     // locked it would be describing a page that is not on screen.
-    $("deckSub").textContent="Your properties and The Board. Only you can see this.";
+    $("deckSub").textContent="Your properties. Only you can see this.";
     if(msg) $("vaultLocked").insertAdjacentHTML("afterbegin",
       '<p class="note">'+esc(msg)+"</p>");
   }
@@ -1991,7 +1914,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // Once per page visit, not on every filter change or post-import refresh
     // that re-runs load() -- those hit /api/vault, a different endpoint, and
     // re-reading the portfolio on each would be work with no new information.
-    if(!personalLoaded){ personalLoaded=true; loadProps(); loadMarkets(); loadContribs(); }
+    if(!personalLoaded){ personalLoaded=true; loadProps(); loadContribs(); }
     else { renderProps(); }
 
     // 403 (not Pro) and 503 (no database) lock the same three decks. The 503
@@ -3541,11 +3464,15 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // #sites (a development firm's tab, 2026-10-05 to 2026-10-09) is still
   // read, as Properties: applyShop sends a development firm's member who
   // follows such a link to Home, where their deals are now.
-  var TABS=["book","pipe","props","watch","contrib"];
-  var PANEL={book:"panelBook",pipe:"panelPipe",props:"panelProps",watch:"panelWatch",contrib:"panelContrib"};
-  var HASH_OF_TAB={book:"book",pipe:"pipeline",props:"properties",watch:"board",contrib:"contributions"};
-  var TAB_OF_HASH={book:"book",sites:"props",pipeline:"pipe",properties:"props",board:"watch",watchlist:"watch",contributions:"contrib",
-    compsSec:"book",sitesSec:"props",pipeSec:"pipe",propsSec:"props",mktSec:"watch",contribSec:"contrib"};
+  // The Board (#board, and the older #watchlist and mktSec) left this page
+  // for the Markets page on 2026-10-09; a link that names it goes there
+  // (BOARD_HASHES, below).
+  var TABS=["book","pipe","props","contrib"];
+  var PANEL={book:"panelBook",pipe:"panelPipe",props:"panelProps",contrib:"panelContrib"};
+  var HASH_OF_TAB={book:"book",pipe:"pipeline",props:"properties",contrib:"contributions"};
+  var TAB_OF_HASH={book:"book",sites:"props",pipeline:"pipe",properties:"props",contributions:"contrib",
+    compsSec:"book",sitesSec:"props",pipeSec:"pipe",propsSec:"props",contribSec:"contrib"};
+  var BOARD_HASHES={board:1,watchlist:1,mktSec:1};
   // Pipeline is a row of the rail (2026-10-09), so it has a path of its own:
   // /pipeline serves this page opened on that tab (server.js's
   // VAULT_PAGE_PATHS), and switching to it writes the path back, so the
@@ -4270,6 +4197,12 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       h=String((window.location&&window.location.hash)||"").replace("#","");
       p=String((window.location&&window.location.pathname)||"");
     }catch(e){}
+    // A saved link to The Board opens it where it lives now. Never from a
+    // page built ahead of being seen (instant tab switching).
+    if(BOARD_HASHES[h]&&!document.prerendering&&window.location&&window.location.replace){
+      window.location.replace("/markets#board");
+      return;
+    }
     // A hash still wins: it is the older and the more specific of the two.
     askedTab=TAB_OF_HASH[h]||TAB_OF_PATH[p]||"";
     setTab(askedTab||"book",true);
@@ -5871,9 +5804,9 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // promised absorption rates and feasibility calculations it has no tab
     // for, and the other promised BOV leads to a member who is not a broker.
     // A development shop's properties are on Home since 2026-10-09, so its
-    // page holds comps and the markets on The Board, and says so.
+    // page holds comps, and says so (The Board is on the Markets page).
     var holds=myFirm&&myFirm.kind==="development"
-      ? "The comps you value against, and the markets you follow. Your properties are on Home. "
+      ? "The comps you value against. Your properties are on Home. "
       // Any other firm reads as a broker shop, org-access.js kindOf's rule.
       : myFirm
         ? "Your comps, the owners asking you for a BOV, and the properties you hold. "
@@ -6587,134 +6520,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       .catch(function(){loadProps()});
   });
 
-  // ---------------------------------------------------------------------
-  // YOUR MARKETS -- the watchlist, moved off /desk the same day.
-  //
-  // The feed's own route already draws the line this deck needs: the
-  // market-level figures (new count, median, trend) are free, and only the
-  // ITEMISED comp rows are gated, arriving as locked_count instead. So a
-  // free member sees a real feed here rather than a locked one, and nothing
-  // in this file has to decide that.
-  // ---------------------------------------------------------------------
-  var mktItems=[],mktOk=false;
-
-  function loadMarkets(){
-    fetch("/api/watchlist/feed",{credentials:"same-origin"})
-      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
-      .then(function(o){
-        if(o.s===401){mktItems=[];mktOk=true;renderMarkets();return;}
-        if(o.s!==200){mktOk=false;renderMarkets();return;}
-        mktOk=true;mktItems=o.j.items||[];renderMarkets();
-        // Mark the feed read, exactly as the workspace does when a member
-        // opens it. This is not cosmetic: last_seen_at is one of the two
-        // high-water marks the watchlist digest takes its cutoff from (the
-        // later of last_digest_at and last_seen_at), so without it somebody
-        // who reads their new comps here would still be MAILED about them.
-        // That is the one thing this product sends on its own initiative, and
-        // its bar is "is this worth interrupting a person for".
-        //
-        // Guarded on unseen, so a page visit with no news writes nothing, and
-        // fire-and-forget: a failed stamp costs one duplicate line in the next
-        // digest, where letting it fail the deck would cost the feed itself.
-        if(o.j.unseen){
-          fetch("/api/watchlist/seen",{method:"POST",credentials:"same-origin"})
-            .catch(function(){});
-        }
-      })
-      .catch(function(){mktOk=false;renderMarkets();});
-  }
-
-  // Each market a tile: its buying read and the reasons for it (computed by
-  // /buying-read.js, BUYINGREAD.buyingRead, from the feed's six-month price
-  // trend and the market page's direction -- no read when neither exists),
-  // its new comps behind a fold, and Remove. The add form opens on an empty
-  // Board and behind the last tile otherwise.
-  var watchFormOpen=false;
-  function boardCount(){ tabCount("tabWatchN",mktItems.length||"",false); }
-  function renderMarkets(){
-    $("mktErr").className=mktOk?"msg bad hide":"msg bad";
-    if(!mktOk){$("mktEmpty").className="invite hide";return;}
-    var items=mktItems,DW=window.BUYINGREAD,anyRead=false;
-    boardCount();
-    $("mktIntro").className=items.length?"sub":"sub hide";
-    $("mktEmpty").className=items.length?"invite hide":"invite";
-    $("watchForm").className=items.length&&!watchFormOpen?"form hide":"form";
-    var tiles=items.map(function(it){
-      var title=esc(it.market)+" <span>"+esc(it.property_type)+"</span>";
-      if(it.market_page&&typeof it.market_page.slug==="string"
-         &&/^[a-z0-9-]{1,120}$/.test(it.market_page.slug)){
-        title='<a href="/market/'+escA(it.market_page.slug)+'">'+esc(it.market)+"</a> <span>"+esc(it.property_type)+"</span>";
-      }
-      var read=DW?DW.buyingRead(it):null,readHtml="";
-      if(read){
-        anyRead=true;
-        readHtml='<span class="dw-pill dw-'+read.lean+'"><i></i>Buying: '+DW.LEANS[read.lean]+"</span>"+
-          '<ul class="dw-why">'+read.reasons.map(function(r){
-            return "<li><b>"+(r.dir==="down"?"▼":r.dir==="up"?"▲":"■")+"</b>"+esc(r.text)+"</li>";
-          }).join("")+"</ul>";
-      }
-      var facts=[];
-      facts.push((it.new_count||0)+" new comp"+((it.new_count||0)===1?"":"s"));
-      if(it.median_psf!=null)facts.push("median "+psf0(it.median_psf)+"/SF");
-      if(!DW&&it.median_trend&&it.median_trend.current!=null&&it.median_trend.prior!=null
-         &&Number(it.median_trend.prior)>0){
-        var d=((it.median_trend.current-it.median_trend.prior)/it.median_trend.prior)*100;
-        facts.push((d>=0?"▲":"▼")+" "+Math.abs(d).toFixed(1)+"% vs the six months before");
-      }
-      // Aggregate only -- the payload carries no address, email or visitor
-      // id, and the member's own searches are excluded server-side, so this
-      // is other people's interest and never their own reflected back.
-      if(it.demand&&it.demand.viewers){
-        facts.push(it.demand.viewers+" "+(it.demand.viewers===1?"person":"people")+
-          " searched here in "+(it.demand.window_days||30)+" days");
-      }
-      var rows="";
-      if(it.comps&&it.comps.length){
-        rows='<details><summary>The new comps</summary><div class="tw"><table>'+
-          "<thead><tr><th>Address</th><th>Deal</th><th>Date</th>"+
-          '<th class="num">Price or rate</th><th class="num">$/SF</th></tr></thead><tbody>'+
-          it.comps.map(function(c){
-            var a=esc(c.address||"");
-            if(c.source_url&&/^https?:\\/\\//.test(c.source_url)){
-              a='<a href="'+escA(c.source_url)+'" rel="nofollow noopener" target="_blank">'+a+"</a>";
-            }
-            return "<tr><td>"+a+"</td><td>"+esc(c.transaction||"")+"</td><td>"+
-              esc(c.deal_date||"")+'</td><td class="num">'+esc(c.price_or_rate||"")+
-              '</td><td class="num">'+esc(c.price_per_sqft==null?"":psf(c.price_per_sqft))+
-              "</td></tr>";
-          }).join("")+"</tbody></table></div></details>";
-      }
-      // The gated remainder, said out loud rather than silently dropped.
-      if(it.locked_count){
-        rows+='<p class="dw-tf">'+it.locked_count+" more comp"+
-          (it.locked_count===1?"":"s")+" in this market. "+
-          '<a href="/desk">See your plan</a> to itemise them.</p>';
-      }
-      return '<div class="dw-tile"><div class="dw-tt">'+title+"</div>"+readHtml+
-        '<p class="dw-tf">'+facts.join(" · ")+"</p>"+rows+
-        '<p class="dw-tfoot"><button class="lnk" type="button" data-unwatch="'+
-        escA(it.id)+'" data-mkt="'+escA(it.market+" "+it.property_type)+
-        '">Remove from The Board</button></p></div>';
-    }).join("");
-    $("mktRows").innerHTML=items.length?'<div class="dw-tiles-row">'+tiles+
-      (watchFormOpen?"":'<button type="button" class="dw-addt" id="wAddTile">+ Add a market</button>')+"</div>"+
-      (anyRead?'<p class="dw-fine">Buying conditions are an automated read of public numbers: the six-month '+
-        "median price of recorded sales and, where one exists, the market page’s direction. Not investment advice.</p>":""):"";
-  }
-
-  $("mktRows").addEventListener("click",function(e){
-    if(e.target.closest("#wAddTile")){
-      watchFormOpen=true;renderMarkets();
-      try{$("wCity").focus()}catch(ex){}
-      return;
-    }
-    var b=e.target.closest("button[data-unwatch]");if(!b)return;
-    if(!confirm("Remove "+(b.getAttribute("data-mkt")||"this market")+" from The Board?"))return;
-    fetch("/api/watchlist?id="+encodeURIComponent(b.getAttribute("data-unwatch")),
-      {method:"DELETE",credentials:"same-origin"})
-      .then(function(){loadMarkets()}).catch(function(){loadMarkets()});
-  });
-
   // Your contributions: one read of /api/broker/me (signed-in, never Pro).
   // A failed read hides the deck -- "we could not ask" is not "you have not
   // contributed" -- and so does isBroker:false, which is the ordinary state
@@ -6768,33 +6573,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       })
       .catch(function(ex){ box.checked=!want; err.textContent=ex.message; err.className="msg bad"; })
       .then(function(){ box.disabled=false; });
-  });
-
-  $("wType").innerHTML=PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");
-  $("wAdd").addEventListener("click",function(){
-    var city=$("wCity").value.trim(),st=$("wState").value.trim().toUpperCase();
-    var msg=$("mktMsg");
-    if(!city||!/^[A-Z]{2}$/.test(st)){
-      msg.innerHTML='<div class="msg bad">Enter a city and a two-letter state.</div>';return;
-    }
-    msg.innerHTML="";
-    fetch("/api/watchlist",{method:"POST",credentials:"same-origin",
-      headers:{"content-type":"application/json"},
-      body:JSON.stringify({market:city+", "+st,property_type:$("wType").value})})
-      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
-      .then(function(o){
-        if(o.s!==200&&o.s!==201){
-          msg.innerHTML='<div class="msg bad">'+
-            esc((o.j&&o.j.error)||"Couldn’t add that market.")+"</div>";
-          return;
-        }
-        $("wCity").value="";$("wState").value="";
-        watchFormOpen=false;
-        loadMarkets();
-      })
-      .catch(function(){
-        msg.innerHTML='<div class="msg bad">Couldn’t reach the server. Please try again.</div>';
-      });
   });
 
   // The server bakes the first answer into the page (window.__VAULT_BOOT__)

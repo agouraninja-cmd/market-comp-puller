@@ -26,7 +26,8 @@
 //      the server already scopes, joined only in this member's own browser.
 //
 //   3. A PROPERTY IS LIVE. A property row always carries a status (Prospect,
-//      LOI, Under contract, Entitlements, Owned, Tracking, or Firm building),
+//      LOI, Under contract, Entitlements, Owned, or Firm building; Tracking
+//      too until 2026-10-09, when watched buildings moved to The Board),
 //      so it can never be mistaken for a comp, a past deal (the owner's
 //      wording ask, 2026-10-07). Until 2026-10-09 Home listed comps too, each
 //      with its deal date and price per unit; they are /vault's now.
@@ -37,8 +38,8 @@
 // is listed, dated in Today and worked on Home's Properties tab
 // (home-sites.js) for a member of a development firm, and for nobody else:
 // /vault's Sites tab and The Board's deal wall were removed that day. A
-// status row (Owned or Tracking on a held property) still describes that
-// property for anyone, since it is the property's, not a deal's.
+// status row on a held property is the property's, not a deal's, so it is
+// read for anyone: Owned lists it here, Tracking puts it on The Board.
 //
 // Pure and dual-exported (Node for npm test, the browser global HOMEMAP for
 // index.html), like valuation.js, and served with the
@@ -149,6 +150,12 @@
     const byId = new Map();
     (Array.isArray(portfolio) ? portfolio : []).forEach((p) => { if (p && p.id != null) byId.set(String(p.id), p); });
     const usedPortfolio = new Set();
+    const newestStatus = new Map();
+    (Array.isArray(sites) ? sites : []).forEach((s) => {
+      if (!s || s.portfolio_item_id == null) return;
+      const k = String(s.portfolio_item_id), prior = newestStatus.get(k);
+      if (!prior || str(s.updated_at) > str(prior.updated_at)) newestStatus.set(k, s);
+    });
 
     (Array.isArray(sites) ? sites : []).forEach((s) => {
       if (!s || s.stage === "passed") return;
@@ -165,14 +172,20 @@
         return;
       }
       // Owned and Tracking are the STATUS of a held property: the row is the
-      // portfolio item's, with the site's stage on it.
+      // portfolio item's, with the site's stage on it, the newest status
+      // where there are two. A Tracking one is a building the member
+      // watches, not one they hold, and since 2026-10-09 it is on The Board
+      // (board.js, on the Markets page), not here: Home is what you own,
+      // manage or are buying.
       const held = s.portfolio_item_id != null ? byId.get(String(s.portfolio_item_id)) : null;
       if (!held) return;
+      if (newestStatus.get(String(held.id)) !== s) return;
       usedPortfolio.add(String(held.id));
+      if (s.stage === "tracking") return;
       const v = lastValue(held);
       const r = put(addressKey(held.address), held.address, {});
       if (!r) return;
-      Object.assign(r, { type: held.property_type || r.type, group: "owned", stage: s.stage === "tracking" ? "tracking" : "owned",
+      Object.assign(r, { type: held.property_type || r.type, group: "owned", stage: "owned",
         you: true, siteId: s.id, portfolioId: held.id, value: v.value, valueNote: v.value ? "likely value" : "", change: v.change });
     });
     byId.forEach((p, id) => {

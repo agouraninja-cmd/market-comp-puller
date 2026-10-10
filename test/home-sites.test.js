@@ -123,3 +123,11 @@ test("a refused edit keeps what was typed, and a failure says nothing was lost",
   assert.match(edit, /if \(r\.s !== 200\) \{ b\.disabled = false; said\.textContent = /, "a refusal must not rebuild the form");
   assert.ok((SRC.match(/Nothing has been lost/g) || []).length >= 6);
 });
+
+test("a building watched rather than owned is The Board's: Home neither adds one nor keeps one (2026-10-09)", () => {
+  assert.doesNotMatch(SRC, /I'm tracking it|"track"/, "the add form offers tracking again");
+  const pane = SRC.slice(SRC.indexOf("function heldPane("), SRC.indexOf("function removeHeld("));
+  assert.match(pane, /btn\("Watch it on The Board instead", "", \(e\) => \{ e\.currentTarget\.disabled = true; setHeld\(key, it, status, "tracking"\); \}\)/);
+  // It leaves Home, so its pane closes and the member is told where it went.
+  assert.match(pane, /\? after\(null, street\(it\.address\) \+ " is on The Board now, on the Markets page\."\)/);
+});

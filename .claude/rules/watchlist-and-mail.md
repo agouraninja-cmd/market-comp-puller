@@ -11,14 +11,17 @@ paths:
 
 > **Customers call the watchlist "The Board"** (2026-10-06, the owner's call,
 > from a partner's idea of a board of properties you are pursuing). Every
-> customer-facing string says The Board: the Data tab (`/vault#board`;
-> `#watchlist` still opens it), the digest email and its unsubscribe page, the
+> customer-facing string says The Board: the Markets page (`/markets#board`
+> since 2026-10-09; it was the Data tab, `/vault#board`, and /vault's
+> `#board` and `#watchlist` still lead there), the digest email and its unsubscribe page, the
 > settings toggle, the market pages' "Add to The Board" button. The code, the
 > routes (`/api/watchlist*`, `/watchlist/unsubscribe`), the `watchlist_items`
 > table, event names and this file keep "watchlist" — renaming them buys
 > nothing and breaks every link already in somebody's inbox. The digest's
-> link now goes to `/vault#board`; it pointed at `/desk` after the markets
-> moved to Data on 2026-09-01.
+> link now goes to `/markets#board` (2026-10-09); it went to `/vault#board`
+> before that, and to `/desk` after the markets moved to Data on 2026-09-01.
+> The feed items also carry `spark` (quarterly medians, The Board's trend
+> line), which the digest ignores like `market_page` and `direction`.
 >
 > **Since 2026-10-07 each market on The Board is a tile with a computed
 > buying read** (`buying-read.js`; vault.md, "The Board's deal wall"), and

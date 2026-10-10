@@ -1333,6 +1333,12 @@ only: nothing about storage or import changed.
 
 ## The Board's deal wall (2026-10-07)
 
+> **The Board itself left /vault later the same day, for the Markets page**
+> (markets.md, "The Board, on /markets"): the tab, `#mktSec` and its tiles,
+> `loadMarkets`/`renderMarkets`, the add form and `/buying-read.js` on this
+> page are gone, and a link naming `#board`, `#watchlist` or `#mktSec`
+> goes to `/markets#board` (`BOARD_HASHES`, never from a prerendered page).
+>
 > **Removed on 2026-10-09** with the Sites tab (above): deals are a
 > development firm's, worked on Home. The owner: "the board is meant to be
 > kind of like a stock portfolio watch list for properties and markets".

@@ -242,10 +242,15 @@ paths:
 >   in Pipeline's place under Messages; app-shell.md) opens this tab:
 >   `/desk#properties`, marked current by `markNavCurrent` while
 >   Properties shows for that member.
-> - **The Board's door is on the Markets pages** (it has no rail row now):
->   `/markets` carries a `.mboard` band for a signed-in member only (the
->   anonymous page is publicly cached), and a market page's "Add to The
->   Board" has "Open The Board →" under it.
+> - **The Board is on the Markets page** (2026-10-09; markets.md): drawn on
+>   `/markets` for a signed-in member, where its `.mboard` door was, and a
+>   market page's "Add to The Board" has "Open The Board →" under it.
+>   **A watched building is The Board's, not Home's:** `HOMEMAP.properties`
+>   skips a held property whose newest status is Tracking (and no longer
+>   lists it as a plain holding either), the Owned group is just "Owned",
+>   `home-sites.js`'s add form offers "I'm buying it" and "I own it" only,
+>   and an owned row's pane says "Watch it on The Board instead" (it moves
+>   there and its pane closes).
 > - **The old Home, deleted (2026-10-07; it was hidden under `html.hm-page`
 >   for the day Draft C shipped).** Gone from index.html with their CSS and
 >   tests: the banner and skyline (`#deskHero`, `drawDeskSky`,

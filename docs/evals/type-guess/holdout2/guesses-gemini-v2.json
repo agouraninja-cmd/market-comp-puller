@@ -1,0 +1,242 @@
+[
+ {
+  "id": "g005",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "This property is a 1.1 million-square-foot Class A industrial distribution warehouse facility."
+ },
+ {
+  "id": "g033",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "This property is a 42,630-square-foot freestanding retail showroom and store building."
+ },
+ {
+  "id": "g026",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Wells Fargo Plaza at 401 B Street is a 24-story Class A commercial office tower."
+ },
+ {
+  "id": "g038",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "This property is a multi-tenant retail strip shopping center."
+ },
+ {
+  "id": "g030",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "The property is a Class A medical office building known as 17 Davis Medical Building."
+ },
+ {
+  "id": "g031",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "This property is a 4,686-square-foot multi-tenant retail strip center."
+ },
+ {
+  "id": "g020",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Nellis Gate Apartments is a 50-unit residential apartment community."
+ },
+ {
+  "id": "g035",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "The property is a 5,126-square-foot multi-tenant retail strip shopping center."
+ },
+ {
+  "id": "g006",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "This property is a 25,000-square-foot freestanding dock-high industrial warehouse facility."
+ },
+ {
+  "id": "g019",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "The property is a 12-unit boutique apartment residential community."
+ },
+ {
+  "id": "g004",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "LoopNet lists this 12,000-square-foot property as an industrial warehouse for sale."
+ },
+ {
+  "id": "g007",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "LoopNet and Crexi list the property as an 11,600-square-foot industrial flex building."
+ },
+ {
+  "id": "g010",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "LoopNet classifies this multi-tenant commercial property as an office building."
+ },
+ {
+  "id": "g013",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "LoopNet and Crexi list The Gaston Twelve as a 12-unit multifamily apartment building."
+ },
+ {
+  "id": "g001",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Commercial real estate records identify this property as a 73,000-square-foot industrial building occupied by SRS Distribution."
+ },
+ {
+  "id": "g028",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "The address is Bridgestone Tower, a 30-story corporate headquarters office building."
+ },
+ {
+  "id": "g029",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "This address is a Class A high-rise commercial office building in downtown San Diego."
+ },
+ {
+  "id": "g015",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "The property is Venture on Maryland, a multi-unit apartment community."
+ },
+ {
+  "id": "g012",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Crexi and MLS listings identify the property as a fully leased 7-unit multifamily townhome building."
+ },
+ {
+  "id": "g016",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "This address is The Preserve at Tampa Palms, a 378-unit apartment community."
+ },
+ {
+  "id": "g025",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Fifth Third Center at 424 Church Street is a 31-story Class A office tower."
+ },
+ {
+  "id": "g037",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "7121 W US Highway 90 is Gateway Plaza, a neighborhood retail shopping center."
+ },
+ {
+  "id": "g008",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "3130 N Lamb Blvd is a 104,440-square-foot industrial warehouse and distribution facility in Cheyenne Industrial Park."
+ },
+ {
+  "id": "g017",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "2411 S 5th St is a six-unit multifamily apartment property."
+ },
+ {
+  "id": "g034",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "7150 W Colonial Dr is part of West Colonial Oaks, a retail shopping center."
+ },
+ {
+  "id": "g009",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "2315 Pier St is a 105,943-square-foot crane-served heavy industrial manufacturing facility."
+ },
+ {
+  "id": "g027",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Fountain Square III at 4900 Memorial Hwy is a 176,150-square-foot Class A office building."
+ },
+ {
+  "id": "g036",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "10040 Bruceville Rd is a retail strip building within the Laguna Reserve Marketplace shopping center."
+ },
+ {
+  "id": "g021",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "One Midtown Plaza at 1360 Peachtree St NE is a Class A office building."
+ },
+ {
+  "id": "g003",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "6660 Broughton Ave is a 105,000-square-foot cold storage warehouse facility."
+ },
+ {
+  "id": "g040",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "The property is a standalone retail building occupied by Hobby Lobby."
+ },
+ {
+  "id": "g024",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Trinity Place at 1801 Broadway is a 17-story commercial office building in downtown Denver."
+ },
+ {
+  "id": "g023",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Elizabeth on Seventh is a multi-story commercial and medical office building."
+ },
+ {
+  "id": "g018",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "The property is a fully leased eight-unit multifamily residential building."
+ },
+ {
+  "id": "g039",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "LoopNet and commercial sales listings classify the property as retail occupied by a toy store."
+ },
+ {
+  "id": "g002",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Commercial market reports record the property as an industrial flex facility occupied by building systems contractors."
+ },
+ {
+  "id": "g011",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Commercial listings and rental directories identify the property as an eight-unit apartment complex known as Wooten Plaza."
+ },
+ {
+  "id": "g022",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "LoopNet and CoStar classify the property as a corporate office campus previously occupied by LegalZoom."
+ },
+ {
+  "id": "g032",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Commercial listings on LoopNet and Showcase designate the site as an industrial and logistics facility."
+ },
+ {
+  "id": "g014",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "The property is a 54-unit multifamily apartment community named Westland Orland Apartments."
+ }
+]

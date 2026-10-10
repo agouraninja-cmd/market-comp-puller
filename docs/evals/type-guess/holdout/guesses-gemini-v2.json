@@ -1,0 +1,362 @@
+[
+ {
+  "id": "h018",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "This address is home to NoDa Flats, an apartment community."
+ },
+ {
+  "id": "h044",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "The property is a three-story Class B commercial office building."
+ },
+ {
+  "id": "h007",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Commercial listings identify this facility as a flex-industrial building with warehouse space and overhead doors."
+ },
+ {
+  "id": "h020",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "The site is home to Infinity on Yorktown, a multifamily apartment complex."
+ },
+ {
+  "id": "h027",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "MLS and real estate records classify this property as a residential duplex multifamily building."
+ },
+ {
+  "id": "h032",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "This location is One Barton Skyway, a large commercial office property."
+ },
+ {
+  "id": "h043",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Hudson's Bay Centre at this address is a 20-story downtown commercial office tower."
+ },
+ {
+  "id": "h021",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "The address is occupied by Wood Ridge Villas, an apartment community."
+ },
+ {
+  "id": "h051",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "The property is Rancho Encanto Plaza, a neighborhood retail shopping center."
+ },
+ {
+  "id": "h060",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Commercial listings classify this building as a freestanding retail health club facility."
+ },
+ {
+  "id": "h052",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "This building is a multi-tenant retail pad within Anatolia Marketplace."
+ },
+ {
+  "id": "h059",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "LoopNet and commercial records designate this multi-suite building as a retail property."
+ },
+ {
+  "id": "h053",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "The property is Marketplace at Encino Park, a grocery-anchored shopping center featuring Sprouts Farmers Market."
+ },
+ {
+  "id": "h008",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Commercial listings identify the property as a freestanding industrial warehouse facility."
+ },
+ {
+  "id": "h011",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Listing details describe a newly constructed light industrial warehouse building with grade-level overhead doors."
+ },
+ {
+  "id": "h038",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "The property is University Professional Center, a 5-story medical and professional office building."
+ },
+ {
+  "id": "h002",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "LoopNet identifies the property as a Class A flex industrial commercial building."
+ },
+ {
+  "id": "h037",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "The site is Axis 1450, a 7-story commercial office building totaling over 140,000 square feet."
+ },
+ {
+  "id": "h004",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "LoopNet and Cityfeet list the property as a 5,040-square-foot industrial and manufacturing building."
+ },
+ {
+  "id": "h012",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Commercial listings and sale reports identify the property as a 27,801-square-foot industrial warehouse on 4.64 acres."
+ },
+ {
+  "id": "h056",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "LoopNet and brokerage sale reports classify the property as a 12,006-square-foot freestanding retail building."
+ },
+ {
+  "id": "h045",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "The property is AERO, a 4-story Class A office building totaling approximately 92,500 square feet."
+ },
+ {
+  "id": "h058",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "The address is Westgate Square, a 136,189-square-foot grocery-anchored retail shopping center."
+ },
+ {
+  "id": "h055",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Crexi identifies the property as Jumana Retail Center, a two-tenant retail strip building."
+ },
+ {
+  "id": "h013",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "The address is a 48,000-square-foot FedEx shipping and distribution facility."
+ },
+ {
+  "id": "h033",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Charlotte Plaza is a 27-story, 645,000-square-foot Class A office tower."
+ },
+ {
+  "id": "h016",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Parks at Utoy Creek is an apartment community offering multifamily residential units."
+ },
+ {
+  "id": "h047",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Beckley Center is an occupied neighborhood retail shopping center."
+ },
+ {
+  "id": "h026",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "The Village at Julia is a 21-unit multifamily apartment property."
+ },
+ {
+  "id": "h039",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "Two Midtown Plaza is a 20-story Class A office high-rise building."
+ },
+ {
+  "id": "h046",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Specialty Shops SouthPark is an upscale shopping center featuring boutiques and restaurants."
+ },
+ {
+  "id": "h022",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Serafina at South Mountain is a multifamily apartment rental community."
+ },
+ {
+  "id": "h041",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "The property is a single-story commercial office building located within ThExchange Office Park."
+ },
+ {
+  "id": "h009",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "The property is an 183,000-square-foot warehouse and industrial distribution facility."
+ },
+ {
+  "id": "h035",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "The building is a 51,000-square-foot commercial office property housing Spaces Ballpark coworking suites."
+ },
+ {
+  "id": "h024",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Avondale Hills is a multifamily residential apartment community."
+ },
+ {
+  "id": "h050",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "Commercial property records identify this site as a retail building occupied by CVS Pharmacy."
+ },
+ {
+  "id": "h042",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "LoopNet lists this property as Uptown Tower, a 12-story, 254,000-square-foot Class B office building."
+ },
+ {
+  "id": "h028",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Apartments.com and community listings identify this property as Melville Apartments, an apartment complex with multiple rental units."
+ },
+ {
+  "id": "h019",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Real estate listings show the property is a two-unit residential duplex."
+ },
+ {
+  "id": "h017",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "Matthews Real Estate lists the property as Woodrow Apartments, a six-unit multifamily residential community."
+ },
+ {
+  "id": "h010",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Crexi and LoopNet list this property as an industrial warehouse facility featuring high ceilings and grade-level overhead doors."
+ },
+ {
+  "id": "h054",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "LoopNet lists this location as The Village Shoppes, a multi-tenant retail shopping center."
+ },
+ {
+  "id": "h003",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "Commercial real estate transaction records document this address as a 472,000-square-foot industrial distribution center."
+ },
+ {
+  "id": "h025",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "LoopNet and rental listings show Monsanto Apartments, a 12-unit multifamily residential complex."
+ },
+ {
+  "id": "h030",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "LoopNet and property records show Portola Red Mountain, a multi-family rental townhome community."
+ },
+ {
+  "id": "h057",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "County assessor records and commercial listings classify the building as Gibson Center, a retail store strip center."
+ },
+ {
+  "id": "h034",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "LoopNet documents this property as City Central at Preston Hollow, a multi-tenant office building hosting medical and business suites."
+ },
+ {
+  "id": "h006",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "7916 Hall Rd is the Hall Road Distribution Center, a 139,000-square-foot industrial logistics and warehouse facility."
+ },
+ {
+  "id": "h029",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "2180 E Warm Springs Rd is Mirasol Apartment Homes, a multi-unit rental apartment community."
+ },
+ {
+  "id": "h001",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "6435 Shiloh Rd is Meadows Corporate Campus, a commercial flex and light industrial building."
+ },
+ {
+  "id": "h015",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "405 Expansion Rd is a distribution warehouse facility in the port-adjacent Portside V industrial portfolio."
+ },
+ {
+  "id": "h031",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "2849 Paces Ferry Rd SE is Overlook I, a seven-story, 142,000-square-foot multi-tenant office building."
+ },
+ {
+  "id": "h014",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "7240 Sycamore Canyon Blvd is a 34,573-square-foot light industrial warehouse building."
+ },
+ {
+  "id": "h048",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "15150 North Fwy is a commercial retail property featuring a 9,335-square-foot retail showroom."
+ },
+ {
+  "id": "h049",
+  "type": "Retail",
+  "confidence": "high",
+  "evidence": "4701 W Sahara Ave is a commercial retail redevelopment site featuring retail spaces and restaurant pad sites."
+ },
+ {
+  "id": "h005",
+  "type": "Industrial",
+  "confidence": "high",
+  "evidence": "15521 Slover Ave is the Slover & Elm Commerce Center, a 192,794-square-foot Class A industrial distribution warehouse."
+ },
+ {
+  "id": "h023",
+  "type": "Multifamily",
+  "confidence": "high",
+  "evidence": "15350 Amberly Dr is Henley Tampa Palms, a multi-unit residential apartment complex."
+ },
+ {
+  "id": "h040",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "3300 N Interstate Hwy 35 is University Park, an eight-story commercial office building totaling over 200,000 square feet."
+ },
+ {
+  "id": "h036",
+  "type": "Office",
+  "confidence": "high",
+  "evidence": "110 Westwood Pl is a two-story, 24,372-square-foot commercial office building."
+ }
+]

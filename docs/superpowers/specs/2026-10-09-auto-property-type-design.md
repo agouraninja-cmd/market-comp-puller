@@ -22,8 +22,11 @@ draft in five places:
   and the median seconds. A correction counts only when the lookup chose
   the type (`lookup_changed`, `found_retyped`).
 
-The Gemini gate below has **not** been run (this workspace cannot reach
-Google); run it before the deploy. Rules live in
+The Gemini gate below **passed** on 2026-10-10: 38/40 (95%) on holdout2
+and 60/60 (100%) on holdout, on `gemini-3.7-flash` with Google Search.
+Gemini said `high` on all 100 answers, so the deep pass never ran, and both
+misses were `high` (the misses and seconds per call are in
+`docs/evals/2026-10-09-property-type-guess.md`, "Gemini check"). Rules live in
 `.claude/rules/search-pipeline.md`, `bulk.md` and `report-and-valuation.md`.
 
 ## The goal

@@ -11,6 +11,48 @@ right (85%). Every one of its 56 "high confidence" answers was right. All 13
 mistakes were answers where it had not found the address itself and
 guessed from the neighbours. Without web search it was a coin flip (51%).
 
+## Gemini check (2026-10-10)
+
+The design doc's gate, run on the production model: `gemini-3.7-flash` (the
+provider default; no `MODEL` or `THINKING_LEVEL` set) with Google Search,
+prompt version 2, two-step with the deep pass at medium thinking. The
+commands are the two under "Gate before building" in
+`docs/superpowers/specs/2026-10-09-auto-property-type-design.md`.
+
+| | holdout2 (the clean test) | holdout |
+|---|---:|---:|
+| Quick + deep | **38/40 (95%)**, pass (needs 36) | **60/60 (100%)**, pass (needs 54) |
+| "high" confidence answers | 38/40 right (95%) | 60/60 right (100%) |
+| Seconds per call | 17.5 to 25.4, mean 20.6 (10 addresses a call) | 21.6 to 38.1, mean 26.5 (12 addresses a call) |
+
+Three things the scores hide:
+
+- **Gemini said `high` on all 100 answers**, so the deep pass never ran (0
+  unsure on both sets). The score is the quick lookup alone, and the deep
+  pass is still unmeasured on Gemini.
+- **Both misses were `high`.** On Haiku every `high` answer was right
+  (56/56); on Gemini 98 of 100 were. Auto-picking only on `high` filters
+  nothing here, so a confident wrong type reaches the report about 2 times
+  in 100. "Wrong type?" and the `/admin` Type lookup tile are what catch it.
+- **A call here is a batch** of 10 or 12 addresses, about 2 seconds of batch
+  time per address. The design makes one call per address, and this script
+  does not time that.
+
+Both misses are on holdout2:
+
+| id | Address | Label | Gemini said | Gemini's evidence |
+|---|---|---|---|---|
+| g010 | 390 E Corporate Dr, Meridian ID | Industrial | Office (high) | "LoopNet classifies this multi-tenant commercial property as an office building." |
+| g032 | 7001 Lyons Ave, Houston TX 77020 | Retail | Industrial (high) | "Commercial listings on LoopNet and Showcase designate the site as an industrial and logistics facility." |
+
+Both are mixed buildings where the earlier Sonnet deep run gave the same
+answer as Gemini: g010 is a two-story multi-tenant office building with some
+warehouse space, and g032 is a 1950 building listed as both Retail and
+Industrial and marketed for warehousing. Neither was rechecked by hand
+against its deal record this time. Answers are in `guesses-gemini-v2.json`
+(and an empty `guesses-gemini-v2-deep.json`) under `holdout/` and
+`holdout2/`.
+
 ## Why this was asked
 
 The owner wants the property-type picker gone: people forget to set it, and

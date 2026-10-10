@@ -29,9 +29,10 @@ headed "Your properties and comps" and opened from Home's tabs; it was the
 **Data** rail row from 2026-10-04 until the rail became places (since
 2026-10-09: Home, Messages, **Pipeline** | Markets, Comp report, Permits, with
 **Sites** in Pipeline's place for a development firm; app-shell.md). Pipeline
-and Sites are `/vault`'s tabs at paths of their own, `/pipeline` and `/sites`
-(vault.md). Its other tabs have doors instead: new BOV requests also land in
-Home's Today, and
+is `/vault`'s tab at a path of its own, `/pipeline` (vault.md), and Sites
+opens Home's Properties tab, where a development firm's sites are worked
+(`/desk#properties`). Its other tabs have doors instead: new BOV requests also
+land in Home's Today, and
 The Board is linked from `/markets` and every market page. In copy a **property** is
 something you own, manage or are buying and a **comp** is a past deal you value
 against. Code, routes and the rules files still say "desk"/"workspace" and

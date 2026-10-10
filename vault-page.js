@@ -816,183 +816,12 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   #compSheet tr{break-inside:avoid}
   #compSheet .vd-sh-foot{margin-top:14px;font-size:8pt;color:dimgray}
 }
-/* ---- Sites (2026-10-05, migration 060) ---------------------------------------
-   A development firm's one tab for the land and buildings it is buying, owns
-   or tracks: the owner's pick "M2" of the Sites drafts. Drawn by
-   /sites-tab.js into #sitesRoot. Every rule is scoped under #sitesSec, which
-   both outranks this page's own bare table/th/td/section rules and keeps the
-   st- names out of MARKET_CSS's way (test/vault-shell.test.js). Tokens only:
-   the same rules hold in both themes. */
-#sitesSec{margin-top:var(--s5)}
-#sitesSec .st-intro{margin:0 0 var(--s5);color:var(--ink-2);font-size:15px;max-width:62ch}
-#sitesSec .st-mute{color:var(--ink-3);font-size:12.5px}
-#sitesSec .st-hot{color:var(--err-text)}
-#sitesSec .st-none{margin:0;padding:18px 16px;border:1px dashed var(--edge);border-radius:8px;color:var(--ink-2);font-size:13.5px}
-#sitesSec .st-sec{margin:28px 0 0;padding:0;border:0}
-#sitesSec .st-sec:first-of-type{margin-top:0}
-#sitesSec .st-sh{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px 16px;padding:0 2px 10px;border-bottom:2px solid var(--ink);margin-bottom:12px}
-#sitesSec .st-sh h2{margin:0;font-family:var(--serif);font-weight:500;font-size:21px;color:var(--ink)}
-#sitesSec .st-sf{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums}
-#sitesSec .st-sf b{color:var(--ink);font-weight:600}
-#sitesSec .st-attn{margin:0 0 10px;font-size:13px;color:var(--warn-text);background:var(--warn-bg);border:1px solid var(--warn-rule);border-radius:8px;padding:9px 12px}
-#sitesSec .st-tw{border:1px solid var(--edge);border-radius:8px;background:var(--card);overflow-x:auto;box-shadow:var(--shadow),var(--lift)}
-#sitesSec .st-tbl{width:100%;min-width:760px;border-collapse:collapse;font-size:13px}
-#sitesSec .st-tbl th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;
-  padding:11px 16px;border-bottom:1px solid var(--edge);background:var(--wash);white-space:nowrap;text-align:left}
-#sitesSec .st-tbl th.n,#sitesSec .st-tbl td.n{text-align:right}
-#sitesSec .st-tbl td{padding:13px 16px;border-top:0;border-bottom:1px solid var(--hair);vertical-align:middle;color:var(--ink-body);background:none}
-#sitesSec .st-tbl td.n{font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ink)}
-#sitesSec .st-tbl tr.st-row{cursor:pointer}
-#sitesSec .st-tbl tr.st-row:hover td,#sitesSec .st-tbl tr.st-row.on td{background:var(--wash)}
-#sitesSec .st-tbl tr.st-row.on td:first-child{box-shadow:inset 3px 0 0 var(--red-fill)}
-#sitesSec .st-tbl tr.st-row:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
-#sitesSec .st-tbl tfoot td{padding:13px 16px;border-top:1px solid var(--ink);border-bottom:3px double var(--ink);font-weight:600;color:var(--ink);background:var(--card);font-variant-numeric:tabular-nums}
-#sitesSec .st-tbl tr.st-open td{padding:0 16px 16px;background:var(--wash);cursor:default}
-#sitesSec .st-a{display:block;color:var(--ink);font-weight:600;font-size:13.5px}
-#sitesSec .st-s{display:block;color:var(--ink-3);font-size:12px;margin-top:2px}
-#sitesSec .st-mv{max-width:52ch;margin-top:4px;font-size:11.5px}
-#sitesSec .st-cv{width:28px;padding-left:0}
-#sitesSec .st-chev{display:block;color:var(--ink-4)}
-#sitesSec tr.on .st-chev{color:var(--ink)}
-#sitesSec .st-stage{display:inline-flex;flex-direction:column;gap:5px;min-width:96px}
-#sitesSec .st-sn{font-size:12.5px;font-weight:600;color:var(--ink);white-space:nowrap}
-#sitesSec .st-meter{display:inline-flex;gap:3px}
-#sitesSec .st-meter i{display:block;width:14px;height:4px;border-radius:2px;background:var(--line)}
-#sitesSec .st-meter i.on{background:var(--ink)}
-#sitesSec .st-owned .st-meter i.on{background:var(--green)}
-#sitesSec .st-owned .st-sn{color:var(--ok-text)}
-#sitesSec .st-passed .st-sn{color:var(--ink-3)}
-#sitesSec .st-tracking .st-meter i{background:none;border:1px dashed var(--ink-4);box-sizing:border-box}
-#sitesSec .st-dl{display:flex;flex-direction:column;gap:3px}
-#sitesSec .st-dl1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-#sitesSec .st-dl1 b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
-#sitesSec .st-dl span{color:var(--ink-3);font-size:12px}
-#sitesSec .st-chip{display:inline-block;font-size:11px;font-weight:600;line-height:1;padding:3px 7px;border-radius:999px;background:var(--wash);
-  color:var(--ink-2);border:1px solid var(--line);font-variant-numeric:tabular-nums;white-space:nowrap}
-#sitesSec .st-chip.hot{background:var(--err-bg);color:var(--err-text);border-color:var(--err-rule)}
-#sitesSec .st-chip.warn{background:var(--warn-bg);color:var(--warn-text);border-color:var(--warn-rule)}
-#sitesSec .st-pct{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
-#sitesSec .st-up{color:var(--green)}
-#sitesSec .st-dn{color:var(--red)}
-#sitesSec .st-spark{display:block}
-#sitesSec .st-pane{background:var(--card);border:1px solid var(--edge);border-radius:8px;padding:22px 24px}
-#sitesSec .st-pt{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
-#sitesSec .st-top{display:flex;align-items:center;gap:10px}
-#sitesSec .st-x{background:none;border:0;font-size:22px;line-height:1;color:var(--ink-3);cursor:pointer;padding:0 2px}
-#sitesSec .st-move{font:inherit;font-size:12.5px;font-weight:600;color:var(--ink-2);background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:5px 10px;cursor:pointer}
-#sitesSec .st-addr{font-family:var(--serif);font-weight:500;font-size:24px;line-height:1.2;letter-spacing:-.015em;margin:12px 0 4px;color:var(--ink)}
-#sitesSec .st-sub{margin:0;color:var(--ink-3);font-size:13px}
-#sitesSec .st-steps{list-style:none;margin:20px 0 0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));max-width:720px}
-#sitesSec .st-steps li{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:5px;padding-right:6px;min-width:0}
-#sitesSec .st-steps li::before{content:"";position:absolute;top:8px;left:18px;right:0;height:2px;background:var(--line)}
-#sitesSec .st-steps li:last-child::before{display:none}
-#sitesSec .st-steps li.done::before{background:var(--ink)}
-#sitesSec .st-dot{position:relative;z-index:1;width:18px;height:18px;border-radius:50%;border:2px solid var(--ink-4);background:var(--card);
-  display:flex;align-items:center;justify-content:center;color:var(--card);box-sizing:border-box}
-#sitesSec li.done .st-dot{background:var(--ink);border-color:var(--ink)}
-#sitesSec li.now .st-dot{border-color:var(--red-fill);box-shadow:0 0 0 3px var(--err-bg)}
-#sitesSec li.now .st-dot::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--red-fill)}
-#sitesSec .st-sl{font-size:12px;font-weight:600;color:var(--ink-2);line-height:1.25;overflow-wrap:anywhere}
-#sitesSec li.now .st-sl{color:var(--ink)}
-#sitesSec .st-steps li:not(.done):not(.now) .st-sl{color:var(--ink-3);font-weight:500}
-#sitesSec .st-sd{font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
-#sitesSec .st-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 28px;margin-top:20px}
-#sitesSec .st-blk{padding-top:16px;border-top:1px solid var(--hair);min-width:0}
-#sitesSec .st-wideblk{grid-column:1/-1}
-#sitesSec .st-blk h4{margin:0 0 10px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
-#sitesSec .st-terms{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;margin:0}
-#sitesSec .st-terms dt{font-size:12px;color:var(--ink-3)}
-#sitesSec .st-terms dd{margin:2px 0 0;font-size:14px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-#sitesSec .st-dates{list-style:none;margin:0;padding:0}
-#sitesSec .st-dates li{display:grid;grid-template-columns:56px minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:7px 0;font-size:13px;color:var(--ink)}
-#sitesSec .st-dates li+li{border-top:1px dashed var(--line)}
-#sitesSec .st-dates li.past{color:var(--ink-3)}
-#sitesSec .st-dd{font-weight:600;font-variant-numeric:tabular-nums}
-#sitesSec .st-xs{background:none;border:0;color:var(--ink-4);cursor:pointer;font-size:16px;line-height:1;padding:0 2px}
-#sitesSec .st-xs:hover{color:var(--red)}
-#sitesSec .st-add{background:none;border:0;padding:6px 0 0;font:inherit;font-size:13px;font-weight:600;color:var(--red);cursor:pointer}
-#sitesSec .st-notes{margin:0;font-size:13.5px;color:var(--ink-body);line-height:1.55;overflow-wrap:anywhere}
-#sitesSec .st-acts{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:22px;padding-top:18px;border-top:1px solid var(--hair)}
-#sitesSec .st-actnote{font-size:12px}
-#sitesSec .st-rm{margin-left:auto;background:none;border:0;font:inherit;font-size:13px;color:var(--ink-3);cursor:pointer}
-#sitesSec .st-rm:hover{color:var(--red)}
-#sitesSec .st-val{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px;margin-top:18px;padding:16px 18px;background:var(--wash);border:1px solid var(--line);border-radius:8px}
-#sitesSec .st-vl{display:block;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--ink-3)}
-#sitesSec .st-vb{display:block;font-family:var(--serif);font-weight:500;font-size:30px;line-height:1.15;color:var(--ink);margin:4px 0 2px;font-variant-numeric:tabular-nums}
-#sitesSec .st-vc{display:block;font-size:15px;font-weight:600;color:var(--ink);margin:8px 0 4px}
-#sitesSec .st-vs{display:block;font-size:12.5px;color:var(--ink-3)}
-#sitesSec .st-chart{display:block;width:100%;max-width:560px;height:auto;overflow:visible}
-#sitesSec .st-cv text,#sitesSec text.st-cv{font:600 11px Inter,system-ui,sans-serif;fill:var(--ink)}
-#sitesSec text.st-cd{font:500 10.5px Inter,system-ui,sans-serif;fill:var(--ink-3)}
-#sitesSec .st-fold{margin-top:16px}
-#sitesSec .st-fold>summary{cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink-2);list-style-position:inside;margin-bottom:10px}
-#sitesSec .st-fold>summary b{color:var(--ink-3);margin-left:4px}
-#sitesSec .st-addwrap{margin:0 0 var(--s5);padding:20px;border:1px solid var(--edge);border-radius:8px;background:var(--card);box-shadow:var(--shadow),var(--lift)}
-#sitesSec .st-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px;align-content:start}
-#sitesSec .st-addwrap .st-form{grid-template-columns:repeat(4,minmax(0,1fr))}
-#sitesSec .st-form label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:var(--ink-2);min-width:0}
-#sitesSec .st-form label.hide{display:none}   /* the .hide note at the top of this sheet */
-#sitesSec .st-form input,#sitesSec .st-form select{width:100%;min-width:0}
-#sitesSec .st-wide{grid-column:1/-1}
-#sitesSec .st-fa{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-#sitesSec .st-fh{grid-column:1/-1;margin:0 0 2px;font-family:var(--serif);font-weight:500;font-size:19px;color:var(--ink)}
-#sitesSec .st-edit{margin-top:18px}
-#sitesSec .st-kind{display:flex;gap:4px;padding:3px;border:1px solid var(--edge);border-radius:8px;background:var(--wash)}
-#sitesSec .st-kind button{flex:1;font:inherit;font-size:13px;color:var(--ink-2);background:none;border:0;border-radius:6px;padding:7px 8px;cursor:pointer;white-space:nowrap}
-#sitesSec .st-kind button.on{background:var(--card);color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--edge)}
-#sitesSec .st-dform{display:grid;grid-template-columns:150px minmax(0,1fr) auto auto;gap:8px;align-items:center;margin-top:8px}
-#sitesSec .st-empty{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border:1px solid var(--edge);border-radius:8px;background:var(--card);overflow:hidden;box-shadow:var(--shadow),var(--lift)}
-#sitesSec .st-ei{padding:34px 34px 30px;background:var(--wash);border-right:1px solid var(--edge)}
-#sitesSec .st-ei .st-dot{background:var(--wash)}
-#sitesSec .st-empty>.st-form{padding:30px 32px}
-#sitesSec .st-k{margin:0;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;color:var(--red)}
-#sitesSec .st-eh{font-family:var(--serif);font-weight:500;font-size:26px;line-height:1.2;letter-spacing:-.015em;margin:8px 0 12px;color:var(--ink);text-wrap:balance}
-#sitesSec .st-ei>p{margin:0;color:var(--ink-2);font-size:14px;line-height:1.6;max-width:44ch}
-#sitesSec .st-ways{list-style:none;margin:26px 0 0;padding:0;display:grid;gap:10px}
-#sitesSec .st-ways li{font-size:13px;color:var(--ink-2);padding:10px 12px;background:var(--card);border:1px solid var(--line);border-radius:8px}
-#sitesSec .st-ways b{display:block;color:var(--ink);font-size:13px;margin-bottom:2px}
-@media (max-width:900px){
-  #sitesSec .st-grid{grid-template-columns:minmax(0,1fr)}
-  #sitesSec .st-addwrap .st-form{grid-template-columns:repeat(2,minmax(0,1fr))}
-}
-@media (max-width:640px){
-  #sitesSec .st-empty,#sitesSec .st-form,#sitesSec .st-addwrap .st-form{grid-template-columns:minmax(0,1fr)}
-  #sitesSec .st-ei{border-right:0;border-bottom:1px solid var(--edge);padding:24px 20px}
-  #sitesSec .st-empty>.st-form{padding:22px 20px}
-  #sitesSec .st-eh{font-size:22px}
-  #sitesSec .st-pane{padding:18px 16px}
-  #sitesSec .st-val{grid-template-columns:minmax(0,1fr)}
-  #sitesSec .st-sl{font-size:11px}
-  #sitesSec .st-sd{font-size:10.5px}
-  #sitesSec .st-dform{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-  #sitesSec .st-kind button{font-size:12px;padding:7px 4px}
-  /* On a phone each row is a card: the address across the top, then the
-     figures two to a line, each carrying its own label. */
-  #sitesSec .st-tw{overflow:visible}
-  #sitesSec .st-tbl{min-width:0}
-  #sitesSec .st-tbl thead{display:none}
-  #sitesSec .st-tbl,#sitesSec .st-tbl tbody,#sitesSec .st-tbl tfoot{display:block}
-  #sitesSec .st-tbl tr.st-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 14px;padding:14px 16px;border-bottom:1px solid var(--hair)}
-  #sitesSec .st-tbl tr.st-row td{display:block;padding:0;border:0;text-align:left}
-  #sitesSec .st-tbl tr.st-row td:first-child{grid-column:1/-1}
-  #sitesSec .st-tbl tr.st-row td.st-cv,#sitesSec .st-tbl tr.st-row td:empty{display:none}
-  #sitesSec .st-tbl td[data-l]::before{content:attr(data-l);display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:2px}
-  #sitesSec .st-tbl tr.st-row.on td:first-child{box-shadow:none}
-  #sitesSec .st-tbl tr.st-row:hover td,#sitesSec .st-tbl tr.st-row.on td{background:none}
-  #sitesSec .st-tbl tr.st-row.on{background:var(--wash);box-shadow:inset 3px 0 0 var(--red-fill)}
-  #sitesSec .st-tbl tr.st-open{display:block}
-  #sitesSec .st-tbl tr.st-open td{display:block;padding:0 8px 12px}
-  #sitesSec .st-tbl tfoot tr{display:flex;justify-content:space-between;gap:10px}
-  #sitesSec .st-tbl tfoot td{border:0;padding:12px 16px}
-  #sitesSec .st-tbl tfoot td:empty{display:none}
-}
-/* ---- The Board: market tiles and the deal wall (2026-10-07) ------------------
-   The owner's pick "C, Deal wall" of the Board drafts. #mktSec draws each
-   market on The Board as a tile with its buying read; /deal-wall.js draws the
-   wall into #wallRoot. Every rule is scoped under #mktSec or #wallSec, the
-   Sites block's reason: it outranks this page's bare table/section rules and
-   keeps the dw- names out of MARKET_CSS's way. Tokens only, so both themes
-   hold; the stage colours are the palette's own status pairs. */
+/* ---- The Board: market tiles (2026-10-07) ----------------------------------
+   #mktSec draws each market on The Board as a tile with its buying read
+   (/buying-read.js). The deal wall that sat under the tiles left on
+   2026-10-09 (deals are a development firm's, on Home). Every rule is scoped
+   under #mktSec: it outranks this page's bare table/section rules and keeps
+   the dw- names out of MARKET_CSS's way. Tokens only, so both themes hold. */
 #mktSec .dw-tiles-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(236px,1fr));gap:10px;margin-top:var(--s4)}
 #mktSec .dw-tile{background:var(--card);border:1px solid var(--edge);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
 #mktSec .dw-tt{font-family:var(--serif);font-size:16px;color:var(--ink);line-height:1.3}
@@ -1015,111 +844,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 #mktSec .dw-addt{font:inherit;font-size:13.5px;color:var(--ink-2);background:none;border:1px dashed var(--ink-4);border-radius:8px;padding:12px 14px;cursor:pointer;min-height:84px}
 #mktSec .dw-addt:hover{color:var(--ink);border-color:var(--ink-3)}
 #mktSec .dw-fine{margin:12px 0 0;font-size:12px;color:var(--ink-3);max-width:80ch}
-
-#wallSec{margin-top:var(--s7)}
-#wallSec .dw-mute{color:var(--ink-3);font-size:13px;margin:0}
-#wallSec .dw-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding-bottom:10px;border-bottom:1px solid var(--line)}
-#wallSec .dw-tabs{display:flex;flex-wrap:wrap;gap:4px}
-#wallSec .dw-tabs button{font:inherit;font-size:13px;color:var(--ink-2);background:none;border:0;border-radius:6px;padding:5px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
-#wallSec .dw-tabs button.hide{display:none}
-#wallSec .dw-tabs button:hover{background:var(--wash)}
-#wallSec .dw-tabs button b{font-weight:600;color:var(--ink-3)}
-#wallSec .dw-tabs button.on{background:var(--ink);color:var(--card)}
-#wallSec .dw-tabs button.on b{color:var(--card)}
-#wallSec .dw-tabs i{width:9px;height:9px;border-radius:2px}
-#wallSec .dw-tot{margin-left:auto;font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums}
-#wallSec .dw-tot b{color:var(--ink);font-weight:600}
-#wallSec .dw-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-#wallSec .dw-chips button{font:inherit;font-size:12.5px;color:var(--ink-2);background:var(--card);border:1px solid var(--edge);border-radius:999px;padding:4px 12px;cursor:pointer}
-#wallSec .dw-chips button.on{background:var(--ink);border-color:var(--ink);color:var(--card)}
-#wallSec .dw-wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(236px,1fr));gap:14px;background:var(--wash-2);border-radius:12px;padding:14px;margin-top:12px}
-#wallSec .dw-card{background:var(--card);border:1px solid var(--edge);border-radius:8px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(26,36,51,.06),0 2px 6px -2px rgba(26,36,51,.08);min-width:0}
-#wallSec .dw-card:hover{border-color:var(--ink-4)}
-#wallSec .dw-card:focus-visible{outline:2px solid var(--red-fill);outline-offset:2px}
-#wallSec .dw-ph{height:150px;position:relative;overflow:hidden;background:var(--wash)}
-#wallSec .dw-pane-ph{height:200px}
-#wallSec .dw-tiles{position:absolute;left:50%;top:50%}
-#wallSec .dw-tiles img{position:absolute;width:256px;height:256px;max-width:none}
-#wallSec .dw-pin{position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--red-fill);box-shadow:0 0 0 3px rgba(255,255,255,.85)}
-#wallSec .dw-sv .dw-pin{display:none}
-#wallSec .dw-credit{position:absolute;right:6px;bottom:5px;font-size:10px;color:#fff;background:rgba(17,24,39,.55);border-radius:3px;padding:0 4px}
-#wallSec .dw-stamp{position:absolute;z-index:1;left:8px;top:8px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:3px 8px;box-shadow:0 1px 3px rgba(0,0,0,.18)}
-#wallSec .dw-type{position:absolute;z-index:1;left:8px;bottom:8px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:#fff;background:rgba(17,24,39,.62);border-radius:4px;padding:2px 7px}
-#wallSec .dw-body{padding:10px 12px 12px;display:flex;flex-direction:column;gap:4px;flex:1}
-#wallSec .dw-a{margin:0;font-family:var(--serif);font-weight:500;font-size:16px;line-height:1.3;color:var(--ink)}
-#wallSec .dw-f{margin:0;font-size:12.5px;color:var(--ink-3)}
-#wallSec .dw-pr{margin:2px 0 0;display:flex;align-items:baseline;gap:8px;font-size:12.5px;color:var(--ink-3)}
-#wallSec .dw-pr b{font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums}
-#wallSec .dw-due{margin:2px 0 0;align-self:flex-start;font-size:12px;color:var(--ink-2);background:var(--wash);border-radius:4px;padding:2px 7px}
-#wallSec .dw-due.hot{background:var(--err-bg);color:var(--err-text);font-weight:600}
-#wallSec .dw-read{margin:4px 0 0;padding-top:7px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-3)}
-#wallSec .dw-dot{width:8px;height:8px;border-radius:50%}
-#wallSec .dw-dot.dw-good{background:var(--ok-text)}
-#wallSec .dw-dot.dw-mid{background:var(--warn-text)}
-#wallSec .dw-dot.dw-bad{background:var(--err-text)}
-#wallSec .dw-l-good{color:var(--ok-text)}
-#wallSec .dw-l-mid{color:var(--warn-text)}
-#wallSec .dw-l-bad{color:var(--err-text)}
-#wallSec .dw-prog{display:grid;grid-auto-flow:column;gap:3px;margin-top:auto;padding-top:8px}
-#wallSec .dw-prog i{height:4px;border-radius:2px;background:var(--hair)}
-/* One colour per stage, from the palette's own status pairs. */
-#wallSec .dw-stamp.dw-s-prospect{background:var(--card);color:var(--ink-2)}
-#wallSec .dw-stamp.dw-s-loi{background:var(--warn-bg);color:var(--warn-text)}
-#wallSec .dw-stamp.dw-s-contract{background:var(--bv-bg);color:var(--bv-text)}
-#wallSec .dw-stamp.dw-s-entitle{background:var(--est-bg);color:var(--est-text)}
-#wallSec .dw-stamp.dw-s-owned{background:var(--ok-bg);color:var(--ok-text)}
-#wallSec .dw-stamp.dw-s-passed{background:var(--err-bg);color:var(--err-text)}
-#wallSec i.dw-s-prospect{background:var(--ink-3)}
-#wallSec i.dw-s-loi{background:var(--warn-text)}
-#wallSec i.dw-s-contract{background:var(--bv-text)}
-#wallSec i.dw-s-entitle{background:var(--est-text)}
-#wallSec i.dw-s-owned{background:var(--ok-text)}
-#wallSec i.dw-s-passed{background:var(--err-text)}
-#wallSec .dw-add{font:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:200px;border:2px dashed var(--ink-4);border-radius:8px;background:none;color:var(--ink-2);font-size:13.5px;cursor:pointer;padding:16px;text-align:center}
-#wallSec .dw-add:hover{color:var(--ink);border-color:var(--ink-3)}
-#wallSec .dw-add span{font-size:26px;line-height:1;color:var(--ink-3)}
-#wallSec .dw-add.dw-big{width:100%;min-height:240px;font-size:16px;color:var(--ink);background:var(--wash-2);border-radius:12px}
-#wallSec .dw-add small{font-size:13px;color:var(--ink-3);max-width:46ch}
-#wallSec .dw-lock{border:1px solid var(--edge);border-radius:8px;background:var(--card);padding:18px 20px;max-width:64ch}
-#wallSec .dw-lock p{margin:0 0 10px;color:var(--ink-2);font-size:14px}
-#wallSec .dw-lock p:last-child{margin:0}
-#wallSec .dw-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px 14px;align-items:end;border:1px solid var(--edge);border-radius:8px;background:var(--card);padding:16px 18px;margin-bottom:14px}
-#wallSec .dw-form h3{grid-column:1/-1;margin:0;font-family:var(--serif);font-weight:500;font-size:18px;color:var(--ink)}
-#wallSec .dw-form label{display:flex;flex-direction:column;gap:5px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;min-width:0}
-#wallSec .dw-form input,#wallSec .dw-form select,#wallSec .dw-form textarea{font:inherit;font-size:14px;letter-spacing:0;text-transform:none;font-weight:400;color:var(--ink);background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:8px 10px;min-width:0}
-#wallSec .dw-opt{text-transform:none;letter-spacing:0;font-weight:400}
-#wallSec .dw-wide{grid-column:1/-1}
-#wallSec .dw-form label.dw-wide{grid-column:1/3}
-#wallSec .dw-edit label.dw-wide{grid-column:1/-1}
-#wallSec .dw-act{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
-#wallSec .dw-err{color:var(--err-text);font-size:13px}
-#wallSec .dw-rm{margin-left:auto}
-#wallSec .dw-pane{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);border:1px solid var(--ink);border-radius:10px;background:var(--card);overflow:hidden;margin-top:12px;box-shadow:var(--shadow)}
-#wallSec .dw-pane .dw-pane-ph{height:auto;min-height:220px}
-#wallSec .dw-pane-in{padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0}
-#wallSec .dw-pane-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
-#wallSec .dw-pane-h h3{margin:0;font-family:var(--serif);font-weight:500;font-size:20px;color:var(--ink)}
-#wallSec .dw-moves{display:flex;flex-wrap:wrap;gap:6px}
-#wallSec .dw-mv{font:inherit;font-size:12.5px;color:var(--ink-2);background:var(--card);border:1px solid var(--edge);border-radius:999px;padding:5px 12px;cursor:pointer}
-#wallSec .dw-mv:hover{border-color:var(--ink-3);color:var(--ink)}
-#wallSec .dw-mv.on{background:var(--ink);border-color:var(--ink);color:var(--card);cursor:default}
-#wallSec .dw-mv.dw-pass{color:var(--err-text)}
-#wallSec .dw-pane .dw-form{border:0;padding:0;margin:0;grid-template-columns:repeat(2,minmax(0,1fr))}
-#wallSec .dw-k{margin:0 0 6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
-#wallSec .dw-dates{list-style:none;margin:0 0 8px;padding:0;font-size:13.5px;color:var(--ink-body)}
-#wallSec .dw-dates li{display:flex;gap:8px;align-items:baseline;padding:3px 0}
-#wallSec .dw-dates li span{font-variant-numeric:tabular-nums;color:var(--ink-2)}
-#wallSec .dw-adddate{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px}
-#wallSec .msg{margin:0 0 12px}
-@media (max-width:700px){
-  #wallSec .dw-wall{margin-left:-16px;margin-right:-16px;border-radius:0;padding:12px 16px}
-  #wallSec .dw-tot{margin-left:0;width:100%}
-  #wallSec .dw-form,#wallSec .dw-pane .dw-form{grid-template-columns:minmax(0,1fr)}
-  #wallSec .dw-form label.dw-wide{grid-column:1/-1}
-  #wallSec .dw-pane{grid-template-columns:minmax(0,1fr)}
-  #wallSec .dw-pane .dw-pane-ph{min-height:160px}
-  #wallSec .dw-adddate{grid-template-columns:minmax(0,1fr)}
-}
 </style>
   <p class="kicker">Private to you</p>
   <!-- "Your properties and comps" since 2026-10-07 (Draft C, "One map"): the
@@ -1177,7 +901,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     <div class="vt-wrap" id="vtWrap">
     <div class="vt-tabs" id="vaultTabs" role="tablist" aria-label="Your Data">
       <button type="button" role="tab" class="vt-tab on" id="tab-book" data-tab="book" aria-selected="true" aria-controls="panelBook"><span id="tabBookL">Comps</span> <b id="tabBookN"></b></button>
-      <button type="button" role="tab" class="vt-tab vt-off" id="tab-sites" data-tab="sites" aria-selected="false" aria-controls="panelSites">Properties <b id="tabSitesN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-pipe" data-tab="pipe" aria-selected="false" aria-controls="panelPipe">Pipeline <b id="tabPipeN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-props" data-tab="props" aria-selected="false" aria-controls="panelProps">Properties <b id="tabPropsN"></b></button>
       <button type="button" role="tab" class="vt-tab" id="tab-watch" data-tab="watch" aria-selected="false" aria-controls="panelWatch">The Board <b id="tabWatchN"></b></button>
@@ -1624,22 +1347,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     <p id="trunc" class="note hide" style="margin-top:var(--s3)">Showing the most recent 1,000 comps.
       The figures below are drawn from those, so your full book may be larger.</p>
     </div>
-    <div class="vt-panel" id="panelSites" data-panel="sites" role="tabpanel" aria-labelledby="tab-sites">
-    <!-- ------------------------------------------------------------------
-         Sites (2026-10-05, migration 060): a development firm's one tab for
-         the land and buildings it is buying, owns or tracks, in place of the
-         broker's Pipeline and Properties tabs (the owner's pick "M2" of the
-         Sites drafts). /sites-tab.js draws everything inside #sitesRoot;
-         applyShop() is the one place that decides a member sees it, and
-         only a development firm's member does. Everyone else's Data page is
-         exactly what it was.
-         ------------------------------------------------------------------ -->
-    <div class="deck" id="deckSites">
-      <span class="dlab">Your deals and holdings</span><span class="dln"></span>
-      <button class="dact" id="sitesAddToggle" aria-expanded="false" aria-controls="sitesRoot">+ Add a property</button>
-    </div>
-    <section id="sitesSec"><div id="sitesRoot"></div></section>
-    </div>
     <div class="vt-panel" id="panelPipe" data-panel="pipe" role="tabpanel" aria-labelledby="tab-pipe">
     <!-- ------------------------------------------------------------------
          The pipeline deck: work coming IN, rather than work already done.
@@ -1817,12 +1524,14 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     </div>
     <div class="vt-panel" id="panelWatch" data-panel="watch" role="tabpanel" aria-labelledby="tab-watch">
     <!-- ------------------------------------------------------------------
-         The Board (2026-10-07, the owner's pick "C, Deal wall" of the Board
-         drafts): the markets a member follows, each a tile with its buying
-         read, over the deal wall -- every property they are chasing as a
-         photo card (/deal-wall.js draws it into #wallRoot from /api/sites,
-         the Sites tab's own rows). This deck was "Your watchlist" until the
-         rename that morning; its code still says watchlist.
+         The Board (2026-10-07): the markets a member follows, each a tile
+         with its buying read (/buying-read.js). This deck was "Your
+         watchlist" until 2026-10-06; its code still says watchlist. The deal
+         wall that sat under the tiles (the owner's pick "C, Deal wall" of the
+         Board drafts) left on 2026-10-09, the owner's call: deals are a
+         development firm's, worked on Home's Properties tab, and The Board
+         "is meant to be kind of like a stock portfolio watch list for
+         properties and markets".
 
          NOT "Your markets": that heading is already taken on this page by
          #rollupSec, which breaks a broker's own COMPS down by market, and
@@ -1838,7 +1547,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
          ------------------------------------------------------------------ -->
     <div class="deck" id="deckMarkets">
       <span class="dlab">The Board</span><span class="dln"></span>
-      <button class="dact hide" id="wallAddToggle" aria-expanded="false" aria-controls="wallRoot">+ Add a property</button>
     </div>
 
     <section id="mktSec">
@@ -1860,7 +1568,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       </div>
       <div id="mktRows"></div>
     </section>
-    <section id="wallSec" aria-label="Your deals"><div id="wallRoot"></div></section>
     </div>
     <div class="vt-panel" id="panelContrib" data-panel="contrib" role="tabpanel" aria-labelledby="tab-contrib">
     <!-- ------------------------------------------------------------------
@@ -1918,10 +1625,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 <script>window.__VAULT_BOOT__=${bootJson};</script>
 <script src="/gut-check.js"></script>
 <script src="/building-facts.js"></script>
-<script src="/sites.js"></script>
-<script src="/sites-tab.js"></script>
-<script src="/building-photo.js"></script>
-<script src="/deal-wall.js"></script>
+<script src="/buying-read.js"></script>
 <script>
 (function(){
   var $=function(id){return document.getElementById(id)};
@@ -2205,7 +1909,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     $("vaultLocked").className="invite";
     // Nothing in the Book or Pipeline tab can show, so the page opens on the
     // first tab that is the member's either way.
-    if(curTab==="book"||curTab==="pipe"||curTab==="sites")setTab("props",true);
+    if(curTab==="book"||curTab==="pipe")setTab("props",true);
     // The page subtitle describes the book and the pipeline. With both
     // locked it would be describing a page that is not on screen.
     $("deckSub").textContent="Your properties and The Board. Only you can see this.";
@@ -2287,7 +1991,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // Once per page visit, not on every filter change or post-import refresh
     // that re-runs load() -- those hit /api/vault, a different endpoint, and
     // re-reading the portfolio on each would be work with no new information.
-    if(!personalLoaded){ personalLoaded=true; loadProps(); loadMarkets(); loadContribs(); mountWall(); }
+    if(!personalLoaded){ personalLoaded=true; loadProps(); loadMarkets(); loadContribs(); }
     else { renderProps(); }
 
     // 403 (not Pro) and 503 (no database) lock the same three decks. The 503
@@ -3831,22 +3535,25 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 
   // ---- The tabs ---------------------------------------------------------------
   // setTab is the one writer of which panel shows. A tab's address is a plain
-  // hash (#properties, #board...), so a link can open the vault on one; the
-  // old section ids are read too, since that is what a link would have named
-  // before there were tabs. Pipeline and Sites have paths instead (below).
-  var TABS=["book","sites","pipe","props","watch","contrib"];
-  var PANEL={book:"panelBook",sites:"panelSites",pipe:"panelPipe",props:"panelProps",watch:"panelWatch",contrib:"panelContrib"};
-  var HASH_OF_TAB={book:"book",sites:"sites",pipe:"pipeline",props:"properties",watch:"board",contrib:"contributions"};
-  var TAB_OF_HASH={book:"book",sites:"sites",pipeline:"pipe",properties:"props",board:"watch",watchlist:"watch",contributions:"contrib",
-    compsSec:"book",sitesSec:"sites",pipeSec:"pipe",propsSec:"props",mktSec:"watch",contribSec:"contrib"};
-  // Pipeline and Sites are rows of the rail (2026-10-09), so each has a path
-  // of its own: /pipeline and /sites serve this page opened on that tab
-  // (server.js's VAULT_PAGE_PATHS), and switching to one writes its path back,
-  // so the address always names a row the rail can mark. server.js marks the
-  // row for the path it served; setTab moves the mark as the tabs change.
-  var PATH_OF_TAB={pipe:"/pipeline",sites:"/sites"};
-  var TAB_OF_PATH={"/pipeline":"pipe","/sites":"sites"};
-  var RAIL_OF_TAB={pipe:"navPipe",sites:"navSites"};
+  // hash (#pipeline, #properties...), so a link can open the vault on one;
+  // the old section ids are read too, since that is what a link would have
+  // named before there were tabs.
+  // #sites (a development firm's tab, 2026-10-05 to 2026-10-09) is still
+  // read, as Properties: applyShop sends a development firm's member who
+  // follows such a link to Home, where their deals are now.
+  var TABS=["book","pipe","props","watch","contrib"];
+  var PANEL={book:"panelBook",pipe:"panelPipe",props:"panelProps",watch:"panelWatch",contrib:"panelContrib"};
+  var HASH_OF_TAB={book:"book",pipe:"pipeline",props:"properties",watch:"board",contrib:"contributions"};
+  var TAB_OF_HASH={book:"book",sites:"props",pipeline:"pipe",properties:"props",board:"watch",watchlist:"watch",contributions:"contrib",
+    compsSec:"book",sitesSec:"props",pipeSec:"pipe",propsSec:"props",mktSec:"watch",contribSec:"contrib"};
+  // Pipeline is a row of the rail (2026-10-09), so it has a path of its own:
+  // /pipeline serves this page opened on that tab (server.js's
+  // VAULT_PAGE_PATHS), and switching to it writes the path back, so the
+  // address always names a row the rail can mark. server.js marks the row
+  // for the path it served; setTab moves the mark as the tabs change.
+  var PATH_OF_TAB={pipe:"/pipeline"};
+  var TAB_OF_PATH={"/pipeline":"pipe"};
+  var RAIL_OF_TAB={pipe:"navPipe"};
   function tabUrl(t){
     return PATH_OF_TAB[t]||(t===homeTab?"/vault":"/vault#"+HASH_OF_TAB[t]);
   }
@@ -3857,16 +3564,11 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     });
   }
   var curTab="book";
-  // The tab the page opens on, and the one whose address is the bare path:
-  // Sites for a development firm, the Book for everybody else (applyShop).
-  // tabSettled is true once the opening tab has been decided -- by a link
-  // naming one, or by the first read that knows the firm -- so a later read
-  // (after an import, say) never pulls a member off the tab they chose.
-  var homeTab="book",tabSettled=false;
-  // The tabs in the order the bar shows them; applyShop moves Sites first.
-  function tabOrder(){
-    return homeTab==="sites"?["sites"].concat(TABS.filter(function(k){return k!=="sites"})):TABS;
-  }
+  // The tab whose address is the bare path: Comps, for everyone since
+  // 2026-10-09 (a development firm's page opened on Sites until Sites moved
+  // to Home). askedTab is the tab a link named, if one did.
+  var homeTab="book",askedTab="";
+  function tabOrder(){ return TABS; }
   function tabCount(id,text,hot){
     var el=$(id);
     el.textContent=text==null?"":String(text);
@@ -3906,56 +3608,46 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     e.preventDefault();
   });
 
-  // ---- Sites, for a development firm (2026-10-05, migration 060) ----------------
-  // The one place that decides who sees the Sites tab: a member of a firm
+  // ---- What a development firm's member sees (2026-10-05) ----------------------
+  // The one place that decides how this page differs for a member of a firm
   // whose kind is "development" (ORG.kindOf, carried on /api/vault's firm
-  // block). For them Sites takes the place of Pipeline and Properties -- a
-  // developer does not write BOVs, and every property they hold is in Sites
-  // with Properties' own features -- and a link to either old tab lands on
-  // Sites. Everyone else, broker firms and people in no firm, keeps exactly
-  // the tabs they had. The drawing lives in /sites-tab.js (the global
-  // SITESTAB); without it, or without SITES, nothing changes, so a stale or
-  // failed script costs the new tab and never the old ones.
+  // block). A developer writes no BOVs, so there is no Pipeline; and their
+  // deals and holdings are worked on Home's Properties tab (home-sites.js,
+  // 2026-10-09; the Sites tab that held them here is gone, the owner's call),
+  // so there is no Properties tab either. A link that names either, or the
+  // old #sites, takes that member to Home's Properties instead of to a tab
+  // they do not have. Broker firms and people in no firm keep every tab.
   //
-  // It also decides three things about the Book for that firm (owner's call,
-  // 2026-10-06). The tab is "Comps", a developer's word; "book" is a
-  // broker's book of business. Publishing is not offered (noPublish), since
-  // the Verified badge it earns says a licensed broker vouched for the deal;
-  // a member with something already published keeps every control, so a
-  // public comp never looks private and can always be taken back. And Sites
-  // leads the bar and is where the page opens, unless a link named a tab.
-  // These two need no Sites script: only the third does.
-  var sitesView=null;
+  // It also decides two things about the Book for that firm (owner's call,
+  // 2026-10-06). The tab is "Comps" (for every kind of firm since
+  // 2026-10-07). And publishing is not offered (noPublish), since the
+  // Verified badge it earns says a licensed broker vouched for the deal; a
+  // member with something already published keeps every control, so a public
+  // comp never looks private and can always be taken back.
   function applyShop(){
-    if(wallView)wallView.refresh();
     var shop=!!(myFirm&&myFirm.kind==="development");
-    // The rail's row under Messages follows the same answer: Sites for a
-    // development firm, Pipeline for everyone else (server.js SHOP_NAV_JS,
-    // which also remembers it for the next page's first paint).
+    // The rail's row under Messages follows the same answer: Sites (Home's
+    // Properties) for a development firm, Pipeline for everyone else
+    // (server.js SHOP_NAV_JS, which also remembers it for the next page's
+    // first paint).
     if(window.cnShopNav)window.cnShopNav(shop);
-    var dev=shop&&!!(window.SITESTAB&&window.SITES);
-    var first=!tabSettled; tabSettled=true;
     noPublish=shop&&!pubCount;
     // One word for one thing on every kind of firm (2026-10-07): it was the
     // Book for a broker and Comps for a development shop.
     $("tabBookL").textContent="Comps";
     $("bookEmptyK").textContent="Your comps, on one map";
     $("vFootPub").className=noPublish?"hide":"";
-    homeTab=dev?"sites":"book";
-    $("vaultTabs").insertBefore($("tab-sites"),dev?$("tab-book"):$("tab-pipe"));
-    $("tab-sites").classList.toggle("vt-off",!dev);
-    $("tab-pipe").classList.toggle("vt-off",dev);
-    $("tab-props").classList.toggle("vt-off",dev);
-    if(!dev){ if(curTab==="sites")setTab("book",true); return; }
-    if(curTab==="pipe"||curTab==="props"||(first&&curTab==="book"))setTab("sites",true);
-    if(!sitesView){
-      sitesView=window.SITESTAB.mount({
-        root:$("sitesRoot"),addToggle:$("sitesAddToggle"),esc:esc,escA:escA,
-        openAdd:addTab==="sites"?addAsk:"",
-        firm:myFirm,showValues:showValues,propTypes:PROP_TYPES,
-        setCount:function(text,hot){tabCount("tabSitesN",text,hot)}
-      });
+    $("tab-pipe").classList.toggle("vt-off",shop);
+    $("tab-props").classList.toggle("vt-off",shop);
+    if(!shop)return;
+    // Never from a page built ahead of being seen (instant tab switching):
+    // only a member who actually opened the link is sent on.
+    if((askedTab==="pipe"||askedTab==="props")&&!document.prerendering&&window.location&&window.location.replace){
+      askedTab="";
+      window.location.replace("/desk#properties");
+      return;
     }
+    if(curTab==="pipe"||curTab==="props")setTab("book",true);
   }
 
   // ---- The book, as a ledger under a map band, with a comp set -----------------
@@ -4579,23 +4271,23 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       p=String((window.location&&window.location.pathname)||"");
     }catch(e){}
     // A hash still wins: it is the older and the more specific of the two.
-    var t0=TAB_OF_HASH[h]||TAB_OF_PATH[p];
-    tabSettled=!!t0;
-    setTab(t0||"book",true);
+    askedTab=TAB_OF_HASH[h]||TAB_OF_PATH[p]||"";
+    setTab(askedTab||"book",true);
   })();
   // Home's "Add a property" opens this page with the form that takes it
-  // already open (2026-10-07, Draft C): ?add=buy for a deal (The Board's
-  // wall, or Sites for a development firm), ?add=own for a property the member
-  // owns (Properties, or Sites with "I own it" picked). Read once, only with a
-  // tab named in the address, and taken off the address so a reload or a
-  // shared link does not open the form again. addTab is the tab it was meant
-  // for, so a form never opens on a tab the member did not ask for.
+  // already open (2026-10-07, Draft C): ?add=own#properties for a property
+  // the member owns, outside a development firm (a development firm's member
+  // adds on Home itself since 2026-10-09, and ?add=buy, a deal for The
+  // Board's wall, went with the wall). Read once, only with a tab named in
+  // the address, and taken off the address so a reload or a shared link does
+  // not open the form again. addTab is the tab it was meant for, so a form
+  // never opens on a tab the member did not ask for.
   var addAsk="",addTab="";
   (function(){
     try{
       var a=new URLSearchParams(window.location.search||"").get("add");
-      var t=TAB_OF_HASH[String(window.location.hash||"").replace("#","")]||TAB_OF_PATH[String(window.location.pathname||"")];
-      if((a==="buy"||a==="own")&&t){
+      var t=TAB_OF_HASH[String(window.location.hash||"").replace("#","")];
+      if(a==="own"&&t){
         addAsk=a;addTab=t;
         if(window.history&&window.history.replaceState)
           window.history.replaceState(window.history.state,"",window.location.pathname+window.location.hash);
@@ -6178,8 +5870,10 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // Only what the page actually holds (2026-10-07): the development line
     // promised absorption rates and feasibility calculations it has no tab
     // for, and the other promised BOV leads to a member who is not a broker.
+    // A development shop's properties are on Home since 2026-10-09, so its
+    // page holds comps and the markets on The Board, and says so.
     var holds=myFirm&&myFirm.kind==="development"
-      ? "The properties you are buying or hold, and the comps you value against. "
+      ? "The comps you value against, and the markets you follow. Your properties are on Home. "
       // Any other firm reads as a broker shop, org-access.js kindOf's rule.
       : myFirm
         ? "Your comps, the owners asking you for a BOV, and the properties you hold. "
@@ -6931,16 +6625,16 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   }
 
   // Each market a tile: its buying read and the reasons for it (computed by
-  // /deal-wall.js, DEALWALL.buyingRead, from the feed's six-month price trend
-  // and the market page's direction -- no read when neither exists), its new
-  // comps behind a fold, and Remove. The add form opens on an empty Board and
-  // behind the last tile otherwise.
-  var watchFormOpen=false,wallView=null,wallLive=null;
-  function boardCount(){ tabCount("tabWatchN",wallLive?wallLive:(mktItems.length||""),false); }
+  // /buying-read.js, BUYINGREAD.buyingRead, from the feed's six-month price
+  // trend and the market page's direction -- no read when neither exists),
+  // its new comps behind a fold, and Remove. The add form opens on an empty
+  // Board and behind the last tile otherwise.
+  var watchFormOpen=false;
+  function boardCount(){ tabCount("tabWatchN",mktItems.length||"",false); }
   function renderMarkets(){
     $("mktErr").className=mktOk?"msg bad hide":"msg bad";
     if(!mktOk){$("mktEmpty").className="invite hide";return;}
-    var items=mktItems,DW=window.DEALWALL,anyRead=false;
+    var items=mktItems,DW=window.BUYINGREAD,anyRead=false;
     boardCount();
     $("mktIntro").className=items.length?"sub":"sub hide";
     $("mktEmpty").className=items.length?"invite hide":"invite";
@@ -7006,24 +6700,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       (watchFormOpen?"":'<button type="button" class="dw-addt" id="wAddTile">+ Add a market</button>')+"</div>"+
       (anyRead?'<p class="dw-fine">Buying conditions are an automated read of public numbers: the six-month '+
         "median price of recorded sales and, where one exists, the market page’s direction. Not investment advice.</p>":""):"";
-    if(wallView)wallView.refresh();
-  }
-
-  // The deal wall (/deal-wall.js, the global DEALWALL). Mounted once, on the
-  // first read, like the other personal decks; without the script, or
-  // without SITES, The Board keeps its markets and nothing else changes.
-  function mountWall(){
-    if(wallView||!window.DEALWALL||!window.SITES)return;
-    wallView=window.DEALWALL.mount({
-      root:$("wallRoot"),addToggle:$("wallAddToggle"),esc:esc,escA:escA,propTypes:PROP_TYPES,
-      openAdd:addAsk==="buy"&&addTab==="watch",
-      // server.js writes the flag into the head when GOOGLE_MAPS_API_KEY is
-      // set: the deal cards' street photos (building-photo.js).
-      streetview:!!window.__CN_STREETVIEW__,
-      isDev:function(){return !!(myFirm&&myFirm.kind==="development")},
-      feed:function(){return mktItems},
-      setCount:function(n){wallLive=n;boardCount()}
-    });
   }
 
   $("mktRows").addEventListener("click",function(e){

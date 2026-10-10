@@ -31,6 +31,15 @@
 //      wording ask, 2026-10-07). Until 2026-10-09 Home listed comps too, each
 //      with its deal date and price per unit; they are /vault's now.
 //
+// Deals are a DEVELOPMENT FIRM's (2026-10-09, the owner's call: "Development
+// firms only and integrate it into the property section of the home page").
+// A deal (a user_sites row on Prospect, LOI, Under contract or Entitlements)
+// is listed, dated in Today and worked on Home's Properties tab
+// (home-sites.js) for a member of a development firm, and for nobody else:
+// /vault's Sites tab and The Board's deal wall were removed that day. A
+// status row (Owned or Tracking on a held property) still describes that
+// property for anyone, since it is the property's, not a deal's.
+//
 // Pure and dual-exported (Node for npm test, the browser global HOMEMAP for
 // index.html), like valuation.js, and served with the
 // same maxAge: 0 rule. No clock reads: callers pass `today` as YYYY-MM-DD.
@@ -53,6 +62,8 @@
     owned: { label: "Owned", step: 5 },
     tracking: { label: "Tracking", step: 0 },
     firm: { label: "Firm building", step: 0 },
+    // A development firm's deal it passed on: Properties' Passed fold only.
+    passed: { label: "Passed", step: 0 },
   };
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -117,11 +128,16 @@
     return { value: last, change: s.length > 1 && first ? (last - first) / first : null };
   }
 
+  // Whether this member works deals on Home: a development firm's only.
+  function dealsOn(firmKind) { return firmKind === "development"; }
+
   // Rule 1: every property, once. `buildings` are the firm's (GET
   // /api/org/buildings), `sites` the member's deals (GET /api/sites),
   // `portfolio` the properties they hold (GET /api/portfolio), `critical` the
-  // leases read's dated list. `today` dates the next-date column.
-  function properties({ buildings = [], sites = [], portfolio = [], critical = [], today = "" } = {}) {
+  // leases read's dated list. `today` dates the next-date column. A deal is
+  // listed only for a development firm (`firmKind`, dealsOn).
+  function properties({ buildings = [], sites = [], portfolio = [], critical = [], today = "", firmKind = "" } = {}) {
+    const deals = dealsOn(firmKind);
     const rows = new Map();
     const put = (key, address, base) => {
       if (!key) return null;
@@ -137,6 +153,7 @@
     (Array.isArray(sites) ? sites : []).forEach((s) => {
       if (!s || s.stage === "passed") return;
       if (ACTIVE[s.stage]) {
+        if (!deals) return;
         const upcoming = (Array.isArray(s.dates) ? s.dates : [])
           .filter((d) => d && d.on && daysUntil(d.on, today) != null && daysUntil(d.on, today) >= 0)
           .sort((a, b) => str(a.on).localeCompare(str(b.on)))[0];
@@ -203,22 +220,24 @@
     return row && row.firm ? "firm" : "you";
   }
 
-  // Where the member's own deals are listed on their private page. A
-  // development firm has a Sites tab for them; for everyone else they are the
-  // deal wall on The Board, because vault-page.js's applyShop hides Sites from
-  // anyone outside a development firm and a #sites link would land on Comps.
-  // Sites has its own address since 2026-10-09 (it is a rail row now).
-  function dealsHref(firmKind) { return firmKind === "development" ? "/sites" : "/vault#board"; }
+  // The deals a development firm's member passed on, newest first: Home's
+  // Properties tab folds them away under "Passed", where one can be brought
+  // back. Nobody else has deals (dealsOn).
+  function passedDeals({ sites = [], firmKind = "" } = {}) {
+    if (!dealsOn(firmKind)) return [];
+    return (Array.isArray(sites) ? sites : [])
+      .filter((s) => s && s.stage === "passed" && s.portfolio_item_id == null)
+      .sort((a, b) => str(b.updated_at).localeCompare(str(a.updated_at)));
+  }
 
-  // Where Home's "Add a property" sends a property that is only the member's,
-  // with the right form already open (vault-page.js reads ?add= once). A
-  // deal ("buy") is added where deals are listed (dealsHref); a property
-  // they own ("own") goes to Properties, except that a development firm's
-  // Sites tab takes both, with "I own it" picked.
-  function addHref(kind, firmKind) {
-    const own = kind === "own";
-    if (firmKind === "development") return `/sites?add=${own ? "own" : "buy"}`;
-    return own ? "/vault?add=own#properties" : "/vault?add=buy#board";
+  // Where Home's "Add a property" takes a property that is only the member's.
+  // "home": the add form opens on Home itself (a development firm's deal, or
+  // a property it owns or tracks: home-sites.js). A URL: the member's own page
+  // with the form already open (vault-page.js reads ?add= once). "": not
+  // offered, which is a deal for anyone outside a development firm.
+  function addWhere(kind, firmKind) {
+    if (dealsOn(firmKind)) return "home";
+    return kind === "own" ? "/vault?add=own#properties" : "";
   }
 
   // What needs the member: unread conversations first, then new BOV requests
@@ -229,7 +248,8 @@
   // anonymized to type, size, market and date: a request carries no address,
   // so like a message it has no number and no pin. It is "new" while it is
   // inside BOV_DAYS and the member has not asked for an introduction.
-  // `firmKind` decides where a deal's row links (dealsHref).
+  // A deal's dates are a development firm's only (`firmKind`, dealsOn), and
+  // its row opens the deal on Home's Properties tab.
   function agenda({ critical = [], threads = [], sites = [], leads = [], firmKind = "", today = "" } = {}) {
     const out = [];
     (Array.isArray(threads) ? threads : []).forEach((t) => {
@@ -257,14 +277,14 @@
         who: str(c.tenant), address: str(c.address), place: street(c.address) + (c.suite ? ` · suite ${c.suite}` : ""),
         scope: "firm", act: "Open lease", href: c.buildingId != null ? `/building/${encodeURIComponent(c.buildingId)}` : "/buildings" });
     });
-    (Array.isArray(sites) ? sites : []).forEach((s) => {
+    (dealsOn(firmKind) && Array.isArray(sites) ? sites : []).forEach((s) => {
       if (!s || !ACTIVE[s.stage]) return;
       (Array.isArray(s.dates) ? s.dates : []).forEach((d) => {
         const n = d && d.on ? daysUntil(d.on, today) : null;
         if (n == null || n < 0 || n > DEAL_DAYS) return;
         out.push({ kind: "deal", n, date: str(d.on).slice(0, 10), label: str(d.label) || "Deal date", who: "", address: str(s.address),
           place: street(s.address) + (town(s.address) ? " · " + town(s.address) : ""), scope: "you", act: "Open deal",
-          href: dealsHref(firmKind), stage: s.stage });
+          href: "/desk#properties", stage: s.stage });
       });
     });
     const rank = (x) => (x.kind === "msg" ? 0 : x.kind === "bov" ? 1 : 2);
@@ -380,6 +400,6 @@
   }
 
   return { LEASE_DAYS, DEAL_DAYS, BOV_DAYS, WEEK_DAYS, STAGES, addressKey, street, place, town, daysUntil, shortDate, inDays, money,
-    stageLabel, stageStep, lastValue, properties, scopeOf, dealsHref, addHref, agenda, thisWeek, statusLine,
+    stageLabel, stageStep, lastValue, dealsOn, properties, scopeOf, passedDeals, addWhere, agenda, thisWeek, statusLine,
     LAYERS, LAYER_DEFAULT, readLayers, tabLayer, PERMIT_STAGES, tidyCaps, permitPin, permitStageLabel, permitAt, layerNotes };
 });

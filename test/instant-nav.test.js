@@ -181,7 +181,7 @@ test("only a plain link to another tab qualifies", () => {
 test("every tab in the rail is one it will prerender", () => {
   // The rail's destinations, both shells. A tab missing here simply loads the
   // old way; this pins that the list is the rail and not a subset of it.
-  for (const p of ["/desk", "/vault", "/pipeline", "/sites", "/messages", "/markets", "/bulk", "/permits"]) {
+  for (const p of ["/desk", "/vault", "/pipeline", "/messages", "/markets", "/bulk", "/permits"]) {
     assert.ok(NAV.TAB_PATHS.includes(p), p);
     assert.ok(indexSrc.includes(`href="${p}"`) || p === "/desk", `index.html has no ${p} row`);
   }

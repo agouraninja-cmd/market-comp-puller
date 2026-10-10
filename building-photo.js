@@ -25,11 +25,12 @@
 // site (Trailer 51, Apt 3B): the report map's rule, for its reasons
 // (maps.md). ⚠ houseNumberOf and unitDesignatorOf are COPIES of index.html's
 // (its "Proving a footprint is actually the searched address" block),
-// because /vault cannot load index.html's script; test/building-photo.test.js
-// runs both copies over the same addresses.
+// written when /vault, which cannot load index.html's script, drew The
+// Board's deal cards (until 2026-10-09); test/building-photo.test.js runs
+// both copies over the same addresses.
 //
 // Pure rules and dual-exported (Node for npm test, the browser global
-// BLDGPHOTO for index.html and /vault), like home-map.js, and served with the
+// BLDGPHOTO for index.html), like home-map.js, and served with the
 // same maxAge: 0 rule. The browser half is at the bottom and does nothing
 // under Node.
 (function (root, factory) {

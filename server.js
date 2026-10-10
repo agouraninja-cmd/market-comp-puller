@@ -203,9 +203,10 @@ const BFACTS = require("./building-facts");
 const DIRECTORY = require("./broker-directory");
 const LEADSVC = require("./broker-leads");
 const BOVSVC = require("./bov-log");
-// The Sites tab's rules (migration 060): stages, the tracker, and the field
-// validation every /api/sites write goes through. Dual-exported; the browser
-// reads the same copy at /sites.js.
+// A development firm's deals (migration 060; worked on Home's Properties tab
+// since 2026-10-09): stages, the tracker, and the field validation every
+// /api/sites write goes through. Dual-exported; the browser reads the same
+// copy at /sites.js.
 const SITES = require("./sites");
 // Corpus audit — the structural integrity rules for the comp corpus. It also
 // owns the source_type badge rule (enforcedSourceType + isAggregateAddress),
@@ -2149,10 +2150,15 @@ async function requireBroker(req, res, area) {
   return user;
 }
 
-// The Sites tab's gate (migration 060). The same three refusals as
+// The deals' gate (migration 060; worked on Home's Properties tab by a
+// development firm's member since 2026-10-09). The same three refusals as
 // requireBroker, in the same order (401, then 403 without canUseVault, then
-// 503 with no database), with its own words: Sites replaces the Pipeline for
-// a development firm, and the Pipeline was part of Pro. DB-only on purpose,
+// 503 with no database), with its own words: deals replace the Pipeline for
+// a development firm, and the Pipeline was part of Pro. Which members are
+// OFFERED deals (a development firm's) is the page's call, HOMEMAP.dealsOn,
+// as it was applyShop's on /vault: the rows are the member's own and private,
+// so the server keeps no firm-kind rule, and a member who leaves a
+// development firm still owns and can read every row. DB-only on purpose,
 // the vault's rule: a member's deals in a file Render erases on deploy would
 // be lost without anyone being told.
 async function requireSites(req, res) {
@@ -2631,9 +2637,9 @@ async function buildWatchlistFeed(user, ent, cutoffOf, opts) {
     // harmlessly.
     const marketPage = marketPageInfo(w.market, w.property_type);
     // The market page's direction while it is fresh (freshDirection: one of
-    // expanding / flat / contracting, or null once 90 days old). The deal
-    // wall's buying read takes it as its second signal (deal-wall.js
-    // buyingRead); absent key = no fresh page = the read rests on prices alone.
+    // expanding / flat / contracting, or null once 90 days old). The Board's
+    // buying read takes it as its second signal (buying-read.js); absent
+    // key = no fresh page = the read rests on prices alone.
     const direction = marketPage ? freshDirection(getMarketPage(marketPage.slug), Date.now()) : null;
     out.push({
       id: w.id, market: w.market, property_type: w.property_type,
@@ -11268,7 +11274,8 @@ const BULK_RUN_MARKER = "<!--BULK_RUN-->";
 // --- Pipeline or Sites: the rail row a firm's kind decides (2026-10-09) -------
 // The owner's call: a broker's BOV pipeline gets its own rail row, directly
 // under Messages, and a development firm (which writes no BOVs; vault.md's
-// Sites section) gets a Sites row in that same place instead. Both rows are
+// Sites section) gets a Sites row in that same place instead, opening Home's
+// Properties tab, where its sites are worked (/desk#properties). Both rows are
 // in the markup on both nav authors (marketBar and index.html, ids navPipe
 // and navSites on both) and ONE class on <html>, `shop-dev`, decides which
 // shows, so neither nav grows a branch.
@@ -12885,10 +12892,11 @@ function nextMarketExample() {
 // /bulk is where the CTA POINTS (since the evening of 2026-09-04), so it is in
 // the list for the plainest reason of all: a button offering to take you where
 // you already are is a button that does nothing.
-// The three addresses the vault page answers at (2026-10-09): /vault, and
-// the two tabs that are rows of the rail, Pipeline and a development firm's
-// Sites. One list for the route, this CTA rule and the tests.
-const VAULT_PAGE_PATHS = new Set(["/vault", "/pipeline", "/sites"]);
+// The two addresses the vault page answers at (2026-10-09): /vault, and
+// /pipeline, its Pipeline tab, which is a row of the rail. One list for the
+// route, this CTA rule and the tests. (A development firm's Sites row opens
+// Home's Properties tab, where their sites are: index.html serves it.)
+const VAULT_PAGE_PATHS = new Set(["/vault", "/pipeline"]);
 const CTA_FREE_PAGES = new Set([...VAULT_PAGE_PATHS, "/messages", "/markets", "/bulk", "/buildings", "/building", "/permits", "/permits/compare"]);
 
 const marketBar = (signedIn = false, current = "") =>
@@ -13008,13 +13016,16 @@ const marketBar = (signedIn = false, current = "") =>
       // requests and engagements, from a new lead to won or lost. Its tab on
       // /vault had no rail row, so the only way in was a line on Home's
       // Today. A development firm writes no BOVs and reads Sites in this
-      // place instead; both rows render and the `shop-dev` class shows one
-      // (SHOP_NAV_CSS above). Every member, like Comp report: /pipeline
-      // answers a free member with the vault's Pro invitation. vault-page.js
-      // moves aria-current between these two as its tabs change, and
-      // index.html carries both twins with the same ids.
+      // place instead (the owner: "Have the sites under messages for
+      // development firms and Pipeline for brokerage firms"); both rows
+      // render and the `shop-dev` class shows one (SHOP_NAV_CSS above).
+      // Sites opens Home's Properties tab, where a development firm's sites
+      // have been worked since that evening (home-sites.js), so it is never
+      // current here: index.html's markNavCurrent marks it. Every member,
+      // like Comp report: /pipeline answers a free member with the vault's
+      // Pro invitation. index.html carries both twins with the same ids.
       `<a id="navPipe" href="/pipeline"${current === "/pipeline" ? ' aria-current="page"' : ""}>${NAV_ICONS.pipeline}<span class="nvl">Pipeline</span></a>` +
-      `<a id="navSites" href="/sites"${current === "/sites" ? ' aria-current="page"' : ""}>${NAV_ICONS.sites}<span class="nvl">Sites</span></a>`
+      `<a id="navSites" href="/desk#properties">${NAV_ICONS.sites}<span class="nvl">Sites</span></a>`
     : "") +
   // Pricing sits in the bar itself rather than one click inside Explore. It is
   // the question a prospect arrives with, and a B2B site that hides its price
@@ -30856,14 +30867,15 @@ const server = http.createServer((req, res) =>
     // the global BFACTS, the one copy of "which fields inherit" the server
     // also fills with, so it must never be stale relative to the page.
     "/building-facts.js": { file: "building-facts.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
-    // The Sites tab (migration 060): its rules (the global SITES) and its
-    // drawing (the global SITESTAB), both called from /vault's inline script,
+    // A development firm's deals (migration 060), worked on Home since
+    // 2026-10-09: their rules (the global SITES) and Home's working pane
+    // (the global HOMESITES), both called from index.html's inline script,
     // so the same maxAge: 0 rule holds for the same reason.
     "/sites.js": { file: "sites.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
-    "/sites-tab.js": { file: "sites-tab.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
-    // The deal wall on The Board (the global DEALWALL), mounted by the same
-    // inline script on the same terms.
-    "/deal-wall.js": { file: "deal-wall.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    "/home-sites.js": { file: "home-sites.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // The buying read on The Board's market tiles (the global BUYINGREAD),
+    // called by /vault's inline script on the same terms.
+    "/buying-read.js": { file: "buying-read.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
@@ -30876,8 +30888,8 @@ const server = http.createServer((req, res) =>
     // page that calls it.
     "/home-map.js": { file: "home-map.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // Street photos of buildings (2026-10-09): which building a photo shows,
-    // through the global BLDGPHOTO, for Home's cards (index.html) and The
-    // Board's (deal-wall.js on /vault). Same maxAge: 0 rule as the others.
+    // through the global BLDGPHOTO, for Home's cards (index.html). Same
+    // maxAge: 0 rule as the others.
     "/building-photo.js": { file: "building-photo.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // The desktop/mobile install identity (PWA). Users "download" the app
     // from the site itself — Chrome/Edge offer Install once this manifest is
@@ -31973,9 +31985,9 @@ const server = http.createServer((req, res) =>
     return;
   }
 
-  // /pipeline and /sites are the same page opened on that tab (2026-10-09):
-  // each is a row of the rail now, under Messages, and a rail row needs an
-  // address of its own. A #fragment would not do: instant-nav.js refuses to
+  // /pipeline is the same page opened on that tab (2026-10-09): Pipeline is
+  // a row of the rail now, under Messages, and a rail row needs an address
+  // of its own. A #fragment would not do: instant-nav.js refuses to
   // prerender a link carrying one, and the server could not mark the row,
   // since a fragment never reaches it. vault-page.js reads the path for the
   // first tab and writes it back when the member switches to that tab.
@@ -32031,9 +32043,8 @@ const server = http.createServer((req, res) =>
         // marketShell page uses -- the real gate is the boot payload above,
         // resolved through vaultReadPayload. This only picks the chrome.
         signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
-        // The path asked for, so /pipeline marks the Pipeline row and /sites
-        // the Sites row; /vault itself has no row and marks none until the
-        // page shows one of those two tabs.
+        // The path asked for, so /pipeline marks the Pipeline row; /vault
+        // itself has no row and marks none until the page shows that tab.
         current: vaultPagePath,
         // Inter, which marketShell does not load and this page has always
         // used. MARKET_CSS names the family in body{}, so without this the
@@ -32047,11 +32058,9 @@ const server = http.createServer((req, res) =>
         // than copied into vault-page.js, so the vault cannot drift onto
         // another version of either. Without them the map says it could not
         // load and every comp is still in the list.
-        // + whether Street View is configured (2026-10-09), so The Board's
-        // deal cards know they may ask /api/streetview for a street photo
-        // (deal-wall.js, building-photo.js). A constant, not the visitor's.
-        head: INTER_FONT_HEAD + LEAFLET_HEAD + `<script>${BASEMAP_JS}</script>\n`
-          + `<script>window.__CN_STREETVIEW__=${GOOGLE_MAPS_API_KEY ? "true" : "false"};</script>\n`,
+        // (Whether Street View is configured rode here from 2026-10-09 for
+        // The Board's deal cards; it left with the deal wall the same day.)
+        head: INTER_FONT_HEAD + LEAFLET_HEAD + `<script>${BASEMAP_JS}</script>\n`,
         testerBadge: true,
         body: renderVaultBody(boot) + visitTag,
       }));

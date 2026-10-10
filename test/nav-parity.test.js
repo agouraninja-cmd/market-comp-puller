@@ -51,8 +51,10 @@ test("the app's rail says which row the reader is standing on", () => {
   // over a view that is gone is worse than no highlight at all.
   // And a fifth since 2026-10-07: Home's tabs, because its Reports tab is
   // the rail's Reports row (setHomeTab), so changing tab changes the row.
-  assert.equal(INDEX_HTML.split("markNavCurrent();").length - 1, 5,
-    "every seam that hides or shows the workspace, and Home's tab switch, must re-mark the rail");
+  // And a sixth since 2026-10-09: loadMyFirms, because the firm's kind
+  // decides whether Home's Properties tab is the Sites row.
+  assert.equal(INDEX_HTML.split("markNavCurrent();").length - 1, 6,
+    "every seam that hides or shows the workspace, Home's tab switch and the firm's kind must re-mark the rail");
 });
 
 test("Workspace is a link on the app, as it is on every other page", () => {
@@ -341,6 +343,8 @@ test("Firm & branding is one row under Settings on both sides of the rail", () =
 });
 
 test("Pipeline sits under Messages on both rails, and Sites takes its place for a development firm", () => {
+  // Sites opens Home's Properties tab, where a development firm's sites are
+  // worked since 2026-10-09 (home-sites.js); the app marks it there.
   // Owner's call, 2026-10-09. Both rows ship on both nav authors with the
   // SAME ids, so one rule (SHOP_NAV_CSS) decides which shows on every page,
   // and one script (SHOP_NAV_JS) stamps the class before first paint. A row
@@ -351,7 +355,7 @@ test("Pipeline sits under Messages on both rails, and Sites takes its place for 
   ]) {
     const msg = src.indexOf(msgRow);
     const pipe = src.indexOf('<a id="navPipe" href="/pipeline"');
-    const sites = src.indexOf('<a id="navSites" href="/sites"');
+    const sites = src.indexOf('<a id="navSites" href="/desk#properties"');
     const tools = src.indexOf('class="navsec">Tools<');
     assert.ok(msg > -1 && pipe > -1 && sites > -1, name + " is missing the Messages, Pipeline or Sites row");
     assert.ok(msg < pipe && pipe < sites && sites < tools,
@@ -386,6 +390,17 @@ test("Pipeline sits under Messages on both rails, and Sites takes its place for 
   // The script reaches both too: marketShell's <head> and authBoot's.
   assert.match(SERVER_JS, /\(signedIn \? `<script>\$\{SHOP_NAV_JS\}<\/script>\\n` : ""\)/);
   assert.match(SERVER_JS, /SHOP_NAV_JS \+\s*`<\/script>\\n`;/);
+  // The app marks Sites while a development firm's Properties tab shows,
+  // reading the tab button and the class (never hmTab, declared below
+  // markNavCurrent), and swaps the tab in place on a plain click.
+  const at = INDEX_HTML.indexOf("function markNavCurrent() {");
+  const body = INDEX_HTML.slice(at, INDEX_HTML.indexOf("\n  }\n", at));
+  assert.match(body, /getElementById\("hmTabProps"\)/, "markNavCurrent no longer reads which Home tab shows");
+  assert.match(body, /classList\.contains\("shop-dev"\)/, "markNavCurrent marks Sites for a firm that is not a developer");
+  assert.match(body, /getElementById\("navSites"\)/, "markNavCurrent never marks the Sites row");
+  assert.ok(!/\bhmTab\b/.test(body), "markNavCurrent reads hmTab, a TDZ throw from the boot path");
+  assert.match(INDEX_HTML, /getElementById\("navSites"\)\.addEventListener\("click"[\s\S]{0,400}?setHomeTab\("properties"\)/,
+    "the app's Sites row does not open Home's Properties tab in place");
   // And the two pages that know the firm's kind write it down.
   assert.match(INDEX_HTML, /if \(window\.cnShopNav\) window\.cnShopNav\(Boolean\(myFirm\(\) && myFirm\(\)\.kind === "development"\)\);/,
     "loadMyFirms no longer tells the rail which kind of firm this is");

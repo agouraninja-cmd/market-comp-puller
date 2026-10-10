@@ -18,12 +18,17 @@ paths:
 > **Pipeline, under Messages (2026-10-09, owner's call): Home, Messages,
 > Pipeline | Markets, Comp report, Permits**, and a development firm reads
 > **Sites** in Pipeline's place ("give development firms a site tab on the
-> sideline ... and the pipeline would have its own side tab under messages").
-> Both are `/vault`'s tabs, served at `/pipeline` and `/sites`
+> sideline ... and the pipeline would have its own side tab under messages";
+> and, once Sites had moved onto Home the same evening, "Have the sites under
+> messages for development firms and Pipeline for brokerage firms under
+> messages"). Pipeline is `/vault`'s tab, served at `/pipeline`
 > (`VAULT_PAGE_PATHS`; vault.md has the page's half), in `TAB_PATHS` and
-> `CTA_FREE_PAGES`. A path rather than `/vault#pipeline` on purpose:
-> instant-nav.js never prerenders a link with a fragment, and the server
-> cannot mark a row for a fragment it never sees. Five rules:
+> `CTA_FREE_PAGES`: a path rather than `/vault#pipeline` on purpose, since
+> instant-nav.js never prerenders a link with a fragment and the server
+> cannot mark a row for a fragment it never sees. **Sites opens Home's
+> Properties tab** (`/desk#properties`), where a development firm's sites
+> are worked (workspace.md, "Deals on Home"); there is no `/sites` page.
+> Six rules:
 > - **Both rows render on both nav authors, with marketBar's ids on both**
 >   (`#navPipe`, `#navSites`), and ONE class decides which shows:
 >   `shop-dev` on `<html>`, styled by `SHOP_NAV_CSS`, which reaches the
@@ -38,18 +43,25 @@ paths:
 >   development member never watches Pipeline turn into Sites.
 > - **The note is a per-browser convenience, never a gate** (localStorage
 >   `cnShop`). Without it a development member reads Pipeline, and
->   `/pipeline` opens their vault on Sites anyway (`applyShop`). Sign-out
+>   `/pipeline` sends them to `/desk#properties` anyway (`applyShop`). Sign-out
 >   (`doSignOut`, `doDeleteAccount`) and a dead session (`ACCOUNT_NAV_JS`'s
 >   `!me`) clear it.
-> - **The mark follows the tab, not the path.** marketBar marks the row for
->   the path it served; vault-page.js's `setTab` moves `aria-current`
->   (`markRail`) as the tabs change, and a Pro-locked vault still moves a
->   free member from Pipeline to Properties (vault.md's pinned rule), which
->   unmarks it. `/vault` itself has no row.
+> - **The mark follows the tab, not the path.** marketBar marks Pipeline for
+>   `/pipeline`; vault-page.js's `setTab` moves `aria-current` (`markRail`)
+>   as the tabs change, and a Pro-locked vault still moves a free member from
+>   Pipeline to Properties (vault.md's pinned rule), which unmarks it.
+>   `/vault` itself has no row.
+> - **Sites is marked by the app, never the server.** `markNavCurrent` marks
+>   `#navSites` instead of Home while the Properties tab shows for a
+>   `shop-dev` member, reading `#hmTabProps`' `aria-selected` and the class
+>   (never `hmTab`, a TDZ throw from the boot path), and `loadMyFirms` calls
+>   it once the kind is known. A plain click on the app's Sites row swaps to
+>   Properties in place (`enterDesk`, then `setHomeTab`), the Home row's
+>   handler, so it works from a report too.
 > - **Every member gets the row**, Comp report's rule: a free member opening
 >   `/pipeline` gets the vault's Pro invitation. Pinned in
->   `test/nav-parity.test.js`, `test/routes.test.js` (the sequence and the
->   two pages) and `test/vault-page.test.js`.
+>   `test/nav-parity.test.js`, `test/routes.test.js` (the sequence, the
+>   page, and `/sites` being no page) and `test/vault-page.test.js`.
 
 > **The rail since 2026-10-08 (owner's call): Home, Messages | Markets, Comp
 > report, Permits.** Reports left: it was `/desk#reports`, which only opened

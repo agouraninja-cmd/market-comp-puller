@@ -648,12 +648,13 @@ test("bare environment", async (t) => {
     // its reports are Messages' now) and Comp report came back under Tools:
     // Home, Messages | Markets, Comp report, Permits.
     // 2026-10-09 (owner's call): Pipeline under Messages, and Sites right
-    // beside it for a development firm (one of the two shows; SHOP_NAV_CSS).
+    // beside it for a development firm (one of the two shows; SHOP_NAV_CSS),
+    // opening Home's Properties tab, where their sites are.
     const ROWS = [
       ["Home", /<span class="nvl">Home</],
       ["Messages", /<a [^>]*href="\/messages"/],
       ["Pipeline", /<a id="navPipe" href="\/pipeline"/],
-      ["Sites", /<a id="navSites" href="\/sites"/],
+      ["Sites", /<a id="navSites" href="\/desk#properties"/],
       ["Markets", /<a [^>]*href="\/markets"/],
       ["Comp report", /<a (?![^>]*class="btn sm")[^>]*href="\/bulk"/],
       ["Permits", /<a [^>]*href="\/permits"/],
@@ -686,12 +687,13 @@ test("bare environment", async (t) => {
     }
   });
 
-  // Pipeline and Sites are rows of the rail (2026-10-09), so each is a path:
-  // the vault page, served at /pipeline and /sites, with that row marked and
-  // no red "Run a comp report" button (a working page, CTA_FREE_PAGES).
-  await t.test("/pipeline and /sites serve the vault page with their own row marked", async () => {
+  // Pipeline is a row of the rail (2026-10-09), so it is a path: the vault
+  // page, served at /pipeline, with that row marked and no red "Run a comp
+  // report" button (a working page, CTA_FREE_PAGES). A development firm's
+  // Sites row opens Home's Properties tab instead, so /sites is no page.
+  await t.test("/pipeline serves the vault page with its own row marked", async () => {
     const SESSION = { cookie: "cn_session=not-a-real-token" };
-    for (const [page, id] of [["/pipeline", "navPipe"], ["/sites", "navSites"]]) {
+    for (const [page, id] of [["/pipeline", "navPipe"]]) {
       const r = await fetch(srv.base + page, { headers: SESSION });
       assert.equal(r.status, 200, page);
       assert.equal(r.headers.get("cache-control"), "no-store", page + " is a member's page");
@@ -705,7 +707,7 @@ test("bare environment", async (t) => {
       // the rail is drawn.
       const head = html.slice(0, html.indexOf("</head>"));
       assert.match(head, /window\.cnShopNav=function/, page + " cannot choose Sites before first paint");
-      if (page !== "/sites") continue;
+
       // Run the stamp itself: the note in this browser decides the class
       // before paint, and cnShopNav writes and clears both together.
       const src = head.match(/<script>(\(function\(\)\{var d=document\.documentElement[\s\S]*?)<\/script>/)[1];
@@ -729,6 +731,8 @@ test("bare environment", async (t) => {
       ctx.window.cnShopNav(false);
       assert.ok(!cls.has("shop-dev") && !("cnShop" in store), "leaving the firm (or signing out) left the note");
     }
+    assert.equal((await fetch(srv.base + "/sites", { headers: SESSION })).status, 404,
+      "/sites is no page: a development firm's sites are on Home");
     // /vault itself has no row, so it marks neither before the page decides.
     const vault = await (await fetch(srv.base + "/vault", { headers: SESSION })).text();
     const vnav = (vault.match(/<nav[\s\S]*?<\/nav>/) || [""])[0];

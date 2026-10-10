@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-10-09",
+    "type": "feature",
+    "title": "A development firm works its deals right on Home",
+    "details": "If you’re in a development firm, the deals you’re buying and the properties you own or track are worked on Home’s Properties tab now, instead of on a tab of their own. Click one of your rows and it opens in place under the row: for a deal, the five steps from Prospect to Owned with the day you reached each, one click to move it on or pass on it, its asking price, acres, zoning and seller, its key dates with a countdown, notes, Edit and Run a land report; for a property you hold, its likely value, how it changed, a chart of every check, how the market moved since, and Open report, Refresh value and Add to firm. “+ Add a property” adds a deal, or a property you own or track, right there, and deals you passed on fold away under Passed at the foot of the list. Clicking a deal’s pin or one of its dates in Today opens it too. Deal tracking is for development firms only, so it’s gone from The Board, which is back to being the markets you follow, and from your own comps page, which for a development firm is now your comps and The Board."
+  },
+  {
+    "date": "2026-10-09",
     "type": "improvement",
     "title": "Street photos for nearly every building, looked up by address",
     "details": "The first version of street photos only worked when the free public map had the building's street number, which most buildings don't, so Home stayed mostly satellite views. Photos are now found by address: CompNinja's server asks Google for its camera nearest the address, and Google turns that camera toward the building itself. The same quality check applies (Google's own camera, a recent photo, near where we placed the address), and anything that fails it keeps the satellite view. This covers your properties, your deals on The Board and your own comps, and a property gets its photo even before it has a pin on the map. The address goes to Google from CompNinja's server only, never from your browser, and the photo's web address carries it scrambled rather than readable."
@@ -4710,6 +4716,6 @@
     "date": "2026-10-09",
     "type": "feature",
     "title": "Pipeline has its own spot in the left rail, under Messages",
-    "details": "Your BOV pipeline (owner requests in the markets you watch, through to won or lost) is now one click away on every page: a Pipeline row sits right under Messages, at its own address, /pipeline. If your firm is a development firm you see Sites in that spot instead, at /sites. The row lights up while you're on that tab, and Home's “Your BOV pipeline →” link and its BOV request rows go there too."
+    "details": "Your BOV pipeline (owner requests in the markets you watch, through to won or lost) is now one click away on every page: a Pipeline row sits right under Messages, at its own address, /pipeline. If your firm is a development firm you see Sites in that spot instead, and it opens your sites on Home's Properties tab. The row lights up while you're there, and Home's “Your BOV pipeline →” link and its BOV request rows go to /pipeline too."
   }
 ]

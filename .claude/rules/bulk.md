@@ -6,6 +6,46 @@ paths:
 ---
 # Bulk valuation
 
+> **No type box: each address gets its own type (2026-10-09, owner's call
+> to remove the picker completely).** Read this before the notes below that
+> say "one type per job". The run's `#bulkType` select silently started on
+> Industrial and valued every office and apartment in an untouched run as a
+> warehouse; it is gone (search-pipeline.md, "The property type is found").
+> - **A run with no type is `"Auto"`** (`BULK.AUTO_TYPE` stored in
+>   `bulk_jobs.property_type`; `bulk_jobs` has no CHECK on it).
+>   `runBulkItem` looks each row up (`resolvePropertyType`) after marking it
+>   running and before its search, and searches, values
+>   (`valueFromReport`'s `propertyType`), files (`saveBulkValuationToRecents`
+>   with the row's type: the recent's `property_type` and `meta.type`) and
+>   sanitizes the row's details to THAT type. A row nothing can type fails
+>   alone ("Couldn't tell what kind of property this is. Retry it, or run it
+>   on its own.") and costs no search; Retry looks it up again.
+> - **Reads are keyed per market AND type** (`compsFor(market, type)`,
+>   `corpusFor(type)`, both promise-memoized as before), because one Auto
+>   run can hold an office and a warehouse in one market. A typed run reads
+>   exactly what it always did (its corpus up front).
+> - **The row's type is stored in `bulk_job_items.property_type`**
+>   (migration 061) by a PATCH of its own that swallows a failure, so
+>   deploy order is SOFT: before 061 runs every row is still searched and
+>   valued as its found type, and only the type shown beside it (and in the
+>   CSV) is missing. `bulkItemRow` surfaces it (`null` on a typed run's
+>   rows); `exportCsv` writes it per row and titles an Auto run "type found
+>   per address" (`BULK.jobTypeLabel`), and an Auto run's file carries every
+>   type's detail columns (`ALL_TYPE_COMP_FIELDS`), as its parser reads them.
+> - **A sent type is still honored** (a one-address run whose type the page
+>   found sends it; so does an older page or "Run again" of a typed run),
+>   and an unknown one is refused by name with the accepted list.
+> - **The page** (`bulk-page.js`): the type cell is text (`#bulkTypeFound`,
+>   one writer `refreshTypeLine`). One address is looked up as it is typed
+>   (`scheduleTypeLookup`, 700ms settle, `POST /api/property-type`), shown as
+>   "Industrial · found from the address" with that type's own fields, and
+>   sent with the run only while the answer still belongs to the address in
+>   the box (`FOUND.addr`); a list sends none. The run view words an Auto run
+>   "Type found per address" (`typeWords`) and shows each row's type under
+>   its address. `test/bulk-page-type.test.js` runs the page script against a
+>   stand-in page; `test/bulk-auto-type-run.test.js` runs a mixed list end to
+>   end against a stub provider.
+
 > Moved verbatim from CLAUDE.md on 2026-09-25. Claude Code loads this file
 > when it opens a file matching `paths` above; read it by hand before changing
 > this area's code in `server.js`. The never-break rules stay in CLAUDE.md.
@@ -98,8 +138,9 @@ paths:
   leases case saying so instead of "no priced sale comps"; and **the insert
   names `tx_focus`/`subject` only for non-default values**, so a plain run
   still starts before 051 has run, while a run that uses them 400s at
-  PostgREST into "Could not start that run" — migrate first. Not done: a
-  per-address property type (one type per job, as 036 argues).
+  PostgREST into "Could not start that run" — migrate first. A
+  per-address property type was "not done" here until 2026-10-09; see the
+  box at the top.
   **Excel lists and "Add valued rows to portfolio" (2026-09-04).** `POST
   /api/bulk/inspect { xlsx }` reads a workbook's first sheet through
   `xlsxGridFromBase64` (typed, 1 MB — the vault import's helper) and hands
@@ -222,6 +263,6 @@ paths:
   the job's completion, and a second run of the same list costing zero
   searches. It also pins that one failed address costs the row and not the
   run, and that the vendor's own error text never reaches the member.
-  Deliberately not built (see the spec's §5): mixed types in one job,
-  per-address lookback/details, an automatic resume (re-running IS the resume,
+  Deliberately not built (see the spec's §5): per-address lookback/details
+  (mixed TYPES in one job were built 2026-10-09, the box at the top), an automatic resume (re-running IS the resume,
   free from cache), a shareable portfolio, and any scheduling.

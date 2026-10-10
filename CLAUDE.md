@@ -419,7 +419,7 @@ gone. Document a new feature in its area's file, not here.
 
 | File | What it holds | Loads when Claude opens |
 |---|---|---|
-| `search-pipeline.md` | `POST /api/comps`, prompt, cache, live progress (SSE), providers, `MODEL`, `THINKING_LEVEL`, measuring a model change (`run-eval.js`), upstream health, the source-link check, flows 1 and 5 (parsing, currency) | `search-provider-*.js`, `report-parse.js`, `link-check.js`, `run-eval.js`, `eval-*` |
+| `search-pipeline.md` | `POST /api/comps`, prompt, cache, live progress (SSE), providers, `MODEL`, `THINKING_LEVEL`, measuring a model change (`run-eval.js`), upstream health, the source-link check, flows 1 and 5 (parsing, currency), the property type found from the address (`POST /api/property-type`; nobody picks one) | `search-provider-*.js`, `report-parse.js`, `link-check.js`, `run-eval.js`, `eval-*`, `property-type.js` |
 | `corpus.md` | the comp corpus and its health alarm, corpus-first retrieval, radius blend, archive-first, metro matching, on-market listings, `/api/corpus-comps`, the accuracy backtest | `corpus-*.js`, `blend-corpus.js`, `backtest.js`, `market.js`, `deal-date.js` |
 | `report-and-valuation.md` | the report front end: search form, valuation math and hero, flows 2–4 and 3a–3f, private comps on screen and in exports, PowerPoint export | `index.html`, `valuation.js`, `comp-gate.js`, `market-snapshot.js` |
 | `billing.md` | Pro tier, trial, prices, free allowance, passkeys, admin access, branding, trial emails, `/api/config`, `/pricing` | `entitlements.js`, `stripe.js`, `branding.js`, `trial-notices.js`, `pricing-page.js` |

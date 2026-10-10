@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-10-09",
+    "type": "feature",
+    "title": "No more property type picker: CompNinja works out the type from the address",
+    "details": "You no longer pick a property type anywhere. When you type an address, CompNinja looks the building up and works out whether it is an office, warehouse, store, apartment building, house or land, and the report runs as that. On the Comp report page each address in a list gets its own type, so a list that mixes warehouses and offices just works, and each row shows the type it ran as. On the main form the address check shows the type it found instead of asking, with “pick it yourself” if you want to choose. If a report came out as the wrong kind of building, the new “Wrong type?” button beside the report header re-runs it as the right one. In testing on 100 real addresses it got 97 right, and every answer it was sure about was right. Each address is only looked up once and remembered after that."
+  },
+  {
+    "date": "2026-10-09",
     "type": "improvement",
     "title": "Street photos for nearly every building, looked up by address",
     "details": "The first version of street photos only worked when the free public map had the building's street number, which most buildings don't, so Home stayed mostly satellite views. Photos are now found by address: CompNinja's server asks Google for its camera nearest the address, and Google turns that camera toward the building itself. The same quality check applies (Google's own camera, a recent photo, near where we placed the address), and anything that fails it keeps the satellite view. This covers your properties, your deals on The Board and your own comps, and a property gets its photo even before it has a pin on the map. The address goes to Google from CompNinja's server only, never from your browser, and the photo's web address carries it scrambled rather than readable."

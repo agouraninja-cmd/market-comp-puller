@@ -1,6 +1,28 @@
-# No property type picker: CompNinja works it out (draft, 2026-10-09)
+# No property type picker: CompNinja works it out (2026-10-09)
 
-**Status: draft for the owner to approve. Nothing here is built yet.**
+**Status: built on 2026-10-09** (branch
+`claude/property-type-ai-accuracy-xeydiv`). What was built differs from this
+draft in five places:
+
+- **Step 1 reads only the lookup's own memory** (`subject_types`, keyed like
+  `subject_sizes`), not the member's reports, the corpus or `search_cache`.
+  Those older rows were typed by a picker that silently started on
+  Industrial, so they would hand the old mistake straight back.
+- **Step 2 (the map) is unchanged** on the main form and is not used on
+  `/bulk` or in the server's lookup.
+- **Step 4 (the double-check field) was not built.** The report instead
+  has a "Wrong type?" button beside its header that re-runs it as the type
+  picked, and logs `report_retyped`.
+- **A `/bulk` run with no type is stored as `Auto`**, not "Mixed", and
+  reads "type found per address"; each row stores and shows its own type.
+- **No accuracy line on `/admin` yet.** Every lookup logs a `type_lookup`
+  event (memo, `quick_high`, `deep_medium`, `failed` …) and the main form
+  logs `found`, `lookup_changed` and `report_retyped` through
+  `/api/type-autofill`, so the line can be drawn from data already kept.
+
+The Gemini gate below has **not** been run (this workspace cannot reach
+Google); run it before the deploy. Rules live in
+`.claude/rules/search-pipeline.md`, `bulk.md` and `report-and-valuation.md`.
 
 ## The goal
 

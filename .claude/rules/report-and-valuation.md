@@ -544,6 +544,27 @@ and exporting each slide to PNG (a PowerShell one-liner, no dependency).
    - **`cacheKeyFor` includes the details**, appended only when non-empty so
      existing cache entries keep their keys. Without this a 48-unit and a
      6-unit building at one address collide and are served each other's comps.
+   - **Nobody is asked for a type at all since 2026-10-09** (the owner:
+     "remove the property type picker completely"). The confirm dialog no
+     longer shows six buttons and holds Run: with `typeResolution` null it
+     shows "Finding it from the address…" (`showConfirmTypeLookup`) and
+     awaits `lookupPropertyType` (POST `/api/property-type`, one request per
+     address in `typeLookupCache`, shared with the address listener, which
+     starts it on blur whenever the OSM detection could not say). The answer
+     is a fourth state, **`"found"`**, a machine state like `"detected"`: it
+     resets on an address edit and a person's pick outranks it
+     (`applyFoundType`, `renderTypeStatus` says "(found from the address)").
+     `confirmLookupFor` ties a late answer to the dialog that asked, so a
+     closed or re-aimed dialog is never written to. The six buttons survive
+     only as the fallback when nothing could type the address, and behind
+     "pick it yourself" for whoever will not wait; `setConfirmRunEnabled(on,
+     hint)` holds Run with no "pick" line while it waits. List mode's
+     `#bkListType` is gone: a list runs with no type (bulk.md, "Auto").
+     **The report carries "Wrong type?"** (`renderReportMeta`, `no-print
+     no-capture`, never on a shared `/r/` view or the sample): a pick re-runs
+     through `rerunHistory`. The live accuracy signals ride `/api/type-autofill`:
+     `found`, `lookup_changed` (overturned in the dialog) and `report_retyped`
+     (from "Wrong type?"). Pinned in `test/index-html.test.js`.
    - **The type dropdown is gone from the visible form** (2026-08-08): a hidden
      `#propertyType` select remains the single source of truth, and the type is
      resolved at verification — OSM detection, per-address memory

@@ -13,8 +13,59 @@ paths:
   - "test/link-check.test.js"
   - "test/eval-score.test.js"
   - "docs/evals/**"
+  - "property-type.js"
+  - "scripts/type-guess-eval.js"
+  - "test/property-type*.test.js"
+  - "test/type-guess-eval.test.js"
 ---
 # The search pipeline
+
+> **The property type is found, never picked (2026-10-09, owner's call:
+> "remove the property type picker completely").** Read this before
+> anything below that says a request carries a type the visitor chose.
+> Measured first: `docs/evals/2026-10-09-property-type-guess.md` and the
+> spec `docs/superpowers/specs/2026-10-09-auto-property-type-design.md`
+> (a quick AI lookup plus a deep one for the unsure scored 97/100 on two
+> fresh sets of real deals; every "high" answer was right).
+> - **`property-type.js`** (pure, tested in `test/property-type.test.js`)
+>   holds the two prompts and the rules. **The prompt text IS the measured
+>   text**: `scripts/type-guess-eval.js` imports `quickPrompt`/`deepPrompt`
+>   (its versions 2 and 3) rather than keeping a copy, and a test fails if
+>   the quick prompt's text reappears there. Change a word and rerun the
+>   eval (`node scripts/type-guess-eval.js run <set> --provider gemini
+>   --prompt 2 --two-step`, needs the key, a few cents) before shipping.
+> - **`resolvePropertyType(address)`** in server.js: the memo
+>   (`subject_types`, migration 061; DB, then `property-types.json`, then
+>   memory, keyed by `subjectSizeKey`), else a quick lookup (≤3 searches,
+>   the deployment's `THINKING_LEVEL`), else, when that answer is not
+>   "high", a deep one (≤6 searches; `medium` thinking where the provider
+>   has levels). The deep answer wins when there is one; with none the quick
+>   answer stands. Only high/medium answers are memoised (`shouldRemember`:
+>   a street guess must not become permanent). Simultaneous lookups of one
+>   address share a call (`propertyTypeInFlight`). It never throws and
+>   answers null when nothing could tell. Every billed call goes through the
+>   provider seam and `SEARCH_API_URL`, like the report search; each
+>   resolution logs a `type_lookup` event (`source` is `memo`,
+>   `quick_high` … `deep_low`, or `failed`).
+> - **The memo deliberately does NOT read `search_cache.prop_type`, the
+>   members' recents or the corpus.** Those hold whatever type a report was
+>   RUN as, and the silent Industrial default this replaced wrote a wrong
+>   type into them for every office or apartment it touched.
+> - **`POST /api/property-type {address}`** is gated like `/api/comps`: the
+>   password, its own rate limit (`ptype:` + user id or IP, 30 per window),
+>   a street address only, and the guest gate (under the wall, members
+>   only), all BEFORE any spend. It answers `{ type, confidence, evidence,
+>   pass, source }` or `{ type: null }`.
+> - **`POST /api/comps` with no type** resolves it first, before the
+>   report id, entitlements, cache key, private comps, corpus reads and
+>   prompt all key on it; a blocked guest is refused before the billed
+>   lookup; the served copy (never the cache) carries
+>   `property_type_found`; an address nothing can type answers 422
+>   `type_unknown` and runs no search. A sent type is never second-guessed.
+>   `test/property-type-run.test.js` runs all of it against a stub.
+> - Who calls it: the main form (index.html: the address listener when the
+>   map cannot say, and the confirm dialog), `/bulk` for a one-address run,
+>   and the bulk worker for every row of an "Auto" run (bulk.md).
 
 > Moved verbatim from CLAUDE.md on 2026-09-25. Claude Code loads this file
 > when it opens a file matching `paths` above; read it by hand before changing

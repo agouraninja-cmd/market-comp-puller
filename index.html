@@ -21621,7 +21621,6 @@ async function renderMyDesk() {
     t.textContent = "Finding it from the address\u2026 ";
     const pick = document.createElement("button");
     pick.type = "button";
-    pick.id = "confirmTypePickSelf";
     pick.textContent = "pick it yourself";
     pick.className = "text-sm font-normal text-[#5A6473] underline hover:text-[#1A2433]";
     pick.addEventListener("click", () => {
@@ -21766,7 +21765,9 @@ async function renderMyDesk() {
       // While the type is being looked up, "pick it yourself" is the one
       // thing to do; the lookup moves focus to Run when it lands.
       const firstType = document.getElementById("confirmTypeButtons").querySelector("button");
-      const pickSelf = document.getElementById("confirmTypePickSelf");
+      // Built by showConfirmTypeLookup, so it is found inside its line, not by id.
+      const typeLine = document.getElementById("confirmTypeResolved");
+      const pickSelf = typeLine.classList.contains("hidden") ? null : typeLine.querySelector("button");
       if (firstType) firstType.focus();
       else if (pickSelf) pickSelf.focus();
       else runBtn.focus();

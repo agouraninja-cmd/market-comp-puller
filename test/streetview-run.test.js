@@ -94,6 +94,16 @@ test("the neighbor's camera 404s, and the refusal is remembered (one metadata ca
   assert.equal(google.hits.filter((h) => h.path.endsWith("/metadata")).length, 1);
 });
 
+test("one visitor may load 120 photos a window; the 121st is refused", async (t) => {
+  // 120 since 2026-10-13 (the owner's call; it was 60). The page reads a 429
+  // as "no photo" for a week, so the ceiling must sit above a long list.
+  const { srv } = await bootWith(t, goodMeta());
+  const statuses = [];
+  for (let i = 0; i < 121; i++) statuses.push((await fetch(photoUrl(srv.base))).status);
+  assert.equal(statuses.slice(0, 120).filter((s) => s === 200).length, 120, "every one of the first 120 loads");
+  assert.equal(statuses[120], 429);
+});
+
 test("no key: the route 404s without calling anyone", async (t) => {
   const google = await startGoogle(goodMeta());
   const srv = await shared.boot({ GOOGLE_MAPS_API_KEY: "", STREETVIEW_API_URL: google.url });

@@ -1152,6 +1152,13 @@ const STREETVIEW_META_CACHE = new Map();
 // 2026-10-09): sha256(normalized address) -> false | { panoId, plat, plng }.
 // Keyed by a hash so the process holds no list of addresses either.
 const STREETVIEW_ADDR_CACHE = new Map();
+// Street photos one IP may load per rate window (RATE_WINDOW_MS, 5 min),
+// both GET /api/streetview forms together. 120 since 2026-10-13 (the
+// owner's call; it was 60): the page cannot tell this 429 from "no photo",
+// so a member who scrolled past 60 never-seen buildings in five minutes got
+// the aerial on the rest for a week (building-photo.js MISS_MS). It is also
+// the spend guard: at most ~1,440 billed images an hour from one IP.
+const STREETVIEW_RATE_MAX = 120;
 // Test-only, unset in production: where the Street View calls go (the image
 // at this URL, the metadata at URL + "/metadata"). CENSUS_API_URL's reason:
 // without it the suite could prove the gate's rules but never that the route
@@ -25961,7 +25968,7 @@ const server = http.createServer((req, res) =>
       if (!GOOGLE_MAPS_API_KEY) { res.writeHead(404); return res.end(); }
       const address = PHOTOTOKEN.open(params.get("t"), GOOGLE_MAPS_API_KEY);
       if (!address) { res.writeHead(404); return res.end(); }
-      if (rateLimited("streetview:" + clientIp(req), 60)) {
+      if (rateLimited("streetview:" + clientIp(req), STREETVIEW_RATE_MAX)) {
         return sendJson(res, 429, { error: "Too many photo requests. Please wait a few minutes." });
       }
       (async () => {
@@ -25995,11 +26002,11 @@ const server = http.createServer((req, res) =>
       return sendJson(res, 400, { error: "lat and lng are required." });
     }
     if (!GOOGLE_MAPS_API_KEY) { res.writeHead(404); return res.end(); }
-    // A report has <= ~9 pins; Home and The Board load their photos lazily,
-    // a screenful at a time, and a browser keeps each for 30 days. 60 per
-    // window is generous for a human reader and is also the spend guard: a
-    // 429 is an img error, which the page answers with its aerial.
-    if (rateLimited("streetview:" + clientIp(req), 60)) {
+    // A report has <= ~9 pins; Home loads its photos a screenful at a time
+    // plus the pins it warms, and a browser keeps each for 30 days. The
+    // ceiling (STREETVIEW_RATE_MAX) is also the spend guard: a 429 is an img
+    // error, which the page answers with its aerial.
+    if (rateLimited("streetview:" + clientIp(req), STREETVIEW_RATE_MAX)) {
       return sendJson(res, 429, { error: "Too many photo requests. Please wait a few minutes." });
     }
     (async () => {

@@ -14352,8 +14352,8 @@ async function renderMyDesk() {
   // the pointer, so a click opens the building rather than an empty box. A
   // warm is a billed Google image the browser keeps for 30 days, so at most
   // HM_WARM_MAX a page, never one a list thumbnail on screen is already
-  // loading; under the image route's 60-a-window guard with room for those
-  // thumbnails. Permits are public record and can number in the hundreds:
+  // loading; well under the image route's 120-a-window guard
+  // (STREETVIEW_RATE_MAX), with room for those thumbnails. Permits are public record and can number in the hundreds:
   // only a hovered or opened one is asked about.
   const HM_WARM_MAX = 24;
   let hmWarmLeft = HM_WARM_MAX;

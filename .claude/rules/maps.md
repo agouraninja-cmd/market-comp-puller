@@ -98,11 +98,16 @@ the building". Read this before the rest of the file, which it extends.
   measurement). The lookup POST is also a **`READ_POSTS`** path in
   instant-nav.js (app-shell.md): a prerendered Home may ask before it is
   shown, and a lookup no longer throws away the tabs built ahead.
-- **Found while doing that, not fixed:** an image error is remembered as "no
-  photo" for 7 days (`noteFailed`), and the browser cannot tell a 404 from
-  the route's 429 (`streetview:` 60 a window per IP). A member who scrolls
-  past ~60 never-seen buildings in five minutes gets aerials on the rest for
-  a week. Raising that ceiling is a spend call, so it is left for the owner.
+- **The photo ceiling is 120 a window per IP** (`STREETVIEW_RATE_MAX`, both
+  `GET /api/streetview` forms together, one `streetview:` bucket; the
+  owner's call 2026-10-13, it was 60). Found while doing the above: an image
+  error is remembered as "no photo" for 7 days (`noteFailed`), and the
+  browser cannot tell a 404 from the route's 429, so a member who scrolled
+  past ~60 never-seen buildings in five minutes got aerials on the rest for
+  a week. At 120 that takes 120; the underlying blindness is unchanged. The
+  ceiling is also the spend guard (~1,440 billed images an hour from one IP
+  at most). `test/streetview-run.test.js` pins 120 loading and the 121st
+  refused.
 - **The report map's pin popups are unchanged**: they still aim by the snapped
   OSM footprint (`judgePano`, below), because the report's own geocoder label
   check makes that route sound there.

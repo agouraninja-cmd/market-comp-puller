@@ -3082,11 +3082,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <!-- Change photo and Delete account… moved into the settings
                  panel (2026-08-23); this row is the door to them. -->
             <button id="menuSettingsBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-[#F5F4EF]">Settings</button>
-            <!-- Firm account (2026-09-03): membership and the firm's settings,
-                 moved here off the workspace. Right under Settings on purpose,
-                 on both sides of the rail (accountNavSlots renders the same
-                 row as /desk?firm=1). Signed-in only, like the menu itself. -->
-            <button id="menuFirmBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-[#F5F4EF]">Firm &amp; branding</button>
+            <!-- No Firm & branding row since 2026-10-13 (owner's call): the
+                 panel's door is the button in Home's firm header, and
+                 /desk?firm=1 still opens it from a link. -->
             <!-- Mutually exclusive: you are either being sold Pro or managing
                  the subscription you already have. refreshBillingUI() owns both. -->
             <button id="menuUpgradeBtn" type="button" class="hidden block w-full text-left px-3 py-1.5 font-medium text-[#B91C1C] hover:bg-[#F5F4EF]">Upgrade to Pro</button>
@@ -3221,8 +3219,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div id="hmFirmHead" class="hm-fh hidden">
               <span id="hmFirmMarkWrap" class="hm-fh-markw"></span>
               <span class="hm-fh-txt"><b id="hmFirmName"></b><small id="hmFirmMeta"></small></span>
-              <button id="hmFirmGear" type="button" class="hidden hm-fh-set" aria-label="Firm settings" title="Firm settings">
-                <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2.2M10 15.3v2.2M2.5 10h2.2M15.3 10h2.2M4.7 4.7l1.6 1.6M13.7 13.7l1.6 1.6M4.7 15.3l1.6-1.6M13.7 6.3l1.6-1.6"/></svg>
+              <!-- The Firm & branding panel's door, for every member since
+                   2026-10-13, when the account menu's row went. A briefcase,
+                   not the gear it was: that read as a sun. -->
+              <button id="hmFirmGear" type="button" class="hidden hm-fh-set" aria-label="Firm &amp; branding" title="Firm &amp; branding">
+                <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.75" y="6" width="14.5" height="10.5" rx="1.75"/><path d="M7.25 6V4.5c0-.7.55-1.25 1.25-1.25h3c.7 0 1.25.55 1.25 1.25V6M2.75 10.5h14.5M10 9.5v2"/></svg>
               </button>
               <input id="hmFirmLogoFile" type="file" accept="image/png,image/jpeg" class="hidden" />
             </div>
@@ -13114,7 +13115,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function closeFirmModal() {
     document.getElementById("firmModal").classList.add("hidden");
   }
-  document.getElementById("menuFirmBtn").addEventListener("click", openFirmModal);
   document.getElementById("firmClose").addEventListener("click", closeFirmModal);
   document.getElementById("firmModal").addEventListener("click", (e) => {
     if (e.target === e.currentTarget) closeFirmModal();
@@ -14522,7 +14522,7 @@ async function renderMyDesk() {
     const head = document.getElementById("hmFirmHead");
     if (!head) return;
     head.classList.toggle("hidden", !firm);
-    document.getElementById("hmFirmGear").classList.toggle("hidden", !(firm && firm.canManage));
+    document.getElementById("hmFirmGear").classList.toggle("hidden", !firm);
     const wrap = document.getElementById("hmFirmMarkWrap");
     wrap.textContent = "";
     if (!firm) { document.getElementById("hmFirmName").textContent = ""; document.getElementById("hmFirmMeta").textContent = ""; return; }

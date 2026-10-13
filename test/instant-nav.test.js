@@ -37,7 +37,7 @@ const CFG = {
 // rules and no `document.prerendering` property (WebKit, Gecko).
 // `desktop: true` is the desktop app: an Electron that parses speculation
 // rules and has `document.prerendering`, and says so in its user agent.
-function stage({ path: at = "/vault", supports = true, prerendering = false, skip = [], warm = [],
+function stage({ path: at = "/comps", supports = true, prerendering = false, skip = [], warm = [],
   links = [], readyState = "complete", hidden = false, safari = false, desktop = false } = {}) {
   if (safari) supports = false;
   const listeners = {};
@@ -160,9 +160,9 @@ test("keyboard focus on a tab waits like a pointer does", () => {
 });
 
 test("only a plain link to another tab qualifies", () => {
-  const s = stage({ path: "/vault", skip: ["/"] });
+  const s = stage({ path: "/comps", skip: ["/"] });
   for (const [why, el] of [
-    ["the page already showing", link("/vault")],
+    ["the page already showing", link("/comps")],
     ["aria-current", link("/permits", { "aria-current": "page" })],
     ["a path this page handles in place", link("/")],
     ["a query string (/desk?settings=1 opens a panel)", link("/desk?settings=1")],
@@ -181,28 +181,29 @@ test("only a plain link to another tab qualifies", () => {
 test("every tab in the rail is one it will prerender", () => {
   // The rail's destinations, both shells. A tab missing here simply loads the
   // old way; this pins that the list is the rail and not a subset of it.
-  for (const p of ["/desk", "/vault", "/pipeline", "/messages", "/markets", "/bulk", "/permits"]) {
+  for (const p of ["/desk", "/comps", "/pipeline", "/messages", "/markets", "/bulk", "/permits"]) {
     assert.ok(NAV.TAB_PATHS.includes(p), p);
-    assert.ok(indexSrc.includes(`href="${p}"`) || p === "/desk", `index.html has no ${p} row`);
+    // /bulk is the Comps section's second tab (2026-10-13), not a row of its own.
+    assert.ok(indexSrc.includes(`href="${p}"`) || p === "/desk" || p === "/bulk", `index.html has no ${p} row`);
   }
 });
 
 test("at most MAX_LIVE prerenders are held, oldest dropped first", () => {
   const s = stage({ path: "/permits" });
   s.fire("pointerdown", mouse(link("/desk")));
-  s.fire("pointerdown", mouse(link("/vault")));
+  s.fire("pointerdown", mouse(link("/comps")));
   s.fire("pointerdown", mouse(link("/messages")));
   assert.equal(NAV.MAX_LIVE, 2);
-  assert.deepEqual(s.urls(), [ORIGIN + "/vault", ORIGIN + "/messages"]);
+  assert.deepEqual(s.urls(), [ORIGIN + "/comps", ORIGIN + "/messages"]);
 });
 
 // --- The browser half: keeping the next tab warm ----------------------------
 
 test("the likely next tab is warmed once the page has loaded and gone quiet", () => {
-  const s = stage({ path: "/desk", skip: ["/", "/desk"], warm: ["/vault"], links: [link("/desk"), link("/vault")] });
+  const s = stage({ path: "/desk", skip: ["/", "/desk"], warm: ["/comps"], links: [link("/desk"), link("/comps")] });
   assert.deepEqual(s.urls(), [], "never while the page itself is still arriving");
   s.tick(NAV.WARM_DELAY_MS);
-  assert.deepEqual(s.urls(), [ORIGIN + "/vault"], "the owner's own example: Workspace -> Vault");
+  assert.deepEqual(s.urls(), [ORIGIN + "/comps"], "the owner's own example: Workspace -> Vault");
 });
 
 test("a page still loading waits for its load event before warming", () => {
@@ -217,7 +218,7 @@ test("a page still loading waits for its load event before warming", () => {
 test("a tab the member cannot see is never warmed", () => {
   // The vault row ships hidden and is revealed by entitlement: a member
   // without the vault must not cost the server a vault render per page view.
-  const s = stage({ path: "/desk", skip: ["/", "/desk"], warm: ["/vault"], links: [link("/vault", {}, { shown: false })] });
+  const s = stage({ path: "/desk", skip: ["/", "/desk"], warm: ["/comps"], links: [link("/comps", {}, { shown: false })] });
   s.tick(NAV.WARM_DELAY_MS);
   assert.deepEqual(s.urls(), []);
   const none = stage({ path: "/markets", warm: ["/desk"], links: [] });
@@ -228,7 +229,7 @@ test("a tab the member cannot see is never warmed", () => {
 test("a sweep of hovers cannot evict the warm tab", () => {
   const s = stage({ path: "/markets", warm: ["/desk"], links: [link("/desk")] });
   s.tick(NAV.WARM_DELAY_MS);
-  for (const p of ["/vault", "/messages", "/permits"]) s.fire("pointerdown", mouse(link(p)));
+  for (const p of ["/comps", "/messages", "/permits"]) s.fire("pointerdown", mouse(link(p)));
   assert.deepEqual(s.urls(), [ORIGIN + "/desk", ORIGIN + "/messages", ORIGIN + "/permits"]);
   // And hovering the warm tab itself adds no second rule for it.
   s.fire("pointerdown", mouse(link("/desk")));
@@ -242,7 +243,7 @@ test("warming a tab already prerendered for a hover promotes it out of the FIFO"
   const s = stage({ path: "/markets", warm: ["/desk"], links: [link("/desk")] });
   s.fire("pointerdown", mouse(link("/desk")));
   s.tick(NAV.WARM_DELAY_MS);
-  for (const p of ["/vault", "/messages", "/permits"]) s.fire("pointerdown", mouse(link(p)));
+  for (const p of ["/comps", "/messages", "/permits"]) s.fire("pointerdown", mouse(link(p)));
   assert.deepEqual(s.urls(), [ORIGIN + "/desk", ORIGIN + "/messages", ORIGIN + "/permits"]);
   s.tick(NAV.TTL_MS);
   assert.ok(s.urls().includes(ORIGIN + "/desk"), "and it lives the warm TTL, not the hover one");
@@ -251,7 +252,7 @@ test("warming a tab already prerendered for a hover promotes it out of the FIFO"
 });
 
 test("the warm tab expires, and only a pointer reaching for the nav re-arms it", () => {
-  const s = stage({ path: "/vault", warm: ["/desk"], links: [link("/desk")] });
+  const s = stage({ path: "/comps", warm: ["/desk"], links: [link("/desk")] });
   s.tick(NAV.WARM_DELAY_MS);
   assert.deepEqual(s.urls(), [ORIGIN + "/desk"]);
   s.tick(NAV.WARM_TTL_MS);
@@ -265,10 +266,10 @@ test("the warm tab expires, and only a pointer reaching for the nav re-arms it",
 });
 
 test("a hidden page warms nothing, and hiding a page lets go of its warm tab", () => {
-  const hidden = stage({ path: "/vault", warm: ["/desk"], links: [link("/desk")], hidden: true });
+  const hidden = stage({ path: "/comps", warm: ["/desk"], links: [link("/desk")], hidden: true });
   hidden.tick(NAV.WARM_DELAY_MS);
   assert.deepEqual(hidden.urls(), []);
-  const s = stage({ path: "/vault", warm: ["/desk"], links: [link("/desk")] });
+  const s = stage({ path: "/comps", warm: ["/desk"], links: [link("/desk")] });
   s.tick(NAV.WARM_DELAY_MS);
   s.document.hidden = true;
   s.fire("visibilitychange");
@@ -276,7 +277,7 @@ test("a hidden page warms nothing, and hiding a page lets go of its warm tab", (
 });
 
 test("a page that is itself a prerender warms nothing until it is shown", () => {
-  const s = stage({ path: "/vault", warm: ["/desk"], links: [link("/desk")], prerendering: true });
+  const s = stage({ path: "/comps", warm: ["/desk"], links: [link("/desk")], prerendering: true });
   s.tick(NAV.WARM_DELAY_MS);
   assert.deepEqual(s.urls(), [], "no chain of prerenders nobody asked for");
   s.document.prerendering = false;
@@ -369,9 +370,9 @@ test("every held read is a real GET route that writes, in server.js", () => {
   assert.ok(NAV.bootScript({}).includes(JSON.stringify(NAV.HOLD_PATHS)), "the served script carries the list");
 });
 
-test("a speculative /vault render does not run the vault's backfills", () => {
+test("a speculative /comps render does not run the vault's backfills", () => {
   // The page's own server render writes (geocode + building facts), which no
-  // browser guard can hold. The workspace warms /vault on every view, and a
+  // browser guard can hold. The workspace warms /comps on every view, and a
   // building the Census cannot place would be retried on each of those.
   assert.match(serverSrc, /async function attachPropertyCoords\(userId, comps, \{ backfill = true \} = \{\}\)/);
   assert.match(serverSrc, /if \(backfill\) scheduleBuildingFacts\(/);
@@ -530,7 +531,7 @@ test("the desktop header is answered before anything else, and never by a normal
     serverSrc.indexOf("function aggregateStats("));
   assert.ok(!/redispatch|server\.emit/.test(fn), "no fallback to an unguarded render");
   assert.match(serverSrc, /bootScript\(\{ warm: \["\/desk"\], desktopToken: INAPP_UA_TOKEN \}\)/);
-  assert.match(serverSrc, /bootScript\(\{ skip: \["\/", "\/desk"\], warm: \["\/vault"\], desktopToken: INAPP_UA_TOKEN \}\)/);
+  assert.match(serverSrc, /bootScript\(\{ skip: \["\/", "\/desk"\], warm: \["\/comps"\], desktopToken: INAPP_UA_TOKEN \}\)/);
 });
 
 test("the served script carries the warm path", () => {
@@ -545,13 +546,13 @@ test("a page built ahead is handed over once, and only before it expires", async
   const c = NAV.createWarmCache({ now: () => now });
   const page = { status: 200, headers: {}, body: Buffer.from("<p>vault</p>") };
   let made = 0;
-  assert.equal(c.start("k|/vault", () => { made++; return page; }, 30000), true);
-  assert.equal(c.start("k|/vault", () => { made++; return page; }, 30000), false, "a second ask joins the first");
+  assert.equal(c.start("k|/comps", () => { made++; return page; }, 30000), true);
+  assert.equal(c.start("k|/comps", () => { made++; return page; }, 30000), false, "a second ask joins the first");
   await flush();
   assert.equal(made, 1, "…and never starts a second render");
   assert.equal(c.bytes, page.body.length);
-  assert.equal(await c.take("k|/vault"), page);
-  assert.equal(c.take("k|/vault"), null, "single use: the next visit renders fresh");
+  assert.equal(await c.take("k|/comps"), page);
+  assert.equal(c.take("k|/comps"), null, "single use: the next visit renders fresh");
   assert.equal(c.bytes, 0);
   c.start("k|/desk", () => page, 30000);
   now = 30000;
@@ -568,9 +569,9 @@ test("a render still under way is joined, and a failed one is forgotten", async 
   assert.ok(joined, "a click during the render gets the render");
   finish({ status: 200, headers: {}, body: Buffer.from("x") });
   assert.equal((await joined).body.toString(), "x");
-  c.start("k|/vault", () => null, 30000);
+  c.start("k|/comps", () => null, 30000);
   await flush();
-  assert.equal(c.has("k|/vault"), false, "an unusable render leaves nothing to hand over");
+  assert.equal(c.has("k|/comps"), false, "an unusable render leaves nothing to hand over");
   c.start("k|/bulk", () => { throw new Error("boom"); }, 30000);
   await flush();
   assert.equal(c.has("k|/bulk"), false);
@@ -607,22 +608,22 @@ test("the store drops one cookie's pages on a write, and stays inside its bytes"
   const c = NAV.createWarmCache({ maxBytes: 10 });
   const page = (n) => ({ status: 200, headers: {}, body: Buffer.alloc(n) });
   c.start("a|/desk", () => page(4), 30000);
-  c.start("a|/vault", () => page(4), 30000);
+  c.start("a|/comps", () => page(4), 30000);
   c.start("b|/desk", () => page(1), 30000);
   await flush();
   c.dropPrefix("a|");
-  assert.equal(c.has("a|/desk") || c.has("a|/vault"), false);
+  assert.equal(c.has("a|/desk") || c.has("a|/comps"), false);
   assert.equal(c.has("b|/desk"), true, "another visitor's page is theirs");
   c.start("c|/desk", () => page(6), 30000);
-  c.start("c|/vault", () => page(6), 30000);
+  c.start("c|/comps", () => page(6), 30000);
   await flush();
   assert.ok(c.bytes <= 10, `holding ${c.bytes} bytes`);
-  assert.equal(c.has("c|/vault"), true, "the newest survives; the oldest go first");
+  assert.equal(c.has("c|/comps"), true, "the newest survives; the oldest go first");
   assert.equal(c.has("b|/desk"), false);
 });
 
 test("the served script compiles, runs first, and cannot end its own tag", () => {
-  for (const html of [NAV.bootScript({ warm: ["/desk"] }), NAV.bootScript({ skip: ["/", "/desk"], warm: ["/vault"] })]) {
+  for (const html of [NAV.bootScript({ warm: ["/desk"] }), NAV.bootScript({ skip: ["/", "/desk"], warm: ["/comps"] })]) {
     assert.match(html, /^<script>try\{/);
     const js = html.replace(/^<script>/, "").replace(/<\/script>\n$/, "");
     assert.ok(!/<\/script/i.test(js));
@@ -630,7 +631,7 @@ test("the served script compiles, runs first, and cannot end its own tag", () =>
     assert.ok(!/defer|async/.test(html.slice(0, 20)), "inline and blocking: it wraps fetch before the page's own scripts run");
   }
   assert.match(NAV.bootScript({ skip: ["/", "/desk"] }), /"skip":\["\/","\/desk"\]/);
-  assert.match(NAV.bootScript({ warm: ["/vault"] }), /"warm":\["\/vault"\]/);
+  assert.match(NAV.bootScript({ warm: ["/comps"] }), /"warm":\["\/comps"\]/);
 });
 
 // --- The server half: a visit is counted when it is seen -------------------
@@ -687,7 +688,7 @@ test("both shells carry the script for a member, from one source", () => {
   const firstSrc = indexSrc.indexOf("<script src=");
   assert.ok(marker > 0 && marker < firstSrc, "the marker must precede the page's scripts");
   assert.match(serverSrc,
-    /const INSTANT_NAV_APP = INSTANTNAV\.bootScript\(\{ skip: \["\/", "\/desk"\], warm: \["\/vault"\],/,
+    /const INSTANT_NAV_APP = INSTANTNAV\.bootScript\(\{ skip: \["\/", "\/desk"\], warm: \["\/comps"\],/,
     "the app handles / and /desk in place (a prerender of either is thrown away) and keeps the vault warm");
   assert.match(serverSrc, /const INSTANT_NAV_SHELL = INSTANTNAV\.bootScript\(\{ warm: \["\/desk"\],/,
     "every other page keeps the workspace warm: it is home");
@@ -716,7 +717,7 @@ test("no page visit is logged around logPageVisit", () => {
   assert.deepEqual(visits, [], "a new *_visit event must go through logPageVisit");
   // And every page that parks one hands the tag down, or the visit is lost.
   const parked = (serverSrc.match(/const visitTag = logPageVisit\(/g) || []).length;
-  const handed = (serverSrc.match(/\(boot\) \+ visitTag,/g) || []).length;
+  const handed = (serverSrc.match(/\(boot(?:, \{ page \})?\) \+ visitTag,/g) || []).length;
   assert.equal(parked, kinds.length);
   assert.equal(handed, kinds.length);
 });
@@ -737,13 +738,13 @@ test("a prerendered page's visit counts on activation, once, on a real server", 
   };
 
   await t.test("an ordinary GET logs at once and carries no tag", async () => {
-    const html = await (await fetch(srv.base + "/vault")).text();
+    const html = await (await fetch(srv.base + "/comps")).text();
     assert.equal(await waitFor(1), 1);
     assert.ok(!html.includes("/api/visit"));
   });
 
   await t.test("a prerender logs nothing until its token comes back", async () => {
-    const r = await fetch(srv.base + "/vault", { headers: { "sec-purpose": "prefetch;prerender" } });
+    const r = await fetch(srv.base + "/comps", { headers: { "sec-purpose": "prefetch;prerender" } });
     const html = await r.text();
     const m = html.match(/\}\)\("([0-9a-f]{32})"\);<\/script>/);
     assert.ok(m, "the page carries its visit tag");
@@ -784,7 +785,7 @@ test("routeWarm runs before every route, and its render can never wait on itself
   assert.match(serverSrc, /if \(!req\.headers\.cookie \|\| req\.headers\[WARM_HEADER\]\) return false;/,
     "the loopback render is marked, and a marked request is never served from (or joined to) the store");
   assert.match(serverSrc, /\[WARM_HEADER\]: "1",/);
-  assert.match(serverSrc, /purpose: "prefetch",/, "the render is speculative: visit parked, /vault backfills skipped");
+  assert.match(serverSrc, /purpose: "prefetch",/, "the render is speculative: visit parked, /comps backfills skipped");
 });
 
 test("Safari and Firefox: a tab built ahead is served once, to the same cookie, until a write", async (t) => {
@@ -839,8 +840,8 @@ test("Safari and Firefox: a tab built ahead is served once, to the same cookie, 
       } catch (_) { return 0; }
     };
     const before = visits();
-    await warm("/vault");
-    const page = await get("/vault");
+    await warm("/comps");
+    const page = await get("/comps");
     assert.equal(page.hit, true);
     const m = page.html.match(/\}\)\("([0-9a-f]{32})"\);<\/script>/);
     assert.ok(m, "the page carries its visit tag");
@@ -869,7 +870,7 @@ test("the desktop app's hidden view gets the guarded page or nothing, on a real 
           .map((l) => JSON.parse(l)).filter((r) => r.kind === "vault_visit").length;
       } catch (_) { return 0; }
     };
-    for (const p of ["/vault", "/desk"]) {
+    for (const p of ["/comps", "/desk"]) {
       const r = await hidden(p);
       assert.equal(r.status, 200, p);
       assert.equal(r.via, "desktop");
@@ -882,10 +883,10 @@ test("the desktop app's hidden view gets the guarded page or nothing, on a real 
 
   await t.test("anything it cannot answer that way is an empty 204, never a normal page", async () => {
     for (const [why, p, cookie] of [
-      ["no session", "/vault", "cn_vid=0123456789abcdef0123456789abcdef"],
-      ["no cookie at all", "/vault", ""],
+      ["no session", "/comps", "cn_vid=0123456789abcdef0123456789abcdef"],
+      ["no cookie at all", "/comps", ""],
       ["not a tab", "/market/boise-id", C],
-      ["a query string", "/vault?x=1", C],
+      ["a query string", "/comps?x=1", C],
     ]) {
       const r = await hidden(p, cookie);
       assert.equal(r.status, 204, why);

@@ -110,7 +110,7 @@ test("the /vault boot payload carries a book past 200 comps whole", async (t) =>
   const { db, srv, stop } = await bootWithDb();
   t.after(stop);
 
-  const r = await fetch(srv.base + "/vault", auth);
+  const r = await fetch(srv.base + "/comps", auth);
   assert.equal(r.status, 200);
   const boot = bootOf(await r.text());
   assert.equal(boot.s, 200, "the boot read itself must have succeeded");
@@ -133,7 +133,7 @@ test("the boot answers exactly what the page's own fetch would", async (t) => {
   const { srv, stop } = await bootWithDb();
   t.after(stop);
 
-  const boot = bootOf(await (await fetch(srv.base + "/vault", auth)).text());
+  const boot = bootOf(await (await fetch(srv.base + "/comps", auth)).text());
   // load() in vault-page.js: the path a filter change or an import takes.
   const live = await (await fetch(srv.base + "/api/vault?limit=1000", auth)).json();
   assert.deepEqual(boot.j.comps.map((c) => c.id), live.comps.map((c) => c.id),

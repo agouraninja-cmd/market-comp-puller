@@ -11294,13 +11294,14 @@ const INAPP_BOOT_MARKER = "<!--INAPP_BOOT-->";
 // shells — marketShell emits it, index.html receives it by marker, never a
 // hand-copy. The app's copy skips "/" and "/desk" because its own Workspace
 // row swaps views in place and a prerender of either would be thrown away,
-// and it keeps the vault warm; every other page keeps the workspace warm,
+// and it keeps the member's comps warm (/comps, the vault until
+// 2026-10-13); every other page keeps the workspace warm,
 // since that is home. instant-nav.js has the rules.
 // `desktopToken` is how the script recognises the desktop app, which must take
 // the warm path its shell turns into a real prerender (instant-nav.js, THE
 // DESKTOP APP) rather than insert speculation rules Electron never honours.
 const INSTANT_NAV_SHELL = INSTANTNAV.bootScript({ warm: ["/desk"], desktopToken: INAPP_UA_TOKEN });
-const INSTANT_NAV_APP = INSTANTNAV.bootScript({ skip: ["/", "/desk"], warm: ["/vault"], desktopToken: INAPP_UA_TOKEN });
+const INSTANT_NAV_APP = INSTANTNAV.bootScript({ skip: ["/", "/desk"], warm: ["/comps"], desktopToken: INAPP_UA_TOKEN });
 const INSTANT_NAV_MARKER = "<!--INSTANT_NAV-->";
 
 // Bulk valuation's run view, injected into index.html so a list pasted into
@@ -12131,16 +12132,17 @@ const RAIL_CSS = `
 /* --- The icon rail (2026-10-07; Draft C of the Home and Data drafts, the
    owner's pick) -----------------------------------------------------------
    The rail is a dark strip of places, an icon over a word: Home, Messages,
-   then Tools: Markets, Comp report, Permits (2026-10-08; Reports left the
-   rail for Messages that day). Same element and same markup as
+   then Tools: Markets, Comps, Permits (2026-10-08; Reports left the
+   rail for Messages that day, and Comp report was renamed Comps on
+   2026-10-13). Same element and same markup as
    before, re-laid-out, and still nothing outside the 900px guard: below it
    the icons are hidden and the bar reads as words, exactly as it did. 84px
    is a literal for the 224px's reason. The strip sits on --slab, dark in
    both themes, so its ink is literal white at stepped opacities (the
    footer's FOOTER_DARK_CSS reason), and the wordmark gives way to the mark.
    The red call to action is not a place, so the strip does not carry it:
-   the Comp report row is the door there. A label too long for the 64px
-   column ("Comp report") wraps onto a second line, centred. index.html
+   the Comps row is the door there. A label too long for the 64px
+   column wraps onto a second line, centred. index.html
    carries the twin of every rule here. */
 .nvi{display:none}
 @media (min-width:900px){
@@ -12175,6 +12177,15 @@ const RAIL_CSS = `
 
 const MARKET_CSS = `
 ${THEME_CSS}
+/* The Comps section's two tabs (compsSectionTabs, 2026-10-13): Your comps
+   and Run a comp report, over /comps and /bulk. A segmented pill rather
+   than a row of underlined tabs, because /comps has that row under its
+   title (Comps, Contributions), and two rows of the same tabs read as one. */
+.cs-tabs{display:inline-flex;gap:2px;padding:3px;margin:0 0 24px;max-width:100%;
+  border:1px solid var(--line);border-radius:999px;background:var(--card);font-size:13.5px;line-height:1.4}
+.cs-tabs a{padding:6px 14px;border-radius:999px;color:var(--ink-mute);font-weight:500;white-space:nowrap}
+.cs-tabs a:hover{color:var(--ink)}
+.cs-tabs a[aria-current="page"]{background:var(--ink);color:var(--paper);font-weight:600}
 /* Broker directory list on a market page. Plain list, no cards: this is a
    directory, not a ranking, and boxes imply a hierarchy the data cannot back. */
 .brokers{list-style:none;padding:0;margin:12px 0 0}
@@ -12928,12 +12939,26 @@ function nextMarketExample() {
 // /bulk is where the CTA POINTS (since the evening of 2026-09-04), so it is in
 // the list for the plainest reason of all: a button offering to take you where
 // you already are is a button that does nothing.
-// The two addresses the vault page answers at (2026-10-09): /vault, and
-// /pipeline, its Pipeline tab, which is a row of the rail. One list for the
-// route, this CTA rule and the tests. (A development firm's Sites row opens
-// /sites, its own page since 2026-10-12: sites-page.js.)
-const VAULT_PAGE_PATHS = new Set(["/vault", "/pipeline"]);
+// The two pages vault-page.js draws (2026-10-13): /comps, a member's own
+// comps, and /pipeline, a broker's BOV requests and engagements. They were
+// one page at /vault, which now answers with a redirect (VAULT_MOVED_PATH).
+// One list for the route, this CTA rule and the tests. (A development firm's
+// Sites row opens /sites, its own page since 2026-10-12: sites-page.js.)
+const VAULT_PAGE_PATHS = new Set(["/comps", "/pipeline"]);
+const VAULT_MOVED_PATH = "/vault";
 const CTA_FREE_PAGES = new Set([...VAULT_PAGE_PATHS, "/sites", "/messages", "/markets", "/bulk", "/buildings", "/building", "/permits", "/permits/compare"]);
+
+// The Comps section's two tabs (2026-10-13, the owner: "Integrate it to the
+// report section and change the report section and name it Comps"). The
+// rail's Comps row opens /comps, the member's own comps, and is current on
+// /bulk too, the comp report tool; this bar is on both pages and says which
+// of the two the member is on. A signed-in member's only: a stranger on
+// /bulk reads its sign-in card and has no comps of their own.
+const COMPS_TABS = [["/comps", "Your comps"], ["/bulk", "Run a comp report"]];
+const compsSectionTabs = (current) =>
+  `<nav class="cs-tabs" aria-label="Comps">` +
+  COMPS_TABS.map(([href, label]) => `<a href="${href}"${href === current ? ' aria-current="page"' : ""}>${label}</a>`).join("") +
+  `</nav>`;
 
 const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
@@ -13021,7 +13046,10 @@ const marketBar = (signedIn = false, current = "") =>
   // --- THE ORDER (owner's call, 2026-10-08; Pipeline added 2026-10-09) -----
   //
   //   Home, Messages, Pipeline (Sites for a development firm)
-  //   | Markets, Comp report, Permits
+  //   | Markets, Comps, Permits
+  //
+  // (Comps was "Comp report" until 2026-10-13, when it became a section:
+  // the member's own comps and the comp report tool, compsSectionTabs.)
   //
   // The rail is a dark strip of places, an icon over a word, identical here
   // and in index.html's nav so the sidebar does not reshuffle itself when a
@@ -13051,14 +13079,14 @@ const marketBar = (signedIn = false, current = "") =>
       // Pipeline, under Messages (owner's call, 2026-10-09): a broker's BOV
       // requests and engagements, from a new lead to won or lost. Its tab on
       // /vault had no rail row, so the only way in was a line on Home's
-      // Today. A development firm writes no BOVs and reads Sites in this
+      // Today; since 2026-10-13 /pipeline is a page of its own. A development firm writes no BOVs and reads Sites in this
       // place instead (the owner: "Have the sites under messages for
       // development firms and Pipeline for brokerage firms"); both rows
       // render and the `shop-dev` class shows one (SHOP_NAV_CSS above).
       // Sites opens /sites, the deals by stage (sites-page.js, 2026-10-12;
       // it was Home's Properties tab until then, so Home twice). Every member,
-      // like Comp report: /pipeline answers a free member with the vault's
-      // Pro invitation. index.html carries both twins with the same ids.
+      // like Comps: /pipeline answers a free member with its Pro invitation.
+      // index.html carries both twins with the same ids.
       `<a id="navPipe" href="/pipeline"${current === "/pipeline" ? ' aria-current="page"' : ""}>${NAV_ICONS.pipeline}<span class="nvl">Pipeline</span></a>` +
       `<a id="navSites" href="/sites"${current === "/sites" ? ' aria-current="page"' : ""}>${NAV_ICONS.sites}<span class="nvl">Sites</span></a>`
     : "") +
@@ -13106,9 +13134,13 @@ const marketBar = (signedIn = false, current = "") =>
       // free member opening /bulk gets its upgrade card, the honest answer
       // for a paid tool, and a hidden row would leave them no door at all now
       // that nothing on Home runs a report. index.html carries the twin.
-      `<a href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""}>${NAV_ICONS.reports}<span class="nvl">Comp report</span></a>` +
+      // Comps since 2026-10-13 (the owner: "change the report section and
+      // name it Comps"): the member's own comps at /comps, the row's
+      // address, and the comp report tool at /bulk, the section's second
+      // tab (compsSectionTabs). Current on both.
+      `<a id="navComps" href="/comps"${current === "/comps" || current === "/bulk" ? ' aria-current="page"' : ""}>${NAV_ICONS.reports}<span class="nvl">Comps</span></a>` +
       // The Permit tracker (2026-09-24, owner's: "it should be under tools"),
-      // the THIRD Tools row, after Comp report (owner's order, same day).
+      // the THIRD Tools row, after Comps (owner's order, same day).
       // Every member; index.html carries the twin row in the same place.
       // The unread dot (2026-09-27): a tracked permit's step completed. Same
       // shape and same after-paint fill as Messages' dot; index.html carries
@@ -19353,28 +19385,16 @@ async function vaultReadPayload(req, params) {
     return { status: 403, body: {
       error: "Keeping your own private comps in Data is part of Pro.",
       code: "broker_required",
-      // Not every deck on /vault is behind this refusal, and that is the
-      // whole point of it being a per-deck gate (2026-09-01, "Three
-      // Spaces"). "Your properties" and "Your markets" are a members own
-      // portfolio and watchlist, which moved off /desk and were never Pro:
-      // a free member must not open their own space and find their own
-      // saved properties behind a paywall.
-      //
-      // So the personal half of the page needs one fact, and it has to
-      // survive the 403 or there is no payload at all to carry it. Free My
-      // Desk is an address list, Pro is the book of values -- this is which.
-      // Presentation only, exactly as on /api/config: every limit behind it
-      // is enforced by /api/portfolio itself.
-      portfolioValues: Boolean(ent && ent.portfolioValues),
+      // Not every deck on the page is behind this refusal: it locks the
+      // page's own decks, and /comps' Contributions renders regardless.
+      // (Every exit carried portfolioValues from 2026-09-01 for the
+      // vault's Properties deck, which left on 2026-10-13; Home reads
+      // /api/config's copy.)
     } };
   }
   if (!DB_CONFIGURED) {
     return { status: 503, body: {
       error: "Data is unavailable right now — nothing was saved. Please try again in a minute.",
-      // Carried for the reason above. The personal decks read from their own
-      // endpoints, which keep their file fallback, so they can still render
-      // against a database this page refuses without.
-      portfolioValues: Boolean(ent && ent.portfolioValues),
     } };
   }
   if (compsR.status === "rejected") throw compsR.reason;
@@ -19458,9 +19478,6 @@ async function vaultReadPayload(req, params) {
     // contract (vault-api.js's allowlist) and a shelf membership is not a
     // property of the comp, it is a property of the relationship.
     sharedWithFirm: (sharedR.status === "fulfilled" && sharedR.value) || [],
-    // Stated on all three exits (200 / 403 / 503) so the personal decks read
-    // one field wherever they land. See the note on the 403 above.
-    portfolioValues: Boolean(ent && ent.portfolioValues),
   } };
 }
 
@@ -20835,8 +20852,8 @@ const server = http.createServer((req, res) =>
                 ``,
                 `  ${line}`,
                 ``,
-                `Open your inbox to request an introduction:`,
-                `${SITE_URL}/vault`,
+                `Open your pipeline to request an introduction:`,
+                `${SITE_URL}/pipeline`,
                 ``,
                 `CompNinja connects owners with local brokers; introductions are made by`,
                 `the CompNinja team. Reply to this email to reach us.`,
@@ -22010,7 +22027,7 @@ const server = http.createServer((req, res) =>
               const now = Date.now();
               const mail = RENEWAL.buildRenewalNotice({
                 leases, now,
-                deskUrl: `${SITE_URL}/vault`,
+                deskUrl: `${SITE_URL}/comps`,
                 unsubscribeUrl: unsubscribeUrlFor(account.id),
               });
               if (!mail) continue;
@@ -31920,7 +31937,8 @@ const server = http.createServer((req, res) =>
         // A tester filing a bug about bulk valuation should not have to go
         // back to the app to report it.
         testerBadge: true,
-        body: renderBulkPageBody(boot) + visitTag,
+        // The Comps section's tabs, over the tool (2026-10-13).
+        body: (parseCookies(req)[SESSION_COOKIE] ? compsSectionTabs("/bulk") : "") + renderBulkPageBody(boot) + visitTag,
       }));
     })();
     return;
@@ -32275,14 +32293,26 @@ const server = http.createServer((req, res) =>
     return;
   }
 
-  // /pipeline is the same page opened on that tab (2026-10-09): Pipeline is
-  // a row of the rail now, under Messages, and a rail row needs an address
-  // of its own. A #fragment would not do: instant-nav.js refuses to
+  // /comps and /pipeline (2026-10-13): what was one page, /vault, with a
+  // tab each. Pipeline got a path of its own on 2026-10-09, when it became a
+  // row of the rail (a #fragment would not do: instant-nav.js refuses to
   // prerender a link carrying one, and the server could not mark the row,
-  // since a fragment never reaches it. vault-page.js reads the path for the
-  // first tab and writes it back when the member switches to that tab.
+  // since a fragment never reaches it), and the comps followed when the
+  // vault was taken apart and the rail's Comp report row became Comps.
+  //
+  // /vault answers with a redirect to /comps, its query kept. A saved link's
+  // #fragment never reaches the server, but the browser carries it through
+  // the redirect, and vault-page.js sends a fragment naming another part of
+  // the old page on to where that part lives now (MOVED).
   const vaultPagePath = req.url.split("?")[0];
+  if (req.method === "GET" && vaultPagePath === VAULT_MOVED_PATH) {
+    const q = req.url.indexOf("?");
+    res.writeHead(302, { location: "/comps" + (q >= 0 ? req.url.slice(q) : ""), "cache-control": "no-store" });
+    res.end();
+    return;
+  }
   if (req.method === "GET" && VAULT_PAGE_PATHS.has(vaultPagePath)) {
+    const page = vaultPagePath === "/pipeline" ? "pipeline" : "comps";
     (async () => {
       let boot = null;
       try {
@@ -32325,16 +32355,18 @@ const server = http.createServer((req, res) =>
       // could rebuild the head, the header and the footer by hand; all of that
       // is the shell's now, and the page renders a body.
       res.end(marketShell({
-        title: "Your properties and comps · CompNinja",
-        description: "Your own comps and deal data, private until you share them.",
+        title: page === "pipeline" ? "Pipeline · CompNinja" : "Your comps · CompNinja",
+        description: page === "pipeline"
+          ? "Owners asking for a Broker Opinion of Value, and every BOV you log."
+          : "Your own comps, private until you share them.",
         canonical: `${SITE_URL}${vaultPagePath}`,
         noindex: true,
         // Cookie PRESENCE, the wall's own cheap rule and what every other
         // marketShell page uses -- the real gate is the boot payload above,
         // resolved through vaultReadPayload. This only picks the chrome.
         signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
-        // The path asked for, so /pipeline marks the Pipeline row; /vault
-        // itself has no row and marks none until the page shows that tab.
+        // The path asked for, so /pipeline marks the Pipeline row and /comps
+        // the Comps row.
         current: vaultPagePath,
         // Inter, which marketShell does not load and this page has always
         // used. MARKET_CSS names the family in body{}, so without this the
@@ -32352,7 +32384,10 @@ const server = http.createServer((req, res) =>
         // The Board's deal cards; it left with the deal wall the same day.)
         head: INTER_FONT_HEAD + LEAFLET_HEAD + `<script>${BASEMAP_JS}</script>\n`,
         testerBadge: true,
-        body: renderVaultBody(boot) + visitTag,
+        // The Comps section's tabs over /comps (compsSectionTabs); /pipeline
+        // is a section of one.
+        body: (page === "comps" && parseCookies(req)[SESSION_COOKIE] ? compsSectionTabs("/comps") : "") +
+          renderVaultBody(boot, { page }) + visitTag,
       }));
     })();
     return;

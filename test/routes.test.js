@@ -442,7 +442,7 @@ test("bare environment", async (t) => {
   // forgetting it is the easy mistake, not getting it subtly wrong.
   await t.test("every server-rendered page carries the signed-in header chrome", async () => {
     const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers-firms",
-      "/how-it-works", "/faq", "/terms", "/privacy", "/vault", "/leadership"];
+      "/how-it-works", "/faq", "/terms", "/privacy", "/comps", "/pipeline", "/leadership"];
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
       assert.match(html, /id="navAcct"/, p + " is missing the account circle");
@@ -561,7 +561,7 @@ test("bare environment", async (t) => {
     const member = { cookie: "cn_session=irrelevant-presence-only" };
     // /buildings joined the list in Three Spaces slice 4: the firm's whole
     // building list is a page a member is working IN, like the vault.
-    for (const p of ["/vault", "/markets", "/bulk", "/buildings"]) {
+    for (const p of ["/comps", "/pipeline", "/markets", "/bulk", "/buildings"]) {
       const html = await (await fetch(srv.base + p, { headers: member })).text();
       const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
       assert.ok(!/class="btn sm" href="\/bulk">Run a/.test(nav),
@@ -651,16 +651,18 @@ test("bare environment", async (t) => {
     // beside it for a development firm (one of the two shows; SHOP_NAV_CSS),
     // opening /sites, their deals by stage (a page of its own since
     // 2026-10-12; it was Home's Properties tab, so Home twice).
+    // 2026-10-13 (the owner's "remove the vault"): Comp report is Comps, a
+    // section whose row opens /comps (its other tab is /bulk).
     const ROWS = [
       ["Home", /<span class="nvl">Home</],
       ["Messages", /<a [^>]*href="\/messages"/],
       ["Pipeline", /<a id="navPipe" href="\/pipeline"/],
       ["Sites", /<a id="navSites" href="\/sites"/],
       ["Markets", /<a [^>]*href="\/markets"/],
-      ["Comp report", /<a (?![^>]*class="btn sm")[^>]*href="\/bulk"/],
+      ["Comps", /<a id="navComps" href="\/comps"/],
       ["Permits", /<a [^>]*href="\/permits"/],
     ];
-    for (const page of ["/", "/markets", "/vault"]) {
+    for (const page of ["/", "/markets", "/comps", "/pipeline", "/bulk"]) {
       const html = await (await fetch(srv.base + page, { headers: SESSION })).text();
       const nav = (html.match(/<nav[\s\S]*?<\/nav>/) || [""])[0];
       assert.ok(nav, page + " has no <nav> at all");
@@ -692,9 +694,9 @@ test("bare environment", async (t) => {
   // page, served at /pipeline, with that row marked and no red "Run a comp
   // report" button (a working page, CTA_FREE_PAGES). A development firm's
   // Sites row is /sites (2026-10-12), a page of its own, marked the same way.
-  await t.test("/pipeline serves the vault page with its own row marked", async () => {
+  await t.test("/comps and /pipeline serve the vault page, each with its own row marked", async () => {
     const SESSION = { cookie: "cn_session=not-a-real-token" };
-    for (const [page, id] of [["/pipeline", "navPipe"]]) {
+    for (const [page, id] of [["/comps", "navComps"], ["/pipeline", "navPipe"]]) {
       const r = await fetch(srv.base + page, { headers: SESSION });
       assert.equal(r.status, 200, page);
       assert.equal(r.headers.get("cache-control"), "no-store", page + " is a member's page");
@@ -741,10 +743,28 @@ test("bare environment", async (t) => {
     assert.equal((snav.match(/aria-current="page"/g) || []).length, 1, "/sites marks more than its own row");
     assert.ok(!snav.includes('class="btn sm" href="/bulk"'), "/sites still offers the red CTA");
     assert.match(sites, /var BOOT = \{"s":401\}/, "a session that is not real reads the sign-in wall");
-    // /vault itself has no row, so it marks neither before the page decides.
-    const vault = await (await fetch(srv.base + "/vault", { headers: SESSION })).text();
-    const vnav = (vault.match(/<nav[\s\S]*?<\/nav>/) || [""])[0];
-    assert.ok(!/aria-current="page"/.test(vnav), "/vault marks a row on the server");
+    // /vault is no page since 2026-10-13: it forwards to /comps, query kept.
+    for (const [from, to] of [["/vault", "/comps"], ["/vault?add=own", "/comps?add=own"]]) {
+      const r = await fetch(srv.base + from, { headers: SESSION, redirect: "manual" });
+      assert.equal(r.status, 302, from);
+      assert.equal(r.headers.get("location"), to, from);
+    }
+    // The Comps section's two tabs sit over both of its pages, each marking
+    // its own; /pipeline is a section of one.
+    for (const [page, on] of [["/comps", "/comps"], ["/bulk", "/bulk"]]) {
+      const html = await (await fetch(srv.base + page, { headers: SESSION })).text();
+      const tabs = (html.match(/<nav class="cs-tabs" aria-label="Comps">[\s\S]*?<\/nav>/) || [""])[0];
+      assert.match(tabs, /<a href="\/comps"[^>]*>Your comps<\/a><a href="\/bulk"[^>]*>Run a comp report<\/a>/, page + " lost the section's tabs");
+      assert.match(tabs, new RegExp('<a href="' + on + '" aria-current="page">'), page + " does not mark its tab");
+      assert.equal((tabs.match(/aria-current/g) || []).length, 1, page + " marks both tabs");
+      const nav = (html.match(/<nav>[\s\S]*?<\/nav>/) || [""])[0];
+      assert.match(nav, /<a id="navComps" href="\/comps" aria-current="page">/, page + " does not mark the Comps row");
+    }
+    const pipe = await (await fetch(srv.base + "/pipeline", { headers: SESSION })).text();
+    assert.ok(!pipe.includes('class="cs-tabs"'), "/pipeline grew the Comps section's tabs");
+    // A stranger on /bulk has no comps of their own, so no section bar.
+    const anonBulk = await (await fetch(srv.base + "/bulk")).text();
+    assert.ok(!anonBulk.includes('class="cs-tabs"'), "a stranger's /bulk shows the member's section tabs");
     // A stranger's market page has neither row and no note to stamp.
     const anon = await (await fetch(srv.base + "/markets")).text();
     assert.ok(!anon.includes('id="navPipe"') && !anon.includes('id="navSites"'), "a stranger's bar grew the member rows");
@@ -849,10 +869,11 @@ test("bare environment", async (t) => {
   // runs a report any more, so a row hidden from a free member would leave
   // them no door, and /bulk answers them with its upgrade card. What must
   // survive is that the vault's own flag still decides what it gates here.
-  await t.test("the app's rail has no Data row, Comp report is everyone's, and the vault's flag still gates what it gates", async () => {
+  await t.test("the app's rail has no Data row, Comps is everyone's, and the vault's flag still gates what it gates", async () => {
     const app = await (await fetch(srv.base + "/")).text();
     assert.ok(!app.includes('id="menuBulkLink"'), "the hidden-until-hydrated Comp report row is back");
-    assert.ok(!/id="navBulkLink"[^>]*\bhidden\b/.test(app), "the Comp report row ships hidden");
+    assert.ok(!/id="navComps"[^>]*\bhidden\b/.test(app), "the Comps row ships hidden");
+    assert.ok(app.includes('id="navComps" href="/comps"'), "the app's rail lost its Comps row");
     assert.ok(!app.includes('id="menuVaultLink"'), "the Data row is back in the rail");
     // canUseVault still gates something in this file -- creating a hub
     // (canCreateHub) -- so the two flags are provably separate answers rather
@@ -1147,8 +1168,8 @@ test("bare environment", async (t) => {
       "this page renders its own workspace link — the hydrated one must stay off it");
   });
 
-  await t.test("/vault does not double up its workspace link", async () => {
-    const html = await (await fetch(srv.base + "/vault", {
+  await t.test("/comps does not double up its workspace link", async () => {
+    const html = await (await fetch(srv.base + "/comps", {
       headers: { cookie: "cn_session=irrelevant-presence-only" },
     })).text();
     const desks = (html.match(/>Home</g) || []).length;

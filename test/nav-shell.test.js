@@ -342,14 +342,14 @@ test("/vault wears the rail too, and never for a stranger", async (t) => {
   const srv = await boot({ NAV_SHELL: "rail" });
   t.after(() => srv.stop());
 
-  const member = await (await fetch(srv.base + "/vault", { headers: SESSION })).text();
+  const member = await (await fetch(srv.base + "/comps", { headers: SESSION })).text();
   assert.ok(hasRail(member), "/vault stamps the rail for a member");
 
-  const anon = await (await fetch(srv.base + "/vault")).text();
+  const anon = await (await fetch(srv.base + "/comps")).text();
   assert.ok(!hasRail(anon), "/vault has no rail for an anonymous visitor");
 
   // It varies on the cookie now, so it has to say so like every other page.
-  const res = await fetch(srv.base + "/vault", { headers: SESSION });
+  const res = await fetch(srv.base + "/comps", { headers: SESSION });
   assert.match(String(res.headers.get("vary") || ""), /cookie/i,
     "/vault renders two different documents by cookie and must declare it");
 });
@@ -359,7 +359,7 @@ test("NAV_SHELL=bar reaches the vault as well as everything else", async (t) => 
   // keeps the rail after NAV_SHELL=bar is a page that cannot be rolled back.
   const srv = await boot({ NAV_SHELL: "bar" });
   t.after(() => srv.stop());
-  for (const p of ["/vault", "/markets", "/"]) {
+  for (const p of ["/comps", "/markets", "/"]) {
     const html = await (await fetch(srv.base + p, { headers: SESSION })).text();
     assert.ok(!hasRail(html), `${p} still wore the rail with NAV_SHELL=bar`);
   }

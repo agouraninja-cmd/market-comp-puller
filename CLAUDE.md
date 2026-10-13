@@ -18,26 +18,29 @@ Estimate). Signed-in members land on **Home** (`/desk`), which since
 2026-10-07 is one screen: a list (Today, Properties, People) beside a
 map of every property, the firm's and their own, each row saying who can see
 it, with a switch over the map that adds the swept cities' permits
-(2026-10-08; `home-map.js`; workspace.md). Home holds no comps since
-2026-10-09 (no Comps tab, layer or start card; a member's comps are on
-`/vault`). Home runs no comp
-report and holds no shared reports since 2026-10-08: the comp report is the
-rail's **Comp report** row (`/bulk`), and the firm's shelf, what was sent to
-the member and the links they sent are Messages' **Reports** view
-(`report-inbox.js`; firms.md). Their private workbench is `/vault`,
-headed "Your properties and comps" and opened from Home's tabs; it was the
-**Data** rail row from 2026-10-04 until the rail became places (since
-2026-10-09: Home, Messages, **Pipeline** | Markets, Comp report, Permits, with
-**Sites** in Pipeline's place for a development firm; app-shell.md). Pipeline
-is `/vault`'s tab at a path of its own, `/pipeline` (vault.md), and Sites
-opened Home's Properties tab, where a development firm's sites are worked
-(`/desk#properties`) until 2026-10-12, when it became `/sites`, a page of
-its own: the deals on a board of the four buying stages (`sites-page.js`;
-app-shell.md). Its other tabs have doors instead: new BOV requests also
-land in Home's Today.
-**The Board** is not on it since 2026-10-09: it is a stock-style watchlist of
-markets and watched properties drawn on `/markets` itself for a signed-in
-member (`board.js`; markets.md), and every market page links there. In copy a **property** is
+(2026-10-08; `home-map.js`; workspace.md). A member's own properties are
+worked there, in place under their row: what they own, for everyone since
+2026-10-13, and a development firm's deals (`home-sites.js`). Home holds no
+comps since 2026-10-09 (no Comps tab, layer or start card), runs no comp
+report and holds no shared reports since 2026-10-08: the firm's shelf, what
+was sent to the member and the links they sent are Messages' **Reports**
+view (`report-inbox.js`; firms.md). **There is no vault page** since
+2026-10-13 (the owner: "the vault doesn't even exist any more"): `/vault`,
+the **Data** rail row from 2026-10-04 and later "Your properties and comps",
+was taken apart, and `/vault` now redirects to `/comps`, whose script sends
+a saved link's old tab (`#properties`, `#pipeline`, `#sites`, `#board`) to
+where it lives now. The rail (app-shell.md) is Home, Messages, **Pipeline** |
+Markets, **Comps**, Permits, with **Sites** in Pipeline's place for a
+development firm: `/sites`, its deals on a board of the four buying stages
+(`sites-page.js`, since 2026-10-12; it opened Home's Properties tab before).
+**Comps** is a section of two tabs (`compsSectionTabs`): `/comps`, "Your
+comps", the member's own comps and the comps they contributed, and `/bulk`,
+"Run a comp report". **Pipeline** is `/pipeline`, a broker's BOV requests
+and engagements; new requests also land in Home's Today. `vault-page.js`
+draws both `/comps` and `/pipeline` (vault.md).
+**The Board** is a stock-style watchlist of markets and watched properties
+drawn on `/markets` itself for a signed-in member since 2026-10-09
+(`board.js`; markets.md), and every market page links there. In copy a **property** is
 something you own, manage or are buying and a **comp** is a past deal you value
 against. Code, routes and the rules files still say "desk"/"workspace" and
 "vault", and copy must never say "Workspace" or "Vault" again.

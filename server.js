@@ -13783,7 +13783,9 @@ const MARKET_MAP_JS = `(function(){
 // two can never load different versions.
 const LEAFLET_HEAD =
   `<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>\n` +
-  `<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>\n`;
+  `<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>\n` +
+  // No focus ring on a click-and-drag; ⚠ same hook as index.html's, see there.
+  `<script>if (window.L) L.Map.addInitHook(function () { var c = this.getContainer(); L.DomEvent.on(c, "pointerdown mousedown touchstart", function () { L.DomUtil.preventOutline(c); }); });</script>\n`;
 
 // The /markets directory's momentum map: one pin per covered market, colored
 // by the same freshDirection read the Explorer dropdown and the market page's

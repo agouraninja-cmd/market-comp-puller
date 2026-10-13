@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-10-13",
+    "type": "fix",
+    "title": "No orange outline around a map when you click and drag it",
+    "details": "Dragging a map (Home, the comp report, market pages, permits) no longer draws the browser’s focus outline around it. Pressing a key brings the outline back, so keyboard users can still see where they are."
+  },
+  {
     "date": "2026-10-10",
     "type": "improvement",
     "title": "Home's map pans with a two-finger swipe and zooms with a pinch",

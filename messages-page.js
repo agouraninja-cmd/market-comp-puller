@@ -2163,8 +2163,8 @@ ${REPORT_INBOX_SRC}
     var q = ($("msgPickFilter").value || "").trim().toLowerCase();
     var rows = state.vault || [];
     if (!rows.length) {
-      $("msgPickList").innerHTML = '<div class="msg-hint">Your Data has no comps yet. ' +
-        '<a href="/vault">Add comps</a> and they will show up here.</div>';
+      $("msgPickList").innerHTML = '<div class="msg-hint">You have no comps yet. ' +
+        '<a href="/comps">Add comps</a> and they will show up here.</div>';
       return;
     }
     var shown = rows.filter(function(c){

@@ -215,7 +215,7 @@ test("the badge block reaches every surface that asked for it", async (t) => {
   assert.ok(app.html.includes("/api/tester-feedback"), "and its handler");
 
   // The two work surfaces, which emit the SAME block through marketShell.
-  for (const path of ["/vault", "/bulk"]) {
+  for (const path of ["/comps", "/bulk"]) {
     const page = await get(path);
     assert.equal(page.status, 200, path + " should render for a signed-in visitor");
     assert.ok(page.html.includes('id="testerBadge"'), path + " must carry the badge");
@@ -230,7 +230,7 @@ test("the badge block reaches every surface that asked for it", async (t) => {
 
   // Byte-for-byte the same block on both work surfaces: the whole point of
   // single-sourcing is that /vault and /bulk cannot drift apart.
-  const vault = (await get("/vault")).html;
+  const vault = (await get("/comps")).html;
   const bulk = (await get("/bulk")).html;
   const grab = (html) => {
     const i = html.indexOf('<button id="testerBadge"');
@@ -263,7 +263,7 @@ test("the form opens on an idea, not on a fault", async (t) => {
   const h = await bootFeedback();
   t.after(() => h.stop());
 
-  const html = await (await fetch(h.srv.base + "/vault", {
+  const html = await (await fetch(h.srv.base + "/comps", {
     headers: { cookie: await sessionFor(h.srv) },
   })).text();
 

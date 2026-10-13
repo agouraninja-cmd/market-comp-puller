@@ -4,7 +4,7 @@
 // tabs instantaneous — e.g. Workspace to Vault").
 //
 // Every tab in the rail is a separate document, and each one waits on the
-// database before it sends a byte: /vault reads the whole book, /desk gathers
+// database before it sends a byte: /comps reads the whole book, /desk gathers
 // DESK_BOOT, and the workspace is 1.38 MB of HTML (418 KB on the wire, served
 // no-store, so it is fetched and compiled fresh every time). A click was a
 // blank wait for all of that. Rewriting six server-rendered pages into one
@@ -74,9 +74,10 @@
 // product's, and a stranger reading a marketing page should not cost the
 // server six database-backed renders by sweeping a pointer across a header.
 
-// /pipeline (2026-10-09) is the vault page opened on its Pipeline tab, a
-// rail row of its own; server.js's VAULT_PAGE_PATHS serves both.
-const TAB_PATHS = ["/", "/desk", "/vault", "/pipeline", "/messages", "/markets", "/bulk", "/permits", "/buildings"];
+// /comps and /pipeline (2026-10-13) are what was the vault page, /vault, a
+// row of the rail each; server.js's VAULT_PAGE_PATHS serves both, and /vault
+// itself only redirects, so it is not a tab.
+const TAB_PATHS = ["/", "/desk", "/comps", "/pipeline", "/messages", "/markets", "/bulk", "/permits", "/buildings"];
 // GET routes that WRITE, which the fetch guard would otherwise wave through
 // from a page nobody has opened (audited 2026-09-26, every GET in server.js).
 // The two that matter most treat a read as evidence somebody is looking:
@@ -92,7 +93,7 @@ const TAB_PATHS = ["/", "/desk", "/vault", "/pipeline", "/messages", "/markets",
 // does; once shown they are ordinary reads. A new GET that writes belongs
 // here — test/instant-nav.test.js pins each against its GET route in
 // server.js. (Writes a page's SERVER render makes cannot be held from the
-// browser: those check isSpeculative, as /vault's backfills do.)
+// browser: those check isSpeculative, as /comps's backfills do.)
 const HOLD_PATHS = [
   "/api/messages/thread", "/api/hub",
   "/api/broker/me", "/api/broker/leads", "/api/broker/bovs", "/api/bulk",
@@ -263,7 +264,7 @@ function createWarmCache(opts) {
 //
 // The hidden view's request carries DESKTOP_PRELOAD_HEADER. The server answers
 // it ONLY through the warm store (a speculative render, so the visit is parked
-// and /vault skips its backfills) with desktopPreloadScript() injected first
+// and /comps skips its backfills) with desktopPreloadScript() injected first
 // in <head>, and with an empty 204 for anything it cannot answer that way —
 // a hidden page without the script would run unguarded. The script is the
 // one piece of Chrome's prerender the page needs: `document.prerendering` is

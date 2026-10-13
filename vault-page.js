@@ -1,5 +1,6 @@
 // ---------------------------------------------------------------------------
-// The broker vault page — the whole server-rendered /vault screen.
+// The comps and pipeline pages — the server-rendered /comps and /pipeline,
+// which were one page, the broker vault at /vault, until 2026-10-13.
 //
 // Moved out of server.js on 2026-08-06. It is a WEB PAGE, so it is Jacob's to
 // edit, but it was living inside server.js, which is Owen's. That made two of
@@ -19,7 +20,7 @@
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 
-// The /vault BODY. Everything around it — the doctype, the head, the header,
+// The page BODY. Everything around it — the doctype, the head, the header,
 // the footer, the theme boot — is marketShell's, exactly as it is for
 // /markets, /brokers, /firms, /pricing and /bulk. (Task 9 of the rail plan,
 // 2026-08-30.)
@@ -44,7 +45,30 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return
 // NOTHING but that payload: the twelve-key chrome object it used to be handed
 // (CN_LOGO, RAIL_CSS, ACCOUNT_NAV_*, FOOTER_*, THEME_*, NAV_SHELL_CLASS)
 // existed only to rebuild by hand what marketShell already had.
-function renderVaultBody(boot) {
+//
+// Two pages since 2026-10-13 (the owner: "the vault doesn't even exist any
+// more"). The page "comps" is /comps: a member's own comps and the comps they
+// contributed, the first tab of the rail's Comps section (the other is /bulk,
+// Run a comp report). "pipeline" is /pipeline: a broker's BOV requests and
+// engagements, the rail's Pipeline row. One document and one script for both,
+// as /vault was: each page shows only its own tabs, and the other page's
+// panel stays in the markup, hidden, because the script binds its controls
+// as it loads. The Properties tab is gone; what a member owns is worked on
+// Home (home-sites.js), and The Board is on the Markets page.
+function renderVaultBody(boot, opts) {
+  const pipe = !!(opts && opts.page === "pipeline");
+  const page = pipe ? "pipeline" : "comps";
+  // No nested template literals: this file holds exactly two backticks
+  // (test/vault-page.test.js), so the page's own parts are plain strings.
+  const lockedCopy = pipe
+    ? '      <p><strong>Your pipeline is part of Pro.</strong>\n' +
+      '        Watch markets for owners asking for a valuation, and track every BOV from request to won or lost.</p>\n'
+    : '      <p><strong>Your comps are part of Pro.</strong>\n' +
+      '        Upload closed deals, keep them private, and see them inside your own reports.</p>\n';
+  const tabButtons = pipe
+    ? '      <button type="button" role="tab" class="vt-tab on" id="tab-pipe" data-tab="pipe" aria-selected="true" aria-controls="panelPipe">Pipeline <b id="tabPipeN"></b></button>'
+    : '      <button type="button" role="tab" class="vt-tab on" id="tab-book" data-tab="book" aria-selected="true" aria-controls="panelBook"><span id="tabBookL">Comps</span> <b id="tabBookN"></b></button>\n' +
+      '      <button type="button" role="tab" class="vt-tab vt-off" id="tab-contrib" data-tab="contrib" aria-selected="false" aria-controls="panelContrib">Contributions <b id="tabContribN"></b></button>';
   // </script> can never appear in the payload: every "<" is escaped, which is
   // also what keeps a comp note like "<img onerror=…>" inert inside the tag.
   const bootJson = boot ? JSON.stringify(boot).replace(/</g, "\\u003c") : "null";
@@ -173,8 +197,8 @@ section > .sub{margin-top:0;margin-bottom:var(--s5)}
 .btn.hide{display:none}
 .row{display:flex;flex-wrap:wrap;gap:12px 14px;align-items:flex-end}
 .form{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px 16px;align-items:end}
-/* Without this the properties deck's #propAddForm, which ships "form hide"
-   behind + Add a property, rendered OPEN on every load. */
+/* Without this a form that ships "form hide" rendered OPEN on every load
+   (the properties deck's add form, until that deck left on 2026-10-13). */
 .form.hide{display:none}
 .form .span2{grid-column:1/-1}
 .form .span-all{grid-column:1/-1}
@@ -335,14 +359,6 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .lnk.trash:hover,.lnk.trash:focus{color:var(--red)}
 .lnk.trash svg{display:block}
 td.rowact{white-space:nowrap}
-/* Addresses in the properties table. a{} paints this page's links red, and a
-   column of red rows reads as a list of warnings -- red is this page's accent
-   and is spent on the one thing that matters per surface. Ink at rest, red on
-   hover, which is the desk's rule for the same table stated in this page's
-   own tokens. Inter, not the desk's Georgia: every other table here is Inter,
-   and consistency within one page beats consistency with another one. */
-.paddr{color:var(--ink);font-weight:500}
-.paddr:hover,.paddr:focus{color:var(--red)}
 /* Editable cells in the compact table. There is no Edit button: a broker
    fixing a typo types over it, exactly as they would in the spreadsheet they
    exported this book from.
@@ -818,14 +834,17 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 }
 </style>
   <p class="kicker">Private to you</p>
-  <!-- "Your properties and comps" since 2026-10-07 (Draft C, "One map"): the
-       rail no longer has a Data row, and every door here is a tab of Home
-       that names what it opens (Properties, Comps), so the page says the
-       same two words. A property is something you own, manage or are
-       buying; a comp is a past deal you value against (the owner's wording,
-       2026-10-07). -->
-  <h1 class="h">Your properties and comps</h1>
-  <p class="sub" id="deckSub">Your comps and the properties you hold. Visible only to you.</p>
+  <!-- Each page is named for its row of the rail (2026-10-13): Comps, whose
+       first tab this is, or Pipeline. The page was "Your properties and
+       comps" from 2026-10-07 until the vault was taken apart; a property is
+       something you own, manage or are buying, and those are worked on Home
+       now, while a comp is a past deal you value against (the owner's
+       wording, 2026-10-07). renderFirmPrivacy rewrites the comps line once
+       the member has shared comps with their firm. -->
+  <h1 class="h">${pipe ? "Pipeline" : "Your comps"}</h1>
+  <p class="sub" id="deckSub">${pipe
+    ? "Owners asking for a Broker Opinion of Value in the markets you watch, and every BOV you log, through to won or lost. Visible only to you."
+    : "The past deals you value against. Visible only to you."}</p>
 
   <!-- Visible from the first paint. Everything below the title waits on
        /api/vault (session -> entitlements -> two reads), and with both panes
@@ -833,16 +852,14 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
        workspace popped in. The fetch's three outcomes each replace this:
        success hides #gate, a refusal rewrites it, so it can never linger. -->
   <div id="gate"><div class="load"><div class="loadbar"><i></i></div>
-    <p class="empty" style="padding:0">Loading your Data&hellip;</p></div></div>
+    <p class="empty" style="padding:0">Loading your ${pipe ? "pipeline" : "comps"}&hellip;</p></div></div>
 
   <div id="app" class="hide">
-    <!-- Shown in place of the two decks that ARE the vault -- the book and the
-         pipeline -- when this page's own read refuses. The other two
-         decks below it ("Your properties", "Your watchlist") are a member's own
-         portfolio and watchlist, which moved here off /desk on 2026-09-01 and
-         were never part of Pro, so they render regardless. A member must not
-         open their own space and find their own saved properties behind a
-         paywall.
+    <!-- Shown in place of the decks that ARE the vault -- the book on /comps,
+         the pipeline on /pipeline -- when this page's own read refuses.
+         Contributions was never part of Pro, so on /comps it renders
+         regardless (syncLockedTabs). A member's own properties, which sat
+         here unlocked for the same reason, are on Home since 2026-10-13.
 
          "Part of Pro", never "part of the broker plan". There is one
          subscription and the vault is a capability of it; naming a broker plan
@@ -850,10 +867,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
          string is one of three that have to agree -- the other two are the Pro
          tile's bullets and the plan-card copy in index.html. -->
     <div id="vaultLocked" class="invite hide">
-      <p><strong>Your book and your pipeline are part of Pro.</strong>
-        Upload closed deals, keep them private, and see them inside your own reports.</p>
-      <p>Your properties are in their own tab either way &mdash; those are yours.</p>
-      <p style="margin:0"><a class="btn" href="/desk">See your plan</a></p>
+${lockedCopy}      <p style="margin:0"><a class="btn" href="/desk">See your plan</a></p>
     </div>
     <!-- ------------------------------------------------------------------
          The tabs (2026-09-25; Draft B of the vault redesign, the owner's
@@ -866,18 +880,18 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
          id, its deck rule and its handlers: a tab only decides which panel
          shows (setTab is the one writer). The active panel's deck rule is
          laid over the right end of the tab bar, so each part keeps its one
-         action (+ Add comps, + Log a BOV, + Add a property) where the tab
-         bar is. The Pro lock still hides the book and the pipeline decks
-         (VAULT_DECKS) and opens on Properties instead.
+         action (+ Add comps, + Log a BOV) where the tab bar is.
+
+         Since 2026-10-13 each page has its own tabs: Comps and Contributions
+         on /comps, Pipeline on /pipeline. The Pro lock hides the page's own
+         decks (VAULT_DECKS); on /comps it opens on Contributions when the
+         member has any, and otherwise the bar goes too (syncLockedTabs).
          ------------------------------------------------------------------ -->
     <div class="vt-wrap" id="vtWrap">
-    <div class="vt-tabs" id="vaultTabs" role="tablist" aria-label="Your Data">
-      <button type="button" role="tab" class="vt-tab on" id="tab-book" data-tab="book" aria-selected="true" aria-controls="panelBook"><span id="tabBookL">Comps</span> <b id="tabBookN"></b></button>
-      <button type="button" role="tab" class="vt-tab" id="tab-pipe" data-tab="pipe" aria-selected="false" aria-controls="panelPipe">Pipeline <b id="tabPipeN"></b></button>
-      <button type="button" role="tab" class="vt-tab" id="tab-props" data-tab="props" aria-selected="false" aria-controls="panelProps">Properties <b id="tabPropsN"></b></button>
-      <button type="button" role="tab" class="vt-tab vt-off" id="tab-contrib" data-tab="contrib" aria-selected="false" aria-controls="panelContrib">Contributions <b id="tabContribN"></b></button>
+    <div class="vt-tabs" id="vaultTabs" role="tablist" aria-label="${pipe ? "Pipeline" : "Your comps"}">
+${tabButtons}
     </div>
-    <div class="vt-panel on" id="panelBook" data-panel="book" role="tabpanel" aria-labelledby="tab-book">
+    <div class="vt-panel${pipe ? "" : " on"}" id="panelBook" data-panel="book" role="tabpanel" aria-labelledby="tab-book">
     <!-- ------------------------------------------------------------------
          The book deck. Everything in this tab is the broker's own data:
          what they have, and where it came from.
@@ -1318,7 +1332,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     <p id="trunc" class="note hide" style="margin-top:var(--s3)">Showing the most recent 1,000 comps.
       The figures below are drawn from those, so your full book may be larger.</p>
     </div>
-    <div class="vt-panel" id="panelPipe" data-panel="pipe" role="tabpanel" aria-labelledby="tab-pipe">
+    <div class="vt-panel${pipe ? " on" : ""}" id="panelPipe" data-panel="pipe" role="tabpanel" aria-labelledby="tab-pipe">
     <!-- ------------------------------------------------------------------
          The pipeline deck: work coming IN, rather than work already done.
          ONE table, from a lead nobody has claimed through to won or lost —
@@ -1335,6 +1349,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 
          Since 2026-09-25 it is the Pipeline tab (Draft B of the vault
          redesign), and the tab carries the count of new owner requests.
+         Since 2026-10-13 it is the whole of /pipeline.
          ------------------------------------------------------------------ -->
     <div class="deck" id="deckPipe">
       <span class="dlab">Your pipeline</span><span class="dln"></span>
@@ -1343,10 +1358,10 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 
     <!-- No h2: the deck rule above is the level ABOVE h2, and with one
          section under it a heading would only restate the rule. -->
+    <!-- Its intro line (#pipeIntro, "Every engagement, from a property owner
+         requesting a Broker Opinion of Value...") went on 2026-10-13: the
+         panel is the whole of /pipeline, whose subtitle says it. -->
     <section id="pipeSec">
-      <p class="sub hide" id="pipeIntro" style="margin-top:0">Every engagement, from a property owner
-        requesting a Broker Opinion of Value in a market you watch through to won or
-        lost. Only you can see this.</p>
       <div class="strip s5 hide" id="pipeStrip"></div>
       <p class="note hide" id="pipeNote"></p>
 
@@ -1423,76 +1438,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       </details>
     </section>
     </div>
-    <div class="vt-panel" id="panelProps" data-panel="props" role="tabpanel" aria-labelledby="tab-props">
-    <!-- ------------------------------------------------------------------
-         Your properties, and Your watchlist. Moved off /desk on 2026-09-01
-         ("Three Spaces"): the workspace is the FIRM's record, and a
-         portfolio and a watchlist are yours, so they belong in the space
-         that is yours.
-
-         Three things are deliberately different from the desk versions.
-
-         They are NOT gated on canUseVault. The page's own read -- the book
-         and the pipeline -- still is, and apply() locks those two decks
-         alone. A member must never open their own space and find
-         their own saved properties behind a paywall.
-
-         A property row is a LINK to /?property=<id>, not a button that opens
-         the report in place. The whole report engine lives in index.html;
-         this page cannot render one, and a row that silently did nothing
-         would be worse than a row that navigates. Refresh is the same door
-         with &amp;refresh=1 on it, for the same reason: replaying a search
-         needs the real form.
-
-         And they are drawn in this page's own idiom -- .strip, .tw, table,
-         .lnk -- never the desk's dk-* classes or its Tailwind utilities.
-         tailwind.css is purged against index.html alone, so a utility used
-         only in a server-side string silently stops styling.
-         ------------------------------------------------------------------ -->
-    <div class="deck" id="deckProps">
-      <span class="dlab">Your properties</span><span class="dln"></span>
-      <button class="dact" id="propAddToggle" aria-expanded="false" aria-controls="propAddForm">+ Add a property</button>
-    </div>
-
-    <section id="propsSec">
-      <p class="sub hide" id="propsIntro" style="margin-top:0">The buildings you own or track.
-        Each keeps the value from every report you have run on it. Only you can see this.</p>
-      <!-- Add by address, no search (2026-09-02). The firm's buildings form
-           on the Workspace had this door; the personal book did not — a
-           property reached it only through a report. Ships closed (the
-           #addSec rule); setPropAddOpen is its one writer. -->
-      <div class="form hide" id="propAddForm" style="margin-top:var(--s4)">
-        <label class="span2">Address <input id="pAddr" type="text" maxlength="300" placeholder="100 Main St, Boise, ID"/></label>
-        <label>Type <select id="pType"></select></label>
-        <div class="formact span-all">
-          <button class="btn" id="pAdd" type="button">Add property</button>
-          <button class="btn ghost" id="pCancel" type="button">Cancel</button>
-          <span class="fine">No search runs. Use Refresh on the row when you want a value, or <a href="/">run a report</a>.</span>
-        </div>
-      </div>
-      <div class="strip hide" id="propsStrip"></div>
-      <p class="note hide" id="propsAttn"></p>
-      <!-- The "Add to firm" door's answer (Three Spaces, slice 3). Its own
-           line, not #propsErr: that one means the portfolio could not be
-           read, and a building landing on the firm's board is not that. -->
-      <p class="msg hide" id="propsMsg" aria-live="polite"></p>
-      <!-- Two empty states, two elements, on purpose -- and the wording of the
-           failure one is the desk's model: a bare "couldn't load" on a section
-           holding saved work reads as data loss to the person most likely to
-           be looking at it. What failed, then that nothing is gone. -->
-      <div class="msg bad hide" id="propsErr">Couldn&rsquo;t load your properties just now.
-        Nothing has been lost. Refresh in a moment.</div>
-      <div class="invite hide" id="propsEmpty">
-        <p>Nothing here yet. Your portfolio holds the properties you own. Add one by address
-          with <strong>+ Add a property</strong> above, run a report and use <strong>Save to portfolio</strong>,
-          or add one from your recent searches.</p>
-      </div>
-      <div class="tw hide" id="propsWrap"><table id="propsTbl">
-        <thead><tr id="propsHead"></tr></thead>
-        <tbody id="propsRows"></tbody><tfoot id="propsFoot"></tfoot>
-      </table></div>
-    </section>
-    </div>
     <div class="vt-panel" id="panelContrib" data-panel="contrib" role="tabpanel" aria-labelledby="tab-contrib">
     <!-- ------------------------------------------------------------------
          Your contributions (2026-09-04). The comps this member handed to the
@@ -1502,12 +1447,12 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
          its home now, and the Vault is the right one -- Workspace is the
          firm's, the Vault is yours (Three Spaces).
 
-         UNGATED, like the two decks above it and unlike the three that ARE
-         the vault: "has contributed" (/api/broker/me's isBroker) is
-         deliberately a weaker fact than canUseVault (the 2026-08-05 lead
-         inbox spec), and the submit form is the free broker's funnel. So
-         these ids are NOT in VAULT_DECKS, and loadContribs() runs on the 403
-         and 503 exits exactly as loadProps() does. A test holds both.
+         UNGATED, unlike the decks that ARE the vault: "has contributed"
+         (/api/broker/me's isBroker) is deliberately a weaker fact than
+         canUseVault (the 2026-08-05 lead inbox spec), and the submit form is
+         the free broker's funnel. So these ids are NOT in VAULT_DECKS, and
+         loadContribs() runs on the 403 and 503 exits too. A test holds it.
+         On /comps only, since 2026-10-13.
 
          Hidden until the read says there is something to show: a member who
          never submitted a comp is not told so under a heading. The public
@@ -1542,7 +1487,9 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
        the page rather than leaving with the footer that happened to hold it.
        MARKET_FOOTER's own disclaimer is about valuations and says nothing
        about a broker's book. -->
-  <p class="vfoot">Private to you. Your comps are never read into CompNinja's public records<span id="vFootPub"> unless you choose to publish them</span>.</p>
+  <!-- About comps, so /pipeline keeps it hidden (2026-10-13); it stays in the
+       markup there because applyShop writes #vFootPub on both pages. -->
+  <p class="vfoot${pipe ? " hide" : ""}">Private to you. Your comps are never read into CompNinja's public records<span id="vFootPub"> unless you choose to publish them</span>.</p>
   <!-- The comp sheet, filled and moved under body only at the moment it is
        printed (printSheet). Never on screen. -->
   <div class="vd-sheet" id="compSheet"></div>
@@ -1552,6 +1499,8 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 <script>
 (function(){
   var $=function(id){return document.getElementById(id)};
+  // Which page this is: "comps" (/comps) or "pipeline" (/pipeline).
+  var PAGE=${JSON.stringify(page)};
   var esc=function(s){var d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML};
   // esc() is only innerHTML-safe: it leaves a literal " untouched, which
   // breaks out of a quoted attribute. Attribute values built from free text
@@ -1830,14 +1779,21 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       if(el.className.indexOf("hide")<0) el.className=(el.className+" hide").trim();
     });
     $("vaultLocked").className="invite";
-    // Nothing in the Book or Pipeline tab can show, so the page opens on the
-    // first tab that is the member's either way.
-    if(curTab==="book"||curTab==="pipe")setTab("props",true);
-    // The page subtitle describes the book and the pipeline. With both
-    // locked it would be describing a page that is not on screen.
-    $("deckSub").textContent="Your properties. Only you can see this.";
+    locked=true;
+    syncLockedTabs();
     if(msg) $("vaultLocked").insertAdjacentHTML("afterbegin",
       '<p class="note">'+esc(msg)+"</p>");
+  }
+  // Under the lock the one tab with anything in it is Contributions, which
+  // is never Pro: the page opens there for a member who has some, and
+  // otherwise shows no tab bar over an empty tab. Run again when the
+  // contributions read answers, since that can land after the lock.
+  var locked=false;
+  function syncLockedTabs(){
+    if(!locked)return;
+    var c=$("tab-contrib"),live=!!c&&!c.classList.contains("vt-off");
+    $("vtWrap").className=live?"vt-wrap":"vt-wrap hide";
+    if(live&&curTab!=="contrib")setTab("contrib",true);
   }
 
   // The figures at the top of the Book (#bookStrip). Whole-book, always.
@@ -1901,21 +1857,16 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // portfolio, no watchlist and no book to show, so the gate still stands.
     if(o.s===401) return gate('<div class="msg bad">Please <a href="/desk">sign in</a> to open your Data.</div>');
 
-    // Everything past this line renders the workspace. A refusal from this
-    // page's own read locks THREE decks and leaves the two personal ones
-    // alone -- see #vaultLocked's comment for why that asymmetry exists.
+    // Everything past this line renders the page. A refusal from this
+    // page's own read locks its decks and leaves Contributions alone -- see
+    // #vaultLocked's comment for why that asymmetry exists.
     $("gate").className="hide"; $("app").className="";
 
-    // Free My Desk is an address list, Pro is the book of values. Stated on
-    // all three of vaultReadPayload's exits so it survives the 403, which is
-    // exactly the case that needs it. Presentation only: /api/portfolio
-    // enforces its own caps.
-    showValues=Boolean(o.j&&o.j.portfolioValues);
     // Once per page visit, not on every filter change or post-import refresh
     // that re-runs load() -- those hit /api/vault, a different endpoint, and
-    // re-reading the portfolio on each would be work with no new information.
-    if(!personalLoaded){ personalLoaded=true; loadProps(); loadContribs(); }
-    else { renderProps(); }
+    // re-reading the contributions on each would be work with no new
+    // information.
+    if(!personalLoaded){ personalLoaded=true; if(PAGE==="comps")loadContribs(); }
 
     // 403 (not Pro) and 503 (no database) lock the same three decks. The 503
     // says which it was, because "unavailable right now" and "part of Pro"
@@ -1924,6 +1875,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     if(o.s!==200) return lockVaultDecks((o.j&&o.j.error)||"Could not load your Data.");
     // A read that succeeds after one that failed has to put them back.
     $("vaultLocked").className="invite hide";
+    locked=false; $("vtWrap").className="vt-wrap";
     comps=o.j.comps||[];
     $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
     tabCount("tabBookN",comps.length?num(comps.length):"",false);
@@ -1952,7 +1904,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     allMarkets=o.j.markets||[];
     uploads=o.j.uploads||[];
     myFirm=o.j.firm||null;
-    loadFirmBuildings();
     applyShop();
     sharedIds={};
     (o.j.sharedWithFirm||[]).forEach(function(id){sharedIds[id]=true});
@@ -1978,8 +1929,11 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // would be wasted work with no new information. It lives in apply()
     // rather than load() so the baked-in boot payload path (which never
     // calls load()) still populates the Leads section on first paint.
-    if(!leadsLoaded){ leadsLoaded=true; loadLeads(); }
-    if(!bovsLoaded){ bovsLoaded=true; loadBovs(); }
+    // /pipeline's alone since 2026-10-13: /comps has no Pipeline tab.
+    if(PAGE==="pipeline"){
+      if(!leadsLoaded){ leadsLoaded=true; loadLeads(); }
+      if(!bovsLoaded){ bovsLoaded=true; loadBovs(); }
+    }
     // Benchmarks are asked for PER BUCKET, so an empty vault has nothing to
     // ask about and loadBenchmarks bails. Marking it loaded anyway is what
     // broke the first run: a broker who imported into an empty vault got the
@@ -1988,7 +1942,8 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // flag false until there is actually a bucket, so the apply() that
     // follows the first import is the one that loads them. This is why the
     // gut check looked like it was failing in thin markets when it was not.
-    if(!benchLoaded && comps.length){ benchLoaded=true; loadBenchmarks(); }
+    // The gut check is drawn in the book, so /pipeline never asks for it.
+    if(PAGE==="comps" && !benchLoaded && comps.length){ benchLoaded=true; loadBenchmarks(); }
     render();
   }
 
@@ -3299,7 +3254,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // invitation too and leaves the messages in #pipeMsg.
     var pipeInvite=!all.length&&!errs.length;
     $("pipeEmpty").className=pipeInvite?"invite":"invite hide";
-    $("pipeIntro").className=pipeInvite?"sub hide":"sub";
     $("covBox").className=pipeInvite?"dbox hide":"dbox";
     if(pipeInvite)$("pipeEmpty").appendChild($("covForm"));
     else $("covBox").appendChild($("covForm"));
@@ -3457,56 +3411,46 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   }
 
   // ---- The tabs ---------------------------------------------------------------
-  // setTab is the one writer of which panel shows. A tab's address is a plain
-  // hash (#pipeline, #properties...), so a link can open the vault on one;
-  // the old section ids are read too, since that is what a link would have
-  // named before there were tabs.
-  // #sites (a development firm's tab, 2026-10-05 to 2026-10-09) is still
-  // read, as Properties: applyShop sends a development firm's member who
-  // follows such a link to Home, where their deals are now.
-  // The Board (#board, and the older #watchlist and mktSec) left this page
-  // for the Markets page on 2026-10-09; a link that names it goes there
-  // (BOARD_HASHES, below).
-  var TABS=["book","pipe","props","contrib"];
-  var PANEL={book:"panelBook",pipe:"panelPipe",props:"panelProps",contrib:"panelContrib"};
-  var HASH_OF_TAB={book:"book",pipe:"pipeline",props:"properties",contrib:"contributions"};
-  var TAB_OF_HASH={book:"book",sites:"props",pipeline:"pipe",properties:"props",contributions:"contrib",
-    compsSec:"book",sitesSec:"props",pipeSec:"pipe",propsSec:"props",contribSec:"contrib"};
-  var BOARD_HASHES={board:1,watchlist:1,mktSec:1};
-  // Pipeline is a row of the rail (2026-10-09), so it has a path of its own:
-  // /pipeline serves this page opened on that tab (server.js's
-  // VAULT_PAGE_PATHS), and switching to it writes the path back, so the
-  // address always names a row the rail can mark. server.js marks the row
-  // for the path it served; setTab moves the mark as the tabs change.
-  var PATH_OF_TAB={pipe:"/pipeline"};
-  var TAB_OF_PATH={"/pipeline":"pipe"};
-  var RAIL_OF_TAB={pipe:"navPipe"};
+  // setTab is the one writer of which panel shows. Each page has its own tabs
+  // (2026-10-13): /comps has Comps and Contributions, /pipeline has Pipeline
+  // alone. A tab's address is the page's path, with #contributions for that
+  // tab, so a link can open the page on it; #book and the old section ids
+  // are read too, since that is what a link would have named before.
+  //
+  // A link to a part of the old /vault opens that part where it lives now.
+  // /vault answers with /comps and the browser keeps the #fragment through
+  // the redirect, so the old tab names arrive here: The Board (#board, and
+  // the older #watchlist and mktSec) is on the Markets page since
+  // 2026-10-09, the Pipeline is /pipeline, and Properties and Sites are
+  // Home's Properties tab (MOVED, read at boot below).
+  var TABS=PAGE==="pipeline"?["pipe"]:["book","contrib"];
+  var PANEL={book:"panelBook",pipe:"panelPipe",contrib:"panelContrib"};
+  var TAB_OF_HASH={book:"book",compsSec:"book",contributions:"contrib",contribSec:"contrib"};
+  var MOVED={board:"/markets#board",watchlist:"/markets#board",mktSec:"/markets#board",
+    pipeline:"/pipeline",pipeSec:"/pipeline",
+    properties:"/desk#properties",propsSec:"/desk#properties",sites:"/desk#properties",sitesSec:"/desk#properties"};
+  // The tab whose address is the bare path. askedTab is the tab a link
+  // named, if one did.
+  var homeTab=TABS[0],askedTab="";
+  var curTab=homeTab;
   function tabUrl(t){
-    return PATH_OF_TAB[t]||(t===homeTab?"/vault":"/vault#"+HASH_OF_TAB[t]);
+    if(PAGE==="pipeline")return "/pipeline";
+    return t===homeTab?"/comps":"/comps#contributions";
   }
-  function markRail(t){
-    Object.keys(RAIL_OF_TAB).forEach(function(k){
-      var a=$(RAIL_OF_TAB[k]); if(!a)return;
-      if(k===t)a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current");
-    });
-  }
-  var curTab="book";
-  // The tab whose address is the bare path: Comps, for everyone since
-  // 2026-10-09 (a development firm's page opened on Sites until Sites moved
-  // to Home). askedTab is the tab a link named, if one did.
-  var homeTab="book",askedTab="";
   function tabOrder(){ return TABS; }
+  // A count on a tab this page does not have is dropped.
   function tabCount(id,text,hot){
-    var el=$(id);
+    var el=$(id); if(!el)return;
     el.textContent=text==null?"":String(text);
     el.className=hot?"hot":"";
   }
   function setTab(t,quiet){
-    if(!PANEL[t])t="book";
+    if(TABS.indexOf(t)<0)t=homeTab;
     curTab=t;
-    TABS.forEach(function(k){
+    Object.keys(PANEL).forEach(function(k){
       var on=k===t,b=$("tab-"+k);
       $(PANEL[k]).className=on?"vt-panel on":"vt-panel";
+      if(!b)return;
       b.classList.toggle("on",on);
       b.setAttribute("aria-selected",on?"true":"false");
       b.tabIndex=on?0:-1;
@@ -3516,7 +3460,6 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       if(bookView==="map")drawPins(bmRows,true);
       if(emptyMap)emptyMap.invalidateSize();
     }
-    markRail(t);
     if(!quiet&&window.history&&window.history.replaceState&&window.location){
       try{ window.history.replaceState(null,"",tabUrl(t)); }catch(e){}
     }
@@ -3538,19 +3481,16 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // ---- What a development firm's member sees (2026-10-05) ----------------------
   // The one place that decides how this page differs for a member of a firm
   // whose kind is "development" (ORG.kindOf, carried on /api/vault's firm
-  // block). A developer writes no BOVs, so there is no Pipeline; and their
-  // deals and holdings are worked on Home's Properties tab (home-sites.js,
-  // 2026-10-09; the Sites tab that held them here is gone, the owner's call),
-  // so there is no Properties tab either. A link that names either, or the
-  // old #sites, takes that member to Home's Properties instead of to a tab
-  // they do not have. Broker firms and people in no firm keep every tab.
+  // block). A developer writes no BOVs, so there is no Pipeline: /pipeline
+  // takes that member to Home's Properties, where their deals are worked
+  // (home-sites.js), the rail's Sites row in Pipeline's place. Broker firms
+  // and people in no firm have both pages.
   //
-  // It also decides two things about the Book for that firm (owner's call,
-  // 2026-10-06). The tab is "Comps" (for every kind of firm since
-  // 2026-10-07). And publishing is not offered (noPublish), since the
-  // Verified badge it earns says a licensed broker vouched for the deal; a
-  // member with something already published keeps every control, so a public
-  // comp never looks private and can always be taken back.
+  // It also decides one thing about the comps for that firm (owner's call,
+  // 2026-10-06): publishing is not offered (noPublish), since the Verified
+  // badge it earns says a licensed broker vouched for the deal; a member with
+  // something already published keeps every control, so a public comp never
+  // looks private and can always be taken back.
   function applyShop(){
     var shop=!!(myFirm&&myFirm.kind==="development");
     // The rail's row under Messages follows the same answer: Sites (Home's
@@ -3559,22 +3499,13 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // first paint).
     if(window.cnShopNav)window.cnShopNav(shop);
     noPublish=shop&&!pubCount;
-    // One word for one thing on every kind of firm (2026-10-07): it was the
-    // Book for a broker and Comps for a development shop.
-    $("tabBookL").textContent="Comps";
     $("bookEmptyK").textContent="Your comps, on one map";
     $("vFootPub").className=noPublish?"hide":"";
-    $("tab-pipe").classList.toggle("vt-off",shop);
-    $("tab-props").classList.toggle("vt-off",shop);
-    if(!shop)return;
     // Never from a page built ahead of being seen (instant tab switching):
     // only a member who actually opened the link is sent on.
-    if((askedTab==="pipe"||askedTab==="props")&&!document.prerendering&&window.location&&window.location.replace){
-      askedTab="";
+    if(shop&&PAGE==="pipeline"&&!document.prerendering&&window.location&&window.location.replace){
       window.location.replace("/desk#properties");
-      return;
     }
-    if(curTab==="pipe"||curTab==="props")setTab("book",true);
   }
 
   // ---- The book, as a ledger under a map band, with a comp set -----------------
@@ -4192,40 +4123,17 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 
   setBookView(bookView);
   (function(){
-    var h="",p="";
-    try{
-      h=String((window.location&&window.location.hash)||"").replace("#","");
-      p=String((window.location&&window.location.pathname)||"");
-    }catch(e){}
-    // A saved link to The Board opens it where it lives now. Never from a
-    // page built ahead of being seen (instant tab switching).
-    if(BOARD_HASHES[h]&&!document.prerendering&&window.location&&window.location.replace){
-      window.location.replace("/markets#board");
+    var h="";
+    try{ h=String((window.location&&window.location.hash)||"").replace("#",""); }catch(e){}
+    // A saved link to a part of the old /vault opens it where it lives now
+    // (MOVED). Never from a page built ahead of being seen (instant tab
+    // switching): only a member who actually opened the link is sent on.
+    if(PAGE==="comps"&&MOVED[h]&&!document.prerendering&&window.location&&window.location.replace){
+      window.location.replace(MOVED[h]);
       return;
     }
-    // A hash still wins: it is the older and the more specific of the two.
-    askedTab=TAB_OF_HASH[h]||TAB_OF_PATH[p]||"";
-    setTab(askedTab||"book",true);
-  })();
-  // Home's "Add a property" opens this page with the form that takes it
-  // already open (2026-10-07, Draft C): ?add=own#properties for a property
-  // the member owns, outside a development firm (a development firm's member
-  // adds on Home itself since 2026-10-09, and ?add=buy, a deal for The
-  // Board's wall, went with the wall). Read once, only with a tab named in
-  // the address, and taken off the address so a reload or a shared link does
-  // not open the form again. addTab is the tab it was meant for, so a form
-  // never opens on a tab the member did not ask for.
-  var addAsk="",addTab="";
-  (function(){
-    try{
-      var a=new URLSearchParams(window.location.search||"").get("add");
-      var t=TAB_OF_HASH[String(window.location.hash||"").replace("#","")];
-      if(a==="own"&&t){
-        addAsk=a;addTab=t;
-        if(window.history&&window.history.replaceState)
-          window.history.replaceState(window.history.state,"",window.location.pathname+window.location.hash);
-      }
-    }catch(e){}
+    askedTab=TAB_OF_HASH[h]||"";
+    setTab(askedTab||homeTab,true);
   })();
 
   var pending = null;   // {name, csv} held while the broker maps
@@ -5448,7 +5356,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       var t=e.dataTransfer&&e.dataTransfer.types;
       if(!t||Array.prototype.indexOf.call(t,"Files")<0)return;
       e.preventDefault();
-      if(!addOpen&&$("deckBook").className.indexOf("hide")<0)setAddOpen(true);
+      if(PAGE==="comps"&&!addOpen&&$("deckBook").className.indexOf("hide")<0)setAddOpen(true);
     });
   });
   $("addToggle").addEventListener("click",function(){
@@ -5798,20 +5706,12 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
         ". Everything else is visible only to you, and nothing here is ever read "+
         "into CompNinja\u2019s public records"+(noPublish?".":" unless you publish it.")
       : null;
-    // What the vault holds, in the shop's own words: a development shop keeps
-    // site work, not a broker's deals and BOVs (owner's copy, 2026-10-04).
-    // Only what the page actually holds (2026-10-07): the development line
-    // promised absorption rates and feasibility calculations it has no tab
-    // for, and the other promised BOV leads to a member who is not a broker.
-    // A development shop's properties are on Home since 2026-10-09, so its
-    // page holds comps, and says so (The Board is on the Markets page).
-    var holds=myFirm&&myFirm.kind==="development"
-      ? "The comps you value against. Your properties are on Home. "
-      // Any other firm reads as a broker shop, org-access.js kindOf's rule.
-      : myFirm
-        ? "Your comps, the owners asking you for a BOV, and the properties you hold. "
-        : "Your comps and the properties you hold. ";
-    if(deck)deck.textContent=sharedLine
+    // What the page holds, in its own words: only what is on it (2026-10-07).
+    // Since 2026-10-13 that is comps for every member: the Pipeline has a
+    // page of its own, whose line this never touches, and what a member
+    // owns is worked on Home.
+    var holds="The past deals you value against. ";
+    if(deck&&PAGE==="comps")deck.textContent=sharedLine
       ? holds+n+" shared with "+myFirm.name+"; the rest visible only to you."
       : holds+"Visible only to you.";
     if(trust)trust.innerHTML=sharedLine
@@ -6187,338 +6087,8 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     compMsg("Import removed.");
   }
 
-  // ---------------------------------------------------------------------
-  // YOUR PROPERTIES -- the portfolio, moved off /desk on 2026-09-01.
-  //
-  // Not a port of renderMyDesk(): that one is built out of the desk's dk-*
-  // classes and Tailwind utilities, neither of which exists on this page
-  // (tailwind.css is purged against index.html alone, so a utility used
-  // only in a server-side string silently stops styling). This is the same
-  // RULES in this page's own idiom -- .strip, .tw, table, .lnk.
-  //
-  // Four of those rules are load-bearing and were each earned on the desk:
-  //   * A failed read renders as a FAILURE, never as an empty portfolio.
-  //     Two elements, never one. "Nothing here yet" shown to somebody with
-  //     sixteen properties reads as their book having been thrown away.
-  //   * "Checked" is the last time a VALUE was produced -- the last
-  //     snapshot's ts, falling back to updated_at only when there is none.
-  //     A save that produced no valuation moves updated_at without anybody
-  //     having checked the property, and this date has to agree with the
-  //     attention line above the table.
-  //   * Figures are gated on portfolioValues. A free portfolio is an address
-  //     list; every number here, the market-movement line included, is a
-  //     dollar figure and stays out of it.
-  //   * The strip and the table footer close on the SAME combined figure and
-  //     the SAME between-checks percentage, computed once, so the two can
-  //     never disagree.
-  // ---------------------------------------------------------------------
-
-  // A year, and not a number picked here. portfolio-delta.js draws the same
-  // line for the same reason (MAX_WINDOW_YEARS = 1): past it, a property's
-  // figure is not a stale-ish reading of the market, it is a different
-  // question.
-  // MIRRORED CONSTANT: portfolio-delta.js is a server module and cannot be
-  // required here, and index.html keeps its own copy too. If that one moves,
-  // move both.
-  var STALE_MS=365*24*60*60*1000;
-  var propItems=[],propsOk=false,showValues=false;
+  // Read once per page visit (apply()).
   var personalLoaded=false;
-
-  function loadProps(){
-    fetch("/api/portfolio",{credentials:"same-origin"})
-      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
-      .then(function(o){
-        // A 401 is silent: the whole page is already gated behind a sign-in
-        // and a second refusal under the deck would only repeat it.
-        if(o.s===401){propItems=[];propsOk=true;renderProps();return;}
-        if(o.s!==200){propsOk=false;renderProps();return;}
-        propsOk=true;propItems=o.j.items||[];renderProps();
-      })
-      .catch(function(){propsOk=false;renderProps();});
-  }
-
-  function sparkline(snaps){
-    var vals=snaps.map(function(s){return Number(s.likely)}).filter(function(v){return v>0}).slice(-12);
-    if(vals.length<2)return "";
-    var w=72,h=18,pad=3;
-    var lo=Math.min.apply(null,vals),hi=Math.max.apply(null,vals);
-    var x=function(i){return pad+(i*(w-2*pad))/(vals.length-1)};
-    var y=function(v){return hi===lo?h/2:h-pad-((v-lo)*(h-2*pad))/(hi-lo)};
-    var pts=vals.map(function(v,i){return x(i).toFixed(1)+","+y(v).toFixed(1)}).join(" ");
-    // --ink-4 and --red-fill, this page's own tokens, so the line follows the
-    // theme. The desk's copy of this sparkline hard-codes a grey for the
-    // polyline because that file has no token for it; the reading is the same.
-    // No literal colour value in this comment either -- it ships inside the
-    // emitted script, and test/theme.test.js scans the generated markup, not
-    // only the stylesheet.
-    return '<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+" "+h+'" aria-label="'+
-      vals.length+' valuations tracked" style="display:block">'+
-      '<polyline points="'+pts+'" fill="none" stroke="var(--ink-4)" stroke-width="1.4"/>'+
-      '<circle cx="'+x(vals.length-1).toFixed(1)+'" cy="'+y(vals[vals.length-1]).toFixed(1)+
-      '" r="2.2" fill="var(--red-fill)"/></svg>';
-  }
-
-  function pctSpan(p){
-    return '<span style="color:var(--'+(p>=0?"green":"red")+')">'+
-      (p>=0?"▲":"▼")+" "+Math.abs(p).toFixed(1)+"%</span>";
-  }
-
-  function renderProps(){
-    var err=$("propsErr"),empty=$("propsEmpty"),wrap=$("propsWrap"),
-        strip=$("propsStrip"),attn=$("propsAttn"),intro=$("propsIntro");
-    err.className=propsOk?"msg bad hide":"msg bad";
-    if(!propsOk){
-      // Everything below this line describes a portfolio we could not read.
-      // The count would say zero and the invitation would say the book is
-      // empty -- two confident statements about data we do not have. The
-      // rows and the strip are left exactly as they were rather than wiped.
-      empty.className="invite hide";
-      return;
-    }
-    var items=propItems;
-    tabCount("tabPropsN",items.length||"",false);
-    intro.className=items.length?"sub":"sub hide";
-    empty.className=items.length?"invite hide":"invite";
-    wrap.className=items.length?"tw":"tw hide";
-    if(!items.length){strip.className="strip hide";attn.className="note hide";return;}
-
-    var combined=0,curPaired=0,prevPaired=0,pairedN=0,staleN=0,nowMs=Date.now();
-    var typeCounts={};
-    items.forEach(function(item){
-      var snaps=Array.isArray(item.snapshots)?item.snapshots:[];
-      var last=snaps[snaps.length-1]||null,prev=snaps.length>1?snaps[snaps.length-2]:null;
-      if(last&&last.likely)combined+=Number(last.likely);
-      if(last&&prev&&last.likely&&prev.likely){
-        curPaired+=Number(last.likely);prevPaired+=Number(prev.likely);pairedN+=1;
-      }
-      // Off the last CHECK, not off updated_at -- see the header note. An
-      // unparseable or missing timestamp is not counted: silence beats
-      // calling a property stale on a bad date.
-      var ts=last&&last.ts?Date.parse(last.ts):NaN;
-      if(isFinite(ts)&&nowMs-ts>STALE_MS)staleN+=1;
-      var t=String(item.property_type||"").toLowerCase();
-      if(t)typeCounts[t]=(typeCounts[t]||0)+1;
-    });
-    var bookPct=prevPaired>0?((curPaired-prevPaired)/prevPaired)*100:null;
-
-    // Three cells, which is exactly .strip's own grid -- no new CSS. The
-    // desk's version is four because it lends one to the watchlist; here the
-    // watchlist is its own deck below and needs no room borrowed.
-    if(showValues){
-      var typeNote=Object.keys(typeCounts).map(function(t){
-        return typeCounts[t]+" "+t;
-      }).join(" · ")||"&nbsp;";
-      // "Between checks", and the note names its own sample. This is not a
-      // return: it compares each property's last two check-ins, over only
-      // the properties checked at least twice, with no time window at all.
-      // Said outright, because the label alone reads as a portfolio return and
-      // the figure is not one: it compares each property's last two check-ins,
-      // over only the properties checked at least twice, with no time window at
-      // all -- one pair may be a day apart and another eight months.
-      var BETWEEN_TITLE="Change in combined likely value between the last two checks of each "+
-        "property checked at least twice. Checks happen when you re-run a report, "+
-        "so this is not a return over any period of time.";
-      var betweenNote=bookPct==null?"re-run a property to start the trail"
-        :(pairedN===items.length?"all "+items.length+" properties"
-          :pairedN+" of "+items.length+" properties")+", last check vs the one before";
-      strip.className="strip";
-      strip.innerHTML=
-        stripCell("Properties",String(items.length),typeNote,"")+
-        stripCell("Combined likely value",combined?money(combined):"&mdash;",
-          "from each property's last run","")+
-        stripCell("Between checks",bookPct==null?"&mdash;":pctSpan(bookPct),betweenNote,"",false,
-          bookPct==null?"":BETWEEN_TITLE);
-    }else{
-      strip.className="strip hide";strip.innerHTML="";
-    }
-
-    // Gated on showValues along with the strip above it: a free portfolio is
-    // an address list with no figures on it, so telling somebody their values
-    // are a year out would answer a question they were never asked.
-    var showAttn=showValues&&staleN>0;
-    attn.className=showAttn?"note":"note hide";
-    if(showAttn){
-      attn.textContent=staleN===1
-        ? "1 property was last checked over a year ago. Refresh it below to bring its value up to date."
-        : staleN+" properties were last checked over a year ago. Refresh them below to bring their values up to date.";
-    }
-
-    $("propsHead").innerHTML=showValues
-      ? '<th>Property</th><th>History</th><th class="num">Likely value</th>'+
-        '<th class="num">Change</th><th></th>'
-      : "<th>Property</th><th></th>";
-
-    $("propsRows").innerHTML=items.map(function(item){
-      var snaps=Array.isArray(item.snapshots)?item.snapshots:[];
-      var last=snaps[snaps.length-1]||null,prev=snaps.length>1?snaps[snaps.length-2]:null;
-      var href="/?property="+encodeURIComponent(item.id);
-      // "checked" only when a valuation was actually taken. A row added by
-      // address, or from a recent search with no value, says so rather than
-      // claiming a check nobody ran.
-      var sub=esc(item.property_type||"")+(last&&last.ts
-        ? " · checked "+esc(new Date(last.ts).toLocaleDateString())
-        : " · not valued yet");
-      // The standing market page for this property's market + type. The
-      // server attaches market_page only when one exists, so absence renders
-      // nothing; the slug is shape-checked before it becomes an href, like
-      // the report's own market-page link.
-      if(item.market_page&&typeof item.market_page.slug==="string"
-         &&/^[a-z0-9-]{1,120}$/.test(item.market_page.slug)){
-        sub+=' · <a href="/market/'+escA(item.market_page.slug)+'">market page</a>';
-      }
-      var cells='<td><a class="paddr" href="'+escA(href)+
-        '" title="Open this report (no new search, no cost)">'+
-        esc(item.address)+'</a><div class="note" style="margin-top:2px">'+sub+"</div>";
-      // What the MARKET did since this property was last checked -- the one
-      // number here that moves without the owner re-running anything.
-      // Deliberately NOT coloured like the Change column: painting a market
-      // statistic green would read as this building being worth more, which
-      // is a search nobody has run.
-      if(showValues&&item.movement&&item.movement.line){
-        cells+='<div class="note" style="margin-top:2px" title="Market median $/SF from '+
-          'comps others have searched. Not a new valuation of this property.">'+
-          esc(item.movement.line)+"</div>";
-      }
-      cells+="</td>";
-      if(showValues){
-        cells+="<td>"+sparkline(snaps)+"</td>";
-        cells+='<td class="num">'+(last&&last.likely?money(last.likely):"&mdash;")+"</td>";
-        var chg="&mdash;";
-        if(last&&prev&&last.likely&&prev.likely){
-          chg=pctSpan(((last.likely-prev.likely)/prev.likely)*100);
-        }
-        cells+='<td class="num">'+chg+"</td>";
-      }
-      // Refresh is the same door with refresh=1 on it. Replaying a search
-      // needs the real #compForm, and every rule that hangs off it
-      // (validation, the cache, the caps, the per-type columns) -- all of
-      // which live in index.html and nowhere else. So this navigates rather
-      // than pretending to run a search here.
-      cells+='<td class="rowact num">'+firmDoorCell(item)+'<a href="'+escA(href+"&refresh=1")+
-        '" title="Runs a new live search for this property">Refresh</a> '+
-        '<button class="lnk trash" type="button" data-prop-del="'+escA(item.id)+
-        '" data-prop-addr="'+escA(item.address)+
-        '" aria-label="Remove '+escA(item.address)+' from your portfolio" '+
-        'title="Remove from your portfolio">'+TRASH_SVG+"</button></td>";
-      return "<tr>"+cells+"</tr>";
-    }).join("");
-
-    // The closing total only earns its rule with something to sum, and it
-    // repeats the strip's own two figures rather than recomputing them.
-    $("propsFoot").innerHTML=(showValues&&items.length>1&&combined)
-      ? '<tr><td colspan="2">Combined · '+items.length+" properties</td>"+
-        '<td class="num">'+money(combined)+"</td>"+
-        '<td class="num">'+(bookPct==null?"":pctSpan(bookPct))+"</td><td></td></tr>"
-      : "";
-  }
-
-  // Delegated, because #propsRows is rewritten on every render.
-  // The firm's buildings (Three Spaces, slice 3), read ONLY to decide which
-  // portfolio rows may offer "Add to firm": null until the read has answered
-  // (no door is offered on a list we could not read), then the wire rows.
-  // Same route the Workspace reads; index.html holds the twin of this door
-  // for the firm shelf, and the on-board check below mirrors its heuristic —
-  // the verified key first, then the exact address — both read off the
-  // SERVER's own rows, so neither page grows an address key of its own.
-  var firmBldgs=null;
-  function loadFirmBuildings(){
-    firmBldgs=null;
-    if(!myFirm){ if(propsOk)renderProps(); return; }
-    fetch("/api/org/buildings?id="+encodeURIComponent(myFirm.id),{credentials:"same-origin"})
-      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
-      .then(function(o){
-        firmBldgs=(o.s===200&&Array.isArray(o.j.buildings))?o.j.buildings:null;
-        if(propsOk)renderProps();
-      })
-      .catch(function(){ firmBldgs=null; });
-  }
-  function onFirmBoard(item){
-    if(!firmBldgs)return true;
-    var vk=String(item.verified_key||""),addr=String(item.address||"").trim().toLowerCase();
-    return firmBldgs.some(function(b){
-      return (vk&&b.verifiedKey&&b.verifiedKey===vk)||
-        (addr&&String(b.address||"").trim().toLowerCase()===addr);
-    });
-  }
-  function firmDoorCell(item){
-    if(!myFirm||!firmBldgs||onFirmBoard(item))return "";
-    return '<button class="lnk" type="button" data-firm-bldg="'+escA(item.id)+
-      '" title="'+escA("Add this building to "+myFirm.name+"’s list")+'">Add to firm</button> ';
-  }
-  function propsMsg(text,bad){
-    var el=$("propsMsg");
-    el.textContent=text||"";
-    el.className="msg"+(bad?" bad":" ok")+(text?"":" hide");
-  }
-  $("propsRows").addEventListener("click",function(e){
-    var b=e.target.closest("button[data-firm-bldg]");if(!b||!myFirm)return;
-    var id=b.getAttribute("data-firm-bldg");
-    var item=propItems.filter(function(p){return String(p.id)===String(id)})[0];
-    if(!item)return;
-    b.disabled=true;b.textContent="Adding\u2026";
-    // The identity travels as the verified key the portfolio already holds
-    // (035), so nobody retypes an address and the same building typed two
-    // ways still meets one row on the board.
-    fetch("/api/org/buildings?id="+encodeURIComponent(myFirm.id),{method:"POST",credentials:"same-origin",
-      headers:{"content-type":"application/json"},
-      body:JSON.stringify({address:item.address,propertyType:item.property_type,verifiedKey:item.verified_key||""})})
-      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
-      .then(function(o){
-        if(o.s!==200){b.disabled=false;b.textContent="Add to firm";propsMsg(o.j.error||"That didn't go through.",true);return;}
-        propsMsg(o.j.existed
-          ? item.address+" was already on "+myFirm.name+"'s list."
-          : "Added "+item.address+" to "+myFirm.name+"'s buildings.");
-        loadFirmBuildings();
-      })
-      .catch(function(){b.disabled=false;b.textContent="Add to firm";propsMsg("That didn't reach the server. Nothing was changed.",true);});
-  });
-
-  // Add a property by address (2026-09-02). No search runs; the row lands
-  // without a valuation and says so. Types are PROP_TYPES, the watchlist
-  // form's own list, so the two selects cannot disagree.
-  var propAddOpen=false;
-  $("pType").innerHTML='<option value="">Property type</option>'+PROP_TYPES.map(function(t){return '<option value="'+escA(t)+'">'+esc(t)+"</option>"}).join("");
-  function setPropAddOpen(open){
-    propAddOpen=!!open;
-    $("propAddForm").className="form"+(propAddOpen?"":" hide");
-    var t=$("propAddToggle");
-    if(t.setAttribute)t.setAttribute("aria-expanded",propAddOpen?"true":"false");
-    t.textContent=propAddOpen?"Close":"+ Add a property";
-    if(propAddOpen&&$("pAddr").focus)$("pAddr").focus();
-  }
-  // Stated at load, not only in the markup: the closed state is then a fact
-  // the one writer made, wherever the page is drawn.
-  setPropAddOpen(addAsk==="own"&&addTab==="props");
-  $("propAddToggle").addEventListener("click",function(){ setPropAddOpen(!propAddOpen); });
-  $("pCancel").addEventListener("click",function(){ setPropAddOpen(false); });
-  $("pAdd").addEventListener("click",function(){
-    var address=String($("pAddr").value||"").trim(),type=$("pType").value;
-    if(!address){propsMsg("Type the property\u2019s street address.",true);return;}
-    if(!type){propsMsg("Which kind of property is it?",true);return;}
-    $("pAdd").disabled=true;
-    fetch("/api/portfolio",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},
-      body:JSON.stringify({address:address,propertyType:type})})
-      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
-      .then(function(o){
-        $("pAdd").disabled=false;
-        if(o.s!==200){propsMsg((o.j&&o.j.error)||"That did not go through.",true);return;}
-        $("pAddr").value="";
-        propsMsg(o.j&&o.j.existed?address+" is already in your portfolio.":"Added "+address+". Use Refresh on its row when you want a value.",false);
-        setPropAddOpen(false);
-        loadProps();
-      })
-      .catch(function(){$("pAdd").disabled=false;propsMsg("That did not reach the server. Nothing was changed.",true);});
-  });
-
-  $("propsRows").addEventListener("click",function(e){
-    var b=e.target.closest("button[data-prop-del]");if(!b)return;
-    var id=b.getAttribute("data-prop-del"),addr=b.getAttribute("data-prop-addr")||"this property";
-    if(!confirm("Remove "+addr+" from your portfolio?"))return;
-    fetch("/api/portfolio?id="+encodeURIComponent(id),
-      {method:"DELETE",credentials:"same-origin"})
-      .then(function(){loadProps()})
-      .catch(function(){loadProps()});
-  });
 
   // Your contributions: one read of /api/broker/me (signed-in, never Pro).
   // A failed read hides the deck -- "we could not ask" is not "you have not
@@ -6538,7 +6108,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     $("contribSec").className=show?"":"hide";
     // The tab exists only for a member who has contributed, like the deck.
     $("tab-contrib").classList.toggle("vt-off",!show);
-    if(!show){ if(curTab==="contrib")setTab(homeTab); return; }
+    if(!show){ if(curTab==="contrib")setTab(homeTab); syncLockedTabs(); return; }
     var st=d.stats||{};
     tabCount("tabContribN",st.total||"",false);
     $("contribStats").textContent=(st.approved||0)+" approved of "+(st.total||0)+
@@ -6559,6 +6129,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     $("contribProfileLink").className=pub?"":"hide";
     if(d.profile&&d.profile.url) $("contribProfileLink").href=d.profile.url;
     $("contribErr").className="msg bad hide";
+    syncLockedTabs();
   }
   $("contribPublic").addEventListener("change",function(e){
     var box=e.target,want=box.checked,err=$("contribErr");

@@ -27,6 +27,51 @@ paths:
 ---
 # The broker vault and lead inbox
 
+> **No vault page since 2026-10-13 (the owner: "the vault doesn't even
+> exist any more"; "Integrate it to the report section and change the
+> report section and name it Comps").** Read this before the rest of the
+> file, which it amends: below, "the vault" and `/vault` mean the two pages
+> it became unless a note is dated later, and every `/api/vault*` route is
+> unchanged. `vault-page.js` draws both from one document and one script,
+> `renderVaultBody(boot, { page })`, with the boot payload server.js builds
+> exactly as before (`vaultReadPayload`):
+> - **`/comps`** ("Your comps"; the rail's **Comps** row, which is current
+>   here and on `/bulk`): the comp book (tab "Comps") and Contributions. The
+>   Comps section's own bar sits over it and over `/bulk`
+>   (`compsSectionTabs` in server.js: Your comps | Run a comp report;
+>   app-shell.md).
+> - **`/pipeline`** ("Pipeline"; the rail's Pipeline row): the Pipeline tab
+>   alone. The leads and the BOV log are read only here, and the gut
+>   check's benchmarks only on `/comps` (the script's `PAGE`). A development
+>   firm's member is sent to `/desk#properties` (`applyShop`, never from a
+>   prerendered page).
+> - **Each page shows only its own tabs** (`TABS`); the other page's panel
+>   stays in the markup, hidden, because the script binds its controls as it
+>   loads. A tab writes its page's own address (`/comps`,
+>   `/comps#contributions`, `/pipeline`), and `markRail` is gone: the path
+>   decides the row.
+> - **The Properties tab is gone,** with its add form, its "Add to firm"
+>   door and its portfolio read (`loadProps`, `loadFirmBuildings`). What a
+>   member owns is worked on Home for everyone (home-sites.js;
+>   workspace.md). `vaultReadPayload` no longer carries `portfolioValues`,
+>   which only that tab read (Home reads `/api/config`'s copy).
+> - **Under the Pro lock** each page hides its own decks (`VAULT_DECKS`) and
+>   shows its own invitation ("Your comps are part of Pro." / "Your pipeline
+>   is part of Pro."). `/comps` then opens on Contributions when the member
+>   has any, and otherwise hides the tab bar over an empty tab
+>   (`syncLockedTabs`, run again when the contributions read lands).
+> - **`/vault` answers with a 302 to `/comps`,** its query kept. A saved
+>   link's `#fragment` never reaches the server, but the browser carries it
+>   through the redirect, and `/comps` sends the old tab names on (`MOVED`,
+>   never from a prerendered page): `#properties`, `#propsSec`, `#sites`,
+>   `#sitesSec` to `/desk#properties`; `#pipeline`, `#pipeSec` to
+>   `/pipeline`; `#board`, `#watchlist`, `#mktSec` to `/markets#board`.
+>   `?add=own` is read nowhere.
+> - The new-BOV-request email links `/pipeline`, the renewal notice
+>   `/comps`. Pinned in `test/vault-page.test.js`,
+>   `test/vault-personal-decks.test.js`, `test/vault-shell.test.js` and
+>   `test/routes.test.js`.
+
 > **Customer-facing names (owner's call, 2026-10-04): "Home" and "Data".**
 > The firm space (`/desk`, and `/` for a member) is labelled **Home**, and the
 > personal space (`/vault`) is labelled **Data**; the rail reads Home · Data ·

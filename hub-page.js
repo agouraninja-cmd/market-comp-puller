@@ -984,7 +984,7 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
     if (!vaultBook.length){
       var none = document.createElement("p");
       none.className = "who";
-      none.textContent = "Your Data has no comps yet. Add them on the Data page first.";
+      none.textContent = "You have no comps yet. Add them on your Comps page first.";
       box.appendChild(none);
       return;
     }

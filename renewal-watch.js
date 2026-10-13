@@ -218,7 +218,7 @@ function buildRenewalNotice({ leases, now, deskUrl, unsubscribeUrl }) {
     "",
     due.map((l) => leaseBlock(l, now)).join("\n\n"),
     "",
-    "Your leases are in your Data: " + deskUrl,
+    "Your leases are with your comps: " + deskUrl,
     "",
     // Two separate facts, and the reader needs both: WHY this arrived (they
     // put the dates in themselves, which is not obvious months later) and HOW

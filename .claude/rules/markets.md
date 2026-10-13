@@ -62,8 +62,9 @@ paths:
     news, so the digest does not mail what was read here.
   - Every door points here: a market page's "Open The Board →", the
     digest's link and its unsubscribe page all go to `/markets#board`, and
-    /vault sends `#board`, `#watchlist` and `#mktSec` here
-    (`BOARD_HASHES`). The `.mboard` band and its CSS are gone.
+    a saved /vault link naming `#board`, `#watchlist` or `#mktSec` comes
+    here (/vault redirects to /comps, whose `MOVED` sends it on; it was
+    /vault's `BOARD_HASHES` until 2026-10-13). The `.mboard` band and its CSS are gone.
 
 - **The Board's door (2026-10-07, Draft C; replaced by The Board itself on
   2026-10-09, above).** The rail lost its Data row, so

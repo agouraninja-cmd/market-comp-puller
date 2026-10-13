@@ -1,8 +1,11 @@
 // ---------------------------------------------------------------------------
-// A development firm's deals and holdings, worked on Home's Properties tab
-// (2026-10-09, the owner's call: "Development firms only and integrate it
-// into the property section of the home page"). It was the Sites tab on
-// /vault (2026-10-05, the owner's pick "M2" of the Sites drafts,
+// A member's own properties, worked on Home's Properties tab: the deals a
+// development firm's member is buying (2026-10-09, the owner's call:
+// "Development firms only and integrate it into the property section of the
+// home page") and, for every member since 2026-10-13, the properties they
+// own (the vault's Properties tab held those until the owner's "remove the
+// vault"). Deals were the Sites tab on /vault (2026-10-05, the owner's pick
+// "M2" of the Sites drafts,
 // https://claude.ai/artifact/BMeJY9d3vegjmDxcAPtxzR) and, for every Pro
 // member, The Board's deal wall (2026-10-07); both were removed the day this
 // moved, and The Board went back to being the markets a member follows.
@@ -19,8 +22,9 @@
 //     change and history, when it was
 //     checked, the market since, the firm door, how they bought it, Open
 //     report, Refresh value, Watch it on The Board instead, Remove;
-// plus the add form ("I'm buying it", "I own it") that Home's "+ Add a
-// property" opens for a development firm's member. A building watched
+// plus the add form that Home's "+ Add a property" opens: "I'm buying it"
+// or "I own it" for a development firm's member, "I own it" alone for
+// everyone else (ctx.deals). A building watched
 // rather than owned (a Tracking status) is The Board's since 2026-10-09
 // (board.js, on the Markets page), so it is neither listed nor added here.
 //
@@ -34,8 +38,12 @@
 //     address, note and seller is text a person typed.
 //   * A refused write SAYS so ("Nothing has been lost") in the pane it came
 //     from, and changes nothing on screen until the server has agreed.
-//   * Only for a development firm's member: index.html mounts it only then
-//     (HOMEMAP.dealsOn). Nobody else has deals.
+//   * Deals are a development firm's member's only (HOMEMAP.dealsOn, which
+//     index.html reads as ctx.deals): nobody else is offered one, and Home
+//     never lists anyone else's. Every member's owned properties open here.
+//   * Never offers a write the server would refuse: "Watch it on The Board
+//     instead" is a Tracking status (/api/sites, Pro), so it shows only when
+//     data().canSites says the member may write one.
 //
 // Dual-exported like home-map.js: Node gets the pure helpers
 // (test/home-sites.test.js), the browser gets the global HOMESITES, whose
@@ -148,7 +156,8 @@
 
   // ---- the browser half -----------------------------------------------------
   // ctx (index.html's Home):
-  //   data()        -> { sites, portfolio, buildings, firm, showValues, today }
+  //   data()        -> { sites, portfolio, buildings, firm, showValues, canSites, today }
+  //   deals()       -> whether this member works deals here (HOMEMAP.dealsOn)
   //   reload()      -> re-read the deals and holdings, then draw Home again
   //   open(key)     -> which row's pane Home keeps open (null: none)
   //   keyOf(addr)   -> the row key Home gives an address (HOMEMAP.addressKey)
@@ -411,8 +420,9 @@
         h("a", { class: "hm-btn", href, title: "Open this report (no new search, no cost)" }, "Open report"),
         h("a", { class: "hm-btn", href: href + "&refresh=1", title: "Runs a new live search for this property" }, "Refresh value"),
         // A building watched rather than owned is The Board's (board.js, on
-        // the Markets page, since 2026-10-09): this moves it there.
-        btn("Watch it on The Board instead", "", (e) => { e.currentTarget.disabled = true; setHeld(key, it, status, "tracking"); }),
+        // the Markets page, since 2026-10-09): this moves it there. A
+        // Tracking status is Pro (/api/sites), so it is offered only then.
+        d.canSites ? btn("Watch it on The Board instead", "", (e) => { e.currentTarget.disabled = true; setHeld(key, it, status, "tracking"); }) : null,
         h("button", { type: "button", class: "hs-rm", onclick: () => removeHeld(key, it, status) }, "Remove")));
       out.push(h("p", { class: "hs-mute hs-note" }, "Opening a report costs nothing. Refresh runs a new search."));
       return out;
@@ -484,8 +494,11 @@
     }
 
     // ---- the add form ----
+    // Whether the add form offers a deal at all: a development firm's member
+    // chooses "I'm buying it" or "I own it"; anyone else adds what they own.
+    const deals = () => (typeof ctx.deals === "function" ? !!ctx.deals() : false);
     function addForm(kind) {
-      state.addKind = kind === "own" ? "own" : "buy";
+      state.addKind = kind === "own" || !deals() ? "own" : "buy";
       state.addMsg = "";
       liveAdd = h("div", { class: "hs-add" });
       drawAdd();
@@ -510,7 +523,7 @@
     function drawAdd() {
       if (!liveAdd) return;
       const k = state.addKind;
-      const seg = h("div", { class: "hs-kind hs-wide", role: "radiogroup", "aria-label": "What is it" },
+      const seg = !deals() ? null : h("div", { class: "hs-kind hs-wide", role: "radiogroup", "aria-label": "What is it" },
         [["buy", "I'm buying it"], ["own", "I own it"]].map(([v, t]) =>
           h("button", { type: "button", role: "radio", "aria-checked": k === v ? "true" : "false", class: k === v ? "on" : null,
             onclick: () => {

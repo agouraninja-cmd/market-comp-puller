@@ -161,12 +161,14 @@ test("the account circle sits in the same box on both rails", () => {
   }
 });
 
-test("neither rail has a Data or a Reports row, and both have Comp report under Tools", () => {
+test("neither rail has a Data or a Reports row, and both have Comps under Tools", () => {
   // Draft C (2026-10-07): a member's deals, holdings and comps are tabs of
   // Home. 2026-10-08 (owner's call): Reports only opened a tab of Home, so it
-  // left the rail for Messages, and Comp report came back under Tools. The
-  // rail is Home, Messages | Markets, Comp report, Permits on BOTH sides. A
-  // row on one side only is the seam this file exists to catch.
+  // left the rail for Messages, and Comp report came back under Tools. On
+  // 2026-10-13 Comp report became Comps, a section (the member's comps at
+  // /comps and the comp report tool at /bulk). The rail is Home, Messages,
+  // Pipeline | Markets, Comps, Permits on BOTH sides. A row on one side only
+  // is the seam this file exists to catch.
   assert.ok(!INDEX_HTML.includes('id="menuVaultLink"'), "the app's rail grew a Data row back");
   assert.ok(!SERVER_JS.includes('id="navVault"'), "the shared rail grew a Data row back");
   assert.ok(!/>Your vault<|>Vault</.test(INDEX_HTML),
@@ -174,9 +176,11 @@ test("neither rail has a Data or a Reports row, and both have Comp report under 
   assert.ok(!INDEX_HTML.includes('id="navReportsLink"') && !INDEX_HTML.includes('href="/desk#reports"'),
     "the app's rail grew its Reports row back");
   assert.ok(!SERVER_JS.includes('<a href="/desk#reports">'), "the shared rail grew its Reports row back");
-  // Both say Comp report for /bulk, with the same icon, under the Tools label.
-  assert.match(INDEX_HTML, /<span class="navsec">Tools<\/span>[\s\S]{0,4000}?id="navBulkLink" href="\/bulk"[\s\S]{0,600}?<span class="nvl">Comp report</);
-  assert.match(SERVER_JS, /<a href="\/bulk"\$\{current === "\/bulk" \? ' aria-current="page"' : ""\}>\$\{NAV_ICONS\.reports\}<span class="nvl">Comp report<\/span><\/a>/);
+  // Both say Comps for /comps, with the same id and icon, under the Tools
+  // label; the shared rail marks it on /bulk too, the section's other tab.
+  assert.match(INDEX_HTML, /<span class="navsec">Tools<\/span>[\s\S]{0,4000}?id="navComps" href="\/comps"[\s\S]{0,600}?<span class="nvl">Comps</);
+  assert.match(SERVER_JS, /<a id="navComps" href="\/comps"\$\{current === "\/comps" \|\| current === "\/bulk" \? ' aria-current="page"' : ""\}>\$\{NAV_ICONS\.reports\}<span class="nvl">Comps<\/span><\/a>/);
+  assert.ok(!/<span class="nvl">Comp report</.test(INDEX_HTML + SERVER_JS), "a rail still says Comp report");
 });
 
 test("the theme switch is one control, in the settings panel, on neither rail", () => {

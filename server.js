@@ -16651,10 +16651,11 @@ function routeWarm(req, res, redispatch) {
   const path = req.url.split("?")[0];
   // A write — or one of the GETs that write (HOLD_PATHS) — from this cookie
   // makes everything built for it stale. /api/warm and /api/visit change no
-  // data and are exempt, or asking for a page would throw the last one away.
+  // data and are exempt, or asking for a page would throw the last one away;
+  // so are READ_POSTS (Home's photo lookup), the browser guard's same list.
   const writes = req.method === "GET" || req.method === "HEAD"
     ? INSTANTNAV.HOLD_PATHS.includes(path)
-    : path !== INSTANTNAV.WARM_PATH && path !== "/api/visit";
+    : path !== INSTANTNAV.WARM_PATH && path !== "/api/visit" && !INSTANTNAV.READ_POSTS.includes(path);
   if (writes) {
     WARM_CACHE.dropPrefix(warmCookieKey(req));
     return false;
@@ -25927,7 +25928,11 @@ const server = http.createServer((req, res) =>
             }
           }
         };
-        await Promise.all([worker(), worker(), worker(), worker()]);
+        // Every place at once (2026-10-13; it was four at a time): the page
+        // waits for the whole answer, so a full batch of 25 took seven of
+        // Google's round trips while its cards sat empty. The metadata call
+        // is free and Google allows far more than 25 at once.
+        await Promise.all(places.map(() => worker()));
         return sendJson(res, 200, { photos });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });

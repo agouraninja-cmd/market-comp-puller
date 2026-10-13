@@ -98,6 +98,16 @@ const HOLD_PATHS = [
   "/api/messages/thread", "/api/hub",
   "/api/broker/me", "/api/broker/leads", "/api/broker/bovs", "/api/bulk",
 ];
+// The reverse: POSTs that only READ, which the guard would otherwise treat as
+// writes. They are POSTs only so an address travels in the body and never in
+// a URL (CLAUDE.md rule 7). Home's photo lookup is the one (2026-10-13):
+// held, a prerendered Home could not ask about its buildings until it was
+// shown, so every card sat empty after the click that was meant to be
+// instant; and counted as a write, each lookup threw away every tab built
+// ahead (here and in the server's routeWarm), so scrolling Home's list undid
+// the instant switching. A path here is not held, drops nothing, and must
+// never write; test/instant-nav.test.js pins each to its route.
+const READ_POSTS = ["/api/building-photo"];
 const DWELL_MS = 65;
 const MAX_LIVE = 2;
 const TTL_MS = 30 * 1000;
@@ -333,7 +343,8 @@ function visitTag(token) {
 //
 // In order:
 //   - the fetch wrapper, on EVERY page (rule 1, and the write half of rule 3):
-//     a non-GET made while unseen waits for `prerenderingchange`, and so
+//     a non-GET made while unseen waits for `prerenderingchange` (except
+//     cfg.reads, the POSTs that only read), and so
 //     does a GET to one of cfg.hold (the GETs that write); any of those
 //     that LANDS drops every tab this page is holding — a held GET too,
 //     because it wrote, and because the server's routeWarm drops its copies
@@ -406,12 +417,11 @@ function instantNavBoot(cfg, win) {
       var m = String((init && init.method) || (input && typeof input === "object" && input.method) || "GET").toUpperCase();
       var write = m !== "GET" && m !== "HEAD";
       var held = false;
-      if (!write) {
-        try {
-          var path = new w.URL(typeof input === "string" ? input : (input && input.url) || String(input), w.location.href).pathname;
-          held = cfg.hold.indexOf(path) >= 0;
-        } catch (e) {}
-      }
+      try {
+        var path = new w.URL(typeof input === "string" ? input : (input && input.url) || String(input), w.location.href).pathname;
+        if (write) write = (cfg.reads || []).indexOf(path) < 0;
+        else held = cfg.hold.indexOf(path) >= 0;
+      } catch (e) {}
       if (!write && !held) return F.apply(w, args);
       var p = d.prerendering
         ? new Promise(function (resolve) { d.addEventListener("prerenderingchange", function () { resolve(); }, { once: true }); })
@@ -524,6 +534,7 @@ function bootScript(opts) {
   const cfg = {
     tabs: TAB_PATHS,
     hold: HOLD_PATHS,
+    reads: READ_POSTS,
     skip: (opts && opts.skip) || [],
     warm: (opts && opts.warm) || [],
     dwellMs: DWELL_MS,
@@ -539,7 +550,7 @@ function bootScript(opts) {
 }
 
 module.exports = {
-  TAB_PATHS, HOLD_PATHS, DWELL_MS, MAX_LIVE, TTL_MS, WARM_TTL_MS, WARM_DELAY_MS,
+  TAB_PATHS, HOLD_PATHS, READ_POSTS, DWELL_MS, MAX_LIVE, TTL_MS, WARM_TTL_MS, WARM_DELAY_MS,
   WARM_PATH, WARM_MAX_BYTES, DESKTOP_PRELOAD_HEADER,
   desktopPreloadBoot, desktopPreloadScript, injectFirstInHead,
   isSpeculative, createVisitDeferrals, createWarmCache, visitTag, instantNavBoot, bootScript,

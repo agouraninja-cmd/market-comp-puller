@@ -26,7 +26,7 @@ const indexSrc = fs.readFileSync(path.join(root, "index.html"), "utf8");
 
 const ORIGIN = "https://compninja.co";
 const CFG = {
-  tabs: NAV.TAB_PATHS, hold: NAV.HOLD_PATHS, skip: [], warm: [], warmPath: NAV.WARM_PATH, dwellMs: NAV.DWELL_MS, maxLive: NAV.MAX_LIVE,
+  tabs: NAV.TAB_PATHS, hold: NAV.HOLD_PATHS, reads: NAV.READ_POSTS, skip: [], warm: [], warmPath: NAV.WARM_PATH, dwellMs: NAV.DWELL_MS, maxLive: NAV.MAX_LIVE,
   ttlMs: NAV.TTL_MS, warmTtlMs: NAV.WARM_TTL_MS, warmDelayMs: NAV.WARM_DELAY_MS,
 };
 
@@ -367,6 +367,51 @@ test("every held read is a real GET route that writes, in server.js", () => {
     for (const re of res) assert.match(serverSrc, re, `${p}: ${re} no longer found`);
   }
   assert.ok(NAV.bootScript({}).includes(JSON.stringify(NAV.HOLD_PATHS)), "the served script carries the list");
+});
+
+test("while prerendering, a POST that only reads goes out, and landing drops nothing", async () => {
+  // Home's photo lookup (2026-10-13) is a POST only so an address stays out
+  // of the URL. Held, a prerendered Home showed empty photo boxes after the
+  // very click that was meant to be instant; counted as a write, every
+  // lookup threw away the tabs built ahead.
+  const s = stage({ prerendering: true });
+  const asked = s.win.fetch("/api/building-photo", { method: "POST", body: "{\"places\":[]}" });
+  const posted = s.win.fetch("/api/watchlist/seen", { method: "POST" });
+  await flush();
+  assert.deepEqual(s.calls.map((c) => c.input), ["/api/building-photo"], "the lookup runs unseen; the write still waits");
+  await asked;
+  s.document.prerendering = false;
+  s.fire("prerenderingchange");
+  await posted;
+  assert.equal(s.calls.length, 2);
+
+  const shown = stage();
+  shown.fire("pointerdown", mouse(link("/desk")));
+  await shown.win.fetch(ORIGIN + "/api/building-photo", { method: "POST", body: "{}" });
+  await flush();
+  assert.equal(shown.urls().length, 1, "a lookup that lands drops nothing");
+  await shown.win.fetch("/api/logout", { method: "POST" });
+  await flush();
+  assert.deepEqual(shown.urls(), [], "a real write still does");
+});
+
+test("every POST that only reads is a real POST route that writes nothing, in server.js", () => {
+  // The reverse of the list above: a path here is never held and drops
+  // nothing, so its handler must not write. Each is pinned to its route, and
+  // the handler (to the next route) must make no database call and log nothing.
+  const routes = {
+    "/api/building-photo": /if \(req\.method === "POST" && req\.url\.split\("\?"\)\[0\] === "\/api\/building-photo"\) \{/,
+  };
+  assert.deepEqual(Object.keys(routes).sort(), [...NAV.READ_POSTS].sort());
+  for (const [p, re] of Object.entries(routes)) {
+    const at = serverSrc.search(re);
+    assert.ok(at > 0, `${p}: route no longer found`);
+    const next = serverSrc.indexOf("\n  if (req.method ===", at + 10);
+    const handler = serverSrc.slice(at, next > at ? next : undefined);
+    assert.doesNotMatch(handler, /sbRequest\(|logEvent\(|writeFile|appendFile/, `${p} must only read`);
+  }
+  assert.ok(NAV.bootScript({}).includes(JSON.stringify(NAV.READ_POSTS)), "the served script carries the list");
+  assert.match(serverSrc, /!INSTANTNAV\.READ_POSTS\.includes\(path\)/, "routeWarm keeps its built pages on one too");
 });
 
 test("a speculative /vault render does not run the vault's backfills", () => {
@@ -825,6 +870,10 @@ test("Safari and Firefox: a tab built ahead is served once, to the same cookie, 
     await fetch(srv.base + "/api/visit", { method: "POST", headers: { cookie: C }, body: "x" });
     await warm("/desk");
     assert.equal((await get("/desk")).hit, true, "/api/warm and /api/visit change no data");
+    // Home's photo lookup is a POST that only reads (READ_POSTS).
+    await warm("/desk");
+    await fetch(srv.base + "/api/building-photo", { method: "POST", headers: { cookie: C }, body: "{\"places\":[]}" });
+    assert.equal((await get("/desk")).hit, true, "a photo lookup keeps the page built ahead");
     await warm("/desk");
     await fetch(srv.base + "/api/anything", { method: "POST", headers: { cookie: C }, body: "{}" });
     assert.equal((await get("/desk")).hit, false, "a page built before a save is never shown after it");

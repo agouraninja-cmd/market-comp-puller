@@ -14247,6 +14247,7 @@ async function renderMyDesk() {
   // still have its photo: the address is enough.
   const hmPhotosOn = () => streetviewEnabled && typeof BLDGPHOTO !== "undefined";
   function hmPhoto(box, ll, address, w, h, z) {
+    box._bpAddr = address;
     box._bp = null;
     box._bpDone = false;
     box._bpAsked = false;
@@ -14265,8 +14266,11 @@ async function renderMyDesk() {
   }
   function hmStreetOn(box, address, src, known) {
     box._bpDone = true;
+    // A list's thumbnails load as they come near; a map card is on screen
+    // the moment it opens, so its photo goes first.
+    const card = box.classList.contains("hm-pop-ph");
     BLDGPHOTO.overlay(box, address, src, {
-      known, lazy: true, onFail: box._bpAerial,
+      known, lazy: !card, urgent: card, onFail: box._bpAerial,
       // The map card is wide enough to say whose picture it is; a 48px
       // thumbnail is not, and says nothing for its aerial either.
       onLoad: () => {
@@ -14314,7 +14318,7 @@ async function renderMyDesk() {
       if (!bp || box._bpDone) return;
       const src = BLDGPHOTO.photo(bp.address);
       if (src === undefined && (!box._bpAsked || BLDGPHOTO.pending(bp.address))) return;
-      if (src) hmStreetOn(box, bp.address, src, false);
+      if (src) hmStreetOn(box, bp.address, src, BLDGPHOTO.known(bp.address));
       else { box._bpDone = true; box._bpAerial(); }
     });
   }
@@ -14337,6 +14341,75 @@ async function renderMyDesk() {
     const hit = geoCache[String(address || "").trim().toLowerCase()];
     return hit && isFinite(hit.lat) ? { lat: hit.lat, lng: hit.lng } : null;
   };
+
+  // A card that opens with its building in it (2026-10-13, the owner: "is
+  // there a way to have the pictures load immediately on the map instead of
+  // it being gray first?"). Every building on Home is asked about the moment
+  // its pins are drawn, not only the cards that scroll into view, so a card
+  // already knows its photo when it opens; the pins in view go first, and the
+  // answer is Google's free metadata. Then the photos of the pins in view are
+  // fetched ahead (BLDGPHOTO.preload), and so is the photo of a pin under
+  // the pointer, so a click opens the building rather than an empty box. A
+  // warm is a billed Google image the browser keeps for 30 days, so at most
+  // HM_WARM_MAX a page, never one a list thumbnail on screen is already
+  // loading; under the image route's 60-a-window guard with room for those
+  // thumbnails. Permits are public record and can number in the hundreds:
+  // only a hovered or opened one is asked about.
+  const HM_WARM_MAX = 24;
+  let hmWarmLeft = HM_WARM_MAX;
+  let hmWarmTimer = 0;
+  // What Home could show a photo of, the drawn pins in view first.
+  function hmPhotoPlaces() {
+    const bounds = hmMap ? hmMap.getBounds() : null;
+    const out = [];
+    const add = (address, ll, drawn) => {
+      if (!address || !BLDGPHOTO.eligible(address)) return;
+      out.push({ address, ll, inView: !!(drawn && ll && bounds && bounds.contains([ll.lat, ll.lng])) });
+    };
+    hmItems.forEach((x) => { if (x.num != null) add(x.address, hmLLForAddress(x.address), hmTab === "today"); });
+    const props = hmLayerOn("properties");
+    hmRows.forEach((r) => add(r.address, hmLL(r), props));
+    return out.sort((a, b) => Number(b.inView) - Number(a.inView));
+  }
+  function hmPhotoAskAll() {
+    if (!hmPhotosOn()) return;
+    const places = hmPhotoPlaces();
+    if (!places.length) return;
+    const landed = () => { hmPhotoUpgrade(); hmPhotoWarm(); };
+    BLDGPHOTO.lookup(places, landed).then(landed, landed);
+  }
+  // What the list's thumbnails on screen are showing: those load themselves.
+  function hmPhotoOnList() {
+    const out = new Set();
+    const pane = document.querySelector("#homeMap .hm-pane:not(.hidden)");
+    if (!pane) return out;
+    const view = (pane.closest(".hm-body") || document.documentElement).getBoundingClientRect();
+    const bottom = Math.min(view.bottom, window.innerHeight);
+    pane.querySelectorAll(".hm-th").forEach((box) => {
+      const r = box.getBoundingClientRect();
+      if (box._bpAddr && r.bottom > view.top && r.top < bottom) out.add(BLDGPHOTO.keyFor(box._bpAddr));
+    });
+    return out;
+  }
+  function hmPhotoWarm() {
+    if (!hmPhotosOn() || hmWarmLeft <= 0) return;
+    const onList = hmPhotoOnList();
+    for (const p of hmPhotoPlaces()) {
+      if (!p.inView || hmWarmLeft <= 0) break;
+      if (onList.has(BLDGPHOTO.keyFor(p.address))) continue;
+      if (BLDGPHOTO.preload(p.address)) hmWarmLeft--;
+    }
+  }
+  function hmPhotoWarmSoon() {
+    clearTimeout(hmWarmTimer);
+    hmWarmTimer = setTimeout(hmPhotoWarm, 300);
+  }
+  function hmPhotoHover(address, ll) {
+    if (!hmPhotosOn() || !address || !BLDGPHOTO.eligible(address)) return;
+    if (BLDGPHOTO.photo(address) !== undefined) { BLDGPHOTO.preload(address); return; }
+    const warm = () => BLDGPHOTO.preload(address);
+    BLDGPHOTO.lookup([{ address, ll }]).then(warm, warm);
+  }
 
   async function readDeskSites() {
     deskSites = null;
@@ -14413,6 +14486,7 @@ async function renderMyDesk() {
     hmRows = []; hmItems = []; hmSel = ""; hmFitFor = ""; hmOpenedOnce = false; hmNothing = false;
     hmGeoTried.clear();
     hmPhotoForget();
+    hmWarmLeft = HM_WARM_MAX;
     if (hmPinLayer) hmPinLayer.clearLayers();
     if (hmMap) hmMap.closePopup();
     ["hmTodayRows", "hmPropRows", "hmTeam"].forEach((id) => { const e = document.getElementById(id); if (e) e.textContent = ""; });
@@ -14925,6 +14999,7 @@ async function renderMyDesk() {
     // The layer note answers "is anything of this layer where I am looking",
     // so it is asked again whenever the view moves.
     hmMap.on("moveend", hmSyncLayerNote);
+    hmMap.on("moveend", hmPhotoWarmSoon);
     if (typeof ResizeObserver === "function") new ResizeObserver(() => hmMap && hmMap.invalidateSize()).observe(el);
     // The basemap follows the theme toggle, like the report's map.
     new MutationObserver(() => {
@@ -14944,10 +15019,13 @@ async function renderMyDesk() {
     ]);
   }
 
-  function hmPin(ll, html, size, onClick, z) {
+  // `photoOf`: the address whose card this pin opens, warmed on hover
+  // (hmPhotoHover) so the card has its building when the click lands.
+  function hmPin(ll, html, size, onClick, z, photoOf) {
     const m = L.marker([ll.lat, ll.lng], { icon: L.divIcon({ className: "hm-mk", html, iconSize: size, iconAnchor: [size[0] / 2, size[1] / 2] }),
       zIndexOffset: z || 0, keyboard: false });
     if (onClick) m.on("click", onClick);
+    if (photoOf) m.on("mouseover", () => hmPhotoHover(photoOf, ll));
     return m.addTo(hmPinLayer);
   }
   const hmPipClass = (r) => (r.group === "buying" ? "buy" : r.group === "owned" ? "own" : "firm");
@@ -15031,9 +15109,9 @@ async function renderMyDesk() {
       put(ll, true);
       const on = r.key === hmSel;
       if (hmTab === "properties" && r.value) {
-        hmPin(ll, `<span class="hm-tag ${hmPipClass(r)}${on ? " on" : ""}">${HOMEMAP.money(r.value)}</span>`, [76, 28], () => hmSelect(r.key, { from: "map" }), on ? 900 : 100);
+        hmPin(ll, `<span class="hm-tag ${hmPipClass(r)}${on ? " on" : ""}">${HOMEMAP.money(r.value)}</span>`, [76, 28], () => hmSelect(r.key, { from: "map" }), on ? 900 : 100, r.address);
       } else {
-        hmPin(ll, `<span class="hm-pip ${hmPipClass(r)}${on ? " on" : ""}"></span>`, [14, 14], () => hmSelect(r.key, { from: "map" }), on ? 900 : 0);
+        hmPin(ll, `<span class="hm-pip ${hmPipClass(r)}${on ? " on" : ""}"></span>`, [14, 14], () => hmSelect(r.key, { from: "map" }), on ? 900 : 0, r.address);
       }
     });
     // Today's numbered pins are its rows, so they are drawn whatever the
@@ -15046,7 +15124,7 @@ async function renderMyDesk() {
         put(ll, true);
         const key = HOMEMAP.addressKey(x.address);
         hmPin(ll, `<span class="hm-npin${x.n <= HOMEMAP.WEEK_DAYS ? " hot" : ""}${key === hmSel ? " on" : ""}">${x.num}</span>`, [30, 30],
-          () => hmSelect(key, { item: x, from: "map" }), 1000 - x.num);
+          () => hmSelect(key, { item: x, from: "map" }), 1000 - x.num, (hmRowByKey(key) || x).address);
       });
     }
     hmLayerPts = { permits: [] };
@@ -15055,7 +15133,8 @@ async function renderMyDesk() {
         put(p, false);
         hmLayerPts.permits.push([p.lat, p.lng]);
         const key = "permit:" + p.id;
-        hmPin(p, `<span class="hm-pip permit${key === hmSel ? " on" : ""}"></span>`, [14, 14], () => hmSelect(key, { permit: p, from: "map" }), key === hmSel ? 900 : -10);
+        hmPin(p, `<span class="hm-pip permit${key === hmSel ? " on" : ""}"></span>`, [14, 14], () => hmSelect(key, { permit: p, from: "map" }), key === hmSel ? 900 : -10,
+          [p.street, p.city].filter(Boolean).join(", "));
       });
     }
     const empty = !pts.length;
@@ -15080,6 +15159,7 @@ async function renderMyDesk() {
       if (hmPopup && hmPopup.isOpen()) { const p = hmPopup; hmAfterMove(() => { if (p.isOpen()) p.update(); }); }
     }
     hmSyncLayerNote();
+    hmPhotoAskAll();
     // The first view of Today opens the card of what is due first, the way
     // the draft showed it; only once, and only beside a list (not on a phone).
     // After the fit has settled: a card's pan clear of the switch, asked for

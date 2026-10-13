@@ -77,6 +77,32 @@ the building". Read this before the rest of the file, which it extends.
   a map card the moment it opens; a property with no coordinates yet can
   still have its photo, since the address is enough. (The Board's deal
   cards asked the same way until the deal wall left on 2026-10-09.)
+- **Asked early, fetched ahead (2026-10-13, the owner: "is there a way to
+  have the pictures load immediately on the map instead of it being gray
+  first?").** The gray was three waits in a row: the lookup only began when
+  a card was seen, the route judged four addresses at a time (a batch of 25
+  was seven of Google's round trips), and then the image itself. Now Home
+  asks about every building the moment its pins are drawn; the route judges
+  a whole batch at once; and `BLDGPHOTO.preload` fetches the photos of the
+  pins in view (and the hovered pin) before any card shows them, so the card
+  finds the image in the browser and lays it in with no fade (`overlay`
+  checks `img.complete`). Workspace.md has Home's half and the numbers.
+  Three rules hold it: **a warm is a billed image**, so never for one already
+  loaded, never twice a page, never from a page nobody has opened (a
+  prerendered Home waits for `prerenderingchange`), and at most 24 a page;
+  **a failed warm remembers nothing** (a 429 says nothing about the
+  building; the card judges when it shows); and **`lookup` marks every place
+  in flight from the start**, not batch by batch, because Home redraws as
+  its reads land and a second ask during batch one used to send batch two
+  to Google twice (55 metadata calls for 40 buildings, caught by the
+  measurement). The lookup POST is also a **`READ_POSTS`** path in
+  instant-nav.js (app-shell.md): a prerendered Home may ask before it is
+  shown, and a lookup no longer throws away the tabs built ahead.
+- **Found while doing that, not fixed:** an image error is remembered as "no
+  photo" for 7 days (`noteFailed`), and the browser cannot tell a 404 from
+  the route's 429 (`streetview:` 60 a window per IP). A member who scrolls
+  past ~60 never-seen buildings in five minutes gets aerials on the rest for
+  a week. Raising that ceiling is a spend call, so it is left for the owner.
 - **The report map's pin popups are unchanged**: they still aim by the snapped
   OSM footprint (`judgePano`, below), because the report's own geocoder label
   check makes that route sound there.

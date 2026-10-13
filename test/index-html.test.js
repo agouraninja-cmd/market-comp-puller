@@ -2986,7 +2986,7 @@ test("the public-profile switch has one home, Contributions on /comps, and the t
   // Two tips, one per sign-in state. The signed-in one links Contributions
   // on /comps, where the switch is (it linked /vault until 2026-10-13).
   assert.match(html, /id="compTipIn" class="hidden [^"]*"[^>]*>[^<]*<a href="\/comps#contributions"/, "the signed-in tip does not link Contributions");
-  assert.match(html, /id="compTipOut"[^>]*>[^<]*your Data/, "the signed-out tip does not name Data");
+  assert.match(html, /id="compTipOut"[^>]*>[^<]*your comps/, "the signed-out tip does not say where submissions show up");
   const at = html.indexOf('document.getElementById("compSuccess").classList.remove("hidden");');
   const before = html.slice(at - 400, at);
   assert.match(before, /compTipIn"\)\.classList\.toggle\("hidden", !currentUser\)/, "the success handler does not pick the tip by sign-in state");

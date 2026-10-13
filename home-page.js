@@ -356,12 +356,12 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     ["I. Upload", "Import the comps you already have",
      "Upload a CSV or Excel file from your own system, a PDF comp sheet, or a screenshot. Match " +
      "the columns once and your deals are imported."],
-    ["II. Store", "Stored in your private Data",
+    ["II. Store", "Kept private to you",
      "Your closed deals appear in your own reports, labeled as yours, alongside public records " +
      "and verified submissions. No one else can see them."],
     ["III. Share", "Ask a colleague directly",
      "Message anyone at the firm from inside a report: request a comp on an address, answer with " +
-     "one from your Data, and the thread stays attached to that property. Sharing is per comp, " +
+     "one of your comps, and the thread stays attached to that property. Sharing is per comp, " +
      "off by default, and withdrawable."],
   ].map(([n, h, p]) =>
     `<div><div class="hmstep">${esc(n)}</div><div class="hmsteph">${esc(h)}</div>` +
@@ -369,7 +369,7 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
 
   const vaultRows = VAULT_ROWS.map(([addr, closed, sf, psf, badged]) =>
     `<div class="hmvr"><span class="who">${esc(addr)}` +
-    (badged ? ` <span class="badge bv">Your Data</span>` : "") + `</span>` +
+    (badged ? ` <span class="badge bv">Your comp</span>` : "") + `</span>` +
     `<span>${esc(closed)}</span><span>${esc(sf)}</span><span>${esc(psf)}</span>` +
     `<span class="shown">$/SF, size, date only</span></div>`).join("");
 
@@ -476,19 +476,19 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<div class="hmeye">For firms &middot; Pro version</div>` +
     `<h2 class="hmh">Your firm’s closed deals, included in every report.</h2>` +
     `<p>Brokerage and development firms rely on the deals they have closed. Upload them once ` +
-    `and they are stored in your private Data, which appears in your reports and is shared only when ` +
+    `and they are stored privately as your comps, which appear in your reports and are shared only when ` +
     `you choose.</p>` +
     `</div>` +
     `<div class="hmmesh hmsteps">${steps}</div>` +
     `<div class="hmvault">` +
-    `<div class="hmcap"><span>Your Data &middot; 214 deals &middot; visible only to you</span>` +
+    `<div class="hmcap"><span>Your comps &middot; 214 deals &middot; visible only to you</span>` +
     `<span class="ill">Illustrative</span></div>` +
     `<div class="hmscroll"><div class="hmvtable">` +
     `<div class="hmvr head"><span>Address</span><span>Closed</span><span>SF</span><span>$/SF</span>` +
     `<span>On a shared report</span></div>` +
     vaultRows +
     `</div></div>` +
-    `<div class="hmvfoot">No address, no total price, no notes leave your Data, and your ` +
+    `<div class="hmvfoot">No address, no total price, no notes go out with a shared report, and your ` +
     `client’s value range still matches yours to the dollar.</div>` +
     `</div>` +
     `<div class="hmmore"><h2>Additional features offered</h2>` +
@@ -504,7 +504,7 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     // --- Closing band, its own section, NOT inside For firms ---------------
     `<section class="hmclose">` +
     `<h2>Start with a free account.</h2>` +
-    `<p>Full report on any property, no card. Pro adds Data for your own comps, a ten-year lookback, exports ` +
+    `<p>Full report on any property, no card. Pro adds a private place for your own comps, a ten-year lookback, exports ` +
     `and your branding.</p>` +
     `<div class="hmbtns">` +
     (signedIn

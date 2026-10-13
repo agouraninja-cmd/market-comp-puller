@@ -205,7 +205,7 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     per: "per month &middot; cancel any time" +
       (trialDays > 0 ? ` &middot; ${trialDays}-day free trial` : ""),
     mid: true,
-    sum: "Everything free, plus the ten-year window, unlimited exports, private Data for your own comps, comp reports on a whole list of addresses, the Address Explorer, and your own branding on every report.",
+    sum: "Everything free, plus the ten-year window, unlimited exports, a private place for your own comps, comp reports on a whole list of addresses, the Address Explorer, and your own branding on every report.",
     cta: billingLive
       ? `<p style="margin:0"><a class="btn sm" href="${buyHref}">${buyLabel} &rarr;</a></p>`
       : "",
@@ -265,14 +265,14 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     worthRow("01", reportsWord
       ? `You price more than ${reportsWord} building${freeReports === 1 ? "" : "s"} a month.`
       : "You price more than one building a month.") +
-    worthRow("02", "You keep a comp book. Data puts it in every report.") +
+    worthRow("02", "You keep a comp book. Pro puts it in every report.") +
     worthRow("03", "You send work out under your own branding.") +
     `</ul></div>` +
     `<div class="prc-wc prc-wc-free">` +
     `<h2>Stay on free if</h2>` +
     `<ul class="prc-wl">` +
     worthRow("01", "You price a building now and then. Free values any address in full.") +
-    worthRow("02", "You&rsquo;ve no comp book to upload yet. Data is most of what you&rsquo;d pay for.") +
+    worthRow("02", "You&rsquo;ve no comp book to upload yet. Keeping one is most of what you&rsquo;d pay for.") +
     worthRow("03", "You don&rsquo;t send reports out to clients.") +
     `</ul></div>` +
     `</div>`;
@@ -285,7 +285,7 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     // eyebrow that repeats its own headline is furniture.
     `<h1>What CompNinja Costs.</h1>` +
     `<p class="sub">Every plan runs the same valuation on the same data, and every report cites its ` +
-    `sources either way. Paying buys a longer window, more exports, private Data for your own comps, and seats ` +
+    `sources either way. Paying buys a longer window, more exports, a private place for your own comps, and seats ` +
     `for the people you work with.</p>` +
 
     `<div class="tiles prc-tiles">${freeTile}${proTile}${firmTile}</div>` +
@@ -294,7 +294,7 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     worth +
 
     `<p class="disc">Prices in US dollars, billed through Stripe; cancel any time from your own ` +
-    `billing portal. A lapsed plan never deletes your Data or your firm's shelf &mdash; access ` +
+    `billing portal. A lapsed plan never deletes your comps or your firm's shelf &mdash; access ` +
     `returns when the plan does. Every valuation is an automated estimate, not an appraisal, and ` +
     `CompNinja is not a licensed brokerage: when you need a licensed opinion of value, we connect ` +
     `you with local brokers.</p>`

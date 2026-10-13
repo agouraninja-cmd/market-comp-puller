@@ -149,7 +149,7 @@ function rentText(annualPsf, basis, exact) {
 function leaseBlock(lease, now) {
   const deadline = deadlineOf(lease);
   const days = daysUntil(deadline.date, now);
-  const addr = trimmed(lease.address) || "A lease in your Data";
+  const addr = trimmed(lease.address) || "One of your lease comps";
   const lines = [addr];
 
   const what = deadline.kind === "notice"
@@ -224,7 +224,7 @@ function buildRenewalNotice({ leases, now, deskUrl, unsubscribeUrl }) {
     // put the dates in themselves, which is not obvious months later) and HOW
     // to stop it. Never one sentence — "you subscribed, unsubscribe here"
     // reads as a marketing footer and gets skimmed past.
-    "You are receiving this because you recorded these dates on leases in your CompNinja Data.",
+    "You are receiving this because you recorded these dates on lease comps in CompNinja.",
     "Turn these emails off: " + unsubscribeUrl,
     "",
     // The same disclaimer the digest carries, for the same reason: a rent

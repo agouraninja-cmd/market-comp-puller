@@ -561,7 +561,7 @@ function renderMessagesBody(boot) {
       <div id="msgLinks"></div>
     </div>
     <div class="msg-panel msg-hide" id="msgPicker">
-      <h3>Send a comp from your Data</h3>
+      <h3>Send one of your comps</h3>
       <input id="msgPickFilter" type="text" placeholder="Filter by address, market or type" autocomplete="off">
       <div id="msgPickList"></div>
       <div class="msg-panelfoot">
@@ -831,7 +831,7 @@ ${REPORT_INBOX_SRC}
     else if (s.rent_psf_yr) facts.push('<span>' + esc(money(s.rent_psf_yr)) + '/SF/yr</span>');
     var who = extName(item.addedBy);
     var foot = who === "You"
-      ? '<span class="msg-hint">You sent this from your Data</span>'
+      ? '<span class="msg-hint">You sent this from your comps</span>'
       : '<span class="msg-hint">Added by ' + esc(who) + '</span>';
     return '<div class="msg-comp">' +
       '<h4>' + esc(s.address || "Untitled comp") + '</h4>' +
@@ -1619,12 +1619,12 @@ ${REPORT_INBOX_SRC}
     // only be a no-op. It says so instead, and drops the "Sent by" line, which
     // would otherwise be your own name repeated back at you.
     var foot = c.mine
-      ? '<span class="msg-hint">You sent this from your Data</span>'
+      ? '<span class="msg-hint">You sent this from your comps</span>'
       : (c.savedByMe
-          ? '<span class="msg-saved">In your Data</span>'
+          ? '<span class="msg-saved">Saved to your comps</span>'
           : (state.canAttach
-              ? '<button class="msg-btn sm" type="button" data-save="' + esc(c.id) + '">Save to my Data</button>'
-              : '<span class="msg-hint">Saving comps to Data is part of Pro.</span>'));
+              ? '<button class="msg-btn sm" type="button" data-save="' + esc(c.id) + '">Save to my comps</button>'
+              : '<span class="msg-hint">Saving comps is part of Pro.</span>'));
     return '<div class="msg-comp">' +
       '<h4>' + esc(c.address || "Untitled comp") + '</h4>' +
       '<div class="facts">' +
@@ -1813,7 +1813,7 @@ ${REPORT_INBOX_SRC}
   function renderComps(rows){
     if (!rows.length) {
       $("msgStream").innerHTML = '<div class="msg-empty"><h3>No comps in this conversation</h3>' +
-        '<p>Comps sent here from anyone’s Data are kept for good.</p></div>';
+        '<p>Comps anyone sends here are kept for good.</p></div>';
       return;
     }
     var html = '<div class="msg-note">' + rows.length + (rows.length === 1 ? " comp has" : " comps have") +
@@ -1883,7 +1883,7 @@ ${REPORT_INBOX_SRC}
     if (d.compId && state.canAttach) {
       var seed = function(){
         var comp = (state.vault || []).filter(function(c){ return String(c.id) === d.compId; })[0];
-        if (!comp) { $("msgSendMsg").textContent = "That comp isn't in your Data, so it wasn't attached."; return; }
+        if (!comp) { $("msgSendMsg").textContent = "That comp isn't among your comps, so it wasn't attached."; return; }
         if (!state.attach.some(function(c){ return c.id === String(comp.id); })) {
           state.attach.push({ id: String(comp.id), address: comp.address });
         }
@@ -2190,10 +2190,10 @@ ${REPORT_INBOX_SRC}
   function openPicker(){
     $("msgPicker").className = "msg-panel";
     if (state.vault) { renderPicker(); return; }
-    $("msgPickList").innerHTML = '<div class="msg-hint">Loading your Data…</div>';
+    $("msgPickList").innerHTML = '<div class="msg-hint">Loading your comps…</div>';
     api("GET", "/api/vault?limit=1000").then(function(o){
       if (o.s !== 200) {
-        $("msgPickList").innerHTML = '<div class="msg-hint">' + esc((o.j && o.j.error) || "Couldn't read your Data.") + '</div>';
+        $("msgPickList").innerHTML = '<div class="msg-hint">' + esc((o.j && o.j.error) || "Couldn't read your comps.") + '</div>';
         return;
       }
       state.vault = (o.j && o.j.comps) || [];
@@ -2862,7 +2862,7 @@ ${REPORT_INBOX_SRC}
     btn.disabled = true;
     btn.textContent = "Saving…";
     api("POST", "/api/messages/comp/save", { compId: btn.getAttribute("data-save") }).then(function(o){
-      if (o.s !== 200) { btn.disabled = false; btn.textContent = "Save to my Data"; note((o.j && o.j.error) || "Couldn't save that comp.", true); return; }
+      if (o.s !== 200) { btn.disabled = false; btn.textContent = "Save to my comps"; note((o.j && o.j.error) || "Couldn't save that comp.", true); return; }
       // The vault list this page may already be holding is now stale.
       state.vault = null;
       if (state.tab === "comps") setTab("comps");

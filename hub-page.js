@@ -169,7 +169,7 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
            three actions on it before this one. Owner only (canAdd), so a
            client never sees it. -->
       <div id="vaultWrap" class="hide">
-        <button class="link" id="vaultToggle" aria-expanded="false" aria-controls="vaultBox">Add comps from your Data</button>
+        <button class="link" id="vaultToggle" aria-expanded="false" aria-controls="vaultBox">Add from your comps</button>
         <div id="vaultBox" class="hide addbox">
           <p class="who">Sending a comp shows this client its full address and price.
             It stays in this hub and never enters CompNinja's public records.</p>
@@ -1031,7 +1031,7 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
     show("vaultBox", open);
     el("vaultToggle").setAttribute("aria-expanded", open ? "true" : "false");
     if (!open || vaultBook) return;
-    vaultMsg("Loading your Data…");
+    vaultMsg("Loading your comps…");
     fetch("/api/vault?limit=1000", { credentials: "same-origin" })
       .then(function(r){ return r.json().then(function(j){ return { s: r.status, j: j }; }); })
       .then(function(o){
@@ -1039,14 +1039,14 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
           // Says which failure it was rather than showing an empty book: an
           // empty list and a refused read look identical, and one of them is
           // a broker's whole book of business appearing to be gone.
-          vaultMsg((o.j && o.j.error) || "Your Data could not be loaded.", true);
+          vaultMsg((o.j && o.j.error) || "Your comps could not be loaded.", true);
           return;
         }
         vaultMsg("");
         vaultBook = (o.j.comps || []);
         renderVaultList();
       })
-      .catch(function(){ vaultMsg("Your Data could not be reached.", true); });
+      .catch(function(){ vaultMsg("Your comps could not be reached.", true); });
   });
 
   el("vaultSend").addEventListener("click", function(){

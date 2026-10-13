@@ -53,6 +53,32 @@ paths:
 > - Pinned in `test/desk-map-layers.test.js` ("Home holds no comps") and
 >   `test/home-map.test.js`.
 
+> **The firm header (2026-10-13, owner's pick of Draft C; drafts page
+> https://claude.ai/artifact/1q1DwN7QqSSARgtkQQRJYT).** A firm member's Home
+> opens with a row naming the firm: its mark, its name, its shop
+> ("Development shop" / "Broker shop", `shopCopy(kind).label`, the words Firm
+> settings uses) and how many people have joined (`firmMembers` without the
+> pending ones; omitted until the roster lands). The date line under it no
+> longer carries the firm's name (`#hmFirm` is gone). `drawFirmHead(firm)` is
+> the one writer; `resetHomeMap` clears it; no firm, no row.
+> - **The mark is the firm's logo, else its initials.** The logo is the one in
+>   the firm's report branding (`org_branding.logo_url`, 041), so a firm has
+>   ONE logo and saving it anywhere shows it to everyone. `GET /api/org` now
+>   carries `logoAt` per firm (the row's `updated_at`, "" for none) from
+>   `orgLogoRevs`, which filters `logo_url=neq.` and selects two columns so
+>   the logos themselves never ride a read that ships inside every Home page
+>   (DESK_BOOT); fail-open. The image is `GET /api/org/logo?id=&v=<logoAt>`
+>   (any active member, `memberOf`; bytes sniffed by `AVATAR.sniffImage`;
+>   `immutable` when versioned), and a load error falls back to initials.
+> - **Owner/admin adds or changes it from the header.** For `canManage` the
+>   mark is a button (a red + while there is no logo) that opens a file
+>   picker; `saveFirmLogo` runs `readLogoFile` (the branding card's resizer),
+>   READS `GET /api/org/branding` and PUTs it back with the new logo, because
+>   that PUT replaces the profile whole and must not blank the name or phone
+>   an admin typed in Firm settings. The gear opens Firm settings
+>   (`openFirmModal`). Saving or removing the firm's branding in that panel
+>   updates `logoAt` and redraws the header, so the two doors agree.
+
 > **Street photos on Home's cards (2026-10-09, owner's ask).** A property's
 > thumbnail and the map card show the building from the street, looked up BY
 > ADDRESS through our own POST `/api/building-photo` (Google behind it, the

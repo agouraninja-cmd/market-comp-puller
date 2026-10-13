@@ -154,3 +154,21 @@ test("a trackpad swipe pans Home's map and a pinch zooms it, ahead of Leaflet's 
   // The empty map's card lets a gesture through to the map under it.
   assert.match(html, /\.hm-map-empty \{[^}]*pointer-events: none;/, "a pinch over the empty map's card zooms the whole page");
 });
+
+test("a pin opens its card on hover where there is a real pointer, and touch keeps tap-to-open (2026-10-13)", () => {
+  const pin = fnOf("function hmPin(");
+  assert.match(pin, /if \(onClick\) m\.on\("click", onClick\);/, "a click (and a tap) must still open the card");
+  assert.match(pin, /if \(onClick && hmCanHover\(\)\) \{/, "hover opens only where the pointer can hover");
+  assert.match(html, /const hmCanHover = \(\) => window\.matchMedia\("\(hover: hover\) and \(pointer: fine\)"\)\.matches;/);
+  assert.match(pin, /t = setTimeout\(onClick, HM_HOVER_MS\);/, "a pointer crossing the map must not open every pin it passes");
+  assert.match(pin, /if \(hmMoving \|\| performance\.now\(\) - hmMovedAt < HM_HOVER_SETTLE_MS\) return;/,
+    "a card's own pan must not open the pin that lands under a resting pointer");
+  assert.match(pin, /m\.on\("mouseout remove", \(\) => clearTimeout\(t\)\);/);
+  const ensure = fnOf("function hmEnsureMap()");
+  assert.ok(ensure.includes('hmMap.on("movestart zoomstart", () => { hmMoving = true; });'));
+  assert.ok(ensure.includes('hmMap.on("moveend zoomend", () => { hmMoving = false; hmMovedAt = performance.now(); });'));
+  // hmSelect redraws the pins, so a new pin appears under the pointer; it must
+  // not rebuild (and re-pan) the card that is already up.
+  const sel = fnOf("function hmSelect(key");
+  assert.match(sel, /^function hmSelect\(key, \{ item, permit, from \} = \{\}\) \{\n    \/\/[^\n]*\n    \/\/[^\n]*\n    if \(from === "map" && key === hmSel && hmPopup && hmPopup\.isOpen\(\)\) return;/);
+});

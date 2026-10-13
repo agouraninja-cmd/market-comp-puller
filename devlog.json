@@ -4783,5 +4783,11 @@
     "type": "fix",
     "title": "Long property lists keep their building photos",
     "details": "Scrolling quickly through a long list of properties could use up the photo allowance for the next few minutes, and the buildings past that point showed a satellite view for a week instead of their street photo. The allowance is now twice as large (120 photos every five minutes), so it takes a much longer list to run into it."
+  },
+  {
+    "date": "2026-10-13",
+    "type": "improvement",
+    "title": "Home map cards open on hover",
+    "details": "On Home, pointing at a property, numbered or permit pin on the map now opens its card without a click. The card stays open so you can move onto its links; another pin, the map or the × closes it. On phones and tablets a tap still opens it."
   }
 ]

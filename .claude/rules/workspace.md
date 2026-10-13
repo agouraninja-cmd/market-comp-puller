@@ -262,6 +262,15 @@ paths:
 >   hides (the legal line is at the foot of the list). At 900px and up under
 >   `nav-rail` the list and map share the viewport; below, or in the bar
 >   shell, the map is a 300px strip above the list and the page scrolls.
+> - **A pin opens its card on hover (2026-10-13, the owner's ask)** where the
+>   pointer can hover (`hmCanHover`); touch keeps tap-to-open. `hmPin` waits
+>   `HM_HOVER_MS` (120ms) so a pointer crossing the map opens nothing, and
+>   ignores hover while the map moves and for `HM_HOVER_SETTLE_MS` after
+>   (`hmMoving`/`hmMovedAt`), so a card's own pan never opens the pin that
+>   lands under a resting pointer. The card stays open (it has links); another
+>   pin, the map or its × close it. `hmSelect` returns early for a map open of
+>   the card already up, because it redraws the pins and a new one appears
+>   under the pointer. Pinned in `test/desk-map-layers.test.js`.
 > - **Two fingers on a trackpad (2026-10-10, the owner's ask):** a swipe
 >   pans Home's map and a pinch zooms it; a mouse wheel's notch still zooms
 >   through Leaflet's own `scrollWheelZoom`. `HOMEMAP.wheelGesture` tells

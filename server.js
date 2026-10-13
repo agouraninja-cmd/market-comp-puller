@@ -15289,6 +15289,37 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
 // then the Board), and the mount. No member data in it: the same bytes for
 // every member, and /board.js reads the rest. id="board" is the address
 // every door uses (/markets#board: the market pages, the digest email).
+// Building a market that has no card yet, from the filter box (2026-10-13).
+// The Market Explorer's build step lost its only door when the comp form left
+// Home and /run-report left the nav; market-build.js is that door, on the page
+// that lists the markets. Members only, like The Board: the anonymous page is
+// cached publicly. explore-query.js is the Explorer's own parser, so both doors
+// read one query the same way. Same bytes for every member.
+const MARKET_BUILD =
+  `<script src="/explore-query.js"></script><script src="/market-build.js"></script>` +
+  `<script>(function(){var M=window.MARKETBUILD,Q=window.EXPLOREQ;if(!M||!Q)return;` +
+  `M.mount({input:document.getElementById("mq"),root:document.getElementById("mbuild"),count:document.getElementById("mcount"),parse:Q.parseExploreQuery});})();</script>`;
+// No backticks in here: this is a template literal.
+const MARKET_BUILD_CSS = `
+.mbuild{max-width:520px;margin-top:4px;padding:14px 16px;border:1px solid var(--edge);border-radius:8px;background:var(--card);box-shadow:var(--lift)}
+.mbuild[hidden]{display:none}
+.mbuild p{margin:0}
+.mbuild .mb-line{color:var(--ink);font-size:14.5px}
+.mbuild .mb-line strong{font-weight:600}
+.mbuild .mb-sub{color:var(--ink-2);font-size:13.5px;margin-top:4px}
+.mbuild .mb-note{color:var(--ink-mute);font-size:12.5px;margin-top:8px}
+.mbuild .mb-note:empty{display:none}
+.mbuild .mb-err{color:var(--red);font-size:14px}
+.mbuild .mb-types{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.mbuild .btn{margin-top:10px}
+.mbuild .mb-types .btn{margin-top:0;background:var(--card);color:var(--ink);border:1px solid var(--edge);font-weight:500}
+.mbuild .mb-types .btn:hover{background:var(--card);color:var(--ink);border-color:var(--ink-3)}
+.mbuild .btn:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+.mbuild .mb-track{height:3px;margin-top:12px;border-radius:2px;background:var(--wash);overflow:hidden}
+.mbuild .mb-bar{height:100%;background:var(--red-fill);transition:width .7s}
+@media (prefers-reduced-motion:reduce){.mbuild .mb-bar{transition:none}}
+`;
+
 const BOARD_SECTION =
   `<section id="board" class="bd" aria-label="The Board"><p class="bd-mute">Loading The Board&hellip;</p></section>` +
   `<script src="/buying-read.js"></script><script src="/board.js"></script>` +
@@ -15613,13 +15644,17 @@ function renderMarketDirectoryHTML(signedIn) {
   // account, and works on the one market-finding surface an anonymous visitor
   // can still reach. Progressive enhancement — with JS off the full grid is
   // rendered and simply is not filtered.
-  const filterUi = slugs.length > 8
+  // A member always gets the box, whatever the count: it is also where they
+  // build a market that has no card yet (MARKET_BUILD below).
+  const showFilter = slugs.length > 8 || signedIn;
+  const filterUi = showFilter
     ? `<div class="mfilter">` +
       `<label class="vh" for="mq">Filter markets</label>` +
       `<input id="mq" type="search" autocomplete="off" placeholder="Filter by city, state, or type, e.g. warehouse Texas"/>` +
-      `</div><div class="mcount" id="mcount" role="status" aria-live="polite"></div>`
+      `</div><div class="mcount" id="mcount" role="status" aria-live="polite"></div>` +
+      (signedIn ? `<div class="mbuild" id="mbuild" aria-live="polite" hidden></div>` : "")
     : "";
-  const filterJs = slugs.length > 8
+  const filterJs = showFilter
     ? `<script>(function(){` +
       `var q=document.getElementById('mq'),c=document.getElementById('mcount');` +
       `if(!q||!c)return;` +
@@ -15662,6 +15697,9 @@ function renderMarketDirectoryHTML(signedIn) {
     mapUi +
     (cards ? `<div class="grid">${cards}</div>` : `<p>Market snapshots are being prepared. <a href="/">Run a live valuation &rarr;</a></p>`) +
     filterJs +
+    // After filterJs on purpose: its input listener runs first, so the build
+    // offer reads the card count the filter just left on screen.
+    (signedIn && showFilter ? MARKET_BUILD : "") +
     `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
   return marketShell({
@@ -15672,7 +15710,7 @@ function renderMarketDirectoryHTML(signedIn) {
     // their colour. Only when there IS a card — an unconfigured install ships
     // no unused stylesheet.
     head: (mapUi ? LEAFLET_HEAD : "") + (RANK_ENTRY ? `<style>${RANKPAGE.RANK_CSS}</style>` : "") +
-      (signedIn ? `<style>${BOARD_CSS}</style>` : ""),
+      (signedIn ? `<style>${BOARD_CSS}${MARKET_BUILD_CSS}</style>` : ""),
     current: "/markets",
   });
 }
@@ -31001,6 +31039,7 @@ const server = http.createServer((req, res) =>
     // The Board on the Markets page (the global BOARD), mounted by that
     // page's inline script for a signed-in member. Same maxAge: 0 rule.
     "/board.js": { file: "board.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    "/market-build.js": { file: "market-build.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },

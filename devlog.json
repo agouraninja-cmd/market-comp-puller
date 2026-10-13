@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-10-13",
+    "type": "feature",
+    "title": "Build a market page right from the Markets page",
+    "details": "Type a city into the Markets page search, like “industrial Twin Falls ID”. If there is no page for it yet, a Build it button appears under the box, and about a minute later you land on the new market page. Type just a city and state and it offers the property types that don’t have a page yet. Signed-in members only; each build counts as one search."
+  },
+  {
     "date": "2026-10-10",
     "type": "improvement",
     "title": "Home's map pans with a two-finger swipe and zooms with a pinch",

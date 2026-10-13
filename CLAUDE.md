@@ -158,7 +158,8 @@ session that never reads it.
     switching — the likely next tab on every page view: prerendered in
     Chrome, rendered ahead on the server for Safari/Firefox, built in a
     hidden view by the desktop app's shell). A page writes
-    only through `fetch`, which holds a non-GET until the page is shown;
+    only through `fetch`, which holds a non-GET until the page is shown
+    (except `READ_POSTS`, POSTs that only read, which must never write);
     never a `sendBeacon` or `XMLHttpRequest`, which slip past it. A page
     visit event goes through `logPageVisit`, never a bare `logEvent`, and a
     page's SERVER render that writes checks `INSTANTNAV.isSpeculative`.

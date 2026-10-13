@@ -4759,5 +4759,17 @@
     "type": "feature",
     "title": "Home opens with your firm: its logo, name and type",
     "details": "Firm members now see a header at the top of Home with the firm’s logo (or its initials), its name, whether it is a broker shop or a development shop, and how many people have joined. An owner or admin taps the mark to add or change the logo, and everyone in the firm sees it. It is the same logo the firm’s report branding uses, and the gear beside it opens Firm settings."
+  },
+  {
+    "date": "2026-10-13",
+    "type": "improvement",
+    "title": "Building pictures on Home’s map are there the moment you click a pin",
+    "details": "Clicking a pin on Home’s map used to show an empty gray box for about a second before the building’s picture appeared, longer for buildings you hadn’t scrolled to in the list. Home now looks up every building’s picture as soon as the map draws and loads the pictures of the pins you can see ahead of time, plus any pin you point at, so the card opens with the building already in it. The first pictures in your property list also show up sooner, and switching to Home from another tab no longer waits until you arrive to start loading them."
+  },
+  {
+    "date": "2026-10-13",
+    "type": "fix",
+    "title": "Long property lists keep their building photos",
+    "details": "Scrolling quickly through a long list of properties could use up the photo allowance for the next few minutes, and the buildings past that point showed a satellite view for a week instead of their street photo. The allowance is now twice as large (120 photos every five minutes), so it takes a much longer list to run into it."
   }
 ]

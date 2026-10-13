@@ -140,7 +140,9 @@
   // BATCH at a time, one call at a time. A refusal of the whole call (signed
   // out, a rate limit, no key on this server) and a "0" (Google could not be
   // asked) are NOT remembered: the next visit asks again. Resolves when every
-  // asked address is settled.
+  // asked address is settled; `onBatch`, when given, runs as each batch
+  // lands, so a page asking about many places at once can lay in the first
+  // answers without waiting for the last.
   const inFlight = new Set();
   // Is a lookup asking about this address right now? A card the page drew
   // again mid-lookup asks too, finds it in flight, and must keep waiting
@@ -148,7 +150,7 @@
   function pending(address) {
     return inFlight.has(keyFor(address));
   }
-  async function lookup(items) {
+  async function lookup(items, onBatch) {
     const todo = [];
     const seen = new Set();
     for (const it of items || []) {
@@ -158,39 +160,82 @@
       seen.add(k);
       todo.push({ k, address: it.address, ll: finiteLL(it.ll) ? it.ll : null });
     }
-    for (let i = 0; i < todo.length; i += BATCH) {
-      const part = todo.slice(i, i + BATCH);
-      part.forEach((p) => inFlight.add(p.k));
-      try {
-        const r = await fetch("/api/building-photo", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ places: part.map((p) => (p.ll
-            ? { address: p.address, lat: p.ll.lat, lng: p.ll.lng } : { address: p.address })) }),
-        });
-        if (!r.ok) return;
-        const j = await r.json();
-        const photos = Array.isArray(j && j.photos) ? j.photos : [];
-        part.forEach((p, n) => {
-          const a = photos[n];
-          if (isPhotoSrc(a)) put(p.k, { s: a });
-          else if (a === null) put(p.k, { at: Date.now() });
-        });
-      } catch (_) {
-        return;
-      } finally {
-        part.forEach((p) => inFlight.delete(p.k));
+    // Every place is in flight from the start, not only its own batch: a page
+    // that asks again while the first batch is out (Home redraws as its reads
+    // land) must find the later ones taken, or it asks Google about them too.
+    todo.forEach((p) => inFlight.add(p.k));
+    try {
+      for (let i = 0; i < todo.length; i += BATCH) {
+        if (!await ask(todo.slice(i, i + BATCH))) return;
+        if (typeof onBatch === "function") onBatch();
       }
+    } finally {
+      todo.forEach((p) => inFlight.delete(p.k));
+    }
+  }
+  // One batch; false when the route could not answer it.
+  async function ask(part) {
+    try {
+      const r = await fetch("/api/building-photo", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ places: part.map((p) => (p.ll
+          ? { address: p.address, lat: p.ll.lat, lng: p.ll.lng } : { address: p.address })) }),
+      });
+      if (!r.ok) return false;
+      const j = await r.json();
+      const photos = Array.isArray(j && j.photos) ? j.photos : [];
+      part.forEach((p, n) => {
+        const a = photos[n];
+        if (isPhotoSrc(a)) put(p.k, { s: a });
+        else if (a === null) put(p.k, { at: Date.now() });
+      });
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      part.forEach((p) => inFlight.delete(p.k));
     }
   }
 
+  // Fetches a photo the page already has the answer for before any card
+  // shows it (2026-10-13, the owner: "is there a way to have the pictures
+  // load immediately on the map instead of it being gray first?"). Home warms
+  // the pins in view and the one under the pointer, so a card opens with the
+  // building already in the browser. Each warm is a billed Google image, so:
+  // never for one already loaded, never twice in a page's life, and never
+  // from a page nobody has opened (a prerendered Home waits until it is
+  // shown). A warm that fails remembers nothing: a rate limit says nothing
+  // about the building, and the card itself judges when it shows. Answers
+  // whether it started one.
+  const warmed = new Map();
+  function preload(address) {
+    const src = photo(address);
+    const k = keyFor(address);
+    if (!isPhotoSrc(src) || known(address) || warmed.has(k)) return false;
+    if (!root || typeof root.Image !== "function") return false;
+    const d = root.document;
+    if (d && d.prerendering) {
+      d.addEventListener("prerenderingchange", () => preload(address), { once: true });
+      return false;
+    }
+    const img = new root.Image();
+    warmed.set(k, img);   // held, so the image is not collected mid-load
+    img.decoding = "async";
+    img.onload = () => { noteLoaded(address, src); warmed.set(k, true); };
+    img.onerror = () => { warmed.set(k, false); };
+    img.src = src;
+    return true;
+  }
+
   // Lays the photo into `box` (an empty element, never one holding the
-  // aerial). It fades in on its first load and is simply there once `known`.
-  // On an error it removes itself, the address is remembered as having no
-  // photo for a while, and `onFail` draws the aerial. `onLoad` lets a page
-  // swap its credit line. `before`: a child that must stay painted above
-  // the photo.
+  // aerial). It fades in on its first load and is simply there once `known`,
+  // or once the browser already holds it (a warm that landed). On an error it
+  // removes itself, the address is remembered as having no photo for a while,
+  // and `onFail` draws the aerial. `onLoad` lets a page swap its credit line.
+  // `before`: a child that must stay painted above the photo. `lazy` for a
+  // list's thumbnails; `urgent` for a card on screen the moment it opens.
   function overlay(box, address, src, opts) {
     const o = opts || {};
     if (!box || !isPhotoSrc(src) || !root || !root.document) return null;
@@ -198,6 +243,7 @@
     img.alt = o.alt || "";
     img.decoding = "async";
     if (o.lazy) img.loading = "lazy";
+    if (o.urgent) img.fetchPriority = "high";
     img.setAttribute("data-street", "1");
     img.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%;max-width:none;object-fit:cover;"
       + (o.known ? "" : "opacity:0;transition:opacity .25s ease");
@@ -212,6 +258,9 @@
       if (typeof o.onFail === "function") o.onFail();
     });
     img.src = src;
+    // Already in the browser (warmed, or another card's copy): no fade from
+    // the empty box, it is simply there.
+    if (img.complete && img.naturalWidth) { img.style.transition = "none"; img.style.opacity = "1"; }
     if (o.before && o.before.parentNode === box) box.insertBefore(img, o.before);
     else box.appendChild(img);
     return img;
@@ -220,6 +269,6 @@
   return {
     BATCH, MISS_MS, STORE_KEY,
     houseNumberOf, unitDesignatorOf, eligible, keyFor, isPhotoSrc,
-    photo, known, noteLoaded, noteFailed, pending, lookup, overlay,
+    photo, known, noteLoaded, noteFailed, pending, lookup, preload, overlay,
   };
 });

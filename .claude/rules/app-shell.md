@@ -335,7 +335,7 @@ whole design in its header; the load-bearing parts:
     twin of the browser's drop-after-write, so a page built before a save
     (or a sign-out) is never shown after it. `/api/warm` and `/api/visit`
     are exempt: they change no data, and asking for a page must not throw
-    the last one away.
+    the last one away. So are `READ_POSTS` (below).
   - Member tabs only (`TAB_PATHS`, no query, a session cookie), rate-limited
     per IP, at most `WARM_MAX_IN_FLIGHT` (8) renders nobody has opened yet.
   Chrome and Edge never call it: `canPrerender` picks one mechanism per
@@ -375,7 +375,15 @@ whole design in its header; the load-bearing parts:
   have marked it read — and `/api/broker/me`, `/api/broker/leads`,
   `/api/broker/bovs` and `/api/bulk` seed, adopt or repair on read. A new GET
   that writes goes on that list; the test pins each entry to its route AND
-  its write. **A write a page's SERVER render makes cannot be held from the
+  its write. **The reverse, a POST that only reads, is named too**
+  (`READ_POSTS`, 2026-10-13): Home's photo lookup, `POST
+  /api/building-photo`, a POST only so an address stays out of the URL (rule
+  7). Held, a prerendered Home showed empty photo boxes after the very click
+  that was meant to be instant; counted as a write, every lookup (each card
+  scrolling into view) dropped the tabs built ahead, here and in
+  `routeWarm`. A path there is not held, drops nothing, and must never
+  write: the test pins it to its route and fails on a database call, an
+  event or a file write in its handler. **A write a page's SERVER render makes cannot be held from the
   browser**, so it checks `INSTANTNAV.isSpeculative(req.headers)` instead:
   `/vault`'s geocode and building-facts backfills skip on a speculative
   render (`attachPropertyCoords(…, { backfill })`) — a building the Census
@@ -396,7 +404,7 @@ whole design in its header; the load-bearing parts:
 - **A prerender never outlives what it shows**: dropped after 30 s (intent)
   or 60 s (warm), FIFO past two intent ones (the warm one is outside that
   count), when the page is hidden, and after ANY non-GET from the holding
-  page lands — sign-out is a POST, so a vault rendered with the old session
+  page lands (but a `READ_POSTS` one) — sign-out is a POST, so a vault rendered with the old session
   is never one click away. An expired warm tab is re-armed only by the
   pointer entering the `<nav>`, never by a timer: the cost is one background
   render per page view plus at most one a minute while a member is reaching

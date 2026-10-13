@@ -121,11 +121,26 @@ paths:
 > no good photo. While the answer comes in the card is an empty box, never the
 > aerial (2026-10-10, the owner: "it is showing birds eye view first, then the
 > building make it just show the building"). `hmPhoto` is the
-> one writer for both; lookups wait for a card to scroll into view
+> one writer for both; a card scrolling into view asks for itself
 > (`hmPhotoSeen`), and `hmPhotoForget` drops the observer's hold on cards each
 > redraw throws away. A property with no coordinates yet can still have its
 > photo. The thumbnails are 48px crops (they were the top-left of a 96px
 > crop). Rules and privacy: maps.md, "Street photos instead of the aerial".
+>
+> **A card opens with its building in it (2026-10-13, the owner: "is there a
+> way to have the pictures load immediately on the map instead of it being
+> gray first?").** Every `hmDrawPins` asks about every building on Home at
+> once (`hmPhotoAskAll`, the drawn pins in view first; permits only when
+> hovered or opened), then fetches the photos of the pins in view ahead
+> (`hmPhotoWarm`, `BLDGPHOTO.preload`): at most `HM_WARM_MAX` (40; 24 until the photo ceiling went to 120) a page,
+> skipping any a list thumbnail on screen is already loading
+> (`hmPhotoOnList`), and again on `moveend`. A pin under the pointer is
+> warmed too (`hmPin`'s `photoOf`, `hmPhotoHover`). Measured on a stand-in
+> Google at real-world latencies (40 properties, a fresh browser): a pin the
+> list was not showing went from ~1 s of empty box to ~5 ms; one past the
+> allowance from ~980 ms to ~750 ms, ~390 ms after a 350 ms hover. The map
+> card's photo is no longer `loading="lazy"` and asks first
+> (`fetchPriority`). Tests: `test/building-photo.test.js`.
 
 > **The map's layers, and Reports leaving Home (2026-10-08, owner's call).**
 > Read this before the box below, which it amends. The owner's words: Home

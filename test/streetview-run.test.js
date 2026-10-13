@@ -94,6 +94,16 @@ test("the neighbor's camera 404s, and the refusal is remembered (one metadata ca
   assert.equal(google.hits.filter((h) => h.path.endsWith("/metadata")).length, 1);
 });
 
+test("one visitor may load 120 photos a window; the 121st is refused", async (t) => {
+  // 120 since 2026-10-13 (the owner's call; it was 60). The page reads a 429
+  // as "no photo" for a week, so the ceiling must sit above a long list.
+  const { srv } = await bootWith(t, goodMeta());
+  const statuses = [];
+  for (let i = 0; i < 121; i++) statuses.push((await fetch(photoUrl(srv.base))).status);
+  assert.equal(statuses.slice(0, 120).filter((s) => s === 200).length, 120, "every one of the first 120 loads");
+  assert.equal(statuses[120], 429);
+});
+
 test("no key: the route 404s without calling anyone", async (t) => {
   const google = await startGoogle(goodMeta());
   const srv = await shared.boot({ GOOGLE_MAPS_API_KEY: "", STREETVIEW_API_URL: google.url });
@@ -187,6 +197,33 @@ test("an address Google places far from our own geocode is refused", async (t) =
   const cookie = await signUp(srv);
   const r = await askPhotos(srv, cookie, [{ address: "2300 Peachtree Rd NE", lat: 43.6, lng: -116.2 }]);
   assert.deepEqual((await r.json()).photos, [null]);
+});
+
+test("a full batch is judged all at once, not four at a time", async (t) => {
+  // 2026-10-13: the page waits for the whole answer, and four at a time made
+  // a batch of 25 seven of Google's round trips while its cards sat empty.
+  let open = 0;
+  let most = 0;
+  const slow = http.createServer((req, res) => {
+    open++;
+    most = Math.max(most, open);
+    setTimeout(() => {
+      open--;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(goodMeta()));
+    }, 150);
+  });
+  await new Promise((r) => slow.listen(0, "127.0.0.1", r));
+  const srv = await shared.boot({ GOOGLE_MAPS_API_KEY: "test-key",
+    STREETVIEW_API_URL: `http://127.0.0.1:${slow.address().port}/maps/api/streetview` });
+  t.after(async () => { srv.stop(); await new Promise((r) => slow.close(r)); });
+  const cookie = await signUp(srv);
+  const places = Array.from({ length: 25 }, (_, i) => ({ address: `${100 + i} Peachtree Rd NE, Atlanta, GA` }));
+  const r = await askPhotos(srv, cookie, places);
+  assert.equal(r.status, 200);
+  const { photos } = await r.json();
+  assert.equal(photos.filter((p) => /^\/api\/streetview\?t=/.test(p)).length, 25);
+  assert.ok(most > 4, `Google was asked ${most} at a time`);
 });
 
 test("no key: the address route is dark and Google is never asked", async (t) => {

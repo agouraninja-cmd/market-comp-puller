@@ -2183,7 +2183,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                It passes the sell-only-what-ships test that keeps report
                branding off this list: /vault is live, it has a UI, and a
                broker's own comps really do appear in their own reports. -->
-          <p class="pr-sum">Every comp itemized with sources, the 10-year window, unlimited exports, Data for your own comps, Address Explorer, your branding, a portfolio with estimated values.</p>
+          <p class="pr-sum">Every comp itemized with sources, the 10-year window, unlimited exports, a private place for your own comps, Address Explorer, your branding, a portfolio with estimated values.</p>
           <button type="button" data-plan="pro_monthly"
             class="pricing-buy btn-live mt-3 w-full bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
             Upgrade to Pro
@@ -2220,7 +2220,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div class="flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-3 border-t border-[#ECEAE3] text-xs text-[#4C5665]">
         <span>10-year lookback</span>
         <span>Unlimited exports</span>
-        <span>Private Data for your own comps</span>
+        <span>A private place for your own comps</span>
         <span>Address Explorer</span>
         <span>Report branding</span>
         <span>Portfolio with estimated values</span>
@@ -2251,7 +2251,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <tr><td>Comps itemized, with sources</td><td class="c">All found</td><td class="c">All found</td></tr>
             <tr><td>Sales history window</td><td class="c">3 yrs</td><td class="c">10 yrs</td></tr>
             <tr><td>CSV, image, PDF, Excel and PowerPoint exports</td><td class="c">5 / month</td><td class="c">Unlimited</td></tr>
-            <tr><td>Private Data for your own comps</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
+            <tr><td>A private place for your own comps</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
             <tr><td>Address Explorer</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
             <tr><td>Your firm's branding on reports</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
             <tr><td>Portfolio</td><td class="c">Saved reports, address list</td><td class="c">Saved reports, with estimated values</td></tr>
@@ -2358,7 +2358,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              Both point at the Vault's contributions deck (2026-09-04), which
              is where a submission's review status and citations live now. -->
         <p id="compTipIn" class="hidden text-xs text-[#9AA2AD] mt-2">Track its review and see when reports cite it under Contributions in <a href="/comps#contributions" class="underline">your comps</a>.</p>
-        <p id="compTipOut" class="text-xs text-[#9AA2AD] mt-2">Tip: create a free CompNinja account with this same email, and your submissions show up in your Data with their review status and citations.</p>
+        <p id="compTipOut" class="text-xs text-[#9AA2AD] mt-2">Tip: create a free CompNinja account with this same email, and your submissions show up among your comps, with their review status and citations.</p>
         <div class="mt-4 flex justify-center gap-3">
           <button id="compAnotherBtn" type="button" class="btn-live text-sm font-semibold text-[#374253] bg-white hover:bg-[#F5F4EF] border border-[#D8D4C9] rounded-lg px-4 py-2">Submit another</button>
           <button id="compDoneBtn" type="button" class="btn-live text-sm font-semibold text-[#374253] bg-white hover:bg-[#F5F4EF] border border-[#D8D4C9] rounded-lg px-4 py-2">Done</button>
@@ -2581,7 +2581,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </div>
         <p id="settingsAvatarMsg" class="hidden text-sm mt-2"></p>
         <div id="settingsDeleteConfirm" class="hidden mt-3 border border-[#D8D4C9] rounded-lg p-3">
-          <p class="text-sm text-[#1A2433]">This deletes your account, portfolio, The Board, and everything in your Data. It can't be undone.</p>
+          <p class="text-sm text-[#1A2433]">This deletes your account, portfolio, The Board, and all of your comps. It can't be undone.</p>
           <div class="mt-3 flex flex-wrap items-center gap-2">
             <button id="settingsDeleteGo" type="button"
               class="btn-live text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Permanently delete</button>
@@ -2635,7 +2635,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            that read as nothing; here it has to say so. The pricing door
            obeys settingsUpgradeBtn's rule, live && !pro, applied on open. -->
       <div id="firmModalNone" class="hidden mt-4">
-        <p class="text-sm text-[#4C5665]">You're not part of a firm yet. A firm is a shared shelf: reports colleagues share with it land in everyone's Messages, while each person's own reports and Data stay theirs. Ask a colleague who has one to invite you, or start one on a Pro plan.</p>
+        <p class="text-sm text-[#4C5665]">You're not part of a firm yet. A firm is a shared shelf: reports colleagues share with it land in everyone's Messages, while each person's own reports and comps stay theirs. Ask a colleague who has one to invite you, or start one on a Pro plan.</p>
         <button id="firmModalPricing" type="button"
           class="hidden btn-live mt-3 text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">See pricing</button>
       </div>
@@ -2756,7 +2756,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               class="hidden text-sm text-[#5A6473] hover:text-[#1A2433] underline">Manage firm billing</button>
             <span id="firmBillingMsg" class="text-xs text-[#68707E]"></span>
           </div>
-          <p class="text-xs text-[#68707E] mt-1.5">Colleagues see only what someone shares with the firm. Your own reports, portfolio, The Board and private Data stay yours. Automatic sharing never applies to reports you have already run.</p>
+          <p class="text-xs text-[#68707E] mt-1.5">Colleagues see only what someone shares with the firm. Your own reports, portfolio, The Board and private comps stay yours. Automatic sharing never applies to reports you have already run.</p>
         </div>
       </div>
       <!-- Report branding — the panel's second section (moved here from the
@@ -2852,7 +2852,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <!-- Shown only when fillBrandForm() poured a suggestion into an
                empty field (2026-09-02, "one profile"): the member must know
                these came from somewhere, are not saved, and will print. -->
-          <p id="brandSeedNote" class="hidden text-xs text-[#68707E] mt-2">Filled in from your account and Data details. Nothing is saved until you press Save, and these details print on your reports.</p>
+          <p id="brandSeedNote" class="hidden text-xs text-[#68707E] mt-2">Filled in from your account, your firm and your broker profile. Nothing is saved until you press Save, and these details print on your reports.</p>
           <p id="brandMsg" class="text-sm text-[#5A6473] mt-2"></p>
 
           <div class="mt-2 flex flex-wrap items-center gap-3">
@@ -18591,7 +18591,7 @@ async function renderMyDesk() {
     if (p.tester) {
       return {
         title: "Pro — comped (beta tester)",
-        detail: "Full Pro access as a beta tester — Data, firms and comp reports included. Nothing is billed, and there's no subscription behind it.",
+        detail: "Full Pro access as a beta tester — your own comps, firms and comp reports included. Nothing is billed, and there's no subscription behind it.",
       };
     }
     // Before the Stripe states, like the two comped branches above it and for
@@ -18645,7 +18645,7 @@ async function renderMyDesk() {
         // member has one (`const broker = pro` in entitlements.js), and a
         // paying member who never learns they have it is the clearest way to
         // still be running two products after deciding to run one.
-        detail: "Unlimited comps, a lookback of up to 10 years, unlimited exports, private Data for your own comps, and your firm's branding on every report.",
+        detail: "Unlimited comps, a lookback of up to 10 years, unlimited exports, a private place for your own comps, and your firm's branding on every report.",
       };
     }
     if (p.status === "expired") {
@@ -18655,7 +18655,7 @@ async function renderMyDesk() {
       // Nothing deletes vault rows on lapse — the only delete paths are the
       // broker's own "remove this import" and account deletion — so saying so
       // is a statement of fact, not a reassurance we cannot keep.
-      return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 10 itemized comps and a 3-year lookback, and your Data is closed until you resubscribe. Nothing in it has been deleted." };
+      return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 10 itemized comps and a 3-year lookback, and your own comps are locked until you resubscribe. None of them has been deleted." };
     }
     return { title: "Free", detail: "Reports itemize every comparable we find and look back 3 years. Pro widens the window to ten years." };
   }
@@ -19219,7 +19219,7 @@ async function renderMyDesk() {
     news:          { label: "News",          cls: "n",  legend: "from a news article or press release" },
     estimate:      { label: "Estimate",      cls: "e",  legend: "not tied to a single source; verify before relying on it" },
     user:          { label: "Added by you",  cls: "u",  legend: "entered manually; not from CompNinja's sources" },
-    broker_vault:  { label: "From your Data", cls: "bv", legend: "your own comp, from your private Data, visible only to you" },
+    broker_vault:  { label: "Your comp",     cls: "bv", legend: "one of your own comps, private and visible only to you" },
   };
   // One source of truth for a comp's tier: valuation.js owns the vocabulary
   // (it has to, since compWeight keys off it). SOURCE_TIERS above keeps only
@@ -19553,13 +19553,13 @@ async function renderMyDesk() {
         const firms = [...new Set(visibleComps().map(firmOfComp).filter(Boolean))];
         el.textContent =
           `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from private records ` +
-          `— your own Data or ${firms.join(" and ")} — and ${one ? "is" : "are"} left out of ` +
+          `— your own, or shared by ${firms.join(" and ")} — and ${one ? "is" : "are"} left out of ` +
           `downloads and shared links. The valuation still counts ${one ? "it" : "them"}.`;
       } else {
         el.textContent =
-          `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from your private Data, ` +
+          `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from your own private comps, ` +
           `and ${one ? "it is" : "they are"} counted in the valuation above. ` +
-          `Comps from your Data are visible only to you: they are left out of downloads, saved images, printed copies and shared links.`;
+          `Your own comps are visible only to you: they are left out of downloads, saved images, printed copies and shared links.`;
       }
       return;
     }
@@ -21681,8 +21681,8 @@ async function renderMyDesk() {
   // account, and whether that is allowed depends on a licence we do not hold.
   const SHARE_PRIVATE_CONFIRM =
     "Include your private comps in full?\n\n" +
-    "The people you invite will see the full address and price of the comps from your Data. " +
-    "Everything else in your Data stays private, and this applies only to this link.\n\n" +
+    "The people you invite will see the full address and price of your own comps in this report. " +
+    "Your other comps stay private, and this applies only to this link.\n\n" +
     "Sharing MLS-sourced data is subject to your own licence terms.";
 
   // Publish the current report under a share id and return { url, invited,

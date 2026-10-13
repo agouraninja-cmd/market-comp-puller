@@ -926,7 +926,7 @@ ${tabButtons}
         <p class="fine">Your comps are never read into CompNinja&rsquo;s public
           records, never included in an export or a shared link, and never shown
           to another broker.</p>
-        <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your Data only after you confirm.</p>
+        <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. CompNinja does not store the file. Rows are added to your comps only after you confirm.</p>
       </details>
       <div class="row">
         <button class="btn" id="bookPick">Choose a spreadsheet, PDF or screenshot</button>
@@ -940,7 +940,7 @@ ${tabButtons}
         <p class="drop-k">Import a spreadsheet, PDF or screenshot</p>
         <button class="btn" id="pick">Choose a spreadsheet, PDF or screenshot</button>
         <p>or drop files here &mdash; several at once is fine &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
-        <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. An Excel file or pasted rows are read on our own server. CompNinja does not store the file. Rows land in your Data only after you confirm.</p>
+        <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. An Excel file or pasted rows are read on our own server. CompNinja does not store the file. Rows are added to your comps only after you confirm.</p>
         <input type="file" id="file" accept=".csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/pdf,image/png,image/jpeg,image/webp" multiple class="hide"/>
       </div>
       <div id="res"></div>
@@ -1855,7 +1855,7 @@ ${tabButtons}
   function apply(o){
     // The one whole-page refusal left: with nobody signed in there is no
     // portfolio, no watchlist and no book to show, so the gate still stands.
-    if(o.s===401) return gate('<div class="msg bad">Please <a href="/desk">sign in</a> to open your Data.</div>');
+    if(o.s===401) return gate('<div class="msg bad">Please <a href="/desk">sign in</a> to open this page.</div>');
 
     // Everything past this line renders the page. A refusal from this
     // page's own read locks its decks and leaves Contributions alone -- see
@@ -1872,7 +1872,7 @@ ${tabButtons}
     // says which it was, because "unavailable right now" and "part of Pro"
     // are different problems with different fixes.
     if(o.s===403) return lockVaultDecks("");
-    if(o.s!==200) return lockVaultDecks((o.j&&o.j.error)||"Could not load your Data.");
+    if(o.s!==200) return lockVaultDecks((o.j&&o.j.error)||"Could not load your comps.");
     // A read that succeeds after one that failed has to put them back.
     $("vaultLocked").className="invite hide";
     locked=false; $("vtWrap").className="vt-wrap";
@@ -4225,7 +4225,7 @@ ${tabButtons}
         // imported count — which is what used to happen, and which told a
         // broker 16 comps had landed when none had.
         var bits=["Imported "+j.imported+" comp"+(j.imported===1?"":"s")];
-        if(j.already)bits.push(j.already+(j.already===1?" was":" were")+" already in your Data");
+        if(j.already)bits.push(j.already+(j.already===1?" was":" were")+" already among your comps");
         if(j.skipped)bits.push(j.skipped+" row"+(j.skipped===1?"":"s")+" skipped");
         if(j.duplicates)bits.push(j.duplicates+" duplicate"+(j.duplicates===1?"":"s")+" in the file");
         // The template's own # notes, normally. Said out loud anyway: a broker
@@ -4510,7 +4510,7 @@ ${tabButtons}
   // selector knows which part of a row's error IT can cure. Pinned by test
   // against the module's own constant.
   var MARKET_NEEDLE="needs a city and state";
-  var MARKET_SOURCE_LABEL={file:"Elsewhere in this file",vault:"In your Data",coverage:"Markets you cover"};
+  var MARKET_SOURCE_LABEL={file:"Elsewhere in this file",vault:"In your comps",coverage:"Markets you cover"};
   // ⚠ MIRROR of broker-vault.js's composeAddress RULE — append only what is
   // missing, never repeat a segment the address already carries — so the
   // address a cell shows after a pick is the address the import stores.
@@ -5574,7 +5574,7 @@ ${tabButtons}
     if(!n)return;
     var who=(identity&&identity.creditedTo)?identity.creditedTo:"your firm";
     if(!confirm("Publish "+n+" comp"+(n===1?"":"s")+"?\\n\\nThey become part of CompNinja's public records, credited to "+
-      who+" by name in every report they appear in. Everything else in your Data stays private.\\n\\n"+
+      who+" by name in every report they appear in. Your other comps stay private.\\n\\n"+
       "Comps that are not ready — no price, no size, no street number — are skipped and named afterwards.\\n\\n"+
       "You can stop publishing any of them later, but reports that already used them will keep them."))return;
     b.disabled=true; b.textContent="Publishing\\u2026";
@@ -5751,7 +5751,7 @@ ${tabButtons}
     if(on){
       if(!confirm("Stop publishing this comp?\\n\\nIt will no longer be offered in new reports. Reports that already included it keep it, and it stays in the public records it has already reached."))return;
     }else{
-      if(!confirm("Publish this comp?\\n\\nIt becomes part of CompNinja's public records, credited to your firm by name in every report it appears in. Everything else in your Data stays private.\\n\\nYou can stop publishing it later, but reports that already used it will keep it."))return;
+      if(!confirm("Publish this comp?\\n\\nIt becomes part of CompNinja's public records, credited to your firm by name in every report it appears in. Your other comps stay private.\\n\\nYou can stop publishing it later, but reports that already used it will keep it."))return;
     }
     b.disabled=true; b.textContent=on?"Removing\\u2026":"Publishing\\u2026";
     fetch("/api/vault/publish",{method:"POST",credentials:"same-origin",

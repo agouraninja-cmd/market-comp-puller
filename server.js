@@ -19383,7 +19383,7 @@ async function vaultReadPayload(req, params) {
   const ent = entR.status === "fulfilled" ? entR.value : null;
   if (!ent || !ent.canUseVault) {
     return { status: 403, body: {
-      error: "Keeping your own private comps in Data is part of Pro.",
+      error: "Keeping your own private comps is part of Pro.",
       code: "broker_required",
       // Not every deck on the page is behind this refusal: it locks the
       // page's own decks, and /comps' Contributions renders regardless.
@@ -19394,7 +19394,7 @@ async function vaultReadPayload(req, params) {
   }
   if (!DB_CONFIGURED) {
     return { status: 503, body: {
-      error: "Data is unavailable right now — nothing was saved. Please try again in a minute.",
+      error: "Your comps are unavailable right now — nothing was saved. Please try again in a minute.",
     } };
   }
   if (compsR.status === "rejected") throw compsR.reason;
@@ -22123,7 +22123,7 @@ const server = http.createServer((req, res) =>
         body: `<div class="wrap"><h1>${resubscribe ? "Turn these emails back on?" : "Turn off The Board emails?"}</h1>` +
           `<p>${resubscribe
             ? "You will get an email when a market on The Board has new comps."
-            : "You will stop getting the digest when markets on The Board have new comps. The Board stays exactly as it is, and you can still see it in your Data."}</p>` +
+            : "You will stop getting the digest when markets on The Board have new comps. The Board stays exactly as it is, and you can still see it on the Markets page."}</p>` +
           `<form method="POST" action="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "&amp;on=1" : ""}">` +
           `<button type="submit" style="background:#1A2433;color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:600;cursor:pointer">` +
           `${resubscribe ? "Yes, turn them on" : "Yes, turn them off"}</button></form></div>`,
@@ -24423,14 +24423,14 @@ const server = http.createServer((req, res) =>
       const ent = await entitlementsFor(req);
       if (!ent.canUseVault) {
         sendJson(res, 403, {
-          error: "Keeping your own private comps in Data is part of Pro.",
+          error: "Keeping your own private comps is part of Pro.",
           code: "broker_required",
         });
         return null;
       }
       if (!DB_CONFIGURED) {
         sendJson(res, 503, {
-          error: "Data is unavailable right now — nothing was saved. Please try again in a minute.",
+          error: "Your comps are unavailable right now — nothing was saved. Please try again in a minute.",
         });
         return null;
       }
@@ -24976,7 +24976,7 @@ const server = http.createServer((req, res) =>
         sendJson(res, p.status, p.body);
       })().catch((err) => {
         console.error("vault read failed:", err.message);
-        sendJson(res, 502, { error: "Could not load your Data. Please try again." });
+        sendJson(res, 502, { error: "Could not load your comps. Please try again." });
       });
       return;
     }
@@ -25043,7 +25043,7 @@ const server = http.createServer((req, res) =>
             `broker_comps?id=eq.${encodeURIComponent(id)}` +
             `&user_id=eq.${encodeURIComponent(user.id)}&limit=1`);
           const comp = rows && rows[0];
-          if (!comp) return sendJson(res, 404, { error: "That comp isn't in your Data." });
+          if (!comp) return sendJson(res, 404, { error: "That comp isn't among your comps." });
 
           // --- unpublish ---
           if (publish === false) {
@@ -25429,13 +25429,13 @@ const server = http.createServer((req, res) =>
           // the caller's side a malformed id and someone else's id are the
           // same "not in your vault", and treating them alike is also what
           // stops this route confirming which ids are real by status code.
-          if (!VAULT.isUuid(id)) return sendJson(res, 404, { error: "That comp isn't in your Data." });
+          if (!VAULT.isUuid(id)) return sendJson(res, 404, { error: "That comp isn't among your comps." });
 
           const rows = await sbRequest("GET",
             `broker_comps?id=eq.${encodeURIComponent(id)}` +
             `&user_id=eq.${encodeURIComponent(user.id)}&limit=1`);
           const comp = rows && rows[0];
-          if (!comp) return sendJson(res, 404, { error: "That comp isn't in your Data." });
+          if (!comp) return sendJson(res, 404, { error: "That comp isn't among your comps." });
 
           if (req.method === "DELETE") {
             // Retract-first is correct here: a delete has no validation step
@@ -25722,7 +25722,7 @@ const server = http.createServer((req, res) =>
         // work. 404 matches the sibling routes (/api/vault/comp, publish-many,
         // firm, bulk) and, as there, treats a malformed id and someone else's id
         // as the same "not in your vault" rather than confirming which ids exist.
-        if (!VAULT.isUuid(id)) return sendJson(res, 404, { error: "That import isn't in your Data." });
+        if (!VAULT.isUuid(id)) return sendJson(res, 404, { error: "That import isn't one of yours." });
         // user_id in the filter, not just the id: without it, knowing another
         // broker's upload id would be enough to delete their data.
         await sbRequest("DELETE",
@@ -29610,7 +29610,7 @@ const server = http.createServer((req, res) =>
           const ent = await entitlementsFor(req);
           if (!ent.canUseVault) {
             return sendJson(res, 403, {
-              error: "Sending comps from your Data is part of Pro.",
+              error: "Sending your own comps is part of Pro.",
               code: "vault_required",
             });
           }
@@ -29622,7 +29622,7 @@ const server = http.createServer((req, res) =>
             if (built) compRows.push({ raw: r, built });
           }
           if (!compRows.length && !want.body) {
-            return sendJson(res, 400, { error: "Those comps aren't in your Data." });
+            return sendJson(res, 400, { error: "Those aren't among your comps." });
           }
         }
 
@@ -29977,7 +29977,7 @@ const server = http.createServer((req, res) =>
         if (!g) return;
         const ent = await entitlementsFor(req);
         if (!ent.canUseVault) {
-          return sendJson(res, 403, { error: "Saving a comp to your Data is part of Pro.", code: "vault_required" });
+          return sendJson(res, 403, { error: "Saving comps is part of Pro.", code: "vault_required" });
         }
         const body = await readMsgBody(2e3);
         const compId = String((body && body.compId) || "").trim();
@@ -30514,7 +30514,7 @@ const server = http.createServer((req, res) =>
             private: true,
             added_by_email: HUB.normalizeEmail(g.user.email),
           }));
-          if (!rows.length) return sendJson(res, 404, { error: "Those comps were not found in your Data." });
+          if (!rows.length) return sendJson(res, 404, { error: "Those were not found among your comps." });
 
           // Duplicates are filtered HERE rather than by ON CONFLICT, and the
           // reason is a bug this route shipped with: it asked PostgREST for

@@ -2,6 +2,12 @@
   {
     "date": "2026-10-13",
     "type": "improvement",
+    "title": "No more “your Data”: everything says “your comps”",
+    "details": "There has been no page called Data since your comps moved to Comps, but the site kept pointing people to it. Every place it did now says “your comps”, or says it plainly without a name: the badge on your own comps in a report (now “Your comp”), the warning before you share a link that includes them, Messages and the client hub when you send or save a comp, the buildings page, the pricing, FAQ, home and For brokers & firms pages, the trial and lease-renewal emails, and the error messages. The Board’s email settings page now says The Board is on the Markets page."
+  },
+  {
+    "date": "2026-10-13",
+    "type": "improvement",
     "title": "Comps is a section of its own, and every part of the old vault lives where you use it",
     "details": "The private page that held your properties and comps is gone, and its parts have moved to where they are used. “Comp report” in the side menu is now “Comps”, with two tabs: “Your comps” (your own comp book and the comps you have contributed) and “Run a comp report”. The Pipeline is its own page. The properties you own are now worked right on Home for everyone, not only development firms: open a property’s row to see its estimated value, how it changed, a chart of every check, how its market moved, and buttons to open its report, refresh its value or remove it. Home’s Owned list also adds up your buildings’ combined value. Old links and bookmarks still work and open the right new place."
   },

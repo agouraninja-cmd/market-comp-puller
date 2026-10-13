@@ -327,7 +327,7 @@ function renderBuildingSheetBody(boot) {
     <section class="bs-sec" id="bsTxMine">
       <div class="bs-rule"><span class="lab">Transactions \u00b7 yours</span><span class="n" id="bsTxMineN"></span></div>
       <div id="bsTxMineRows"></div>
-      <p class="bs-note hide" id="bsTxMineNone">Nothing in your Data on this building. Comps you add to your Data at this address show up here, and you can share each one with the firm from here.</p>
+      <p class="bs-note hide" id="bsTxMineNone">You have no comps on this building yet. Comps you save at this address show up here, and you can share each one with the firm from here.</p>
     </section>
 
     <section class="bs-sec" id="bsReports">
@@ -468,7 +468,7 @@ function renderBuildingSheetBody(boot) {
         (c.rentPsfYr!=null?' \u00b7 $'+esc(Number(c.rentPsfYr).toFixed(2))+"/SF/yr":"")+
         (c.sizeSqft?' \u00b7 '+esc(num(c.sizeSqft))+" SF":"")+
         (c.pricePerSqft!=null?' \u00b7 $'+esc(Number(c.pricePerSqft).toFixed(2))+"/SF":"")+
-        '</span><span class="m">'+(c.published?"published \u00b7 ":"")+'from your Data \u00b7 '+
+        '</span><span class="m">'+(c.published?"published \u00b7 ":"")+'from your comps \u00b7 '+
         '<button type="button" class="bs-lnk'+(c.shared?" on":"")+'" data-firm="'+esc(c.id)+'" data-on="'+(c.shared?"1":"0")+'">'+
         (c.shared?"Shared with the firm":"Share with the firm")+"</button></span></div>";
     }).join("");

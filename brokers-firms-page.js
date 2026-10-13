@@ -318,8 +318,8 @@ function renderBrokersFirmsPageBody({
     ["Never retroactive", "Sharing only applies going forward",
      "Turn on automatic sharing and it covers new reports only, never work already run. Your " +
      "own setting beats the firm&#39;s either way."],
-    ["Your Data stays yours", "A private book is shared one comp at a time",
-     "You share a comp from your Data one at a time. It never enters CompNinja&#39;s public records, and " +
+    ["Your comps stay yours", "A private book is shared one comp at a time",
+     "You share your comps one at a time. It never enters CompNinja&#39;s public records, and " +
      "it doesn&#39;t travel whole in a report sent outside the firm."],
   ]
     .map(([lab, head, body], i) =>
@@ -379,14 +379,14 @@ function renderBrokersFirmsPageBody({
 
     // --- Two - your vault -------------------------------------------------
     `<div class="bfband"><div class="bfin">` +
-    `<div class="bfeye">Two &middot; your Data</div>` +
+    `<div class="bfeye">Two &middot; your comps</div>` +
     `<h2>Your own deals, in your own reports.</h2>` +
     `<p class="bfsub" style="max-width:66ch">Your deals sit next to public records and verified ` +
-    `broker submissions, badged <em>From your Data</em>. Send the report out and only the ` +
+    `broker submissions, badged <em>Your comp</em>. Send the report out and only the ` +
     `numbers go with it.</p>` +
     `<div class="bfvault">` +
     `<div class="bfvcard">` +
-    `<div class="bfvhd">Your Data &middot; 214 deals &middot; visible only to you</div>` +
+    `<div class="bfvhd">Your comps &middot; 214 deals &middot; visible only to you</div>` +
     vaultRows +
     `<div class="bfvfoot">On a report you share: <strong>$218/SF &middot; 19,400 SF &middot; ` +
     `Mar 26</strong>. No address, no total price, no notes &mdash; and your client&#39;s range ` +
@@ -405,8 +405,8 @@ function renderBrokersFirmsPageBody({
     // reason and carries rule 5's literals.
     `<div class="bfexit bfplan firm" style="padding:16px 18px">` +
     `<div class="k">And that is the whole list</div>` +
-    `<p>Both take a deliberate click, and you can take either back. Nothing else leaves your ` +
-    `Data.</p></div>` +
+    `<p>Both take a deliberate click, and you can take either back. Nothing else is ever ` +
+    `shared.</p></div>` +
     `</div></div>` +
     `<div class="bfpro">` +
     `<span class="badge" style="color:var(--bv-text);background:var(--bv-bg)">Pro</span>` +
@@ -433,7 +433,7 @@ function renderBrokersFirmsPageBody({
     `<div class="bfin bfprice">` +
     `<div class="bfplan"><div class="k">Individual Pro</div>` +
     `<div class="f">$${pricing.monthly}<span> / month</span></div>` +
-    `<p>Unlimited reports, ten years back, Data for your own comps, Address Explorer, exports and your ` +
+    `<p>Unlimited reports, ten years back, a private place for your own comps, Address Explorer, exports and your ` +
     `branding on them.</p></div>` +
     `<div class="bfplan firm"><div class="k">Firm &middot; every seat gets Pro</div>` +
     `<div class="f">$${pricing.firmSeat}<span> / seat, min. ${minSeats}</span></div>` +

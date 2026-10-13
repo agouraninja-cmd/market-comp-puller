@@ -265,6 +265,7 @@ const BULK = require("./bulk");
 const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
 const { renderBuildingsBody, renderBuildingSheetBody } = require("./buildings-page");
 const { renderPermitsBody } = require("./permits-page");
+const { renderSitesBody } = require("./sites-page");
 // /brokers-firms — the one public pitch to the professional audience, which
 // replaced /brokers and /firms on 2026-09-01 (design 4a). A marketShell BODY,
 // like bulk-page.js. The shop-kind sentences and the prices are PASSED IN
@@ -11284,8 +11285,9 @@ const BULK_RUN_MARKER = "<!--BULK_RUN-->";
 // --- Pipeline or Sites: the rail row a firm's kind decides (2026-10-09) -------
 // The owner's call: a broker's BOV pipeline gets its own rail row, directly
 // under Messages, and a development firm (which writes no BOVs; vault.md's
-// Sites section) gets a Sites row in that same place instead, opening Home's
-// Properties tab, where its sites are worked (/desk#properties). Both rows are
+// Sites section) gets a Sites row in that same place instead, opening /sites,
+// its deals by stage (sites-page.js, 2026-10-12; it opened Home's Properties
+// tab until then, which made the row a second Home). Both rows are
 // in the markup on both nav authors (marketBar and index.html, ids navPipe
 // and navSites on both) and ONE class on <html>, `shop-dev`, decides which
 // shows, so neither nav grows a branch.
@@ -11298,8 +11300,8 @@ const BULK_RUN_MARKER = "<!--BULK_RUN-->";
 // first paint, so a development member never sees "Pipeline" turn into
 // "Sites" under them. The note is a per-browser convenience, never a gate:
 // it is corrected on every Home load (where a member lands after signing in),
-// a member without it simply reads Pipeline, and /pipeline opens a
-// development firm's vault on Sites anyway (applyShop). A visitor with no
+// a member without it simply reads Pipeline, and /pipeline sends a
+// development firm's member on to /sites anyway (applyShop). A visitor with no
 // session has it cleared by ACCOUNT_NAV_JS.
 const SHOP_NAV_KEY = "cnShop";
 const SHOP_NAV_CSS =
@@ -12900,9 +12902,9 @@ function nextMarketExample() {
 // The two addresses the vault page answers at (2026-10-09): /vault, and
 // /pipeline, its Pipeline tab, which is a row of the rail. One list for the
 // route, this CTA rule and the tests. (A development firm's Sites row opens
-// Home's Properties tab, where their sites are: index.html serves it.)
+// /sites, its own page since 2026-10-12: sites-page.js.)
 const VAULT_PAGE_PATHS = new Set(["/vault", "/pipeline"]);
-const CTA_FREE_PAGES = new Set([...VAULT_PAGE_PATHS, "/messages", "/markets", "/bulk", "/buildings", "/building", "/permits", "/permits/compare"]);
+const CTA_FREE_PAGES = new Set([...VAULT_PAGE_PATHS, "/sites", "/messages", "/markets", "/bulk", "/buildings", "/building", "/permits", "/permits/compare"]);
 
 const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
@@ -13024,13 +13026,12 @@ const marketBar = (signedIn = false, current = "") =>
       // place instead (the owner: "Have the sites under messages for
       // development firms and Pipeline for brokerage firms"); both rows
       // render and the `shop-dev` class shows one (SHOP_NAV_CSS above).
-      // Sites opens Home's Properties tab, where a development firm's sites
-      // have been worked since that evening (home-sites.js), so it is never
-      // current here: index.html's markNavCurrent marks it. Every member,
+      // Sites opens /sites, the deals by stage (sites-page.js, 2026-10-12;
+      // it was Home's Properties tab until then, so Home twice). Every member,
       // like Comp report: /pipeline answers a free member with the vault's
       // Pro invitation. index.html carries both twins with the same ids.
       `<a id="navPipe" href="/pipeline"${current === "/pipeline" ? ' aria-current="page"' : ""}>${NAV_ICONS.pipeline}<span class="nvl">Pipeline</span></a>` +
-      `<a id="navSites" href="/desk#properties">${NAV_ICONS.sites}<span class="nvl">Sites</span></a>`
+      `<a id="navSites" href="/sites"${current === "/sites" ? ' aria-current="page"' : ""}>${NAV_ICONS.sites}<span class="nvl">Sites</span></a>`
     : "") +
   // Pricing sits in the bar itself rather than one click inside Explore. It is
   // the question a prospect arrives with, and a B2B site that hides its price
@@ -30992,6 +30993,8 @@ const server = http.createServer((req, res) =>
     // so the same maxAge: 0 rule holds for the same reason.
     "/sites.js": { file: "sites.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     "/home-sites.js": { file: "home-sites.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // Their styles, one copy for Home and /sites (2026-10-12), on the same terms.
+    "/home-sites.css": { file: "home-sites.css", type: "text/css; charset=utf-8", maxAge: 0 },
     // The buying read on The Board's market tiles (the global BUYINGREAD),
     // called by /vault's inline script on the same terms.
     "/buying-read.js": { file: "buying-read.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
@@ -31935,6 +31938,63 @@ const server = http.createServer((req, res) =>
         head: INTER_FONT_HEAD,
         testerBadge: true,
         body: renderBuildingSheetBody(boot) + visitTag,
+      }));
+    })();
+    return;
+  }
+
+  // --- GET /sites — a development firm's deals, by stage (2026-10-12) -----
+  //
+  // The rail's Sites row (development firms, in Pipeline's place). It opened
+  // Home's Properties tab from 2026-10-09, which made it the same screen as
+  // Home (the owner: "Sites is the exact same thing as home, this is a
+  // problem"), so it is a page of its own: the deals on a board of the four
+  // buying stages, the one opened worked under it with Home's own pane
+  // (home-sites.js), Passed folded away. What a member owns stays on Home.
+  // The gate is /api/sites' own (requireSites: signed in, Pro, a database),
+  // and every write the page makes goes through those routes. A READ only:
+  // this render may be speculative (rule 15).
+  if (req.method === "GET" && pagePath === "/sites") {
+    (async () => {
+      let boot = null;
+      try {
+        const user = await getSessionUser(req);
+        if (!user) boot = { s: 401 };
+        else if (!(await entitlementsFor(req)).canUseVault) boot = { s: 403 };
+        else if (!DB_CONFIGURED) boot = { s: 503 };
+        else {
+          const [rows, firm] = await Promise.all([
+            sbRequest("GET", `user_sites?user_id=eq.${encodeURIComponent(user.id)}` +
+              `&select=${SITES_SELECT}&order=created_at.desc&limit=${SITES.MAX_ROWS}`),
+            messagingFirmOf(user).then(async (f) => {
+              if (!f) return null;
+              const org = (await orgsByIds([f.orgId])).get(f.orgId);
+              return { name: (org && org.name) || "your firm", kind: ORG.kindOf(org) };
+            }),
+          ]);
+          boot = { s: 200, sites: rows || [], today: sitesToday(), firm };
+        }
+      } catch (err) {
+        console.error("sites page boot failed:", err.message);
+      }
+      const visitTag = logPageVisit(req, "sites_visit", { source:
+        !boot ? "error" : boot.s === 200 ? "ok" : boot.s === 401 ? "signin" : boot.s === 403 ? "locked" : "nodb" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        vary: "cookie",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      res.end(marketShell({
+        title: "Sites \u00b7 CompNinja",
+        description: "The sites you're buying, by stage.",
+        canonical: `${SITE_URL}/sites`,
+        noindex: true,
+        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+        current: "/sites",
+        head: INTER_FONT_HEAD,
+        testerBadge: true,
+        body: renderSitesBody(boot) + visitTag,
       }));
     })();
     return;

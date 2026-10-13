@@ -4735,5 +4735,11 @@
     "type": "fix",
     "title": "Building pictures on Home show the building, not a bird’s-eye view first",
     "details": "Property thumbnails and the map card on Home used to show a satellite view of the roof first, then swap to the street photo of the building once it arrived. Now the picture space stays blank for that moment and the first thing you see is the building itself. A building Google has no good street photo for still gets the satellite view, so no card is left empty."
+  },
+  {
+    "date": "2026-10-12",
+    "type": "improvement",
+    "title": "Sites is its own page: your deals on a board by stage",
+    "details": "The Sites row for development firms opened Home's Properties tab, so it was the same screen as Home. /sites now shows only your deals, in columns for Prospect, LOI, Under contract and Entitlements, with acres, asking price and the next deadline on each card, totals across them, and the opened deal worked right under the board. Passed deals fold away; closed deals stay with what you own on Home."
   }
 ]

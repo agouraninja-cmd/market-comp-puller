@@ -1,7 +1,8 @@
 // ---------------------------------------------------------------------------
 // A development firm's deals and holdings, worked on Home's Properties tab
 // (2026-10-09, the owner's call: "Development firms only and integrate it
-// into the property section of the home page"). It was the Sites tab on
+// into the property section of the home page") and, deals only, on /sites
+// (2026-10-12; sites-page.js mounts this same pane under its stage board). It was the Sites tab on
 // /vault (2026-10-05, the owner's pick "M2" of the Sites drafts,
 // https://claude.ai/artifact/BMeJY9d3vegjmDxcAPtxzR) and, for every Pro
 // member, The Board's deal wall (2026-10-07); both were removed the day this
@@ -155,6 +156,7 @@
   //   say(text)     -> the line under the Properties heading
   //   closeAdd()    -> take the add form away
   //   addToFirm(in) -> Home's one door onto the firm's buildings
+  //   buyOnly       -> the add form offers deals only (/sites, sites-page.js)
   function mount(ctx) {
     if (!S || !ctx || typeof document === "undefined") return null;
     const SVG = "http://www.w3.org/2000/svg";
@@ -510,7 +512,8 @@
     function drawAdd() {
       if (!liveAdd) return;
       const k = state.addKind;
-      const seg = h("div", { class: "hs-kind hs-wide", role: "radiogroup", "aria-label": "What is it" },
+      // /sites (ctx.buyOnly) adds deals only: what a member owns is Home's.
+      const seg = ctx.buyOnly ? null : h("div", { class: "hs-kind hs-wide", role: "radiogroup", "aria-label": "What is it" },
         [["buy", "I'm buying it"], ["own", "I own it"]].map(([v, t]) =>
           h("button", { type: "button", role: "radio", "aria-checked": k === v ? "true" : "false", class: k === v ? "on" : null,
             onclick: () => {

@@ -4822,11 +4822,14 @@ test("a development firm's member has no Pipeline and no Properties here: both a
   assert.equal(doc.getElementById("panelBook").className, "vt-panel on", "the page opens on Comps");
 });
 
-test("a link to Pipeline, Properties or the old Sites tab takes a development firm's member to Home", async () => {
-  for (const hash of ["#sites", "#properties", "#pipeline", "#sitesSec"]) {
+test("a link to Pipeline, Properties or the old Sites tab takes a development firm's member to Sites or Home", async () => {
+  // Pipeline's row is Sites for them (/sites, 2026-10-12); Properties, and
+  // the old #sites tab (read as Properties), are Home's.
+  for (const [hash, to] of [["#sites", "/desk#properties"], ["#properties", "/desk#properties"],
+    ["#pipeline", "/sites"], ["#sitesSec", "/desk#properties"]]) {
     const went = [];
     await runPage([comp({})], null, { firm: DEV_FIRM, window: { location: Object.assign(LOC(hash), { replace: (u) => went.push(u) }) } });
-    assert.deepEqual(went, ["/desk#properties"], hash);
+    assert.deepEqual(went, [to], hash);
   }
   // A link to a tab they do have opens it; and nobody else is ever sent away.
   let went = [];
@@ -4932,14 +4935,14 @@ test("/pipeline opens the Pipeline tab, marks its rail row, and the path follows
   assert.equal(doc.getElementById("navPipe").attrs["aria-current"], "page");
 });
 
-test("the rail is told which kind of firm this is; /pipeline sends a development firm's member to Home", async () => {
+test("the rail is told which kind of firm this is; /pipeline sends a development firm's member to Sites", async () => {
   const told = [], went = [];
   await runPage([comp({})], null, { firm: DEV_FIRM, window: {
     location: { hash: "", pathname: "/pipeline", search: "", replace: (u) => went.push(u) },
     history: { replaceState() {} }, cnShopNav: (dev) => told.push(dev),
   } });
   assert.equal(told[told.length - 1], true, "the rail was not told this is a development firm");
-  assert.deepEqual(went, ["/desk#properties"], "a developer has no Pipeline: their properties are on Home");
+  assert.deepEqual(went, ["/sites"], "a developer has no Pipeline: their row there is Sites (2026-10-12)");
   const broker = [], stayed = [];
   const b = await runPage([comp({})], null, { firm: { id: "f2", name: "Summit Brokerage", kind: "broker" }, window: {
     location: { hash: "", pathname: "/pipeline", search: "", replace: (u) => stayed.push(u) },

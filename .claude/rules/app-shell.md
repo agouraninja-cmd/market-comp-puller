@@ -25,9 +25,22 @@ paths:
 > (`VAULT_PAGE_PATHS`; vault.md has the page's half), in `TAB_PATHS` and
 > `CTA_FREE_PAGES`: a path rather than `/vault#pipeline` on purpose, since
 > instant-nav.js never prerenders a link with a fragment and the server
-> cannot mark a row for a fragment it never sees. **Sites opens Home's
-> Properties tab** (`/desk#properties`), where a development firm's sites
-> are worked (workspace.md, "Deals on Home"); there is no `/sites` page.
+> cannot mark a row for a fragment it never sees. **Sites is `/sites`
+> since 2026-10-12** (the owner: "Sites is the exact same thing as home,
+> this is a problem", and the pick of a page of its own over dropping the
+> row). Until then it opened Home's Properties tab, so it was Home twice.
+> `sites-page.js` draws the deals on a board of the four buying stages,
+> with figures across them, the opened deal worked under the board with
+> Home's own pane (`HOMESITES.pane`, styles in the shared
+> `home-sites.css`), Passed folded away, and an add form for deals only
+> (`ctx.buyOnly`); what a member owns stays on Home. The route reads
+> `user_sites` behind requireSites' three refusals and says them as walls,
+> plus a fourth for a member not in a development firm. It is in
+> `TAB_PATHS` and `CTA_FREE_PAGES`, logs `sites_visit` through
+> `logPageVisit`, and writes nothing on load. `test/sites-page.test.js`
+> runs its script. The rules below that speak of the app marking Sites and
+> swapping Home's tab in place are history: marketBar marks it on `/sites`
+> like any row, and index.html neither marks nor intercepts it.
 > Six rules:
 > - **Both rows render on both nav authors, with marketBar's ids on both**
 >   (`#navPipe`, `#navSites`), and ONE class decides which shows:

@@ -75,8 +75,9 @@
 // server six database-backed renders by sweeping a pointer across a header.
 
 // /pipeline (2026-10-09) is the vault page opened on its Pipeline tab, a
-// rail row of its own; server.js's VAULT_PAGE_PATHS serves both.
-const TAB_PATHS = ["/", "/desk", "/vault", "/pipeline", "/messages", "/markets", "/bulk", "/permits", "/buildings"];
+// rail row of its own; server.js's VAULT_PAGE_PATHS serves both. /sites
+// (2026-10-12) is a development firm's row in Pipeline's place.
+const TAB_PATHS = ["/", "/desk", "/vault", "/pipeline", "/sites", "/messages", "/markets", "/bulk", "/permits", "/buildings"];
 // GET routes that WRITE, which the fetch guard would otherwise wave through
 // from a page nobody has opened (audited 2026-09-26, every GET in server.js).
 // The two that matter most treat a read as evidence somebody is looking:

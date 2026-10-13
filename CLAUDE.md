@@ -30,8 +30,10 @@ headed "Your properties and comps" and opened from Home's tabs; it was the
 2026-10-09: Home, Messages, **Pipeline** | Markets, Comp report, Permits, with
 **Sites** in Pipeline's place for a development firm; app-shell.md). Pipeline
 is `/vault`'s tab at a path of its own, `/pipeline` (vault.md), and Sites
-opens Home's Properties tab, where a development firm's sites are worked
-(`/desk#properties`). Its other tabs have doors instead: new BOV requests also
+opened Home's Properties tab, where a development firm's sites are worked
+(`/desk#properties`) until 2026-10-12, when it became `/sites`, a page of
+its own: the deals on a board of the four buying stages (`sites-page.js`;
+app-shell.md). Its other tabs have doors instead: new BOV requests also
 land in Home's Today.
 **The Board** is not on it since 2026-10-09: it is a stock-style watchlist of
 markets and watched properties drawn on `/markets` itself for a signed-in

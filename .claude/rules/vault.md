@@ -1200,7 +1200,8 @@ paths:
 >   `applyShop` hides Pipeline AND Properties (their properties are on
 >   Home), and a link naming either, or the old `#sites` (read as
 >   Properties for everyone else), sends them to `/desk#properties`
->   (`askedTab`; never from a prerendered page). Comps is the opening tab
+>   (`askedTab`; never from a prerendered page; since 2026-10-12 a
+>   Pipeline link sends them to `/sites` instead, their row there). Comps is the opening tab
 >   and the bare address for everyone. The page's header line for that firm
 >   says "Your properties are on Home".
 

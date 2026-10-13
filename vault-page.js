@@ -3553,8 +3553,8 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // comp never looks private and can always be taken back.
   function applyShop(){
     var shop=!!(myFirm&&myFirm.kind==="development");
-    // The rail's row under Messages follows the same answer: Sites (Home's
-    // Properties) for a development firm, Pipeline for everyone else
+    // The rail's row under Messages follows the same answer: Sites (/sites,
+    // its deals by stage) for a development firm, Pipeline for everyone else
     // (server.js SHOP_NAV_JS, which also remembers it for the next page's
     // first paint).
     if(window.cnShopNav)window.cnShopNav(shop);
@@ -3570,8 +3570,11 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     // Never from a page built ahead of being seen (instant tab switching):
     // only a member who actually opened the link is sent on.
     if((askedTab==="pipe"||askedTab==="props")&&!document.prerendering&&window.location&&window.location.replace){
+      // Pipeline's row is Sites for them, so a Pipeline link opens /sites
+      // (2026-10-12); Properties is Home's.
+      var to=askedTab==="pipe"?"/sites":"/desk#properties";
       askedTab="";
-      window.location.replace("/desk#properties");
+      window.location.replace(to);
       return;
     }
     if(curTab==="pipe"||curTab==="props")setTab("book",true);

@@ -259,9 +259,11 @@ paths:
 >   `/sites.js` or `/home-sites.js` (`hmWorkHere`) the rows list and
 >   open nothing, and neither "Only you" choice shows. `dealsHref` and
 >   `addHref` are gone. **The rail's Sites row** (development firms only,
->   in Pipeline's place under Messages; app-shell.md) opens this tab:
->   `/desk#properties`, marked current by `markNavCurrent` while
->   Properties shows for that member.
+>   in Pipeline's place under Messages; app-shell.md) opened this tab
+>   until 2026-10-12; it is `/sites` now, the deals alone on a stage board
+>   (`sites-page.js`), and Home's Properties tab is only Home. The deal
+>   pane's styles moved from index.html to `/home-sites.css`, which both
+>   pages link.
 > - **The Board is on the Markets page** (2026-10-09; markets.md): drawn on
 >   `/markets` for a signed-in member, where its `.mboard` door was, and a
 >   market page's "Add to The Board" has "Open The Board →" under it.

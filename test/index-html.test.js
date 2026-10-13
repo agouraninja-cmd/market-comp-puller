@@ -1095,8 +1095,11 @@ test("a development firm's deals are worked in place on Home's Properties tab, a
   const reload = html.slice(html.indexOf("async function hmReloadMine("), html.indexOf("function hmOpenWork("));
   assert.ok(reload.includes("if (deskSites == null) deskSites = before;"));
   assert.ok(reload.includes('acctApi("GET", "/api/portfolio")') && reload.includes("portfolioKeys.clear();"));
-  // The pane's styles use the theme's tokens only, so dark mode holds.
-  const css = html.slice(html.indexOf(".hm-chip.passed {"), html.indexOf("@media (max-width: 420px) { .hs-kind"));
+  // The pane's styles use the theme's tokens only, so dark mode holds. They
+  // are home-sites.css since 2026-10-12, shared with /sites, and Home links it.
+  assert.ok(html.includes('<link rel="stylesheet" href="/home-sites.css" />'), "Home no longer loads the pane's styles");
+  assert.ok(!/^\s*\.hs-pane \{/m.test(html), "the pane's styles are restated in index.html");
+  const css = fs.readFileSync(path.join(__dirname, "..", "home-sites.css"), "utf8");
   assert.ok(css.length > 2000, "the pane's styles moved");
   assert.doesNotMatch(css.replace(/rgba\(15, 23, 42, \.\d+\)/g, ""), /#[0-9a-f]{3,6}\b|rgba?\(/i, "a literal colour in the pane's styles");
 });

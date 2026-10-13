@@ -2357,7 +2357,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- Two tips, one shown (the submit handler picks by currentUser).
              Both point at the Vault's contributions deck (2026-09-04), which
              is where a submission's review status and citations live now. -->
-        <p id="compTipIn" class="hidden text-xs text-[#9AA2AD] mt-2">Track its review and see when reports cite it under Your contributions in <a href="/vault" class="underline">your Data</a>.</p>
+        <p id="compTipIn" class="hidden text-xs text-[#9AA2AD] mt-2">Track its review and see when reports cite it under Contributions in <a href="/comps#contributions" class="underline">your comps</a>.</p>
         <p id="compTipOut" class="text-xs text-[#9AA2AD] mt-2">Tip: create a free CompNinja account with this same email, and your submissions show up in your Data with their review status and citations.</p>
         <div class="mt-4 flex justify-center gap-3">
           <button id="compAnotherBtn" type="button" class="btn-live text-sm font-semibold text-[#374253] bg-white hover:bg-[#F5F4EF] border border-[#D8D4C9] rounded-lg px-4 py-2">Submit another</button>
@@ -3051,8 +3051,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              member, never hydrated: /bulk answers a free member with its
              upgrade card, and nothing on Home runs a report any more, so a
              row hidden until canBulkValue (its shape before Draft C) would
-             leave them no door. marketBar carries the twin. -->
-        <a id="navBulkLink" href="/bulk" class="hover:text-[#1A2433]"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/></svg><span class="nvl">Comp report</span></a>
+             leave them no door. marketBar carries the twin.
+             Comps since 2026-10-13: a section, the member's own comps at
+             /comps (the row's address) and the comp report tool at /bulk.
+             index.html never serves either, so it never marks this row. -->
+        <a id="navComps" href="/comps" class="hover:text-[#1A2433]"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/></svg><span class="nvl">Comps</span></a>
         <!-- The Permit tracker (2026-09-24): the THIRD Tools row, after Comp
              report (owner's order). marketBar carries the twin. Its unread dot
              (2026-09-27) is a tracked permit's step completing; filled by
@@ -3189,7 +3192,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            Properties, People) and every property on a map on the right, each
            dated row numbered like its pin. Reports left on 2026-10-08 and
            Comps on 2026-10-09 (the owner's call: "Remove Comps from the
-           Homepage"); a member's comps are on their own page, /vault. What
+           Homepage"); a member's comps are on their own page, /comps. What
            goes in the lists is home-map.js (HOMEMAP), tested there;
            drawHomeMap() below is its one writer here, and it draws ONLY from
            what the desk already read, plus its own reads: the member's deals
@@ -3236,7 +3239,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <button type="button" role="tab" id="hmTabProps" data-tab="properties" aria-controls="hmPaneProps" aria-selected="false">Properties <b id="hmNProps"></b></button>
               <!-- No Reports tab since 2026-10-08: the shelf, what was sent to
                    you and your links are Messages' Reports view now. No Comps
-                   tab since 2026-10-09: a member's comps are on /vault. -->
+                   tab since 2026-10-09: a member's comps are on /comps. -->
               <button type="button" role="tab" id="hmTabPeople" data-tab="people" aria-controls="hmPanePeople" aria-selected="false" hidden>People</button>
             </div>
           </div>
@@ -3263,7 +3266,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <div id="hmAddChoice" class="hidden hm-choice">
                 <button type="button" id="hmAddFirm" class="hm-ch"><b>One of the firm's buildings</b><small>Everyone at <span id="hmAddFirmName">your firm</span> sees its address, size and lease dates.</small></button>
                 <a id="hmAddDeal" class="hm-ch hidden" href="#properties"><b>A deal you're working on</b><small>Only you can see it. It's tracked with its stage, asking price and next date.</small></a>
-                <a id="hmAddOwn" class="hm-ch" href="/vault?add=own#properties"><b>A property you own</b><small>Only you can see it. It gets a value you can refresh, and its numbers stay private.</small></a>
+                <a id="hmAddOwn" class="hm-ch" href="#properties"><b>A property you own</b><small>Only you can see it. It gets a value you can refresh, and its numbers stay private.</small></a>
               </div>
               <!-- A development firm's add form (home-sites.js), opened here
                    by the two choices above rather than on another page. -->
@@ -5776,10 +5779,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     leadCaptureEnabled = Boolean(cfg.leadCapture);
     streetviewEnabled = Boolean(cfg.streetview);
-    // Missing `pro` is the Pro-off default. Nothing here reads
-    // portfolioValues any more — /vault is told which desk it is by its own
-    // boot payload, computed from entitlements in the same process that
-    // renders the page, so there is no stale body to fall through.
+    // Missing `pro` is the Pro-off default. portfolioValues is read from
+    // here by Home's working panes (hmSitesView's showValues): a free
+    // member's own properties are an address list, a Pro member's carry
+    // their values.
     proConfig = cfg.pro || { enabled: false };
     guestSearch = cfg.guestSearch || null;
     accountWall = Boolean(cfg.accountWall);
@@ -12623,14 +12626,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const saved = Boolean(currentUser && currentMeta && portfolioKeys.has(portfolioKey(currentMeta.address, currentMeta.type)));
     btn.classList.toggle("hidden", saved);
   }
-  // portfolioValuesOn() lived here until 2026-09-01 ("Three Spaces"). The
-  // portfolio it decided the shape of renders on /vault now, and that page is
-  // told which desk it is by its own boot payload, which vaultReadPayload
-  // states on all three of its exits (200, 403 and 503) precisely so the
-  // refusal carries it too. One computation, server-side, where the
-  // entitlement already is.
-  // /api/config still carries pro.portfolioValues; nothing in this file reads
-  // it any more.
+  // portfolioValuesOn() lived here until 2026-09-01 ("Three Spaces"), when
+  // the portfolio moved to /vault and that page read its own boot payload's
+  // copy. The portfolio came back to Home on 2026-10-13 (the vault was taken
+  // apart), and Home's working panes read pro.portfolioValues from
+  // /api/config (hmSitesView).
   // An address typed into the shared-report lock card while signed out. Same
   // shape as pendingPortfolioSave, cleared by the same cancel path.
   let pendingSharedAddress = "";
@@ -13607,8 +13607,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // id answers 404 rather than opening somebody else's building. Cleared
     // after use like ?submit=comp, so a refresh does not reopen it.
     // &refresh=1 asks for a fresh billed search rather than the saved report.
-    // It exists because /vault's properties deck lists a member's portfolio
-    // now (2026-09-01, "Three Spaces") and its rows are links: that page can
+    // It exists because /vault's properties deck listed a member's portfolio
+    // (2026-09-01 to 2026-10-13) and its rows were links: that page could
     // neither render a report nor replay a search, because both need the real
     // #compForm and every rule hanging off it, all of which live here. So
     // Refresh there is this door with one more parameter on it, rather than a
@@ -13728,8 +13728,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   // listPortfolio deliberately never selects `payload`, so a row from the list
   // cannot be replayed — refreshPortfolioItem needs the stored inputs. Both
-  // doors onto Refresh go through here: the desk's own button, and /vault's
-  // link, which arrives as ?property=<id>&refresh=1 on a cold load because the
+  // doors onto Refresh go through here: the desk's own button, and Home's
+  // Refresh value link (home-sites.js, /vault's until 2026-10-13), which arrives as ?property=<id>&refresh=1 on a cold load because the
   // report engine and #compForm live in this file and nowhere else.
   async function refreshPortfolioItemById(id) {
     const full = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(id))
@@ -13741,7 +13741,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // refreshPortfolioItem replays item.payload.meta, and a row whose payload
     // never landed would throw on that read. That was only ever reachable from
     // a button on a row this page had just drawn; it is reachable from a URL
-    // now (/vault's Refresh link), so the missing case gets an answer rather
+    // now (Home's Refresh value link), so the missing case gets an answer rather
     // than an unhandled rejection and a page that visibly does nothing.
     if (full.payload && full.payload.meta) refreshPortfolioItem(full);
     else showStatus("That property has no saved report to re-run. Search its address to value it again.", "error");
@@ -13832,7 +13832,7 @@ async function renderMyDesk() {
     // anything on this page: portfolioKeys is what tells a report whether it
     // is already saved, so without it "Save to portfolio" would offer to
     // re-save a property that is already in the book, on every report a
-    // member opens. The rows themselves render on /vault.
+    // member opens. The rows themselves are Home's Owned group.
     //
     // A failed read must NOT clear the set. An empty portfolioKeys is a
     // positive claim -- "none of your properties are saved" -- and making it
@@ -14110,18 +14110,20 @@ async function renderMyDesk() {
   const hmCanLeads = () => hmCanVault() && !(myFirm() && myFirm().kind === "development");
   const hmFirmKind = () => (myFirm() ? myFirm().kind || "" : "");
 
-  // A development firm's deals, worked on Properties (2026-10-09, the
-  // owner's call: "Development firms only and integrate it into the property
-  // section of the home page"). Their member's own rows (a deal, or a
-  // property they own or track) open a working pane in place under the row
-  // (home-sites.js, the global HOMESITES): the tracker, the terms and dates,
-  // the value. Everyone else's rows open the map card only, as before, and
-  // they have no deals (HOMEMAP.dealsOn). Without the script (stale, failed)
-  // the rows still list and simply open nothing.
+  // A member's own properties, worked on Properties: a development firm's
+  // deals (2026-10-09, the owner's call: "Development firms only and
+  // integrate it into the property section of the home page") and, for
+  // every member since 2026-10-13, what they own (the vault's Properties tab
+  // until the owner's "remove the vault"). A row of the member's own opens a
+  // working pane in place under it (home-sites.js, the global HOMESITES):
+  // the tracker, the terms and dates, the value. Only a development firm's
+  // member has deals (HOMEMAP.dealsOn). A firm building opens its card on
+  // the map, as before. Without the script (stale, failed) the rows still
+  // list and simply open nothing.
   let hmSites = null;        // HOMESITES' mount, made the first time it is needed
   let hmWork = "";           // the key of the row whose pane is open
   let hmPassedOpen = false;  // the Passed fold stays open across redraws
-  const hmWorkHere = () => HOMEMAP.dealsOn(hmFirmKind()) && typeof HOMESITES !== "undefined" && typeof SITES !== "undefined";
+  const hmWorkHere = () => typeof HOMESITES !== "undefined" && typeof SITES !== "undefined";
   const HM_TYPES = ["Industrial", "Office", "Retail", "Multifamily", "Land", "Residential"];
   function hmSitesView() {
     if (!hmWorkHere()) return null;
@@ -14130,7 +14132,8 @@ async function renderMyDesk() {
       propTypes: HM_TYPES,
       data: () => ({ sites: deskSites || [], portfolio: deskPortfolio || [], buildings: myFirm() ? firmBuildings : [],
         firm: myFirm(), showValues: (() => { try { return Boolean(proConfig && proConfig.portfolioValues); } catch (_) { return false; } })(),
-        today: hmTodayIso() }),
+        canSites: hmCanVault(), today: hmTodayIso() }),
+      deals: () => HOMEMAP.dealsOn(hmFirmKind()),
       reload: hmReloadMine,
       open: (key) => { hmWork = key || ""; },
       keyOf: (address) => HOMEMAP.addressKey(address),
@@ -14646,9 +14649,8 @@ async function renderMyDesk() {
     }
     row.append(th, rt, val);
     // The row's own data, for the working pane (hmPlaceWork). A row that is
-    // the member's (a deal, or a property they own or track) opens its pane
-    // in place for a development firm's member; every row still opens its
-    // card on the map.
+    // the member's (a deal, or a property they own) opens its pane in place;
+    // every row still opens its card on the map.
     row._hm = r;
     const works = hmWorkHere() && (r.siteId != null || r.portfolioId != null);
     if (works) row.setAttribute("aria-expanded", "false");
@@ -14697,17 +14699,15 @@ async function renderMyDesk() {
     hmNothing = nothing;
     document.getElementById("hmStart").classList.toggle("hidden", !nothing || hmTab !== "today");
     document.getElementById("hmStartFirm").classList.toggle("hidden", !!firm);
-    // A property of the member's own opens the form that takes it
-    // (HOMEMAP.addWhere): here on Home for a development firm's member, a
-    // deal or one they own; for anyone else a property they own opens their
-    // own page's form, and a deal is not offered (deals are a development
-    // firm's). "home" without the script offers neither: that member's own
-    // page has no Properties tab to fall back to.
+    // A property of the member's own opens the form that takes it, here on
+    // Home (HOMEMAP.addWhere): one they own, for everyone, and a deal for a
+    // development firm's member (deals are a development firm's). Without
+    // the script neither is offered: since the vault left (2026-10-13) there
+    // is no other page whose form would take it.
     const dealAt = HOMEMAP.addWhere("buy", hmFirmKind()), ownAt = HOMEMAP.addWhere("own", hmFirmKind());
     const here = !!hmSitesView();
     document.getElementById("hmAddDeal").classList.toggle("hidden", !(dealAt === "home" && here));
-    document.getElementById("hmAddOwn").classList.toggle("hidden", ownAt === "home" && !here);
-    document.getElementById("hmAddOwn").href = ownAt === "home" ? "#properties" : ownAt;
+    document.getElementById("hmAddOwn").classList.toggle("hidden", !(ownAt === "home" && here));
     document.getElementById("hmAddFirm").classList.toggle("hidden", !firm);
     document.getElementById("hmAddFirmName").textContent = firm ? firm.name : "your firm";
 
@@ -14740,7 +14740,15 @@ async function renderMyDesk() {
     props.textContent = "";
     const mine = hmSitesView();
     const buyNote = mine ? ["your deals", HOMESITES.figuresLine((deskSites || []).filter((s) => s && s.portfolio_item_id == null && SITES.isBuying(s.stage)), today)].filter(Boolean).join(" · ") : "your deals";
-    [["buying", "Buying", buyNote], ["owned", "Owned", "your numbers stay private"],
+    // What the member owns adds up at the head of its group, once two have
+    // a value (HOMEMAP.ownedTotal), to the cent of a million: the rows say
+    // $7.72M and $4.32M, so the sum must read $12.04M, not HOMEMAP.money's
+    // rounder $12M.
+    const own = HOMEMAP.ownedTotal(hmRows);
+    const ownMoney = mine ? HOMESITES.short : HOMEMAP.money;
+    const ownNote = [own ? ownMoney(own.total) + " likely combined" + (own.valued < own.of ? ` (${own.valued} of ${own.of})` : "") : "",
+      "your numbers stay private"].filter(Boolean).join(" · ");
+    [["buying", "Buying", buyNote], ["owned", "Owned", ownNote],
       ["firm", "Firm buildings", firm ? `on ${firm.name}'s list` : ""]].forEach(([g, title, note]) => {
       const list = hmRows.filter((r) => r.group === g);
       if (!list.length) return;
@@ -14839,12 +14847,13 @@ async function renderMyDesk() {
     // Home's own address only: index.html also serves / and reports.
     else if (h === "reports" && /^\/desk\/?$/.test(location.pathname) && !document.prerendering) location.replace("/messages#reports");
     // Home's Comps tab was /desk#comps from 2026-10-07 to 2026-10-09; the
-    // member's comps are on their own page, so a saved link lands there.
-    else if (h === "comps" && /^\/desk\/?$/.test(location.pathname) && !document.prerendering) location.replace("/vault#book");
+    // member's comps are on their own page, /comps, so a saved link lands
+    // there.
+    else if (h === "comps" && /^\/desk\/?$/.test(location.pathname) && !document.prerendering) location.replace("/comps");
   }
 
   // Add a property: the firm's list (the building form, moved here) or the
-  // member's own (their Data page's add flow).
+  // member's own (home-sites.js's form, under the chooser).
   function hmSetAddChoice(open) {
     document.getElementById("hmAddChoice").classList.toggle("hidden", !open);
     document.getElementById("hmAddProp").setAttribute("aria-expanded", String(open));
@@ -14870,8 +14879,8 @@ async function renderMyDesk() {
     document.getElementById("hmMineAdd").textContent = "";
     setBuildingAddOpen(true);
   });
-  // A development firm's member adds a deal, or a property they own, here
-  // (home-sites.js's form, under the chooser), not on another page.
+  // A member adds a property they own here, and a development firm's member
+  // a deal too (home-sites.js's form, under the chooser), not on another page.
   [["hmAddDeal", "buy"], ["hmAddOwn", "own"]].forEach(([id, kind]) => {
     document.getElementById(id).addEventListener("click", (e) => {
       const view = hmSitesView();
@@ -15284,10 +15293,11 @@ async function renderMyDesk() {
       const filedHere = hmLayerOn("permits") && Array.isArray(hmPermits)
         ? hmPermits.filter((p) => HOMEMAP.permitAt(p, [r])).sort((x, y) => y.filed.localeCompare(x.filed))[0] : null;
       if (filedHere) b.append(hmEl("span", "hm-pop-at", `Permit filed ${HOMEMAP.shortDate(filedHere.filed)}: ${filedHere.type} (${filedHere.status || HOMEMAP.permitStageLabel(filedHere.stage)})`));
-      // A development firm's own row opens its working pane in the list
-      // (hmOpenWork); a firm building opens its sheet, and a property anyone
-      // else owns opens on their own page. A row that is both the firm's and
-      // the member's offers both.
+      // The member's own row opens its working pane in the list
+      // (hmOpenWork), and a firm building opens its sheet. A row that is both
+      // the firm's and the member's offers both. Without home-sites.js
+      // (stale, failed) a row of the member's own offers no door: since the
+      // vault left (2026-10-13) there is no other page it opens on.
       const a = hmEl("a", "hm-pop-a");
       const works = hmWorkHere() && (r.siteId != null || r.portfolioId != null);
       const workLink = (el, text) => {
@@ -15296,8 +15306,7 @@ async function renderMyDesk() {
       };
       if (r.buildingId != null) { a.textContent = "Open the building sheet →"; a.href = "/building/" + encodeURIComponent(r.buildingId); }
       else if (works) workLink(a, r.group === "buying" ? "Open the deal →" : "Open the property →");
-      else { a.textContent = "Open in your properties →"; a.href = "/vault#properties"; }
-      b.append(a);
+      if (a.textContent) b.append(a);
       if (r.buildingId != null && works) {
         const mineA = hmEl("a", "hm-pop-a2");
         workLink(mineA, r.group === "buying" ? "Your deal →" : "Your numbers →");
@@ -16451,7 +16460,7 @@ async function renderMyDesk() {
         const row = el("div", "mc-todo");
         row.appendChild(el("i"));
         const go = el(what === "covers" ? "a" : "button", "mc-link", text);
-        if (what === "covers") go.href = "/vault";
+        if (what === "covers") go.href = "/pipeline";
         else {
           go.type = "button";
           go.addEventListener("click", () => {
@@ -19127,7 +19136,7 @@ async function renderMyDesk() {
       // A vault code still names its destination: it lands somebody on a
       // workspace they have never seen and were not looking for.
       if (Array.isArray(data.granted) && data.granted.indexOf("vault") !== -1) {
-        msg.innerHTML = 'Your Data is open. <a href="/vault" class="underline font-semibold">Go to Data</a>.';
+        msg.innerHTML = 'Your comps and pipeline are open. <a href="/comps" class="underline font-semibold">Go to your comps</a>.';
         msg.className = "mt-2 text-sm text-emerald-700";
         msg.classList.remove("hidden");
         return;

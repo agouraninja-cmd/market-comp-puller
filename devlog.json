@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-10-13",
+    "type": "improvement",
+    "title": "Comps is a section of its own, and every part of the old vault lives where you use it",
+    "details": "The private page that held your properties and comps is gone, and its parts have moved to where they are used. “Comp report” in the side menu is now “Comps”, with two tabs: “Your comps” (your own comp book and the comps you have contributed) and “Run a comp report”. The Pipeline is its own page. The properties you own are now worked right on Home for everyone, not only development firms: open a property’s row to see its estimated value, how it changed, a chart of every check, how its market moved, and buttons to open its report, refresh its value or remove it. Home’s Owned list also adds up your buildings’ combined value. Old links and bookmarks still work and open the right new place."
+  },
+  {
+    "date": "2026-10-13",
     "type": "feature",
     "title": "Build a market page right from the Markets page",
     "details": "Type a city into the Markets page search, like “industrial Twin Falls ID”. If there is no page for it yet, a Build it button appears under the box, and about a minute later you land on the new market page. Type just a city and state and it offers the property types that don’t have a page yet. Signed-in members only; each build counts as one search."

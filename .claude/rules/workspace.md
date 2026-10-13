@@ -19,7 +19,42 @@ paths:
 > module names keep "desk"/"vault", and these notes still say "workspace" and
 > "vault" for the two spaces. Never put "Workspace" or "Vault" back in copy.
 > (Since 2026-10-07 the rail no longer has a Data row, and /vault's heading
-> reads "Your properties and comps"; see below.)
+> read "Your properties and comps" until 2026-10-13, when there stopped
+> being a /vault page at all; see below.)
+
+> **The vault is taken apart (2026-10-13, the owner: "the vault doesn't
+> even exist any more").** Read this before the boxes below, which it
+> amends: where they send a member to `/vault` (its Properties tab, its
+> `?add=own` form, `#book`), that is history. `/vault` redirects to `/comps`
+> (vault.md).
+> - **What a member owns is worked on Home, for everyone.** `hmWorkHere()`
+>   no longer asks `HOMEMAP.dealsOn`: a row of the member's own
+>   (`r.portfolioId`, or for a development firm a deal's `r.siteId`) opens
+>   HOMESITES' pane in place under it, with the value, the change, the
+>   chart of every check, the market since, the firm door, Open report,
+>   Refresh value and Remove, all of which the vault's Properties tab held.
+>   The map card's "Open in your properties →" (`/vault#properties`) is
+>   gone; without home-sites.js a row of the member's own offers no door,
+>   since there is no other page it opens on.
+> - **HOMESITES is told two more things** by `hmSitesView`: `deals()`
+>   (HOMEMAP.dealsOn), so anyone outside a development firm gets the add
+>   form as "I own it" alone, with no "I'm buying it" choice; and
+>   `data().canSites` (`hmCanVault()`), so "Watch it on The Board instead",
+>   a Tracking status that `/api/sites` refuses without Pro, is offered only
+>   when it can be written.
+> - **`HOMEMAP.addWhere("own")` is "home" for everyone**, so `#hmAddOwn`
+>   links `#properties` and opens the form in `#hmMineAdd`, and it hides
+>   without home-sites.js (no other page would take it). Nothing reads
+>   `?add=own` any more.
+> - **The Owned group adds up** (`HOMEMAP.ownedTotal`): "$12.04M likely
+>   combined · your numbers stay private" once two owned buildings have a
+>   value, with "(2 of 3)" when some have none. Written with
+>   `HOMESITES.short`, so the sum agrees with the rows' own figures
+>   (`HOMEMAP.money` rounds $12.04M to $12M). It was the Properties tab's
+>   "Combined likely value".
+> - **A saved `/desk#comps`** goes to `/comps`. The rail row that was Comp
+>   report is **Comps** (`#navComps`, `/comps`; app-shell.md); index.html
+>   never serves `/comps` or `/bulk`, so it never marks that row.
 
 > **Comps leave Home (2026-10-09, owner's call: "Remove Comps from the
 > Homepage").** Read this before the boxes below, which it amends: where they

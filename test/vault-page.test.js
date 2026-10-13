@@ -27,7 +27,9 @@ const { renderVaultBody } = require("../vault-page");
 // Chrome assertions did NOT move in here — they belong to marketBar and
 // MARKET_FOOTER, and routes.test.js and nav-parity.test.js own them.
 const CHROME = {};
-const renderVaultHTML = (boot) => renderVaultBody(boot);
+// The second argument picks the page: { page: "pipeline" } is /pipeline,
+// anything else /comps (2026-10-13; one page, /vault, until then).
+const renderVaultHTML = (boot, opts) => renderVaultBody(boot, opts);
 
 function comp(o) {
   return Object.assign({
@@ -296,11 +298,12 @@ test("every element the page hides with .hide is actually hidden", () => {
   assert.deepEqual(failures, [], failures.join("\n"));
 
   // Not vacuous: the scan still sees the elements and rules that bit before.
-  assert.ok(shapes.some((s) => s.id === "propAddForm" && s.classes.has("form")),
-    "the scan no longer sees #propAddForm as a hideable .form");
+  // (#propAddForm, the hideable .form this first caught, left with the
+  // Properties tab on 2026-10-13; .form.hide stays restated for the next
+  // form that ships closed.)
   assert.ok(shapes.some((s) => s.id === "fFirmLab" && s.tag === "label"),
     "the scan no longer sees the Firm filter's label");
-  for (const sel of [".form", ".btn", ".row label", ".deck", ".strip"]) {
+  for (const sel of [".btn", ".row label", ".deck", ".strip"]) {
     assert.ok(held.has(sel), sel + " no longer reaches a hideable element in this scan, "
       + "so the test has stopped checking the case it was written for");
   }
@@ -639,7 +642,7 @@ async function runPage(comps, benchResult, opts, identity) {
     bootPayload.j.firm = opts.firm;
     bootPayload.j.sharedWithFirm = opts.sharedIds || [];
   }
-  const html = renderVaultHTML(bootPayload, CHROME);
+  const html = renderVaultHTML(bootPayload, { page: opts.page });
   const script = pageScript(html);
   const doc = stubDocument();
   // opts.window adds globals the page reads off window: a location and a
@@ -2607,7 +2610,7 @@ test("an empty vault asks for no benchmarks, and does not latch the flag", async
     "an empty vault has no bucket to ask about");
 
   const js = pageScript(renderVaultHTML(boot([]), CHROME));
-  assert.match(js, /if\(!benchLoaded\s*&&\s*comps\.length\)/,
+  assert.match(js, /if\(PAGE==="comps"\s*&&\s*!benchLoaded\s*&&\s*comps\.length\)/,
     "the benchmarks flag must stay false until there is a bucket, or the first import never loads them");
 });
 
@@ -2758,7 +2761,7 @@ const A_LEAD = {
 const A_COV = { id: "cov1", market: "Boise, ID", property_type: "Industrial", source: "added" };
 
 test("an empty pipeline shows the invitation and no table", async () => {
-  const { doc } = await runPage(ONE_TYPE_BOOK);
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline" });
   assert.ok(!doc.getElementById("pipeEmpty").classList.contains("hide"),
     "with nothing in either source the invitation is the body");
   assert.match(doc.getElementById("pipeTableWrap").className, /hide/,
@@ -2766,7 +2769,7 @@ test("an empty pipeline shows the invitation and no table", async () => {
 });
 
 test("the first logged BOV puts the invitation away", async () => {
-  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
     bovs: () => Promise.resolve(jsonResponse(200, {
       bovs: [A_BOV],
       rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
@@ -2779,14 +2782,14 @@ test("the first logged BOV puts the invitation away", async () => {
 });
 
 test("coverage without a lead or BOV keeps the pipeline invitation", async () => {
-  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
     leads: () => Promise.resolve(jsonResponse(200, { coverage: [A_COV], leads: [] })),
   });
   assert.ok(!doc.getElementById("pipeEmpty").classList.contains("hide"));
 });
 
 test("a BOV row renders its status select and a Remove button", async () => {
-  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
     bovs: () => Promise.resolve(jsonResponse(200, {
       bovs: [A_BOV],
       rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
@@ -2800,7 +2803,7 @@ test("a BOV row renders its status select and a Remove button", async () => {
 });
 
 test("a lead row renders the New chip and an intro button, and no status select", async () => {
-  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
     leads: () => Promise.resolve(jsonResponse(200, { coverage: [A_COV], leads: [A_LEAD] })),
   });
   const row = doc.getElementById("pipeRows").innerHTML;
@@ -2813,7 +2816,7 @@ test("a lead row renders the New chip and an intro button, and no status select"
 });
 
 test("a stage cell with a zero count is not a button", async () => {
-  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
     bovs: () => Promise.resolve(jsonResponse(200, {
       bovs: [A_BOV],
       rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
@@ -2827,7 +2830,7 @@ test("a stage cell with a zero count is not a button", async () => {
 });
 
 test("leads failing still renders BOV rows", async () => {
-  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
     leads: () => Promise.resolve(jsonResponse(503, { error: "Couldn't load leads." })),
     bovs: () => Promise.resolve(jsonResponse(200, {
       bovs: [A_BOV],
@@ -2840,7 +2843,7 @@ test("leads failing still renders BOV rows", async () => {
 });
 
 test("BOVs failing still renders lead rows", async () => {
-  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
     leads: () => Promise.resolve(jsonResponse(200, { coverage: [A_COV], leads: [A_LEAD] })),
     bovs: () => Promise.resolve(jsonResponse(503, { error: "unavailable" })),
   });
@@ -2851,7 +2854,7 @@ test("BOVs failing still renders lead rows", async () => {
 });
 
 test("a failed BOV load shows neither the invitation nor a stale table when leads are empty too", async () => {
-  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
     bovs: () => Promise.resolve(jsonResponse(503, { error: "unavailable" })),
   });
   assert.ok(doc.getElementById("pipeEmpty").classList.contains("hide"));
@@ -2860,7 +2863,7 @@ test("a failed BOV load shows neither the invitation nor a stale table when lead
 });
 
 test("the win rate is a dash below three decided BOVs", async () => {
-  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
     bovs: () => Promise.resolve(jsonResponse(200, {
       bovs: [A_BOV],
       rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
@@ -2868,6 +2871,21 @@ test("the win rate is a dash below three decided BOVs", async () => {
   });
   assert.match(doc.getElementById("pipeNote").innerHTML, /1 this year/);
   assert.match(doc.getElementById("pipeNote").innerHTML, /win rate (?:—|&mdash;|\\u2014|\u2014)/);
+});
+
+test("/comps reads no leads and no BOVs, and /pipeline no benchmarks: each page reads its own", async () => {
+  // Two pages since 2026-10-13. /comps has no Pipeline tab, so asking for
+  // the leads (which seeds coverage when empty) or the BOV log there would
+  // be work nobody sees; the gut check is drawn in the book, which /pipeline
+  // never shows.
+  const comps = await runPage(ONE_TYPE_BOOK);
+  assert.ok(!comps.calls.some((c) => c.url.indexOf("/api/broker/leads") === 0), "/comps asked for the leads");
+  assert.ok(!comps.calls.some((c) => c.url.indexOf("/api/broker/bovs") === 0), "/comps asked for the BOV log");
+  assert.ok(comps.calls.some((c) => c.url.indexOf("/api/vault/benchmarks") === 0), "/comps lost its gut check");
+  const pipe = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline" });
+  assert.ok(pipe.calls.some((c) => c.url.indexOf("/api/broker/leads") === 0), "/pipeline did not ask for the leads");
+  assert.ok(pipe.calls.some((c) => c.url.indexOf("/api/broker/bovs") === 0), "/pipeline did not ask for the BOV log");
+  assert.ok(!pipe.calls.some((c) => c.url.indexOf("/api/vault/benchmarks") === 0), "/pipeline asked for benchmarks");
 });
 
 // ---------------------------------------------------------------------------
@@ -3434,7 +3452,7 @@ function firmBoot(comps, firm, sharedIds) {
 // variables, so a four-line stand-in DOM is the whole harness.
 // noPublish is applyShop's flag; it defaults to what applyShop decides for a
 // firm with nothing published (a development firm is not offered publishing).
-function runFirmPrivacy(firm, sharedCount, noPublish = !!(firm && firm.kind === "development")) {
+function runFirmPrivacy(firm, sharedCount, noPublish = !!(firm && firm.kind === "development"), page = "comps") {
   const js = pageScript(renderVaultHTML(firmBoot([comp({})], firm), CHROME));
   const src = js.match(/function renderFirmPrivacy\(\)\{[\s\S]*?\n  \}/);
   assert.ok(src, "renderFirmPrivacy is gone from the emitted page");
@@ -3444,9 +3462,9 @@ function runFirmPrivacy(firm, sharedCount, noPublish = !!(firm && firm.kind === 
   };
   const sharedIds = {};
   for (let i = 0; i < sharedCount; i++) sharedIds["c" + i] = true;
-  const fn = new Function("$", "esc", "myFirm", "sharedIds", "noPublish",
+  const fn = new Function("$", "esc", "myFirm", "sharedIds", "noPublish", "PAGE",
     src[0] + "\nreturn renderFirmPrivacy;")(
-    (id) => els[id], (s) => String(s), firm, sharedIds, noPublish);
+    (id) => els[id], (s) => String(s), firm, sharedIds, noPublish, page);
   fn();
   return els;
 }
@@ -3474,24 +3492,21 @@ test("sharing one comp corrects the promise rather than leaving it false", () =>
   assert.match(els.deckSub.textContent, /1 shared with Colliers Boise; the rest visible only to you/);
 });
 
-test("a development shop's header names its own work, and the promise still holds", () => {
+test("the comps line names only what the page holds, for every kind of firm, and the promise still holds", () => {
+  // Only what the page holds (2026-10-07). Since 2026-10-13 that is comps for
+  // everyone: the Pipeline is a page of its own and what a member owns is on
+  // Home, so no kind of firm is promised either here.
   const DEV = { ...FIRM, name: "Ridgeline Development", kind: "development" };
-  let els = runFirmPrivacy(DEV, 0);
-  // Only what the page holds (2026-10-07): the old line promised absorption
-  // rates and feasibility calculations the page has no tab for. Since
-  // 2026-10-09 its properties are on Home, and the line says where.
-  assert.equal(els.deckSub.textContent,
-    "The comps you value against. Your properties are on Home. Visible only to you.");
-  els = runFirmPrivacy(DEV, 2);
-  assert.match(els.deckSub.textContent,
-    /^The comps you value against\. Your properties are on Home\. 2 shared with Ridgeline Development; the rest visible only to you\.$/);
-  // A broker shop names the BOV requests its Pipeline holds; a member whose
-  // firm kind is unknown reads as a broker (org-access.js kindOf's rule).
-  for (const firm of [FIRM, { ...FIRM, kind: "broker" }]) {
-    assert.match(runFirmPrivacy(firm, 0).deckSub.textContent, /^Your comps, the owners asking you for a BOV, and the properties you hold\./);
+  for (const firm of [DEV, FIRM, { ...FIRM, kind: "broker" }, null]) {
+    assert.equal(runFirmPrivacy(firm, 0).deckSub.textContent,
+      "The past deals you value against. Visible only to you.", JSON.stringify(firm));
   }
-  // No firm at all: no BOV pipeline is promised to a member who has none.
-  assert.match(runFirmPrivacy(null, 0).deckSub.textContent, /^Your comps and the properties you hold\./);
+  assert.match(runFirmPrivacy(DEV, 2).deckSub.textContent,
+    /^The past deals you value against\. 2 shared with Ridgeline Development; the rest visible only to you\.$/);
+  // /pipeline's own line is never rewritten with the comps' promise.
+  const pipe = runFirmPrivacy(FIRM, 2, false, "pipeline");
+  assert.equal(pipe.deckSub.textContent, "", "/pipeline's subtitle was rewritten");
+  assert.match(pipe.trustNote.innerHTML, /^2 comps are shared with Colliers Boise\./);
 });
 
 test("the corrected promise counts in plural", () => {
@@ -3505,7 +3520,7 @@ test("the default promise lives in the MARKUP, not only in the script", () => {
   // be is worse than a stale one.
   const html = renderVaultHTML(firmBoot([comp({})], FIRM, ["c1"]), CHROME);
   assert.match(html, /<p class="note" id="trustNote">Visible only to you\./);
-  assert.match(html, /id="deckSub">Your comps and the properties you hold\. Visible only to you\./);
+  assert.match(html, /id="deckSub">The past deals you value against\. Visible only to you\./);
 });
 
 test("the Firm column exists only for a broker who is in a firm", () => {
@@ -3781,104 +3796,24 @@ test("an import offers no push to a broker in no firm", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// "Add to firm" on a portfolio row (Three Spaces, slice 3)
-//
-// The portfolio moved here from /desk in slice 1, so the door that puts a
-// property on the firm's board lives here too. It reads the firm's buildings
-// once and renders only for a member of a firm, only once that read has
-// answered, and only for an address not already on the board.
+// The Properties tab left on 2026-10-13 (the owner: "remove the vault"), and
+// with it the portfolio rows' "Add to firm" door and the add-by-address form
+// (Three Spaces, slices 1 and 3). A member's own properties are worked on
+// Home (home-sites.js, test/home-sites.test.js), where both live now.
 // ---------------------------------------------------------------------------
 
-const PROP = (o) => Object.assign({
-  id: "9c1e9a1e-0000-4000-8000-0000000000p1", address: "1210 N 17th St, Boise, ID",
-  property_type: "Industrial", verified_key: "1210 n 17th st boise id 83702",
-  snapshots: [{ ts: "2026-09-01T00:00:00Z", likely: 1250000 }], updated_at: "2026-09-01T00:00:00Z",
-}, o);
-const BOARD = (o) => Object.assign({
-  id: "b1", address: "100 Main St, Boise, ID", addressKey: "100 main st boise id", verifiedKey: "",
-  market: "Boise, ID", type: "Industrial", sizeSqft: null, yearBuilt: null, addedBy: "Mike", mine: false,
-}, o);
-
-test("the door renders on a property not yet on the firm's board, and not on one that is", async () => {
-  const { doc } = await runPage([comp({})], null, {
-    firm: FIRM,
-    portfolio: [PROP({}), PROP({ id: "9c1e9a1e-0000-4000-8000-0000000000p2", address: "100 MAIN ST, Boise, ID", verified_key: null })],
-    buildings: [BOARD({})],
-  });
-  await tick();
-  const rows = doc.getElementById("propsRows").innerHTML;
-  assert.match(rows, /data-firm-bldg="9c1e9a1e-0000-4000-8000-0000000000p1"[^>]*>Add to firm</,
-    "the unlisted property offers the door");
-  assert.doesNotMatch(rows, /data-firm-bldg="9c1e9a1e-0000-4000-8000-0000000000p2"/,
-    "the exact address, whatever its case, is already on the board");
-});
-
-test("the same building typed another way meets the board through the verified key", async () => {
-  const { doc } = await runPage([comp({})], null, {
-    firm: FIRM, portfolio: [PROP({})],
-    buildings: [BOARD({ address: "1210 North 17th Street, Boise, ID 83702", verifiedKey: "1210 n 17th st boise id 83702" })],
-  });
-  await tick();
-  assert.doesNotMatch(doc.getElementById("propsRows").innerHTML, /data-firm-bldg=/);
-});
-
-test("no firm, or a board that could not be read, offers no door", async () => {
-  let ctx = await runPage([comp({})], null, { portfolio: [PROP({})] });
-  await tick();
-  assert.doesNotMatch(ctx.doc.getElementById("propsRows").innerHTML, /data-firm-bldg=/, "no firm, no door");
-  assert.equal(ctx.calls.some((c) => c.url.indexOf("/api/org/buildings") === 0), false,
-    "and the board is not even asked for");
-  ctx = await runPage([comp({})], null, { firm: FIRM, portfolio: [PROP({})], buildings: null });
-  await tick();
-  assert.doesNotMatch(ctx.doc.getElementById("propsRows").innerHTML, /data-firm-bldg=/,
-    "a board we could not read must not be treated as empty — 'already listed' is a claim");
-});
-
-test("the door posts the identity the row already holds, then re-reads the board", async () => {
-  let sent = null;
-  const { doc, calls } = await runPage([comp({})], null, {
-    firm: FIRM, portfolio: [PROP({})], buildings: [],
-    addBuilding: (init) => {
-      sent = JSON.parse(init.body);
-      return Promise.resolve(jsonResponse(200, { ok: true, existed: false, building: BOARD({ address: "1210 N 17th St, Boise, ID" }) }));
-    },
-  });
-  await tick();
-  const btn = { getAttribute: (a) => (a === "data-firm-bldg" ? "9c1e9a1e-0000-4000-8000-0000000000p1" : null), disabled: false, textContent: "Add to firm" };
-  doc.getElementById("propsRows").fire("click", { target: { closest: (sel) => (sel === "button[data-firm-bldg]" ? btn : null) } });
-  await tick();
-  assert.deepEqual(sent, { address: "1210 N 17th St, Boise, ID", propertyType: "Industrial", verifiedKey: "1210 n 17th st boise id 83702" },
-    "the verified key travels, so the same building typed two ways meets one row");
-  assert.match(doc.getElementById("propsMsg").textContent, /Added 1210 N 17th St, Boise, ID to Colliers Boise's buildings/);
-  const reads = calls.filter((c) => c.url.indexOf("/api/org/buildings") === 0 && !c.body);
-  assert.ok(reads.length >= 2, "the board is re-read after the add, so the door disappears from the row");
-});
-
-test("a property can be added by address with no search: the door ships closed, posts address and type, and an unvalued row says so", async () => {
-  const { doc, calls } = await runPage([comp({})], null, { portfolio: [PROP({ snapshots: [] })] });
-  await tick();
-  assert.match(doc.getElementById("propsRows").innerHTML, /not valued yet/, "no valuation was taken, so none is claimed");
-  assert.doesNotMatch(doc.getElementById("propsRows").innerHTML, /checked/);
-  assert.ok(doc.getElementById("propAddForm").className.indexOf("hide") >= 0, "ships closed");
-  doc.getElementById("propAddToggle").fire("click", {});
-  assert.ok(doc.getElementById("propAddForm").className.indexOf("hide") < 0);
-  assert.match(doc.getElementById("pType").innerHTML, /Industrial[\s\S]*Residential/, "the vault's own type list");
-  doc.getElementById("pAddr").value = "  500 S Capitol Blvd, Boise, ID ";
-  doc.getElementById("pType").value = "Office";
-  doc.getElementById("pAdd").fire("click", {});
-  await tick(); await tick();
-  const posts = calls.filter((c) => c.url.indexOf("/api/portfolio") === 0 && c.body);
-  assert.deepEqual(posts.map((c) => c.body), [{ address: "500 S Capitol Blvd, Boise, ID", propertyType: "Office" }],
-    "address and type, nothing report-shaped");
-  assert.match(doc.getElementById("propsMsg").textContent, /Added 500 S Capitol Blvd, Boise, ID/);
-  assert.ok(doc.getElementById("propAddForm").className.indexOf("hide") >= 0, "closes on success");
-  // An empty address never leaves the page.
-  doc.getElementById("propAddToggle").fire("click", {});
-  doc.getElementById("pAddr").value = "";
-  doc.getElementById("pAdd").fire("click", {});
-  await tick();
-  assert.equal(calls.filter((c) => c.url.indexOf("/api/portfolio") === 0 && c.body).length, 1);
-  assert.match(doc.getElementById("propsMsg").textContent, /street address/);
+test("neither page draws or reads a member's properties: those are Home's", async () => {
+  for (const page of ["comps", "pipeline"]) {
+    const html = renderVaultHTML(firmBoot([comp({})], FIRM), { page });
+    for (const id of ["panelProps", "tab-props", "tabPropsN", "deckProps", "propsSec", "propAddForm", "propsRows", "propsMsg"]) {
+      assert.ok(!html.includes('id="' + id + '"'), page + ": #" + id + " is back");
+    }
+    assert.ok(!/loadProps|renderProps|propItems|firmDoorCell|loadFirmBuildings/.test(pageScript(html)), page + ": Properties code is back");
+    const { calls } = await runPage([comp({})], null, { page, firm: FIRM, portfolio: [{ id: "p1", address: "1 Main St, Boise, ID" }], buildings: [] });
+    await tick();
+    assert.ok(!calls.some((c) => c.url.indexOf("/api/portfolio") === 0), page + " reads the portfolio");
+    assert.ok(!calls.some((c) => c.url.indexOf("/api/org/buildings") === 0), page + " reads the firm's buildings");
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -4701,10 +4636,11 @@ test("the contributions deck is outside the vault lock, and the lock still names
   assert.ok(decks, "VAULT_DECKS is gone");
   assert.ok(!/contrib/i.test(decks[1]),
     "the contributions deck was added to VAULT_DECKS — a free contributor would lose it behind the Pro lock");
-  // It loads with the other personal deck, on every exit but 401 (The Board
-  // was the third until it moved to the Markets page, 2026-10-09).
-  assert.match(js, /personalLoaded=true; loadProps\(\); loadContribs\(\);/,
-    "loadContribs must run where loadProps does, so the 403 and 503 exits reach it");
+  // It loads on every exit but 401, so the 403 and 503 exits reach it, on
+  // /comps, its page (it loaded beside the Properties deck until that left,
+  // 2026-10-13).
+  assert.match(js, /personalLoaded=true; if\(PAGE==="comps"\)loadContribs\(\);/,
+    "loadContribs must run on every exit of /comps' read");
   assert.match(js, /fetch\("\/api\/broker\/me"/, "the deck reads /api/broker/me");
 });
 
@@ -4742,120 +4678,113 @@ const LEAD = (o) => Object.assign({ id: "L1", market: "Boise, ID", type: "Indust
 const BOV = (o) => Object.assign({ id: "B1", market: "Meridian, ID", property_type: "Industrial", status: "open",
   source: "referral", size_sqft: 31000, received_on: isoIn(-30), address: null, notes: null }, o);
 
-test("the vault's parts are tabs, and each panel holds its own sections", () => {
-  const html = renderVaultHTML(boot([comp({})]), CHROME);
-  const panel = (id) => {
+test("each page has its own tabs, and each panel holds its own sections", () => {
+  // /vault's parts were tabs of one page (Draft B, 2026-09-25); since
+  // 2026-10-13 /comps has Comps and Contributions and /pipeline has Pipeline.
+  // Both pages carry every panel, the other page's hidden, because the one
+  // script binds their controls as it loads.
+  const panelOf = (html, id) => {
     const a = html.indexOf('id="' + id + '"');
     assert.ok(a >= 0, "#" + id + " is missing");
     const b = html.indexOf('class="vt-panel', a + 1);
-    return html.slice(a, b > a ? b : html.indexOf("</main>") > 0 ? html.indexOf("</main>") : undefined);
+    return html.slice(a, b > a ? b : undefined);
   };
-  // The Board was a fifth until 2026-10-09: it is on the Markets page now.
-  for (const [tab, pid] of [["book", "panelBook"], ["pipe", "panelPipe"], ["props", "panelProps"], ["contrib", "panelContrib"]]) {
-    assert.match(html, new RegExp('id="tab-' + tab + '" data-tab="' + tab + '"[^>]*aria-controls="' + pid + '"'),
+  const comps = renderVaultHTML(boot([comp({})]), CHROME);
+  const pipe = renderVaultHTML(boot([comp({})]), { page: "pipeline" });
+  for (const [tab, pid] of [["book", "panelBook"], ["contrib", "panelContrib"]]) {
+    assert.match(comps, new RegExp('id="tab-' + tab + '" data-tab="' + tab + '"[^>]*aria-controls="' + pid + '"'),
       "the " + tab + " tab does not control #" + pid);
+    assert.ok(!pipe.includes('id="tab-' + tab + '"'), "/pipeline grew the " + tab + " tab");
   }
-  const book = panel("panelBook");
-  for (const id of ["deckBook", "bookEmpty", "addSec", "bookStrip", "compsSec", "bmBand", "trustLine", "bookMap", "setTray"]) {
-    assert.ok(book.includes('id="' + id + '"'), "#" + id + " left the Book tab");
+  assert.match(pipe, /id="tab-pipe" data-tab="pipe"[^>]*aria-controls="panelPipe"/);
+  // The tab is Comps for every kind of firm (one word for one thing,
+  // 2026-10-07), in the markup: nothing rewrites it since 2026-10-13.
+  assert.ok(comps.includes('<span id="tabBookL">Comps</span>'), "the Comps tab lost its name");
+  assert.ok(!comps.includes('id="tab-pipe"'), "/comps grew the Pipeline tab");
+  for (const html of [comps, pipe]) {
+    const book = panelOf(html, "panelBook");
+    for (const id of ["deckBook", "bookEmpty", "addSec", "bookStrip", "compsSec", "bmBand", "trustLine", "bookMap", "setTray"]) {
+      assert.ok(book.includes('id="' + id + '"'), "#" + id + " left the Book tab");
+    }
+    assert.ok(panelOf(html, "panelPipe").includes('id="pipeSec"') && panelOf(html, "panelPipe").includes('id="deckPipe"'));
+    assert.ok(panelOf(html, "panelContrib").includes('id="contribSec"'));
+    for (const id of ["tab-watch", "panelWatch", "mktSec", "tabWatchN", "tab-props", "panelProps"]) {
+      assert.ok(!html.includes('id="' + id + '"'), "#" + id + " is back");
+    }
+    for (const id of ["deckWeek", "weekSec", "pipeBoard", "pipeViewSeg"]) {
+      assert.ok(!html.includes('id="' + id + '"'), "#" + id + " (Draft C) is still in the page");
+    }
   }
-  assert.ok(panel("panelPipe").includes('id="pipeSec"') && panel("panelPipe").includes('id="deckPipe"'));
-  assert.ok(panel("panelProps").includes('id="propsSec"'));
-  for (const id of ["tab-watch", "panelWatch", "mktSec", "tabWatchN"]) assert.ok(!html.includes('id="' + id + '"'), "#" + id + " is back");
-  assert.ok(panel("panelContrib").includes('id="contribSec"'));
-  // The Book opens first, and Contributions ships hidden with its deck.
-  assert.match(html, /<div class="vt-panel on" id="panelBook"/);
-  assert.match(html, /class="vt-tab vt-off" id="tab-contrib"/);
-  // Draft C is gone, not merely hidden.
-  for (const id of ["deckWeek", "weekSec", "pipeBoard", "pipeViewSeg"]) {
-    assert.ok(!html.includes('id="' + id + '"'), "#" + id + " (Draft C) is still in the page");
-  }
-  const decks = pageScript(html).match(/var VAULT_DECKS=\[([\s\S]*?)\];/);
+  // Each page opens on its own first tab; Contributions ships hidden.
+  assert.match(comps, /<div class="vt-panel on" id="panelBook"/);
+  assert.match(comps, /<div class="vt-panel" id="panelPipe"/);
+  assert.match(comps, /class="vt-tab vt-off" id="tab-contrib"/);
+  assert.match(pipe, /<div class="vt-panel on" id="panelPipe"/);
+  assert.match(pipe, /<div class="vt-panel" id="panelBook"/);
+  // Each page is named for its rail row.
+  assert.match(comps, /<h1 class="h">Your comps<\/h1>/);
+  assert.match(pipe, /<h1 class="h">Pipeline<\/h1>/);
+  assert.match(pageScript(comps), /var PAGE="comps";/);
+  assert.match(pageScript(pipe), /var PAGE="pipeline";/);
+  const decks = pageScript(comps).match(/var VAULT_DECKS=\[([\s\S]*?)\];/);
   for (const id of ["deckPipe", "pipeSec", "deckBook", "compsSec", "trustLine"]) {
-    assert.ok(decks[1].includes('"' + id + '"'), id + " is not locked with the rest of the vault");
+    assert.ok(decks[1].includes('"' + id + '"'), id + " is not locked with the rest");
   }
 });
 
-test("setTab is the one writer of which panel shows, and the locked vault opens on Properties", async () => {
-  const { doc } = await runPage([comp({})], null, {});
+test("setTab is the one writer of which panel shows; under the lock, Contributions or no tab bar", async () => {
+  let { doc } = await runPage([comp({})], null, {});
   assert.equal(doc.getElementById("panelBook").className, "vt-panel on");
-  for (const id of ["panelPipe", "panelProps", "panelContrib"]) {
+  for (const id of ["panelPipe", "panelContrib"]) {
     assert.equal(doc.getElementById(id).className, "vt-panel", "#" + id + " is showing on first paint");
   }
+  ({ doc } = await runPage([comp({})], null, { page: "pipeline" }));
+  assert.equal(doc.getElementById("panelPipe").className, "vt-panel on");
+  for (const id of ["panelBook", "panelContrib"]) assert.equal(doc.getElementById(id).className, "vt-panel");
   const js = pageScript(renderVaultHTML(boot([comp({})]), CHROME));
   assert.equal((js.match(/\.className=on\?"vt-panel on":"vt-panel"/g) || []).length, 1, "a second writer of the panels");
-  assert.match(js, /if\(curTab==="book"\|\|curTab==="pipe"\)setTab\("props",true\);/,
-    "a Pro-locked vault must open on a tab that is the member's either way");
+  // The Properties tab the lock used to open on is gone (2026-10-13): the
+  // one tab with anything in it under the lock is Contributions, which is
+  // never Pro, and without it the bar would sit over an empty tab.
+  assert.ok(!/setTab\("props"/.test(js), "the lock still opens on Properties");
+  const sync = js.match(/function syncLockedTabs\(\)\{[\s\S]*?\n  \}/);
+  assert.ok(sync, "syncLockedTabs is gone");
+  assert.match(sync[0], /\$\("vtWrap"\)\.className=live\?"vt-wrap":"vt-wrap hide"/);
+  assert.match(sync[0], /if\(live&&curTab!=="contrib"\)setTab\("contrib",true\)/);
+  assert.match(js, /locked=true;\s*syncLockedTabs\(\);/, "the lock does not settle the tabs");
+  assert.match(js, /locked=false; \$\("vtWrap"\)\.className="vt-wrap";/, "a read that succeeds after a lock keeps the bar hidden");
+  assert.equal((js.match(/syncLockedTabs\(\);/g) || []).length, 3, "the contributions read must settle the locked tabs on both of its exits");
 });
 
 // ---------------------------------------------------------------------------
 // A development firm's member (2026-10-05). Their deals and holdings were the
 // Sites tab here until 2026-10-09, when they moved to Home's Properties tab
-// (home-sites.js; the owner's call). This page now differs for them in four
-// ways, all decided by applyShop: no Pipeline (a developer writes no BOVs),
-// no Properties (theirs are on Home), a link to either (or to the old #sites)
-// goes to Home's Properties, and the Book reads "Comps" with no publishing
-// while nothing is published (its badge says a licensed broker vouched).
+// (home-sites.js; the owner's call). The pages differ for them in two ways,
+// both decided by applyShop: /pipeline sends them to Home's Properties (a
+// developer writes no BOVs), and their comps read with no publishing while
+// nothing is published (its badge says a licensed broker vouched).
 // ---------------------------------------------------------------------------
 
 const DEV_FIRM = { id: "f1", name: "Ridgeline Development", kind: "development" };
-const LOC = (hash, search) => ({ hash: hash || "", search: search || "", pathname: "/vault" });
+const LOC = (hash, search, pathname) => ({ hash: hash || "", search: search || "", pathname: pathname || "/comps" });
 
-test("the Sites tab is gone from this page, and its scripts with it", () => {
-  const html = renderVaultHTML(boot([comp({})]), CHROME);
-  for (const id of ["tab-sites", "panelSites", "deckSites", "sitesAddToggle", "sitesSec", "sitesRoot", "tabSitesN"]) {
-    assert.ok(!html.includes('id="' + id + '"'), "#" + id + " is back");
+test("the Sites tab is gone from both pages, and its scripts with it", () => {
+  for (const page of ["comps", "pipeline"]) {
+    const html = renderVaultHTML(boot([comp({})]), { page });
+    for (const id of ["tab-sites", "panelSites", "deckSites", "sitesAddToggle", "sitesSec", "sitesRoot", "tabSitesN"]) {
+      assert.ok(!html.includes('id="' + id + '"'), "#" + id + " is back");
+    }
+    for (const src of ["/sites.js", "/sites-tab.js", "/home-sites.js"]) {
+      assert.ok(!html.includes('<script src="' + src + '">'), src + " loads on /" + page + " again");
+    }
+    assert.ok(!/SITESTAB|sitesView|#sitesSec/.test(html), "Sites code is back");
   }
-  for (const src of ["/sites.js", "/sites-tab.js", "/home-sites.js"]) {
-    assert.ok(!html.includes('<script src="' + src + '">'), src + " loads on /vault again");
-  }
-  assert.ok(!/SITESTAB|sitesView|#sitesSec/.test(html), "Sites code is back");
-  // A link to the old tab, or its section id, still lands somewhere real.
-  assert.match(pageScript(html), /sites:"props"/);
-  assert.match(pageScript(html), /sitesSec:"props"/);
 });
 
-test("a development firm's member has no Pipeline and no Properties here: both are on Home", async () => {
-  const { doc } = await runPage([comp({})], null, { firm: DEV_FIRM });
-  assert.ok(doc.getElementById("tab-pipe").classList.contains("vt-off"), "a developer sees the BOV pipeline");
-  assert.ok(doc.getElementById("tab-props").classList.contains("vt-off"), "Properties shows, though theirs are on Home");
-  assert.equal(doc.getElementById("panelBook").className, "vt-panel on", "the page opens on Comps");
-});
-
-test("a link to Pipeline, Properties or the old Sites tab takes a development firm's member to Sites or Home", async () => {
-  // Pipeline's row is Sites for them (/sites, 2026-10-12); Properties, and
-  // the old #sites tab (read as Properties), are Home's.
-  for (const [hash, to] of [["#sites", "/desk#properties"], ["#properties", "/desk#properties"],
-    ["#pipeline", "/sites"], ["#sitesSec", "/desk#properties"]]) {
-    const went = [];
-    await runPage([comp({})], null, { firm: DEV_FIRM, window: { location: Object.assign(LOC(hash), { replace: (u) => went.push(u) }) } });
-    assert.deepEqual(went, [to], hash);
-  }
-  // A link to a tab they do have opens it; and nobody else is ever sent away.
-  let went = [];
-  const { doc } = await runPage([comp({})], null, { firm: DEV_FIRM, window: { location: Object.assign(LOC("#book"), { replace: (u) => went.push(u) }) } });
-  assert.deepEqual(went, []);
-  assert.equal(doc.getElementById("panelBook").className, "vt-panel on");
-  for (const firm of [{ id: "f2", name: "Colliers Boise", kind: "broker" }, null]) {
-    went = [];
-    const r = await runPage([comp({})], null, { firm: firm || undefined, window: { location: Object.assign(LOC("#sites"), { replace: (u) => went.push(u) }) } });
-    assert.deepEqual(went, [], "sent away: " + JSON.stringify(firm));
-    assert.equal(r.doc.getElementById("panelProps").className, "vt-panel on", "#sites reads as Properties for them");
-  }
-  // Never from a page built ahead of being seen (instant tab switching).
-  assert.match(pageScript(renderVaultHTML(boot([comp({})]), CHROME)),
-    /if\(\(askedTab==="pipe"\|\|askedTab==="props"\)&&!document\.prerendering&&/);
-});
-
-test("a broker firm, and a member in no firm, keep exactly the tabs they had", async () => {
+test("a broker firm, and a member in no firm, keep their comps as they were", async () => {
   for (const firm of [{ id: "f2", name: "Colliers Boise", kind: "broker" }, null]) {
     const { doc } = await runPage([comp({})], null, { firm: firm || undefined });
-    assert.ok(!doc.getElementById("tab-pipe").classList.contains("vt-off"), "Pipeline went missing");
-    assert.ok(!doc.getElementById("tab-props").classList.contains("vt-off"), "Properties went missing");
-    // And the Book as it was: the tab it opens on and publishing. Its NAME is
-    // Comps for every kind of firm since 2026-10-07 (one word for one thing).
-    assert.equal(String(doc.getElementById("tabBookL").textContent), "Comps");
-    assert.equal(doc.getElementById("panelBook").className, "vt-panel on");
+      assert.equal(doc.getElementById("panelBook").className, "vt-panel on");
     assert.ok(!doc.getElementById("cPubCell").classList.contains("hide"), "the Published cell went missing");
     assert.ok(!doc.getElementById("creditLine").classList.contains("hide"), "the credit line went missing");
     assert.match(doc.getElementById("tblHead").innerHTML, />Public</);
@@ -4864,7 +4793,6 @@ test("a broker firm, and a member in no firm, keep exactly the tabs they had", a
 
 test("a development firm's member reads Comps and is not offered publishing", async () => {
   const { doc } = await runPage([comp({ id: "c1" }), comp({ id: "c2", address: "200 Oak Ave" })], null, { firm: DEV_FIRM });
-  assert.equal(String(doc.getElementById("tabBookL").textContent), "Comps");
   assert.equal(String(doc.getElementById("bookEmptyK").textContent), "Your comps, on one map");
   assert.equal(doc.getElementById("panelBook").className, "vt-panel on");
   // Every surface that offers publishing.
@@ -4889,7 +4817,6 @@ test("a development firm's member reads Comps and is not offered publishing", as
 test("a development firm with something published keeps every publishing control", async () => {
   // A public comp must never look private, and must always be possible to take back.
   const { doc } = await runPage([comp({ id: "c1", published: true }), comp({ id: "c2", address: "200 Oak Ave" })], null, { firm: DEV_FIRM });
-  assert.equal(String(doc.getElementById("tabBookL").textContent), "Comps");
   assert.ok(!doc.getElementById("cPubCell").classList.contains("hide"));
   assert.match(doc.getElementById("tblHead").innerHTML, />Public</);
   assert.match(doc.getElementById("tbody").innerHTML, /data-pub="c1" data-on="1"/);
@@ -4899,70 +4826,92 @@ test("a development firm with something published keeps every publishing control
   assert.match(runFirmPrivacy(DEV_FIRM, 0, false).trustNote.innerHTML, /nothing is published unless you choose it/);
 });
 
-test("the Comps tab is the bare address for everyone, and a link that names a tab opens it", async () => {
+test("each tab writes its page's own address, and a link that names a tab opens it", async () => {
   const replaced = [];
   const { doc } = await runPage([comp({})], null, { window: {
-    location: LOC("#pipeline"), history: { replaceState: (st, t, u) => replaced.push(u) },
+    location: LOC("#contributions"), history: { replaceState: (st, t, u) => replaced.push(u) },
   } });
-  assert.equal(doc.getElementById("panelPipe").className, "vt-panel on", "a #pipeline link was overridden");
-  const press = (tab) => doc.getElementById("vaultTabs").fire("click", { target: { closest: () => ({ getAttribute: () => tab }) } });
-  press("book"); assert.equal(replaced.pop(), "/vault");
-  // Written as full addresses since Pipeline got a path of its own
-  // (2026-10-09): the Pipeline tab writes /pipeline, its rail row's address,
-  // and a hash alone would otherwise land on /pipeline#properties.
-  press("pipe"); assert.equal(replaced.pop(), "/pipeline");
-  press("props"); assert.equal(replaced.pop(), "/vault#properties");
+  // Contributions ships off until the member has some; the link still asks for it.
+  const press = (d, tab) => d.getElementById("vaultTabs").fire("click", { target: { closest: () => ({ getAttribute: () => tab }) } });
+  press(doc, "book"); assert.equal(replaced.pop(), "/comps", "Comps is the bare address");
+  press(doc, "contrib"); assert.equal(replaced.pop(), "/comps#contributions");
+  // A tab this page does not have opens its own first tab instead.
+  press(doc, "pipe"); assert.equal(replaced.pop(), "/comps");
+  assert.equal(doc.getElementById("panelPipe").className, "vt-panel", "/comps showed the Pipeline");
+  const p = await runPage([comp({})], null, { page: "pipeline", window: {
+    location: LOC("", "", "/pipeline"), history: { replaceState: (st, t, u) => replaced.push(u) },
+  } });
+  assert.equal(p.doc.getElementById("panelPipe").className, "vt-panel on");
+  press(p.doc, "book"); assert.equal(replaced.pop(), "/pipeline", "/pipeline has one address");
+  assert.equal(p.doc.getElementById("panelBook").className, "vt-panel", "/pipeline showed the book");
 });
 
-// Pipeline, a row of the rail (2026-10-09): the tab has a path of its own,
-// the page opens on the tab its path names, and the rail row is current
-// while that tab shows.
-test("/pipeline opens the Pipeline tab, marks its rail row, and the path follows the tab", async () => {
-  const replaced = [];
-  const { doc } = await runPage([comp({})], null, { window: {
-    location: { hash: "", pathname: "/pipeline", search: "" }, history: { replaceState: (s, t, u) => replaced.push(u) },
-  } });
-  assert.equal(doc.getElementById("panelPipe").className, "vt-panel on", "/pipeline did not open the Pipeline tab");
-  assert.equal(doc.getElementById("panelBook").className, "vt-panel");
-  assert.equal(doc.getElementById("navPipe").attrs["aria-current"], "page", "the Pipeline row is not marked");
-  const press = (tab) => doc.getElementById("vaultTabs").fire("click", { target: { closest: () => ({ getAttribute: () => tab }) } });
-  press("book");
-  assert.equal(replaced.pop(), "/vault", "Comps, the home tab, is the bare /vault");
-  assert.equal(doc.getElementById("navPipe").attrs["aria-current"], undefined, "the mark stayed on a tab that left");
-  press("props"); assert.equal(replaced.pop(), "/vault#properties");
-  press("pipe");
-  assert.equal(replaced.pop(), "/pipeline", "the Pipeline tab must write the path its rail row links");
-  assert.equal(doc.getElementById("navPipe").attrs["aria-current"], "page");
+test("a link to a part of the old /vault opens that part where it lives now", async () => {
+  // /vault answers with /comps and the browser keeps the #fragment through
+  // the redirect, so the old tab names arrive on /comps (2026-10-13).
+  for (const [hash, to] of [["#board", "/markets#board"], ["#watchlist", "/markets#board"], ["#mktSec", "/markets#board"],
+    ["#pipeline", "/pipeline"], ["#pipeSec", "/pipeline"],
+    ["#properties", "/desk#properties"], ["#propsSec", "/desk#properties"], ["#sites", "/desk#properties"], ["#sitesSec", "/desk#properties"]]) {
+    for (const firm of [DEV_FIRM, null]) {
+      const went = [];
+      await runPage([comp({})], null, { firm: firm || undefined, window: { location: Object.assign(LOC(hash), { replace: (u) => went.push(u) }) } });
+      assert.deepEqual(went, [to], hash + " for " + JSON.stringify(firm));
+    }
+  }
+  // A link to a tab the page has opens it, and nobody is sent away.
+  for (const hash of ["#book", "#compsSec", "#contributions", ""]) {
+    const went = [];
+    const { doc } = await runPage([comp({})], null, { window: { location: Object.assign(LOC(hash), { replace: (u) => went.push(u) }) } });
+    assert.deepEqual(went, [], hash);
+    // (#contributions opens Comps here: this member has none, so the tab
+    // stays off and the page goes back to its first tab.)
+    assert.equal(doc.getElementById("panelBook").className, "vt-panel on", hash);
+  }
+  // /pipeline reads no old names: it has one tab.
+  const went = [];
+  await runPage([comp({})], null, { page: "pipeline", window: { location: Object.assign(LOC("#board", "", "/pipeline"), { replace: (u) => went.push(u) }) } });
+  assert.deepEqual(went, []);
+  // Never from a page built ahead of being seen (instant tab switching).
+  assert.match(pageScript(renderVaultHTML(boot([comp({})]), CHROME)),
+    /if\(PAGE==="comps"&&MOVED\[h\]&&!document\.prerendering&&/);
 });
 
 test("the rail is told which kind of firm this is; /pipeline sends a development firm's member to Sites", async () => {
   const told = [], went = [];
-  await runPage([comp({})], null, { firm: DEV_FIRM, window: {
+  await runPage([comp({})], null, { page: "pipeline", firm: DEV_FIRM, window: {
     location: { hash: "", pathname: "/pipeline", search: "", replace: (u) => went.push(u) },
     history: { replaceState() {} }, cnShopNav: (dev) => told.push(dev),
   } });
   assert.equal(told[told.length - 1], true, "the rail was not told this is a development firm");
   assert.deepEqual(went, ["/sites"], "a developer has no Pipeline: their row there is Sites (2026-10-12)");
   const broker = [], stayed = [];
-  const b = await runPage([comp({})], null, { firm: { id: "f2", name: "Summit Brokerage", kind: "broker" }, window: {
+  const b = await runPage([comp({})], null, { page: "pipeline", firm: { id: "f2", name: "Summit Brokerage", kind: "broker" }, window: {
     location: { hash: "", pathname: "/pipeline", search: "", replace: (u) => stayed.push(u) },
     history: { replaceState() {} }, cnShopNav: (d) => broker.push(d),
   } });
   assert.equal(broker[broker.length - 1], false, "a broker firm's rail must read Pipeline");
   assert.deepEqual(stayed, []);
   assert.equal(b.doc.getElementById("panelPipe").className, "vt-panel on");
+  // /comps is a development firm's page too: nobody is sent away from it.
+  const dev = [];
+  await runPage([comp({})], null, { firm: DEV_FIRM, window: { location: Object.assign(LOC(""), { replace: (u) => dev.push(u) }), history: { replaceState() {} } } });
+  assert.deepEqual(dev, []);
+  // Never from a page built ahead of being seen.
+  assert.match(pageScript(renderVaultHTML(boot([comp({})]), { page: "pipeline" })),
+    /if\(shop&&PAGE==="pipeline"&&!document\.prerendering&&/);
 });
 
 test("the tabs count what is in them, and new owner requests are red", async () => {
   const comps = [comp({ id: "a" }), comp({ id: "b", address: "2 B St, Boise, ID" }), comp({ id: "c", address: "3 C St, Boise, ID" })];
-  const { doc } = await runPage(comps, null, {
+  const c = await runPage(comps);
+  assert.equal(String(c.doc.getElementById("tabBookN").textContent), "3");
+  const { doc } = await runPage(comps, null, { page: "pipeline",
     leads: deskLeads([LEAD({}), LEAD({ id: "L2" }), LEAD({ id: "L3", intro_requested: true })]),
     bovs: deskBovs([BOV({})]),
   });
-  assert.equal(String(doc.getElementById("tabBookN").textContent), "3");
   assert.equal(String(doc.getElementById("tabPipeN").textContent), "2 new", "two requests nobody has asked about");
   assert.equal(doc.getElementById("tabPipeN").className, "hot");
-  const quiet = await runPage(comps, null, { leads: deskLeads([]), bovs: deskBovs([BOV({}), BOV({ id: "B2" })]) });
+  const quiet = await runPage(comps, null, { page: "pipeline", leads: deskLeads([]), bovs: deskBovs([BOV({}), BOV({ id: "B2" })]) });
   assert.equal(String(quiet.doc.getElementById("tabPipeN").textContent), "2", "no new requests: the rows the pipeline holds");
   assert.equal(quiet.doc.getElementById("tabPipeN").className, "");
 });
@@ -5426,34 +5375,14 @@ test("The Board is not on this page any more: no tab, no panel, no deal wall, no
   assert.ok(!/DEALWALL|BUYINGREAD|mountWall|loadMarkets|renderMarkets|#mktSec|__CN_STREETVIEW__/.test(html), "Board code is back");
 });
 
-test("a saved link to The Board opens it on the Markets page", async () => {
-  for (const hash of ["#board", "#watchlist", "#mktSec"]) {
-    const went = [];
-    await runPage([comp({})], null, { window: { location: Object.assign(LOC(hash), { replace: (u) => went.push(u) }) } });
-    assert.deepEqual(went, ["/markets#board"], hash);
-  }
-  // Never from a page built ahead of being seen (instant tab switching).
-  assert.match(pageScript(renderVaultHTML(boot([comp({})]), CHROME)),
-    /if\(BOARD_HASHES\[h\]&&!document\.prerendering&&/);
-});
-
-test("Home's Add a property opens Properties' form, already open, and only once; a deal opens nothing here", async () => {
-  // Draft C (2026-10-07): /vault?add=own#properties for a property the member
-  // owns, outside a development firm. ?add=buy (a deal, for The Board's wall)
-  // went with the wall on 2026-10-09.
-  const hist = () => { const urls = []; return { urls, state: null, replaceState(st, t, u) { urls.push(u); } }; };
-  const closed = (doc) => doc.getElementById("propAddForm").className.indexOf("hide") >= 0;
-
-  let h = hist();
-  let { doc } = await runPage([comp({})], null, { window: { location: LOC("#properties", "?add=own"), history: h } });
-  assert.ok(!closed(doc), "a property you own: the Properties form must be open");
-  assert.deepEqual(h.urls, ["/vault#properties"], "?add= must come off the address, or a reload opens the form again");
-
-  // A deal, an ask with no tab in the address, or an unknown kind, opens nothing.
-  for (const [search, hash] of [["?add=buy", "#pipeline"], ["?add=own", ""], ["?add=sell", "#properties"]]) {
-    h = hist();
-    ({ doc } = await runPage([comp({})], null, { window: { location: LOC(hash, search), history: h } }));
-    assert.ok(closed(doc), search + hash);
-    assert.deepEqual(h.urls, [], "an address with nothing to act on is left alone: " + search + hash);
-  }
+test("Home's old ?add=own link is not read: a property you own is added on Home", async () => {
+  // Draft C (2026-10-07) opened /vault?add=own#properties with the
+  // Properties form open. Since 2026-10-13 that form is Home's
+  // (HOMEMAP.addWhere("own") is "home" for everyone), and a saved link to
+  // it goes to Home's Properties with the rest of #properties.
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.ok(!/addAsk|addTab|get\("add"\)/.test(pageScript(html)), "?add= is read here again");
+  const went = [];
+  await runPage([comp({})], null, { window: { location: Object.assign(LOC("#properties", "?add=own"), { replace: (u) => went.push(u) }) } });
+  assert.deepEqual(went, ["/desk#properties"]);
 });

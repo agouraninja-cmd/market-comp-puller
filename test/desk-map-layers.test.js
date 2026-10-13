@@ -26,17 +26,29 @@ const fnOf = (sig) => {
   return html.slice(at, html.indexOf("\n  }\n", at));
 };
 
-test("the map's switch is two toggles over the map, Properties and Permits", () => {
+test("the map's switch is one choice of three over the map: Properties, Permits, Both", () => {
   const at = html.indexOf('id="hmLayers"');
   assert.ok(at > 0, "the layer switch is gone");
   const box = html.slice(at, html.indexOf("</div>", at));
   assert.match(box, /role="group" aria-label="Show on the map"/);
-  assert.match(box, /data-layer="properties" aria-pressed="true"/, "Properties is on before anything is read");
-  assert.match(box, /data-layer="permits" aria-pressed="false"/);
-  assert.equal((box.match(/data-layer="/g) || []).length, 2, "a third toggle is back on the map");
-  assert.doesNotMatch(box, /data-layer="comps"/, "the Comps toggle is back on Home's map");
+  assert.match(box, /data-view="properties" aria-pressed="true"/, "Properties is on before anything is read");
+  assert.match(box, /data-view="permits" aria-pressed="false"/);
+  assert.match(box, /data-view="both" aria-pressed="false"><svg[\s\S]*?<span>Both<\/span>/, "both at once is one press");
+  assert.equal((box.match(/data-view="/g) || []).length, 3, "the switch is three choices");
+  assert.doesNotMatch(box, /data-(layer|view)="comps"/, "the Comps toggle is back on Home's map");
   // The switch sits over the map, not in the list.
   assert.ok(at > html.indexOf('class="hm-mapw"') && at > html.indexOf('id="hmMap"'), "the switch is not on the map");
+});
+
+test("pressing a view writes each changed layer through hmSetLayer, on before off, and draws once", () => {
+  const sync = fnOf("function hmSyncLayerButtons() {");
+  assert.match(sync, /const view = HOMEMAP\.layerView\(hmLayers\);/);
+  assert.match(sync, /const on = b\.dataset\.view === view;/);
+  const view = fnOf("function hmSetView(view) {");
+  assert.match(view, /if \(!HOMEMAP\.VIEWS\.includes\(view\)\) return;/);
+  assert.match(view, /const want = HOMEMAP\.layersFor\(view\);/);
+  assert.match(view, /change\.sort\(\(a, b\) => Number\(want\[b\]\) - Number\(want\[a\]\)\)\s*\.forEach\(\(k\) => hmSetLayer\(k, want\[k\], \{ draw: false \}\)\);\s*hmDrawPins\(\);/);
+  assert.match(html, /const b = e\.target\.closest\("button\[data-view\]"\);\s*if \(b\) hmSetView\(b\.dataset\.view\);/);
 });
 
 test("one writer keeps the switch, this browser's copy and the pins in step, and storage can fail", () => {

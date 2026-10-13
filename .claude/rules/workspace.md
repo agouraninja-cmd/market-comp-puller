@@ -88,6 +88,19 @@ paths:
 > - Pinned in `test/desk-map-layers.test.js` ("Home holds no comps") and
 >   `test/home-map.test.js`.
 
+> **The map's switch is Properties · Permits · Both (2026-10-13, the
+> owner: "make it so you can switch from properties to permits but you can
+> show both at once").** `#hmLayers` holds three `data-view` buttons
+> (`#hmLayerProps`, `#hmLayerPermits`, `#hmLayerBoth`), exactly one
+> `aria-pressed`. The layers stay the record (`hmLayers`, `cn.home.layers`,
+> `hmSetLayer` its one writer); `HOMEMAP.layerView` reads it as a view and
+> `HOMEMAP.layersFor` is what a view writes. `hmSetView` sends each changed
+> layer through `hmSetLayer` (on before off) and draws once. There is no
+> "nothing" view: `readLayers` turns a stored both-off into the default.
+> Opening the Properties tab while on Permits still turns Properties on, so
+> the switch reads Both. Pinned in `test/home-map.test.js` and
+> `test/desk-map-layers.test.js`.
+
 > **The firm header (2026-10-13, owner's pick of Draft C; drafts page
 > https://claude.ai/artifact/1q1DwN7QqSSARgtkQQRJYT).** A firm member's Home
 > opens with a row naming the firm: its mark, its name, its shop

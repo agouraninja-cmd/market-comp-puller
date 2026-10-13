@@ -342,7 +342,26 @@
     if (typeof raw === "string") { try { o = JSON.parse(raw); } catch (_) { o = null; } }
     const out = { ...LAYER_DEFAULT };
     if (o && typeof o === "object") LAYERS.forEach((k) => { if (typeof o[k] === "boolean") out[k] = o[k]; });
+    // The switch has no "nothing" choice (2026-10-13), so a browser that
+    // stored both off gets the default back rather than a blank map.
+    if (!LAYERS.some((k) => out[k])) return { ...LAYER_DEFAULT };
     return out;
+  }
+  // The switch is one choice of three (2026-10-13, the owner: "switch from
+  // properties to permits but you can show both at once"): Properties,
+  // Permits, or Both. The layers stay the record; a view is how the switch
+  // reads it, and layersFor is what pressing a view writes. Anything else is
+  // Properties alone, the default.
+  const VIEWS = ["properties", "permits", "both"];
+  function layerView(layers) {
+    const l = layers || {};
+    if (l.properties && l.permits) return "both";
+    return l.permits ? "permits" : "properties";
+  }
+  function layersFor(view) {
+    if (view === "both") return { properties: true, permits: true };
+    if (view === "permits") return { properties: false, permits: true };
+    return { ...LAYER_DEFAULT };
   }
   // Today draws its own numbered pins whatever the layers say (they are its
   // rows), and People has no pins, so neither turns anything on.
@@ -485,6 +504,6 @@
 
   return { LEASE_DAYS, DEAL_DAYS, BOV_DAYS, WEEK_DAYS, STAGES, addressKey, street, place, town, daysUntil, shortDate, inDays, money,
     stageLabel, stageStep, lastValue, dealsOn, properties, scopeOf, passedDeals, addWhere, ownedTotal, agenda, thisWeek, statusLine,
-    LAYERS, LAYER_DEFAULT, readLayers, tabLayer, PERMIT_STAGES, tidyCaps, permitPin, permitStageLabel, permitAt, layerNotes,
+    LAYERS, LAYER_DEFAULT, readLayers, VIEWS, layerView, layersFor, tabLayer, PERMIT_STAGES, tidyCaps, permitPin, permitStageLabel, permitAt, layerNotes,
     WHEEL_BURST_MS, MAC_NOTCH_PX, wheelGesture, swipePan, pinchZoomBy, pinchSnap };
 });

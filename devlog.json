@@ -4787,6 +4787,18 @@
   {
     "date": "2026-10-13",
     "type": "improvement",
+    "title": "Comps: Run a comp report is the first tab",
+    "details": "The Comps section bar now reads Run a comp report | Your comps, with the report tool on the left."
+  },
+  {
+    "date": "2026-10-13",
+    "type": "improvement",
+    "title": "Home map cards open on hover",
+    "details": "On Home, pointing at a property, numbered or permit pin on the map now opens its card without a click. The card stays open so you can move onto its links; another pin, the map or the × closes it. On phones and tablets a tap still opens it."
+  },
+  {
+    "date": "2026-10-13",
+    "type": "improvement",
     "title": "Firm & branding opens from your firm's header on Home",
     "details": "The Firm & branding row is gone from the account menu. Its door is the button beside your firm's name at the top of Home, which now shows for everyone in the firm (it was owners and admins only), with a briefcase icon instead of the gear that looked like a sun."
   }

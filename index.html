@@ -14081,6 +14081,7 @@ async function renderMyDesk() {
   let hmNothing = false;     // an account with nothing on Home yet: Today shows the start cards
   let hmSel = "";            // the selected row's key
   let hmMap = null, hmPinLayer = null, hmBaseLayers = null, hmFitFor = "", hmOpenedOnce = false, hmPopup = null;
+  let hmMoving = false, hmMovedAt = 0; // the map's motion, for hmPin's hover
   // What the map shows (2026-10-08): HOMEMAP.readLayers decides, from this
   // browser's own last choice. Storage can throw (a private window, blocked
   // site data), and then the default stands.
@@ -15016,6 +15017,8 @@ async function renderMyDesk() {
     // so it is asked again whenever the view moves.
     hmMap.on("moveend", hmSyncLayerNote);
     hmMap.on("moveend", hmPhotoWarmSoon);
+    hmMap.on("movestart zoomstart", () => { hmMoving = true; });
+    hmMap.on("moveend zoomend", () => { hmMoving = false; hmMovedAt = performance.now(); });
     if (typeof ResizeObserver === "function") new ResizeObserver(() => hmMap && hmMap.invalidateSize()).observe(el);
     // The basemap follows the theme toggle, like the report's map.
     new MutationObserver(() => {
@@ -15037,11 +15040,30 @@ async function renderMyDesk() {
 
   // `photoOf`: the address whose card this pin opens, warmed on hover
   // (hmPhotoHover) so the card has its building when the click lands.
+  // A pin opens its card on hover (2026-10-13, the owner: "instead of
+  // clicking the green dots ... pops up just by hovering"), where there is a
+  // real pointer; touch keeps tap-to-open. The card stays open once shown, so
+  // the pointer can travel onto its links; another pin, the map or its × close
+  // it. A short wait lets a pointer cross the map without opening every pin
+  // it passes, and no hover counts while the map moves or just after, so a
+  // card's own pan never opens whatever pin lands under a resting pointer.
+  const HM_HOVER_MS = 120, HM_HOVER_SETTLE_MS = 300;
+  const hmCanHover = () => window.matchMedia("(hover: hover) and (pointer: fine)").matches;
   function hmPin(ll, html, size, onClick, z, photoOf) {
     const m = L.marker([ll.lat, ll.lng], { icon: L.divIcon({ className: "hm-mk", html, iconSize: size, iconAnchor: [size[0] / 2, size[1] / 2] }),
       zIndexOffset: z || 0, keyboard: false });
     if (onClick) m.on("click", onClick);
     if (photoOf) m.on("mouseover", () => hmPhotoHover(photoOf, ll));
+    if (onClick && hmCanHover()) {
+      let t = null;
+      m.on("mouseover", (e) => {
+        clearTimeout(t);
+        if (hmMoving || performance.now() - hmMovedAt < HM_HOVER_SETTLE_MS) return;
+        if (e.originalEvent && e.originalEvent.buttons) return; // dragging the map
+        t = setTimeout(onClick, HM_HOVER_MS);
+      });
+      m.on("mouseout remove", () => clearTimeout(t));
+    }
     return m.addTo(hmPinLayer);
   }
   const hmPipClass = (r) => (r.group === "buying" ? "buy" : r.group === "owned" ? "own" : "firm");
@@ -15209,6 +15231,9 @@ async function renderMyDesk() {
   }
 
   function hmSelect(key, { item, permit, from } = {}) {
+    // Its card is already up (opened by hover, then clicked, or re-hovered
+    // after the pins redrew under the pointer): leave it as it is.
+    if (from === "map" && key === hmSel && hmPopup && hmPopup.isOpen()) return;
     hmSel = key;
     hmMarkSelected();
     if (from === "map") {

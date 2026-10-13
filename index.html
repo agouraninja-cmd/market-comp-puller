@@ -120,6 +120,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet focuses a map on mousedown, and Chrome counts that focus as
+       :focus-visible, so a click-and-drag drew the browser's focus ring (the
+       system accent colour, orange on the owner's machine) around the map.
+       Leaflet's own preventOutline hides it until the next key press, so a
+       keyboard user tabbing in still gets the ring. ⚠ Same hook in
+       server.js's LEAFLET_HEAD and permits-page.js's withLeaflet. -->
+  <script>if (window.L) L.Map.addInitHook(function () { var c = this.getContainer(); L.DomEvent.on(c, "pointerdown mousedown touchstart", function () { L.DomUtil.preventOutline(c); }); });</script>
   <style>
     /* ---- Colour tokens. MIRRORED FROM theme.js ⚠ ------------------------
        index.html is a static file server.js never templates, so unlike

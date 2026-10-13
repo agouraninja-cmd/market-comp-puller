@@ -971,7 +971,8 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
       var l=document.createElement("link"); l.id="paLeafCss"; l.rel="stylesheet"; l.href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(l);
     }
     var sc=document.createElement("script"); sc.src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    sc.onload=function(){ if(window.L)cb(); }; document.head.appendChild(sc);
+    // No focus ring on a click-and-drag; ⚠ same hook as index.html's, see there.
+    sc.onload=function(){ if(!window.L)return; L.Map.addInitHook(function(){ var c=this.getContainer(); L.DomEvent.on(c,"pointerdown mousedown touchstart",function(){ L.DomUtil.preventOutline(c); }); }); cb(); }; document.head.appendChild(sc);
   }
   function cssVar(n,fb){ var v=getComputedStyle(document.documentElement).getPropertyValue(n); return (v&&v.trim())||fb; }
   function drawAreaMap(id,area){

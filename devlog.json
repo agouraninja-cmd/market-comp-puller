@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-10-13",
+    "type": "fix",
+    "title": "No orange outline around a map when you click and drag it",
+    "details": "Dragging a map (Home, the comp report, market pages, permits) no longer draws the browser’s focus outline around it. Pressing a key brings the outline back, so keyboard users can still see where they are."
+  },
+  {
+    "date": "2026-10-13",
     "type": "improvement",
     "title": "Comps is a section of its own, and every part of the old vault lives where you use it",
     "details": "The private page that held your properties and comps is gone, and its parts have moved to where they are used. “Comp report” in the side menu is now “Comps”, with two tabs: “Your comps” (your own comp book and the comps you have contributed) and “Run a comp report”. The Pipeline is its own page. The properties you own are now worked right on Home for everyone, not only development firms: open a property’s row to see its estimated value, how it changed, a chart of every check, how its market moved, and buttons to open its report, refresh its value or remove it. Home’s Owned list also adds up your buildings’ combined value. Old links and bookmarks still work and open the right new place."

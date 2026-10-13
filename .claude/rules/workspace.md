@@ -132,7 +132,7 @@ paths:
 > gray first?").** Every `hmDrawPins` asks about every building on Home at
 > once (`hmPhotoAskAll`, the drawn pins in view first; permits only when
 > hovered or opened), then fetches the photos of the pins in view ahead
-> (`hmPhotoWarm`, `BLDGPHOTO.preload`): at most `HM_WARM_MAX` (24) a page,
+> (`hmPhotoWarm`, `BLDGPHOTO.preload`): at most `HM_WARM_MAX` (40; 24 until the photo ceiling went to 120) a page,
 > skipping any a list thumbnail on screen is already loading
 > (`hmPhotoOnList`), and again on `moveend`. A pin under the pointer is
 > warmed too (`hmPin`'s `photoOf`, `hmPhotoHover`). Measured on a stand-in

@@ -317,7 +317,7 @@ test("Home asks about every building at once, the pins in view first, never the 
 
 test("Home warms the photos of the drawn pins in view, at most HM_WARM_MAX a page", async () => {
   const answers = {};
-  const rows = Array.from({ length: 30 }, (_, i) => {
+  const rows = Array.from({ length: 50 }, (_, i) => {
     const address = `${10 + i} Elm St`;
     answers[address] = "/api/streetview?t=e" + i;
     return { address, ll: { lat: 43, lng: -116 } };
@@ -333,7 +333,8 @@ test("Home warms the photos of the drawn pins in view, at most HM_WARM_MAX a pag
   // A thumbnail on screen loads itself: the allowance goes to pins the list is not showing.
   const listed = homeWarm({ tab: "properties", rows, answers, view: ({ lat }) => lat < 45, onList: rows.slice(0, 10).map((r) => r.address) });
   listed.hmPhotoWarm();
-  assert.equal(listed.warmed.length, 20, "the 20 in view that no thumbnail is showing");
+  assert.equal(listed.warmed.length, H.HM_WARM_MAX, "the allowance, all on pins no thumbnail is showing");
+  assert.equal(H.HM_WARM_MAX, 40);
   assert.ok(!listed.warmed.includes(rows[0].address));
   // A layer switched off draws no pins, so nothing of it is warmed.
   const off = homeWarm({ tab: "properties", rows, answers, props: false });

@@ -89,7 +89,7 @@ the building". Read this before the rest of the file, which it extends.
   checks `img.complete`). Workspace.md has Home's half and the numbers.
   Three rules hold it: **a warm is a billed image**, so never for one already
   loaded, never twice a page, never from a page nobody has opened (a
-  prerendered Home waits for `prerenderingchange`), and at most 24 a page;
+  prerendered Home waits for `prerenderingchange`), and at most 40 a page;
   **a failed warm remembers nothing** (a 429 says nothing about the
   building; the card judges when it shows); and **`lookup` marks every place
   in flight from the start**, not batch by batch, because Home redraws as

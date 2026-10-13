@@ -110,9 +110,18 @@ paths:
 >   picker; `saveFirmLogo` runs `readLogoFile` (the branding card's resizer),
 >   READS `GET /api/org/branding` and PUTs it back with the new logo, because
 >   that PUT replaces the profile whole and must not blank the name or phone
->   an admin typed in Firm settings. The gear opens Firm settings
->   (`openFirmModal`). Saving or removing the firm's branding in that panel
+>   an admin typed in Firm settings. The header's button (`#hmFirmGear`)
+>   opens the Firm & branding panel (`openFirmModal`).
+>   Saving or removing the firm's branding in that panel
 >   updates `logoAt` and redraws the header, so the two doors agree.
+> - **That button is the panel's only door (2026-10-13, owner's call).** The
+>   account menu's "Firm & branding" row went on both sides of the rail
+>   (`menuFirmBtn`, `navFirm`), so the button shows for EVERY member, not
+>   only `canManage` (members reach the roster and Leave firm there), and its
+>   icon is a briefcase: the old gear read as a sun. `/desk?firm=1` still
+>   opens the panel (Messages' "Start a firm" links it); Home's "Bring your
+>   team" card is the door for an account in no firm. Pinned in
+>   `test/nav-parity.test.js`.
 
 > **Street photos on Home's cards (2026-10-09, owner's ask).** A property's
 > thumbnail and the map card show the building from the street, looked up BY

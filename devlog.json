@@ -4783,5 +4783,11 @@
     "type": "fix",
     "title": "Long property lists keep their building photos",
     "details": "Scrolling quickly through a long list of properties could use up the photo allowance for the next few minutes, and the buildings past that point showed a satellite view for a week instead of their street photo. The allowance is now twice as large (120 photos every five minutes), so it takes a much longer list to run into it."
+  },
+  {
+    "date": "2026-10-13",
+    "type": "improvement",
+    "title": "Firm & branding opens from your firm's header on Home",
+    "details": "The Firm & branding row is gone from the account menu. Its door is the button beside your firm's name at the top of Home, which now shows for everyone in the firm (it was owners and admins only), with a briefcase icon instead of the gear that looked like a sun."
   }
 ]

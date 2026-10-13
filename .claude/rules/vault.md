@@ -38,7 +38,7 @@ paths:
 > - **`/comps`** ("Your comps"; the rail's **Comps** row, which is current
 >   here and on `/bulk`): the comp book (tab "Comps") and Contributions. The
 >   Comps section's own bar sits over it and over `/bulk`
->   (`compsSectionTabs` in server.js: Your comps | Run a comp report;
+>   (`compsSectionTabs` in server.js: Run a comp report | Your comps;
 >   app-shell.md).
 > - **`/pipeline`** ("Pipeline"; the rail's Pipeline row): the Pipeline tab
 >   alone. The leads and the BOV log are read only here, and the gut

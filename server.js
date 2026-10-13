@@ -12960,8 +12960,9 @@ const CTA_FREE_PAGES = new Set([...VAULT_PAGE_PATHS, "/sites", "/messages", "/ma
 // rail's Comps row opens /comps, the member's own comps, and is current on
 // /bulk too, the comp report tool; this bar is on both pages and says which
 // of the two the member is on. A signed-in member's only: a stranger on
-// /bulk reads its sign-in card and has no comps of their own.
-const COMPS_TABS = [["/comps", "Your comps"], ["/bulk", "Run a comp report"]];
+// /bulk reads its sign-in card and has no comps of their own. Run a comp
+// report comes first, on the left (the owner, same day).
+const COMPS_TABS = [["/bulk", "Run a comp report"], ["/comps", "Your comps"]];
 const compsSectionTabs = (current) =>
   `<nav class="cs-tabs" aria-label="Comps">` +
   COMPS_TABS.map(([href, label]) => `<a href="${href}"${href === current ? ' aria-current="page"' : ""}>${label}</a>`).join("") +

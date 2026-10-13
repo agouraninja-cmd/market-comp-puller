@@ -4783,5 +4783,11 @@
     "type": "fix",
     "title": "Long property lists keep their building photos",
     "details": "Scrolling quickly through a long list of properties could use up the photo allowance for the next few minutes, and the buildings past that point showed a satellite view for a week instead of their street photo. The allowance is now twice as large (120 photos every five minutes), so it takes a much longer list to run into it."
+  },
+  {
+    "date": "2026-10-13",
+    "type": "improvement",
+    "title": "Comps: Run a comp report is the first tab",
+    "details": "The Comps section bar now reads Run a comp report | Your comps, with the report tool on the left."
   }
 ]

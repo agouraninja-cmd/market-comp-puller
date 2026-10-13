@@ -754,7 +754,7 @@ test("bare environment", async (t) => {
     for (const [page, on] of [["/comps", "/comps"], ["/bulk", "/bulk"]]) {
       const html = await (await fetch(srv.base + page, { headers: SESSION })).text();
       const tabs = (html.match(/<nav class="cs-tabs" aria-label="Comps">[\s\S]*?<\/nav>/) || [""])[0];
-      assert.match(tabs, /<a href="\/comps"[^>]*>Your comps<\/a><a href="\/bulk"[^>]*>Run a comp report<\/a>/, page + " lost the section's tabs");
+      assert.match(tabs, /<a href="\/bulk"[^>]*>Run a comp report<\/a><a href="\/comps"[^>]*>Your comps<\/a>/, page + " lost the section's tabs");
       assert.match(tabs, new RegExp('<a href="' + on + '" aria-current="page">'), page + " does not mark its tab");
       assert.equal((tabs.match(/aria-current/g) || []).length, 1, page + " marks both tabs");
       const nav = (html.match(/<nav>[\s\S]*?<\/nav>/) || [""])[0];

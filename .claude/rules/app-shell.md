@@ -21,7 +21,7 @@ paths:
 > Markets, Comps, Permits.** The row that was Comp report is **Comps**,
 > `#navComps` on both nav authors, `href="/comps"` with `NAV_ICONS.reports`.
 > Comps is a section of two tabs, `compsSectionTabs(current)` in server.js
-> (`COMPS_TABS`: "Your comps" `/comps`, "Run a comp report" `/bulk`, a
+> (`COMPS_TABS`: "Run a comp report" `/bulk`, then "Your comps" `/comps`, a
 > `<nav class="cs-tabs">` styled in MARKET_CSS as a segmented pill, since
 > `/comps` has its own row of underlined tabs under its title). marketBar
 > marks the row current on BOTH `/comps` and `/bulk`; the bar is prepended

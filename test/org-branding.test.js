@@ -112,6 +112,43 @@ test("the firm branding profile, end to end", async (t) => {
     assert.equal(out.status, 403);
   });
 
+  // The firm header on Home (2026-10-13): the firm's branding logo is the
+  // firm's mark, listed on GET /api/org as logoAt and served as an image to
+  // members only. The logo bytes never ride the list, which ships inside
+  // every Home page.
+  await t.test("the firm's logo: logoAt on the firm list, the image for members only", async () => {
+    const list = async (u) => (await (await fetch(srv.base + "/api/org", as(u))).json()).orgs;
+    assert.equal((await list(MIKE))[0].logoAt, "", "a profile with no logo is no logo");
+    const none = await fetch(srv.base + `/api/org/logo?id=${orgId}`, as(MIKE));
+    assert.equal(none.status, 404);
+
+    const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    const save = await fetch(srv.base + "/api/org/branding", as(BRAD, { method: "PUT",
+      body: JSON.stringify({ orgId, firmName: "Colliers Boise", licenseNumber: "FB-99", logo: "data:image/png;base64," + PNG }) }));
+    assert.equal(save.status, 200);
+
+    const [firm] = await list(MIKE);
+    assert.ok(firm.logoAt, "every member's firm list says there is a logo");
+    assert.equal("logo" in firm, false, "and never carries the logo itself");
+    const img = await fetch(srv.base + `/api/org/logo?id=${orgId}&v=${encodeURIComponent(firm.logoAt)}`, as(MIKE));
+    assert.equal(img.status, 200);
+    assert.equal(img.headers.get("content-type"), "image/png");
+    assert.match(img.headers.get("cache-control"), /immutable/, "a versioned logo URL caches for good");
+    assert.deepEqual(Buffer.from(await img.arrayBuffer()), Buffer.from(PNG, "base64"));
+
+    const out = await fetch(srv.base + `/api/org/logo?id=${orgId}`, as(OUTSIDER));
+    assert.equal(out.status, 403, "an outsider never sees a firm's logo");
+    const anon = await fetch(srv.base + `/api/org/logo?id=${orgId}`);
+    assert.equal(anon.status, 401);
+
+    // The bytes decide, not the label: a GIF stored as "png" is not served.
+    const row = tables.org_branding.find((r) => r.org_id === orgId);
+    const kept = row.logo_url;
+    row.logo_url = "data:image/png;base64," + Buffer.from("GIF89a-not-a-png-at-all").toString("base64");
+    assert.equal((await fetch(srv.base + `/api/org/logo?id=${orgId}`, as(MIKE))).status, 404);
+    row.logo_url = kept;
+  });
+
   await t.test("GET /api/branding carries the firm fallback for a member, and null outside one", async () => {
     const mine = await (await fetch(srv.base + "/api/branding", as(MIKE))).json();
     assert.deepEqual(mine.branding, {}, "his OWN profile is still empty — the two never merge");

@@ -4747,5 +4747,11 @@
     "type": "improvement",
     "title": "Sites is its own page: your deals on a board by stage",
     "details": "The Sites row for development firms opened Home's Properties tab, so it was the same screen as Home. /sites now shows only your deals, in columns for Prospect, LOI, Under contract and Entitlements, with acres, asking price and the next deadline on each card, totals across them, and the opened deal worked right under the board. Passed deals fold away; closed deals stay with what you own on Home."
+  },
+  {
+    "date": "2026-10-13",
+    "type": "feature",
+    "title": "Home opens with your firm: its logo, name and type",
+    "details": "Firm members now see a header at the top of Home with the firm’s logo (or its initials), its name, whether it is a broker shop or a development shop, and how many people have joined. An owner or admin taps the mark to add or change the logo, and everyone in the firm sees it. It is the same logo the firm’s report branding uses, and the gear beside it opens Firm settings."
   }
 ]

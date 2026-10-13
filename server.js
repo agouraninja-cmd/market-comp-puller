@@ -3257,6 +3257,35 @@ async function importLogoFromSite(url) {
   return { status: 404, code: "none", error: "No usable logo found on that site. Choose a file instead." };
 }
 
+// Which of these firms have a logo saved, and when (org id -> updated_at).
+// Fail-open, findOrgBrandingFor's rule: a failed read costs the header its
+// logo, never the firm list. The filter keeps the logos themselves (up to
+// 200KB each) out of a read that only needs to know they exist.
+async function orgLogoRevs(orgIds) {
+  const ids = [...new Set((orgIds || []).map(String).filter(Boolean))];
+  const out = new Map();
+  if (!ids.length || !DB_CONFIGURED) return out;
+  try {
+    const rows = await sbRequest("GET",
+      `org_branding?org_id=in.(${pgInList(ids)})&logo_url=neq.&select=org_id,updated_at&limit=${ids.length}`);
+    for (const r of rows || []) out.set(String(r.org_id), String(r.updated_at || "1"));
+  } catch (e) {
+    console.error("Firm logo lookup failed:", e.message);
+  }
+  return out;
+}
+
+// A stored logo data URI -> { mime, bytes } to serve, or null. The bytes
+// decide the type (sniffImage), never the label, the avatar route's rule.
+function decodeFirmLogo(dataUri) {
+  const brand = BRANDING.normalizeBrand({ logo: dataUri });
+  const m = brand && brand.logo ? brand.logo.match(/^data:[^;]+;base64,(.+)$/) : null;
+  if (!m) return null;
+  const bytes = Buffer.from(m[1], "base64");
+  const mime = AVATAR.sniffImage(bytes);
+  return mime ? { mime, bytes } : null;
+}
+
 async function findOrgBrandingFor(user) {
   if (!user || !user.email || !DB_CONFIGURED) return null;
   try {
@@ -27645,7 +27674,10 @@ const server = http.createServer((req, res) =>
         const [rows, ent] = await Promise.all([orgMembershipsFor(user.email), entitlementsFor(req)]);
         const mine = rows.filter((r) => ORG.isActive(r));
         const pending = rows.filter((r) => ORG.isPending(r));
-        const firms = await orgsByIds([...mine, ...pending].map((r) => r.org_id));
+        const [firms, logos] = await Promise.all([
+          orgsByIds([...mine, ...pending].map((r) => r.org_id)),
+          orgLogoRevs(mine.map((r) => r.org_id)),
+        ]);
         // Billing state, only for a firm this caller actually belongs to, and
         // the SEAT USAGE for everyone in it — a member seeing "6 of 6 seats"
         // is why an invite refusal makes sense when it comes, rather than
@@ -27676,7 +27708,11 @@ const server = http.createServer((req, res) =>
           // between an invitation to start a firm and the paywall; it is
           // presentation only, and POST /api/org checks it again.
           canCreate: ent.canUseOrg === true,
-          orgs: mine.map((r) => orgSummary(r, firms)),
+          // logoAt: when the firm's logo was last saved, "" for none. The
+          // header on Home draws /api/org/logo?id=…&v=<logoAt>, so the bytes
+          // never ride this read (it ships inside every Home page) and a new
+          // logo is a new URL rather than a stale cache.
+          orgs: mine.map((r) => ({ ...orgSummary(r, firms), logoAt: logos.get(String(r.org_id)) || "" })),
           invites: pending.map((r) => ({
             id: r.id,
             orgId: r.org_id,
@@ -28723,6 +28759,39 @@ const server = http.createServer((req, res) =>
       })().catch((err) => {
         console.error("Firm branding read failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't load the firm's branding. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- GET /api/org/logo?id=&v= — the firm's logo, as an image (2026-10-13)
+    //
+    // The firm header on Home. The logo is the one in the firm's branding
+    // (org_branding.logo_url), so there is one logo per firm, and an owner
+    // or admin saving it anywhere shows it to every member. Read access is
+    // GET /api/org/branding's: any active member. `v` (the list's logoAt)
+    // makes each saved logo its own URL, so it caches for good.
+    if (orgPath === "/api/org/logo" && req.method === "GET") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const q = new URL(req.url, "http://localhost").searchParams;
+        const orgId = (q.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const rows = await sbRequest("GET",
+          `org_branding?org_id=eq.${encodeURIComponent(orgId)}&select=logo_url&limit=1`);
+        const logo = decodeFirmLogo(rows && rows[0] && rows[0].logo_url);
+        if (!logo) return sendJson(res, 404, { error: "No logo." });
+        res.writeHead(200, {
+          "content-type": logo.mime,
+          "content-length": logo.bytes.length,
+          "cache-control": q.get("v") ? "private, max-age=31536000, immutable" : "private, no-cache",
+          "x-content-type-options": "nosniff",
+        });
+        return res.end(logo.bytes);
+      })().catch((err) => {
+        console.error("Firm logo read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load the firm's logo." });
       });
       return;
     }

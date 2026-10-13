@@ -1776,7 +1776,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       html.nav-rail.hm-page .hm-body { flex: 1; overflow-y: auto; min-height: 0; padding: 4px 16px 28px; }
     }
     .hm-kick { font-size: 12.5px; font-weight: 500; color: var(--ink-3); }
-    .hm-kick #hmFirm::before { content: "\00b7"; margin: 0 .45em; }
+    .hm-fh { display: flex; align-items: center; gap: 11px; padding: 0 0 14px; margin: 0 0 16px; border-bottom: 1px solid var(--line); }
+    .hm-fh.hidden { display: none; }
+    .hm-fh-markw { flex: none; display: flex; }
+    .hm-fh-mark { position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 9px; background: var(--ink); color: var(--paper); font: inherit; font-size: 14px; font-weight: 700; letter-spacing: .02em; }
+    /* White in BOTH themes on purpose, like a photo: a firm logo is drawn for
+       paper, and dark lettering on a transparent PNG vanishes on the dark card. */
+    .hm-fh-mark.logo { background: rgb(255 255 255); box-shadow: inset 0 0 0 1px var(--line); }
+    .hm-fh-mark img { width: 100%; height: 100%; object-fit: contain; padding: 3px; box-sizing: border-box; border-radius: 9px; }
+    button.hm-fh-mark { cursor: pointer; }
+    button.hm-fh-mark:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    .hm-fh-add { position: absolute; right: -4px; bottom: -4px; display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; border: 2px solid var(--paper); background: var(--red-fill); color: #fff; font-size: 12px; font-weight: 700; line-height: 1; }
+    .hm-fh-txt { min-width: 0; flex: 1; }
+    .hm-fh-txt b { display: block; font-size: 15px; font-weight: 600; line-height: 1.25; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hm-fh-txt small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink-3); }
+    .hm-fh-txt small em { font-style: normal; font-weight: 600; color: var(--bv-text); }
+    .hm-fh-set { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--edge); border-radius: 8px; background: var(--card); color: var(--ink-2); cursor: pointer; }
+    .hm-fh-set.hidden { display: none; }
+    .hm-fh-set:hover { border-color: var(--ink-3); }
+    .hm-fh-set:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    .hm-fh-msg { margin: -8px 0 12px; font-size: 12.5px; color: var(--ink-3); }
+    .hm-fh-msg.hidden { display: none; }
     .hm-title { margin: 6px 0 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 30px; line-height: 1.12; letter-spacing: -.015em; color: var(--ink); }
     .hm-sub { margin: 8px 0 0; font-size: 14.5px; line-height: 1.5; color: var(--ink-2); }
     .hm-find { position: relative; display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 0 12px; border: 1px solid var(--edge); border-radius: 11px; background: var(--card); color: var(--ink-3); }
@@ -3182,7 +3202,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div id="homeMap" class="hm">
         <div class="hm-panel">
           <div class="hm-head">
-            <div class="hm-kick"><span id="hmDay"></span><span id="hmFirm" class="hidden"></span></div>
+            <!-- The firm header (2026-10-13, Draft C of the firm-type
+                 drafts): who the firm is and which shop, above everything
+                 else on Home. The mark is the firm's logo when one is saved
+                 (the firm's branding logo, so one logo per firm), else its
+                 initials; for an owner or admin it is the button that adds
+                 or changes that logo. drawFirmHead() is its one writer. -->
+            <div id="hmFirmHead" class="hm-fh hidden">
+              <span id="hmFirmMarkWrap" class="hm-fh-markw"></span>
+              <span class="hm-fh-txt"><b id="hmFirmName"></b><small id="hmFirmMeta"></small></span>
+              <button id="hmFirmGear" type="button" class="hidden hm-fh-set" aria-label="Firm settings" title="Firm settings">
+                <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2.2M10 15.3v2.2M2.5 10h2.2M15.3 10h2.2M4.7 4.7l1.6 1.6M13.7 13.7l1.6 1.6M4.7 15.3l1.6-1.6M13.7 6.3l1.6-1.6"/></svg>
+              </button>
+              <input id="hmFirmLogoFile" type="file" accept="image/png,image/jpeg" class="hidden" />
+            </div>
+            <p id="hmFirmMsg" class="hidden hm-fh-msg" role="status"></p>
+            <div class="hm-kick"><span id="hmDay"></span></div>
             <h2 id="hmTitle" class="hm-title">Home</h2>
             <p id="hmSub" class="hm-sub"></p>
             <div class="hm-find" role="search">
@@ -14383,7 +14418,101 @@ async function renderMyDesk() {
     ["hmTodayRows", "hmPropRows", "hmTeam"].forEach((id) => { const e = document.getElementById(id); if (e) e.textContent = ""; });
     const t = document.getElementById("hmTitle"); if (t) t.textContent = "Home";
     const s = document.getElementById("hmSub"); if (s) s.textContent = "";
-    const f = document.getElementById("hmFirm"); if (f) { f.textContent = ""; f.classList.add("hidden"); }
+    drawFirmHead(null);
+    const fm = document.getElementById("hmFirmMsg"); if (fm) { fm.textContent = ""; fm.classList.add("hidden"); }
+  }
+
+  // The firm header (2026-10-13). Who the firm is, which shop (SHOP_COPY's
+  // label, the words Firm settings uses), how many people have joined, and
+  // its mark. The mark is the logo from the firm's branding when one is
+  // saved — served by /api/org/logo, versioned by the list's logoAt — and
+  // the firm's initials otherwise, which is also what a logo that fails to
+  // load falls back to. For an owner or admin the mark is a button that adds
+  // or changes that logo (saveFirmLogo); everyone else just sees it.
+  function firmInitials(name) {
+    const words = String(name || "").split(/\s+/).map((w) => w.replace(/[^A-Za-z0-9]/g, "")).filter(Boolean);
+    return words.slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "F";
+  }
+  function drawFirmHead(firm) {
+    const head = document.getElementById("hmFirmHead");
+    if (!head) return;
+    head.classList.toggle("hidden", !firm);
+    document.getElementById("hmFirmGear").classList.toggle("hidden", !(firm && firm.canManage));
+    const wrap = document.getElementById("hmFirmMarkWrap");
+    wrap.textContent = "";
+    if (!firm) { document.getElementById("hmFirmName").textContent = ""; document.getElementById("hmFirmMeta").textContent = ""; return; }
+    document.getElementById("hmFirmName").textContent = firm.name;
+    const meta = document.getElementById("hmFirmMeta");
+    meta.textContent = "";
+    meta.append(hmEl("em", null, shopCopy(firm.kind).label));
+    const people = firmMembers.filter((m) => !m.pending).length;
+    if (people) meta.append(` · ${people} ${people === 1 ? "person" : "people"}`);
+
+    const manage = Boolean(firm.canManage);
+    const mark = document.createElement(manage ? "button" : "span");
+    mark.className = "hm-fh-mark";
+    mark.id = "hmFirmMark";
+    const initials = () => {
+      mark.classList.remove("logo");
+      mark.textContent = firmInitials(firm.name);
+      if (manage) {
+        mark.append(hmEl("span", "hm-fh-add", "+"));
+        mark.title = "Add your firm's logo";
+        mark.setAttribute("aria-label", "Add your firm's logo. Everyone in the firm will see it.");
+      } else {
+        mark.setAttribute("aria-hidden", "true");
+      }
+    };
+    if (firm.logoAt) {
+      mark.classList.add("logo");
+      const img = document.createElement("img");
+      img.alt = manage ? "" : `${firm.name} logo`;
+      img.src = `/api/org/logo?id=${encodeURIComponent(firm.id)}&v=${encodeURIComponent(firm.logoAt)}`;
+      img.addEventListener("error", initials, { once: true });
+      mark.append(img);
+      if (manage) {
+        mark.title = "Change your firm's logo";
+        mark.setAttribute("aria-label", "Change your firm's logo");
+      }
+    } else {
+      initials();
+    }
+    if (manage) {
+      mark.type = "button";
+      mark.addEventListener("click", () => document.getElementById("hmFirmLogoFile").click());
+    }
+    wrap.append(mark);
+  }
+
+  // Saves the chosen file as the firm's logo. The firm's branding is ONE
+  // profile (PUT /api/org/branding replaces it whole), so the rest of it is
+  // read first and sent back unchanged: adding a logo here must not blank
+  // the name or the phone number an admin typed into Firm settings.
+  async function saveFirmLogo(file) {
+    const firm = myFirm();
+    const msg = document.getElementById("hmFirmMsg");
+    const say = (t) => { msg.textContent = t; msg.classList.toggle("hidden", !t); };
+    if (!firm || !firm.canManage || !file) return;
+    say("Saving your firm's logo…");
+    try {
+      const logo = await readLogoFile(file);
+      const cur = await fetch(`/api/org/branding?id=${encodeURIComponent(firm.id)}`, { credentials: "same-origin" });
+      const curBody = await cur.json().catch(() => ({}));
+      if (!cur.ok) return say(curBody.error || "Couldn't save the logo. Please try again.");
+      const r = await fetch("/api/org/branding", {
+        method: "PUT", credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...(curBody.branding || {}), logo, orgId: firm.id }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) return say(body.error || "Couldn't save the logo. Please try again.");
+      currentFirmBranding = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
+      firm.logoAt = String(Date.now());
+      drawFirmHead(firm);
+      say("Saved. Everyone in your firm sees it here, and it is the logo in your firm's report branding too.");
+    } catch (e) {
+      say((e && e.message) || "Couldn't save the logo. Please try again.");
+    }
   }
 
   // A message and a BOV request have no address, so no number and no pin:
@@ -14478,9 +14607,7 @@ async function renderMyDesk() {
 
     // The head: the day, the firm, a greeting, one sentence of status.
     document.getElementById("hmDay").textContent = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-    const firmEl = document.getElementById("hmFirm");
-    firmEl.textContent = firm ? firm.name : "";
-    firmEl.classList.toggle("hidden", !firm);
+    drawFirmHead(firm);
     document.getElementById("hmTitle").textContent = deskGreetingFor(new Date(), currentUser);
     document.getElementById("hmSub").textContent = HOMEMAP.statusLine({ items: hmItems, hasFirm: !!firm, propertyCount: hmRows.length });
 
@@ -14682,6 +14809,12 @@ async function renderMyDesk() {
       const first = box.querySelector('input[name="address"]');
       if (first) first.focus();
     });
+  });
+  document.getElementById("hmFirmGear").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
+  document.getElementById("hmFirmLogoFile").addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    saveFirmLogo(file);
   });
   document.getElementById("hmInvite").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
   document.getElementById("hmStartFirm").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
@@ -17326,6 +17459,8 @@ async function renderMyDesk() {
       if (!r.ok) { msg.textContent = body.error || "That didn't save."; return; }
       const saved = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
       if (firm) currentFirmBranding = saved; else currentBranding = saved;
+      // The Home header draws the firm logo by URL, so a new one needs a new URL.
+      if (firm) { firm.logoAt = saved && saved.logo ? String(Date.now()) : ""; drawFirmHead(firm); }
       // Whatever was seeded is saved now, so it is no longer a suggestion.
       brandSeeded = false;
       const seedNote = document.getElementById("brandSeedNote");
@@ -17357,6 +17492,7 @@ async function renderMyDesk() {
       const body = await r.json().catch(() => ({}));
       if (!r.ok) { msg.textContent = body.error || "That didn't go through."; return; }
       if (firm) currentFirmBranding = null; else currentBranding = null;
+      if (firm) { firm.logoAt = ""; drawFirmHead(firm); }
       pendingLogo = "";
       fillBrandForm(null); renderBrandPreview();
       updateBrandScopeUI();

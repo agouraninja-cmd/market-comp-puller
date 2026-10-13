@@ -649,14 +649,15 @@ test("bare environment", async (t) => {
     // Home, Messages | Markets, Comp report, Permits.
     // 2026-10-09 (owner's call): Pipeline under Messages, and Sites right
     // beside it for a development firm (one of the two shows; SHOP_NAV_CSS),
-    // opening Home's Properties tab, where their sites are.
+    // opening /sites, their deals by stage (a page of its own since
+    // 2026-10-12; it was Home's Properties tab, so Home twice).
     // 2026-10-13 (the owner's "remove the vault"): Comp report is Comps, a
     // section whose row opens /comps (its other tab is /bulk).
     const ROWS = [
       ["Home", /<span class="nvl">Home</],
       ["Messages", /<a [^>]*href="\/messages"/],
       ["Pipeline", /<a id="navPipe" href="\/pipeline"/],
-      ["Sites", /<a id="navSites" href="\/desk#properties"/],
+      ["Sites", /<a id="navSites" href="\/sites"/],
       ["Markets", /<a [^>]*href="\/markets"/],
       ["Comps", /<a id="navComps" href="\/comps"/],
       ["Permits", /<a [^>]*href="\/permits"/],
@@ -692,7 +693,7 @@ test("bare environment", async (t) => {
   // Pipeline is a row of the rail (2026-10-09), so it is a path: the vault
   // page, served at /pipeline, with that row marked and no red "Run a comp
   // report" button (a working page, CTA_FREE_PAGES). A development firm's
-  // Sites row opens Home's Properties tab instead, so /sites is no page.
+  // Sites row is /sites (2026-10-12), a page of its own, marked the same way.
   await t.test("/comps and /pipeline serve the vault page, each with its own row marked", async () => {
     const SESSION = { cookie: "cn_session=not-a-real-token" };
     for (const [page, id] of [["/comps", "navComps"], ["/pipeline", "navPipe"]]) {
@@ -733,8 +734,15 @@ test("bare environment", async (t) => {
       ctx.window.cnShopNav(false);
       assert.ok(!cls.has("shop-dev") && !("cnShop" in store), "leaving the firm (or signing out) left the note");
     }
-    assert.equal((await fetch(srv.base + "/sites", { headers: SESSION })).status, 404,
-      "/sites is no page: a development firm's sites are on Home");
+    const sr = await fetch(srv.base + "/sites", { headers: SESSION });
+    assert.equal(sr.status, 200, "/sites is a page");
+    assert.equal(sr.headers.get("cache-control"), "no-store", "/sites is a member's page");
+    const sites = await sr.text();
+    const snav = (sites.match(/<nav[\s\S]*?<\/nav>/) || [""])[0];
+    assert.match(snav, /<a id="navSites" href="\/sites" aria-current="page"/, "/sites does not mark its row");
+    assert.equal((snav.match(/aria-current="page"/g) || []).length, 1, "/sites marks more than its own row");
+    assert.ok(!snav.includes('class="btn sm" href="/bulk"'), "/sites still offers the red CTA");
+    assert.match(sites, /var BOOT = \{"s":401\}/, "a session that is not real reads the sign-in wall");
     // /vault is no page since 2026-10-13: it forwards to /comps, query kept.
     for (const [from, to] of [["/vault", "/comps"], ["/vault?add=own", "/comps?add=own"]]) {
       const r = await fetch(srv.base + from, { headers: SESSION, redirect: "manual" });

@@ -3493,8 +3493,8 @@ ${tabButtons}
   // looks private and can always be taken back.
   function applyShop(){
     var shop=!!(myFirm&&myFirm.kind==="development");
-    // The rail's row under Messages follows the same answer: Sites (Home's
-    // Properties) for a development firm, Pipeline for everyone else
+    // The rail's row under Messages follows the same answer: Sites (/sites,
+    // its deals by stage) for a development firm, Pipeline for everyone else
     // (server.js SHOP_NAV_JS, which also remembers it for the next page's
     // first paint).
     if(window.cnShopNav)window.cnShopNav(shop);
@@ -3504,7 +3504,9 @@ ${tabButtons}
     // Never from a page built ahead of being seen (instant tab switching):
     // only a member who actually opened the link is sent on.
     if(shop&&PAGE==="pipeline"&&!document.prerendering&&window.location&&window.location.replace){
-      window.location.replace("/desk#properties");
+      // Pipeline's row is Sites for them (2026-10-12), so /pipeline opens
+      // /sites, their deals by stage.
+      window.location.replace("/sites");
     }
   }
 

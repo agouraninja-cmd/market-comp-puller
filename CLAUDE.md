@@ -28,10 +28,11 @@ view (`report-inbox.js`; firms.md). **There is no vault page** since
 2026-10-13 (the owner: "the vault doesn't even exist any more"): `/vault`,
 the **Data** rail row from 2026-10-04 and later "Your properties and comps",
 was taken apart, and `/vault` now redirects to `/comps`, whose script sends
-a saved link's old tab (`#properties`, `#pipeline`, `#board`) to where it
-lives now. The rail (app-shell.md) is Home, Messages, **Pipeline** |
+a saved link's old tab (`#properties`, `#pipeline`, `#sites`, `#board`) to
+where it lives now. The rail (app-shell.md) is Home, Messages, **Pipeline** |
 Markets, **Comps**, Permits, with **Sites** in Pipeline's place for a
-development firm (it opens Home's Properties tab, `/desk#properties`).
+development firm: `/sites`, its deals on a board of the four buying stages
+(`sites-page.js`, since 2026-10-12; it opened Home's Properties tab before).
 **Comps** is a section of two tabs (`compsSectionTabs`): `/comps`, "Your
 comps", the member's own comps and the comps they contributed, and `/bulk`,
 "Run a comp report". **Pipeline** is `/pipeline`, a broker's BOV requests

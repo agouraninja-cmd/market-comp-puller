@@ -28,6 +28,32 @@ paths:
 
 ## Architecture
 
+- **Building a market from /markets (2026-10-13; the owner: "right now I
+  don't see where to insert the city").** The Explorer's build step had lost
+  its only door: its box (`#marketSearch`) sat beside the comp form, the
+  comp form left Home on 2026-09-04, `/run-report` left every nav that
+  evening, and `/bulk` skipped the box because "`/markets` is that page",
+  whose box only ever FILTERED. Now, for a signed-in member only (the
+  anonymous page is publicly cached), `renderMarketDirectoryHTML` puts an
+  empty `#mbuild` under the filter's `#mcount` and loads `MARKET_BUILD`
+  (`/explore-query.js`, `/market-build.js`, a mount) AFTER the filter's
+  script, so the filter's input listener runs first and the offer reads the
+  card count it just left. Rules are the pure, dual-exported
+  **`market-build.js`** (browser global `MARKETBUILD`, `maxAge: 0`, tested in
+  `test/market-build.test.js`): parsing is `EXPLOREQ.parseExploreQuery`, the
+  Explorer's own, and no parser means no offer; a typed type + city + state
+  with no card offers "No page for … yet. Build it →"; a city + state alone
+  offers only the types with no card; the hints (add a state, a zip, Land or
+  Residential) show only when the filter found nothing. A build runs only on
+  a click (it is one billed search), streams the route's progress, then
+  opens the page the route names; `signin_required` (a session that died
+  under a member-drawn page) gets a Sign in link. It decides nothing the
+  route does not re-check, and `slugFor` is a ⚠ twin of
+  `market-snapshot.js`'s `slugify` (a test holds them together). A member
+  always gets the filter box now, whatever the card count. Pinned in
+  `test/public-pages.test.js`. `#marketSearch` in index.html still works at
+  the unlinked `/run-report`; deleting it is a separate decision.
+
 - **The Board, on /markets (2026-10-09; the owner: "the board is meant to be
   kind of like a stock portfolio watch list for properties and markets",
   and, asked where it should live, "where it is right now in the market

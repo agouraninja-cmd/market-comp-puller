@@ -4,7 +4,9 @@
 // "Development firms only and integrate it into the property section of the
 // home page") and, for every member since 2026-10-13, the properties they
 // own (the vault's Properties tab held those until the owner's "remove the
-// vault"). Deals were the Sites tab on /vault (2026-10-05, the owner's pick
+// vault"). Deals alone are also worked on /sites (2026-10-12; sites-page.js
+// mounts this same pane under its stage board). Deals were the Sites tab on
+// /vault (2026-10-05, the owner's pick
 // "M2" of the Sites drafts,
 // https://claude.ai/artifact/BMeJY9d3vegjmDxcAPtxzR) and, for every Pro
 // member, The Board's deal wall (2026-10-07); both were removed the day this
@@ -164,6 +166,7 @@
   //   say(text)     -> the line under the Properties heading
   //   closeAdd()    -> take the add form away
   //   addToFirm(in) -> Home's one door onto the firm's buildings
+  //   buyOnly       -> the add form offers deals only (/sites, sites-page.js)
   function mount(ctx) {
     if (!S || !ctx || typeof document === "undefined") return null;
     const SVG = "http://www.w3.org/2000/svg";
@@ -494,11 +497,13 @@
     }
 
     // ---- the add form ----
-    // Whether the add form offers a deal at all: a development firm's member
-    // chooses "I'm buying it" or "I own it"; anyone else adds what they own.
-    const deals = () => (typeof ctx.deals === "function" ? !!ctx.deals() : false);
+    // Which kinds the add form offers. On Home (ctx.deals) a development
+    // firm's member chooses "I'm buying it" or "I own it" and anyone else
+    // adds what they own; /sites (ctx.buyOnly) adds deals alone. A mount
+    // that says neither offers both, as every mount did before 2026-10-13.
+    const deals = () => (typeof ctx.deals === "function" ? !!ctx.deals() : true);
     function addForm(kind) {
-      state.addKind = kind === "own" || !deals() ? "own" : "buy";
+      state.addKind = ctx.buyOnly ? "buy" : kind === "own" || !deals() ? "own" : "buy";
       state.addMsg = "";
       liveAdd = h("div", { class: "hs-add" });
       drawAdd();
@@ -523,7 +528,9 @@
     function drawAdd() {
       if (!liveAdd) return;
       const k = state.addKind;
-      const seg = !deals() ? null : h("div", { class: "hs-kind hs-wide", role: "radiogroup", "aria-label": "What is it" },
+      // /sites (ctx.buyOnly) adds deals only: what a member owns is Home's.
+      // Outside a development firm Home adds what the member owns alone.
+      const seg = ctx.buyOnly || !deals() ? null : h("div", { class: "hs-kind hs-wide", role: "radiogroup", "aria-label": "What is it" },
         [["buy", "I'm buying it"], ["own", "I own it"]].map(([v, t]) =>
           h("button", { type: "button", role: "radio", "aria-checked": k === v ? "true" : "false", class: k === v ? "on" : null,
             onclick: () => {

@@ -265,6 +265,7 @@ const BULK = require("./bulk");
 const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
 const { renderBuildingsBody, renderBuildingSheetBody } = require("./buildings-page");
 const { renderPermitsBody } = require("./permits-page");
+const { renderSitesBody } = require("./sites-page");
 // /brokers-firms — the one public pitch to the professional audience, which
 // replaced /brokers and /firms on 2026-09-01 (design 4a). A marketShell BODY,
 // like bulk-page.js. The shop-kind sentences and the prices are PASSED IN
@@ -3254,6 +3255,35 @@ async function importLogoFromSite(url) {
     } catch (_) { /* next candidate */ }
   }
   return { status: 404, code: "none", error: "No usable logo found on that site. Choose a file instead." };
+}
+
+// Which of these firms have a logo saved, and when (org id -> updated_at).
+// Fail-open, findOrgBrandingFor's rule: a failed read costs the header its
+// logo, never the firm list. The filter keeps the logos themselves (up to
+// 200KB each) out of a read that only needs to know they exist.
+async function orgLogoRevs(orgIds) {
+  const ids = [...new Set((orgIds || []).map(String).filter(Boolean))];
+  const out = new Map();
+  if (!ids.length || !DB_CONFIGURED) return out;
+  try {
+    const rows = await sbRequest("GET",
+      `org_branding?org_id=in.(${pgInList(ids)})&logo_url=neq.&select=org_id,updated_at&limit=${ids.length}`);
+    for (const r of rows || []) out.set(String(r.org_id), String(r.updated_at || "1"));
+  } catch (e) {
+    console.error("Firm logo lookup failed:", e.message);
+  }
+  return out;
+}
+
+// A stored logo data URI -> { mime, bytes } to serve, or null. The bytes
+// decide the type (sniffImage), never the label, the avatar route's rule.
+function decodeFirmLogo(dataUri) {
+  const brand = BRANDING.normalizeBrand({ logo: dataUri });
+  const m = brand && brand.logo ? brand.logo.match(/^data:[^;]+;base64,(.+)$/) : null;
+  if (!m) return null;
+  const bytes = Buffer.from(m[1], "base64");
+  const mime = AVATAR.sniffImage(bytes);
+  return mime ? { mime, bytes } : null;
 }
 
 async function findOrgBrandingFor(user) {
@@ -11285,8 +11315,9 @@ const BULK_RUN_MARKER = "<!--BULK_RUN-->";
 // --- Pipeline or Sites: the rail row a firm's kind decides (2026-10-09) -------
 // The owner's call: a broker's BOV pipeline gets its own rail row, directly
 // under Messages, and a development firm (which writes no BOVs; vault.md's
-// Sites section) gets a Sites row in that same place instead, opening Home's
-// Properties tab, where its sites are worked (/desk#properties). Both rows are
+// Sites section) gets a Sites row in that same place instead, opening /sites,
+// its deals by stage (sites-page.js, 2026-10-12; it opened Home's Properties
+// tab until then, which made the row a second Home). Both rows are
 // in the markup on both nav authors (marketBar and index.html, ids navPipe
 // and navSites on both) and ONE class on <html>, `shop-dev`, decides which
 // shows, so neither nav grows a branch.
@@ -11299,8 +11330,8 @@ const BULK_RUN_MARKER = "<!--BULK_RUN-->";
 // first paint, so a development member never sees "Pipeline" turn into
 // "Sites" under them. The note is a per-browser convenience, never a gate:
 // it is corrected on every Home load (where a member lands after signing in),
-// a member without it simply reads Pipeline, and /pipeline opens a
-// development firm's vault on Sites anyway (applyShop). A visitor with no
+// a member without it simply reads Pipeline, and /pipeline sends a
+// development firm's member on to /sites anyway (applyShop). A visitor with no
 // session has it cleared by ACCOUNT_NAV_JS.
 const SHOP_NAV_KEY = "cnShop";
 const SHOP_NAV_CSS =
@@ -12912,11 +12943,10 @@ function nextMarketExample() {
 // comps, and /pipeline, a broker's BOV requests and engagements. They were
 // one page at /vault, which now answers with a redirect (VAULT_MOVED_PATH).
 // One list for the route, this CTA rule and the tests. (A development firm's
-// Sites row opens Home's Properties tab, where their sites are: index.html
-// serves it.)
+// Sites row opens /sites, its own page since 2026-10-12: sites-page.js.)
 const VAULT_PAGE_PATHS = new Set(["/comps", "/pipeline"]);
 const VAULT_MOVED_PATH = "/vault";
-const CTA_FREE_PAGES = new Set([...VAULT_PAGE_PATHS, "/messages", "/markets", "/bulk", "/buildings", "/building", "/permits", "/permits/compare"]);
+const CTA_FREE_PAGES = new Set([...VAULT_PAGE_PATHS, "/sites", "/messages", "/markets", "/bulk", "/buildings", "/building", "/permits", "/permits/compare"]);
 
 // The Comps section's two tabs (2026-10-13, the owner: "Integrate it to the
 // report section and change the report section and name it Comps"). The
@@ -13053,13 +13083,12 @@ const marketBar = (signedIn = false, current = "") =>
       // place instead (the owner: "Have the sites under messages for
       // development firms and Pipeline for brokerage firms"); both rows
       // render and the `shop-dev` class shows one (SHOP_NAV_CSS above).
-      // Sites opens Home's Properties tab, where a development firm's sites
-      // have been worked since that evening (home-sites.js), so it is never
-      // current here: index.html's markNavCurrent marks it. Every member,
-      // like Comps: /pipeline answers a free member with its Pro
-      // invitation. index.html carries both twins with the same ids.
+      // Sites opens /sites, the deals by stage (sites-page.js, 2026-10-12;
+      // it was Home's Properties tab until then, so Home twice). Every member,
+      // like Comps: /pipeline answers a free member with its Pro invitation.
+      // index.html carries both twins with the same ids.
       `<a id="navPipe" href="/pipeline"${current === "/pipeline" ? ' aria-current="page"' : ""}>${NAV_ICONS.pipeline}<span class="nvl">Pipeline</span></a>` +
-      `<a id="navSites" href="/desk#properties">${NAV_ICONS.sites}<span class="nvl">Sites</span></a>`
+      `<a id="navSites" href="/sites"${current === "/sites" ? ' aria-current="page"' : ""}>${NAV_ICONS.sites}<span class="nvl">Sites</span></a>`
     : "") +
   // Pricing sits in the bar itself rather than one click inside Explore. It is
   // the question a prospect arrives with, and a B2B site that hides its price
@@ -15321,6 +15350,37 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
 // then the Board), and the mount. No member data in it: the same bytes for
 // every member, and /board.js reads the rest. id="board" is the address
 // every door uses (/markets#board: the market pages, the digest email).
+// Building a market that has no card yet, from the filter box (2026-10-13).
+// The Market Explorer's build step lost its only door when the comp form left
+// Home and /run-report left the nav; market-build.js is that door, on the page
+// that lists the markets. Members only, like The Board: the anonymous page is
+// cached publicly. explore-query.js is the Explorer's own parser, so both doors
+// read one query the same way. Same bytes for every member.
+const MARKET_BUILD =
+  `<script src="/explore-query.js"></script><script src="/market-build.js"></script>` +
+  `<script>(function(){var M=window.MARKETBUILD,Q=window.EXPLOREQ;if(!M||!Q)return;` +
+  `M.mount({input:document.getElementById("mq"),root:document.getElementById("mbuild"),count:document.getElementById("mcount"),parse:Q.parseExploreQuery});})();</script>`;
+// No backticks in here: this is a template literal.
+const MARKET_BUILD_CSS = `
+.mbuild{max-width:520px;margin-top:4px;padding:14px 16px;border:1px solid var(--edge);border-radius:8px;background:var(--card);box-shadow:var(--lift)}
+.mbuild[hidden]{display:none}
+.mbuild p{margin:0}
+.mbuild .mb-line{color:var(--ink);font-size:14.5px}
+.mbuild .mb-line strong{font-weight:600}
+.mbuild .mb-sub{color:var(--ink-2);font-size:13.5px;margin-top:4px}
+.mbuild .mb-note{color:var(--ink-mute);font-size:12.5px;margin-top:8px}
+.mbuild .mb-note:empty{display:none}
+.mbuild .mb-err{color:var(--red);font-size:14px}
+.mbuild .mb-types{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.mbuild .btn{margin-top:10px}
+.mbuild .mb-types .btn{margin-top:0;background:var(--card);color:var(--ink);border:1px solid var(--edge);font-weight:500}
+.mbuild .mb-types .btn:hover{background:var(--card);color:var(--ink);border-color:var(--ink-3)}
+.mbuild .btn:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+.mbuild .mb-track{height:3px;margin-top:12px;border-radius:2px;background:var(--wash);overflow:hidden}
+.mbuild .mb-bar{height:100%;background:var(--red-fill);transition:width .7s}
+@media (prefers-reduced-motion:reduce){.mbuild .mb-bar{transition:none}}
+`;
+
 const BOARD_SECTION =
   `<section id="board" class="bd" aria-label="The Board"><p class="bd-mute">Loading The Board&hellip;</p></section>` +
   `<script src="/buying-read.js"></script><script src="/board.js"></script>` +
@@ -15645,13 +15705,17 @@ function renderMarketDirectoryHTML(signedIn) {
   // account, and works on the one market-finding surface an anonymous visitor
   // can still reach. Progressive enhancement — with JS off the full grid is
   // rendered and simply is not filtered.
-  const filterUi = slugs.length > 8
+  // A member always gets the box, whatever the count: it is also where they
+  // build a market that has no card yet (MARKET_BUILD below).
+  const showFilter = slugs.length > 8 || signedIn;
+  const filterUi = showFilter
     ? `<div class="mfilter">` +
       `<label class="vh" for="mq">Filter markets</label>` +
       `<input id="mq" type="search" autocomplete="off" placeholder="Filter by city, state, or type, e.g. warehouse Texas"/>` +
-      `</div><div class="mcount" id="mcount" role="status" aria-live="polite"></div>`
+      `</div><div class="mcount" id="mcount" role="status" aria-live="polite"></div>` +
+      (signedIn ? `<div class="mbuild" id="mbuild" aria-live="polite" hidden></div>` : "")
     : "";
-  const filterJs = slugs.length > 8
+  const filterJs = showFilter
     ? `<script>(function(){` +
       `var q=document.getElementById('mq'),c=document.getElementById('mcount');` +
       `if(!q||!c)return;` +
@@ -15694,6 +15758,9 @@ function renderMarketDirectoryHTML(signedIn) {
     mapUi +
     (cards ? `<div class="grid">${cards}</div>` : `<p>Market snapshots are being prepared. <a href="/">Run a live valuation &rarr;</a></p>`) +
     filterJs +
+    // After filterJs on purpose: its input listener runs first, so the build
+    // offer reads the card count the filter just left on screen.
+    (signedIn && showFilter ? MARKET_BUILD : "") +
     `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
   return marketShell({
@@ -15704,7 +15771,7 @@ function renderMarketDirectoryHTML(signedIn) {
     // their colour. Only when there IS a card — an unconfigured install ships
     // no unused stylesheet.
     head: (mapUi ? LEAFLET_HEAD : "") + (RANK_ENTRY ? `<style>${RANKPAGE.RANK_CSS}</style>` : "") +
-      (signedIn ? `<style>${BOARD_CSS}</style>` : ""),
+      (signedIn ? `<style>${BOARD_CSS}${MARKET_BUILD_CSS}</style>` : ""),
     current: "/markets",
   });
 }
@@ -27624,7 +27691,10 @@ const server = http.createServer((req, res) =>
         const [rows, ent] = await Promise.all([orgMembershipsFor(user.email), entitlementsFor(req)]);
         const mine = rows.filter((r) => ORG.isActive(r));
         const pending = rows.filter((r) => ORG.isPending(r));
-        const firms = await orgsByIds([...mine, ...pending].map((r) => r.org_id));
+        const [firms, logos] = await Promise.all([
+          orgsByIds([...mine, ...pending].map((r) => r.org_id)),
+          orgLogoRevs(mine.map((r) => r.org_id)),
+        ]);
         // Billing state, only for a firm this caller actually belongs to, and
         // the SEAT USAGE for everyone in it — a member seeing "6 of 6 seats"
         // is why an invite refusal makes sense when it comes, rather than
@@ -27655,7 +27725,11 @@ const server = http.createServer((req, res) =>
           // between an invitation to start a firm and the paywall; it is
           // presentation only, and POST /api/org checks it again.
           canCreate: ent.canUseOrg === true,
-          orgs: mine.map((r) => orgSummary(r, firms)),
+          // logoAt: when the firm's logo was last saved, "" for none. The
+          // header on Home draws /api/org/logo?id=…&v=<logoAt>, so the bytes
+          // never ride this read (it ships inside every Home page) and a new
+          // logo is a new URL rather than a stale cache.
+          orgs: mine.map((r) => ({ ...orgSummary(r, firms), logoAt: logos.get(String(r.org_id)) || "" })),
           invites: pending.map((r) => ({
             id: r.id,
             orgId: r.org_id,
@@ -28702,6 +28776,39 @@ const server = http.createServer((req, res) =>
       })().catch((err) => {
         console.error("Firm branding read failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't load the firm's branding. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- GET /api/org/logo?id=&v= — the firm's logo, as an image (2026-10-13)
+    //
+    // The firm header on Home. The logo is the one in the firm's branding
+    // (org_branding.logo_url), so there is one logo per firm, and an owner
+    // or admin saving it anywhere shows it to every member. Read access is
+    // GET /api/org/branding's: any active member. `v` (the list's logoAt)
+    // makes each saved logo its own URL, so it caches for good.
+    if (orgPath === "/api/org/logo" && req.method === "GET") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const q = new URL(req.url, "http://localhost").searchParams;
+        const orgId = (q.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const rows = await sbRequest("GET",
+          `org_branding?org_id=eq.${encodeURIComponent(orgId)}&select=logo_url&limit=1`);
+        const logo = decodeFirmLogo(rows && rows[0] && rows[0].logo_url);
+        if (!logo) return sendJson(res, 404, { error: "No logo." });
+        res.writeHead(200, {
+          "content-type": logo.mime,
+          "content-length": logo.bytes.length,
+          "cache-control": q.get("v") ? "private, max-age=31536000, immutable" : "private, no-cache",
+          "x-content-type-options": "nosniff",
+        });
+        return res.end(logo.bytes);
+      })().catch((err) => {
+        console.error("Firm logo read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load the firm's logo." });
       });
       return;
     }
@@ -31010,12 +31117,15 @@ const server = http.createServer((req, res) =>
     // so the same maxAge: 0 rule holds for the same reason.
     "/sites.js": { file: "sites.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     "/home-sites.js": { file: "home-sites.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // Their styles, one copy for Home and /sites (2026-10-12), on the same terms.
+    "/home-sites.css": { file: "home-sites.css", type: "text/css; charset=utf-8", maxAge: 0 },
     // The buying read on The Board's market tiles (the global BUYINGREAD),
     // called by /vault's inline script on the same terms.
     "/buying-read.js": { file: "buying-read.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // The Board on the Markets page (the global BOARD), mounted by that
     // page's inline script for a signed-in member. Same maxAge: 0 rule.
     "/board.js": { file: "board.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    "/market-build.js": { file: "market-build.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
@@ -31954,6 +32064,63 @@ const server = http.createServer((req, res) =>
         head: INTER_FONT_HEAD,
         testerBadge: true,
         body: renderBuildingSheetBody(boot) + visitTag,
+      }));
+    })();
+    return;
+  }
+
+  // --- GET /sites — a development firm's deals, by stage (2026-10-12) -----
+  //
+  // The rail's Sites row (development firms, in Pipeline's place). It opened
+  // Home's Properties tab from 2026-10-09, which made it the same screen as
+  // Home (the owner: "Sites is the exact same thing as home, this is a
+  // problem"), so it is a page of its own: the deals on a board of the four
+  // buying stages, the one opened worked under it with Home's own pane
+  // (home-sites.js), Passed folded away. What a member owns stays on Home.
+  // The gate is /api/sites' own (requireSites: signed in, Pro, a database),
+  // and every write the page makes goes through those routes. A READ only:
+  // this render may be speculative (rule 15).
+  if (req.method === "GET" && pagePath === "/sites") {
+    (async () => {
+      let boot = null;
+      try {
+        const user = await getSessionUser(req);
+        if (!user) boot = { s: 401 };
+        else if (!(await entitlementsFor(req)).canUseVault) boot = { s: 403 };
+        else if (!DB_CONFIGURED) boot = { s: 503 };
+        else {
+          const [rows, firm] = await Promise.all([
+            sbRequest("GET", `user_sites?user_id=eq.${encodeURIComponent(user.id)}` +
+              `&select=${SITES_SELECT}&order=created_at.desc&limit=${SITES.MAX_ROWS}`),
+            messagingFirmOf(user).then(async (f) => {
+              if (!f) return null;
+              const org = (await orgsByIds([f.orgId])).get(f.orgId);
+              return { name: (org && org.name) || "your firm", kind: ORG.kindOf(org) };
+            }),
+          ]);
+          boot = { s: 200, sites: rows || [], today: sitesToday(), firm };
+        }
+      } catch (err) {
+        console.error("sites page boot failed:", err.message);
+      }
+      const visitTag = logPageVisit(req, "sites_visit", { source:
+        !boot ? "error" : boot.s === 200 ? "ok" : boot.s === 401 ? "signin" : boot.s === 403 ? "locked" : "nodb" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        vary: "cookie",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      res.end(marketShell({
+        title: "Sites \u00b7 CompNinja",
+        description: "The sites you're buying, by stage.",
+        canonical: `${SITE_URL}/sites`,
+        noindex: true,
+        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+        current: "/sites",
+        head: INTER_FONT_HEAD,
+        testerBadge: true,
+        body: renderSitesBody(boot) + visitTag,
       }));
     })();
     return;

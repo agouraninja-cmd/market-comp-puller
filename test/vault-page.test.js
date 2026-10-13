@@ -4876,14 +4876,14 @@ test("a link to a part of the old /vault opens that part where it lives now", as
     /if\(PAGE==="comps"&&MOVED\[h\]&&!document\.prerendering&&/);
 });
 
-test("the rail is told which kind of firm this is; /pipeline sends a development firm's member to Home", async () => {
+test("the rail is told which kind of firm this is; /pipeline sends a development firm's member to Sites", async () => {
   const told = [], went = [];
   await runPage([comp({})], null, { page: "pipeline", firm: DEV_FIRM, window: {
     location: { hash: "", pathname: "/pipeline", search: "", replace: (u) => went.push(u) },
     history: { replaceState() {} }, cnShopNav: (dev) => told.push(dev),
   } });
   assert.equal(told[told.length - 1], true, "the rail was not told this is a development firm");
-  assert.deepEqual(went, ["/desk#properties"], "a developer has no Pipeline: their properties are on Home");
+  assert.deepEqual(went, ["/sites"], "a developer has no Pipeline: their row there is Sites (2026-10-12)");
   const broker = [], stayed = [];
   const b = await runPage([comp({})], null, { page: "pipeline", firm: { id: "f2", name: "Summit Brokerage", kind: "broker" }, window: {
     location: { hash: "", pathname: "/pipeline", search: "", replace: (u) => stayed.push(u) },

@@ -76,8 +76,9 @@
 
 // /comps and /pipeline (2026-10-13) are what was the vault page, /vault, a
 // row of the rail each; server.js's VAULT_PAGE_PATHS serves both, and /vault
-// itself only redirects, so it is not a tab.
-const TAB_PATHS = ["/", "/desk", "/comps", "/pipeline", "/messages", "/markets", "/bulk", "/permits", "/buildings"];
+// itself only redirects, so it is not a tab. /sites (2026-10-12) is a
+// development firm's row in Pipeline's place.
+const TAB_PATHS = ["/", "/desk", "/comps", "/pipeline", "/sites", "/messages", "/markets", "/bulk", "/permits", "/buildings"];
 // GET routes that WRITE, which the fetch guard would otherwise wave through
 // from a page nobody has opened (audited 2026-09-26, every GET in server.js).
 // The two that matter most treat a read as evidence somebody is looking:

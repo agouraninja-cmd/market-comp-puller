@@ -111,6 +111,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        nothing. -->
   <script src="/sites.js"></script>
   <script src="/home-sites.js"></script>
+  <link rel="stylesheet" href="/home-sites.css" />
   <!-- Street photos of buildings on Home (2026-10-09; BLDGPHOTO): looked up
        by address through our own /api/building-photo. maxAge 0, and guarded
        with typeof: without it Home's cards keep their aerials. -->
@@ -1775,7 +1776,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       html.nav-rail.hm-page .hm-body { flex: 1; overflow-y: auto; min-height: 0; padding: 4px 16px 28px; }
     }
     .hm-kick { font-size: 12.5px; font-weight: 500; color: var(--ink-3); }
-    .hm-kick #hmFirm::before { content: "\00b7"; margin: 0 .45em; }
+    .hm-fh { display: flex; align-items: center; gap: 11px; padding: 0 0 14px; margin: 0 0 16px; border-bottom: 1px solid var(--line); }
+    .hm-fh.hidden { display: none; }
+    .hm-fh-markw { flex: none; display: flex; }
+    .hm-fh-mark { position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 9px; background: var(--ink); color: var(--paper); font: inherit; font-size: 14px; font-weight: 700; letter-spacing: .02em; }
+    /* White in BOTH themes on purpose, like a photo: a firm logo is drawn for
+       paper, and dark lettering on a transparent PNG vanishes on the dark card. */
+    .hm-fh-mark.logo { background: rgb(255 255 255); box-shadow: inset 0 0 0 1px var(--line); }
+    .hm-fh-mark img { width: 100%; height: 100%; object-fit: contain; padding: 3px; box-sizing: border-box; border-radius: 9px; }
+    button.hm-fh-mark { cursor: pointer; }
+    button.hm-fh-mark:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    .hm-fh-add { position: absolute; right: -4px; bottom: -4px; display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; border: 2px solid var(--paper); background: var(--red-fill); color: #fff; font-size: 12px; font-weight: 700; line-height: 1; }
+    .hm-fh-txt { min-width: 0; flex: 1; }
+    .hm-fh-txt b { display: block; font-size: 15px; font-weight: 600; line-height: 1.25; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hm-fh-txt small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink-3); }
+    .hm-fh-txt small em { font-style: normal; font-weight: 600; color: var(--bv-text); }
+    .hm-fh-set { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--edge); border-radius: 8px; background: var(--card); color: var(--ink-2); cursor: pointer; }
+    .hm-fh-set.hidden { display: none; }
+    .hm-fh-set:hover { border-color: var(--ink-3); }
+    .hm-fh-set:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    .hm-fh-msg { margin: -8px 0 12px; font-size: 12.5px; color: var(--ink-3); }
+    .hm-fh-msg.hidden { display: none; }
     .hm-title { margin: 6px 0 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 30px; line-height: 1.12; letter-spacing: -.015em; color: var(--ink); }
     .hm-sub { margin: 8px 0 0; font-size: 14.5px; line-height: 1.5; color: var(--ink-2); }
     .hm-find { position: relative; display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 0 12px; border: 1px solid var(--edge); border-radius: 11px; background: var(--card); color: var(--ink-3); }
@@ -1952,81 +1973,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        home-sites.js). An open row and its pane read as one card: the row
        keeps its sides and top, the pane carries the rest. Sized for the
        list's column (468px beside the map, the full width on a phone).
-       Theme tokens only, so dark mode needs nothing of its own. */
+       The pane's and the add form's own styles (.hs-*) are home-sites.css,
+       shared with /sites since 2026-10-12. */
     .hm-chip.passed { background: var(--err-bg); color: var(--err-text); }
     #hmPaneProps #hmPropMsg { margin: 0 10px 10px; }
     .hm-row.p[aria-expanded="true"] { border-radius: 12px 12px 0 0; background: var(--card); box-shadow: inset 1px 0 0 var(--edge), inset -1px 0 0 var(--edge), inset 0 1px 0 var(--edge); }
-    .hs-pane { margin: 0 0 10px; padding: 14px 14px 12px; border: 1px solid var(--edge); border-top-color: var(--hair); border-radius: 0 0 12px 12px; background: var(--card); box-shadow: 0 10px 22px -18px rgba(15, 23, 42, .4); }
-    .hs-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
-    .hs-steps li { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding-right: 4px; min-width: 0; }
-    .hs-steps li::before { content: ""; position: absolute; top: 7px; left: 16px; right: 0; height: 2px; background: var(--line); }
-    .hs-steps li:last-child::before { display: none; }
-    .hs-steps li.done::before { background: var(--ink); }
-    .hs-dot { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 2px solid var(--ink-4); border-radius: 50%; background: var(--card); color: var(--card); }
-    .hs-steps li.done .hs-dot { background: var(--ink); border-color: var(--ink); }
-    .hs-steps li.now .hs-dot { border-color: var(--red-fill); box-shadow: 0 0 0 3px var(--err-bg); }
-    .hs-steps li.now .hs-dot::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--red-fill); }
-    /* A phone's fifth of the column is narrower than "Entitlements": it
-       hyphenates there (the page is lang="en") rather than splitting off an s. */
-    .hs-sl { font-size: 11.5px; font-weight: 600; line-height: 1.25; color: var(--ink-2); -webkit-hyphens: auto; hyphens: auto; }
-    .hs-steps li.now .hs-sl { color: var(--ink); }
-    .hs-steps li:not(.done):not(.now) .hs-sl { color: var(--ink-3); font-weight: 500; }
-    .hs-sd { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-    .hs-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-    .hs-pane .hm-btn[disabled], .hs-add .hm-btn[disabled] { opacity: .6; cursor: default; }
-    .hs-pane .dk-msg { margin-top: 10px; }
-    .hs-grid { display: grid; gap: 12px; margin-top: 14px; }
-    .hs-blk { min-width: 0; padding-top: 12px; border-top: 1px solid var(--hair); }
-    .hs-blk h4 { margin: 0 0 8px; font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
-    .hs-terms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 0; }
-    .hs-terms dt { font-size: 12px; color: var(--ink-3); }
-    .hs-terms dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-    .hs-dates { list-style: none; margin: 0 0 6px; padding: 0; }
-    .hs-dates li { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 5px 0; font-size: 13px; color: var(--ink); }
-    .hs-dates li.past { color: var(--ink-3); }
-    .hs-dd { font-weight: 600; font-variant-numeric: tabular-nums; }
-    .hs-dw { min-width: 0; overflow-wrap: anywhere; }
-    .hs-xs { padding: 0 2px; border: 0; background: none; font-size: 16px; line-height: 1; color: var(--ink-3); cursor: pointer; }
-    .hs-xs:hover { color: var(--red); }
-    .hs-chip { display: inline-block; padding: 3px 7px; border-radius: 999px; background: var(--wash); box-shadow: inset 0 0 0 1px var(--line); font-size: 11px; font-weight: 600; line-height: 1; color: var(--ink-2); white-space: nowrap; }
-    .hs-chip.hot { background: var(--err-bg); box-shadow: inset 0 0 0 1px var(--err-rule); color: var(--err-text); }
-    .hs-chip.warn { background: var(--warn-bg); box-shadow: inset 0 0 0 1px var(--warn-rule); color: var(--warn-text); }
-    .hs-dform { display: grid; grid-template-columns: 148px minmax(0, 1fr); gap: 8px; align-items: center; margin-top: 6px; }
-    .hs-dform .hm-btn { justify-self: start; }
-    .hs-lnk { padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--red); cursor: pointer; }
-    .hs-lnk:hover { text-decoration: underline; }
-    .hs-notes { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--ink-body); overflow-wrap: anywhere; }
-    .hs-mute { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
-    .hs-passed { margin-top: 10px; }
-    .hs-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hair); }
-    .hs-rm { margin-left: auto; padding: 0; border: 0; background: none; font: inherit; font-size: 13px; color: var(--ink-3); cursor: pointer; }
-    .hs-rm:hover { color: var(--red); text-decoration: underline; }
-    .hs-note { margin-top: 8px; }
-    .hs-val { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; }
-    .hs-vl { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
-    .hs-vb { display: block; margin-top: 2px; font-family: Georgia, 'Times New Roman', serif; font-size: 24px; font-weight: 400; color: var(--ink); font-variant-numeric: tabular-nums; }
-    .hs-vs { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink-3); }
-    .hs-vc { display: block; margin: 2px 0 4px; font-size: 15px; font-weight: 600; color: var(--ink); }
-    .hs-up { font-weight: 600; color: var(--green); }
-    .hs-dn { font-weight: 600; color: var(--red); }
-    .hs-chart { display: block; width: 100%; height: auto; }
-    .hs-chart text { font-family: inherit; font-size: 11px; fill: var(--ink-3); }
-    .hs-chart text.hs-cv { font-weight: 600; fill: var(--ink-2); }
-    .hs-add { margin: 2px 10px 14px; padding: 14px; border: 1px solid var(--edge); border-radius: 12px; background: var(--card); }
-    .hs-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
-    .hs-form label { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
-    .hs-pane input, .hs-pane select, .hs-add input, .hs-add select { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--edge); border-radius: 8px; background: var(--card); font: inherit; font-size: 14px; letter-spacing: 0; text-transform: none; font-weight: 400; color: var(--ink); }
-    .hs-pane input:focus, .hs-pane select:focus, .hs-add input:focus, .hs-add select:focus { outline: none; border-color: var(--ink-3); box-shadow: 0 0 0 3px var(--hair); }
-    .hs-wide { grid-column: 1 / -1; }
-    .hs-fa { display: flex; align-items: center; gap: 14px; }
-    .hs-kind { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--wash-2); }
-    .hs-kind button { flex: 1; padding: 7px 6px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13px; font-weight: 500; color: var(--ink-3); white-space: nowrap; cursor: pointer; }
-    .hs-kind button.on { background: var(--card); font-weight: 600; color: var(--ink); box-shadow: 0 1px 3px rgba(15, 23, 42, .15); }
-    .hs-kind button:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
     .hm-fold { margin-top: 10px; }
     .hm-fold > summary { padding: 10px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-2); }
     .hm-fold > summary span { margin-left: 4px; font-weight: 600; color: var(--ink-3); }
-    @media (max-width: 420px) { .hs-kind button { font-size: 12px; padding: 7px 4px; } .hs-form { grid-template-columns: minmax(0, 1fr); } .hs-sl { font-size: 10.5px; } }
   </style>
 </head>
 <body class="bg-[#FBFBF9] text-[#1A2433] min-h-screen">
@@ -3066,12 +3020,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              class on <html> shows one (SHOP_NAV_CSS and SHOP_NAV_JS, which
              authBoot hands this page; loadMyFirms writes the answer). The
              ids are marketBar's own, so one rule styles both rails.
-             Pipeline opens /pipeline, the vault page, so it is never current
-             here; Sites opens this page's Properties tab, where a
-             development firm's sites are worked, and markNavCurrent marks
-             it while that tab shows for them. -->
+             Pipeline opens /pipeline, the vault page, and Sites opens
+             /sites, a development firm's deals by stage (sites-page.js,
+             2026-10-12; it was this page's Properties tab, which made it
+             Home twice), so neither is ever current here. -->
         <a id="navPipe" href="/pipeline" class="hover:text-[#1A2433]"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h14l-5.2 6.2V16l-3.6-1.6v-4.2z"/></svg><span class="nvl">Pipeline</span></a>
-        <a id="navSites" href="/desk#properties" class="hover:text-[#1A2433]"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 17V3.5"/><path d="M6.5 4h8l-2 2.6 2 2.6h-8"/><path d="M3 17h14"/></svg><span class="nvl">Sites</span></a>
+        <a id="navSites" href="/sites" class="hover:text-[#1A2433]"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 17V3.5"/><path d="M6.5 4h8l-2 2.6 2 2.6h-8"/><path d="M3 17h14"/></svg><span class="nvl">Sites</span></a>
         <!-- The tools group's label. Rail-only, and present for every visitor
              so the two nav authors keep emitting the same shape -- see
              server.js's marketBar and RAIL_CSS for the twin. -->
@@ -3251,7 +3205,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div id="homeMap" class="hm">
         <div class="hm-panel">
           <div class="hm-head">
-            <div class="hm-kick"><span id="hmDay"></span><span id="hmFirm" class="hidden"></span></div>
+            <!-- The firm header (2026-10-13, Draft C of the firm-type
+                 drafts): who the firm is and which shop, above everything
+                 else on Home. The mark is the firm's logo when one is saved
+                 (the firm's branding logo, so one logo per firm), else its
+                 initials; for an owner or admin it is the button that adds
+                 or changes that logo. drawFirmHead() is its one writer. -->
+            <div id="hmFirmHead" class="hm-fh hidden">
+              <span id="hmFirmMarkWrap" class="hm-fh-markw"></span>
+              <span class="hm-fh-txt"><b id="hmFirmName"></b><small id="hmFirmMeta"></small></span>
+              <button id="hmFirmGear" type="button" class="hidden hm-fh-set" aria-label="Firm settings" title="Firm settings">
+                <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2.2M10 15.3v2.2M2.5 10h2.2M15.3 10h2.2M4.7 4.7l1.6 1.6M13.7 13.7l1.6 1.6M4.7 15.3l1.6-1.6M13.7 6.3l1.6-1.6"/></svg>
+              </button>
+              <input id="hmFirmLogoFile" type="file" accept="image/png,image/jpeg" class="hidden" />
+            </div>
+            <p id="hmFirmMsg" class="hidden hm-fh-msg" role="status"></p>
+            <div class="hm-kick"><span id="hmDay"></span></div>
             <h2 id="hmTitle" class="hm-title">Home</h2>
             <p id="hmSub" class="hm-sub"></p>
             <div class="hm-find" role="search">
@@ -13942,21 +13911,10 @@ async function renderMyDesk() {
     const link = document.getElementById("myDeskLink");
     if (!link) return;
     const showing = !document.getElementById("deskView").classList.contains("hidden");
-    // Every tab of Home is Home (2026-10-08), with one exception since
-    // 2026-10-09: a development firm's Properties tab is the rail's Sites
-    // row (their sites are worked there). Read off the tab button and the
-    // shop-dev class, never Home's tab variable: it is declared below this,
-    // so reading it would be a temporal-dead-zone throw from the boot path.
-    const propsTab = document.getElementById("hmTabProps");
-    const onSites = showing && !!propsTab && propsTab.getAttribute("aria-selected") === "true"
-      && document.documentElement.classList.contains("shop-dev");
-    if (showing && !onSites) link.setAttribute("aria-current", "page");
+    // Every tab of Home is Home (2026-10-08). The rail's Sites row is its
+    // own page, /sites, since 2026-10-12, so it is never current here.
+    if (showing) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
-    const sites = document.getElementById("navSites");
-    if (sites) {
-      if (onSites) sites.setAttribute("aria-current", "page");
-      else sites.removeAttribute("aria-current");
-    }
     // Home as one map takes the whole page beside the rail (2026-10-07):
     // no content gutter, no footer. A member's Home only; every other view,
     // and a signed-out /desk, keeps the page as it was.
@@ -14063,14 +14021,8 @@ async function renderMyDesk() {
     // The Home row is Home's first tab, whichever tab was showing.
     if (hmHas()) setHomeTab("today");
   });
-  // The Sites row (a development firm's, 2026-10-09) is Home's Properties
-  // tab, swapped in place the same way, so it works from a report too.
-  document.getElementById("navSites").addEventListener("click", (e) => {
-    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    e.preventDefault();
-    enterDesk({ markSeen: true });
-    if (hmHas()) setHomeTab("properties");
-  });
+  // (The Sites row's in-place handler, 2026-10-09, left on 2026-10-12: Sites
+  // is its own page, /sites, an ordinary link.)
   document.getElementById("deskSignInBtn").addEventListener("click", () => openAcctModal("signin"));
   // (The rail's Reports row and its in-place handler, 2026-10-07, left with
   // Home's Reports tab on 2026-10-08: the reports are Messages' now.)
@@ -14469,7 +14421,101 @@ async function renderMyDesk() {
     ["hmTodayRows", "hmPropRows", "hmTeam"].forEach((id) => { const e = document.getElementById(id); if (e) e.textContent = ""; });
     const t = document.getElementById("hmTitle"); if (t) t.textContent = "Home";
     const s = document.getElementById("hmSub"); if (s) s.textContent = "";
-    const f = document.getElementById("hmFirm"); if (f) { f.textContent = ""; f.classList.add("hidden"); }
+    drawFirmHead(null);
+    const fm = document.getElementById("hmFirmMsg"); if (fm) { fm.textContent = ""; fm.classList.add("hidden"); }
+  }
+
+  // The firm header (2026-10-13). Who the firm is, which shop (SHOP_COPY's
+  // label, the words Firm settings uses), how many people have joined, and
+  // its mark. The mark is the logo from the firm's branding when one is
+  // saved — served by /api/org/logo, versioned by the list's logoAt — and
+  // the firm's initials otherwise, which is also what a logo that fails to
+  // load falls back to. For an owner or admin the mark is a button that adds
+  // or changes that logo (saveFirmLogo); everyone else just sees it.
+  function firmInitials(name) {
+    const words = String(name || "").split(/\s+/).map((w) => w.replace(/[^A-Za-z0-9]/g, "")).filter(Boolean);
+    return words.slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "F";
+  }
+  function drawFirmHead(firm) {
+    const head = document.getElementById("hmFirmHead");
+    if (!head) return;
+    head.classList.toggle("hidden", !firm);
+    document.getElementById("hmFirmGear").classList.toggle("hidden", !(firm && firm.canManage));
+    const wrap = document.getElementById("hmFirmMarkWrap");
+    wrap.textContent = "";
+    if (!firm) { document.getElementById("hmFirmName").textContent = ""; document.getElementById("hmFirmMeta").textContent = ""; return; }
+    document.getElementById("hmFirmName").textContent = firm.name;
+    const meta = document.getElementById("hmFirmMeta");
+    meta.textContent = "";
+    meta.append(hmEl("em", null, shopCopy(firm.kind).label));
+    const people = firmMembers.filter((m) => !m.pending).length;
+    if (people) meta.append(` · ${people} ${people === 1 ? "person" : "people"}`);
+
+    const manage = Boolean(firm.canManage);
+    const mark = document.createElement(manage ? "button" : "span");
+    mark.className = "hm-fh-mark";
+    mark.id = "hmFirmMark";
+    const initials = () => {
+      mark.classList.remove("logo");
+      mark.textContent = firmInitials(firm.name);
+      if (manage) {
+        mark.append(hmEl("span", "hm-fh-add", "+"));
+        mark.title = "Add your firm's logo";
+        mark.setAttribute("aria-label", "Add your firm's logo. Everyone in the firm will see it.");
+      } else {
+        mark.setAttribute("aria-hidden", "true");
+      }
+    };
+    if (firm.logoAt) {
+      mark.classList.add("logo");
+      const img = document.createElement("img");
+      img.alt = manage ? "" : `${firm.name} logo`;
+      img.src = `/api/org/logo?id=${encodeURIComponent(firm.id)}&v=${encodeURIComponent(firm.logoAt)}`;
+      img.addEventListener("error", initials, { once: true });
+      mark.append(img);
+      if (manage) {
+        mark.title = "Change your firm's logo";
+        mark.setAttribute("aria-label", "Change your firm's logo");
+      }
+    } else {
+      initials();
+    }
+    if (manage) {
+      mark.type = "button";
+      mark.addEventListener("click", () => document.getElementById("hmFirmLogoFile").click());
+    }
+    wrap.append(mark);
+  }
+
+  // Saves the chosen file as the firm's logo. The firm's branding is ONE
+  // profile (PUT /api/org/branding replaces it whole), so the rest of it is
+  // read first and sent back unchanged: adding a logo here must not blank
+  // the name or the phone number an admin typed into Firm settings.
+  async function saveFirmLogo(file) {
+    const firm = myFirm();
+    const msg = document.getElementById("hmFirmMsg");
+    const say = (t) => { msg.textContent = t; msg.classList.toggle("hidden", !t); };
+    if (!firm || !firm.canManage || !file) return;
+    say("Saving your firm's logo…");
+    try {
+      const logo = await readLogoFile(file);
+      const cur = await fetch(`/api/org/branding?id=${encodeURIComponent(firm.id)}`, { credentials: "same-origin" });
+      const curBody = await cur.json().catch(() => ({}));
+      if (!cur.ok) return say(curBody.error || "Couldn't save the logo. Please try again.");
+      const r = await fetch("/api/org/branding", {
+        method: "PUT", credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...(curBody.branding || {}), logo, orgId: firm.id }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) return say(body.error || "Couldn't save the logo. Please try again.");
+      currentFirmBranding = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
+      firm.logoAt = String(Date.now());
+      drawFirmHead(firm);
+      say("Saved. Everyone in your firm sees it here, and it is the logo in your firm's report branding too.");
+    } catch (e) {
+      say((e && e.message) || "Couldn't save the logo. Please try again.");
+    }
   }
 
   // A message and a BOV request have no address, so no number and no pin:
@@ -14563,9 +14609,7 @@ async function renderMyDesk() {
 
     // The head: the day, the firm, a greeting, one sentence of status.
     document.getElementById("hmDay").textContent = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-    const firmEl = document.getElementById("hmFirm");
-    firmEl.textContent = firm ? firm.name : "";
-    firmEl.classList.toggle("hidden", !firm);
+    drawFirmHead(firm);
     document.getElementById("hmTitle").textContent = deskGreetingFor(new Date(), currentUser);
     document.getElementById("hmSub").textContent = HOMEMAP.statusLine({ items: hmItems, hasFirm: !!firm, propertyCount: hmRows.length });
 
@@ -14774,6 +14818,12 @@ async function renderMyDesk() {
       const first = box.querySelector('input[name="address"]');
       if (first) first.focus();
     });
+  });
+  document.getElementById("hmFirmGear").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
+  document.getElementById("hmFirmLogoFile").addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    saveFirmLogo(file);
   });
   document.getElementById("hmInvite").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
   document.getElementById("hmStartFirm").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
@@ -15924,9 +15974,6 @@ async function renderMyDesk() {
         // lands on after signing in, so it writes the note every other page
         // stamps from (server.js's SHOP_NAV_JS, through authBoot).
         if (window.cnShopNav) window.cnShopNav(Boolean(myFirm() && myFirm().kind === "development"));
-        // Which row is current can turn on that answer (Sites is a
-        // development firm's Properties tab).
-        markNavCurrent();
         return firmState;
       } catch (_) {
         // Deliberately leaves firmState alone rather than writing an empty
@@ -17421,6 +17468,8 @@ async function renderMyDesk() {
       if (!r.ok) { msg.textContent = body.error || "That didn't save."; return; }
       const saved = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
       if (firm) currentFirmBranding = saved; else currentBranding = saved;
+      // The Home header draws the firm logo by URL, so a new one needs a new URL.
+      if (firm) { firm.logoAt = saved && saved.logo ? String(Date.now()) : ""; drawFirmHead(firm); }
       // Whatever was seeded is saved now, so it is no longer a suggestion.
       brandSeeded = false;
       const seedNote = document.getElementById("brandSeedNote");
@@ -17452,6 +17501,7 @@ async function renderMyDesk() {
       const body = await r.json().catch(() => ({}));
       if (!r.ok) { msg.textContent = body.error || "That didn't go through."; return; }
       if (firm) currentFirmBranding = null; else currentBranding = null;
+      if (firm) { firm.logoAt = ""; drawFirmHead(firm); }
       pendingLogo = "";
       fillBrandForm(null); renderBrandPreview();
       updateBrandScopeUI();

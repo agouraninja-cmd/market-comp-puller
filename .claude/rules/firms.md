@@ -350,7 +350,7 @@ paths:
   **The shared vault** (§7, migration 032, 2026-08-16). A broker can opt one
   comp at a time into their firm; colleagues see it inside their OWN reports,
   attributed. `POST|DELETE /api/vault/firm`; the toggle is a column on
-  `/vault`'s comps table, shown only to a broker who is in a firm. Rules in
+  the comps table on `/comps` (`/vault` until 2026-10-13), shown only to a broker who is in a firm. Rules in
   `blend-comps.js`, the read in `orgCompsForReport`. Seven things hold it up:
   - **`org_comps` is a separate table**, never a column on `broker_comps` and
     never a widened read — 013's rule a third time. The one-line version of

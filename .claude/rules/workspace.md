@@ -19,7 +19,42 @@ paths:
 > module names keep "desk"/"vault", and these notes still say "workspace" and
 > "vault" for the two spaces. Never put "Workspace" or "Vault" back in copy.
 > (Since 2026-10-07 the rail no longer has a Data row, and /vault's heading
-> reads "Your properties and comps"; see below.)
+> read "Your properties and comps" until 2026-10-13, when there stopped
+> being a /vault page at all; see below.)
+
+> **The vault is taken apart (2026-10-13, the owner: "the vault doesn't
+> even exist any more").** Read this before the boxes below, which it
+> amends: where they send a member to `/vault` (its Properties tab, its
+> `?add=own` form, `#book`), that is history. `/vault` redirects to `/comps`
+> (vault.md).
+> - **What a member owns is worked on Home, for everyone.** `hmWorkHere()`
+>   no longer asks `HOMEMAP.dealsOn`: a row of the member's own
+>   (`r.portfolioId`, or for a development firm a deal's `r.siteId`) opens
+>   HOMESITES' pane in place under it, with the value, the change, the
+>   chart of every check, the market since, the firm door, Open report,
+>   Refresh value and Remove, all of which the vault's Properties tab held.
+>   The map card's "Open in your properties →" (`/vault#properties`) is
+>   gone; without home-sites.js a row of the member's own offers no door,
+>   since there is no other page it opens on.
+> - **HOMESITES is told two more things** by `hmSitesView`: `deals()`
+>   (HOMEMAP.dealsOn), so anyone outside a development firm gets the add
+>   form as "I own it" alone, with no "I'm buying it" choice; and
+>   `data().canSites` (`hmCanVault()`), so "Watch it on The Board instead",
+>   a Tracking status that `/api/sites` refuses without Pro, is offered only
+>   when it can be written.
+> - **`HOMEMAP.addWhere("own")` is "home" for everyone**, so `#hmAddOwn`
+>   links `#properties` and opens the form in `#hmMineAdd`, and it hides
+>   without home-sites.js (no other page would take it). Nothing reads
+>   `?add=own` any more.
+> - **The Owned group adds up** (`HOMEMAP.ownedTotal`): "$12.04M likely
+>   combined · your numbers stay private" once two owned buildings have a
+>   value, with "(2 of 3)" when some have none. Written with
+>   `HOMESITES.short`, so the sum agrees with the rows' own figures
+>   (`HOMEMAP.money` rounds $12.04M to $12M). It was the Properties tab's
+>   "Combined likely value".
+> - **A saved `/desk#comps`** goes to `/comps`. The rail row that was Comp
+>   report is **Comps** (`#navComps`, `/comps`; app-shell.md); index.html
+>   never serves `/comps` or `/bulk`, so it never marks that row.
 
 > **Comps leave Home (2026-10-09, owner's call: "Remove Comps from the
 > Homepage").** Read this before the boxes below, which it amends: where they
@@ -52,6 +87,32 @@ paths:
 >   `/desk#reports` goes to `/messages#reports`. Home's own address only.
 > - Pinned in `test/desk-map-layers.test.js` ("Home holds no comps") and
 >   `test/home-map.test.js`.
+
+> **The firm header (2026-10-13, owner's pick of Draft C; drafts page
+> https://claude.ai/artifact/1q1DwN7QqSSARgtkQQRJYT).** A firm member's Home
+> opens with a row naming the firm: its mark, its name, its shop
+> ("Development shop" / "Broker shop", `shopCopy(kind).label`, the words Firm
+> settings uses) and how many people have joined (`firmMembers` without the
+> pending ones; omitted until the roster lands). The date line under it no
+> longer carries the firm's name (`#hmFirm` is gone). `drawFirmHead(firm)` is
+> the one writer; `resetHomeMap` clears it; no firm, no row.
+> - **The mark is the firm's logo, else its initials.** The logo is the one in
+>   the firm's report branding (`org_branding.logo_url`, 041), so a firm has
+>   ONE logo and saving it anywhere shows it to everyone. `GET /api/org` now
+>   carries `logoAt` per firm (the row's `updated_at`, "" for none) from
+>   `orgLogoRevs`, which filters `logo_url=neq.` and selects two columns so
+>   the logos themselves never ride a read that ships inside every Home page
+>   (DESK_BOOT); fail-open. The image is `GET /api/org/logo?id=&v=<logoAt>`
+>   (any active member, `memberOf`; bytes sniffed by `AVATAR.sniffImage`;
+>   `immutable` when versioned), and a load error falls back to initials.
+> - **Owner/admin adds or changes it from the header.** For `canManage` the
+>   mark is a button (a red + while there is no logo) that opens a file
+>   picker; `saveFirmLogo` runs `readLogoFile` (the branding card's resizer),
+>   READS `GET /api/org/branding` and PUTs it back with the new logo, because
+>   that PUT replaces the profile whole and must not blank the name or phone
+>   an admin typed in Firm settings. The gear opens Firm settings
+>   (`openFirmModal`). Saving or removing the firm's branding in that panel
+>   updates `logoAt` and redraws the header, so the two doors agree.
 
 > **Street photos on Home's cards (2026-10-09, owner's ask).** A property's
 > thumbnail and the map card show the building from the street, looked up BY

@@ -185,16 +185,34 @@ test("deals are a development firm's: listed, dated and passed on only for its m
   assert.equal(HM.stageLabel("passed"), "Passed");
 });
 
-test("adding a property of your own: on Home for a development firm, your own page for one you own, no deal elsewhere", () => {
+test("adding a property of your own: on Home for everyone, and a deal only for a development firm", () => {
   assert.equal(HM.addWhere("buy", "development"), "home");
-  assert.equal(HM.addWhere("own", "development"), "home");
-  assert.equal(HM.addWhere("own", "broker"), "/vault?add=own#properties");
-  assert.equal(HM.addWhere("own", undefined), "/vault?add=own#properties", "no firm at all");
+  // A property you own is added on Home by every member since 2026-10-13
+  // (it opened the vault's Properties tab, /vault?add=own#properties, until
+  // the vault was taken apart).
+  for (const kind of ["development", "broker", "", undefined]) {
+    assert.equal(HM.addWhere("own", kind), "home", String(kind));
+  }
   assert.equal(HM.addWhere("buy", "broker"), "", "a deal is not offered outside a development firm");
   assert.equal(HM.addWhere("buy", ""), "");
   // The Board's deal wall and /vault's Sites tab are gone: nothing links to them.
   assert.equal(HM.dealsHref, undefined);
   assert.equal(HM.addHref, undefined);
+});
+
+test("the Owned group adds up once two buildings have a value, and says how many it counts", () => {
+  const own = (key, value) => ({ key, group: "owned", value });
+  assert.equal(HM.ownedTotal([]), null);
+  assert.equal(HM.ownedTotal([own("a", 7720000)]), null, "one building is its own row's figure");
+  assert.deepEqual(HM.ownedTotal([own("a", 7720000), own("b", 4320000)]), { total: 12040000, valued: 2, of: 2 });
+  // A building with no value yet is counted out, and the note says so.
+  assert.deepEqual(HM.ownedTotal([own("a", 7720000), own("b", 4320000), own("c", null)]), { total: 12040000, valued: 2, of: 3 });
+  // Deals and the firm's buildings are not what the member owns.
+  assert.equal(HM.ownedTotal([own("a", 7720000), { key: "d", group: "buying", value: 3450000 },
+    { key: "f", group: "firm", value: 9000000 }]), null);
+  // Home writes it with home-sites.js's short(), so the sum of $7.72M and
+  // $4.32M reads $12.04M (HM.money would round it to $12M).
+  assert.equal(require("../home-sites").short(HM.ownedTotal([own("a", 7720000), own("b", 4320000)]).total), "$12.04M");
 });
 
 test("the status line says what is due, never what the page is", () => {

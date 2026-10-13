@@ -82,7 +82,7 @@ function renderBuildingsBody(boot) {
     <h1 id="blTitle">Buildings</h1>
     <span class="bl-count" id="blCount"></span>
   </div>
-  <p class="bl-sub" id="blSub">The buildings your firm works on, shared with everyone in it. Add one from <a href="/desk">Home</a>, from a property in your <a href="/vault">Data</a>, or from a report on the shelf.</p>
+  <p class="bl-sub" id="blSub">The buildings your firm works on, shared with everyone in it. Add one from <a href="/desk">Home</a>, where a property you own has its own Add to firm, or from a report on the shelf.</p>
   <div class="bl-wall hide" id="blWall"></div>
   <!-- Critical dates (slice 6): the firm's leases with a date to act on in
        the next twelve months, soonest first, the earlier of option notice
@@ -107,7 +107,7 @@ function renderBuildingsBody(boot) {
   </div>
   <div id="blRows"></div>
   <p class="bl-note hide" id="blNone">No buildings match. <button type="button" class="bl-rm" id="blClear">Clear filters</button></p>
-  <p class="bl-note hide" id="blEmpty">No buildings yet. Add one from Home, from a property in your Data, or from a report on the shelf.</p>
+  <p class="bl-note hide" id="blEmpty">No buildings yet. Add one from Home, where a property you own has its own Add to firm, or from a report on the shelf.</p>
   <p class="bl-note hide" id="blTrunc">Showing the 1,000 most recently touched buildings. Older ones are not in this list.</p>
   <p class="bl-msg hide" id="blMsg" aria-live="polite"></p>
 </main>

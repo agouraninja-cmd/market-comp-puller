@@ -3257,6 +3257,35 @@ async function importLogoFromSite(url) {
   return { status: 404, code: "none", error: "No usable logo found on that site. Choose a file instead." };
 }
 
+// Which of these firms have a logo saved, and when (org id -> updated_at).
+// Fail-open, findOrgBrandingFor's rule: a failed read costs the header its
+// logo, never the firm list. The filter keeps the logos themselves (up to
+// 200KB each) out of a read that only needs to know they exist.
+async function orgLogoRevs(orgIds) {
+  const ids = [...new Set((orgIds || []).map(String).filter(Boolean))];
+  const out = new Map();
+  if (!ids.length || !DB_CONFIGURED) return out;
+  try {
+    const rows = await sbRequest("GET",
+      `org_branding?org_id=in.(${pgInList(ids)})&logo_url=neq.&select=org_id,updated_at&limit=${ids.length}`);
+    for (const r of rows || []) out.set(String(r.org_id), String(r.updated_at || "1"));
+  } catch (e) {
+    console.error("Firm logo lookup failed:", e.message);
+  }
+  return out;
+}
+
+// A stored logo data URI -> { mime, bytes } to serve, or null. The bytes
+// decide the type (sniffImage), never the label, the avatar route's rule.
+function decodeFirmLogo(dataUri) {
+  const brand = BRANDING.normalizeBrand({ logo: dataUri });
+  const m = brand && brand.logo ? brand.logo.match(/^data:[^;]+;base64,(.+)$/) : null;
+  if (!m) return null;
+  const bytes = Buffer.from(m[1], "base64");
+  const mime = AVATAR.sniffImage(bytes);
+  return mime ? { mime, bytes } : null;
+}
+
 async function findOrgBrandingFor(user) {
   if (!user || !user.email || !DB_CONFIGURED) return null;
   try {
@@ -11265,13 +11294,14 @@ const INAPP_BOOT_MARKER = "<!--INAPP_BOOT-->";
 // shells — marketShell emits it, index.html receives it by marker, never a
 // hand-copy. The app's copy skips "/" and "/desk" because its own Workspace
 // row swaps views in place and a prerender of either would be thrown away,
-// and it keeps the vault warm; every other page keeps the workspace warm,
+// and it keeps the member's comps warm (/comps, the vault until
+// 2026-10-13); every other page keeps the workspace warm,
 // since that is home. instant-nav.js has the rules.
 // `desktopToken` is how the script recognises the desktop app, which must take
 // the warm path its shell turns into a real prerender (instant-nav.js, THE
 // DESKTOP APP) rather than insert speculation rules Electron never honours.
 const INSTANT_NAV_SHELL = INSTANTNAV.bootScript({ warm: ["/desk"], desktopToken: INAPP_UA_TOKEN });
-const INSTANT_NAV_APP = INSTANTNAV.bootScript({ skip: ["/", "/desk"], warm: ["/vault"], desktopToken: INAPP_UA_TOKEN });
+const INSTANT_NAV_APP = INSTANTNAV.bootScript({ skip: ["/", "/desk"], warm: ["/comps"], desktopToken: INAPP_UA_TOKEN });
 const INSTANT_NAV_MARKER = "<!--INSTANT_NAV-->";
 
 // Bulk valuation's run view, injected into index.html so a list pasted into
@@ -12102,16 +12132,17 @@ const RAIL_CSS = `
 /* --- The icon rail (2026-10-07; Draft C of the Home and Data drafts, the
    owner's pick) -----------------------------------------------------------
    The rail is a dark strip of places, an icon over a word: Home, Messages,
-   then Tools: Markets, Comp report, Permits (2026-10-08; Reports left the
-   rail for Messages that day). Same element and same markup as
+   then Tools: Markets, Comps, Permits (2026-10-08; Reports left the
+   rail for Messages that day, and Comp report was renamed Comps on
+   2026-10-13). Same element and same markup as
    before, re-laid-out, and still nothing outside the 900px guard: below it
    the icons are hidden and the bar reads as words, exactly as it did. 84px
    is a literal for the 224px's reason. The strip sits on --slab, dark in
    both themes, so its ink is literal white at stepped opacities (the
    footer's FOOTER_DARK_CSS reason), and the wordmark gives way to the mark.
    The red call to action is not a place, so the strip does not carry it:
-   the Comp report row is the door there. A label too long for the 64px
-   column ("Comp report") wraps onto a second line, centred. index.html
+   the Comps row is the door there. A label too long for the 64px
+   column wraps onto a second line, centred. index.html
    carries the twin of every rule here. */
 .nvi{display:none}
 @media (min-width:900px){
@@ -12146,6 +12177,15 @@ const RAIL_CSS = `
 
 const MARKET_CSS = `
 ${THEME_CSS}
+/* The Comps section's two tabs (compsSectionTabs, 2026-10-13): Your comps
+   and Run a comp report, over /comps and /bulk. A segmented pill rather
+   than a row of underlined tabs, because /comps has that row under its
+   title (Comps, Contributions), and two rows of the same tabs read as one. */
+.cs-tabs{display:inline-flex;gap:2px;padding:3px;margin:0 0 24px;max-width:100%;
+  border:1px solid var(--line);border-radius:999px;background:var(--card);font-size:13.5px;line-height:1.4}
+.cs-tabs a{padding:6px 14px;border-radius:999px;color:var(--ink-mute);font-weight:500;white-space:nowrap}
+.cs-tabs a:hover{color:var(--ink)}
+.cs-tabs a[aria-current="page"]{background:var(--ink);color:var(--paper);font-weight:600}
 /* Broker directory list on a market page. Plain list, no cards: this is a
    directory, not a ranking, and boxes imply a hierarchy the data cannot back. */
 .brokers{list-style:none;padding:0;margin:12px 0 0}
@@ -12899,12 +12939,26 @@ function nextMarketExample() {
 // /bulk is where the CTA POINTS (since the evening of 2026-09-04), so it is in
 // the list for the plainest reason of all: a button offering to take you where
 // you already are is a button that does nothing.
-// The two addresses the vault page answers at (2026-10-09): /vault, and
-// /pipeline, its Pipeline tab, which is a row of the rail. One list for the
-// route, this CTA rule and the tests. (A development firm's Sites row opens
-// /sites, its own page since 2026-10-12: sites-page.js.)
-const VAULT_PAGE_PATHS = new Set(["/vault", "/pipeline"]);
+// The two pages vault-page.js draws (2026-10-13): /comps, a member's own
+// comps, and /pipeline, a broker's BOV requests and engagements. They were
+// one page at /vault, which now answers with a redirect (VAULT_MOVED_PATH).
+// One list for the route, this CTA rule and the tests. (A development firm's
+// Sites row opens /sites, its own page since 2026-10-12: sites-page.js.)
+const VAULT_PAGE_PATHS = new Set(["/comps", "/pipeline"]);
+const VAULT_MOVED_PATH = "/vault";
 const CTA_FREE_PAGES = new Set([...VAULT_PAGE_PATHS, "/sites", "/messages", "/markets", "/bulk", "/buildings", "/building", "/permits", "/permits/compare"]);
+
+// The Comps section's two tabs (2026-10-13, the owner: "Integrate it to the
+// report section and change the report section and name it Comps"). The
+// rail's Comps row opens /comps, the member's own comps, and is current on
+// /bulk too, the comp report tool; this bar is on both pages and says which
+// of the two the member is on. A signed-in member's only: a stranger on
+// /bulk reads its sign-in card and has no comps of their own.
+const COMPS_TABS = [["/comps", "Your comps"], ["/bulk", "Run a comp report"]];
+const compsSectionTabs = (current) =>
+  `<nav class="cs-tabs" aria-label="Comps">` +
+  COMPS_TABS.map(([href, label]) => `<a href="${href}"${href === current ? ' aria-current="page"' : ""}>${label}</a>`).join("") +
+  `</nav>`;
 
 const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
@@ -12992,7 +13046,10 @@ const marketBar = (signedIn = false, current = "") =>
   // --- THE ORDER (owner's call, 2026-10-08; Pipeline added 2026-10-09) -----
   //
   //   Home, Messages, Pipeline (Sites for a development firm)
-  //   | Markets, Comp report, Permits
+  //   | Markets, Comps, Permits
+  //
+  // (Comps was "Comp report" until 2026-10-13, when it became a section:
+  // the member's own comps and the comp report tool, compsSectionTabs.)
   //
   // The rail is a dark strip of places, an icon over a word, identical here
   // and in index.html's nav so the sidebar does not reshuffle itself when a
@@ -13022,14 +13079,14 @@ const marketBar = (signedIn = false, current = "") =>
       // Pipeline, under Messages (owner's call, 2026-10-09): a broker's BOV
       // requests and engagements, from a new lead to won or lost. Its tab on
       // /vault had no rail row, so the only way in was a line on Home's
-      // Today. A development firm writes no BOVs and reads Sites in this
+      // Today; since 2026-10-13 /pipeline is a page of its own. A development firm writes no BOVs and reads Sites in this
       // place instead (the owner: "Have the sites under messages for
       // development firms and Pipeline for brokerage firms"); both rows
       // render and the `shop-dev` class shows one (SHOP_NAV_CSS above).
       // Sites opens /sites, the deals by stage (sites-page.js, 2026-10-12;
       // it was Home's Properties tab until then, so Home twice). Every member,
-      // like Comp report: /pipeline answers a free member with the vault's
-      // Pro invitation. index.html carries both twins with the same ids.
+      // like Comps: /pipeline answers a free member with its Pro invitation.
+      // index.html carries both twins with the same ids.
       `<a id="navPipe" href="/pipeline"${current === "/pipeline" ? ' aria-current="page"' : ""}>${NAV_ICONS.pipeline}<span class="nvl">Pipeline</span></a>` +
       `<a id="navSites" href="/sites"${current === "/sites" ? ' aria-current="page"' : ""}>${NAV_ICONS.sites}<span class="nvl">Sites</span></a>`
     : "") +
@@ -13077,9 +13134,13 @@ const marketBar = (signedIn = false, current = "") =>
       // free member opening /bulk gets its upgrade card, the honest answer
       // for a paid tool, and a hidden row would leave them no door at all now
       // that nothing on Home runs a report. index.html carries the twin.
-      `<a href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""}>${NAV_ICONS.reports}<span class="nvl">Comp report</span></a>` +
+      // Comps since 2026-10-13 (the owner: "change the report section and
+      // name it Comps"): the member's own comps at /comps, the row's
+      // address, and the comp report tool at /bulk, the section's second
+      // tab (compsSectionTabs). Current on both.
+      `<a id="navComps" href="/comps"${current === "/comps" || current === "/bulk" ? ' aria-current="page"' : ""}>${NAV_ICONS.reports}<span class="nvl">Comps</span></a>` +
       // The Permit tracker (2026-09-24, owner's: "it should be under tools"),
-      // the THIRD Tools row, after Comp report (owner's order, same day).
+      // the THIRD Tools row, after Comps (owner's order, same day).
       // Every member; index.html carries the twin row in the same place.
       // The unread dot (2026-09-27): a tracked permit's step completed. Same
       // shape and same after-paint fill as Messages' dot; index.html carries
@@ -15291,6 +15352,37 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
 // then the Board), and the mount. No member data in it: the same bytes for
 // every member, and /board.js reads the rest. id="board" is the address
 // every door uses (/markets#board: the market pages, the digest email).
+// Building a market that has no card yet, from the filter box (2026-10-13).
+// The Market Explorer's build step lost its only door when the comp form left
+// Home and /run-report left the nav; market-build.js is that door, on the page
+// that lists the markets. Members only, like The Board: the anonymous page is
+// cached publicly. explore-query.js is the Explorer's own parser, so both doors
+// read one query the same way. Same bytes for every member.
+const MARKET_BUILD =
+  `<script src="/explore-query.js"></script><script src="/market-build.js"></script>` +
+  `<script>(function(){var M=window.MARKETBUILD,Q=window.EXPLOREQ;if(!M||!Q)return;` +
+  `M.mount({input:document.getElementById("mq"),root:document.getElementById("mbuild"),count:document.getElementById("mcount"),parse:Q.parseExploreQuery});})();</script>`;
+// No backticks in here: this is a template literal.
+const MARKET_BUILD_CSS = `
+.mbuild{max-width:520px;margin-top:4px;padding:14px 16px;border:1px solid var(--edge);border-radius:8px;background:var(--card);box-shadow:var(--lift)}
+.mbuild[hidden]{display:none}
+.mbuild p{margin:0}
+.mbuild .mb-line{color:var(--ink);font-size:14.5px}
+.mbuild .mb-line strong{font-weight:600}
+.mbuild .mb-sub{color:var(--ink-2);font-size:13.5px;margin-top:4px}
+.mbuild .mb-note{color:var(--ink-mute);font-size:12.5px;margin-top:8px}
+.mbuild .mb-note:empty{display:none}
+.mbuild .mb-err{color:var(--red);font-size:14px}
+.mbuild .mb-types{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.mbuild .btn{margin-top:10px}
+.mbuild .mb-types .btn{margin-top:0;background:var(--card);color:var(--ink);border:1px solid var(--edge);font-weight:500}
+.mbuild .mb-types .btn:hover{background:var(--card);color:var(--ink);border-color:var(--ink-3)}
+.mbuild .btn:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+.mbuild .mb-track{height:3px;margin-top:12px;border-radius:2px;background:var(--wash);overflow:hidden}
+.mbuild .mb-bar{height:100%;background:var(--red-fill);transition:width .7s}
+@media (prefers-reduced-motion:reduce){.mbuild .mb-bar{transition:none}}
+`;
+
 const BOARD_SECTION =
   `<section id="board" class="bd" aria-label="The Board"><p class="bd-mute">Loading The Board&hellip;</p></section>` +
   `<script src="/buying-read.js"></script><script src="/board.js"></script>` +
@@ -15615,13 +15707,17 @@ function renderMarketDirectoryHTML(signedIn) {
   // account, and works on the one market-finding surface an anonymous visitor
   // can still reach. Progressive enhancement — with JS off the full grid is
   // rendered and simply is not filtered.
-  const filterUi = slugs.length > 8
+  // A member always gets the box, whatever the count: it is also where they
+  // build a market that has no card yet (MARKET_BUILD below).
+  const showFilter = slugs.length > 8 || signedIn;
+  const filterUi = showFilter
     ? `<div class="mfilter">` +
       `<label class="vh" for="mq">Filter markets</label>` +
       `<input id="mq" type="search" autocomplete="off" placeholder="Filter by city, state, or type, e.g. warehouse Texas"/>` +
-      `</div><div class="mcount" id="mcount" role="status" aria-live="polite"></div>`
+      `</div><div class="mcount" id="mcount" role="status" aria-live="polite"></div>` +
+      (signedIn ? `<div class="mbuild" id="mbuild" aria-live="polite" hidden></div>` : "")
     : "";
-  const filterJs = slugs.length > 8
+  const filterJs = showFilter
     ? `<script>(function(){` +
       `var q=document.getElementById('mq'),c=document.getElementById('mcount');` +
       `if(!q||!c)return;` +
@@ -15664,6 +15760,9 @@ function renderMarketDirectoryHTML(signedIn) {
     mapUi +
     (cards ? `<div class="grid">${cards}</div>` : `<p>Market snapshots are being prepared. <a href="/">Run a live valuation &rarr;</a></p>`) +
     filterJs +
+    // After filterJs on purpose: its input listener runs first, so the build
+    // offer reads the card count the filter just left on screen.
+    (signedIn && showFilter ? MARKET_BUILD : "") +
     `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
   return marketShell({
@@ -15674,7 +15773,7 @@ function renderMarketDirectoryHTML(signedIn) {
     // their colour. Only when there IS a card — an unconfigured install ships
     // no unused stylesheet.
     head: (mapUi ? LEAFLET_HEAD : "") + (RANK_ENTRY ? `<style>${RANKPAGE.RANK_CSS}</style>` : "") +
-      (signedIn ? `<style>${BOARD_CSS}</style>` : ""),
+      (signedIn ? `<style>${BOARD_CSS}${MARKET_BUILD_CSS}</style>` : ""),
     current: "/markets",
   });
 }
@@ -19288,28 +19387,16 @@ async function vaultReadPayload(req, params) {
     return { status: 403, body: {
       error: "Keeping your own private comps in Data is part of Pro.",
       code: "broker_required",
-      // Not every deck on /vault is behind this refusal, and that is the
-      // whole point of it being a per-deck gate (2026-09-01, "Three
-      // Spaces"). "Your properties" and "Your markets" are a members own
-      // portfolio and watchlist, which moved off /desk and were never Pro:
-      // a free member must not open their own space and find their own
-      // saved properties behind a paywall.
-      //
-      // So the personal half of the page needs one fact, and it has to
-      // survive the 403 or there is no payload at all to carry it. Free My
-      // Desk is an address list, Pro is the book of values -- this is which.
-      // Presentation only, exactly as on /api/config: every limit behind it
-      // is enforced by /api/portfolio itself.
-      portfolioValues: Boolean(ent && ent.portfolioValues),
+      // Not every deck on the page is behind this refusal: it locks the
+      // page's own decks, and /comps' Contributions renders regardless.
+      // (Every exit carried portfolioValues from 2026-09-01 for the
+      // vault's Properties deck, which left on 2026-10-13; Home reads
+      // /api/config's copy.)
     } };
   }
   if (!DB_CONFIGURED) {
     return { status: 503, body: {
       error: "Data is unavailable right now — nothing was saved. Please try again in a minute.",
-      // Carried for the reason above. The personal decks read from their own
-      // endpoints, which keep their file fallback, so they can still render
-      // against a database this page refuses without.
-      portfolioValues: Boolean(ent && ent.portfolioValues),
     } };
   }
   if (compsR.status === "rejected") throw compsR.reason;
@@ -19393,9 +19480,6 @@ async function vaultReadPayload(req, params) {
     // contract (vault-api.js's allowlist) and a shelf membership is not a
     // property of the comp, it is a property of the relationship.
     sharedWithFirm: (sharedR.status === "fulfilled" && sharedR.value) || [],
-    // Stated on all three exits (200 / 403 / 503) so the personal decks read
-    // one field wherever they land. See the note on the 403 above.
-    portfolioValues: Boolean(ent && ent.portfolioValues),
   } };
 }
 
@@ -20770,8 +20854,8 @@ const server = http.createServer((req, res) =>
                 ``,
                 `  ${line}`,
                 ``,
-                `Open your inbox to request an introduction:`,
-                `${SITE_URL}/vault`,
+                `Open your pipeline to request an introduction:`,
+                `${SITE_URL}/pipeline`,
                 ``,
                 `CompNinja connects owners with local brokers; introductions are made by`,
                 `the CompNinja team. Reply to this email to reach us.`,
@@ -21945,7 +22029,7 @@ const server = http.createServer((req, res) =>
               const now = Date.now();
               const mail = RENEWAL.buildRenewalNotice({
                 leases, now,
-                deskUrl: `${SITE_URL}/vault`,
+                deskUrl: `${SITE_URL}/comps`,
                 unsubscribeUrl: unsubscribeUrlFor(account.id),
               });
               if (!mail) continue;
@@ -27609,7 +27693,10 @@ const server = http.createServer((req, res) =>
         const [rows, ent] = await Promise.all([orgMembershipsFor(user.email), entitlementsFor(req)]);
         const mine = rows.filter((r) => ORG.isActive(r));
         const pending = rows.filter((r) => ORG.isPending(r));
-        const firms = await orgsByIds([...mine, ...pending].map((r) => r.org_id));
+        const [firms, logos] = await Promise.all([
+          orgsByIds([...mine, ...pending].map((r) => r.org_id)),
+          orgLogoRevs(mine.map((r) => r.org_id)),
+        ]);
         // Billing state, only for a firm this caller actually belongs to, and
         // the SEAT USAGE for everyone in it — a member seeing "6 of 6 seats"
         // is why an invite refusal makes sense when it comes, rather than
@@ -27640,7 +27727,11 @@ const server = http.createServer((req, res) =>
           // between an invitation to start a firm and the paywall; it is
           // presentation only, and POST /api/org checks it again.
           canCreate: ent.canUseOrg === true,
-          orgs: mine.map((r) => orgSummary(r, firms)),
+          // logoAt: when the firm's logo was last saved, "" for none. The
+          // header on Home draws /api/org/logo?id=…&v=<logoAt>, so the bytes
+          // never ride this read (it ships inside every Home page) and a new
+          // logo is a new URL rather than a stale cache.
+          orgs: mine.map((r) => ({ ...orgSummary(r, firms), logoAt: logos.get(String(r.org_id)) || "" })),
           invites: pending.map((r) => ({
             id: r.id,
             orgId: r.org_id,
@@ -28687,6 +28778,39 @@ const server = http.createServer((req, res) =>
       })().catch((err) => {
         console.error("Firm branding read failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't load the firm's branding. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- GET /api/org/logo?id=&v= — the firm's logo, as an image (2026-10-13)
+    //
+    // The firm header on Home. The logo is the one in the firm's branding
+    // (org_branding.logo_url), so there is one logo per firm, and an owner
+    // or admin saving it anywhere shows it to every member. Read access is
+    // GET /api/org/branding's: any active member. `v` (the list's logoAt)
+    // makes each saved logo its own URL, so it caches for good.
+    if (orgPath === "/api/org/logo" && req.method === "GET") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const q = new URL(req.url, "http://localhost").searchParams;
+        const orgId = (q.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const rows = await sbRequest("GET",
+          `org_branding?org_id=eq.${encodeURIComponent(orgId)}&select=logo_url&limit=1`);
+        const logo = decodeFirmLogo(rows && rows[0] && rows[0].logo_url);
+        if (!logo) return sendJson(res, 404, { error: "No logo." });
+        res.writeHead(200, {
+          "content-type": logo.mime,
+          "content-length": logo.bytes.length,
+          "cache-control": q.get("v") ? "private, max-age=31536000, immutable" : "private, no-cache",
+          "x-content-type-options": "nosniff",
+        });
+        return res.end(logo.bytes);
+      })().catch((err) => {
+        console.error("Firm logo read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load the firm's logo." });
       });
       return;
     }
@@ -31003,6 +31127,7 @@ const server = http.createServer((req, res) =>
     // The Board on the Markets page (the global BOARD), mounted by that
     // page's inline script for a signed-in member. Same maxAge: 0 rule.
     "/board.js": { file: "board.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    "/market-build.js": { file: "market-build.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
@@ -31814,7 +31939,8 @@ const server = http.createServer((req, res) =>
         // A tester filing a bug about bulk valuation should not have to go
         // back to the app to report it.
         testerBadge: true,
-        body: renderBulkPageBody(boot) + visitTag,
+        // The Comps section's tabs, over the tool (2026-10-13).
+        body: (parseCookies(req)[SESSION_COOKIE] ? compsSectionTabs("/bulk") : "") + renderBulkPageBody(boot) + visitTag,
       }));
     })();
     return;
@@ -32169,14 +32295,26 @@ const server = http.createServer((req, res) =>
     return;
   }
 
-  // /pipeline is the same page opened on that tab (2026-10-09): Pipeline is
-  // a row of the rail now, under Messages, and a rail row needs an address
-  // of its own. A #fragment would not do: instant-nav.js refuses to
+  // /comps and /pipeline (2026-10-13): what was one page, /vault, with a
+  // tab each. Pipeline got a path of its own on 2026-10-09, when it became a
+  // row of the rail (a #fragment would not do: instant-nav.js refuses to
   // prerender a link carrying one, and the server could not mark the row,
-  // since a fragment never reaches it. vault-page.js reads the path for the
-  // first tab and writes it back when the member switches to that tab.
+  // since a fragment never reaches it), and the comps followed when the
+  // vault was taken apart and the rail's Comp report row became Comps.
+  //
+  // /vault answers with a redirect to /comps, its query kept. A saved link's
+  // #fragment never reaches the server, but the browser carries it through
+  // the redirect, and vault-page.js sends a fragment naming another part of
+  // the old page on to where that part lives now (MOVED).
   const vaultPagePath = req.url.split("?")[0];
+  if (req.method === "GET" && vaultPagePath === VAULT_MOVED_PATH) {
+    const q = req.url.indexOf("?");
+    res.writeHead(302, { location: "/comps" + (q >= 0 ? req.url.slice(q) : ""), "cache-control": "no-store" });
+    res.end();
+    return;
+  }
   if (req.method === "GET" && VAULT_PAGE_PATHS.has(vaultPagePath)) {
+    const page = vaultPagePath === "/pipeline" ? "pipeline" : "comps";
     (async () => {
       let boot = null;
       try {
@@ -32219,16 +32357,18 @@ const server = http.createServer((req, res) =>
       // could rebuild the head, the header and the footer by hand; all of that
       // is the shell's now, and the page renders a body.
       res.end(marketShell({
-        title: "Your properties and comps · CompNinja",
-        description: "Your own comps and deal data, private until you share them.",
+        title: page === "pipeline" ? "Pipeline · CompNinja" : "Your comps · CompNinja",
+        description: page === "pipeline"
+          ? "Owners asking for a Broker Opinion of Value, and every BOV you log."
+          : "Your own comps, private until you share them.",
         canonical: `${SITE_URL}${vaultPagePath}`,
         noindex: true,
         // Cookie PRESENCE, the wall's own cheap rule and what every other
         // marketShell page uses -- the real gate is the boot payload above,
         // resolved through vaultReadPayload. This only picks the chrome.
         signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
-        // The path asked for, so /pipeline marks the Pipeline row; /vault
-        // itself has no row and marks none until the page shows that tab.
+        // The path asked for, so /pipeline marks the Pipeline row and /comps
+        // the Comps row.
         current: vaultPagePath,
         // Inter, which marketShell does not load and this page has always
         // used. MARKET_CSS names the family in body{}, so without this the
@@ -32246,7 +32386,10 @@ const server = http.createServer((req, res) =>
         // The Board's deal cards; it left with the deal wall the same day.)
         head: INTER_FONT_HEAD + LEAFLET_HEAD + `<script>${BASEMAP_JS}</script>\n`,
         testerBadge: true,
-        body: renderVaultBody(boot) + visitTag,
+        // The Comps section's tabs over /comps (compsSectionTabs); /pipeline
+        // is a section of one.
+        body: (page === "comps" && parseCookies(req)[SESSION_COOKIE] ? compsSectionTabs("/comps") : "") +
+          renderVaultBody(boot, { page }) + visitTag,
       }));
     })();
     return;

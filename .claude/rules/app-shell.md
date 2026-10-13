@@ -15,6 +15,27 @@ paths:
 
 ## Configuration
 
+> **Comps, and no vault (2026-10-13, the owner: "Integrate it to the
+> report section and change the report section and name it Comps", and
+> "the vault doesn't even exist any more"): Home, Messages, Pipeline |
+> Markets, Comps, Permits.** The row that was Comp report is **Comps**,
+> `#navComps` on both nav authors, `href="/comps"` with `NAV_ICONS.reports`.
+> Comps is a section of two tabs, `compsSectionTabs(current)` in server.js
+> (`COMPS_TABS`: "Your comps" `/comps`, "Run a comp report" `/bulk`, a
+> `<nav class="cs-tabs">` styled in MARKET_CSS as a segmented pill, since
+> `/comps` has its own row of underlined tabs under its title). marketBar
+> marks the row current on BOTH `/comps` and `/bulk`; the bar is prepended
+> to both pages' bodies for a member (cookie presence) and never to a
+> stranger's `/bulk`. index.html never serves either page, so it never
+> marks the row. `/comps` and `/pipeline` are `VAULT_PAGE_PATHS` (the route,
+> `CTA_FREE_PAGES`), both drawn by vault-page.js (vault.md); `/comps`
+> replaced `/vault` in instant-nav.js's `TAB_PATHS` and in the app's warm
+> list (`INSTANT_NAV_APP`), and `/vault` answers with a 302 to `/comps`
+> (`VAULT_MOVED_PATH`). Where the boxes below say `/vault` or Comp report,
+> read it as history. Pinned in `test/nav-parity.test.js`,
+> `test/routes.test.js` (the sequence, both pages, the section's tabs, the
+> redirect), `test/vault-shell.test.js` and `test/instant-nav.test.js`.
+
 > **Pipeline, under Messages (2026-10-09, owner's call): Home, Messages,
 > Pipeline | Markets, Comp report, Permits**, and a development firm reads
 > **Sites** in Pipeline's place ("give development firms a site tab on the
@@ -56,14 +77,13 @@ paths:
 >   development member never watches Pipeline turn into Sites.
 > - **The note is a per-browser convenience, never a gate** (localStorage
 >   `cnShop`). Without it a development member reads Pipeline, and
->   `/pipeline` sends them to `/desk#properties` anyway (`applyShop`). Sign-out
+>   `/pipeline` sends them to `/sites` anyway (`applyShop`). Sign-out
 >   (`doSignOut`, `doDeleteAccount`) and a dead session (`ACCOUNT_NAV_JS`'s
 >   `!me`) clear it.
-> - **The mark follows the tab, not the path.** marketBar marks Pipeline for
->   `/pipeline`; vault-page.js's `setTab` moves `aria-current` (`markRail`)
->   as the tabs change, and a Pro-locked vault still moves a free member from
->   Pipeline to Properties (vault.md's pinned rule), which unmarks it.
->   `/vault` itself has no row.
+> - **The mark is the path's.** marketBar marks Pipeline for `/pipeline`.
+>   Until 2026-10-13 vault-page.js's `setTab` moved `aria-current`
+>   (`markRail`) as /vault's tabs changed; since then each page is its own
+>   row's (/comps is Comps'), its tabs never leave it, and `markRail` is gone.
 > - **Sites is marked by the app, never the server.** `markNavCurrent` marks
 >   `#navSites` instead of Home while the Properties tab shows for a
 >   `shop-dev` member, reading `#hmTabProps`' `aria-selected` and the class
@@ -72,7 +92,7 @@ paths:
 >   Properties in place (`enterDesk`, then `setHomeTab`), the Home row's
 >   handler, so it works from a report too.
 > - **Every member gets the row**, Comp report's rule: a free member opening
->   `/pipeline` gets the vault's Pro invitation. Pinned in
+>   `/pipeline` gets its Pro invitation ("Your pipeline is part of Pro"). Pinned in
 >   `test/nav-parity.test.js`, `test/routes.test.js` (the sequence, the
 >   page, and `/sites` being no page) and `test/vault-page.test.js`.
 

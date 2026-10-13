@@ -126,8 +126,9 @@ test("Home holds no comps: no tab, no layer, no start card, no read of the book 
   // The find box finds properties, people and permits, and says so.
   assert.match(html, /placeholder="Find a property or person" aria-label="Find a property or person on Home"/);
   assert.match(html, /aria-label="Map of your properties and permits"/);
-  // A saved /desk#comps (the tab's address for two days) lands on the comps' own page.
-  assert.match(html, /else if \(h === "comps" && \/\^\\\/desk\\\/\?\$\/\.test\(location\.pathname\) && !document\.prerendering\) location\.replace\("\/vault#book"\);/);
+  // A saved /desk#comps (the tab's address for two days) lands on the comps' own page,
+  // /comps since 2026-10-13.
+  assert.match(html, /else if \(h === "comps" && \/\^\\\/desk\\\/\?\$\/\.test\(location\.pathname\) && !document\.prerendering\) location\.replace\("\/comps"\);/);
   // BOV requests keep the vault's own gate, which the Comps tab used to share.
   assert.ok(html.includes('const hmCanLeads = () => hmCanVault() && !(myFirm() && myFirm().kind === "development");'));
 });

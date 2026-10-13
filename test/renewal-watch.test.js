@@ -12,7 +12,7 @@ const assert = require("node:assert");
 const RW = require("../renewal-watch.js");
 
 const NOW = Date.parse("2026-08-22T18:00:00Z");
-const URLS = { deskUrl: "https://compninja.co/vault", unsubscribeUrl: "https://compninja.co/u?t=x" };
+const URLS = { deskUrl: "https://compninja.co/comps", unsubscribeUrl: "https://compninja.co/u?t=x" };
 
 // A lease whose option notice is 60 days out — the plan's own test case.
 const lease = (over = {}) => ({
@@ -200,7 +200,8 @@ test("every email says why it arrived and how to stop it, as separate sentences"
   assert.match(mail.text, /Turn these emails off: https:\/\/compninja\.co\/u\?t=x/);
   assert.match(mail.text, /never an appraisal/);
   assert.match(mail.text, /Check your own lease/);
-  assert.match(mail.text, /https:\/\/compninja\.co\/vault/);
+  // The leases are with the member's comps, /comps since 2026-10-13.
+  assert.match(mail.text, /Your leases are with your comps: https:\/\/compninja\.co\/comps/);
 });
 
 // --- junk in, no crash out --------------------------------------------------

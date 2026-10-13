@@ -1016,12 +1016,11 @@ test("Refresh survives a row whose report never landed", () => {
 // exactly as the nav links and the bulk run view are, so it is never in the
 // static bytes. The invariant is about the page a browser runs, which means it
 // has to be asserted against the SERVED page.
-test("the vault has no rail row and no account-menu row; Home's Properties tab opens it", () => {
-  // Draft C (2026-10-07): deals and holdings are a tab of Home, and /vault is
-  // the workbench that tab opens into (comps were a tab too until
-  // 2026-10-09, when they left Home for /vault alone). It must not drift back
-  // into the account menu either, which is where it was buried before
-  // 2026-08-29.
+test("no Data row in the rail or the account menu; a property you own is added on Home", () => {
+  // Draft C (2026-10-07): deals and holdings are a tab of Home. The vault
+  // they opened into was taken apart on 2026-10-13 (/comps and /pipeline),
+  // and must not drift back into the account menu either, which is where it
+  // was buried before 2026-08-29.
   const railNav = html.slice(html.indexOf('id="myDeskLink"'), html.indexOf('id="acctMenuWrap"'));
   assert.ok(!railNav.includes('id="menuVaultLink"'), "the Data row is back in the rail");
   const acctMenu = html.slice(html.indexOf('id="acctMenu"'), html.indexOf('id="signOutBtn"'));
@@ -1030,12 +1029,14 @@ test("the vault has no rail row and no account-menu row; Home's Properties tab o
   // "Add a property" asks which kind (2026-10-07). Since 2026-10-09 a deal
   // is a development firm's alone, added here on Home (home-sites.js's form
   // in #hmMineAdd), so the deal choice starts hidden and shows for that
-  // member only; a property you own opens the member's own page's form,
-  // except for a development firm's member, who adds it here too
-  // (HOMEMAP.addWhere decides both). One "Only you" link to Properties sent
-  // deals to a tab that cannot take them.
+  // member only. A property you own is added here by everyone since
+  // 2026-10-13 (it opened the vault's Properties form until then), and
+  // without home-sites.js there is no other page to send it to, so neither
+  // choice shows (HOMEMAP.addWhere decides both).
   assert.ok(home.includes('<a id="hmAddDeal" class="hm-ch hidden" href="#properties">'), "the deal choice must start hidden");
-  assert.ok(home.includes('<a id="hmAddOwn" class="hm-ch" href="/vault?add=own#properties">'), "no own-it choice opening Properties' form");
+  assert.ok(home.includes('<a id="hmAddOwn" class="hm-ch" href="#properties">'), "no own-it choice opening Home's form");
+  assert.ok(!html.includes("?add=own"), "a link to the vault's Properties form, which is gone");
+  assert.ok(html.includes('document.getElementById("hmAddOwn").classList.toggle("hidden", !(ownAt === "home" && here));'));
   assert.ok(home.includes('<div id="hmMineAdd"></div>'), "no place for Home's own add form");
   assert.ok(!home.includes('id="hmAddMine"'), "the single Only-you choice is back");
   assert.ok(!home.includes("?add=buy"), "a deal added on The Board's wall, which is gone");
@@ -1069,15 +1070,26 @@ test("Home's Today reads new BOV requests without writing, and only once the pag
   assert.ok(html.includes('const hmCanLeads = () => hmCanVault() && !(myFirm() && myFirm().kind === "development");'));
 });
 
-test("a development firm's deals are worked in place on Home's Properties tab, and nobody else's page links to them (2026-10-09)", () => {
-  // The owner's call: "Development firms only and integrate it into the
-  // property section of the home page." /vault's Sites tab and The Board's
-  // deal wall are gone, so no Home link may point at either.
+test("a member's own properties are worked in place on Home's Properties tab, deals for a development firm only", () => {
+  // The owner's call (2026-10-09): "Development firms only and integrate it
+  // into the property section of the home page." /vault's Sites tab and The
+  // Board's deal wall are gone, so no Home link may point at either. Since
+  // 2026-10-13 what every member owns opens here too (the vault and its
+  // Properties tab were taken apart), so no link points at that either.
   assert.ok(!html.includes("/vault#sites") && !html.includes("?add=buy"), "a link to the old Sites tab or the wall's form");
+  assert.ok(!html.includes("/vault#properties"), "a link to the vault's Properties tab, which is gone");
   assert.ok(!/dealsHref|addHref/.test(html), "the old link helpers are back");
   // Both scripts load, guarded: without them the rows list and open nothing.
   assert.match(html, /<script src="\/home-map\.js"><\/script>[\s\S]*<script src="\/sites\.js"><\/script>\s*<script src="\/home-sites\.js"><\/script>/);
-  assert.ok(html.includes('const hmWorkHere = () => HOMEMAP.dealsOn(hmFirmKind()) && typeof HOMESITES !== "undefined" && typeof SITES !== "undefined";'));
+  assert.ok(html.includes('const hmWorkHere = () => typeof HOMESITES !== "undefined" && typeof SITES !== "undefined";'),
+    "the working pane is for every member's own rows");
+  // HOMESITES is told whether this member has deals, and whether a Tracking
+  // status (Pro) may be written, so it never offers what the server refuses.
+  assert.ok(html.includes("deals: () => HOMEMAP.dealsOn(hmFirmKind()),"));
+  assert.ok(html.includes("canSites: hmCanVault(), today: hmTodayIso() }),"));
+  // The Owned group's head adds the buildings up (HOMEMAP.ownedTotal).
+  assert.ok(html.includes("const own = HOMEMAP.ownedTotal(hmRows);"));
+  assert.ok(html.includes('[["buying", "Buying", buyNote], ["owned", "Owned", ownNote],'));
   // Deals are listed and dated only for that member (HOMEMAP decides).
   assert.match(html, /HOMEMAP\.properties\(\{[^}]*firmKind: hmFirmKind\(\) \}\)/);
   assert.match(html, /HOMEMAP\.agenda\(\{[\s\S]{0,400}firmKind: hmFirmKind\(\), today \}\)/);
@@ -2967,12 +2979,13 @@ test("the static map's pins are measured from the LOGICAL origin, not the double
 // list or the public-profile switch, and the submit form's thank-you points at
 // the place that has them.
 // ----------------------------------------------------------------------------
-test("the public-profile switch has one home, Data (the /vault page), and the thank-you points there", () => {
+test("the public-profile switch has one home, Contributions on /comps, and the thank-you points there", () => {
   assert.ok(!html.includes('id="settingsBrokerRow"'), "the Settings panel grew the public-profile switch back");
   assert.ok(!html.includes('id="brokerProfileToggle"'), "a second public-profile toggle in the app");
   assert.ok(!html.includes("/api/broker/profile"), "the app posts the profile route — the Vault's deck owns that switch");
-  // Two tips, one per sign-in state, both naming the Vault.
-  assert.match(html, /id="compTipIn" class="hidden [^"]*"[^>]*>[^<]*<a href="\/vault"/, "the signed-in tip does not link the Vault");
+  // Two tips, one per sign-in state. The signed-in one links Contributions
+  // on /comps, where the switch is (it linked /vault until 2026-10-13).
+  assert.match(html, /id="compTipIn" class="hidden [^"]*"[^>]*>[^<]*<a href="\/comps#contributions"/, "the signed-in tip does not link Contributions");
   assert.match(html, /id="compTipOut"[^>]*>[^<]*your Data/, "the signed-out tip does not name Data");
   const at = html.indexOf('document.getElementById("compSuccess").classList.remove("hidden");');
   const before = html.slice(at - 400, at);

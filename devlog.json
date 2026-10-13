@@ -6,6 +6,18 @@
     "details": "Dragging a map (Home, the comp report, market pages, permits) no longer draws the browser’s focus outline around it. Pressing a key brings the outline back, so keyboard users can still see where they are."
   },
   {
+    "date": "2026-10-13",
+    "type": "improvement",
+    "title": "Comps is a section of its own, and every part of the old vault lives where you use it",
+    "details": "The private page that held your properties and comps is gone, and its parts have moved to where they are used. “Comp report” in the side menu is now “Comps”, with two tabs: “Your comps” (your own comp book and the comps you have contributed) and “Run a comp report”. The Pipeline is its own page. The properties you own are now worked right on Home for everyone, not only development firms: open a property’s row to see its estimated value, how it changed, a chart of every check, how its market moved, and buttons to open its report, refresh its value or remove it. Home’s Owned list also adds up your buildings’ combined value. Old links and bookmarks still work and open the right new place."
+  },
+  {
+    "date": "2026-10-13",
+    "type": "feature",
+    "title": "Build a market page right from the Markets page",
+    "details": "Type a city into the Markets page search, like “industrial Twin Falls ID”. If there is no page for it yet, a Build it button appears under the box, and about a minute later you land on the new market page. Type just a city and state and it offers the property types that don’t have a page yet. Signed-in members only; each build counts as one search."
+  },
+  {
     "date": "2026-10-10",
     "type": "improvement",
     "title": "Home's map pans with a two-finger swipe and zooms with a pinch",
@@ -4747,5 +4759,11 @@
     "type": "improvement",
     "title": "Sites is its own page: your deals on a board by stage",
     "details": "The Sites row for development firms opened Home's Properties tab, so it was the same screen as Home. /sites now shows only your deals, in columns for Prospect, LOI, Under contract and Entitlements, with acres, asking price and the next deadline on each card, totals across them, and the opened deal worked right under the board. Passed deals fold away; closed deals stay with what you own on Home."
+  },
+  {
+    "date": "2026-10-13",
+    "type": "feature",
+    "title": "Home opens with your firm: its logo, name and type",
+    "details": "Firm members now see a header at the top of Home with the firm’s logo (or its initials), its name, whether it is a broker shop or a development shop, and how many people have joined. An owner or admin taps the mark to add or change the logo, and everyone in the firm sees it. It is the same logo the firm’s report branding uses, and the gear beside it opens Firm settings."
   }
 ]

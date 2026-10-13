@@ -5,7 +5,7 @@
 // People) and a map on the right of every property, and of the city's
 // permits when they switch those on (2026-10-08; Reports left for Messages
 // that day). Comps left Home on 2026-10-09 (the owner's call: "Remove Comps
-// from the Homepage"): a member's comps are on their own page, /vault, so
+// from the Homepage"): a member's comps are on their own page, /comps, so
 // Home no longer has a Comps tab, a Comps layer or a comp row. This file
 // decides what goes in the lists and on the map; index.html draws them.
 //
@@ -30,7 +30,7 @@
 //      too until 2026-10-09, when watched buildings moved to The Board),
 //      so it can never be mistaken for a comp, a past deal (the owner's
 //      wording ask, 2026-10-07). Until 2026-10-09 Home listed comps too, each
-//      with its deal date and price per unit; they are /vault's now.
+//      with its deal date and price per unit; they are /comps' now.
 //
 // Deals are a DEVELOPMENT FIRM's (2026-10-09, the owner's call: "Development
 // firms only and integrate it into the property section of the home page").
@@ -40,6 +40,8 @@
 // /vault's Sites tab and The Board's deal wall were removed that day. A
 // status row on a held property is the property's, not a deal's, so it is
 // read for anyone: Owned lists it here, Tracking puts it on The Board.
+// What a member owns is worked here too, for everyone, since 2026-10-13,
+// when the vault and its Properties tab were taken apart (addWhere).
 //
 // Pure and dual-exported (Node for npm test, the browser global HOMEMAP for
 // index.html), like valuation.js, and served with the
@@ -244,13 +246,26 @@
   }
 
   // Where Home's "Add a property" takes a property that is only the member's.
-  // "home": the add form opens on Home itself (a development firm's deal, or
-  // a property it owns or tracks: home-sites.js). A URL: the member's own page
-  // with the form already open (vault-page.js reads ?add= once). "": not
-  // offered, which is a deal for anyone outside a development firm.
+  // "home": the add form opens on Home itself (home-sites.js): a property
+  // they own, for everyone since 2026-10-13 (it opened the vault's
+  // Properties tab until the vault was taken apart), and a deal, for a
+  // development firm's member. "": not offered, which is a deal for anyone
+  // outside a development firm.
   function addWhere(kind, firmKind) {
-    if (dealsOn(firmKind)) return "home";
-    return kind === "own" ? "/vault?add=own#properties" : "";
+    if (kind === "own") return "home";
+    return dealsOn(firmKind) ? "home" : "";
+  }
+
+  // The Owned group's figure: what the member's own buildings add up to at
+  // their last value (2026-10-13; the vault's Properties tab carried it as
+  // "Combined likely value" until it moved here). Only once two or more have
+  // a value, since one is its own row's figure, and it says how many it
+  // counts when some have none yet. null: no figure.
+  function ownedTotal(rows) {
+    const owned = (Array.isArray(rows) ? rows : []).filter((r) => r && r.group === "owned");
+    const valued = owned.filter((r) => num(r.value) > 0);
+    if (valued.length < 2) return null;
+    return { total: valued.reduce((t, r) => t + num(r.value), 0), valued: valued.length, of: owned.length };
   }
 
   // What needs the member: unread conversations first, then new BOV requests
@@ -469,7 +484,7 @@
   }
 
   return { LEASE_DAYS, DEAL_DAYS, BOV_DAYS, WEEK_DAYS, STAGES, addressKey, street, place, town, daysUntil, shortDate, inDays, money,
-    stageLabel, stageStep, lastValue, dealsOn, properties, scopeOf, passedDeals, addWhere, agenda, thisWeek, statusLine,
+    stageLabel, stageStep, lastValue, dealsOn, properties, scopeOf, passedDeals, addWhere, ownedTotal, agenda, thisWeek, statusLine,
     LAYERS, LAYER_DEFAULT, readLayers, tabLayer, PERMIT_STAGES, tidyCaps, permitPin, permitStageLabel, permitAt, layerNotes,
     WHEEL_BURST_MS, MAC_NOTCH_PX, wheelGesture, swipePan, pinchZoomBy, pinchSnap };
 });

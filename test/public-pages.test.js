@@ -419,6 +419,33 @@ test("The Board is on /markets for a member, and only for a member", async (t) =
   assert.match(js.headers.get("cache-control") || "", /max-age=0/);
 });
 
+test("a member can build a market from the /markets filter, and only a member", async (t) => {
+  // 2026-10-13 (the owner: "right now I don't see where to insert the
+  // city"): the Explorer's build step had no door left. It lives under the
+  // filter box now, for members only, since the anonymous page is cached
+  // publicly and the route would ask them to sign in anyway.
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+  const member = await (await fetch(srv.base + "/markets", { headers: SESSION })).text();
+  assert.ok(member.includes('<div class="mbuild" id="mbuild" aria-live="polite" hidden></div>'), "no build box under the filter");
+  const box = member.indexOf('id="mbuild"');
+  assert.ok(member.indexOf('id="mq"') < box, "the build box sits under the filter box");
+  // The filter's script must come first: its input listener sets the card
+  // count the build offer reads.
+  const filterAt = member.indexOf("getElementById('mq')");
+  const buildAt = member.indexOf('<script src="/market-build.js"></script>');
+  assert.ok(filterAt > 0 && buildAt > filterAt, "market-build.js must load after the filter script");
+  assert.ok(member.indexOf('<script src="/explore-query.js"></script>') < buildAt, "the Explorer's parser loads first");
+  assert.match(member, /M\.mount\(\{input:document\.getElementById\("mq"\),root:document\.getElementById\("mbuild"\),count:document\.getElementById\("mcount"\),parse:Q\.parseExploreQuery\}\)/);
+  assert.match(member, /\.mbuild\{/, "the build box's styles ride with it");
+  const anon = await (await fetch(srv.base + "/markets")).text();
+  assert.ok(!anon.includes('id="mbuild"') && !anon.includes("/market-build.js") && !anon.includes(".mbuild{"),
+    "a build door on the public page");
+  const js = await fetch(srv.base + "/market-build.js");
+  assert.equal(js.status, 200);
+  assert.match(js.headers.get("cache-control") || "", /max-age=0/);
+});
+
 test("a lost visitor gets a page, not a bare string", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());

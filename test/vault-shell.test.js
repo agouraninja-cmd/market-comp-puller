@@ -1,4 +1,6 @@
-// /vault on the shared chrome (Task 9 of the rail plan, 2026-08-30).
+// The vault page on the shared chrome (Task 9 of the rail plan, 2026-08-30).
+// It was /vault; since 2026-10-13 it is /comps and /pipeline, and /vault
+// redirects to /comps.
 //
 // Run: npm test
 //
@@ -32,10 +34,11 @@ const SERVER_JS = read("server.js");
 const VAULT_JS = read("vault-page.js");
 const HUB_JS = read("hub-page.js");
 
-test("/vault is rendered by marketShell, header and footer included", async (t) => {
+test("/comps and /pipeline are rendered by marketShell, header and footer included", async (t) => {
   const srv = await boot({});
   t.after(() => srv.stop());
-  const html = await (await fetch(srv.base + "/vault", { headers: SESSION })).text();
+  for (const [page, row] of [["/comps", "navComps"], ["/pipeline", "navPipe"]]) {
+  const html = await (await fetch(srv.base + page, { headers: SESSION })).text();
 
   // One document, and the shell's.
   assert.equal((html.match(/<!DOCTYPE/gi) || []).length, 1, "not exactly one doctype");
@@ -48,13 +51,14 @@ test("/vault is rendered by marketShell, header and footer included", async (t) 
   // it renders that the copy never did.
   assert.match(html, /<div class="hleft">/, "not marketBar's header");
   const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
-  // The rail since 2026-10-08: Home, Messages | Markets, Comp report, Permits.
-  for (const href of ["/desk", "/messages", "/markets", "/bulk", "/permits"]) {
-    assert.ok(nav.includes('href="' + href + '"'), "the vault's nav lost " + href);
+  // The rail since 2026-10-13: Home, Messages, Pipeline | Markets, Comps,
+  // Permits.
+  for (const href of ["/desk", "/messages", "/pipeline", "/markets", "/comps", "/permits"]) {
+    assert.ok(nav.includes('href="' + href + '"'), page + "'s nav lost " + href);
   }
-  // No row is this page's own any more, so none claims to be current.
-  assert.doesNotMatch(nav, /aria-current="page"/,
-    "a rail row claims to be /vault, which is no longer a row");
+  // Each page is its own row's, and only that row is current.
+  assert.equal((nav.match(/aria-current="page"/g) || []).length, 1, page + ": not exactly one current row");
+  assert.match(nav, new RegExp('id="' + row + '" href="' + page + '" aria-current="page"'), page + " does not mark its row");
   // The account cluster arrives with accountNavSlots. The theme toggle does
   // NOT, since later the same day (owner's call): the switch went back into
   // index.html's settings panel and out of every nav, so what this page owes
@@ -70,7 +74,8 @@ test("/vault is rendered by marketShell, header and footer included", async (t) 
   // was four lines of prose and not one anchor.
   const footer = html.slice(html.indexOf("<footer"), html.indexOf("</footer>"));
   for (const href of ["/markets", "/brokers-firms", "/pricing", "/terms", "/download"]) {
-    assert.ok(footer.includes('href="' + href + '"'), "/vault's footer cannot reach " + href);
+    assert.ok(footer.includes('href="' + href + '"'), page + "'s footer cannot reach " + href);
+  }
   }
 });
 
@@ -81,7 +86,7 @@ test("Escape steps back from the vault, as it does from every other page", async
   // was deleted, and the shared one came with the shell.
   const srv = await boot({});
   t.after(() => srv.stop());
-  const html = await (await fetch(srv.base + "/vault", { headers: SESSION })).text();
+  const html = await (await fetch(srv.base + "/comps", { headers: SESSION })).text();
   assert.match(html, /function goBack\(\)/,
     "the vault does not get marketBar's Escape handler");
   assert.ok(!VAULT_JS.includes('e.key!=="Escape"'),
@@ -95,7 +100,7 @@ test("the book's map loads Leaflet and the tiles through the shared constants", 
   // different tile source from the market pages.
   const srv = await boot({});
   t.after(() => srv.stop());
-  const html = await (await fetch(srv.base + "/vault", { headers: SESSION })).text();
+  const html = await (await fetch(srv.base + "/comps", { headers: SESSION })).text();
   assert.match(html, /unpkg\.com\/leaflet@1\.9\.4\/dist\/leaflet\.js/, "/vault does not load Leaflet");
   assert.match(html, /var CNBASE = \(function/, "/vault does not carry the shared basemap");
   assert.match(SERVER_JS, /head: INTER_FONT_HEAD \+ LEAFLET_HEAD \+ `<script>\$\{BASEMAP_JS\}<\/script>\\n`/,
@@ -111,27 +116,28 @@ test("the vault keeps Inter, which no other marketShell page loads", async (t) =
   // carry across, and it rides marketShell's `head`.
   const srv = await boot({});
   t.after(() => srv.stop());
-  const html = await (await fetch(srv.base + "/vault", { headers: SESSION })).text();
+  const html = await (await fetch(srv.base + "/comps", { headers: SESSION })).text();
   assert.match(html, /fonts\.googleapis\.com\/css2\?family=Inter/,
     "/vault lost its typeface in the fold");
   assert.match(SERVER_JS, /const INTER_FONT_HEAD =/,
     "the font head should be a named constant, not pasted into the route");
 });
 
-test("vault-page.js is a body renderer and takes nothing but a boot payload", () => {
+test("vault-page.js is a body renderer and takes nothing but a boot payload and a page", () => {
   // The twelve-key chrome object this route used to build (CN_LOGO, RAIL_CSS,
   // ACCOUNT_NAV_*, FOOTER_*, THEME_*, NAV_SHELL_CLASS) existed only to
   // reconstruct by hand what marketShell already had. Its absence is the
   // measure of the fold.
-  assert.match(VAULT_JS, /function renderVaultBody\(boot\) \{/,
-    "the export should take the boot payload alone");
+  // And which of its two pages to draw (2026-10-13): nothing of the chrome.
+  assert.match(VAULT_JS, /function renderVaultBody\(boot, opts\) \{/,
+    "the export should take the boot payload and the page alone");
   assert.ok(!/renderVaultHTML/.test(VAULT_JS + SERVER_JS),
     "the document-building entry point is gone, not merely unused");
   for (const key of ["chrome.CN_LOGO", "chrome.RAIL_CSS", "chrome.ACCOUNT_NAV_JS",
     "chrome.THEME_BOOT", "chrome.NAV_SHELL_CLASS", "chrome.FOOTER_LINK_COLS"]) {
     assert.ok(!VAULT_JS.includes(key), "vault-page.js still reads " + key);
   }
-  assert.match(SERVER_JS, /body: renderVaultBody\(boot\)/,
+  assert.match(SERVER_JS, /renderVaultBody\(boot, \{ page \}\) \+ visitTag/,
     "the route should hand marketShell a body");
 });
 

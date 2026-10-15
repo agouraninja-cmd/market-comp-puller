@@ -56,6 +56,10 @@ test("one writer keeps the switch, this browser's copy and the pins in step, and
   const set = fnOf("function hmSetLayer(layer, on, { draw = true } = {}) {");
   assert.match(set, /try \{ localStorage\.setItem\(HM_LAYER_KEY, JSON\.stringify\(hmLayers\)\); \} catch \(_\)/);
   assert.match(set, /if \(on && layer === "permits"\) hmLoadPermits\(\);/);
+  // A card on something that just left the map closes with it: a permit's,
+  // and a property's unless Today (whose pins never leave) is showing.
+  assert.match(set, /layer === "permits" && hmSel\.startsWith\("permit:"\)\) hmMap\.closePopup\(\);/);
+  assert.match(set, /layer === "properties" && !hmSel\.startsWith\("permit:"\) && hmTab !== "today"\) hmMap\.closePopup\(\);/);
   // Only hmSetLayer assigns the record (the initial read aside).
   assert.equal((html.match(/\bhmLayers = /g) || []).length, 3, "something else writes hmLayers");
   // A layer is on when the record says so; the record only ever holds

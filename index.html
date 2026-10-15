@@ -15098,6 +15098,9 @@ async function renderMyDesk() {
     if (on && layer === "permits") hmLoadPermits();
     // A card open on something that just left the map closes with it.
     if (!on && hmSel && hmMap && layer === "permits" && hmSel.startsWith("permit:")) hmMap.closePopup();
+    // A property's card too, unless Today is showing, whose numbered pins
+    // are drawn whatever the switch says.
+    if (!on && hmSel && hmMap && layer === "properties" && !hmSel.startsWith("permit:") && hmTab !== "today") hmMap.closePopup();
     hmSyncLayerButtons();
     if (draw) hmDrawPins();
   }

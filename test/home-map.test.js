@@ -257,6 +257,21 @@ test("the map's layers: Properties alone by default, and anything unreadable is 
   // its other choices and simply loses that one.
   assert.deepEqual(HM.readLayers('{"properties":false,"comps":true,"permits":true}'), { properties: false, permits: true });
   assert.deepEqual(HM.LAYERS, ["properties", "permits"]);
+  // The switch has no "nothing" choice (2026-10-13): both off is the default.
+  assert.deepEqual(HM.readLayers('{"properties":false,"permits":false}'), HM.LAYER_DEFAULT);
+});
+
+test("the switch is one of three views, Properties, Permits or Both, read from and written to the layers", () => {
+  assert.deepEqual(HM.VIEWS, ["properties", "permits", "both"]);
+  assert.equal(HM.layerView({ properties: true, permits: false }), "properties");
+  assert.equal(HM.layerView({ properties: false, permits: true }), "permits");
+  assert.equal(HM.layerView({ properties: true, permits: true }), "both");
+  assert.equal(HM.layerView(null), "properties");
+  assert.deepEqual(HM.layersFor("properties"), { properties: true, permits: false });
+  assert.deepEqual(HM.layersFor("permits"), { properties: false, permits: true });
+  assert.deepEqual(HM.layersFor("both"), { properties: true, permits: true });
+  assert.deepEqual(HM.layersFor("comps"), HM.LAYER_DEFAULT, "an unknown view is the default");
+  HM.VIEWS.forEach((v) => assert.equal(HM.layerView(HM.layersFor(v)), v, `${v} round-trips`));
 });
 
 test("opening a tab turns on the layer its rows are pins of, and Today and People turn on nothing", () => {

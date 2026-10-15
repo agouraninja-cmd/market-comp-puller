@@ -4801,5 +4801,11 @@
     "type": "improvement",
     "title": "Firm & branding opens from your firm's header on Home",
     "details": "The Firm & branding row is gone from the account menu. Its door is the button beside your firm's name at the top of Home, which now shows for everyone in the firm (it was owners and admins only), with a briefcase icon instead of the gear that looked like a sun."
+  },
+  {
+    "date": "2026-10-13",
+    "type": "improvement",
+    "title": "Home's map switch: Properties, Permits, or Both",
+    "details": "The two map toggles on Home are now one three-way switch. Pick Properties or Permits to flip between them, or Both to see them together. The map can no longer be switched to nothing at all."
   }
 ]

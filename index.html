@@ -3365,14 +3365,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <!-- What the map shows (2026-10-08, the owner's ask: "shows where
                the properties, comps and permits are, and you can filter what
                you want to see"; the layer switch Draft C drew and the build
-               left out). Toggles, not tabs: both can be on. The list's tabs
-               choose the LIST; these choose the MAP, and opening Properties
-               turns Properties on so its rows have pins. Permits shows to
-               every member, as public record. A Comps toggle sat between the
-               two until 2026-10-09, when comps left Home. -->
+               left out). Since 2026-10-13 it is ONE choice of three (the
+               owner: "switch from properties to permits but you can show
+               both at once"): Properties, Permits, or Both, so the map is
+               never blank and both together is a single press. The list's
+               tabs choose the LIST; this chooses the MAP, and opening
+               Properties turns Properties on so its rows have pins (Permits
+               becomes Both). Permits shows to every member, as public
+               record. A Comps toggle sat here until 2026-10-09. -->
           <div id="hmLayers" class="hm-layers" role="group" aria-label="Show on the map">
-            <button type="button" id="hmLayerProps" data-layer="properties" aria-pressed="true"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg><span>Properties</span></button>
-            <button type="button" id="hmLayerPermits" data-layer="permits" aria-pressed="false"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h10v14.4H5z"/><path d="M7.5 6h5M7.5 8.6h5"/><circle cx="10" cy="13" r="1.8"/></svg><span>Permits</span></button>
+            <button type="button" id="hmLayerProps" data-view="properties" aria-pressed="true"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg><span>Properties</span></button>
+            <button type="button" id="hmLayerPermits" data-view="permits" aria-pressed="false"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h10v14.4H5z"/><path d="M7.5 6h5M7.5 8.6h5"/><circle cx="10" cy="13" r="1.8"/></svg><span>Permits</span></button>
+            <button type="button" id="hmLayerBoth" data-view="both" aria-pressed="false"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3 2.5 7 10 11l7.5-4z"/><path d="m2.5 10.5 7.5 4 7.5-4"/><path d="m2.5 14 7.5 4 7.5-4"/></svg><span>Both</span></button>
           </div>
           <!-- Said when a layer is on and has nothing to draw here: never an
                empty map that could be read as "nothing was filed". -->
@@ -15074,11 +15078,15 @@ async function renderMyDesk() {
   // step. A Comps layer an old visit stored (before 2026-10-09) is never
   // drawn: HOMEMAP.readLayers keeps only the layers Home has.
   const hmLayerOn = (layer) => Boolean(hmLayers[layer]);
+  // The switch is one choice of three (Properties, Permits, Both; 2026-10-13):
+  // HOMEMAP.layerView reads the record as a view, and the pressed button is
+  // the one it names.
   function hmSyncLayerButtons() {
-    document.querySelectorAll("#hmLayers button[data-layer]").forEach((b) => {
-      const layer = b.dataset.layer;
-      b.setAttribute("aria-pressed", String(hmLayerOn(layer)));
-      const busy = layer === "permits" && hmLayerOn("permits") && hmPermitsAsked && hmPermits == null;
+    const view = HOMEMAP.layerView(hmLayers);
+    document.querySelectorAll("#hmLayers button[data-view]").forEach((b) => {
+      const on = b.dataset.view === view;
+      b.setAttribute("aria-pressed", String(on));
+      const busy = on && hmLayerOn("permits") && hmPermitsAsked && hmPermits == null;
       b.classList.toggle("busy", busy);
       if (busy) b.setAttribute("aria-busy", "true"); else b.removeAttribute("aria-busy");
     });
@@ -15090,12 +15098,27 @@ async function renderMyDesk() {
     if (on && layer === "permits") hmLoadPermits();
     // A card open on something that just left the map closes with it.
     if (!on && hmSel && hmMap && layer === "permits" && hmSel.startsWith("permit:")) hmMap.closePopup();
+    // A property's card too, unless Today is showing, whose numbered pins
+    // are drawn whatever the switch says.
+    if (!on && hmSel && hmMap && layer === "properties" && !hmSel.startsWith("permit:") && hmTab !== "today") hmMap.closePopup();
     hmSyncLayerButtons();
     if (draw) hmDrawPins();
   }
+  // Pressing a view writes each layer it changes through hmSetLayer (the one
+  // writer), turning layers on before any off so the map is never blank, and
+  // draws once at the end.
+  function hmSetView(view) {
+    if (!HOMEMAP.VIEWS.includes(view)) return;
+    const want = HOMEMAP.layersFor(view);
+    const change = HOMEMAP.LAYERS.filter((k) => hmLayerOn(k) !== want[k]);
+    if (!change.length) return;
+    change.sort((a, b) => Number(want[b]) - Number(want[a]))
+      .forEach((k) => hmSetLayer(k, want[k], { draw: false }));
+    hmDrawPins();
+  }
   document.getElementById("hmLayers").addEventListener("click", (e) => {
-    const b = e.target.closest("button[data-layer]");
-    if (b) hmSetLayer(b.dataset.layer, b.getAttribute("aria-pressed") !== "true");
+    const b = e.target.closest("button[data-view]");
+    if (b) hmSetView(b.dataset.view);
   });
 
   // The pins each layer drew last, for the note and its "Show them".

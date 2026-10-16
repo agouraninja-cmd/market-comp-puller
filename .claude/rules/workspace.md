@@ -88,7 +88,16 @@ paths:
 > - Pinned in `test/desk-map-layers.test.js` ("Home holds no comps") and
 >   `test/home-map.test.js`.
 
-> **The map's switch is Properties · Permits · Both (2026-10-13, the
+> **The map's switch is Properties · Permits, one at a time (2026-10-16,
+> the owner: "remove both just make it so the only two options are
+> properties and permits").** `#hmLayerBoth` is gone; `HOMEMAP.VIEWS` is
+> `["properties", "permits"]`, and `readLayers` turns a stored both-on (or
+> both-off) into the default, Properties alone. Opening the Properties tab
+> while on Permits switches the map to Properties (`hmSetView(need, { draw:
+> false })`), and opening a permit from the find box switches it to
+> Permits. The box below is history where it says Both.
+
+> **The map's switch was Properties · Permits · Both (2026-10-13, the
 > owner: "make it so you can switch from properties to permits but you can
 > show both at once").** `#hmLayers` holds three `data-view` buttons
 > (`#hmLayerProps`, `#hmLayerPermits`, `#hmLayerBoth`), exactly one

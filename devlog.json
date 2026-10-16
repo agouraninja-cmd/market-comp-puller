@@ -4807,5 +4807,11 @@
     "type": "improvement",
     "title": "Home's map switch: Properties, Permits, or Both",
     "details": "The two map toggles on Home are now one three-way switch. Pick Properties or Permits to flip between them, or Both to see them together. The map can no longer be switched to nothing at all."
+  },
+  {
+    "date": "2026-10-16",
+    "type": "improvement",
+    "title": "Home's map switch: just Properties or Permits",
+    "details": "The Both choice is gone from the switch over Home's map, so it shows your properties or the permits, one at a time. Opening the Properties tab switches the map back to properties, and opening a permit from the find box switches it to permits."
   }
 ]

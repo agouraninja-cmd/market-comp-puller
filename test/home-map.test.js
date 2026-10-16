@@ -249,7 +249,9 @@ test("the map's layers: Properties alone by default, and anything unreadable is 
   assert.deepEqual(HM.readLayers(null), { properties: true, permits: false });
   assert.deepEqual(HM.readLayers(""), HM.LAYER_DEFAULT);
   assert.deepEqual(HM.readLayers("{not json"), HM.LAYER_DEFAULT, "a corrupt stored value is the default, never a throw");
-  assert.deepEqual(HM.readLayers('{"permits":true}'), { properties: true, permits: true });
+  // Both on (the Both choice, 2026-10-13 to 10-16) is the default now.
+  assert.deepEqual(HM.readLayers('{"permits":true}'), HM.LAYER_DEFAULT);
+  assert.deepEqual(HM.readLayers('{"properties":true,"permits":true}'), HM.LAYER_DEFAULT);
   assert.deepEqual(HM.readLayers({ properties: false, permits: true }), { properties: false, permits: true });
   assert.deepEqual(HM.readLayers('{"permits":1,"extra":true}'), HM.LAYER_DEFAULT,
     "only real booleans count, and an unknown key is dropped");
@@ -257,19 +259,19 @@ test("the map's layers: Properties alone by default, and anything unreadable is 
   // its other choices and simply loses that one.
   assert.deepEqual(HM.readLayers('{"properties":false,"comps":true,"permits":true}'), { properties: false, permits: true });
   assert.deepEqual(HM.LAYERS, ["properties", "permits"]);
-  // The switch has no "nothing" choice (2026-10-13): both off is the default.
+  // The switch has no "nothing" choice: both off is the default.
   assert.deepEqual(HM.readLayers('{"properties":false,"permits":false}'), HM.LAYER_DEFAULT);
 });
 
-test("the switch is one of three views, Properties, Permits or Both, read from and written to the layers", () => {
-  assert.deepEqual(HM.VIEWS, ["properties", "permits", "both"]);
+test("the switch is one of two views, Properties or Permits, read from and written to the layers", () => {
+  assert.deepEqual(HM.VIEWS, ["properties", "permits"]);
   assert.equal(HM.layerView({ properties: true, permits: false }), "properties");
   assert.equal(HM.layerView({ properties: false, permits: true }), "permits");
-  assert.equal(HM.layerView({ properties: true, permits: true }), "both");
+  assert.equal(HM.layerView({ properties: true, permits: true }), "properties", "there is no Both");
   assert.equal(HM.layerView(null), "properties");
   assert.deepEqual(HM.layersFor("properties"), { properties: true, permits: false });
   assert.deepEqual(HM.layersFor("permits"), { properties: false, permits: true });
-  assert.deepEqual(HM.layersFor("both"), { properties: true, permits: true });
+  assert.deepEqual(HM.layersFor("both"), HM.LAYER_DEFAULT, "Both is gone");
   assert.deepEqual(HM.layersFor("comps"), HM.LAYER_DEFAULT, "an unknown view is the default");
   HM.VIEWS.forEach((v) => assert.equal(HM.layerView(HM.layersFor(v)), v, `${v} round-trips`));
 });

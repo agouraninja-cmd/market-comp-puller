@@ -327,8 +327,8 @@
 
   // ---- What the map shows (2026-10-08) -------------------------------------
   // The owner's ask: the map "shows where the properties, comps and permits
-  // are, and you can filter what you want to see". Layers, any mix on; a
-  // Comps layer was the third until 2026-10-09, when comps left Home, and a
+  // are, and you can filter what you want to see". One layer at a time
+  // since 2026-10-16 (see VIEWS below); a Comps layer was the third until 2026-10-09, when comps left Home, and a
   // browser that stored it on simply has it dropped here.
   // The list's tabs choose the LIST and these choose the MAP; opening a tab
   // whose rows are pins of a layer turns that layer on (tabLayer), so a row
@@ -342,24 +342,22 @@
     if (typeof raw === "string") { try { o = JSON.parse(raw); } catch (_) { o = null; } }
     const out = { ...LAYER_DEFAULT };
     if (o && typeof o === "object") LAYERS.forEach((k) => { if (typeof o[k] === "boolean") out[k] = o[k]; });
-    // The switch has no "nothing" choice (2026-10-13), so a browser that
-    // stored both off gets the default back rather than a blank map.
-    if (!LAYERS.some((k) => out[k])) return { ...LAYER_DEFAULT };
-    return out;
+    // The switch is one layer at a time (2026-10-16), so a browser that
+    // stored both off, or both on (the Both choice, 2026-10-13 to 10-16),
+    // gets the default back rather than a blank map or a choice it lacks.
+    return layersFor(layerView(out));
   }
-  // The switch is one choice of three (2026-10-13, the owner: "switch from
-  // properties to permits but you can show both at once"): Properties,
-  // Permits, or Both. The layers stay the record; a view is how the switch
-  // reads it, and layersFor is what pressing a view writes. Anything else is
-  // Properties alone, the default.
-  const VIEWS = ["properties", "permits", "both"];
+  // The switch is one choice of two (2026-10-16, the owner: "remove both just
+  // make it so the only two options are properties and permits"): Properties
+  // or Permits. The layers stay the record; a view is how the switch reads
+  // it, and layersFor is what pressing a view writes. Anything but Permits
+  // alone is Properties alone, the default.
+  const VIEWS = ["properties", "permits"];
   function layerView(layers) {
     const l = layers || {};
-    if (l.properties && l.permits) return "both";
-    return l.permits ? "permits" : "properties";
+    return l.permits && !l.properties ? "permits" : "properties";
   }
   function layersFor(view) {
-    if (view === "both") return { properties: true, permits: true };
     if (view === "permits") return { properties: false, permits: true };
     return { ...LAYER_DEFAULT };
   }

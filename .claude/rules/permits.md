@@ -672,7 +672,18 @@ one empty report, so a suite about Boise reads Nampa cleanly. Eleven rules:
   of 14 (`digestFor`'s `lateCities`).
 
 A Permit Reports page that fails, or every picked report failing, is
-`summary.errors` (the scheduled job goes red, as for a portal redesign); one
+`summary.errors` (the scheduled job goes red, as for a portal redesign) —
+**except a 403 on the Permit Reports page**, which is the city refusing us,
+not the page breaking: `cities.nampa.refused` and `summary.refused` (and a
+line in `history.errors` on the history call), which the workflow WARNS on
+(2026-10-16, owner's call). cityofnampa.us served the named agent on
+Oct 1–2 (the backfill read 19 reports and stored 119 permits) and has
+answered Render's server 403 on every run since Oct 6, which failed the job
+daily and, since the history step runs only after a green sweep step,
+skipped Boise's and Meridian's history pass too. Nampa's figures are frozen
+at Oct 2 until the city answers again; the fix is asking the city to let
+`CompNinjaPermitSweep` through, never dressing the sweep up as a browser
+(above). One
 unreadable report among several is a line in `cities.nampa.reportErrors` on the
 weekday call and in `history.errors` on the history call. Not built: the city's
 zoning (Canyon County has no parcel service wired, permit-zoning.js), so

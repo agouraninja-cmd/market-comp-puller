@@ -6954,10 +6954,20 @@ function newCityTally() {
 // it), an issued permit is never walked back, and the event is dated that day.
 // One unreadable report is a line in city.reportErrors and the rest still
 // count; every report failing is the city failing, which is loud.
+// A 403 on the Permit Reports page is the city refusing us (Nampa's site has
+// since 2026-10-06), not the page breaking: it is city.refused, which the
+// scheduled job WARNS on, so a known wall nobody here can fix does not turn
+// every run red and skip the history pass for the cities that do answer
+// (owner's call, 2026-10-16). Never answered by dressing the sweep up as a
+// browser (see permits.md). Anything else the page answers is still loud.
 async function sweepReportCity(key, city, { dryRun, deps, keyDeps, now, mode }) {
   const j = permitJurisdiction(key);
   Object.assign(city, { reports: 0, reportErrors: [], droppedDates: 0, intakeFailed: 0, otherWork: 0, issuedUnfiled: 0 });
   const res = await deps.fetch(j.reportsUrl, { headers: { "User-Agent": PERMITS.UA } });
+  if (res.status === 403) {
+    city.refused = `${j.label}'s Permit Reports page refused the sweep (403)`;
+    return city;
+  }
   if (!res.ok) throw new Error(`portal-error: ${j.label}'s Permit Reports page returned ${res.status}`);
   const index = PERMIT_REPORTS.parseReportIndex(await res.text(), j.reportsOrigin);
   if (!index.some((r) => r.kind === "plan")) {
@@ -7117,6 +7127,7 @@ async function sweepPermitHistory({ now, dryRun, deps, keyDeps, all }) {
       out.errors.push(`${key} reports: ${err.message}`);
     }
     for (const e of city.reportErrors || []) out.errors.push(`${key} report ${e}`);
+    if (city.refused) out.errors.push(`${key} reports: ${city.refused}`);
     out.discovered += city.rows; out.added += city.added; out.seen += city.seen;
     out.statusChanges += city.statusChanges; out.enriched += city.enriched;
     out.reports = { ...(out.reports || {}), [key]: { read: city.reports || 0, added: city.added, backfill: Boolean(all || city.backfill) } };
@@ -7202,7 +7213,7 @@ async function sweepPermitFilings({ days, dryRun = false, history, only } = {}) 
   const summary = {
     startedAt: new Date(now).toISOString(), dryRun, window,
     cities: {}, discovered: 0, added: 0, seen: 0, statusChanges: 0, industrial: 0,
-    truncated: [], errors: [],
+    truncated: [], errors: [], refused: [],
     skipped: PERMITS.JURISDICTION_KEYS.filter((k) => !PERMITS.SWEEP_KEYS.includes(k))
       .map((k) => ({ city: k, reason: PERMITS.JURISDICTIONS[k].blocked || "switched off" })),
   };
@@ -7218,6 +7229,7 @@ async function sweepPermitFilings({ days, dryRun = false, history, only } = {}) 
       console.error(`[permit sweep] ${key}: ${err.message}`);
       summary.errors.push(`${key}: ${err.message}`);
     }
+    if (city.refused) summary.refused.push(`${key}: ${city.refused}`);
     summary.discovered += city.rows;
     summary.seen += city.seen;
     summary.statusChanges += city.statusChanges;
@@ -7268,7 +7280,7 @@ async function readPermitStats() {
     lastRun: PERMIT_SWEEP.lastSummary ? {
       at: PERMIT_SWEEP.lastSummary.finishedAt, dryRun: PERMIT_SWEEP.lastSummary.dryRun,
       added: PERMIT_SWEEP.lastSummary.added, statusChanges: PERMIT_SWEEP.lastSummary.statusChanges,
-      errors: PERMIT_SWEEP.lastSummary.errors,
+      errors: PERMIT_SWEEP.lastSummary.errors, refused: PERMIT_SWEEP.lastSummary.refused || [],
       only: PERMIT_SWEEP.lastSummary.only || null,
       history: PERMIT_SWEEP.lastSummary.history ? {
         windows: PERMIT_SWEEP.lastSummary.history.windows || [], added: PERMIT_SWEEP.lastSummary.history.added || 0,

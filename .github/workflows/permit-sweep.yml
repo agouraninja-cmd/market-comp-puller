@@ -21,7 +21,9 @@
 #
 # The job also fails when the sweep answers with a city error (a portal
 # redesign, the Nampa-style bot wall reaching another city), because a failed
-# scheduled run is what actually reaches somebody. The capture script
+# scheduled run is what actually reaches somebody. A reports city whose page
+# answers 403 (Nampa's site since 2026-10-06) is a warning instead, in
+# `refused` (owner's call, 2026-10-16). The capture script
 # (scripts/capture-permit-fixtures.js) is how that is diagnosed.
 name: Permit sweep
 
@@ -92,6 +94,10 @@ jobs:
             const na = (s.cities || {}).nampa;
             if (na) console.log(`nampa (from its reports): ${na.reports || 0} report(s) read · ${na.added || 0} added · ${na.statusChanges || 0} status change(s)`);
             if (na && na.reportErrors && na.reportErrors.length) console.log(`::warning::Nampa reports: ${na.reportErrors.join(" | ")}`);
+            // A city that refuses us (403, Nampa since 2026-10-06) WARNS: it is
+            // a wall only the city can lift, and failing on it every day hid
+            // real failures and skipped the history pass below.
+            if (s.refused && s.refused.length) console.log(`::warning::Refused by the city, not read this run: ${s.refused.join(" | ")}`);
             // Placing permits on the map (058). Its problems WARN, never fail.
             const lo = s.located || {};
             if (s.located) console.log(`placed on the map: ${lo.placed || 0} of ${lo.tried || 0} looked up`);

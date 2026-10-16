@@ -4813,5 +4813,11 @@
     "type": "improvement",
     "title": "Home's map switch: just Properties or Permits",
     "details": "The Both choice is gone from the switch over Home's map, so it shows your properties or the permits, one at a time. Opening the Properties tab switches the map back to properties, and opening a permit from the find box switches it to permits."
+  },
+  {
+    "date": "2026-10-16",
+    "type": "fix",
+    "title": "Permit sweep: Nampa's block is a warning, not a daily failure",
+    "details": "Nampa's city website has refused CompNinja's server since Oct 6, which failed the weekday permit sweep every day and skipped the refresh of older Boise and Meridian permits. A refusal from Nampa now shows as a warning, so the sweep runs green when Boise and Meridian work; any other error still fails it. Nampa's numbers stay as of Oct 2 until the city lets us back in."
   }
 ]

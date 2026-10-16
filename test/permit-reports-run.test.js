@@ -241,3 +241,25 @@ test("a Permit Reports page the city takes down is Nampa's error line, and the o
     "loud, so the scheduled job fails rather than reading as a quiet week");
   assert.ok(s.cities.boise && s.cities.meridian, "Boise and Meridian still ran");
 });
+
+test("a Permit Reports page that refuses the sweep (403) is a warning in refused, not an error, and the history pass says so too", async (t) => {
+  const state = N.quietNampa();
+  state.indexStatus = 403;
+  const portal = await startPortal({ nampa: state });
+  t.after(() => portal.stop());
+  const db = await fake.start({ tables: { permit_filings: [], permit_filing_events: [], analytics_events: [], permit_watches: [], permit_watch_events: [], permit_alerts: [] } });
+  t.after(() => db.stop());
+  const srv = await shared.boot({
+    ACCOUNT_WALL: "off", ADMIN_KEY: KEY, SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key",
+    PERMIT_PORTAL_ORIGIN: portal.url, PERMIT_SWEEP_PAUSE_MS: "0", CENSUS_API_URL: "http://127.0.0.1:9/geocoder",
+  });
+  t.after(() => srv.stop());
+  const s = await sweep(srv.base, {});
+  assert.deepEqual(s.errors, [], "a wall only the city can lift must not fail the scheduled job every day");
+  assert.deepEqual(s.refused, ["nampa: Nampa's Permit Reports page refused the sweep (403)"]);
+  assert.equal(s.cities.nampa.refused, "Nampa's Permit Reports page refused the sweep (403)");
+  assert.ok(s.cities.boise && s.cities.meridian, "Boise and Meridian still ran");
+  const h = await sweep(srv.base, { only: "history", history: "rotate" });
+  assert.ok(h.history.errors.includes("nampa reports: Nampa's Permit Reports page refused the sweep (403)"),
+    "the history pass names it among its warnings");
+});

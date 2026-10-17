@@ -2521,13 +2521,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </div>
         <p id="settingsPlanError" class="hidden text-sm text-red-600 mt-2"></p>
       </div>
-      <!-- Tester code. Moved here from the pricing modal's "Have a code?"
-           disclosure on 2026-08-31 (owner's call): the codes go to friends,
+      <!-- A code from us. Moved here from the pricing modal's "Have a code?"
+           disclosure on 2026-08-31 (owner's call): the codes went to friends,
            family and people testing the site, so the place to type one is the
            panel you open to look at your own account — not a modal you open to
            look at prices. One code, one control, on the theme toggle's
            precedent from the day before; the pricing modal keeps no copy.
            Sits directly under Plan because that is what it changes.
+
+           It was the "Tester code" row until 2026-10-17, when the tester code
+           was retired for a month-long trial every new account gets (owner's
+           call). The one code left is VAULT_PASSKEY, the broker's door to
+           their comps and pipeline, so the row is worded for any code.
 
            It is a row, not a disclosure: every other row in this panel shows
            its control, and hiding an input behind a toggle inside a panel that
@@ -2536,14 +2541,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            Visibility is refreshBillingUI()'s, unchanged by the move — signed
            in, a code configured on this deployment, and something still left
            to redeem. Not gated on billing being live: a code is exactly what
-           someone uses on a deployment with no Stripe keys. VAULT_PASSKEY
-           redeems through this same input, by design (whoever was handed a
-           code should not also have to know which kind it is). -->
+           someone uses on a deployment with no Stripe keys. -->
       <div id="passkeyRow" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
-        <div class="text-sm font-medium text-[#1A2433]">Tester code</div>
-        <p class="text-xs text-[#68707E] mt-0.5">Got a code from us? Enter it here to unlock the paid features on this account.</p>
+        <div class="text-sm font-medium text-[#1A2433]">Have a code?</div>
+        <p class="text-xs text-[#68707E] mt-0.5">Got a code from us? Enter it here to add what it unlocks to this account.</p>
         <div class="mt-3 flex flex-col sm:flex-row gap-2">
-          <input id="passkeyInput" type="text" autocomplete="off" placeholder="Enter your code" aria-label="Tester code"
+          <input id="passkeyInput" type="text" autocomplete="off" placeholder="Enter your code" aria-label="Your code"
             class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           <button id="passkeySubmit" type="button"
             class="shrink-0 w-full sm:w-auto bg-[#1A2433] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
@@ -18819,41 +18822,35 @@ async function renderMyDesk() {
     // The nav's Pricing row is gone (2026-08-30); #settingsUpgradeBtn below
     // carries this same `!live || pro` rule, and is the one control now.
 
-    // The tester-code row, in the SETTINGS panel since 2026-08-31 (it was the
+    // The code row, in the SETTINGS panel since 2026-08-31 (it was the
     // pricing modal's "Have a code?" disclosure before that; one code, one
     // control). This rule did not move with it: signed-in, this deployment has
     // a passkey configured, AND
     // there is still something this account could redeem. Deliberately NOT
     // gated on billingLive() — a code is exactly what someone uses on a
     // deployment with no Stripe keys, the same exception the vault link makes.
-    // The testerPasskey/vaultPasskey checks exist because /api/config's
-    // `tester` and `canUseVault` flags only report what THIS user already
-    // holds, not whether a door exists at all — without them, a deployment
-    // that never set either passkey still showed a row that could only ever
-    // fail on submit.
+    // The vaultPasskey check exists because /api/config's `canUseVault` only
+    // reports what THIS user already holds, not whether a door exists at all —
+    // without it, a deployment that never set the passkey still showed a row
+    // that could only ever fail on submit.
     //
-    // Two doors, so the row survives holding one of them: a broker who
-    // redeemed the vault code is not Pro, and would otherwise be shown a row
-    // whose only remaining use is a tester code nobody gave them — hence the
-    // per-door test rather than the old `pro` alone. Both codes go to the
-    // same input; the server decides which grant a code opens.
-    // A trial is not the tester grant: someone handed a tester code mid-trial
-    // must still be able to redeem it, or their Pro ends with the trial.
-    const canRedeemTester = Boolean(proConfig && proConfig.testerPasskey) && (!pro || isTrialPro());
+    // One door since 2026-10-17: the tester code (and its testerPasskey
+    // flag) was retired for the month-long trial, so the vault code is the
+    // only thing this row can redeem, and someone who can already open their
+    // comps (Pro, a trial, a firm seat, the grant itself) has nothing to type.
     const canRedeemVault = Boolean(proConfig && proConfig.vaultPasskey)
       && !Boolean(proConfig && proConfig.canUseVault);
     document.getElementById("passkeyRow")
-      .classList.toggle("hidden", !currentUser || !(canRedeemTester || canRedeemVault));
+      .classList.toggle("hidden", !currentUser || !canRedeemVault);
 
-    // The tester badge: the beta feedback channel, and the ONE surface in this
-    // file gated on holding the tester grant rather than on Pro. Deliberately
-    // not shown to admins or to ordinary Pro members -- a feedback button
-    // everybody can see is a support inbox, which promises answers this does
-    // not. isTesterPro() rather than a second copy of the flag test: that
-    // helper already IS this rule, and it reads a missing flag as false, so an
-    // older /api/config that predates the field just leaves the badge hidden.
+    // The feedback badge: where members send recommendations, ideas and
+    // problems to the team. Every signed-in member since 2026-10-17 (the
+    // owner, retiring the tester code: keep the ninja "in a good spot where
+    // people can put their recommendations"); it was tester-code accounts
+    // only before. Signed out it stays hidden: the route answers 401, and the
+    // reply goes back to an account's address.
     const testerBadgeEl = document.getElementById("testerBadge");
-    if (testerBadgeEl) testerBadgeEl.classList.toggle("hidden", !currentUser || !isTesterPro());
+    if (testerBadgeEl) testerBadgeEl.classList.toggle("hidden", !currentUser);
 
     // /#pricing — the deep link the server-rendered headers use, because the
     // pricing modal lives only in this file (the same idiom /brokers already

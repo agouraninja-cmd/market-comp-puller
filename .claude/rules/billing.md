@@ -29,7 +29,41 @@ paths:
 
 ## Configuration
 
-- `TESTER_PASSKEY` — optional shared passkey that comps Pro to a **signed-in**
+> **The tester code is retired and the trial is a month (2026-10-17, the
+> owner: "instead of having a test environment just give new users a month
+> free trial with everything included. but keep the ninja test in a good
+> spot where people can put there recomendations").** Read this before the
+> two bullets below, which it amends.
+> - **`ENT.TRIAL_DAYS` is 30** (was 14), so `PRO_TRIAL_DAYS` defaults to 30.
+>   A value set on the host still wins, so a leftover `PRO_TRIAL_DAYS=14` on
+>   Render keeps the old length. With `PRO_TRIAL_START` set, every account
+>   counts 30 days from it, so one whose 14 days ran out may be back on Pro
+>   until day 30 (it already had its "ending" email; the ledger sends none
+>   twice).
+> - **`POST /api/redeem-passkey` compares `VAULT_PASSKEY` only** and 404s
+>   without it, `TESTER_PASSKEY` or not; a tester code is a wrong code
+>   (401). `/api/config` no longer carries `testerPasskey`, `setUserTester` is
+>   gone, the boot log tells a host that still sets `TESTER_PASSKEY` to
+>   remove it, and Settings' code row is "Have a code?" and shows only for
+>   the vault code.
+> - **Existing grants are honored**, the retired single-report unlock's rule:
+>   the tester branch in `entitlements.js` is unchanged, so an account holding
+>   `users.pro_tester` keeps comped Pro. Setting or clearing it is a one-row
+>   UPDATE now.
+> - **The ninja is every signed-in member's** (`/api/tester-feedback` asks
+>   only for a session, and reads no plan), sits in the rail just above the
+>   account circle with the word Feedback (floating bottom-right on a phone,
+>   the bar shell or a window under 620px tall), rides every page a member
+>   reads (`marketShell` emits it for `signedIn` as well as for the pages
+>   that opt in), and its form leads with "A recommendation or idea". See
+>   `TESTER_BADGE_CSS`. Pinned in `test/tester-feedback-run.test.js`.
+> - Tests: `test/routes.test.js` ("tester passkey (retired)", the vault
+>   passkey suite, and the portfolio cap proved with a trial account),
+>   `test/pro-trial-run.test.js` (the 30-day default),
+>   `test/entitlements.test.js`.
+
+- `TESTER_PASSKEY` — **RETIRED 2026-10-17, see the box above; history
+  below.** Optional shared passkey that comps Pro to a **signed-in**
   account (the beta-tester door). Unset = `POST /api/redeem-passkey` 404s and
   the pricing modal's "Have a code?" row never renders, so this is inert on any
   deployment that never configured it. **It is not `ADMIN_KEY`**: that key also
@@ -125,7 +159,8 @@ paths:
 - `PRO_TRIAL_DAYS` / `PRO_TRIAL_START` — the **new-account Pro trial**
   (2026-09-25, owner's call; billing plan in the "CompNinja Billing &
   Retention Plan" doc). Every account gets full Pro — vault, bulk valuation and
-  firms included — for `PRO_TRIAL_DAYS` (default **14**; `0` or `off` is the
+  firms included — for `PRO_TRIAL_DAYS` (default **30** since 2026-10-17, 14
+  before; `0` or `off` is the
   instant rollback lever), counted from the LATER of its own `created_at` and
   `PRO_TRIAL_START` (a `YYYY-MM-DD` launch date; unset = signup alone decides).
   That second setting is how accounts that predate the trial get their 14 days
@@ -361,15 +396,15 @@ trial subscription lapses keeps their book.
   red. `test/trial-notices.test.js` and `test/trial-notices-run.test.js`
   (who is mailed, once, the dry run, the refusals, a launch date reaching old
   accounts).
-- `POST /api/redeem-passkey` — redeems `TESTER_PASSKEY` (comped Pro) or
-  `VAULT_PASSKEY` (the broker vault) for the signed-in caller's account, on
-  one route and one input: 401 if not signed in, rate-limited per IP, and the
-  response's `granted` array names which door opened. 404s only when NEITHER
-  passkey is configured. See both env bullets above for what each grant covers
+- `POST /api/redeem-passkey` — redeems `VAULT_PASSKEY` (the broker vault)
+  for the signed-in caller's account: 401 if not signed in, rate-limited per
+  IP, and the response's `granted` array names the door that opened. 404s
+  when `VAULT_PASSKEY` is unset. It also redeemed `TESTER_PASSKEY` (comped
+  Pro) on the same input until that code was retired on 2026-10-17. See both env bullets above for what each grant covers
   and why they are separate secrets.
 - **Pro tier** (added 2026-07-31; launched to the public 2026-08-03). **Priced
   $49 a month, $490 a year, $39 a firm seat since 2026-09-25**, and every
-  account starts on a 14-day Pro trial — see `PRO_TRIAL_DAYS` and
+  account starts on a 30-day Pro trial (14 until 2026-10-17) — see `PRO_TRIAL_DAYS` and
   `STRIPE_PRICE_*` under Configuration, and PRO-BILLING-SETUP.md for the
   runbook. Paid plan
   holding free reports to a **36-month** lookback ceiling, **3 reports a month**

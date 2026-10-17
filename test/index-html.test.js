@@ -2776,13 +2776,13 @@ test("clearing recent searches clears the server copy too", () => {
   assert.match(handler[0], /acctApi\("DELETE", "\/api\/recents"\)/);
 });
 
-// --- The tester code, in Settings -------------------------------------------
+// --- The code box, in Settings ----------------------------------------------
 //
-// TESTER_PASSKEY (and VAULT_PASSKEY, which shares the input) is redeemed from
-// ONE box, and on 2026-08-31 that box moved out of the pricing modal's "Have
-// a code?" disclosure into the Settings panel — the codes go to friends,
-// family and testers, so the place to type one is the panel you open to look
-// at your own account. These pin the move, because the two ways to undo it are
+// VAULT_PASSKEY (and TESTER_PASSKEY, which shared the input until it was
+// retired on 2026-10-17) is redeemed from ONE box, and on 2026-08-31 that box
+// moved out of the pricing modal's "Have a code?" disclosure into the
+// Settings panel — the codes went to friends, family and testers, so the
+// place to type one is the panel you open to look at your own account. These pin the move, because the two ways to undo it are
 // both invisible on screen: a second copy put back in the modal (two inputs,
 // two message elements, two visibility rules, and whichever one a person finds
 // first), and a handler left pointing at an element that no longer exists —
@@ -2799,10 +2799,10 @@ function appScript() {
   return real.reduce((a, b) => (b.body.length > a.body.length ? b : a)).body;
 }
 
-test("the tester-code box lives in the Settings panel, and only there", () => {
+test("the code box lives in the Settings panel, and only there", () => {
   const inputs = html.split('id="passkeyInput"').length - 1;
   assert.equal(inputs, 1,
-    "exactly one tester-code input — a second copy is a second thing to keep in step");
+    "exactly one code input — a second copy is a second thing to keep in step");
 
   const settings = html.indexOf('id="settingsModal"');
   const close = html.indexOf('id="settingsClose"');
@@ -2816,7 +2816,7 @@ test("the tester-code box lives in the Settings panel, and only there", () => {
   assert.ok(pricing > 0 && pricing < settings, "pricing modal is expected before the settings modal");
   const pricingMarkup = html.slice(pricing, settings);
   assert.ok(!/id="passkey/.test(pricingMarkup),
-    "the pricing modal must not carry a second tester-code box");
+    "the pricing modal must not carry a second code box");
 });
 
 test("nothing still reaches for the disclosure the settings row replaced", () => {
@@ -2828,7 +2828,7 @@ test("nothing still reaches for the disclosure the settings row replaced", () =>
   }
 });
 
-test("every element the tester-code handlers address exists in the markup", () => {
+test("every element the code box's handlers address exists in the markup", () => {
   const script = appScript();
   for (const id of ["passkeyRow", "passkeyInput", "passkeySubmit", "passkeyMsg"]) {
     assert.ok(script.includes('"' + id + '"'), id + " must still be wired up");
@@ -2851,15 +2851,16 @@ test("redeeming from Settings reports the outcome instead of closing a modal", (
     "an already-redeemed code must read as success, not failure");
 });
 
-// --- The tester feedback badge ----------------------------------------------
+// --- The feedback badge -----------------------------------------------------
 //
-// The ninja in the corner is the beta channel, and it is the one control in
-// this file gated on holding the TESTER grant rather than on Pro. Three ways
-// to break it are invisible on screen, so each gets a test: it could ship
-// visible to everybody (a support inbox nobody promised to answer), its
-// hidden state could lose the cascade to .tninja's own display rule, and its
-// modal could be left out of the Escape lists — where the cost is not a stuck
-// modal but the REPORT underneath being closed and the typed feedback lost.
+// The ninja is where members leave recommendations, ideas and problems. It
+// was the beta channel, gated on the TESTER grant, until 2026-10-17; now every
+// signed-in member gets it and nobody signed out does. Three ways to break it
+// are invisible on screen, so each gets a test: it could ship gated on a plan
+// again (or shown to strangers), its hidden state could lose the cascade to
+// .tninja's own display rule, and its modal could be left out of the Escape
+// lists — where the cost is not a stuck modal but the REPORT underneath being
+// closed and the typed feedback lost.
 
 test("the badge is injected from one source, never hand-copied into this file", () => {
   // The markup, its CSS and its handlers live in server.js's TESTER_BADGE_*
@@ -2882,8 +2883,12 @@ test("this file still owns the reveal, and cannot throw if the injection is miss
   // lands on the getElementById line and proves nothing about what gates it.
   const reveal = script.match(/const testerBadgeEl[\s\S]{0,260}?toggle\([^;]*;/);
   assert.ok(reveal, "the reveal is gone — nothing would ever show the badge in the app");
-  assert.match(reveal[0], /isTesterPro\(\)/,
-    "reveal on the tester grant, through the existing helper");
+  // Every signed-in member since 2026-10-17 (testers only before): the badge
+  // is where members leave recommendations, so it rides the session alone.
+  assert.match(reveal[0], /toggle\("hidden", !currentUser\)/,
+    "reveal for every signed-in member");
+  assert.doesNotMatch(reveal[0], /isTesterPro|pro\b|isPro/,
+    "never gated on a plan: a trial, a free account and Pro all get it");
 
   // Everything that reaches for the injected ids must tolerate their absence:
   // this file's script aborts WHOLE on a throw, so a failed injection would

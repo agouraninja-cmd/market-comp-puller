@@ -218,20 +218,22 @@ test("non-testers carry tester:false, so the UI can read one field", () => {
 
 const { trialEndsAt, TRIAL_DAYS } = require("../entitlements");
 
-test("trialEndsAt: 14 days from signup when there is no launch date", () => {
+test("trialEndsAt: a month (30 days) from signup when there is no launch date", () => {
   const created = iso(NOW - 3 * DAY);
-  assert.equal(TRIAL_DAYS, 14);
-  assert.equal(trialEndsAt(created), NOW - 3 * DAY + 14 * DAY);
+  // 14 until 2026-10-17, when the tester code was retired and the owner made
+  // the trial "a month free trial with everything included".
+  assert.equal(TRIAL_DAYS, 30);
+  assert.equal(trialEndsAt(created), NOW - 3 * DAY + 30 * DAY);
   assert.equal(trialEndsAt(created, { days: 7 }), NOW - 3 * DAY + 7 * DAY);
 });
 
 test("trialEndsAt: an account older than the launch gets its days from launch day", () => {
   // The existing-accounts half of the owner's call: an account made months
-  // ago gets 14 days from launch, not none.
+  // ago gets the trial's days from launch, not none.
   const launch = iso(NOW - 2 * DAY);
-  assert.equal(trialEndsAt(iso(NOW - 300 * DAY), { startsAt: launch, now: NOW }), NOW - 2 * DAY + 14 * DAY);
+  assert.equal(trialEndsAt(iso(NOW - 300 * DAY), { startsAt: launch, now: NOW }), NOW - 2 * DAY + TRIAL_DAYS * DAY);
   // ...and one made after launch still counts from its own signup.
-  assert.equal(trialEndsAt(iso(NOW - DAY), { startsAt: launch, now: NOW }), NOW - DAY + 14 * DAY);
+  assert.equal(trialEndsAt(iso(NOW - DAY), { startsAt: launch, now: NOW }), NOW - DAY + TRIAL_DAYS * DAY);
 });
 
 test("trialEndsAt: a launch date still in the future is no trial yet", () => {

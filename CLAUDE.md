@@ -392,7 +392,7 @@ so they are trusted config and are never set in production.
 
 | Variable | Default | What it does | Details |
 |---|---|---|---|
-| `TESTER_PASSKEY` | unset (route 404s) | shared code that comps all of Pro to a signed-in account (`users.pro_tester`) | billing.md |
+| `TESTER_PASSKEY` | unset | **retired 2026-10-17** (the month-long trial replaced it): opens nothing, and the boot log says to remove it; accounts holding `users.pro_tester` keep comped Pro | billing.md |
 | `VAULT_PASSKEY` | unset | shared code that grants the broker vault only (`users.vault_beta`); a second secret, never the same string | billing.md |
 | `RESEND_API_KEY`, `LEAD_NOTIFY_EMAIL`, `EMAIL_FROM` | unset / owner's inbox / unset | owner notifications; `EMAIL_FROM` is the single gate for mail to leads and brokers | watchlist-and-mail.md |
 | `DAILY_SEARCH_CAP` | 150 | site-wide ceiling on billed searches per UTC day (cache hits are free; Pro is exempt, a trial is not) | search-pipeline.md |
@@ -411,7 +411,7 @@ so they are trusted config and are never set in production.
 | `SITE_URL`, `GOOGLE_SITE_VERIFICATION` | Render URL / unset | canonical origin; Search Console file verification (keep it set for good) | public-pages.md |
 | `PRO_ENABLED` | off in code | master switch for the paid tier (run its DDL first) | billing.md |
 | `PRO_AUDIENCE` | unset (everyone) | email allowlist narrowing who Pro applies to; unsetting it is the launch | billing.md |
-| `PRO_TRIAL_DAYS` / `PRO_TRIAL_START` | 14 / unset | new-account Pro trial; `0` or `off` is the rollback | billing.md |
+| `PRO_TRIAL_DAYS` / `PRO_TRIAL_START` | 30 / unset | new-account Pro trial, everything included (14 until 2026-10-17); `0` or `off` is the rollback | billing.md |
 | `STRIPE_PRICE_*` | — | price ids; each may be a comma list (first is sold, all are recognized), so a price change is `new_id,old_id`, never a swap | billing.md |
 | `STRIPE_PRICE_CHECK` | on | boot check that each sold price matches `PRICING`; a mismatch pauses that plan's checkout | billing.md |
 | `FREE_REPORTS_PER_MONTH` | 3 | a free account's monthly report allowance | billing.md |

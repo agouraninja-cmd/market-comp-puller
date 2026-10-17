@@ -39,8 +39,12 @@ async function proConfig(srv, headers) {
   return (await r.json()).pro;
 }
 
-test("a new account is on a 14-day Pro trial", async (t) => {
-  const srv = await boot({ PRO_ENABLED: "on", PRO_TRIAL_DAYS: "14" });
+test("a new account is on a month-long Pro trial by default", async (t) => {
+  // PRO_TRIAL_DAYS left unset (boot.js sets it to 0 for every other suite, and
+  // a blank value is server.js's "use the default"), so this is what a
+  // deployment that never set it hands out: 30 days since 2026-10-17, 14
+  // before.
+  const srv = await boot({ PRO_ENABLED: "on", PRO_TRIAL_DAYS: "" });
   t.after(() => srv.stop());
   const before = Date.now();
   const signed = await signUp(srv, "trial");
@@ -53,10 +57,10 @@ test("a new account is on a 14-day Pro trial", async (t) => {
   assert.equal(pro.canUseVault, true, "everything in Pro, the vault included");
   assert.equal(pro.canBulkValue, true, "bulk valuation included");
 
-  // 14 days from signup, give or take the request itself.
+  // 30 days from signup, give or take the request itself.
   const ends = Date.parse(pro.trialEndsAt);
-  assert.ok(Math.abs(ends - (before + 14 * DAY)) < 60 * 1000,
-    `the trial should end 14 days from signup, got ${pro.trialEndsAt}`);
+  assert.ok(Math.abs(ends - (before + 30 * DAY)) < 60 * 1000,
+    `the trial should end 30 days from signup, got ${pro.trialEndsAt}`);
 });
 
 test("PRO_TRIAL_DAYS=0 is the off switch", async (t) => {

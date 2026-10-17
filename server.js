@@ -471,19 +471,19 @@ function proEnabledFor(user) {
   return PRO_ENABLED && ENT.inAudience(user, PRO_AUDIENCE);
 }
 
-// Optional shared passkey that comps Pro to a signed-in account (the beta
-// tester door). Deliberately NOT ADMIN_KEY: that key also unlocks /admin,
-// /dev and /contacts, so handing it to testers would hand out the analytics,
-// the lead list and the dev tools along with it. Unset = POST
-// /api/redeem-passkey does not exist (404), which is what keeps this inert on
-// any deployment that never configured it.
+// The tester code — RETIRED 2026-10-17 (owner's call: "instead of having a
+// test environment just give new users a month free trial with everything
+// included"). It was a shared passkey that comped Pro to a signed-in account
+// by setting users.pro_tester. Every new account now gets the whole product
+// for a month (PRO_TRIAL_DAYS), so a code that does the same thing forever is
+// no longer handed out, and POST /api/redeem-passkey no longer compares it.
 //
-// Redeeming sets users.pro_tester, so the grant follows the ACCOUNT across
-// devices and survives a passkey rotation — and revoking one tester is a
-// one-row UPDATE, without changing the passkey for everyone else. See the
-// comped-tester branch in entitlements.js for what it grants (everything Pro,
-// vault and bulk included since 2026-09-01) and what it cannot override
-// (PRO_ENABLED, and a real paid subscription).
+// Read here only so the boot banner can say a leftover value on the host does
+// nothing. Accounts that already hold users.pro_tester keep their comped Pro
+// (the tester branch in entitlements.js is unchanged), exactly as the retired
+// single-report unlock is still honored for the people who bought one; a
+// one-row `update users set pro_tester = … where email = …` is the only way
+// to set or clear it now.
 const TESTER_PASSKEY = (process.env.TESTER_PASSKEY || "").trim();
 
 // The vault's own shared passkey — the broker-onboarding door, and the reason
@@ -493,18 +493,11 @@ const TESTER_PASSKEY = (process.env.TESTER_PASSKEY || "").trim();
 // "hand three brokers a vault at a meeting" a note-to-self instead of
 // something that happens in the room. This is that same grant, self-serve.
 //
-// It redeems through the SAME route and the SAME input as TESTER_PASSKEY,
-// because a broker should be handed one code and not also be told which box
-// to type it into; the route decides which grant a code opens by which
-// secret it matches. Both are compared on every redemption, so the two are
-// independent: setting this one does not require setting the other.
-//
-// Deliberately a SEPARATE secret rather than widening TESTER_PASSKEY to
-// include the vault. entitlements.js excludes the vault from the tester
-// grant on purpose — the vault is a private-data workspace with an upload
-// endpoint, so it should not open for everyone who was ever handed a
-// try-Pro code. Two codes keep those two audiences separately revocable: a
-// rotation here does not lock testers out, and vice versa.
+// It redeemed through the SAME route and the SAME input as TESTER_PASSKEY
+// until that code was retired (2026-10-17), and is now the only code the
+// route compares. It was always a SEPARATE secret: the vault is a
+// private-data workspace with an upload endpoint, and the two audiences had
+// to stay separately revocable.
 //
 // And it grants the vault ONLY. A redeeming broker gets `broker` /
 // `canUseVault` and not one Pro report feature (see the vault_beta branch in
@@ -620,8 +613,11 @@ const PRICING = {
 // its signup and PRO_TRIAL_START. The rule lives in entitlements.js
 // (trialEndsAt + the trial branch); these are its two inputs.
 //
-//   PRO_TRIAL_DAYS  — default 14. `0` or `off` is the instant rollback lever:
-//                     no account is on a trial, nothing else changes.
+//   PRO_TRIAL_DAYS  — default 30 (14 until 2026-10-17; ENT.TRIAL_DAYS). `0`
+//                     or `off` is the instant rollback lever: no account is
+//                     on a trial, nothing else changes. A value set on the
+//                     host wins over the default, so a leftover
+//                     PRO_TRIAL_DAYS=14 there keeps the old length.
 //   PRO_TRIAL_START — optional launch date (YYYY-MM-DD). Accounts created
 //                     before it get their days from it rather than from
 //                     signup, which is how existing free accounts get a trial.
@@ -1230,12 +1226,12 @@ const LEAD_NOTIFY_EMAIL = (process.env.LEAD_NOTIFY_EMAIL || "agouraninja@gmail.c
 // delivers to the account owner, so outbound mail silently no-ops without it.
 const EMAIL_FROM = (process.env.EMAIL_FROM || "").trim();
 
-// Where a tester's feedback goes -- the ninja badge in the app's corner, which
-// only an account holding the tester grant can see.
+// Where a member's feedback goes -- the ninja badge, which every signed-in
+// member sees since 2026-10-17 (it was for tester-code accounts only before).
 //
-// THREE people rather than one, because this is the beta channel: a bug report
-// that lands in a single inbox waits on that person being about, and a tester
-// who hears nothing back stops sending them. One message per address (sendEmail
+// THREE people rather than one: a recommendation or a bug report that lands
+// in a single inbox waits on that person being about, and a member who hears
+// nothing back stops sending them. One message per address (sendEmail
 // wraps `to` in an array of its own, so an array here would post a nested one),
 // which also means one bad address cannot sink the other two.
 //
@@ -1929,23 +1925,14 @@ async function updateUserPassword(id, password_hash) {
   const u = (await accountStore()).users.find((x) => x.id === id);
   if (u) { u.password_hash = password_hash; await saveAccountStore(); }
 }
-// Grants comped Pro to one account (the redeemed tester passkey).
+// Grants the broker vault to one account (the redeemed vault passkey). The
+// same one-row UPDATE that has always been run by hand in the SQL editor.
 //
 // THROWS on a Supabase failure rather than returning false, unlike the
 // fire-and-forget writes elsewhere in this file: the caller answers the
 // visitor with "you're in", and a swallowed failure there means someone is
-// told they have Pro that they do not have and cannot get by trying again.
-async function setUserTester(id) {
-  if (DB_CONFIGURED) {
-    await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { pro_tester: true });
-    return;
-  }
-  const u = (await accountStore()).users.find((x) => x.id === id);
-  if (u) { u.pro_tester = true; await saveAccountStore(); }
-}
-// Grants the broker vault to one account (the redeemed vault passkey). The
-// same one-row UPDATE that has always been run by hand in the SQL editor.
-// Throws for the same reason setUserTester does.
+// told they have a grant they do not have and cannot get by trying again.
+// (setUserTester, the retired tester code's twin, went on 2026-10-17.)
 async function setUserVaultBeta(id) {
   if (DB_CONFIGURED) {
     await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { vault_beta: true });
@@ -2813,7 +2800,7 @@ async function setDigestOptout(userId, optout) {
     await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(userId)}`, { digest_optout: Boolean(optout) });
     return;
   }
-  // File-store branch (the setUserTester pattern): the PREFERENCE stores
+  // File-store branch (the setUserVaultBeta pattern): the PREFERENCE stores
   // fine without a database even though the digest send itself refuses
   // without one — and it is what lets test/routes.test.js exercise the
   // settings toggle against account-store.json.
@@ -11695,9 +11682,9 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
 // hydration script never runs. The rewrite is the exception, not the rule.
 const ACCOUNT_NAV_PRICING = `<a id="navPricing" href="/pricing" hidden>${NAV_ICONS.pricing}<span class="nvl">Pricing</span></a>`;
 
-// --- The tester feedback badge, for every surface ---------------------------
+// --- The feedback badge, for every surface ----------------------------------
 //
-// ONE source for the ninja in the corner and the form behind it. index.html
+// ONE source for the ninja and the form behind it. index.html
 // carries a marker and marketShell emits the same block, the way NAV_LINKS and
 // INAPP_BOOT already work -- never a hand-copy (THEME_BOOT is the cautionary
 // tale, and test/nav-parity.test.js exists because of the class of bug a
@@ -11710,29 +11697,49 @@ const ACCOUNT_NAV_PRICING = `<a id="navPricing" href="/pricing" hidden>${NAV_ICO
 // names are identical because theme.js is the one source for those too.
 //
 // It is REVEALED per surface, not here: index.html's refreshBillingUI() and
-// ACCOUNT_NAV_JS below both already know the visitor's entitlements, and each
-// owns the visibility of its own chrome. That split is the account nav's, for
-// the same reason -- one fetch per page, and one owner per surface.
+// ACCOUNT_NAV_JS below both already know who the visitor is, and each owns
+// the visibility of its own chrome. That split is the account nav's, for the
+// same reason -- one fetch per page, and one owner per surface. Since
+// 2026-10-17 every signed-in member gets it (it was tester-code accounts
+// only), and the TESTER_ names stay because they are code, not copy.
 const TESTER_BADGE_MARKER = "<!--TESTER_BADGE-->";
 
 const TESTER_BADGE_CSS = `
-    .tninja{position:fixed;top:14px;right:16px;z-index:1000;width:40px;height:40px;
+    /* Away from the rail (a phone, the bar shell, a short window): a round
+       ninja floating bottom-right, the usual home of a feedback button. */
+    .tninja{position:fixed;bottom:16px;right:16px;z-index:1000;width:44px;height:44px;
       display:grid;place-items:center;border-radius:9999px;padding:0;
       background:var(--slab);color:#fff;border:1px solid rgba(255,255,255,.16);
-      box-shadow:0 2px 10px rgba(16,20,26,.28);cursor:pointer;
-      transition:background .12s ease, transform .12s ease}
+      box-shadow:0 2px 10px rgba(16,20,26,.28);cursor:pointer;font:inherit;
+      transition:background .12s ease, color .12s ease, transform .12s ease}
     .tninja:hover{background:var(--red-fill);transform:translateY(-1px)}
     .tninja:focus-visible{outline:2px solid var(--red-fill);outline-offset:2px}
+    .tninja-l{display:none}
     /* Two classes, so this beats a one-class .hidden whatever order the
        stylesheets end up in -- the cascade trap vault-page.js documents. */
     .tninja.hidden{display:none}
-    /* The top-right corner is only taken where it is empty. The rail is 224px
-       and the content column is capped at 1024px and centred in the rest, so
-       the column reaches the window edge until about 1360px: at 1280 a
-       top-right badge sits on the desk's "Run a report" button. Under 1380 it
-       tucks bottom-right, which also covers the sub-900px case where the rail
-       becomes a top bar and it would land on the account circle. */
-    @media (max-width:1379px){.tninja{top:auto;bottom:16px;right:16px}}
+    /* In the rail it is a row of the rail (2026-10-17, the owner: keep the
+       ninja "in a good spot where people can put their recommendations"):
+       the ninja over the word Feedback, laid out like Home and Messages
+       above it, standing just over the account circle's hairline. Until then
+       it floated top-right on wide windows and bottom-right on narrow ones,
+       moving as the window did, and said nothing about what it was for.
+       It stays position:fixed rather than a link in the rail's markup, so
+       the one block still serves every surface and the two navs stay
+       byte-identical (nav-parity.test.js); the numbers are the rail's own:
+       84px wide, rows inset 8px, and the account cluster 57px tall (its 12px
+       padding, the 28px circle and the rail's 16px foot, plus the hairline).
+       A window too short to hold it under Permits keeps the floating ninja. */
+    @media (min-width:900px) and (min-height:620px){
+      html.nav-rail .tninja{left:8px;right:auto;bottom:65px;width:68px;height:auto;
+        display:flex;flex-direction:column;align-items:center;gap:5px;
+        padding:10px 2px 9px;border:0;border-radius:10px;background:transparent;
+        box-shadow:none;color:rgba(255,255,255,.68);
+        font-size:10.5px;font-weight:500;line-height:1.1}
+      html.nav-rail .tninja:hover{background:rgba(255,255,255,.08);color:#fff;transform:none}
+      html.nav-rail .tninja-l{display:block}
+      html.nav-rail .tninja.hidden{display:none}
+    }
     .tfm{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.7);
       display:flex;align-items:center;justify-content:center;padding:16px}
     /* .hidden is Tailwind's in the app and nobody's on a server-rendered
@@ -11766,33 +11773,35 @@ const TESTER_BADGE_CSS = `
 // chrome rather than report content.
 const TESTER_BADGE_HTML = `
   <button id="testerBadge" type="button" class="tninja hidden no-print no-capture"
-    aria-label="Send feedback to the CompNinja team" title="Tester: send feedback">
+    aria-label="Send feedback or a recommendation to the CompNinja team" title="Send us feedback or a recommendation">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M12 3.2c4.5 0 8.1 2.9 8.1 6.5 0 .5-.05 1-.15 1.5H3.95c-.1-.5-.15-1-.15-1.5C3.9 6.1 7.5 3.2 12 3.2Z"/>
       <path d="M4.3 14.1h15.4c-1 3.5-4 5.9-7.7 5.9s-6.7-2.4-7.7-5.9Z"/>
       <circle cx="9" cy="12.6" r="1.25"/>
       <circle cx="15" cy="12.6" r="1.25"/>
     </svg>
+    <span class="tninja-l">Feedback</span>
   </button>
   <div id="testerModal" class="tfm hidden no-print">
     <div class="tfm-card">
-      <div class="tfm-lab">Tell the team</div>
-      <p class="tfm-note">You are on a tester code, so this goes straight to Jacob, Chuck and Owen. They can reply to you directly.</p>
+      <div class="tfm-lab">Help us make CompNinja better</div>
+      <p class="tfm-note">This goes straight to Jacob, Chuck and Owen, the team building CompNinja. They can reply to you directly.</p>
       <label class="tfm-l" for="testerKind">What is this?</label>
       <!-- ORDER IS THE DEFAULT: a select with nothing marked selected takes
-           its first option, and idea leads deliberately (owner's call). Do not
-           reorder these for tidiness -- opening on "something is broken"
-           primes a tester to hunt faults, and ideas are the half of a beta a
-           bug tracker never collects. TESTER_FEEDBACK_KINDS validates the
-           values, not their order, so it needs no matching edit. -->
+           its first option, and the recommendation leads deliberately (owner's
+           call, and since 2026-10-17 the badge's whole point: "a good spot
+           where people can put their recommendations"). Do not reorder these
+           for tidiness -- opening on "something is broken" primes a member to
+           hunt faults. TESTER_FEEDBACK_KINDS validates the values, not their
+           order, so it needs no matching edit. -->
       <select id="testerKind" class="tfm-in">
-        <option value="idea">An idea or a request</option>
+        <option value="idea">A recommendation or idea</option>
         <option value="problem">Something is broken</option>
         <option value="other">Anything else</option>
       </select>
-      <label class="tfm-l" for="testerMessage">What happened?</label>
+      <label class="tfm-l" for="testerMessage">Tell us about it</label>
       <textarea id="testerMessage" class="tfm-in" rows="5" maxlength="4000" aria-label="Your feedback"
-        placeholder="What you did, what you expected, and what you got instead."></textarea>
+        placeholder="What would make CompNinja better for you? If something broke, say what you did and what happened."></textarea>
       <p class="tfm-hint">The page you are on and your browser go along automatically, so you do not have to describe them.</p>
       <p id="testerMsg" class="tfm-msg hidden"></p>
       <div class="tfm-row">
@@ -11822,7 +11831,7 @@ $("testerSend").addEventListener("click",function(){
 var btn=$("testerSend"),box=$("testerMessage"),msg=$("testerMsg");
 if(btn.disabled)return;
 var message=box.value.trim();
-if(!message){msg.textContent="Please say what happened first.";msg.className="tfm-msg bad";box.focus();return;}
+if(!message){msg.textContent="Please write something first.";msg.className="tfm-msg bad";box.focus();return;}
 msg.className="tfm-msg hidden";
 btn.disabled=true;var label=btn.textContent;btn.textContent="Sending...";
 fetch("/api/tester-feedback",{method:"POST",headers:{"content-type":"application/json"},
@@ -11834,7 +11843,7 @@ if(!r.ok)throw new Error(d.error||"That did not send.");return d;});})
 box.value="";
 msg.textContent="Sent - thank you. They can reply to you directly.";
 msg.className="tfm-msg ok";})
-/* A failed send never clears the box: retyping a bug report is how a tester
+/* A failed send never clears the box: retyping a message is how a member
    stops sending them. */
 .catch(function(ex){msg.textContent=ex.message;msg.className="tfm-msg bad";})
 .then(function(){btn.disabled=false;btn.textContent=label;});
@@ -11909,11 +11918,12 @@ const ACCOUNT_NAV_JS =
   // and the member asked to hear about it on CompNinja. Its own endpoint for
   // the same reason as Messages'. Not on /permits itself, which clears it.
   `if(location.pathname!=="/permits")fetch("/api/permits/unread",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(function(j){var d=$("navPermitDot");if(!d||!j||!(j.count>0))return;d.textContent=j.count>9?"9+":String(j.count);d.hidden=false;}).catch(function(){});` +
-  // The tester badge, where the page asked for one. Same read, same pass:
-  // this script has already paid for /api/config, and the badge ships
-  // hidden so a non-tester never sees it blink. classList, not the hidden
-  // ATTRIBUTE that show() uses, because .tninja sets display and would win.
-  `var tb=$("testerBadge");if(tb)tb.classList.toggle("hidden",!pro.tester);` +
+  // The feedback badge, where the page asked for one: every signed-in member
+  // since 2026-10-17 (testers only before), and this line is already under
+  // `if(!me)return;`, so a signed-out visitor never gets it. It ships hidden
+  // so nobody sees it blink in. classList, not the hidden ATTRIBUTE that
+  // show() uses, because .tninja sets display and would win.
+  `var tb=$("testerBadge");if(tb)tb.classList.remove("hidden");` +
   // Same shape as the vault's rule, against the entitlement /api/config
   // already carries. Both links ship hidden and appear together once the
   // account resolves, which is why the rail is a fixed width — an item
@@ -14584,10 +14594,14 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     // only: a stranger's bar has neither row.
     (signedIn ? `<script>${SHOP_NAV_JS}</script>\n` : "") +
     `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn, current || "")}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n` +
-    // Opt-in, never on every page: this is a WORK surface affordance, and a
-    // marketing page read by a stranger is not that. The block ships hidden
-    // either way, so the switch is about which pages carry the markup at all.
-    `${testerBadge ? testerBadgeBlock() : ""}</body>\n</html>\n`;
+    // On every page a MEMBER reads (2026-10-17), so the rail's Feedback row
+    // sits in the same place whichever page they are on; until then it was
+    // opt-in per work page, which left it missing from Markets. Never on a
+    // stranger's copy of a page: a marketing page read by someone signed out
+    // is not where members leave recommendations, and the route would 401
+    // them. Cookie presence decides here, like the rail above; the block
+    // ships hidden and ACCOUNT_NAV_JS reveals it only for a real session.
+    `${testerBadge || signedIn ? testerBadgeBlock() : ""}</body>\n</html>\n`;
 }
 
 // The one place that serves a marketShell page, so the header swap and the
@@ -21320,29 +21334,28 @@ const server = http.createServer((req, res) =>
     return;
   }
 
-  // --- Redeem a passkey: comped Pro, or the broker vault --------------------
+  // --- Redeem a passkey: the broker vault ----------------------------------
   //
-  // ONE route and ONE input for two different codes, because the person
-  // typing has been handed a code and should not also have to know which
-  // kind it is. TESTER_PASSKEY comps Pro (never the vault); VAULT_PASSKEY
-  // grants the vault (never Pro). The route decides which by which secret
-  // the code matches, so the two audiences stay separately revocable —
-  // rotating one does not lock the other out.
+  // ONE code since 2026-10-17: VAULT_PASSKEY grants the vault (never Pro).
+  // The route also compared TESTER_PASSKEY, which comped Pro, until that code
+  // was retired for a month-long trial everyone gets (see TESTER_PASSKEY's
+  // comment); a tester code typed here now answers like any wrong code. The
+  // response keeps its `granted` array, so the browser's handling is the
+  // same shape it always was.
   //
   // Refusal order mirrors the vault's openVault() and requireBroker(): the
   // feature not existing, then the caller, then the secret.
   //
   // Deliberately NOT ADMIN_KEY. That key also unlocks /admin, /dev and
-  // /contacts, so it can never be the thing handed to a tester or a broker;
-  // these grants touch neither the dashboards nor the header-only `internal`
-  // bypass in /api/comps.
+  // /contacts, so it can never be the thing handed to a broker; this grant
+  // touches neither the dashboards nor the header-only `internal` bypass in
+  // /api/comps.
   if (req.method === "POST" && req.url === "/api/redeem-passkey") {
-    // Neither configured = the feature does not exist on this deployment. 404
+    // Not configured = the feature does not exist on this deployment. 404
     // rather than 403, matching how the ADMIN_KEY-gated routes go dark when
     // unconfigured: a probe cannot tell a wrong code from a deployment that
-    // has no code. Either one alone is enough to open the route — the two
-    // passkeys are independent, so a deployment can run only the vault door.
-    if (!TESTER_PASSKEY && !VAULT_PASSKEY) {
+    // has no code.
+    if (!VAULT_PASSKEY) {
       res.writeHead(404, { "content-type": "text/plain" });
       return res.end("Not found");
     }
@@ -21356,54 +21369,31 @@ const server = http.createServer((req, res) =>
           return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
         }
         const user = await getSessionUser(req);
-        // Both grants are stored on an account, so there is nothing to store
-        // them on for an anonymous caller. Checked BEFORE the secret compare
-        // so a signed-out prober cannot use this route to test codes at all.
+        // The grant is stored on an account, so there is nothing to store it
+        // on for an anonymous caller. Checked BEFORE the secret compare so a
+        // signed-out prober cannot use this route to test codes at all.
         if (!user) return sendJson(res, 401, { error: "Sign in first, then redeem your code." });
         const passkey = String(JSON.parse(body || "{}").passkey || "").trim();
 
-        // Which doors this code opens. BOTH secrets are compared on every
-        // redemption rather than stopping at the first hit: the answer is a
-        // list, so a deployment that (by mistake) sets the same string for
-        // both grants what the code plainly says it does, instead of
-        // silently preferring whichever comparison happened to run first.
-        const opens = [];
-        if (TESTER_PASSKEY && secretMatches(passkey, TESTER_PASSKEY)) opens.push("tester");
-        if (VAULT_PASSKEY && secretMatches(passkey, VAULT_PASSKEY)) opens.push("vault");
-
-        if (!opens.length) {
-          // Someone who already has everything this deployment can give is
-          // told "already", never "incorrect code" — otherwise a rotated or
-          // mistyped passkey would deny an account that is already inside.
-          // This is the old pre-compare idempotency check, generalized: with
-          // two codes the route cannot know which grant is being claimed
-          // until it compares, so the check moved after the compare and
-          // asks whether anything is left to redeem at all. On a deployment
-          // with only TESTER_PASSKEY set it is exactly the old behavior.
-          const nothingLeft = (!TESTER_PASSKEY || user.pro_tester) && (!VAULT_PASSKEY || user.vault_beta);
-          if (nothingLeft) return sendJson(res, 200, { ok: true, already: true });
+        if (!secretMatches(passkey, VAULT_PASSKEY)) {
+          // Someone who already holds the grant is told "already", never
+          // "incorrect code" — otherwise a rotated or mistyped passkey would
+          // deny an account that is already inside.
+          if (user.vault_beta) return sendJson(res, 200, { ok: true, already: true });
           return sendJson(res, 401, { error: "That code isn't right." });
         }
 
         // Idempotent: re-redeeming a code you already hold is a no-op, not an
         // error. Skipping the write also keeps a re-redemption off the
         // database entirely.
-        const granted = [];
-        if (opens.includes("tester") && !user.pro_tester) {
-          await setUserTester(user.id);
-          granted.push("tester");
-        }
-        if (opens.includes("vault") && !user.vault_beta) {
-          await setUserVaultBeta(user.id);
-          granted.push("vault");
-        }
-        if (!granted.length) return sendJson(res, 200, { ok: true, already: true });
-        console.log(`Passkey redeemed by ${user.email}: ${granted.join(", ")}`);
-        return sendJson(res, 200, { ok: true, granted });
+        if (user.vault_beta) return sendJson(res, 200, { ok: true, already: true });
+        await setUserVaultBeta(user.id);
+        console.log(`Passkey redeemed by ${user.email}: vault`);
+        return sendJson(res, 200, { ok: true, granted: ["vault"] });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
-        // setUserTester/setUserVaultBeta throw on a failed write — never
-        // report success for a grant that did not land.
+        // setUserVaultBeta throws on a failed write — never report success
+        // for a grant that did not land.
         console.error("redeem-passkey error:", err);
         return sendJson(res, 500, { error: "Could not redeem that code. Please try again." });
       }
@@ -21411,42 +21401,40 @@ const server = http.createServer((req, res) =>
     return;
   }
 
-  // --- Tester feedback: the ninja badge in the app's corner ----------------
+  // --- Feedback: the ninja badge -------------------------------------------
   //
-  // The beta channel. Only an account carrying the tester grant sees the badge
-  // (index.html reveals it from /api/config's `pro.tester`), and this route
-  // re-checks the same entitlement server-side -- that flag is presentation
-  // only, like every field in that block.
-  //
-  // Refusal order mirrors openVault() and requireBroker(): the caller, then
-  // the caller's grant, then the deployment. Deliberately NOT open to admins
-  // or to ordinary Pro: the owner asked for the people using the site under a
-  // tester code, and a feedback button that everybody sees is a support inbox,
-  // which is a different product with different promises about answering.
+  // Where members send recommendations, ideas and problems to the team. It
+  // was the beta channel, open only to an account on the tester code, until
+  // 2026-10-17, when the code was retired for a month-long trial and the
+  // owner asked to keep the ninja "in a good spot where people can put their
+  // recommendations": so every signed-in member sees the badge now (in the
+  // rail, over the account circle; TESTER_BADGE_CSS) and this route asks only
+  // that the caller be signed in. A signed-in caller is still required,
+  // because the reply goes back to their account's address. The route keeps
+  // its name: it is a URL the badge posts to, not words anyone reads.
   if (req.method === "POST" && req.url === "/api/tester-feedback") {
     let body = "";
     req.on("data", (c) => { body += c; if (body.length > 2e4) req.destroy(); });
     req.on("end", async () => {
       try {
-        // Per IP, and loose enough that a tester filing three bugs in a row is
-        // never told to wait -- the thing being protected is our own outbound
-        // mail reputation, not a secret, so this is nothing like the passkey's 5.
+        // Per IP, and loose enough that a member filing three ideas in a row
+        // is never told to wait -- the thing being protected is our own
+        // outbound mail reputation, not a secret, so this is nothing like the
+        // passkey's 5.
         if (rateLimited("feedback:" + clientIp(req), 12, 60 * 60 * 1000)) {
           return sendJson(res, 429, { error: "That is a lot of feedback in one hour. Please try again shortly." });
         }
         const user = await getSessionUser(req);
         if (!user) return sendJson(res, 401, { error: "Sign in first." });
-        const ent = await entitlementsFor(req);
-        if (ent.tester !== true) return sendJson(res, 403, { error: "This is for accounts on a tester code." });
 
         const payload = JSON.parse(body || "{}");
         const kind = String(payload.kind || "other").trim().toLowerCase();
         if (!TESTER_FEEDBACK_KINDS.includes(kind)) return sendJson(res, 400, { error: "Unknown feedback kind." });
         const message = String(payload.message || "").trim();
-        if (!message) return sendJson(res, 400, { error: "Please say what happened." });
+        if (!message) return sendJson(res, 400, { error: "Please write something first." });
         if (message.length > 4000) return sendJson(res, 400, { error: "That is longer than we can send. Please trim it a little." });
 
-        // Context the tester did not have to type, and the three things that
+        // Context the member did not have to type, and the three things that
         // actually shorten a repro: where they were, how big their window is,
         // and what they were browsing in. All client-supplied, so all capped
         // and stringified -- this text is pasted into an email we send.
@@ -21456,10 +21444,10 @@ const server = http.createServer((req, res) =>
         const viewport = clip(ctx.viewport, 40);
         const ua = clip(ctx.ua, 300);
 
-        const label = kind === "problem" ? "Problem" : kind === "idea" ? "Idea" : "Feedback";
-        const subject = `CompNinja tester ${label.toLowerCase()} from ${user.email}`;
+        const label = kind === "problem" ? "Problem" : kind === "idea" ? "Recommendation" : "Feedback";
+        const subject = `CompNinja ${label.toLowerCase()} from ${user.email}`;
         const text = [
-          `${label} reported by a tester.`,
+          `${label} sent from the feedback button.`,
           "",
           message,
           "",
@@ -21470,7 +21458,7 @@ const server = http.createServer((req, res) =>
           ua ? `Browser:  ${ua}` : "",
           `Build:    ${BUILD_COMMIT || "unknown"}`,
           "",
-          "Reply to this email to answer the tester directly.",
+          "Reply to this email to answer them directly.",
         ].filter(Boolean).join("\n");
 
         // Logged BEFORE the send, always. sendOutboundEmail is a silent no-op
@@ -21479,12 +21467,12 @@ const server = http.createServer((req, res) =>
         // deploy log first, where they survive a mail outage, a bad address and
         // a provider having a bad minute. The watchlist digest's rule, from the
         // other end: it refuses to run blind, this one refuses to lose the text.
-        console.log(`Tester feedback (${kind}) from ${user.email}: ${message.replace(/\s+/g, " ").slice(0, 500)}`);
+        console.log(`Feedback (${kind}) from ${user.email}: ${message.replace(/\s+/g, " ").slice(0, 500)}`);
 
         // One message per recipient, never one with three in `to`: sendEmail
         // wraps its `to` in an array, so an array argument posts a nested one.
-        // reply_to is the TESTER, so answering the mail answers the person --
-        // the single thing most likely to keep a beta channel alive.
+        // reply_to is the MEMBER, so answering the mail answers the person --
+        // the single thing most likely to keep them sending ideas.
         const results = await Promise.all(TESTER_FEEDBACK_TO.map((to) =>
           sendOutboundEmail(to, subject, text, { replyTo: user.email })));
         const delivered = results.filter(Boolean).length;
@@ -21494,7 +21482,7 @@ const server = http.createServer((req, res) =>
         if (!delivered) {
           // Never report a send that did not happen. The text is in the log, so
           // say that plainly and name a human address rather than leaving a
-          // tester to wonder whether the report went anywhere.
+          // member to wonder whether the report went anywhere.
           return sendJson(res, 503, {
             error: "Saved, but the email did not go out. Please send it to " +
               (TESTER_FEEDBACK_TO[0] || "the team") + " so it is not missed.",
@@ -21503,7 +21491,7 @@ const server = http.createServer((req, res) =>
         return sendJson(res, 200, { ok: true, delivered });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
-        console.error("tester-feedback error:", err);
+        console.error("feedback error:", err);
         return sendJson(res, 500, { error: "Could not send that. Please try again." });
       }
     });
@@ -26860,16 +26848,11 @@ const server = http.createServer((req, res) =>
           // Stripe portal for a customer record they do not have, so it 400s.
           // Presentation only, like every field in this block.
           viaFirm: ent.viaFirm || null,
-          // Whether this deployment has a tester passkey at all, so the pricing
-          // modal can hide a redeem row that could only ever fail. NOT a secret and
-          // not an entitlement: it says a door exists, never what opens it.
-          testerPasskey: Boolean(TESTER_PASSKEY),
-          // The vault's own door, reported separately because the two codes
-          // unlock different things and a deployment can run either alone.
-          // The redeem row shows while EITHER is set and this caller still
-          // has something left to redeem, so a broker with the vault but no
-          // Pro is not shown a row whose only remaining use is a code they
-          // were never given.
+          // Whether this deployment has a vault passkey at all, so the
+          // Settings panel can hide a redeem row that could only ever fail.
+          // NOT a secret and not an entitlement: it says a door exists, never
+          // what opens it. (Its twin `testerPasskey` went with the tester
+          // code on 2026-10-17.)
           vaultPasskey: Boolean(VAULT_PASSKEY),
           maxComps: ent.maxComps,
           maxLookbackMonths: ent.maxLookbackMonths,
@@ -32594,9 +32577,6 @@ server.listen(PORT, () => {
   } else {
     console.log("⭐ Pro tier disabled (set PRO_ENABLED=on once the Pro DDL has been run).");
   }
-  // Loud on purpose, same reason as the PRO_AUDIENCE line above: a passkey set
-  // with migration 022 not yet run looks like a working deployment until a
-  // real tester's redemption 500s.
   // The new-account Pro trial (2026-09-25). Said loudly either way: it hands
   // out Pro, so "is it on here?" should never need a code read to answer.
   console.log(PRO_TRIAL_DAYS > 0
@@ -32607,19 +32587,16 @@ server.listen(PORT, () => {
   if (STRIPE_CONFIGURED && !STRIPE_PRICES.annual) {
     console.log("🗓  No STRIPE_PRICE_PRO_ANNUAL set — the yearly plan is hidden and its checkout answers 503.");
   }
-  console.log(TESTER_PASSKEY
-    ? "🔑 Tester passkey ENABLED — signed-in redemption at POST /api/redeem-passkey requires the users.pro_tester column (migrations/022-tester-passkey.sql)."
-    : "🔑 Tester passkey not set (set TESTER_PASSKEY to let signed-in testers redeem comped Pro).");
+  // The tester code is retired (2026-10-17): say so if the host still sets
+  // one, so nobody hands it out believing it works.
+  if (TESTER_PASSKEY) {
+    console.log("🔑 TESTER_PASSKEY is set but the tester code is retired — it opens nothing now " +
+      "(every new account gets the Pro trial instead). Remove it from the host's environment.");
+  }
+  // Loud on purpose, same reason as the PRO_AUDIENCE line above: a passkey set
+  // with migration 023 not yet run looks like a working deployment until a
+  // real broker's redemption 500s.
   console.log(VAULT_PASSKEY
     ? "🔑 Vault passkey ENABLED — signed-in redemption at POST /api/redeem-passkey requires the users.vault_beta column (migrations/023-vault-beta.sql)."
     : "🔑 Vault passkey not set (set VAULT_PASSKEY to hand brokers a vault without a SQL update).");
-  // Same string for both codes is a configuration mistake, not a feature: the
-  // route would then hand every tester the private-data workspace the tester
-  // grant exists to withhold. Loud rather than fatal — refusing to boot over
-  // it would take the site down for a misconfiguration that opens nothing a
-  // rotation cannot close.
-  if (TESTER_PASSKEY && VAULT_PASSKEY && TESTER_PASSKEY === VAULT_PASSKEY) {
-    console.error("⛔ TESTER_PASSKEY and VAULT_PASSKEY are the SAME string, so every tester code " +
-      "also opens the broker vault. Set them to different values.");
-  }
 });

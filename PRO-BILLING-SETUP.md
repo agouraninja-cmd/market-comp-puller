@@ -662,6 +662,18 @@ days and every new one. To give EXISTING free accounts their 14 days, set
 `PRO_TRIAL_START` to the launch date (`YYYY-MM-DD`). `PRO_TRIAL_DAYS=0` turns
 it off with no deploy.
 
+**A month since 2026-10-17** (owner's call: "instead of having a test
+environment just give new users a month free trial with everything
+included"). The default is 30 days, and the tester code (`TESTER_PASSKEY`) is
+retired the same day: it redeems nothing, and the boot log says so if it is
+still set. Two things to check on Render: **remove `PRO_TRIAL_DAYS` if it is
+set to 14** (a value on the host beats the default), and **remove
+`TESTER_PASSKEY`**. A launch date in `PRO_TRIAL_START` now counts 30 days from
+that date, so accounts older than it get the longer trial too, and an account
+whose 14 days already ran out but whose 30 have not is back on Pro until day
+30. Accounts that already redeemed a tester code keep comped Pro; to comp
+someone by hand now, `update users set pro_tester = true where email = …`.
+
 **Since the price check shipped (same day) a wrong order can no longer
 mischarge anybody.** At boot the server asks Stripe what each sold price
 charges and pauses checkout for any plan whose price disagrees with the page

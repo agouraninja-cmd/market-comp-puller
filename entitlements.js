@@ -129,17 +129,22 @@ const RENEWAL_SLACK_MS = 24 * 60 * 60 * 1000;
 
 // The new-account Pro trial (2026-09-25, owner's call). Every account gets
 // full Pro for this many days, counted from the LATER of its own created_at
-// and the trial's launch date — so an account made after launch gets 14 days
-// from signup, and an account that already existed gets 14 days from launch
-// day instead of none. server.js supplies both (PRO_TRIAL_DAYS and
+// and the trial's launch date — so an account made after launch gets its days
+// from signup, and an account that already existed gets them from launch day
+// instead of none. server.js supplies both (PRO_TRIAL_DAYS and
 // PRO_TRIAL_START); trialEndsAt() below does the arithmetic.
+//
+// A month since 2026-10-17 (owner's call: "instead of having a test
+// environment just give new users a month free trial with everything
+// included"). It was 14. The tester code stopped being handed out the same
+// day, so this is the one door into the whole product for someone new.
 //
 // Deliberately a dated grant here and NOT a Stripe trial. Stripe marks a
 // trialling subscription `trialing`, which subscriptionState() does not
 // recognise and therefore reads as expired — a Stripe trial would have locked
 // every trial user out. It also needs no card and no migration: created_at is
 // on every users row already.
-const TRIAL_DAYS = 14;
+const TRIAL_DAYS = 30;
 
 // Every plan we sell or have sold. `pro_annual` is the standing annual plan
 // (2026-09-25); `pro_annual_founding` is no longer SOLD, but its subscribers
@@ -451,7 +456,10 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
   // --- Comped Pro for a beta tester -----------------------------------------
   //
   // A persistent flag on the user row (users.pro_tester), set by redeeming
-  // TESTER_PASSKEY. Deliberately NOT an early short-circuit like the admin
+  // TESTER_PASSKEY until 2026-10-17, when the code was retired in favour of a
+  // month-long trial for everyone. Accounts that already hold the flag keep
+  // it (only a one-row UPDATE takes it away), and that UPDATE is now the only
+  // way to set it. Deliberately NOT an early short-circuit like the admin
   // branch above, and the difference is the whole design:
   //
   //   Admin is possession of a KEY — a staff signal, and staff are not

@@ -124,8 +124,10 @@ test("the tools group is labelled on both rails, and shows on neither bar", () =
     const off = src.search(/\.navsec\s*\{\s*display:\s*none/);
     assert.notEqual(off, -1, name + " never hides the label, so a phone shows it");
     const on = src.indexOf("nav-rail");
-    const guard = src.indexOf("min-width:900px") > -1
-      ? src.indexOf("min-width:900px") : src.indexOf("min-width: 900px");
+    // The RAIL's guard: the 900px block that pads the body for the rail. Not
+    // merely the first "min-width:900px" in the file, since other chrome (the
+    // feedback badge's rail placement, 2026-10-17) has its own 900px query.
+    const guard = src.search(/@media \(min-width: ?900px\) ?\{\s*html\.nav-rail body ?\{/);
     assert.ok(guard > -1, name + " lost its 900px guard");
     assert.ok(off < guard,
       name + " declares the hidden default INSIDE the rail media query, where it can only turn the label on");

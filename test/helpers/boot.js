@@ -186,7 +186,8 @@ async function bootOnce(env) {
       GOOGLE_MAPS_API_KEY: "",
       STREETVIEW_API_URL: "http://127.0.0.1:9/streetview-unset",
       // The new-account Pro trial, OFF by default here (2026-09-25). In
-      // production it is on for 14 days, which means every account a suite
+      // production it is on for 30 days (14 until 2026-10-17), which means
+      // every account a suite
       // creates would be Pro for the whole test — and dozens of suites sign up
       // an account precisely to prove what the FREE tier may and may not do.
       // Off here keeps those suites saying what they say; the trial's own

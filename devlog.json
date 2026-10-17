@@ -4825,5 +4825,17 @@
     "type": "fix",
     "title": "Permit sweep: new permits in a month's re-read were not being saved",
     "details": "When the sweep re-read a month of permits, some came with a map location and some without. The database refuses a batch whose rows don't match, so none of them were saved (Meridian's October permits, for one). Every permit row now has the same shape, and the test database refuses mismatched batches the way the real one does."
+  },
+  {
+    "date": "2026-10-17",
+    "type": "improvement",
+    "title": "Every new account gets a month of CompNinja Pro, everything included",
+    "details": "New accounts now get 30 days of the whole product (comps, pipeline, bulk valuation, firms, branding) with no card, up from 14 days. The tester code is retired: a month-long trial does the same job for everyone, so the code no longer unlocks anything. People who already used a tester code keep their access."
+  },
+  {
+    "date": "2026-10-17",
+    "type": "feature",
+    "title": "Send us feedback from the ninja in the sidebar",
+    "details": "The ninja feedback button used to be only for people on a tester code. Now every signed-in member has it, as a Feedback row in the sidebar just above your account circle (a round ninja in the corner on a phone). It opens on “A recommendation or idea”, and what you send goes straight to the team, who can reply to you directly."
   }
 ]

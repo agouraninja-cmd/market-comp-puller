@@ -4819,5 +4819,11 @@
     "type": "fix",
     "title": "Permit sweep: Nampa's block is a warning, not a daily failure",
     "details": "Nampa's city website has refused CompNinja's server since Oct 6, which failed the weekday permit sweep every day and skipped the refresh of older Boise and Meridian permits. A refusal from Nampa now shows as a warning, so the sweep runs green when Boise and Meridian work; any other error still fails it. Nampa's numbers stay as of Oct 2 until the city lets us back in."
+  },
+  {
+    "date": "2026-10-16",
+    "type": "fix",
+    "title": "Permit sweep: new permits in a month's re-read were not being saved",
+    "details": "When the sweep re-read a month of permits, some came with a map location and some without. The database refuses a batch whose rows don't match, so none of them were saved (Meridian's October permits, for one). Every permit row now has the same shape, and the test database refuses mismatched batches the way the real one does."
   }
 ]

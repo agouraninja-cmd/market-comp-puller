@@ -254,8 +254,10 @@ test("a filing keeps its parcel's center point, marked as from the parcel; witho
   assert.equal(placed.lng, -116.15);
   assert.equal(placed.geo_source, "parcel");
   const bare = F.normalizeFiling({ permit_number: "B2", ref: {} }, boise, {}, deps);
-  assert.equal("lat" in bare, false, "no point is written, so the locate step tries the address");
-  assert.equal("geo_source" in bare, false);
+  // Null, never missing: one batch's rows must carry the same keys
+  // (PostgREST PGRST102), and a null geo_source is what the locate step reads.
+  assert.deepEqual([bare.lat, bare.lng, bare.geo_source], [null, null, null], "no point is written, so the locate step tries the address");
+  assert.deepEqual(Object.keys(bare).sort(), Object.keys(placed).sort(), "placed and unplaced rows share one shape");
   assert.deepEqual([F.toFilingView({ permit_number: "x", lat: 43.5, lng: -116.1 }).lat, F.toFilingView({ permit_number: "x" }).lat], [43.5, null]);
   assert.equal(F.toFilingView({ permit_number: "x", lat: null, lng: null }).lng, null, "a null is not the equator");
 });

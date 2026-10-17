@@ -225,6 +225,18 @@ function start({ tables = {}, resendStatus = 200, missingTables = [] } = {}) {
         if (req.method === "POST") {
           const payload = JSON.parse(body || "{}");
           const rows = Array.isArray(payload) ? payload : [payload];
+          // PostgREST refuses a bulk insert whose objects do not all carry the
+          // same keys (PGRST102, "All object keys must match"). Taught
+          // 2026-10-16: the permit history pass sent placed and unplaced
+          // filings in one batch, production lost every new permit in that
+          // window, and this fake had stored them all without a word.
+          if (rows.length > 1) {
+            const keysOf = (r) => Object.keys(r || {}).sort().join(",");
+            const first = keysOf(rows[0]);
+            if (rows.some((r) => keysOf(r) !== first)) {
+              return json(400, { code: "PGRST102", details: null, hint: null, message: "All object keys must match" });
+            }
+          }
           // The STORED rows are returned, not the payload — PostgREST's
           // `return=representation` answers with what the table now holds,
           // including a generated id. Returning the payload instead meant a

@@ -1,0 +1,176 @@
+{
+  "day": "2026-09-29",
+  "updatedAt": "2026-09-30T22:30:29.489Z",
+  "period": {
+    "start": "2026-09-24",
+    "end": "2026-10-07",
+    "index": 6,
+    "length": 14,
+    "days": [
+      "2026-09-24",
+      "2026-09-25",
+      "2026-09-26",
+      "2026-09-27",
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30",
+      "2026-10-01",
+      "2026-10-02",
+      "2026-10-03",
+      "2026-10-04",
+      "2026-10-05",
+      "2026-10-06",
+      "2026-10-07"
+    ]
+  },
+  "resetsOn": "2026-10-08",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 11,
+        "prs": 10
+      },
+      "periodTotal": 52,
+      "periodPrs": 41,
+      "points": [
+        11,
+        26,
+        4,
+        0,
+        0,
+        11,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 2,
+      "periodPrs": 1,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 345,
+      "title": "Log migrations 053 and 054 as applied",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 346,
+      "title": "Track your own permit, and see its steps land on the Workspace",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 347,
+      "title": "Cap rate is editable in the vault table; market comps list newest first",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 348,
+      "title": "Permit tracking is Pro, and an owner can track a permit for the whole firm",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 349,
+      "title": "Log migration 055 as applied to production",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 350,
+      "title": "Firm owners can make admins and hand the firm on",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 351,
+      "title": "Every colleague has a profile card (Draft A)",
+      "login": "agouraninja-cmd",
+      "commits": 2
+    },
+    {
+      "number": 352,
+      "title": "Permit tracker: filter by property type",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 353,
+      "title": "Permit tracker: apartments count as Multifamily",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 354,
+      "title": "Messages: unsend your own message for 15 minutes",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    }
+  ]
+}

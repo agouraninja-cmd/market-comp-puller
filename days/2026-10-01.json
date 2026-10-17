@@ -1,0 +1,158 @@
+{
+  "day": "2026-10-01",
+  "updatedAt": "2026-10-02T12:24:37.754Z",
+  "period": {
+    "start": "2026-09-24",
+    "end": "2026-10-07",
+    "index": 8,
+    "length": 14,
+    "days": [
+      "2026-09-24",
+      "2026-09-25",
+      "2026-09-26",
+      "2026-09-27",
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30",
+      "2026-10-01",
+      "2026-10-02",
+      "2026-10-03",
+      "2026-10-04",
+      "2026-10-05",
+      "2026-10-06",
+      "2026-10-07"
+    ]
+  },
+  "resetsOn": "2026-10-08",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 9,
+        "prs": 7
+      },
+      "periodTotal": 64,
+      "periodPrs": 51,
+      "points": [
+        11,
+        26,
+        4,
+        0,
+        0,
+        11,
+        3,
+        9,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 2,
+      "periodPrs": 1,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 358,
+      "title": "Market pages: building permits in Boise and Meridian (Draft C)",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 359,
+      "title": "Permit tracker: alerts (Draft B)",
+      "login": "agouraninja-cmd",
+      "commits": 2
+    },
+    {
+      "number": 360,
+      "title": "Permit tracker: decode numbered codes like &#160; in permit text",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 361,
+      "title": "Permit alerts: follow an area on a map (Draft B)",
+      "login": "agouraninja-cmd",
+      "commits": 2
+    },
+    {
+      "number": 362,
+      "title": "Permit tracker: compare cities by their permits",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 363,
+      "title": "Permit wait chart: no line without young permits to anchor it",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 364,
+      "title": "Permit tracker: add Nampa, read from the city's published reports",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    }
+  ]
+}

@@ -4837,5 +4837,11 @@
     "type": "feature",
     "title": "Send us feedback from the ninja in the sidebar",
     "details": "The ninja feedback button used to be only for people on a tester code. Now every signed-in member has it, as a Feedback row in the sidebar just above your account circle (a round ninja in the corner on a phone). It opens on “A recommendation or idea”, and what you send goes straight to the team, who can reply to you directly."
+  },
+  {
+    "date": "2026-10-17",
+    "type": "fix",
+    "title": "Team accounts can save more than 100 properties",
+    "details": "Team accounts with free Pro were stopped at 100 saved properties, the free plan's limit, even though everywhere else they had Pro's 500. Saving a property now counts their Pro like the rest of the site does."
   }
 ]

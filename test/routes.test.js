@@ -2292,6 +2292,36 @@ test("portfolio upsert and cap", async (t) => {
     assert.equal(update.status, 200, "updating an existing address must not consult the cap");
   });
 
+  await t.test("Pro (comped team, the admin cookie) can insert past 100", async () => {
+    // The account above holds exactly 100 and is on the free plan. The admin
+    // cookie comps it Pro, and the cap must agree with /api/config: until
+    // 2026-10-17 the insert read entitlements WITHOUT the admin flag, so
+    // /api/config said 500 while this route refused the 101st.
+    const grant = await fetch(srv.base + "/api/admin-access", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: "k" }),
+    });
+    assert.equal(grant.status, 200);
+    const admin = String(grant.headers.get("set-cookie") || "").split(";")[0];
+    assert.ok(admin.startsWith("cn_admin="), "expected a cn_admin cookie, got " + admin);
+    const both = cookie + "; " + admin;
+    const cfg = await (await fetch(srv.base + "/api/config", { headers: { cookie: both } })).json();
+    assert.equal(cfg.pro.admin, true);
+    assert.equal(cfg.pro.portfolioMaxItems, 500);
+
+    const r = await fetch(srv.base + "/api/portfolio", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: both },
+      body: JSON.stringify({ payload: reportPayload("Team Overflow Ave, Boise, ID", "Industrial") }),
+    });
+    assert.equal(r.status, 200, "the 101st property is allowed for the comped team");
+
+    // ...and only WITH the cookie: the same account alone is still free.
+    const alone = await post({ payload: reportPayload("Another Overflow Ave, Boise, ID", "Industrial") });
+    assert.equal(alone.status, 400, "without the admin cookie the free cap still holds");
+  });
+
   await t.test("Pro (a trial) can insert past 100", async (t) => {
     // Through the month-long trial since the tester code was retired
     // (2026-10-17): it is the door every new account walks through now, and

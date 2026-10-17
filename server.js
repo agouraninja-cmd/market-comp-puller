@@ -21603,7 +21603,10 @@ const server = http.createServer((req, res) =>
             logEvent("portfolio_refresh", { prop_type: property_type, market: marketOf(address) });
             return sendJson(res, 200, { id: updated.id, snapshots: updated.snapshots });
           }
-          const ent = await getEntitlements(user);
+          // The admin flag too (2026-10-17): without it a team member on
+          // comped Pro was held to the free cap of 100 here while
+          // /api/config, which does pass it, told their browser 500.
+          const ent = await getEntitlements(user, undefined, isAdminRequest(req));
           const cap = Number(ent.portfolioMaxItems) || ENT.FREE_PORTFOLIO_MAX_ITEMS;
           if (items.length >= cap) {
             return sendJson(res, 400, { error: `Portfolio is full (${cap} properties).` });

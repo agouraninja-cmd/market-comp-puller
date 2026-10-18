@@ -88,6 +88,65 @@ paths:
 > - Pinned in `test/desk-map-layers.test.js` ("Home holds no comps") and
 >   `test/home-map.test.js`.
 
+> **An empty Home asks for its first building (2026-10-18; the owner's pick,
+> Draft C "Start with an address" of the empty-Home drafts at
+> https://claude.ai/artifact/Xpnhf7uyNifbGfKpJgXopL, built as round one drew
+> it: "Just build C for now dont do C refined").** An account with nothing on
+> Home (`nothing` in `drawHomeMap`) used to get the list, an "Add a property"
+> card and a "Your map is empty" card over a bare map. Now:
+> - **`#hmFirst` is the start screen**, and `hmFirstShow(on)` its one writer
+>   (and the only writer of `.hm-first-on` on `#homeMap`). It shows only when
+>   there is somewhere to put the address (`hmFirstWays()`: the member's own
+>   add form, `HOMEMAP.addWhere("own") === "home"` with home-sites.js, or a
+>   firm) and somebody is signed in. At 900px and up beside the rail the list
+>   hides and the card floats over the left of a full-width map, with a fade
+>   from `--paper` under it; below that, or in the bar shell, the map is a
+>   240px strip over the card. `#hmStart` and the map's empty card stay down
+>   while it is up.
+> - **The card**: the day, the firm and its shop (when in one), the greeting
+>   (`deskGreetingFor` + "."), "Where’s your first building?", one address box
+>   with "Put it on the map", and, only for a firm member who also has their
+>   own form, "I own it" / "It’s one of {firm}’s" (`hmFirstWho`). Under "Or
+>   start somewhere else" three doors: the team (`openFirmModal`; "Invite your
+>   team" in a firm, "Start a firm" outside one), Follow a market (`/markets`)
+>   and See permits (`/permits`). The fine print is the automated-estimate
+>   line.
+> - **Putting it on the map runs no search.** The submit sets `hmFirstGone`
+>   (until `resetHomeMap`), redraws, opens Properties and hands the address to
+>   the same opener the chooser uses: `hmOpenFirmAdd(address)` (the firm form,
+>   `#buildingAddress`, focus on the type) or `hmOpenMineAdd("own", address)`
+>   (home-sites.js's form, focus on its `property_type`). The member still
+>   picks a type and saves, and a value comes from Refresh as before, which is
+>   why the card says "One click gets it an automated value estimate" and not
+>   that the value comes with the pin.
+> - **The map behind it is where CompNinja has market pages**: one ink dot
+>   per city (`.hm-mkt`, `HOMEMAP.marketCities`, sized by its page count) and
+>   a key, "40 market pages in 24 cities" (`HOMEMAP.marketsLine`) with
+>   "Explore →" to `/markets`. Read once the page is shown
+>   (`hmLoadMarkets`, `hmWhenShown`), from `GET /api/markets`, whose rows now
+>   carry the momentum map's own `lat`/`lng` (markets.md). Public data only;
+>   no address goes anywhere. `hmDrawPins` hands off to `hmDrawFirstMap()`
+>   while the screen is up, fitted once per layout to the lower 48
+>   (`HM_LOWER48`) clear of the card; leaving it resets the view.
+> - **After the first property**, Today's empty pane becomes **Next**
+>   (`#hmNext`, `hmDrawNext(firm)` its one writer): with no Today items and one
+>   to three rows, "Bring your team" outside a firm, "Invite your team / Share
+>   {street} with {firm}" while the firm has one joined member, and "Follow
+>   {town} {type}" to the held property's market page. Built with
+>   textContent; the icon markup is static. A lone property's card opens on
+>   the first view (with nothing on Today), and a map whose properties all sit
+>   at one point fits no closer than `HM_ONE_ZOOM` (14), a neighbourhood
+>   rather than a rooftop.
+> - **Smaller fixes from the same pass.** The firm header's mark lost its red
+>   "+" badge; a manager of a firm with no logo gets "+ Add your firm’s logo"
+>   (`.hm-fh-logo`, found by class, since its id never ships in the page)
+>   under the shop line, and the briefcase button reads "Firm settings".
+>   Today's foot offers "All lease dates" only when the firm has buildings and
+>   "All conversations" only when there is one. The legend names only the
+>   property kinds actually drawn. `#hmMapEmpty` reads "Add a property, and it
+>   lands here as your first pin." Pinned in `test/desk-map-layers.test.js`,
+>   `test/home-map.test.js` and `test/routes.test.js`.
+
 > **The map's switch is Properties · Permits, one at a time (2026-10-16,
 > the owner: "remove both just make it so the only two options are
 > properties and permits").** `#hmLayerBoth` is gone; `HOMEMAP.VIEWS` is

@@ -1793,12 +1793,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-fh-mark img { width: 100%; height: 100%; object-fit: contain; padding: 3px; box-sizing: border-box; border-radius: 9px; }
     button.hm-fh-mark { cursor: pointer; }
     button.hm-fh-mark:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
-    .hm-fh-add { position: absolute; right: -4px; bottom: -4px; display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; border: 2px solid var(--paper); background: var(--red-fill); color: #fff; font-size: 12px; font-weight: 700; line-height: 1; }
     .hm-fh-txt { min-width: 0; flex: 1; }
     .hm-fh-txt b { display: block; font-size: 15px; font-weight: 600; line-height: 1.25; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .hm-fh-txt small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink-3); }
     .hm-fh-txt small em { font-style: normal; font-weight: 600; color: var(--bv-text); }
-    .hm-fh-set { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--edge); border-radius: 8px; background: var(--card); color: var(--ink-2); cursor: pointer; }
+    .hm-fh-set { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid var(--edge); border-radius: 8px; background: var(--card); font: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); white-space: nowrap; cursor: pointer; }
+    /* The logo's door, in words (2026-10-18): a red + on the initials did
+       not say what it added. */
+    .hm-fh-logo { display: block; margin-top: 3px; padding: 0; border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--red); cursor: pointer; }
+    .hm-fh-logo:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .hm-fh-logo:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
     .hm-fh-set.hidden { display: none; }
     .hm-fh-set:hover { border-color: var(--ink-3); }
     .hm-fh-set:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
@@ -1939,6 +1943,82 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-map-empty { position: absolute; left: 50%; top: 50%; z-index: 500; pointer-events: none; width: min(340px, calc(100% - 32px)); transform: translate(-50%, -50%); padding: 20px 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); text-align: center; box-shadow: 0 18px 40px -16px rgba(15, 23, 42, .4); }
     .hm-map-empty b { display: block; font-family: Georgia, 'Times New Roman', serif; font-size: 21px; font-weight: 400; color: var(--ink); }
     .hm-map-empty span { display: block; margin-top: 6px; font-size: 13.5px; color: var(--ink-3); }
+    /* Start here (2026-10-18; Draft C of the empty Home drafts). An account
+       with nothing on Home: the list steps aside and one question sits over
+       the map, which marks the cities with market pages. hmFirstShow()
+       writes .hm-first-on. Beside the rail at 900px and up the card floats
+       over the map's left side; on a phone, or in the bar shell, the map is
+       a strip and the card sits under it. Theme tokens only. */
+    html.hm-page .hm.hm-first-on .hm-panel { display: none; }
+    .hm.hm-first-on .hm-layers, .hm.hm-first-on .hm-legend, .hm.hm-first-on .hm-layer-note, .hm.hm-first-on .hm-map-empty { display: none; }
+    .hm.hm-first-on .hm-mapw { height: auto; border-bottom: 0; }
+    .hm.hm-first-on .hm-map { position: relative; inset: auto; height: 240px; border-bottom: 1px solid var(--line); }
+    .hm-first { position: relative; margin: 14px 12px 24px; padding: 24px 20px 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); box-shadow: 0 30px 70px -30px rgba(15, 23, 42, .45), 0 2px 6px rgba(15, 23, 42, .05); }
+    .hm-first.hidden, .hm-first-key.hidden { display: none; }
+    .hm-first-kick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12.5px; font-weight: 500; color: var(--ink-3); }
+    .hm-first-kick > span:not(:first-child) { display: inline-flex; align-items: center; gap: 6px 10px; }
+    .hm-first-kick > span.hidden { display: none; }
+    .hm-first-kick i { width: 3px; height: 3px; border-radius: 99px; background: var(--ink-4); }
+    .hm-first-kick b { font-weight: 600; color: var(--ink-2); }
+    @media (max-width: 899px) { .hm-first-kick i { display: none; } }
+    .hm-first-h { margin: 14px 0 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 30px; line-height: 1.1; letter-spacing: -.02em; color: var(--ink); text-wrap: balance; }
+    .hm-first-h span { display: block; margin-bottom: 6px; font-size: 17px; letter-spacing: -.01em; color: var(--ink-3); }
+    .hm-first-p { margin: 12px 0 0; max-width: 46ch; font-size: 15px; line-height: 1.55; color: var(--ink-2); }
+    .hm-first-form { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
+    .hm-first-in { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 12px; background: var(--paper); color: var(--ink-3); box-shadow: 0 0 0 4px var(--hair); }
+    .hm-first-in:focus-within { border-color: var(--red); }
+    .hm-first-in svg { flex: none; }
+    #hmFirstAddr { flex: 1; min-width: 0; padding: 14px 0; border: 0; outline: 0; background: transparent; box-shadow: none; -webkit-appearance: none; appearance: none; font: inherit; font-size: 16px; color: var(--ink); }
+    #hmFirstAddr::placeholder { color: var(--ink-3); }
+    .hm-first-go { flex: none; padding: 14px 18px; border: 0; border-radius: 12px; background: var(--red-fill); font: inherit; font-size: 15px; font-weight: 600; color: #fff; cursor: pointer; }
+    .hm-first-go:hover { background: var(--red-fill-hover); }
+    .hm-first-go:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    .hm-first-who { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .hm-first-who.hidden { display: none; }
+    .hm-first-who label { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+    .hm-first-who label:has(input:checked) { border-color: var(--ink); color: var(--ink); font-weight: 600; box-shadow: inset 0 0 0 1px var(--ink); }
+    .hm-first-who label:focus-within { outline: 2px solid var(--red); outline-offset: 2px; }
+    .hm-first-who input { width: 13px; height: 13px; margin: 0; accent-color: var(--ink); }
+    .hm-first-or { display: flex; align-items: center; gap: 12px; margin: 24px 0 12px; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+    .hm-first-or::before, .hm-first-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+    .hm-first-doors { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .hm-first-door { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 9px; align-items: center; padding: 11px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font: inherit; text-align: left; color: inherit; text-decoration: none; cursor: pointer; }
+    .hm-first-door:hover { border-color: var(--ink-3); }
+    .hm-first-door:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    .hm-first-door svg { grid-row: span 2; color: var(--ink); }
+    .hm-first-door b { font-size: 13px; font-weight: 600; line-height: 1.25; color: var(--ink); white-space: nowrap; }
+    .hm-first-door small { font-size: 12px; line-height: 1.3; color: var(--ink-3); }
+    .hm-first-fine { margin: 16px 0 0; font-size: 11.5px; color: var(--ink-3); }
+    .hm-first-key { position: absolute; left: 10px; top: 196px; z-index: 500; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 11.5px; color: var(--ink-2); }
+    .hm-first-key i { width: 9px; height: 9px; border-radius: 99px; background: var(--ink); }
+    .hm-first-key a { font-weight: 600; color: var(--red); text-decoration: none; }
+    /* The market dots: Leaflet circles, coloured here so they follow the theme. */
+    .hm-mkt { fill: var(--ink); fill-opacity: .85; stroke: var(--card); stroke-width: 1.5; }
+    @media (min-width: 900px) {
+      html.nav-rail.hm-page .hm.hm-first-on { grid-template-columns: minmax(0, 1fr); }
+      html.nav-rail.hm-page .hm.hm-first-on .hm-panel { display: none; }
+      html.nav-rail.hm-page .hm.hm-first-on .hm-map { position: absolute; inset: 0; height: auto; border-bottom: 0; }
+      /* The map fades out under the card, so the question reads first. */
+      html.nav-rail.hm-page .hm.hm-first-on .hm-mapw::before { content: ""; position: absolute; inset: 0; z-index: 450; pointer-events: none; opacity: .88; background: linear-gradient(90deg, var(--paper) 0%, var(--paper) 34%, transparent 60%); }
+      html.nav-rail.hm-page .hm-first { position: absolute; left: 44px; top: 50%; z-index: 520; width: min(580px, calc(100% - 88px)); margin: 0; padding: 34px 38px 28px; border-radius: 20px; transform: translateY(-50%); }
+      html.nav-rail.hm-page .hm-first-h { font-size: 38px; }
+      html.nav-rail.hm-page .hm-first-h span { font-size: 20px; }
+      html.nav-rail.hm-page .hm-first-form { flex-direction: row; }
+      html.nav-rail.hm-page .hm-first-go { padding: 0 18px; }
+      html.nav-rail.hm-page .hm-first-doors { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      html.nav-rail.hm-page .hm-first-key { top: auto; left: auto; right: 16px; bottom: 24px; padding: 8px 12px; font-size: 12.5px; }
+    }
+    /* Next (2026-10-18, Draft C): an early account's next steps on Today. */
+    .hm-next { margin: 14px 10px 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+    .hm-next.hidden { display: none; }
+    .hm-next-k { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+    .hm-next-r { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 11px 0; border: 0; border-top: 1px solid var(--hair); background: none; font: inherit; text-align: left; color: inherit; text-decoration: none; cursor: pointer; }
+    #hmNextRows > .hm-next-r:first-child { border-top: 0; }
+    .hm-next-r:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    .hm-next-r > span:first-child svg { display: block; width: 20px; height: 20px; color: var(--ink-2); }
+    .hm-next-r b { display: block; font-size: 14px; font-weight: 600; color: var(--ink); }
+    .hm-next-r small { display: block; font-size: 12.5px; color: var(--ink-3); }
+    .hm-next-r em { font-style: normal; font-size: 13px; font-weight: 600; color: var(--red); }
     .hm-mk { background: none !important; border: 0 !important; }
     .hm-pip { display: block; width: 14px; height: 14px; border: 2.5px solid var(--card); border-radius: 99px; box-shadow: 0 1px 4px rgba(15, 23, 42, .4); }
     .hm-pip.permit { width: 11px; height: 11px; border-width: 2px; border-radius: 3px; margin: 1.5px; }
@@ -3227,6 +3307,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                    not the gear it was: that read as a sun. -->
               <button id="hmFirmGear" type="button" class="hidden hm-fh-set" aria-label="Firm &amp; branding" title="Firm &amp; branding">
                 <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.75" y="6" width="14.5" height="10.5" rx="1.75"/><path d="M7.25 6V4.5c0-.7.55-1.25 1.25-1.25h3c.7 0 1.25.55 1.25 1.25V6M2.75 10.5h14.5M10 9.5v2"/></svg>
+                <!-- Said in words since 2026-10-18: an icon alone did not say
+                     what it opened. -->
+                <span>Firm settings</span>
               </button>
               <input id="hmFirmLogoFile" type="file" accept="image/png,image/jpeg" class="hidden" />
             </div>
@@ -3267,6 +3350,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
             <div id="hmPaneToday" class="hm-pane" role="tabpanel" aria-labelledby="hmTabToday">
               <div id="hmTodayRows" class="hm-rows"></div>
+              <!-- Next (2026-10-18, Draft C): an early account with nothing
+                   due is shown its next steps, in place of a paragraph that
+                   repeated the status line. hmDrawNext() is its one writer. -->
+              <div id="hmNext" class="hidden hm-next"><div class="hm-next-k">Next</div><div id="hmNextRows"></div></div>
               <p id="hmTodayEmpty" class="hidden hm-empty"></p>
               <p id="hmTodayMore" class="hidden hm-more"><a id="hmTodayLeases" href="/buildings">All lease dates →</a><a id="hmTodayMsgs" href="/messages">All conversations →</a><a id="hmTodayPipe" class="hidden" href="/pipeline">Your BOV pipeline →</a></p>
             </div>
@@ -3384,7 +3471,44 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                empty map that could be read as "nothing was filed". -->
           <div id="hmLayerNote" class="hidden hm-layer-note" role="status"></div>
           <div id="hmLegend" class="hidden hm-legend" aria-hidden="true"><span class="hm-lg-p"><i class="buy"></i>Your deals</span><span class="hm-lg-p"><i class="own"></i>You own</span><span class="hm-lg-p"><i class="firm"></i>Firm buildings</span><span id="hmLegendPermits" class="hidden"><i class="permit"></i>Permits, last 30 days</span></div>
-          <div id="hmMapEmpty" class="hidden hm-map-empty"><b>Your map is empty</b><span>Add a property on the left, and it lands here as your first pin.</span></div>
+          <!-- "On the left" was wrong on a phone, where the list is under the
+               map; since 2026-10-18 this shows only when the start screen
+               below cannot (no add form would take the address). -->
+          <div id="hmMapEmpty" class="hidden hm-map-empty"><b>Your map is empty</b><span>Add a property, and it lands here as your first pin.</span></div>
+          <!-- Start here (2026-10-18; Draft C of the empty Home drafts, the
+               owner's pick, https://claude.ai/artifact/Xpnhf7uyNifbGfKpJgXopL).
+               An account with nothing on Home is asked ONE question over the
+               whole map, instead of an empty list beside an empty map that
+               said "add a property" three times. hmFirstShow() is its one
+               writer; it shows only where an add form can take the answer
+               (the member's own, home-sites.js, or the firm's list), and the
+               old start cards (#hmStart) stand in otherwise. The address goes
+               nowhere until the form it opens is sent: a submit here opens
+               Properties' own add form with the address in it. -->
+          <section id="hmFirst" class="hidden hm-first" aria-labelledby="hmFirstTitle">
+            <div class="hm-first-kick"><span id="hmFirstDay"></span><span id="hmFirstFirm" class="hidden"><i aria-hidden="true"></i><b id="hmFirstFirmName"></b><span id="hmFirstShop"></span></span></div>
+            <h2 id="hmFirstTitle" class="hm-first-h"><span id="hmFirstHi"></span>Where’s your first building?</h2>
+            <p class="hm-first-p">Type its address and it lands on this map with a street photo. One click gets it an automated value estimate.</p>
+            <form id="hmFirstForm" class="hm-first-form" autocomplete="off" novalidate>
+              <label class="hm-first-in"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8.6" cy="8.6" r="5.4"/><path d="M12.8 12.8l4.2 4.2"/></svg>
+                <input id="hmFirstAddr" type="text" maxlength="300" spellcheck="false" placeholder="Street address, city, state" aria-label="Address of your first building" /></label>
+              <button type="submit" class="hm-first-go">Put it on the map</button>
+            </form>
+            <div id="hmFirstWho" class="hidden hm-first-who" role="radiogroup" aria-label="Whose building">
+              <label><input type="radio" name="hmFirstWho" value="own" checked />I own it</label>
+              <label><input type="radio" name="hmFirstWho" value="firm" /><span>It’s one of <span id="hmFirstWhoFirm">your firm</span>’s</span></label>
+            </div>
+            <div class="hm-first-or">Or start somewhere else</div>
+            <div class="hm-first-doors">
+              <button type="button" id="hmFirstTeam" class="hm-first-door"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg><b id="hmFirstTeamT">Start a firm</b><small id="hmFirstTeamS">Work as a team</small></button>
+              <a class="hm-first-door" href="/markets"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15.5l4-4.5 3 2.5 4.5-6 2.5 3"/><path d="M3 3.5v13h14"/></svg><b>Follow a market</b><small>New deals by email</small></a>
+              <a class="hm-first-door" href="/permits"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h10v14.4H5z"/><path d="M7.5 6h5M7.5 8.6h5"/><circle cx="10" cy="13" r="1.8"/></svg><b>See permits</b><small>Filed this month</small></a>
+            </div>
+            <p class="hm-first-fine">Every valuation is an automated estimate, not an appraisal.</p>
+          </section>
+          <!-- What the start screen's dots are: the cities with market pages
+               (GET /api/markets, read once the page is shown). -->
+          <div id="hmFirstKey" class="hidden hm-first-key"><i aria-hidden="true"></i><span id="hmFirstKeyT"></span><a href="/markets">Explore →</a></div>
         </div>
       </div>
       </section>
@@ -14085,6 +14209,12 @@ async function renderMyDesk() {
   let hmTab = "today";
   let hmRows = [], hmItems = [];
   let hmNothing = false;     // an account with nothing on Home yet: Today shows the start cards
+  // The start screen (2026-10-18, Draft C): on while an account with nothing
+  // on Home is being asked for its first building; gone once the member has
+  // answered it this page view, so the list they were sent to stays up.
+  let hmFirstOn = false, hmFirstGone = false;
+  let hmMarkets = null;      // the cities with market pages (HOMEMAP.marketCities); null until read, false on a failed read
+  let hmMarketsAsked = false;
   let hmSel = "";            // the selected row's key
   let hmMap = null, hmPinLayer = null, hmBaseLayers = null, hmFitFor = "", hmOpenedOnce = false, hmPopup = null;
   let hmMoving = false, hmMovedAt = 0; // the map's motion, for hmPin's hover
@@ -14104,6 +14234,7 @@ async function renderMyDesk() {
     lock: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="9" width="11" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg>',
     people: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg>',
     chat: '<svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13v8.5h-7L5.5 16v-3h-2z"/></svg>',
+    market: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15.5l4-4.5 3 2.5 4.5-6 2.5 3"/><path d="M3 3.5v13h14"/></svg>',
     bov: '<svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 11.5 5.5 4.5h9l2 7v4h-13z"/><path d="M3.5 11.5h4l1 2h3l1-2h4"/></svg>',
   };
   const hmHas = () => typeof HOMEMAP !== "undefined" && !!document.getElementById("homeMap");
@@ -14501,6 +14632,8 @@ async function renderMyDesk() {
     hmLeads = null; hmLeadsAsked = false;
     hmPermits = null; hmPermitsAsked = false; hmPermitsFiled = 0; hmPermitCities = ""; hmLayerTab = "";
     hmRows = []; hmItems = []; hmSel = ""; hmFitFor = ""; hmOpenedOnce = false; hmNothing = false;
+    hmFirstGone = false;
+    hmFirstShow(false);
     hmGeoTried.clear();
     hmPhotoForget();
     hmWarmLeft = HM_WARM_MAX;
@@ -14527,6 +14660,7 @@ async function renderMyDesk() {
   function drawFirmHead(firm) {
     const head = document.getElementById("hmFirmHead");
     if (!head) return;
+    { const old = head.querySelector(".hm-fh-logo"); if (old) old.remove(); }
     head.classList.toggle("hidden", !firm);
     document.getElementById("hmFirmGear").classList.toggle("hidden", !firm);
     const wrap = document.getElementById("hmFirmMarkWrap");
@@ -14547,7 +14681,6 @@ async function renderMyDesk() {
       mark.classList.remove("logo");
       mark.textContent = firmInitials(firm.name);
       if (manage) {
-        mark.append(hmEl("span", "hm-fh-add", "+"));
         mark.title = "Add your firm's logo";
         mark.setAttribute("aria-label", "Add your firm's logo. Everyone in the firm will see it.");
       } else {
@@ -14571,6 +14704,14 @@ async function renderMyDesk() {
     if (manage) {
       mark.type = "button";
       mark.addEventListener("click", () => document.getElementById("hmFirmLogoFile").click());
+      // Said in words (2026-10-18): the red + that sat on the initials did
+      // not say what it added. Only while the firm has no logo.
+      if (!firm.logoAt) {
+        const add = hmEl("button", "hm-fh-logo", "+ Add your firm’s logo");
+        add.type = "button";
+        add.addEventListener("click", () => document.getElementById("hmFirmLogoFile").click());
+        meta.after(add);
+      }
     }
     wrap.append(mark);
   }
@@ -14711,7 +14852,8 @@ async function renderMyDesk() {
     // Today's content, not every tab's: the start card's "Add a property"
     // opens the Properties tab's own chooser, which the cards would bury.
     hmNothing = nothing;
-    document.getElementById("hmStart").classList.toggle("hidden", !nothing || hmTab !== "today");
+    hmFirstShow(nothing && !hmFirstGone);
+    document.getElementById("hmStart").classList.toggle("hidden", !nothing || hmTab !== "today" || hmFirstOn);
     document.getElementById("hmStartFirm").classList.toggle("hidden", !!firm);
     // A property of the member's own opens the form that takes it, here on
     // Home (HOMEMAP.addWhere): one they own, for everyone, and a deal for a
@@ -14737,11 +14879,16 @@ async function renderMyDesk() {
       : (canLeads
         ? "Lease dates, deal deadlines, BOV requests and messages land here, soonest first."
         : "Lease dates, deal deadlines and messages land here, soonest first.");
-    todayEmpty.classList.toggle("hidden", hmItems.length > 0 || nothing);
+    const next = hmDrawNext(firm);
+    todayEmpty.classList.toggle("hidden", hmItems.length > 0 || nothing || next);
     // The firm's two lists, and the member's own Pipeline when they have one.
-    document.getElementById("hmTodayMore").classList.toggle("hidden", !firm && !canLeads);
-    document.getElementById("hmTodayLeases").classList.toggle("hidden", !firm);
-    document.getElementById("hmTodayMsgs").classList.toggle("hidden", !firm);
+    // A list is linked only once it has something in it (2026-10-18): on a
+    // new firm both pages opened onto nothing.
+    const leasesLink = !!firm && firmBuildings.length > 0;
+    const msgsLink = !!firm && !!(deskThreadsStat && deskThreadsStat.total);
+    document.getElementById("hmTodayMore").classList.toggle("hidden", !leasesLink && !msgsLink && !canLeads);
+    document.getElementById("hmTodayLeases").classList.toggle("hidden", !leasesLink);
+    document.getElementById("hmTodayMsgs").classList.toggle("hidden", !msgsLink);
     document.getElementById("hmTodayPipe").classList.toggle("hidden", !canLeads);
 
     // Properties: your deals, what you own, the firm's other buildings, and
@@ -14810,6 +14957,125 @@ async function renderMyDesk() {
     hmGeocodeMissing();
   }
 
+  // ---- Start here (2026-10-18; Draft C of the empty Home drafts) -------------
+  // An account with nothing on Home is asked one question over the whole map
+  // (#hmFirst): where is its first building. It shows only where an add form
+  // can take the answer: the member's own (home-sites.js, HOMEMAP.addWhere)
+  // or the firm's list. Otherwise the old start cards stand in. The address
+  // is sent nowhere from here: the submit opens Properties' own form with it
+  // filled in, and that form is what saves (and what refuses a bad address).
+  function hmFirstWays() {
+    return { own: HOMEMAP.addWhere("own", hmFirmKind()) === "home" && !!hmSitesView(), firm: !!myFirm() };
+  }
+  // The one writer of the start screen, and of the class that hides the list.
+  function hmFirstShow(on) {
+    const box = document.getElementById("hmFirst");
+    if (!box) return;
+    const ways = on ? hmFirstWays() : { own: false, firm: false };
+    on = Boolean(on && (ways.own || ways.firm) && currentUser);
+    const was = hmFirstOn;
+    hmFirstOn = on;
+    document.getElementById("homeMap").classList.toggle("hm-first-on", on);
+    box.classList.toggle("hidden", !on);
+    hmFirstKey();
+    if (on) {
+      const firm = myFirm();
+      document.getElementById("hmFirstDay").textContent = document.getElementById("hmDay").textContent;
+      document.getElementById("hmFirstFirm").classList.toggle("hidden", !firm);
+      document.getElementById("hmFirstFirmName").textContent = firm ? firm.name : "";
+      document.getElementById("hmFirstShop").textContent = firm ? shopCopy(firm.kind).label : "";
+      document.getElementById("hmFirstHi").textContent = deskGreetingFor(new Date(), currentUser) + ".";
+      // Whose building it is matters only when both lists could take it.
+      document.getElementById("hmFirstWho").classList.toggle("hidden", !(ways.own && ways.firm));
+      document.getElementById("hmFirstWhoFirm").textContent = firm ? firm.name : "your firm";
+      document.getElementById("hmFirstTeamT").textContent = firm ? "Invite your team" : "Start a firm";
+      document.getElementById("hmFirstTeamS").textContent = firm ? "Share buildings" : "Work as a team";
+      hmLoadMarkets();
+    }
+    // The list leaving or coming back resizes the map: size it now, so the
+    // fit that follows is made for the map as it will be.
+    // Leaving it with still nothing to fit, the map goes back to where an
+    // empty Home has always opened, not the start screen's offset view.
+    if (was !== on && hmMap) {
+      hmMap.invalidateSize({ animate: false });
+      hmFitFor = "";
+      if (!on) hmMap.setView([39.6, -98.6], 4, { animate: false });
+    }
+  }
+  function hmFirstKey() {
+    const line = hmFirstOn && Array.isArray(hmMarkets) ? HOMEMAP.marketsLine(hmMarkets) : "";
+    document.getElementById("hmFirstKeyT").textContent = line;
+    document.getElementById("hmFirstKey").classList.toggle("hidden", !line);
+  }
+  // The cities with market pages: public, read once, and only once the page
+  // is shown. A failure leaves the map without its dots and says nothing.
+  function hmLoadMarkets() {
+    if (hmMarketsAsked) return;
+    hmMarketsAsked = true;
+    hmWhenShown(async () => {
+      try {
+        const res = await fetch("/api/markets", { credentials: "same-origin" });
+        if (res.ok) hmMarkets = HOMEMAP.marketCities(await res.json());
+      } catch (_) { /* no dots */ }
+      if (hmMarkets == null) hmMarkets = false;
+      hmFirstKey();
+      if (hmFirstOn) hmDrawPins();
+    });
+  }
+  // The map behind the question: the lower 48, fitted once, with a dot for
+  // each city that has market pages. Nothing on it is the member's.
+  const HM_LOWER48 = [[25.2, -124.6], [49.2, -67.2]];
+  function hmDrawFirstMap() {
+    document.getElementById("hmMapEmpty").classList.add("hidden");
+    document.getElementById("hmLegend").classList.add("hidden");
+    (Array.isArray(hmMarkets) ? hmMarkets : []).forEach((c) => {
+      L.circleMarker([c.lat, c.lng], { className: "hm-mkt", radius: 3 + Math.min(c.pages, 5) * 0.8, interactive: false }).addTo(hmPinLayer);
+    });
+    const wide = document.documentElement.classList.contains("nav-rail") && window.innerWidth >= 900;
+    const key = "first:" + (wide ? "wide" : "strip");
+    if (hmFitFor !== key) {
+      hmFitFor = key;
+      hmMap.fitBounds(HM_LOWER48, wide
+        ? { paddingTopLeft: [640, 40], paddingBottomRight: [30, 40], animate: false }
+        : { padding: [8, 8], animate: false });
+    }
+  }
+  // Next (2026-10-18, Draft C): an early account with nothing due is shown
+  // its next steps on Today, instead of a paragraph repeating the status
+  // line: bring the team in while the firm is one person (or start one), and
+  // follow the first property's market. Built with textContent; the icons
+  // are static markup. Returns whether it shows.
+  function hmDrawNext(firm) {
+    const rows = document.getElementById("hmNextRows");
+    rows.textContent = "";
+    const steps = [];
+    if (!hmItems.length && hmRows.length && hmRows.length <= 3) {
+      if (!firm) steps.push({ icon: "people", b: "Bring your team", s: "Start a firm to share buildings and reports", act: "Start", go: () => { if (typeof openFirmModal === "function") openFirmModal(); } });
+      else if (firmMembers.filter((m) => !m.pending).length <= 1) {
+        steps.push({ icon: "people", b: "Invite your team", s: `Share ${HOMEMAP.street(hmRows[0].address)} with ${firm.name}`, act: "Invite", go: () => { if (typeof openFirmModal === "function") openFirmModal(); } });
+      }
+      const held = hmRows.map((r) => (r.portfolioId != null ? (deskPortfolio || []).find((i) => i && i.id === r.portfolioId) : null))
+        .find((i) => i && i.market_page && i.market_page.slug);
+      if (held) {
+        const town = String(held.market_page.market || "").split(",")[0].trim();
+        const name = [town, String(held.property_type || "").toLowerCase()].filter(Boolean).join(" ");
+        steps.push({ icon: "market", b: `Follow ${name}`, s: "Your building’s market, on The Board", act: "Follow", href: "/market/" + encodeURIComponent(held.market_page.slug) });
+      }
+    }
+    steps.forEach((st) => {
+      const r = st.href ? hmEl("a", "hm-next-r") : hmEl("button", "hm-next-r");
+      if (st.href) r.href = st.href; else { r.type = "button"; r.addEventListener("click", st.go); }
+      const ic = hmEl("span");
+      ic.innerHTML = HM_ICON[st.icon]; // static markup, no data
+      const t = hmEl("span");
+      t.append(hmEl("b", null, st.b), hmEl("small", null, st.s));
+      r.append(ic, t, hmEl("em", null, st.act));
+      rows.append(r);
+    });
+    document.getElementById("hmNext").classList.toggle("hidden", !steps.length);
+    return steps.length > 0;
+  }
+
   function setHomeTab(tab, { quiet } = {}) {
     if (!HM_TAB_IDS[tab] || document.getElementById(HM_TAB_IDS[tab][0]).hidden) tab = "today";
     const changed = tab !== hmTab;
@@ -14820,7 +15086,7 @@ async function renderMyDesk() {
       b.tabIndex = k === tab ? 0 : -1;
       document.getElementById(paneId).classList.toggle("hidden", k !== tab);
     });
-    document.getElementById("hmStart").classList.toggle("hidden", !hmNothing || tab !== "today");
+    document.getElementById("hmStart").classList.toggle("hidden", !hmNothing || tab !== "today" || hmFirstOn);
     // A tab whose rows are pins of a layer turns that layer on, once per
     // arrival on the tab (never on a redraw, which would undo the member's
     // own switch), so a row never opens a card over a map hiding its pin.
@@ -14887,26 +15153,58 @@ async function renderMyDesk() {
     const first = [...document.querySelectorAll("#hmAddChoice .hm-ch")].find((c) => !c.classList.contains("hidden"));
     if (first) first.focus();
   });
-  document.getElementById("hmAddFirm").addEventListener("click", () => {
+  // The firm's building form, and the member's own (home-sites.js), each
+  // opened with an address already in it when the start screen sent one; the
+  // next thing to fill in then has the focus.
+  function hmOpenFirmAdd(address) {
     document.getElementById("hmAddChoice").classList.add("hidden");
     document.getElementById("hmAddProp").setAttribute("aria-expanded", "false");
     document.getElementById("hmMineAdd").textContent = "";
     setBuildingAddOpen(true);
-  });
+    if (address) {
+      document.getElementById("buildingAddress").value = address;
+      document.getElementById("buildingType").focus();
+    }
+  }
+  function hmOpenMineAdd(kind, address) {
+    const view = hmSitesView();
+    if (!view || HOMEMAP.addWhere(kind, hmFirmKind()) !== "home") return false;
+    hmSetAddChoice(false);
+    const box = document.getElementById("hmMineAdd");
+    box.replaceChildren(view.addForm(kind));
+    const first = box.querySelector('input[name="address"]');
+    if (first && address) first.value = address;
+    const next = address ? box.querySelector('select[name="property_type"]') : first;
+    if (next) next.focus();
+    return true;
+  }
+  document.getElementById("hmAddFirm").addEventListener("click", () => hmOpenFirmAdd(""));
   // A member adds a property they own here, and a development firm's member
   // a deal too (home-sites.js's form, under the chooser), not on another page.
   [["hmAddDeal", "buy"], ["hmAddOwn", "own"]].forEach(([id, kind]) => {
     document.getElementById(id).addEventListener("click", (e) => {
-      const view = hmSitesView();
-      if (!view || HOMEMAP.addWhere(kind, hmFirmKind()) !== "home") return;
-      e.preventDefault();
-      hmSetAddChoice(false);
-      const box = document.getElementById("hmMineAdd");
-      box.replaceChildren(view.addForm(kind));
-      const first = box.querySelector('input[name="address"]');
-      if (first) first.focus();
+      if (hmOpenMineAdd(kind, "")) e.preventDefault();
     });
   });
+  // The start screen's answer goes to the form that saves it, on
+  // Properties: the member's own list, or the firm's when they said so (or
+  // when theirs cannot take it). The list comes back for the rest of this
+  // page view, with the form open.
+  document.getElementById("hmFirstForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = document.getElementById("hmFirstAddr");
+    const address = input.value.trim().replace(/\s+/g, " ");
+    if (!address) { input.focus(); return; }
+    const ways = hmFirstWays();
+    const picked = (document.querySelector('input[name="hmFirstWho"]:checked') || {}).value;
+    const toFirm = ways.firm && (!ways.own || picked === "firm");
+    hmFirstGone = true;
+    drawHomeMap();
+    setHomeTab("properties");
+    if (toFirm) hmOpenFirmAdd(address);
+    else hmOpenMineAdd("own", address);
+  });
+  document.getElementById("hmFirstTeam").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
   document.getElementById("hmFirmGear").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
   document.getElementById("hmFirmLogoFile").addEventListener("change", (e) => {
     const file = e.target.files && e.target.files[0];
@@ -15160,6 +15458,7 @@ async function renderMyDesk() {
   function hmDrawPins() {
     if (!hmEnsureMap()) return;
     hmPinLayer.clearLayers();
+    if (hmFirstOn) { hmDrawFirstMap(); return; }
     // `subject` is what this tab is about, and what the map fits to; `pts` is
     // everything drawn. Permits a member switched on are drawn around the
     // subject, never fitted to (so a switch never yanks the map), unless they
@@ -15205,7 +15504,11 @@ async function renderMyDesk() {
     document.getElementById("hmLegend").classList.toggle("hidden", empty);
     // The legend names what is drawn: the property kinds while Properties is
     // on, and a line for each other layer that put pins down.
-    document.querySelectorAll("#hmLegend .hm-lg-p").forEach((e) => e.classList.toggle("hidden", !showProps));
+    // Each kind is named only when a pin of it is drawn (2026-10-18): one
+    // building a member owns was captioned "Your deals · You own · Firm
+    // buildings", and a broker shop has no deals at all.
+    const kinds = new Set(showProps ? located.map(({ r }) => hmPipClass(r)) : []);
+    document.querySelectorAll("#hmLegend .hm-lg-p").forEach((e) => e.classList.toggle("hidden", !kinds.has(e.querySelector("i").className)));
     document.getElementById("hmLegendPermits").classList.toggle("hidden", !hmLayerPts.permits.length);
     // Fit once per tab (and again when the subject grows), never on a redraw
     // that only moved the selection or switched a layer around it, so the
@@ -15215,7 +15518,11 @@ async function renderMyDesk() {
     let fitted = false;
     if (!empty && fitKey !== hmFitFor) {
       hmFitFor = fitKey;
-      hmMap.fitBounds(fitTo, hmFitOpts());
+      // One place (2026-10-18) opens on its neighbourhood, not one block:
+      // at the fit's own ceiling a first property was a dot in a grid of
+      // streets.
+      const one = fitTo.every((p) => p[0] === fitTo[0][0] && p[1] === fitTo[0][1]);
+      hmMap.fitBounds(fitTo, one ? { ...hmFitOpts(), maxZoom: HM_ONE_ZOOM } : hmFitOpts());
       fitted = true;
       // A card already open rides the refit with its pin, which can carry it
       // under the switch; once the map settles it pans clear again.
@@ -15233,12 +15540,19 @@ async function renderMyDesk() {
         hmOpenedOnce = true;
         const open = () => { if (!hmSel && hmTab === "today") hmSelect(HOMEMAP.addressKey(first.address), { item: first }); };
         if (fitted) hmAfterMove(open); else open();
+      } else if (!hmItems.length && hmRows.length === 1 && hmLL(hmRows[0])) {
+        // Nothing due and one property (Draft C's first property): its card.
+        hmOpenedOnce = true;
+        const only = hmRows[0];
+        const open = () => { if (!hmSel && hmTab === "today") hmSelect(only.key, {}); };
+        if (fitted) hmAfterMove(open); else open();
       }
     }
   }
   // Room for what sits over the map: the switch at the top-left, the legend
   // at the foot. A fit never puts a pin under either. Tighter on the phone
   // strip, which is 300px tall and would otherwise be all margin.
+  const HM_ONE_ZOOM = 14;
   const hmFitOpts = () => (window.innerWidth >= 900
     ? { paddingTopLeft: [56, 84], paddingBottomRight: [56, 72], maxZoom: 15 }
     : { paddingTopLeft: [20, 56], paddingBottomRight: [20, 60], maxZoom: 15 });

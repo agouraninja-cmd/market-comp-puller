@@ -273,6 +273,24 @@ test("bare environment", async (t) => {
   // freshDirection and nothing else. `dir` is omitted rather than empty on a
   // no-read market (the /api/markets convention), and the map draws those as
   // a hollow outline — an absence of claim, deliberately never flat's grey.
+  // The empty Home's map of where CompNinja has market pages (2026-10-18)
+  // reads its dots off /api/markets, so a row's point is the momentum map's
+  // own pin, market by market, and a market with no pin carries no point.
+  await t.test("/api/markets carries the momentum map's own point for each market", async () => {
+    const html = await (await fetch(srv.base + "/markets")).text();
+    const pins = JSON.parse((html.match(/<script id="mktsMapData"[^>]*>([\s\S]*?)<\/script>/) || [])[1]).pins;
+    const rows = await (await fetch(srv.base + "/api/markets")).json();
+    const bySlug = new Map(pins.map((p) => [p.slug, p]));
+    let placed = 0;
+    for (const row of rows) {
+      const pin = bySlug.get(row.slug);
+      if (!pin) { assert.ok(!("lat" in row) && !("lng" in row), row.slug + ": a point the map does not have"); continue; }
+      placed++;
+      assert.deepEqual([row.lat, row.lng], [pin.lat, pin.lng], row.slug + ": the Home map and the momentum map disagree");
+    }
+    assert.ok(placed > 10, "the seeded markets should have points");
+  });
+
   await t.test("the momentum map's pins say what /api/markets says, market by market", async () => {
     const html = await (await fetch(srv.base + "/markets")).text();
     const pins = JSON.parse((html.match(/<script id="mktsMapData"[^>]*>([\s\S]*?)<\/script>/) || [])[1]).pins;

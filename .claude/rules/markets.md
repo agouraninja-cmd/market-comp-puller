@@ -231,6 +231,11 @@ paths:
     badge, and the wash under its comps. `test/routes.test.js` checks every
     one of them against `/api/markets` market by market — a second copy of
     the vocabulary or the age gate is what those tests exist to catch.
+  - **`/api/markets` rows carry the pin's own point** (2026-10-18, for the
+    empty Home's map of where CompNinja has pages; workspace.md): `lat`/`lng`
+    from `MARKETHERO.coordsFor`, the chain the momentum map pins by, and
+    omitted (never a guess) when a market has no point. `test/routes.test.js`
+    checks every row against the momentum map's own pins.
   - **Hollow/outlined is NOT flat.** No current read renders an outline
     making no colour claim, never grey's fill: "we don't know" and "the
     market is flat" are different statements. `market-area.js` decides the

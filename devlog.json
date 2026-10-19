@@ -4843,11 +4843,5 @@
     "type": "improvement",
     "title": "A new account’s Home starts with one question: where’s your first building?",
     "details": "An empty Home used to show a list with nothing in it beside a map that said “Your map is empty”. Now it opens on one card over a map of every city CompNinja has market pages in: type your first building’s address and press Put it on the map, and the add form opens with the address already filled in. If you’re in a firm you can say whether it’s yours or the firm’s. Three doors underneath lead to inviting your team (or starting a firm), following a market, and seeing permits. After your first property, Today suggests what to do next (invite your team, follow that building’s market), the map zooms to the neighborhood instead of a rooftop, and the property’s card opens on its own. Also: the firm header says “Add your firm’s logo” and “Firm settings” in words instead of a red plus and a bare icon, and Today only links to lease dates and conversations when there are any."
-  },
-  {
-    "date": "2026-10-19",
-    "type": "improvement",
-    "title": "A warmer, clearer first screen on Home",
-    "details": "The map behind “Where’s your first building?” now takes the page’s own cream color (navy in dark mode), so the screen reads as one piece. The cities with market pages are red dots with a soft glow, and dots that overlapped (Boise and Meridian, Southern California) are merged into one. The zoom buttons are gone from that screen, the map credit is quieter, and “first” in the question is in red italic. On a phone, the “market pages” label is no longer hidden under the map credit."
   }
 ]

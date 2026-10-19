@@ -528,8 +528,41 @@
     return `${pages} market ${pages === 1 ? "page" : "pages"} in ${list.length} ${list.length === 1 ? "city" : "cities"}`;
   }
 
+  // How big a city's dot is (2026-10-19): grows with the square root of its
+  // pages, so a city with nine reads bigger without swallowing its region.
+  // `small` is the phone's map strip.
+  function dotRadius(n, small) {
+    const k = Math.sqrt(Math.max(1, Number(n) || 1));
+    return small ? 3 + k * 1.4 : 4.5 + k * 2.6;
+  }
+  // Dots that would touch on screen become one (2026-10-19): Boise, Meridian
+  // and Nampa, or Southern California, read as a smudge otherwise. `points`
+  // are pixel positions at the zoom being drawn ({ x, y, n }); a merged dot
+  // sits at the pages-weighted middle and carries the sum, and merging runs
+  // until nothing touches, since a bigger dot can reach a third.
+  function mergeDots(points, radiusOf, gap = 3) {
+    const size = typeof radiusOf === "function" ? radiusOf : () => 0;
+    const dots = (Array.isArray(points) ? points : [])
+      .filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))
+      .map((p) => ({ x: p.x, y: p.y, n: Math.max(1, Number(p.n) || 1) }));
+    for (let merged = true; merged;) {
+      merged = false;
+      for (let a = 0; a < dots.length && !merged; a++) {
+        for (let b = a + 1; b < dots.length && !merged; b++) {
+          const A = dots[a], B = dots[b];
+          if (Math.hypot(A.x - B.x, A.y - B.y) >= size(A.n) + size(B.n) + gap) continue;
+          const n = A.n + B.n;
+          dots[a] = { x: (A.x * A.n + B.x * B.n) / n, y: (A.y * A.n + B.y * B.n) / n, n };
+          dots.splice(b, 1);
+          merged = true;
+        }
+      }
+    }
+    return dots;
+  }
+
   return { LEASE_DAYS, DEAL_DAYS, BOV_DAYS, WEEK_DAYS, STAGES, addressKey, street, place, town, daysUntil, shortDate, inDays, money,
     stageLabel, stageStep, lastValue, dealsOn, properties, scopeOf, passedDeals, addWhere, ownedTotal, agenda, thisWeek, statusLine,
     LAYERS, LAYER_DEFAULT, readLayers, VIEWS, layerView, layersFor, tabLayer, PERMIT_STAGES, tidyCaps, permitPin, permitStageLabel, permitAt, layerNotes,
-    WHEEL_BURST_MS, MAC_NOTCH_PX, wheelGesture, swipePan, pinchZoomBy, pinchSnap, marketCities, marketsLine };
+    WHEEL_BURST_MS, MAC_NOTCH_PX, wheelGesture, swipePan, pinchZoomBy, pinchSnap, marketCities, marketsLine, dotRadius, mergeDots };
 });

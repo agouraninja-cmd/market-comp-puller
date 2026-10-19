@@ -128,6 +128,20 @@ paths:
 >   no address goes anywhere. `hmDrawPins` hands off to `hmDrawFirstMap()`
 >   while the screen is up, fitted once per layout to the lower 48
 >   (`HM_LOWER48`) clear of the card; leaving it resets the view.
+> - **The polish pass (2026-10-19, the owner's "do 1 through 5" of the
+>   visual list on the drafts page).** While the screen is up the map's tile
+>   pane is tinted to the page (cream; navy in dark, whose rule sits in a
+>   one-line `@media screen` above the print block, `theme.test.js`'s rule),
+>   the zoom buttons hide and the credit line stays, at 60% and 10.5px (the
+>   tiles' licence needs it; a test refuses `display: none` there). The dots
+>   are brand red on a faint halo (`.hm-mkt`, `.hm-mkt-glow`), sized by
+>   `HOMEMAP.dotRadius` and merged where they would touch on screen
+>   (`HOMEMAP.mergeDots`, pixel positions at the drawn zoom, pages summed), so
+>   `hmDrawFirstDots` runs after the fit and again on `zoomend`. "first" in
+>   the heading is red italic (`.hm-first-h em`). The key sits at the top of
+>   the phone's strip, where the wrapped credit line no longer covers it.
+>   The three doors already spanned the address row's width, so item 3
+>   needed nothing.
 > - **After the first property**, Today's empty pane becomes **Next**
 >   (`#hmNext`, `hmDrawNext(firm)` its one writer): with no Today items and one
 >   to three rows, "Bring your team" outside a firm, "Invite your team / Share

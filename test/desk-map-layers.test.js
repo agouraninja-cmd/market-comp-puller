@@ -198,7 +198,7 @@ test("an empty Home asks for its first building, and the answer goes to Properti
   assert.ok(at > html.indexOf('id="hmMap"'), "the start screen is not over the map");
   const box = html.slice(at, html.indexOf("</section>", at));
   assert.match(html.slice(at - 60, at + 40), /<section id="hmFirst" class="hidden hm-first"/, "the start screen must start hidden");
-  assert.match(box, /Where’s your first building\?/);
+  assert.match(box, /Where’s your <em>first<\/em> building\?/);
   // The copy rules: a value is an automated estimate, never an appraisal,
   // and what a value costs is said the way the add form says it.
   assert.match(box, /Every valuation is an automated estimate, not an appraisal\./);
@@ -227,8 +227,19 @@ test("an empty Home asks for its first building, and the answer goes to Properti
   const load = fnOf("function hmLoadMarkets() {");
   assert.match(load, /hmWhenShown\(async \(\) => \{/);
   assert.match(load, /fetch\("\/api\/markets", \{ credentials: "same-origin" \}\)/);
-  assert.match(fnOf("function hmDrawFirstMap() {"), /className: "hm-mkt", radius: .+?, interactive: false \}/);
+  assert.match(fnOf("function hmDrawFirstMap() {"), /hmMap\.fitBounds\(HM_LOWER48[\s\S]*\}\s*hmDrawFirstDots\(\);/, "the dots merge at the fitted zoom, so they draw after the fit");
+  const dots = fnOf("function hmDrawFirstDots() {");
+  assert.match(dots, /HOMEMAP\.mergeDots\(pts, \(n\) => HOMEMAP\.dotRadius\(n, small\)\)/);
+  assert.match(dots, /className: "hm-mkt-glow", radius: r \* 2\.1, stroke: false, interactive: false \}/);
+  assert.match(dots, /className: "hm-mkt", radius: r, interactive: false \}/);
+  assert.match(html, /hmMap\.on\("zoomend", \(\) => \{ if \(hmFirstOn\) hmDrawFirstDots\(\); \}\);/, "a zoom merges them again");
   assert.match(fnOf("function hmDrawPins() {"), /hmPinLayer\.clearLayers\(\);\s*if \(hmFirstOn\) \{ hmDrawFirstMap\(\); return; \}/);
+  // The polish pass (2026-10-19): the tiles take the page's warmth, the zoom
+  // buttons go, and the credit line the tiles' licence needs stays, quieter.
+  assert.match(html, /\.hm\.hm-first-on \.leaflet-tile-pane \{ filter: /);
+  assert.match(html, /\[data-theme="dark"\] \.hm\.hm-first-on \.leaflet-tile-pane \{ filter: /);
+  assert.match(html, /\.hm\.hm-first-on \.leaflet-control-zoom \{ display: none; \}/);
+  assert.doesNotMatch(html, /hm-first-on \.leaflet-control-attribution \{[^}]*display: none/, "the map's credit line is licence-required");
   // The empty map's card no longer points "on the left", which a phone has not got.
   assert.ok(!html.includes("Add a property on the left"), "the empty map points at a list a phone shows below it");
 });

@@ -591,6 +591,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        is practically inert, but structurally the same bug Critical 1
        describes and gets the same fix. */
     @media screen { [data-theme="dark"] .loading-ninja .ninja-body { fill: var(--ink-3); } }
+    /* Home's start screen in dark: its map tinted to the page's navy (the
+       light tint is with the rest of .hm-first-on, below). Screen only, for
+       the same reason as the two above. */
+    @media screen { [data-theme="dark"] .hm.hm-first-on .leaflet-tile-pane { filter: sepia(1) hue-rotate(185deg) saturate(1.35) brightness(.82); } }
     .loading-ninja .ninja-band { fill: #DC2626; }
     .loading-ninja .ninja-run-a { animation: ninjaStrideA .28s linear infinite; }
     .loading-ninja .ninja-run-b { opacity: 0; animation: ninjaStrideB .28s linear infinite; }
@@ -1953,6 +1957,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm.hm-first-on .hm-layers, .hm.hm-first-on .hm-legend, .hm.hm-first-on .hm-layer-note, .hm.hm-first-on .hm-map-empty { display: none; }
     .hm.hm-first-on .hm-mapw { height: auto; border-bottom: 0; }
     .hm.hm-first-on .hm-map { position: relative; inset: auto; height: 240px; border-bottom: 1px solid var(--line); }
+    /* The map takes the page's warmth (cream; navy in dark), so the screen
+       reads as one surface, not a card on a cold map (the dark tint sits up
+       with the screen-only dark rules, above the print block). Tiles only:
+       the dots and the card keep their own colours. Nothing to zoom into yet, so no
+       zoom buttons; the credit line the tiles' licence needs stays, quieter. */
+    .hm.hm-first-on .leaflet-tile-pane { filter: sepia(.14) saturate(.72) brightness(1.055) contrast(.93); }
+    .hm.hm-first-on .leaflet-control-zoom { display: none; }
+    .hm.hm-first-on .leaflet-control-attribution { background: transparent; opacity: .6; font-size: 10.5px; }
     .hm-first { position: relative; margin: 14px 12px 24px; padding: 24px 20px 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); box-shadow: 0 30px 70px -30px rgba(15, 23, 42, .45), 0 2px 6px rgba(15, 23, 42, .05); }
     .hm-first.hidden, .hm-first-key.hidden { display: none; }
     .hm-first-kick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12.5px; font-weight: 500; color: var(--ink-3); }
@@ -1963,6 +1975,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     @media (max-width: 899px) { .hm-first-kick i { display: none; } }
     .hm-first-h { margin: 14px 0 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 30px; line-height: 1.1; letter-spacing: -.02em; color: var(--ink); text-wrap: balance; }
     .hm-first-h span { display: block; margin-bottom: 6px; font-size: 17px; letter-spacing: -.01em; color: var(--ink-3); }
+    .hm-first-h em { font-style: italic; color: var(--red); }
     .hm-first-p { margin: 12px 0 0; max-width: 46ch; font-size: 15px; line-height: 1.55; color: var(--ink-2); }
     .hm-first-form { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
     .hm-first-in { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 12px; background: var(--paper); color: var(--ink-3); box-shadow: 0 0 0 4px var(--hair); }
@@ -1989,11 +2002,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-first-door b { font-size: 13px; font-weight: 600; line-height: 1.25; color: var(--ink); white-space: nowrap; }
     .hm-first-door small { font-size: 12px; line-height: 1.3; color: var(--ink-3); }
     .hm-first-fine { margin: 16px 0 0; font-size: 11.5px; color: var(--ink-3); }
-    .hm-first-key { position: absolute; left: 10px; top: 196px; z-index: 500; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 11.5px; color: var(--ink-2); }
-    .hm-first-key i { width: 9px; height: 9px; border-radius: 99px; background: var(--ink); }
+    /* Top of the phone's strip: its foot is the credit line, which wraps there. */
+    .hm-first-key { position: absolute; left: 10px; top: 10px; z-index: 500; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 11.5px; color: var(--ink-2); }
+    .hm-first-key i { position: relative; width: 9px; height: 9px; border-radius: 99px; background: var(--red-fill); }
+    .hm-first-key i::after { content: ""; position: absolute; inset: -3px; border-radius: inherit; background: var(--red-fill); opacity: .2; }
     .hm-first-key a { font-weight: 600; color: var(--red); text-decoration: none; }
-    /* The market dots: Leaflet circles, coloured here so they follow the theme. */
-    .hm-mkt { fill: var(--ink); fill-opacity: .85; stroke: var(--card); stroke-width: 1.5; }
+    /* The market dots: Leaflet circles, coloured here so they follow the
+       theme. Brand red on a soft halo, the map's one focal point. */
+    .hm-mkt { fill: var(--red-fill); fill-opacity: 1; stroke: var(--card); stroke-width: 2; }
+    .hm-mkt-glow { fill: var(--red-fill); fill-opacity: .13; stroke: none; }
     @media (min-width: 900px) {
       html.nav-rail.hm-page .hm.hm-first-on { grid-template-columns: minmax(0, 1fr); }
       html.nav-rail.hm-page .hm.hm-first-on .hm-panel { display: none; }
@@ -3487,7 +3504,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                Properties' own add form with the address in it. -->
           <section id="hmFirst" class="hidden hm-first" aria-labelledby="hmFirstTitle">
             <div class="hm-first-kick"><span id="hmFirstDay"></span><span id="hmFirstFirm" class="hidden"><i aria-hidden="true"></i><b id="hmFirstFirmName"></b><span id="hmFirstShop"></span></span></div>
-            <h2 id="hmFirstTitle" class="hm-first-h"><span id="hmFirstHi"></span>Where’s your first building?</h2>
+            <h2 id="hmFirstTitle" class="hm-first-h"><span id="hmFirstHi"></span>Where’s your <em>first</em> building?</h2>
             <p class="hm-first-p">Type its address and it lands on this map with a street photo. One click gets it an automated value estimate.</p>
             <form id="hmFirstForm" class="hm-first-form" autocomplete="off" novalidate>
               <label class="hm-first-in"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8.6" cy="8.6" r="5.4"/><path d="M12.8 12.8l4.2 4.2"/></svg>
@@ -15025,13 +15042,11 @@ async function renderMyDesk() {
   // The map behind the question: the lower 48, fitted once, with a dot for
   // each city that has market pages. Nothing on it is the member's.
   const HM_LOWER48 = [[25.2, -124.6], [49.2, -67.2]];
+  const hmFirstWide = () => document.documentElement.classList.contains("nav-rail") && window.innerWidth >= 900;
   function hmDrawFirstMap() {
     document.getElementById("hmMapEmpty").classList.add("hidden");
     document.getElementById("hmLegend").classList.add("hidden");
-    (Array.isArray(hmMarkets) ? hmMarkets : []).forEach((c) => {
-      L.circleMarker([c.lat, c.lng], { className: "hm-mkt", radius: 3 + Math.min(c.pages, 5) * 0.8, interactive: false }).addTo(hmPinLayer);
-    });
-    const wide = document.documentElement.classList.contains("nav-rail") && window.innerWidth >= 900;
+    const wide = hmFirstWide();
     const key = "first:" + (wide ? "wide" : "strip");
     if (hmFitFor !== key) {
       hmFitFor = key;
@@ -15039,6 +15054,21 @@ async function renderMyDesk() {
         ? { paddingTopLeft: [640, 40], paddingBottomRight: [30, 40], animate: false }
         : { padding: [8, 8], animate: false });
     }
+    hmDrawFirstDots();
+  }
+  // The dots, merged where they would touch at the zoom on screen
+  // (HOMEMAP.mergeDots), so they are drawn after the fit and again on every
+  // zoom. Each is a red dot on a faint halo of its own.
+  function hmDrawFirstDots() {
+    if (!hmMap || !hmPinLayer) return;
+    hmPinLayer.clearLayers();
+    const small = !hmFirstWide(), z = hmMap.getZoom();
+    const pts = (Array.isArray(hmMarkets) ? hmMarkets : []).map((c) => ({ ...hmMap.project([c.lat, c.lng], z), n: c.pages }));
+    HOMEMAP.mergeDots(pts, (n) => HOMEMAP.dotRadius(n, small)).forEach((d) => {
+      const ll = hmMap.unproject([d.x, d.y], z), r = HOMEMAP.dotRadius(d.n, small);
+      L.circleMarker(ll, { className: "hm-mkt-glow", radius: r * 2.1, stroke: false, interactive: false }).addTo(hmPinLayer);
+      L.circleMarker(ll, { className: "hm-mkt", radius: r, interactive: false }).addTo(hmPinLayer);
+    });
   }
   // Next (2026-10-18, Draft C): an early account with nothing due is shown
   // its next steps on Today, instead of a paragraph repeating the status
@@ -15323,6 +15353,9 @@ async function renderMyDesk() {
     hmMap.on("moveend", hmPhotoWarmSoon);
     hmMap.on("movestart zoomstart", () => { hmMoving = true; });
     hmMap.on("moveend zoomend", () => { hmMoving = false; hmMovedAt = performance.now(); });
+    // The start screen's dots merge by what touches on screen, so a zoom
+    // draws them again.
+    hmMap.on("zoomend", () => { if (hmFirstOn) hmDrawFirstDots(); });
     if (typeof ResizeObserver === "function") new ResizeObserver(() => hmMap && hmMap.invalidateSize()).observe(el);
     // The basemap follows the theme toggle, like the report's map.
     new MutationObserver(() => {

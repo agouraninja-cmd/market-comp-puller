@@ -445,3 +445,24 @@ test("the start screen's map is one dot per city, counting its market pages", ()
   assert.equal(HM.marketsLine([]), "", "no dots, no key");
   assert.deepEqual(HM.marketCities("not a list"), []);
 });
+
+test("the start screen's dots merge where they would touch, and grow with their pages", () => {
+  // Bigger with more pages, but by the square root, and smaller on the phone strip.
+  assert.ok(HM.dotRadius(4, false) > HM.dotRadius(1, false));
+  assert.ok(Math.abs(HM.dotRadius(4, false) - HM.dotRadius(1, false) - 2.6) < 1e-9, "twice the root, one step more");
+  assert.ok(HM.dotRadius(1, true) < HM.dotRadius(1, false));
+  assert.equal(HM.dotRadius(0, false), HM.dotRadius(1, false), "a city with no count is one page");
+  const r = (n) => HM.dotRadius(n, false);
+  // Boise and Meridian, 10px apart, touch: one dot at their pages-weighted middle.
+  const near = HM.mergeDots([{ x: 0, y: 0, n: 1 }, { x: 10, y: 0, n: 3 }, { x: 200, y: 0, n: 1 }], r);
+  assert.deepEqual(near, [{ x: 7.5, y: 0, n: 4 }, { x: 200, y: 0, n: 1 }]);
+  // A merged dot is bigger, so it can reach a third, which then joins it.
+  const a = r(1) * 2 + 2, b = r(2) + r(1) + 2;
+  const chain = HM.mergeDots([{ x: 0, y: 0, n: 1 }, { x: a, y: 0, n: 1 }, { x: a / 2 + b, y: 0, n: 1 }], r);
+  assert.equal(chain.length, 1);
+  assert.equal(chain[0].n, 3);
+  // Nothing is lost: the pages add up, and a point with no position is dropped.
+  const many = HM.mergeDots([{ x: 0, y: 0, n: 2 }, { x: 5, y: 5, n: 2 }, { x: NaN, y: 0, n: 9 }, null, { x: 900, y: 900, n: 1 }], r);
+  assert.equal(many.reduce((n, d) => n + d.n, 0), 5);
+  assert.deepEqual(HM.mergeDots("nope", r), []);
+});

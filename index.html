@@ -1769,7 +1769,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     html.hm-page #checkoutNotice { margin: 16px; }
 
     .hm { display: flex; flex-direction: column; }
-    .hm-mapw { position: relative; order: -1; height: 300px; background: var(--wash-2); border-bottom: 1px solid var(--line); }
+    /* hmStripFit gives the strip a min-height while a card opened from the
+       map needs more than 300px (2026-10-20). It never transitions: Leaflet
+       is told the new size in the same task, and the reduced-motion rule's
+       .01ms on every property would leave it reading the old one (and the
+       map's ResizeObserver then shifted it). */
+    .hm-mapw { position: relative; order: -1; height: 300px; background: var(--wash-2); border-bottom: 1px solid var(--line); transition-property: none; }
     .hm-map { position: absolute; inset: 0; }
     .hm-map.leaflet-container { background: var(--wash-2); font-family: inherit; }
     .hm-panel { min-width: 0; background: var(--paper); }
@@ -14218,6 +14223,7 @@ async function renderMyDesk() {
   let hmSel = "";            // the selected row's key
   let hmMap = null, hmPinLayer = null, hmBaseLayers = null, hmFitFor = "", hmOpenedOnce = false, hmPopup = null;
   let hmMoving = false, hmMovedAt = 0; // the map's motion, for hmPin's hover
+  let hmStripBack = null, hmAutoPanning = false, hmCardSwap = false; // the phone strip's growth (hmStripFit)
   // What the map shows (2026-10-08): HOMEMAP.readLayers decides, from this
   // browser's own last choice. Storage can throw (a private window, blocked
   // site data), and then the default stands.
@@ -14638,6 +14644,8 @@ async function renderMyDesk() {
     hmPhotoForget();
     hmWarmLeft = HM_WARM_MAX;
     if (hmPinLayer) hmPinLayer.clearLayers();
+    hmStripBack = null;
+    { const w = document.querySelector("#homeMap .hm-mapw"); if (w) w.style.minHeight = ""; }
     if (hmMap) hmMap.closePopup();
     ["hmTodayRows", "hmPropRows", "hmTeam"].forEach((id) => { const e = document.getElementById(id); if (e) e.textContent = ""; });
     const t = document.getElementById("hmTitle"); if (t) t.textContent = "Home";
@@ -15317,6 +15325,15 @@ async function renderMyDesk() {
     hmPinLayer = L.layerGroup().addTo(hmMap);
     hmMap.setView([39.6, -98.6], 4);
     hmMap.on("popupclose", () => { hmSel = ""; hmMarkSelected(); });
+    // A grown strip goes back when its card closes, at once, so a refit in
+    // the same task (a tab change) fits the strip as it will be. Not when a
+    // card closes because the next one is opening (hmCardSwap).
+    hmMap.on("popupclose", () => { if (!hmCardSwap) hmStripDown(); });
+    // Any move but a card's own pan is the member's, and the pin then stays
+    // where they put it.
+    hmMap.on("autopanstart", () => { hmAutoPanning = true; });
+    hmMap.on("movestart", () => { if (!hmAutoPanning) hmStripBack = null; hmAutoPanning = false; });
+    hmMap.on("moveend", () => { hmAutoPanning = false; });
     // The layer note answers "is anything of this layer where I am looking",
     // so it is asked again whenever the view moves.
     hmMap.on("moveend", hmSyncLayerNote);
@@ -15565,6 +15582,46 @@ async function renderMyDesk() {
     setTimeout(once, 450);
   }
 
+  // A card opened from the map on the phone strip (below 900px, or in the
+  // bar shell) makes the strip tall enough to show it (2026-10-20). The strip
+  // is 300px and a card is 270px and up, so panned clear of the switch its
+  // foot, "Open the property →" with it, sat under the map's edge and the
+  // legend sat on its tags. It gets the room the card pans clear of (its
+  // autoPan padding), so the switch and the legend stay uncovered; closing
+  // the card puts the strip back, and the tapped pin back where it was
+  // unless the member has moved the map since. Only a card opened FROM THE
+  // MAP grows it: a row's card would push that row, and the pane it opens,
+  // down from under the finger. Beside the rail the map is the whole height
+  // (at least 560px), so a min-height left over from a narrower window does
+  // nothing there.
+  // hmStripBack is { ll, at }: the tapped pin and where it sat.
+  const hmOnStrip = () => !(window.innerWidth >= 900 && document.documentElement.classList.contains("nav-rail"));
+  const hmStripEl = () => document.querySelector("#homeMap .hm-mapw");
+  const hmStripTall = () => { const w = hmStripEl(); return !!(w && w.style.minHeight); };
+  function hmStripFit(back) {
+    const wrap = hmStripEl();
+    if (!wrap || !hmMap || !hmPopup || !hmPopup.isOpen() || !hmOnStrip()) return;
+    const el = hmPopup.getElement(), o = hmPopup.options;
+    const need = Math.ceil(o.autoPanPaddingTopLeft.y + el.offsetHeight + (parseFloat(getComputedStyle(el).marginBottom) || 0) + o.autoPanPaddingBottomRight.y);
+    if (need <= wrap.offsetHeight) return;
+    if (!hmStripBack) hmStripBack = back;
+    wrap.style.minHeight = need + "px";
+    hmMap.invalidateSize({ pan: false });
+    hmPopup.update();
+  }
+  function hmStripDown() {
+    const back = hmStripBack;
+    hmStripBack = null;
+    if (!hmStripTall()) return;
+    hmStripEl().style.minHeight = "";
+    if (!hmMap) return;
+    hmMap.invalidateSize({ pan: false });
+    if (back && hmOnStrip()) {
+      const now = hmMap.latLngToContainerPoint(back.ll);
+      hmMap.panBy([now.x - back.at.x, now.y - back.at.y], { animate: false });
+    }
+  }
+
   function hmMarkSelected() {
     document.querySelectorAll("#homeMap .hm-row").forEach((r) => r.classList.toggle("on", !!hmSel && r.dataset.key === hmSel));
   }
@@ -15689,9 +15746,15 @@ async function renderMyDesk() {
     // and of the legend at its foot (2026-10-08): the map's panes sit under
     // both, so a card opened beneath them would be cut off. That includes the
     // first card of the day, which pans by just enough.
+    const tapped = from === "map" ? { ll: L.latLng(ll.lat, ll.lng), at: hmMap.latLngToContainerPoint([ll.lat, ll.lng]) } : null;
+    hmCardSwap = true;
     hmPopup = L.popup({ closeButton: true, autoClose: true, offset: [0, -12], maxWidth: 260, minWidth: 260, className: "hm-pop",
       autoPan: true, autoPanPaddingTopLeft: L.point(16, 72), autoPanPaddingBottomRight: L.point(16, 64) })
       .setLatLng([ll.lat, ll.lng]).setContent(card).openOn(hmMap);
+    hmCardSwap = false;
+    // On the phone strip, room for all of it (hmStripFit); a strip already
+    // grown keeps growing for the next card and never shrinks under it.
+    if (tapped || hmStripTall()) hmStripFit(tapped);
     // Redraw the pins so the selected one stands out; the map does not refit.
     hmDrawPins();
   }

@@ -351,7 +351,8 @@ paths:
 >   Home showing): the content container loses its gutter and the footer
 >   hides (the legal line is at the foot of the list). At 900px and up under
 >   `nav-rail` the list and map share the viewport; below, or in the bar
->   shell, the map is a 300px strip above the list and the page scrolls.
+>   shell, the map is a 300px strip above the list and the page scrolls
+>   (taller while a card opened from the map is open: the next bullet but one).
 > - **A pin opens its card on hover (2026-10-13, the owner's ask)** where the
 >   pointer can hover (`hmCanHover`); touch keeps tap-to-open. `hmPin` waits
 >   `HM_HOVER_MS` (120ms) so a pointer crossing the map opens nothing, and
@@ -361,6 +362,37 @@ paths:
 >   pin, the map or its × close it. `hmSelect` returns early for a map open of
 >   the card already up, because it redraws the pins and a new one appears
 >   under the pointer. Pinned in `test/desk-map-layers.test.js`.
+> - **The phone strip makes room for a card (2026-10-20).** Seen at 390x844:
+>   a card is 270px and up (a 104px photo and its body), and the 300px strip
+>   less the switch's and the legend's room left it about 160, so even panned
+>   clear of the switch its foot, "Open the property →" with it, sat under the
+>   map's edge and the attribution, and the legend sat on its tags. A card
+>   opened FROM THE MAP (`from === "map"`, a tap or a hover) now gives
+>   `.hm-mapw` an inline `min-height` (`hmStripFit`) of the card's own autoPan
+>   padding top + its height + Leaflet's 20px tip margin + the padding
+>   bottom, read off the popup's options, so the room is exactly what the
+>   card pans clear of; Leaflet is told with `invalidateSize({ pan: false })`
+>   and the card re-pans (`hmPopup.update()`) in the same task. A strip
+>   already grown keeps growing for the next card and never shrinks under
+>   it. Closing the card puts it back AT ONCE (`hmStripDown` on
+>   `popupclose`, except for the close `openOn` does when the next card
+>   replaces this one, `hmCardSwap`), because a tab change closes the card
+>   and refits in the same task and must fit the strip as it will be; and
+>   the tapped pin pans back to where it was (`hmStripBack`) unless the
+>   member moved the map meanwhile (any `movestart` that is not the card's
+>   own `autopanstart`). A row's card still opens on a 300px strip: growing
+>   would push that row, and the pane it opens, down from under the finger
+>   (Safari has no scroll anchoring to hide it). Beside the rail nothing is
+>   resized, and a min-height left from a narrower window is under the map
+>   cell's own 560px floor; the photo box and its crop are unchanged. It is a
+>   min-height and not a custom property because `theme.test.js` refuses
+>   any `var()` that is not a theme token (app-shell.md's 224px rule). **Trap: `.hm-mapw` never transitions** (`transition-property:
+>   none`): the reduced-motion rule's `transition-duration: .01ms !important`
+>   on every element makes ANY style change a transition, so Leaflet read the
+>   old height, then the map's ResizeObserver invalidated with the default
+>   `pan: true`, shifting the map by half the growth and leaving the card
+>   low over the legend. Run against stand-ins in
+>   `test/desk-map-layers.test.js`.
 > - **Two fingers on a trackpad (2026-10-10, the owner's ask):** a swipe
 >   pans Home's map and a pinch zooms it; a mouse wheel's notch still zooms
 >   through Leaflet's own `scrollWheelZoom`. `HOMEMAP.wheelGesture` tells

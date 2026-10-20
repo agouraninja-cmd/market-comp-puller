@@ -253,3 +253,129 @@ test("Home's fixes from the empty Home drafts: words on the firm header, links a
   assert.doesNotMatch(next.replace("ic.innerHTML = HM_ICON[st.icon]; // static markup, no data", ""), /innerHTML/);
   assert.match(draw, /todayEmpty\.classList\.toggle\("hidden", hmItems\.length > 0 \|\| nothing \|\| next\);/);
 });
+
+// The phone strip makes room for a card (2026-10-20). Below 900px, or in the
+// bar shell, the map is a 300px strip and a card is 270px and up: panned clear
+// of the switch, its "Open the property →" sat under the map's edge and the
+// legend sat on its tags. A card opened FROM THE MAP now makes the strip as
+// tall as its own autoPan padding needs, and closing it puts the strip and the
+// tapped pin back. These run the strip's own code against stand-ins.
+function homeStrip({ width = 390, rail = true, card = 274 } = {}) {
+  const from = html.indexOf("  const hmOnStrip = ");
+  const to = html.indexOf("  function hmMarkSelected() {");
+  assert.ok(from > 0 && to > from, "could not bound the strip's block");
+  const calls = [];
+  let minHeight = "";
+  const style = {
+    get minHeight() { return minHeight; },
+    set minHeight(v) { minHeight = v; calls.push(v ? `minHeight ${v}` : "minHeight cleared"); },
+  };
+  const wrap = { get offsetHeight() { return Math.max(300, parseInt(minHeight, 10) || 0); }, style };
+  let pin = { x: 200, y: 380 };
+  const map = {
+    invalidateSize: (o) => calls.push(`invalidateSize ${JSON.stringify(o)}`),
+    latLngToContainerPoint: () => pin,
+    panBy: (d, o) => calls.push(`panBy ${d.join(",")} ${JSON.stringify(o)}`),
+  };
+  const popup = {
+    open: true,
+    isOpen() { return this.open; },
+    getElement: () => ({ offsetHeight: card }),
+    options: { autoPanPaddingTopLeft: { y: 72 }, autoPanPaddingBottomRight: { y: 64 } },
+    update: () => calls.push("update"),
+  };
+  const doc = {
+    querySelector: (sel) => (sel === "#homeMap .hm-mapw" ? wrap : null),
+    documentElement: { classList: { contains: (c) => c === "nav-rail" && rail } },
+  };
+  let back = null;
+  const api = new Function("window", "document", "getComputedStyle", "hmMap", "hmPopup", "state",
+    html.slice(from, to).replace(/\bhmStripBack\b/g, "state.back")
+      + "; return { hmOnStrip, hmStripTall, hmStripFit, hmStripDown };")(
+    { innerWidth: width }, doc, () => ({ marginBottom: "20px" }), map, popup, {
+      get back() { return back; }, set back(v) { back = v; },
+    });
+  return { ...api, calls, popup, minHeight: () => minHeight, back: () => back, movePin: (p) => { pin = p; } };
+}
+
+test("a card opened on the phone strip makes the strip tall enough for it, the switch's and the legend's room included", () => {
+  const S = homeStrip();
+  const tapped = { ll: { lat: 43.6, lng: -116.2 }, at: { x: 200, y: 120 } };
+  S.hmStripFit(tapped);
+  // 72 under the switch + the card + Leaflet's 20px tip margin + 64 over the legend.
+  assert.equal(S.minHeight(), "430px");
+  assert.deepEqual(S.calls, ["minHeight 430px", 'invalidateSize {"pan":false}', "update"],
+    "Leaflet must learn the new size, without panning, before the card pans clear in it");
+  assert.equal(S.back(), tapped);
+  // A second card while it is tall keeps where the FIRST pin was tapped, and
+  // only ever grows.
+  S.hmStripFit({ ll: {}, at: { x: 1, y: 1 } });
+  assert.equal(S.back(), tapped);
+  const T = homeStrip({ card: 330 });
+  T.hmStripFit(null);
+  assert.equal(T.minHeight(), "486px");
+});
+
+test("beside the rail the map is the whole height, so a card never resizes it; the bar shell is a strip at any width", () => {
+  const rail = homeStrip({ width: 1280, rail: true });
+  assert.equal(rail.hmOnStrip(), false);
+  rail.hmStripFit({ ll: {}, at: { x: 0, y: 0 } });
+  assert.deepEqual(rail.calls, [], "the rail's map must not be touched");
+  const bar = homeStrip({ width: 1280, rail: false });
+  assert.equal(bar.hmOnStrip(), true);
+  bar.hmStripFit(null);
+  assert.equal(bar.minHeight(), "430px");
+  const narrow = homeStrip({ width: 899, rail: true });
+  assert.equal(narrow.hmOnStrip(), true);
+  // A card that already fits leaves the strip alone, and so does a closed one.
+  const small = homeStrip({ card: 100 });
+  small.hmStripFit(null);
+  assert.deepEqual(small.calls, []);
+  const closed = homeStrip();
+  closed.popup.open = false;
+  closed.hmStripFit(null);
+  assert.deepEqual(closed.calls, []);
+});
+
+test("closing the card puts the strip back and the tapped pin where it was, unless the member moved the map", () => {
+  const S = homeStrip();
+  S.hmStripFit({ ll: { lat: 43.6, lng: -116.2 }, at: { x: 200, y: 120 } });
+  S.calls.length = 0;
+  S.movePin({ x: 210, y: 378 });
+  S.hmStripDown();
+  assert.equal(S.hmStripTall(), false);
+  assert.deepEqual(S.calls, ["minHeight cleared", 'invalidateSize {"pan":false}', 'panBy 10,258 {"animate":false}']);
+  assert.equal(S.back(), null);
+  // Closing again does nothing.
+  S.calls.length = 0;
+  S.hmStripDown();
+  assert.deepEqual(S.calls, []);
+  // The member dragged the map (movestart forgot the pin): the strip goes back,
+  // the map stays where they put it.
+  const M = homeStrip();
+  M.hmStripFit(null);
+  M.calls.length = 0;
+  M.hmStripDown();
+  assert.deepEqual(M.calls, ["minHeight cleared", 'invalidateSize {"pan":false}']);
+});
+
+test("the strip grows for a card opened from the map only, and goes back the moment its card closes", () => {
+  // CSS: the strip never transitions (the reduced-motion rule's .01ms left
+  // Leaflet reading the old height).
+  assert.match(html, /\.hm-mapw \{ position: relative; order: -1; height: 300px;[^}]*transition-property: none; \}/);
+  const sel = fnOf("function hmSelect(key");
+  assert.match(sel, /const tapped = from === "map" \? \{ ll: L\.latLng\(ll\.lat, ll\.lng\), at: hmMap\.latLngToContainerPoint\(\[ll\.lat, ll\.lng\]\) \} : null;/,
+    "a row's card must not grow the strip: it would push that row down from under the finger");
+  assert.match(sel, /hmCardSwap = true;\n    hmPopup = L\.popup\(\{[\s\S]*?\.openOn\(hmMap\);\n    hmCardSwap = false;/);
+  assert.match(sel, /\.openOn\(hmMap\);\n    hmCardSwap = false;\n[\s\S]*?if \(tapped \|\| hmStripTall\(\)\) hmStripFit\(tapped\);\n[\s\S]*?hmDrawPins\(\);$/,
+    "after the card is open (its height is measured), before the pins redraw");
+  const ensure = fnOf("function hmEnsureMap()");
+  // At once (a tab change closes the card and refits in the same task), but
+  // not for the close openOn does when the next card replaces this one.
+  assert.ok(ensure.includes('hmMap.on("popupclose", () => { if (!hmCardSwap) hmStripDown(); });'));
+  assert.ok(ensure.includes('hmMap.on("autopanstart", () => { hmAutoPanning = true; });'));
+  assert.ok(ensure.includes('hmMap.on("movestart", () => { if (!hmAutoPanning) hmStripBack = null; hmAutoPanning = false; });'),
+    "any move but the card's own pan is the member's, and the pin stays where they put it");
+  const reset = fnOf("function resetHomeMap() {");
+  assert.match(reset, /hmStripBack = null;\n    \{ const w = document\.querySelector\("#homeMap \.hm-mapw"\); if \(w\) w\.style\.minHeight = ""; \}\n    if \(hmMap\) hmMap\.closePopup\(\);/);
+});

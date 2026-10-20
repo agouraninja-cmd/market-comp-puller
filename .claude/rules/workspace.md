@@ -231,6 +231,24 @@ paths:
 > allowance from ~980 ms to ~750 ms, ~390 ms after a 350 ms hover. The map
 > card's photo is no longer `loading="lazy"` and asks first
 > (`fetchPriority`). Tests: `test/building-photo.test.js`.
+>
+> **A card with no street photo opens with its aerial in it (2026-10-20, the
+> owner: "when clicking on a property on the map it becomes gray first").**
+> The warm above fetched street photos only, so a card that draws the aerial
+> (`hmAerialOnly`: no street photos on this server, an address that cannot
+> have one, or one Google had none for) fetched its Esri tiles only once it
+> opened, lazily, and sat as an empty gray box until they came. Now
+> `hmAerialWarm` fetches the card's own crop (`HM_CARD_PHOTO`, 260×104 at
+> z18, the size `hmSelect` draws) ahead for the pins in view: at most
+> `HM_WARM_MAX` places a page (free tiles, the same allowance all the same),
+> each tile held for the page's life (`hmAerialHeld`), from the photo warm's
+> seams (every draw, every lookup batch, `moveend`), and only once a Home
+> built ahead is shown (`prerenderingchange`). The pin under the pointer gets
+> its aerial past the allowance (`hmPhotoHover`). The card's tiles are never
+> `loading="lazy"` and ask first (`fetchPriority`); the list's thumbnails stay
+> lazy. Measured in Chromium against a stand-in Google and Esri with a 400 ms
+> tile, desktop and phone: the card's empty box went from ~410 ms to none.
+> Tests: `test/building-photo.test.js`.
 
 > **The map's layers, and Reports leaving Home (2026-10-08, owner's call).**
 > Read this before the box below, which it amends. The owner's words: Home

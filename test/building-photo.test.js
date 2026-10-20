@@ -126,6 +126,21 @@ test("Home: the aerial only where there is no photo to show", async () => {
   assert.equal(H.aerial(box), 1, "a refused call must not leave an empty box for good");
 });
 
+test("Home: a map card's aerial loads at once, a list thumbnail's as it comes near", () => {
+  // 2026-10-20, the owner: "when clicking on a property on the map it
+  // becomes gray first". A lazy tile in a card that is on screen the moment
+  // it opens is one more wait on the gray box.
+  const ll = { lat: 33.8, lng: -84.4 };
+  const H = homePhotos({ "1 No Photo Rd": null });
+  const thumb = H.hmPhoto(H.card(), ll, "1 No Photo Rd", 48, 48, 17);
+  assert.equal(thumb.kids[0].loading, "lazy");
+  const pop = H.card();
+  pop.classList.add("hm-pop-ph");
+  H.hmPhoto(pop, ll, "1 No Photo Rd", 260, 104, 18);
+  assert.equal(pop.kids[0].loading, undefined, "a map card's tiles are never lazy");
+  assert.equal(pop.kids[0].fetchPriority, "high");
+});
+
 test("Home: a card drawn again mid-lookup keeps waiting for the answer in flight", async () => {
   const answers = {};
   const H = homePhotos(answers);
@@ -272,12 +287,17 @@ test("a lookup the route refuses lets go of every place it held", async () => {
 // Home's half (index.html, hmPhotoPlaces to hmPhotoHover), lifted out and run
 // against stand-ins: every building is asked about at once, the drawn pins in
 // view first, and their photos are warmed, HM_WARM_MAX a page.
-function homeWarm({ tab = "today", items = [], rows = [], props = true, view = () => true, answers = {}, onList = [] }) {
+function homeWarm({ tab = "today", items = [], rows = [], props = true, view = () => true, answers = {}, onList = [], prerendering = false }) {
   const from = html.indexOf("const HM_WARM_MAX");
   const to = html.indexOf("async function readDeskSites()");
   assert.ok(from > 0 && to > from, "could not bound Home's warm block");
   const asked = [];
   const warmed = [];
+  // The aerial's tiles: each crop asked for, and each tile fetched ahead.
+  const crops = [];
+  const tiles = [];
+  const aerialTileSpec = (ll, w, h, z) => { crops.push([w, h, z]); return [0, 1].map((n) => ({ src: `${z}/${ll.lat}/${n}` })); };
+  function Image() { const img = {}; Object.defineProperty(img, "src", { set(v) { tiles.push(v); } }); return img; }
   const stub = {
     eligible: (a) => /^\d+ /.test(String(a || "")),
     photo: (a) => answers[a],
@@ -291,14 +311,21 @@ function homeWarm({ tab = "today", items = [], rows = [], props = true, view = (
     closest: () => ({ getBoundingClientRect: () => ({ top: 0, bottom: 800 }) }),
     querySelectorAll: () => onList.map((a, i) => ({ _bpAddr: a, getBoundingClientRect: () => rect(60 * i) })),
   };
-  const doc = { querySelector: () => pane, documentElement: pane.closest() };
+  // addEventListener as the DOM has it: the same function added twice is added once.
+  const listeners = new Map();
+  const doc = {
+    querySelector: () => pane, documentElement: pane.closest(), prerendering,
+    addEventListener: (type, fn) => { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(fn); },
+  };
+  const shown = () => { doc.prerendering = false; (listeners.get("prerenderingchange") || []).forEach((fn) => fn()); listeners.delete("prerenderingchange"); };
   const hmMap = { getBounds: () => ({ contains: ([lat, lng]) => view({ lat, lng }) }) };
+  const hmAerialOnly = (a) => !stub.eligible(a) || answers[a] === null;
   const api = new Function("hmMap", "hmItems", "hmRows", "hmTab", "hmLayerOn", "hmLL", "hmLLForAddress",
-    "hmPhotosOn", "hmPhotoUpgrade", "BLDGPHOTO", "setTimeout", "clearTimeout", "document", "window",
-    html.slice(from, to) + "; return { hmPhotoPlaces, hmPhotoAskAll, hmPhotoWarm, hmPhotoHover, HM_WARM_MAX };")(
+    "hmPhotosOn", "hmPhotoUpgrade", "hmAerialOnly", "aerialTileSpec", "Image", "BLDGPHOTO", "setTimeout", "clearTimeout", "document", "window",
+    html.slice(from, to) + "; return { hmPhotoPlaces, hmPhotoAskAll, hmPhotoWarm, hmPhotoHover, HM_WARM_MAX, HM_CARD_PHOTO };")(
     hmMap, items, rows, tab, () => props, (r) => r.ll, (a) => (items.find((x) => x.address === a) || {}).ll || null,
-    () => true, () => {}, stub, () => 0, () => {}, doc, { innerHeight: 800 });
-  return { ...api, asked, warmed };
+    () => true, () => {}, hmAerialOnly, aerialTileSpec, Image, stub, () => 0, () => {}, doc, { innerHeight: 800 });
+  return { ...api, asked, warmed, crops, tiles, listeners, shown };
 }
 
 test("Home asks about every building at once, the pins in view first, never the permits", async () => {
@@ -355,6 +382,69 @@ test("Home warms the pin under the pointer, asking about it first when it must",
   assert.deepEqual(H.warmed, ["5 Known Rd", "6 New Rd"]);
   H.hmPhotoHover("Downtown corridor", null);
   assert.equal(H.asked.length, 1, "no street number, nothing to ask");
+});
+
+// 2026-10-20, the owner: "when clicking on a property on the map it becomes
+// gray first". A card with no street photo is the aerial, whose tiles were
+// fetched only once the card opened.
+test("Home fetches the card's aerial ahead for the pins in view that can only be the aerial", async () => {
+  const ll = (lat) => ({ lat, lng: -116.2 });
+  const answers = { "1 Photo Rd": "/api/streetview?t=p", "2 Bare Lot Rd": null, "4 Far Lot Rd": null };
+  const H = homeWarm({
+    tab: "properties", answers, view: ({ lat }) => lat < 45,
+    rows: [
+      { address: "1 Photo Rd", ll: ll(43) },
+      { address: "2 Bare Lot Rd", ll: ll(43.1) },
+      { address: "Downtown corridor", ll: ll(43.2) },
+      { address: "3 Unanswered Rd", ll: ll(43.3) },
+      { address: "4 Far Lot Rd", ll: ll(50) },
+      { address: "5 Unlocated Lot Rd", ll: null },
+    ],
+  });
+  answers["5 Unlocated Lot Rd"] = null;
+  H.hmPhotoAskAll();
+  assert.deepEqual(H.tiles, ["18/43.1/0", "18/43.1/1", "18/43.2/0", "18/43.2/1"],
+    "Google had none, or the address cannot have one; never a street photo's pin, one still waiting on its answer, one out of view or unplaced");
+  assert.deepEqual(H.HM_CARD_PHOTO, { w: 260, h: 104, z: 18 });
+  assert.ok(H.crops.every((c) => c.join() === "260,104,18"), "the card's own crop, so the card finds its tiles");
+  await new Promise((r) => setImmediate(r));
+  H.hmPhotoWarm();
+  H.hmPhotoAskAll();
+  assert.equal(H.tiles.length, 4, "a tile already fetched is never fetched again");
+  // The card and the warm crop alike, and the crop is the card's photo box.
+  assert.ok(html.includes('hmPhoto(hmEl("div", "hm-pop-ph"), ll, where, HM_CARD_PHOTO.w, HM_CARD_PHOTO.h, HM_CARD_PHOTO.z)'));
+  assert.ok(html.includes(".hm-pop-ph { position: relative; height: 104px;"));
+  assert.match(html, /hmWarmTimer = setTimeout\(\(\) => \{ hmPhotoWarm\(\); hmAerialWarm\(\); \}, 300\);/, "again when the map moves");
+});
+
+test("Home's aerial warm: HM_WARM_MAX places a page, the pin under the pointer always, never while unseen", async () => {
+  const answers = {};
+  const rows = Array.from({ length: 45 }, (_, i) => {
+    const address = `${10 + i} Lot Rd`;
+    answers[address] = null;
+    return { address, ll: { lat: 43 + i / 1000, lng: -116 } };
+  });
+  const H = homeWarm({ tab: "properties", rows, answers });
+  H.hmPhotoAskAll();
+  assert.equal(H.tiles.length, 2 * H.HM_WARM_MAX, "the page's allowance");
+  const last = rows[44];
+  H.hmPhotoHover(last.address, last.ll);
+  assert.equal(H.tiles.length, 2 * H.HM_WARM_MAX + 2, "past it, the pin under the pointer still gets its aerial");
+  H.hmPhotoHover(last.address, last.ll);
+  assert.equal(H.tiles.length, 2 * H.HM_WARM_MAX + 2);
+  // Hovered before its answer: asked first, then the aerial when Google has none.
+  const late = homeWarm({ answers: {} });
+  late.hmPhotoHover("7 Late Rd", { lat: 43.5, lng: -116 });
+  assert.equal(late.tiles.length, 0, "not the aerial before the answer");
+  assert.deepEqual(late.asked, [["7 Late Rd"]]);
+  // A Home built ahead (instant tab switching) fetches nothing until shown.
+  const ahead = homeWarm({ tab: "properties", rows: rows.slice(0, 3), answers, prerendering: true });
+  ahead.hmPhotoAskAll();
+  ahead.hmPhotoAskAll();
+  assert.equal(ahead.tiles.length, 0);
+  assert.equal(ahead.listeners.get("prerenderingchange").size, 1, "one wait, however often Home draws");
+  ahead.shown();
+  assert.equal(ahead.tiles.length, 6);
 });
 
 test("every pin carries the address of the card it opens, for the warm on hover", () => {

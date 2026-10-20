@@ -4843,5 +4843,11 @@
     "type": "improvement",
     "title": "A new account’s Home starts with one question: where’s your first building?",
     "details": "An empty Home used to show a list with nothing in it beside a map that said “Your map is empty”. Now it opens on one card over a map of every city CompNinja has market pages in: type your first building’s address and press Put it on the map, and the add form opens with the address already filled in. If you’re in a firm you can say whether it’s yours or the firm’s. Three doors underneath lead to inviting your team (or starting a firm), following a market, and seeing permits. After your first property, Today suggests what to do next (invite your team, follow that building’s market), the map zooms to the neighborhood instead of a rooftop, and the property’s card opens on its own. Also: the firm header says “Add your firm’s logo” and “Firm settings” in words instead of a red plus and a bare icon, and Today only links to lease dates and conversations when there are any."
+  },
+  {
+    "date": "2026-10-20",
+    "type": "fix",
+    "title": "Clicking a property with no street photo no longer shows a gray box first",
+    "details": "When Google has no good street photo of a building, its map card on Home shows the aerial view instead, and that aerial only started loading the moment you clicked, so the card sat as an empty gray box until it arrived. Home now loads the aerial of every pin you can see ahead of time, plus any pin you point at, so the card opens with the picture already in it. The street photos were already loaded this way; this closes the gap for the buildings that do not have one."
   }
 ]

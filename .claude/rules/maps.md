@@ -87,7 +87,9 @@ the building". Read this before the rest of the file, which it extends.
   pins in view (and the hovered pin) before any card shows them, so the card
   finds the image in the browser and lays it in with no fade (`overlay`
   checks `img.complete`). Workspace.md has Home's half and the numbers.
-  Three rules hold it: **a warm is a billed image**, so never for one already
+  Since 2026-10-20 a card that can only be the aerial has its Esri tiles
+  fetched ahead the same way (`hmAerialWarm`, workspace.md). Three rules hold
+  the photo warm: **a warm is a billed image**, so never for one already
   loaded, never twice a page, never from a page nobody has opened (a
   prerendered Home waits for `prerenderingchange`), and at most 40 a page;
   **a failed warm remembers nothing** (a 429 says nothing about the

@@ -14366,13 +14366,17 @@ async function renderMyDesk() {
   }
   // An aerial crop, stitched from the same free Esri tiles the report map's
   // popups use (aerialTileSpec). No coordinates, no photo: a hatched square.
+  // A list's thumbnails load as they come near; a map card is on screen the
+  // moment it opens, and its tiles were fetched ahead (hmAerialWarm).
   function hmAerial(box, ll, w, h, z) {
     box.textContent = "";
     if (!ll) { box.classList.add("none"); return box; }
     box.classList.remove("none");
+    const card = box.classList.contains("hm-pop-ph");
     for (const t of aerialTileSpec(ll, w, h, z)) {
       const img = document.createElement("img");
-      img.src = t.src; img.alt = ""; img.loading = "lazy";
+      img.src = t.src; img.alt = "";
+      if (card) img.fetchPriority = "high"; else img.loading = "lazy";
       img.style.left = t.left + "px"; img.style.top = t.top + "px";
       img.addEventListener("error", () => { img.style.display = "none"; });
       box.append(img);
@@ -14394,14 +14398,16 @@ async function renderMyDesk() {
   // (hmPhotoSeen), a batch at a time. A property with no coordinates yet can
   // still have its photo: the address is enough.
   const hmPhotosOn = () => streetviewEnabled && typeof BLDGPHOTO !== "undefined";
+  // A card that can only be the aerial: no street photos here, an address
+  // that cannot have one, or one Google was asked about and had none for.
+  const hmAerialOnly = (address) => !hmPhotosOn() || !BLDGPHOTO.eligible(address) || BLDGPHOTO.photo(address) === null;
   function hmPhoto(box, ll, address, w, h, z) {
     box._bpAddr = address;
     box._bp = null;
     box._bpDone = false;
     box._bpAsked = false;
-    if (!hmPhotosOn() || !BLDGPHOTO.eligible(address)) return hmAerial(box, ll, w, h, z);
+    if (hmAerialOnly(address)) return hmAerial(box, ll, w, h, z);
     const src = BLDGPHOTO.photo(address);
-    if (src === null) return hmAerial(box, ll, w, h, z);
     box.textContent = "";
     box.classList.remove("none");
     box._bpAerial = () => hmAerial(box, ll, w, h, z);
@@ -14503,15 +14509,29 @@ async function renderMyDesk() {
   // loading; well under the image route's 120-a-window guard
   // (STREETVIEW_RATE_MAX), with room for those thumbnails. Permits are public record and can number in the hundreds:
   // only a hovered or opened one is asked about.
+  //
+  // A card with no street photo draws the aerial instead, and until
+  // 2026-10-20 its tiles were fetched only once it opened, so it sat gray
+  // until they came (the owner: "when clicking on a property on the map it
+  // becomes gray first"). So the card's own crop (HM_CARD_PHOTO) is fetched
+  // ahead too, for the pins in view whose card can only be the aerial
+  // (hmAerialOnly) and for the pin under the pointer. Esri's free tiles, not
+  // a billed image, but still at most HM_WARM_MAX places a page, and only
+  // once the page is shown; each tile is held for the page's life, so the
+  // card finds it in the browser.
   const HM_WARM_MAX = 40;
+  const HM_CARD_PHOTO = { w: 260, h: 104, z: 18 };
   let hmWarmLeft = HM_WARM_MAX;
+  let hmAerialLeft = HM_WARM_MAX;
+  const hmAerialHeld = new Map();
   let hmWarmTimer = 0;
-  // What Home could show a photo of, the drawn pins in view first.
-  function hmPhotoPlaces() {
+  // What Home could show a photo of, the drawn pins in view first. `all`
+  // keeps the addresses that cannot have a street photo, for the aerial warm.
+  function hmPhotoPlaces(all) {
     const bounds = hmMap ? hmMap.getBounds() : null;
     const out = [];
     const add = (address, ll, drawn) => {
-      if (!address || !BLDGPHOTO.eligible(address)) return;
+      if (!address || (!all && !BLDGPHOTO.eligible(address))) return;
       out.push({ address, ll, inView: !!(drawn && ll && bounds && bounds.contains([ll.lat, ll.lng])) });
     };
     hmItems.forEach((x) => { if (x.num != null) add(x.address, hmLLForAddress(x.address), hmTab === "today"); });
@@ -14520,10 +14540,11 @@ async function renderMyDesk() {
     return out.sort((a, b) => Number(b.inView) - Number(a.inView));
   }
   function hmPhotoAskAll() {
+    hmAerialWarm();
     if (!hmPhotosOn()) return;
     const places = hmPhotoPlaces();
     if (!places.length) return;
-    const landed = () => { hmPhotoUpgrade(); hmPhotoWarm(); };
+    const landed = () => { hmPhotoUpgrade(); hmPhotoWarm(); hmAerialWarm(); };
     BLDGPHOTO.lookup(places, landed).then(landed, landed);
   }
   // What the list's thumbnails on screen are showing: those load themselves.
@@ -14548,14 +14569,37 @@ async function renderMyDesk() {
       if (BLDGPHOTO.preload(p.address)) hmWarmLeft--;
     }
   }
+  // The tiles of a card's aerial at `ll` that are not in the browser yet,
+  // fetched now. Answers whether it fetched any.
+  function hmAerialFetch(ll) {
+    if (!ll || typeof Image !== "function") return false;
+    const tiles = aerialTileSpec(ll, HM_CARD_PHOTO.w, HM_CARD_PHOTO.h, HM_CARD_PHOTO.z).filter((t) => !hmAerialHeld.has(t.src));
+    tiles.forEach((t) => {
+      const img = new Image();
+      img.src = t.src;
+      hmAerialHeld.set(t.src, img);
+    });
+    return tiles.length > 0;
+  }
+  function hmAerialWarm() {
+    if (hmAerialLeft <= 0) return;
+    // Called again on every draw while prerendered: one listener, since the
+    // same function added twice is added once.
+    if (document.prerendering) { document.addEventListener("prerenderingchange", hmAerialWarm, { once: true }); return; }
+    for (const p of hmPhotoPlaces(true)) {
+      if (!p.inView || hmAerialLeft <= 0) break;
+      if (hmAerialOnly(p.address) && hmAerialFetch(p.ll)) hmAerialLeft--;
+    }
+  }
   function hmPhotoWarmSoon() {
     clearTimeout(hmWarmTimer);
-    hmWarmTimer = setTimeout(hmPhotoWarm, 300);
+    hmWarmTimer = setTimeout(() => { hmPhotoWarm(); hmAerialWarm(); }, 300);
   }
   function hmPhotoHover(address, ll) {
-    if (!hmPhotosOn() || !address || !BLDGPHOTO.eligible(address)) return;
+    if (!address) return;
+    if (hmAerialOnly(address)) { hmAerialFetch(ll); return; }
     if (BLDGPHOTO.photo(address) !== undefined) { BLDGPHOTO.preload(address); return; }
-    const warm = () => BLDGPHOTO.preload(address);
+    const warm = () => { if (hmAerialOnly(address)) hmAerialFetch(ll); else BLDGPHOTO.preload(address); };
     BLDGPHOTO.lookup([{ address, ll }]).then(warm, warm);
   }
 
@@ -14637,6 +14681,7 @@ async function renderMyDesk() {
     hmGeoTried.clear();
     hmPhotoForget();
     hmWarmLeft = HM_WARM_MAX;
+    hmAerialLeft = HM_WARM_MAX;
     if (hmPinLayer) hmPinLayer.clearLayers();
     if (hmMap) hmMap.closePopup();
     ["hmTodayRows", "hmPropRows", "hmTeam"].forEach((id) => { const e = document.getElementById(id); if (e) e.textContent = ""; });
@@ -15588,7 +15633,7 @@ async function renderMyDesk() {
     // asked about now rather than when an observer gets round to it.
     const where = permit ? [permit.street, permit.city].filter(Boolean).join(", ")
       : r ? r.address : item ? item.address : "";
-    const ph = hmPhoto(hmEl("div", "hm-pop-ph"), ll, where, 260, 104, 18);
+    const ph = hmPhoto(hmEl("div", "hm-pop-ph"), ll, where, HM_CARD_PHOTO.w, HM_CARD_PHOTO.h, HM_CARD_PHOTO.z);
     card.append(ph);
     if (ph._bp) {
       hmPhotoObs.unobserve(ph);

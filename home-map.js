@@ -500,8 +500,36 @@
     return to === start && Math.abs(moved) >= 0.2 ? start + Math.sign(moved) : to;
   }
 
+  // ---- The start screen's map (2026-10-18, Draft C) -------------------------
+  // An account with nothing on Home is asked for its first building over a
+  // map of the cities CompNinja has market pages for. GET /api/markets is one
+  // row per page (a city can have several, one per property type); this is
+  // one dot per city, with how many pages it has. A row with no point is
+  // left off the map and out of the count, so the key never claims a city
+  // the map does not show.
+  function marketCities(rows) {
+    const by = new Map();
+    for (const r of Array.isArray(rows) ? rows : []) {
+      if (!r || !Number.isFinite(Number(r.lat)) || !Number.isFinite(Number(r.lng))) continue;
+      const city = String(r.city || "").trim(), state = String(r.state || "").trim();
+      if (!city) continue;
+      const k = `${city.toLowerCase()}|${state.toLowerCase()}`;
+      const c = by.get(k);
+      if (c) c.pages += 1;
+      else by.set(k, { city, state, lat: Number(r.lat), lng: Number(r.lng), pages: 1 });
+    }
+    return [...by.values()];
+  }
+  // The key under those dots: "40 market pages in 24 cities".
+  function marketsLine(cities) {
+    const list = Array.isArray(cities) ? cities : [];
+    const pages = list.reduce((n, c) => n + (Number(c.pages) || 0), 0);
+    if (!pages) return "";
+    return `${pages} market ${pages === 1 ? "page" : "pages"} in ${list.length} ${list.length === 1 ? "city" : "cities"}`;
+  }
+
   return { LEASE_DAYS, DEAL_DAYS, BOV_DAYS, WEEK_DAYS, STAGES, addressKey, street, place, town, daysUntil, shortDate, inDays, money,
     stageLabel, stageStep, lastValue, dealsOn, properties, scopeOf, passedDeals, addWhere, ownedTotal, agenda, thisWeek, statusLine,
     LAYERS, LAYER_DEFAULT, readLayers, VIEWS, layerView, layersFor, tabLayer, PERMIT_STAGES, tidyCaps, permitPin, permitStageLabel, permitAt, layerNotes,
-    WHEEL_BURST_MS, MAC_NOTCH_PX, wheelGesture, swipePan, pinchZoomBy, pinchSnap };
+    WHEEL_BURST_MS, MAC_NOTCH_PX, wheelGesture, swipePan, pinchZoomBy, pinchSnap, marketCities, marketsLine };
 });

@@ -426,3 +426,22 @@ test("a pinch keeps the map under the fingers and settles on a whole level", () 
   assert.equal(HM.pinchSnap(10, 10.1), 10, "a brush of the fingers changes nothing");
   assert.equal(HM.pinchSnap(10, 10), 10);
 });
+
+// The start screen's map (2026-10-18, Draft C): one dot per city with market
+// pages, and a key that counts only what the dots show.
+test("the start screen's map is one dot per city, counting its market pages", () => {
+  const rows = [
+    { slug: "industrial-boise-id", city: "Boise", state: "ID", lat: 43.6, lng: -116.2 },
+    { slug: "land-boise-id", city: "Boise", state: "ID", lat: 43.6, lng: -116.2 },
+    { slug: "office-dallas-tx", city: "Dallas", state: "TX", lat: 32.8, lng: -96.8 },
+    { slug: "retail-nowhere-zz", city: "Nowhere", state: "ZZ" },
+    { slug: "bad", city: "", state: "ID", lat: 1, lng: 1 },
+    null,
+  ];
+  const cities = HM.marketCities(rows);
+  assert.deepEqual(cities.map((c) => [c.city, c.pages]), [["Boise", 2], ["Dallas", 1]]);
+  assert.equal(HM.marketsLine(cities), "3 market pages in 2 cities", "a page with no point is not counted");
+  assert.equal(HM.marketsLine([{ city: "Boise", pages: 1 }]), "1 market page in 1 city");
+  assert.equal(HM.marketsLine([]), "", "no dots, no key");
+  assert.deepEqual(HM.marketCities("not a list"), []);
+});

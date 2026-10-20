@@ -31271,6 +31271,15 @@ const server = http.createServer((req, res) =>
       const row = { slug, type: p.type, city: p.city, state: p.state };
       const direction = freshDirection(p, Date.now());
       if (direction) row.direction = direction;
+      // The city's point (2026-10-18), for the empty Home's map of where
+      // CompNinja has market pages: the momentum map's own chain
+      // (MARKETHERO.coordsFor), never a geocoder, and omitted when there is
+      // none, so a market without a point is simply not on that map.
+      const ll = MARKETHERO.coordsFor(p.city, p.state, {
+        coords: (Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+          ? { lat: Number(p.lat), lng: Number(p.lng) } : null,
+      });
+      if (ll) { row.lat = ll.lat; row.lng = ll.lng; }
       return row;
     });
     res.writeHead(200, { "content-type": "application/json", "cache-control": "public, max-age=300" });

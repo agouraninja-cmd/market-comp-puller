@@ -668,8 +668,12 @@ test("the buildings add form ships closed, with one writer, behind Home's choose
   assert.match(html, /id="buildingAddForm" class="hidden /, "the form ships hidden — the vault's #addSec rule");
   assert.equal((html.match(/getElementById\("buildingAddForm"\)\.classList/g) || []).length, 1,
     "setBuildingAddOpen is the single writer of the form's visibility");
-  assert.match(html, /getElementById\("hmAddFirm"\)\.addEventListener\("click", \(\) => \{[\s\S]{0,300}setBuildingAddOpen\(true\);/,
+  // Since 2026-10-18 the chooser and the empty Home's start screen open it
+  // through one opener, hmOpenFirmAdd, which the start screen hands an address.
+  assert.match(html, /getElementById\("hmAddFirm"\)\.addEventListener\("click", \(\) => hmOpenFirmAdd\(""\)\);/,
     "the chooser's firm choice opens it");
+  assert.match(html, /function hmOpenFirmAdd\(address\) \{[\s\S]{0,300}setBuildingAddOpen\(true\);/,
+    "and the opener is setBuildingAddOpen(true)");
   const ctx = loadBuildings({ body: { summary: "", truncated: false, buildings: [] } });
   ctx.setOpen(true);
   assert.equal(ctx.dom.hidden("buildingAddForm"), false);

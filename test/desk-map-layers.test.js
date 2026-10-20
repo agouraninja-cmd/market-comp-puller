@@ -188,3 +188,68 @@ test("a pin opens its card on hover where there is a real pointer, and touch kee
   const sel = fnOf("function hmSelect(key");
   assert.match(sel, /^function hmSelect\(key, \{ item, permit, from \} = \{\}\) \{\n    \/\/[^\n]*\n    \/\/[^\n]*\n    if \(from === "map" && key === hmSel && hmPopup && hmPopup\.isOpen\(\)\) return;/);
 });
+
+// The empty Home's start screen (2026-10-18; Draft C of the empty Home
+// drafts, the owner's pick): an account with nothing on Home is asked for its
+// first building over the whole map, instead of an empty list beside an
+// empty map that said "add a property" three times.
+test("an empty Home asks for its first building, and the answer goes to Properties' own form", () => {
+  const at = html.indexOf('id="hmFirst"');
+  assert.ok(at > html.indexOf('id="hmMap"'), "the start screen is not over the map");
+  const box = html.slice(at, html.indexOf("</section>", at));
+  assert.match(html.slice(at - 60, at + 40), /<section id="hmFirst" class="hidden hm-first"/, "the start screen must start hidden");
+  assert.match(box, /Where’s your first building\?/);
+  // The copy rules: a value is an automated estimate, never an appraisal,
+  // and what a value costs is said the way the add form says it.
+  assert.match(box, /Every valuation is an automated estimate, not an appraisal\./);
+  assert.match(box, /One click gets it an automated value estimate\./);
+  assert.doesNotMatch(box, /appraise|we are a broker|our brokers/i);
+  // The form posts nowhere of its own: no action, and the submit handler
+  // opens a form rather than sending anything.
+  assert.doesNotMatch(box, /<form[^>]*\saction=/);
+  const submit = html.slice(html.indexOf('getElementById("hmFirstForm").addEventListener("submit"'), html.indexOf('getElementById("hmFirstTeam")'));
+  assert.ok(submit.length > 200, "the start screen's submit moved");
+  assert.doesNotMatch(submit, /fetch\(|acctApi\(|sendBeacon/, "the start screen saves on its own");
+  assert.match(submit, /hmFirstGone = true;/, "answering it does not bring the list back");
+  assert.match(submit, /setHomeTab\("properties"\);/);
+  assert.match(submit, /if \(toFirm\) hmOpenFirmAdd\(address\);\s*else hmOpenMineAdd\("own", address\);/);
+  // One writer of the class that hides the list, and it shows the screen
+  // only where a form can take the answer.
+  assert.equal((html.match(/classList\.toggle\("hm-first-on"/g) || []).length, 1, "hm-first-on has more than one writer");
+  const show = fnOf("function hmFirstShow(on) {");
+  assert.match(show, /on = Boolean\(on && \(ways\.own \|\| ways\.firm\) && currentUser\);/);
+  assert.match(fnOf("function drawHomeMap() {"), /hmFirstShow\(nothing && !hmFirstGone\);/);
+  // The old start cards stand in only when the start screen cannot show.
+  assert.match(html, /getElementById\("hmStart"\)\.classList\.toggle\("hidden", !nothing \|\| hmTab !== "today" \|\| hmFirstOn\);/);
+  assert.match(html, /getElementById\("hmStart"\)\.classList\.toggle\("hidden", !hmNothing \|\| tab !== "today" \|\| hmFirstOn\);/);
+  // Its dots are the public market list, read only once the page is shown
+  // (CLAUDE.md's rule 15), and drawn non-interactive on the pin layer.
+  const load = fnOf("function hmLoadMarkets() {");
+  assert.match(load, /hmWhenShown\(async \(\) => \{/);
+  assert.match(load, /fetch\("\/api\/markets", \{ credentials: "same-origin" \}\)/);
+  assert.match(fnOf("function hmDrawFirstMap() {"), /className: "hm-mkt", radius: .+?, interactive: false \}/);
+  assert.match(fnOf("function hmDrawPins() {"), /hmPinLayer\.clearLayers\(\);\s*if \(hmFirstOn\) \{ hmDrawFirstMap\(\); return; \}/);
+  // The empty map's card no longer points "on the left", which a phone has not got.
+  assert.ok(!html.includes("Add a property on the left"), "the empty map points at a list a phone shows below it");
+});
+
+test("Home's fixes from the empty Home drafts: words on the firm header, links and a legend that name only what is there", () => {
+  // The firm header's two controls say what they do.
+  const gear = html.slice(html.indexOf('<button id="hmFirmGear"'), html.indexOf("</button>", html.indexOf('<button id="hmFirmGear"')));
+  assert.match(gear, /<span>Firm settings<\/span>/);
+  const head = fnOf("function drawFirmHead(firm) {");
+  assert.doesNotMatch(head, /hm-fh-add/, "the unlabelled red + is back on the firm's initials");
+  assert.match(head, /hmEl\("button", "hm-fh-logo", "\+ Add your firm’s logo"\)/);
+  // Today's links go only to lists that have something in them.
+  const draw = fnOf("function drawHomeMap() {");
+  assert.match(draw, /const leasesLink = !!firm && firmBuildings\.length > 0;/);
+  assert.match(draw, /const msgsLink = !!firm && !!\(deskThreadsStat && deskThreadsStat\.total\);/);
+  // The legend names only the kinds a pin was drawn for.
+  assert.match(fnOf("function hmDrawPins() {"), /const kinds = new Set\(showProps \? located\.map\(\(\{ r \}\) => hmPipClass\(r\)\) : \[\]\);/);
+  // One place opens on its neighbourhood, not at the fit's street-level ceiling.
+  assert.match(html, /const HM_ONE_ZOOM = 14;/);
+  // Next replaces a paragraph that repeated the status line, and is text-built.
+  const next = fnOf("function hmDrawNext(firm) {");
+  assert.doesNotMatch(next.replace("ic.innerHTML = HM_ICON[st.icon]; // static markup, no data", ""), /innerHTML/);
+  assert.match(draw, /todayEmpty\.classList\.toggle\("hidden", hmItems\.length > 0 \|\| nothing \|\| next\);/);
+});

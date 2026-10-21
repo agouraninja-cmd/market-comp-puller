@@ -252,3 +252,24 @@ test("the /permits route, signed out and signed in", async (t) => {
     assert.ok(boot.j.filings.every((f) => f.onBoard === null));
   });
 });
+
+test("near your sites: a Yours filter beside the firm's buildings, a tag on the row, and ?near=1 opens Filings with it on (2026-10-21)", () => {
+  const f = (n, near) => ({ permitNumber: n, address: "5650 W OVERLAND RD", city: "Boise", appliedDate: "2026-10-20", status: "Received",
+    stage: "open", propertyType: "Multifamily", type: "New Multifamily", nearSite: near });
+  const near = { id: "s1", address: "5600 W Overland Rd, Boise, ID 83709", miles: 0.1 };
+  const boot = { ...bootWith(0), j: { filings: [f("NEAR", near), f("FAR", null)], cities: "Boise", windowDays: 30, nearSites: 1 } };
+  const plain = runPage(boot);
+  assert.equal(plain.selected, "tabFilings");
+  assert.match(plain.els.ptFac.innerHTML, /data-g="yours"/);
+  assert.match(plain.els.ptFac.innerHTML, /<input type="checkbox" data-g="near" value="1"\/> <span class="t">Within a mile of your sites<\/span><span class="n">1<\/span>/);
+  assert.doesNotMatch(plain.els.ptFac.innerHTML, /On your firm/, "the firm's buildings row only for a firm member");
+  assert.match(plain.els.ptRows.innerHTML, /<a class="pt-near" href="\/sites">0\.1 mi from 5600 W Overland Rd →<\/a>/);
+  assert.equal(plain.els.ptShown.innerHTML, "<b>2</b> permits, newest first");
+  const linked = runPage(boot, { search: "?near=1", hash: "#filings" });
+  assert.equal(linked.selected, "tabFilings");
+  assert.equal(linked.els.ptShown.innerHTML, "<b>1</b> of 2 permits", "only the one near a site");
+  // No placed deal: neither the filter nor the link's filter.
+  const none = runPage({ ...boot, j: { ...boot.j, nearSites: 0 } }, { search: "?near=1" });
+  assert.doesNotMatch(none.els.ptFac.innerHTML, /data-g="near"/);
+  assert.equal(none.els.ptShown.innerHTML, "<b>2</b> permits, newest first");
+});

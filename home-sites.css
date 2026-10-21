@@ -83,3 +83,12 @@
 .hs-form .hs-share { flex-direction: row; gap: 9px; font-size: 13px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ink-2); }
 .hs-owner { margin-top: 10px; }
 .hs-est { margin-top: 8px; }
+/* Permits within a mile of a deal (2026-10-21): the pane's own block, full
+   width under the key terms, with the tracker's list shape. */
+.hs-near { margin-top: 12px; }
+.hs-near > .hs-mute { margin: 0 0 6px; font-size: 13px; }
+.hs-permits li { grid-template-columns: 54px minmax(0, 1fr) auto auto; }
+.hs-permits .hs-dw { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hs-pn { font-size: 12px; font-variant-numeric: tabular-nums; }
+.hs-near-foot { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin: 6px 0 0; font-size: 13px; }
+@media (max-width: 520px) { .hs-permits li { grid-template-columns: 48px minmax(0, 1fr) auto; align-items: start; } .hs-permits .hs-dw { white-space: normal; } .hs-permits .hs-pn { display: none; } }

@@ -4873,5 +4873,11 @@
     "type": "feature",
     "title": "Sites: share a deal with your firm, and the land report's value lands on the deal",
     "details": "Each deal on Sites has a \"Share with your firm\" switch. New deals start shared; deals from before stay private. Teammates see a shared deal on /sites, read-only, with the owner's name on it, and someone who leaves the firm takes their deals with them. \"Run a land report\" now remembers which deal it came from, and when the report draws, its low, likely and high values are saved onto the deal and shown beside the asking price, with a link back to the report. Deals are also placed on the map in the background (through our own server), ready for permits nearby. Needs migration 061; until it runs, Sites works exactly as before."
+  },
+  {
+    "date": "2026-10-21",
+    "type": "feature",
+    "title": "Permits within a mile of your Sites deals, with one-click alerts",
+    "details": "Each deal's pane now lists the permits filed within a mile in the last 30 days (type, street, distance, status, and a link to the city's record), and says plainly when the deal can't be placed on the map or when nothing was filed in the cities CompNinja reads. \"Email me when one is filed\" sets up an ordinary area alert in one click; once one covers the deal, the pane says so and links to it. On Permits, the Filings tab has a \"Within a mile of your sites\" filter, and each nearby permit names the deal it's near. Only you (and teammates, for deals shared with the firm) see which permits are near your deals."
   }
 ]

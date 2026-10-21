@@ -376,12 +376,85 @@
             est && (est.vs || est.at) ? h("p", { class: "hs-mute hs-est" }, [est.vs, est.at ? "from the report on " + dayLabel(est.at, today()) : ""].filter(Boolean).join(", ") + ".") : null),
           blk("Key dates", dates.length ? h("ul", { class: "hs-dates" }, dateRows) : h("p", { class: "hs-mute" }, "No dates yet."), dateForm),
           blk("Notes", h("p", { class: "hs-notes" }, s.notes || h("span", { class: "hs-mute" }, "None yet.")))),
+        nearBlock(key, s),
         h("div", { class: "hs-foot" },
           h("a", { class: "hm-btn", href: reportHref(s, { site: !ro }) }, "Run a " + type.toLowerCase() + " report"),
           est && est.href && !ro ? h("a", { class: "hm-btn", href: est.href, title: "Open the report behind the estimate (no new search, no cost)" }, "Open the report") : null,
           ro ? null : btn("Edit", "", () => { state.editing = s.id; refill(true); }),
           ro ? null : h("button", { type: "button", class: "hs-rm", onclick: () => removeDeal(key, s) }, "Remove")),
       ];
+    }
+    // Permits filed near a deal (2026-10-21; the owner's #5, "permits within
+    // 1 mile of my sites, with alerts"): GET /api/sites/permits, read once per
+    // deal and place when its pane is first drawn (never in a page's boot),
+    // and the pane drawn again when it lands. Before migration 061 a deal
+    // carries no place at all and the block is left out; a read that fails
+    // says so, and an empty answer names the cities CompNinja reads, so a
+    // quiet block never reads as "nothing was filed" when nothing was looked at.
+    const nearby = {};
+    function nearFor(s) {
+      const k = s.id + (s.lat != null ? ":placed" : "");
+      if (!nearby[k]) {
+        nearby[k] = { busy: true };
+        send("GET", "/api/sites/permits?id=" + encodeURIComponent(s.id)).then((r) => {
+          nearby[k] = r;
+          const cur = live && live.row ? sigOf(live.row).s : null;
+          if (cur && cur.id === s.id) refill();
+        });
+      }
+      return nearby[k];
+    }
+    function nearBlock(key, s) {
+      if (!s || !s.id || !("lat" in s || "geo_source" in s)) return null;
+      const n = nearFor(s), title = "Permits within a mile";
+      const line = (t) => h("p", { class: "hs-mute" }, t);
+      if (n.busy) return h("div", { class: "hs-blk hs-near" }, h("h4", null, title), line("Checking the permits filed near it…"));
+      if (n.s === 503 && /switched on/.test(String(n.j.error || ""))) return null;
+      if (n.s !== 200) return h("div", { class: "hs-blk hs-near" }, h("h4", null, title), line(n.j.error || "Couldn't check permits near this deal just now."));
+      const j = n.j;
+      if (!j.placed) {
+        return h("div", { class: "hs-blk hs-near" }, h("h4", null, title), line(j.geo === "none"
+          ? "We couldn't find this address on the map, so we can't show the permits near it. Check the address with Edit."
+          : "Placing this deal on the map. The permits near it show here once it's placed."));
+      }
+      const days = j.windowDays || 30;
+      const said = j.total
+        ? (j.total === 1 ? "1 permit" : j.total + " permits") + " filed within a mile in the last " + days + " days" +
+          (j.total > 5 ? ", the newest 5 here." : ".")
+        : "No permits filed within a mile in the last " + days + " days. CompNinja reads permits in " + (j.cities || "Boise, Meridian and Nampa") + ".";
+      const rows = (j.permits || []).slice(0, 5).map((f) => h("li", null,
+        h("span", { class: "hs-dd" }, dayLabel(f.appliedDate, today())),
+        h("span", { class: "hs-dw", title: f.description || null },
+          [f.street || "No address on the permit", f.miles < 0.1 ? "at the site" : f.miles + " mi", f.type || "Permit"].join(" · ")),
+        chip(f.status || "Filed", f.stage === "attention" ? "warn" : ""),
+        f.sourceUrl ? h("a", { class: "hs-lnk hs-pn", href: f.sourceUrl, target: "_blank", rel: "noopener noreferrer" }, f.permitNumber || "Record")
+          : h("span", { class: "hs-mute hs-pn" }, f.permitNumber || "")));
+      return h("div", { class: "hs-blk hs-near" }, h("h4", null, title), line(said),
+        rows.length ? h("ul", { class: "hs-dates hs-permits" }, rows) : null,
+        h("p", { class: "hs-near-foot" },
+          j.total ? h("a", { class: "hs-lnk", href: "/permits?near=1#filings" }, "See them on Permits →") : null,
+          alertDoor(key, s, j)));
+    }
+    // One click asks for an email whenever a permit is filed within a mile:
+    // an ordinary area alert (POST /api/permits/alerts, Pro), centred on the
+    // deal's address, so it is listed, changed and removed on Permits.
+    function alertDoor(key, s, j) {
+      if (j.alert) {
+        return h("span", { class: "hs-mute" }, "One of your permit alerts already emails you about new ones here. ",
+          h("a", { class: "hs-lnk", href: "/permits#alerts" }, "Manage alerts"));
+      }
+      if (!j.canAlert) return null;
+      return h("button", { type: "button", class: "hs-lnk", onclick: (e) => {
+        e.currentTarget.disabled = true;
+        send("POST", "/api/permits/alerts", { areaAddress: s.address, areaMiles: S.NEAR_MILES || 1,
+          name: "Near " + (street(s.address) || "a site") }).then((r) => {
+          if (r.s !== 200) return fail(key, r.j.error || "That alert didn't save. Nothing was changed.");
+          delete state.msg[key];
+          Object.keys(nearby).forEach((k) => { if (k.indexOf(s.id) === 0) delete nearby[k]; });
+          refill();
+          ctx.say("Done. You'll get an email when a permit is filed within a mile of " + (street(s.address) || "this site") + ".");
+        });
+      } }, "Email me when one is filed");
     }
     // The owner's switch: shared with their firm, or theirs alone. Written
     // at once; a refusal puts the box back and says why.

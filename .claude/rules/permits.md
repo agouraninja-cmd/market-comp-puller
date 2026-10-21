@@ -7,6 +7,7 @@ paths:
   - "scripts/capture-permit-fixtures.js"
   - ".github/workflows/permit-sweep.yml"
   - "test/permit*.test.js"
+  - "test/sites-permits-run.test.js"
 ---
 # Permits
 
@@ -773,3 +774,53 @@ only what a pin and its card show. Five rules:
   `PERMIT_STAGES`, ⚠ permits-page.js `STAGE_NAMES`), and the street in the
   tracker's case (`tidyCaps`, ⚠ permits-page.js `tidy`); both pairs are run
   together in `test/home-map.test.js`.
+
+## Near your Sites deals (2026-10-21)
+
+The owner's #5 from the Hawkins Companies demo: "Permits don't know where
+your deals are. A developer wants 'permits within 1 mile of my sites,' with
+alerts." Built on Sites' migration 061 (a deal's `lat`/`lng`, placed through
+our own Census call; vault.md) and this file's 058 (a permit's place). No
+migration of its own. Five rules:
+
+- **Near is one mile, by great circle, between two real places.**
+  `SITES.NEAR_MILES`, `milesBetween` (a missing coordinate is no place,
+  never 0,0), `nearestSite` and `permitsNear` in sites.js, tested in
+  `test/sites.test.js`. A permit or a deal with no place is near nothing.
+- **The tracker marks each filing with the reader's nearest deal**
+  (`f.nearSite = { id, address, miles }` in `permitTrackerPayload`, from
+  `sitesForPermits`): the reader's own deals still being bought (their
+  `user_id=eq.` read) and, in a development firm only, the deals colleagues
+  shared with it (`sitesSharedWithFirm`, rule 3). The deal's street is the
+  reader's own or shared with them, and the feed goes to that reader alone;
+  another firm's reader gets `nearSite: null` on every filing
+  (`test/sites-permits-run.test.js`). `[]` before 061 or on a failed read:
+  public permits never wait on a deal. `GET /api/permits/map` passes
+  `{ near: false }` and skips the read, since its pins carry no mark.
+- **/permits' Filings** gets "Within a mile of your sites" in the Yours
+  group (`NEAR`, offered only when `nearSites` > 0; the group is
+  `data-g="yours"` now, holding the firm's buildings row too), and a row
+  near a deal says "0.4 mi from 5600 W Overland Rd →" (or "At …") in the
+  warning colour, linking `/sites`. **`?near=1`** opens Filings with the box
+  ticked; it carries no address.
+- **A deal's pane reads `GET /api/sites/permits?id=`** (requireSites; the
+  deal must be the reader's own or a colleague's shared one, else 404, so an
+  id says nothing about a deal the reader cannot see). It answers the
+  permits within the mile, newest day first (20 at most, `total` beside),
+  each with `miles` and a `street` in ordinary case (`HOMEMAP.tidyCaps`,
+  which server.js now requires), the cities read, and whether an alert
+  covers it. An unplaced deal answers `{ placed: false, geo }` and the pane
+  says why ("We couldn't find this address on the map" for `none`, "Placing
+  this deal on the map" while it waits). An empty answer names the cities
+  CompNinja reads (§7). Read once per deal and place per page, when the pane
+  is first drawn, never in a boot; a READ, so a prerendered page may make it.
+- **"Email me when one is filed" is an ordinary area alert**: the pane
+  POSTs `/api/permits/alerts { areaAddress, areaMiles: 1, name: "Near …" }`,
+  so the alert is Pro (`canTrackPermits`; the pane offers it only with
+  `canAlert`), placed by the route's own geocoder, listed, changed and
+  removed on /permits' Alerts tab, and mailed by the digest like any other.
+  `SITES.alertCovering` then reads it as covering the deal (a circle of a
+  mile or more centred on it, within 0.15 mi for two Census placings of one
+  address, or any circle that holds the whole mile), and the pane says "One
+  of your permit alerts already emails you about new ones here. Manage
+  alerts".

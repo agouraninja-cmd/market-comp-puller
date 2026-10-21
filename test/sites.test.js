@@ -155,3 +155,35 @@ test("control characters are stripped from free text that reaches the page", () 
   assert.ok(r.ok);
   assert.ok(!/[\u0000-\u001f]/.test(r.row.address + r.row.notes));
 });
+
+test("near a deal: a mile by great circle, a missing place is no place, and the nearest deal wins", () => {
+  // 2026-10-21, the owner's #5. Number(null) is 0, so a deal or permit with no
+  // place must never be measured from 0,0.
+  assert.equal(SITES.milesBetween(43.5893, -116.265, null, null), null);
+  assert.equal(SITES.milesBetween(43.5893, -116.265, "", 0), null);
+  assert.equal(SITES.milesBetween(43.5893, -116.265, 43.5893, -116.265), 0);
+  assert.ok(Math.abs(SITES.milesBetween(43.5893, -116.265, 43.5893, -116.24) - 1.25) < 0.02);
+  const deals = [{ id: "a", address: "5600 W Overland Rd", lat: 43.5893, lng: -116.265 },
+    { id: "b", address: "5900 W Overland Rd", lat: 43.5893, lng: -116.272 }, { id: "c", address: "Unplaced", lat: null, lng: null }];
+  assert.deepEqual(SITES.nearestSite(43.5899, -116.2705, deals), { id: "b", address: "5900 W Overland Rd", miles: 0.1 });
+  assert.equal(SITES.nearestSite(43.7, -116.265, deals), null, "past a mile is not near");
+  assert.equal(SITES.nearestSite(null, null, deals), null, "a permit with no place is near nothing");
+  assert.equal(SITES.NEAR_MILES, 1);
+});
+
+test("a deal's permits: within the mile, newest day first and nearest within a day; an alert covers it only from the same spot", () => {
+  const site = { id: "a", lat: 43.5893, lng: -116.265 };
+  const f = (id, lat, lng, appliedDate) => ({ id, lat, lng, appliedDate });
+  const near = SITES.permitsNear(site, [f(1, 43.5895, -116.266, "2026-10-01"), f(2, 43.5893, -116.24, "2026-10-09"),
+    f(3, 43.594, -116.27, "2026-10-08"), f(4, 43.5894, -116.2651, "2026-10-08"), f(5, null, null, "2026-10-10")]);
+  assert.deepEqual(near.map((x) => [x.id, x.miles]), [[4, 0], [3, 0.4], [1, 0.1]]);
+  assert.deepEqual(SITES.permitsNear({ id: "u", lat: null, lng: null }, [f(1, 43.5895, -116.266, "x")]), []);
+  const area = (lat, lng, miles) => ({ id: "al", area: { lat, lng, miles } });
+  assert.deepEqual(SITES.alertCovering(site, [area(43.5894, -116.2652, 1)]), { id: "al", miles: 1 });
+  assert.deepEqual(SITES.alertCovering(site, [area(43.5894, -116.2652, 2)]), { id: "al", miles: 2 }, "a wider circle covers it too");
+  assert.equal(SITES.alertCovering(site, [area(43.5894, -116.2652, 0.5)]), null, "half a mile is less than the pane shows");
+  assert.deepEqual(SITES.alertCovering(site, [area(43.6, -116.265, 5)]), { id: "al", miles: 5 }, "a wide circle nearby holds the whole mile");
+  assert.equal(SITES.alertCovering(site, [area(43.6, -116.265, 1)]), null, "a mile centred most of a mile away does not");
+  assert.equal(SITES.alertCovering(site, [area(43.7, -116.265, 5)]), null, "nor a wide one too far off");
+  assert.equal(SITES.alertCovering(site, [{ id: "plain", area: null }]), null, "a city alert is not an area alert");
+});

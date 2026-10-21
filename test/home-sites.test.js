@@ -107,7 +107,11 @@ test("a private address goes only to our own routes, in a body, never into a URL
   // page's address, which is how a comp report has always been started.
   const urls = [...SRC.matchAll(/send\("(?:GET|POST|DELETE)", ("[^"]*"|[^,)]*)/g)].map((m) => m[1]);
   assert.ok(urls.length >= 8, "the writes moved: " + urls.length);
-  for (const u of urls) assert.match(u, /^"\/api\/(sites|sites\/update|portfolio)|^"\/api\/(sites|portfolio)\?id=" \+ encodeURIComponent\(/, u);
+  // Since 2026-10-21 a deal's pane also reads the permits near it, by the
+  // deal's id alone, and its one-click alert POSTs the address to our own
+  // permit-alert route, which places it through our own geocoder.
+  for (const u of urls) assert.match(u, /^"\/api\/(sites|sites\/update|portfolio|permits\/alerts)"$|^"\/api\/(sites|portfolio|sites\/permits)\?id="$/, u);
+  for (const m of SRC.matchAll(/send\("GET", "\/api\/sites\/permits\?id=" \+ ([^)]*\))/g)) assert.equal(m[1], "encodeURIComponent(s.id)", "the deal's id, never its address");
   assert.equal((SRC.match(/\bfetch\(/g) || []).length, 1, "every request goes through send()");
   assert.doesNotMatch(SRC, /nominatim|\/api\/geocode/i, "this file places nothing on a map: Home does, through its own geocoder");
 });
@@ -152,4 +156,17 @@ test("the owner's report link names the deal, so the estimate comes back onto it
   assert.match(HS.reportHref(s, { site: true }), new RegExp("&site=" + id + "$"));
   assert.doesNotMatch(HS.reportHref(s), /site=/, "no opt-in, no deal id");
   assert.doesNotMatch(HS.reportHref(deal({ id: "../x", address: "1 Main St" }), { site: true }), /site=/, "only a real id rides along");
+});
+
+test("a deal's pane reads its nearby permits once, when drawn, and its alert is an ordinary area alert (2026-10-21)", () => {
+  const pane = SRC.slice(SRC.indexOf("function dealPane("), SRC.indexOf("function editForm("));
+  assert.ok(pane.indexOf("nearBlock(key, s),") > pane.indexOf('blk("Notes"'), "under the key terms, dates and notes");
+  assert.ok(pane.indexOf("nearBlock(key, s),") < pane.indexOf('h("div", { class: "hs-foot" }'), "above the pane's buttons");
+  assert.match(pane, /send\("GET", "\/api\/sites\/permits\?id=" \+ encodeURIComponent\(s\.id\)\)/);
+  assert.match(pane, /if \(!s \|\| !s\.id \|\| !\("lat" in s \|\| "geo_source" in s\)\) return null;/, "before 061 a deal has no place, and no block");
+  assert.match(pane, /send\("POST", "\/api\/permits\/alerts", \{ areaAddress: s\.address, areaMiles: S\.NEAR_MILES \|\| 1,/);
+  assert.match(pane, /href: "\/permits\?near=1#filings" \}, "See them on Permits →"/);
+  assert.match(pane, /CompNinja reads permits in /, "an empty answer names the cities it looked in");
+  assert.doesNotMatch(SRC.slice(SRC.indexOf("function mount("), SRC.indexOf("function dealPane(")), /api\/sites\/permits/,
+    "nothing reads permits before a pane is drawn");
 });

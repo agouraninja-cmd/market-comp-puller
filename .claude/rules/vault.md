@@ -1322,7 +1322,12 @@ paths:
 >   address change resets all three. A read places only when it is not
 >   speculative (`sitesPayload(user, { place })`: never a prerendered
 >   `/sites` or `GET /api/sites`, and never the desk boot's fan-out, which a
->   prerendered Home makes without a `sec-purpose` header; rule 15). Permits near a deal read them (`SITES.NEAR_MILES`,
+>   prerendered Home makes without a `sec-purpose` header; rule 15).
+> - **Permits within a mile (same day; permits.md, "Near your Sites
+>   deals").** A deal's pane carries a "Permits within a mile" block from
+>   `GET /api/sites/permits?id=` with "Email me when one is filed" (an
+>   ordinary area alert), and /permits marks and filters the filings near
+>   the reader's deals. Permits near a deal read them (`SITES.NEAR_MILES`,
 >   `SITES.milesBetween`; permits.md).
 
 The owner's pick "M2" of the Sites drafts

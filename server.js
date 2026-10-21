@@ -208,6 +208,9 @@ const BOVSVC = require("./bov-log");
 // /api/sites write goes through. Dual-exported; the browser reads the same
 // copy at /sites.js.
 const SITES = require("./sites");
+// home-map.js's tidyCaps, so a permit's all-capitals portal street reads in
+// ordinary case in a Sites deal's pane, as it does on Home's map.
+const HOMEMAP = require("./home-map");
 // The Board, on the Markets page (2026-10-09): a watchlist of markets and
 // watched properties. Dual-exported; the server takes its quarterSeries for
 // the feed's trend line, and the browser reads the same copy at /board.js.
@@ -2274,6 +2277,31 @@ function sitesPlaceLater(userId, rows) {
       todo.forEach((r) => sitesPlacing.delete(r.id));
     }
   })();
+}
+
+// The deals the Permit tracker measures from (2026-10-21; the owner's #5:
+// "permits within 1 mile of my sites"): the ones on the member's /sites
+// board that are still being bought and have a place, their own (the
+// user_id=eq. read) and the ones colleagues shared with the firm
+// (sitesSharedWithFirm, rule 3). Asked for colleagues' only in a
+// development firm, the one kind with a Sites board, so a broker's permit
+// view pays one small read and no more. [] before 061 and on any failure:
+// the permits are public record and never wait on a deal.
+async function sitesForPermits(user) {
+  try {
+    if (!user || !(await sitesV2Ready())) return [];
+    const sel = "id,address,stage,portfolio_item_id,lat,lng";
+    const [own, firm] = await Promise.all([
+      sbRequest("GET", `user_sites?user_id=eq.${encodeURIComponent(user.id)}&select=${sel}&limit=${SITES.MAX_ROWS}`),
+      sitesFirmOf(user),
+    ]);
+    const theirs = firm && firm.kind === "development" ? await sitesSharedWithFirm(firm.orgId, user.id, sel) : [];
+    return [...(own || []), ...theirs].filter((s) => s && s.portfolio_item_id == null && SITES.isBuying(s.stage) &&
+      s.lat != null && s.lng != null);
+  } catch (err) {
+    console.error("Sites read for permits failed (no permit is marked near a deal):", err.message);
+    return [];
+  }
 }
 
 // --- password resets (memory + best-effort DB, 1-hour tokens) ---
@@ -7666,8 +7694,9 @@ async function reportCityCoverage() {
 // through orgBuildingRows — the buildings gate's own read — and is
 // fail-open: a failed board read costs the "on your board" marks, never the
 // list.
-async function permitTrackerPayload(user) {
+async function permitTrackerPayload(user, opts) {
   const now = Date.now();
+  const wantNear = !(opts && opts.near === false);
   const since = new Date(now - PERMIT_FILINGS.TRACKER_WINDOW_DAYS * 86400000).toISOString().slice(0, 10);
   // A city read from its published reports is a month behind, so its window is
   // the last thirty days its reports cover (trackerFeed's windowFrom), read in
@@ -7679,7 +7708,7 @@ async function permitTrackerPayload(user) {
       windowFrom[c.key] = PERMIT_FILINGS.localIsoDate(Date.parse(c.through + "T12:00:00Z") - PERMIT_FILINGS.TRACKER_WINDOW_DAYS * 86400000);
     }
   }
-  const [portalRows, reportRows, lastSweptAt, board] = await Promise.all([
+  const [portalRows, reportRows, lastSweptAt, board, nearSites] = await Promise.all([
     sbRequest("GET",
       `permit_filings?jurisdiction=in.(${pgInList(PERMITS.LOOKUP_KEYS)})&applied_date=gte.${since}` +
       `&order=applied_date.desc&limit=${PERMIT_FILINGS.TRACKER_MAX + 1}`),
@@ -7696,6 +7725,7 @@ async function permitTrackerPayload(user) {
         return null;
       }
     })(),
+    wantNear ? sitesForPermits(user) : [],
   ]);
   const rows = [...(portalRows || []), ...reportRows];
   const filings = PERMIT_FILINGS.trackerFeed({
@@ -7711,6 +7741,11 @@ async function permitTrackerPayload(user) {
   // issued or ended, from permit-watch.js's classifyStatus, so a tag's colour
   // and the Status filter read the portal's words the way a tracked permit does.
   for (const f of filings) f.stage = PERMIT_WATCH.stageOf(f.status);
+  // Near one of the reader's Sites deals (2026-10-21): the nearest within a
+  // mile, by the permit's own place (058) and the deal's (061). The deal's
+  // street is the reader's own or shared with them, and this feed goes to
+  // that reader alone.
+  for (const f of filings) f.nearSite = nearSites.length ? SITES.nearestSite(f.lat, f.lng, nearSites) : null;
   return {
     cities: PERMIT_FILINGS.citiesLine(PERMIT_SWEPT.map((c) => c.label)),
     windowDays: PERMIT_FILINGS.TRACKER_WINDOW_DAYS,
@@ -7718,6 +7753,7 @@ async function permitTrackerPayload(user) {
     // Where a city read from its published reports stops, for the page's note.
     reportCities: coverage.filter((c) => c.through).map((c) => ({ city: c.city, through: c.through })),
     inFirm: Boolean(board),
+    nearSites: nearSites.length,
     filings,
     ...PERMIT_FILINGS.sweepFreshness(lastSweptAt, now),
   };
@@ -22404,7 +22440,9 @@ const server = http.createServer((req, res) =>
       const user = await requireUser(req, res);
       if (!user) return;
       if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Permits are unavailable right now." });
-      const feed = await permitTrackerPayload(user);
+      // The pins carry no Sites mark (Home's map draws the deals themselves),
+      // so the map's read skips the deal read that would make one.
+      const feed = await permitTrackerPayload(user, { near: false });
       const { filed, pins } = PERMIT_FILINGS.mapPins(feed.filings);
       return sendJson(res, 200, { cities: feed.cities, windowDays: feed.windowDays, filed, pins, truncated: feed.truncated });
     })().catch((err) => { console.error("permits map error:", err.message); sendJson(res, 503, { error: "Permits are unavailable right now." }); });
@@ -23622,6 +23660,58 @@ const server = http.createServer((req, res) =>
     return { sites: rows || [], today: sitesToday(), firm, firmSites,
       share: v2 && firm ? { orgId: firm.orgId, name: firm.name } : null };
   };
+  // The permits near one deal (2026-10-21), for its pane on Home and /sites:
+  // the Permit tracker's own feed (public record, the last 30 days of every
+  // swept city) cut to the filings within SITES.NEAR_MILES of the deal, and
+  // whether one of the member's area alerts already covers it. The deal is
+  // the member's own or one a colleague shared with the firm, found by the
+  // same two reads Sites makes (rule 3); anything else is a 404, so an id
+  // says nothing about a deal the reader cannot see. A READ: placing a deal
+  // is sitesPlaceLater's, after the Sites read.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/sites/permits") {
+    (async () => {
+      if (rateLimited("sites:" + clientIp(req), 120)) {
+        return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+      }
+      const user = await requireSites(req, res);
+      if (!user) return;
+      const id = String(new URL(req.url, "http://localhost").searchParams.get("id") || "");
+      if (!isUuidish(id)) return sendJson(res, 400, { error: "Missing or malformed id." });
+      if (!(await sitesV2Ready())) return sendJson(res, 503, { error: "Permits near a deal aren't switched on yet." });
+      const sel = "id,address,stage,portfolio_item_id,lat,lng,geo_source";
+      let site = ((await sbRequest("GET", `user_sites?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}` +
+        `&select=${sel}&limit=1`)) || [])[0] || null;
+      if (!site) {
+        const firm = await sitesFirmOf(user);
+        if (firm) site = (await sitesSharedWithFirm(firm.orgId, user.id, sel)).find((s) => s.id === id) || null;
+      }
+      if (!site || site.portfolio_item_id != null) return sendJson(res, 404, { error: "That deal is not in your list." });
+      const placed = site.lat != null && site.lng != null;
+      const ent = await getEntitlements(user, undefined, isAdminRequest(req));
+      if (!placed) return sendJson(res, 200, { placed: false, geo: site.geo_source || null, canAlert: !!ent.canTrackPermits });
+      const [feed, alertRows] = await Promise.all([
+        permitTrackerPayload(user, { near: false }),
+        sbRequest("GET", `permit_alerts?user_id=eq.${encodeURIComponent(user.id)}` +
+          `&select=id,area_lat,area_lng,area_miles&limit=${PERMIT_ALERTS.MAX_ALERTS_PER_USER}`).catch(() => []),
+      ]);
+      const near = SITES.permitsNear(site, feed.filings);
+      const alerts = (alertRows || []).filter((a) => a.area_lat != null && a.area_lng != null && a.area_miles != null)
+        .map((a) => ({ id: a.id, area: { lat: a.area_lat, lng: a.area_lng, miles: a.area_miles } }));
+      return sendJson(res, 200, {
+        placed: true, cities: feed.cities, windowDays: feed.windowDays, miles: SITES.NEAR_MILES,
+        stale: !!feed.stale, never: !!feed.never, total: near.length,
+        permits: near.slice(0, 20).map((f) => ({ id: f.id, permitNumber: f.permitNumber, type: f.type, stage: f.stage || "open",
+          status: f.status, description: f.description, projectName: f.projectName, address: f.address, city: f.city,
+          street: HOMEMAP.tidyCaps(String(f.address || "").split(",")[0].trim()),
+          appliedDate: f.appliedDate, daysAgo: f.daysAgo, applicant: f.applicant, sourceUrl: f.sourceUrl, miles: f.miles })),
+        alert: SITES.alertCovering(site, alerts), canAlert: !!ent.canTrackPermits,
+      });
+    })().catch((err) => {
+      console.error("site permits read failed:", err.message);
+      sendJson(res, 503, { error: "Couldn't check permits near this deal just now." });
+    });
+    return;
+  }
   if (req.method === "POST" && req.url.split("?")[0] === "/api/sites/update") {
     let body = "";
     req.setEncoding("utf8");

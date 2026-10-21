@@ -94,6 +94,11 @@
     return "$" + Math.round(n);
   }
   function psfLabel(n) { n = num(n); return n == null ? "" : "$" + (n >= 100 ? Math.round(n) : n.toFixed(2).replace(/\.00$/, "")) + "/SF"; }
+  // Land is quoted per acre (2026-10-21): "$637K/acre".
+  function acreLabel(n) { n = num(n); return n == null || !(n > 0) ? "" : short(n) + "/acre"; }
+  // A land market the feed priced per acre reads per acre; anything else, and
+  // a land market with no priced acre yet, per square foot as before.
+  function perAcre(item) { return !!item && item.property_type === "Land" && num(item.median_per_acre) > 0; }
   // A comp's price or rate as the corpus stores it: a bare number reads as
   // dollars ("5379000" -> "$5,379,000"); anything already written out (a
   // rent with its unit) is shown as it is.
@@ -131,9 +136,10 @@
     return {
       kind: "market", key: "m:" + item.id, id: item.id,
       name: String(item.market || ""), sub: String(item.property_type || ""),
-      price: num(item.median_psf), priceText: psfLabel(item.median_psf), priceNote: "median, 6 mo",
+      price: perAcre(item) ? num(item.median_per_acre) : num(item.median_psf),
+      priceText: perAcre(item) ? acreLabel(item.median_per_acre) : psfLabel(item.median_psf), priceNote: "median, 6 mo",
       change, move: move(change), changeNote: change == null ? "" : "vs prior 6 mo",
-      spark, newCount: Number(item.new_count) || 0,
+      spark, newCount: Number(item.new_count) || 0, perAcre: perAcre(item),
       read: typeof readOf === "function" ? readOf(item) : null,
       href: item.market_page && /^[a-z0-9-]{1,120}$/.test(String(item.market_page.slug || "")) ? "/market/" + item.market_page.slug : "",
     };
@@ -297,17 +303,18 @@
           h("ul", null, r.read.reasons.map((x) => h("li", null, h("b", { "aria-hidden": "true" }, x.dir === "down" ? "▼" : x.dir === "up" ? "▲" : "■"), x.text)))));
       }
       const facts = [];
-      if (Array.isArray(item.spark) && item.spark.length) facts.push("Trend: quarterly median sale $/SF, " + item.spark[0].label + " to " + item.spark[item.spark.length - 1].label);
+      const acre = perAcre(item);
+      if (Array.isArray(item.spark) && item.spark.length) facts.push("Trend: quarterly median sale " + (acre ? "$/acre" : "$/SF") + ", " + item.spark[0].label + " to " + item.spark[item.spark.length - 1].label);
       if (item.demand && item.demand.viewers) facts.push(item.demand.viewers + " " + (item.demand.viewers === 1 ? "person" : "people") + " searched here in " + (item.demand.window_days || 30) + " days");
       if (facts.length) out.push(h("p", { class: "bd-mute" }, facts.join(" · ")));
       const comps = Array.isArray(item.comps) ? item.comps : [];
       if (comps.length) {
         out.push(h("div", { class: "bd-tw" }, h("table", { class: "bd-comps" },
-          h("thead", null, h("tr", null, h("th", null, "New comp"), h("th", null, "Deal"), h("th", null, "Date"), h("th", { class: "n" }, "Price or rate"), h("th", { class: "n" }, "$/SF"))),
+          h("thead", null, h("tr", null, h("th", null, "New comp"), h("th", null, "Deal"), h("th", null, "Date"), h("th", { class: "n" }, "Price or rate"), h("th", { class: "n" }, acre ? "$/acre" : "$/SF"))),
           h("tbody", null, comps.map((c) => h("tr", null,
             h("td", null, /^https?:\/\//.test(String(c.source_url || "")) ? h("a", { href: c.source_url, rel: "nofollow noopener", target: "_blank" }, c.address || "") : (c.address || "")),
             h("td", null, c.transaction || ""), h("td", null, c.deal_date || ""), h("td", { class: "n" }, figure(c.price_or_rate)),
-            h("td", { class: "n" }, c.price_per_sqft == null ? "" : psfLabel(c.price_per_sqft))))))));
+            h("td", { class: "n" }, acre ? acreLabel(c.price_per_acre) : c.price_per_sqft == null ? "" : psfLabel(c.price_per_sqft))))))));
       }
       if (item.locked_count) out.push(h("p", { class: "bd-mute" }, item.locked_count + " more new comp" + (item.locked_count === 1 ? "" : "s") + " here. ", h("a", { href: "/desk" }, "See your plan"), " to see them all."));
       out.push(h("div", { class: "bd-acts" },
@@ -366,7 +373,9 @@
           body.push(h("tr", { class: "bd-gh" }, h("td", { colspan: "6" }, h("b", null, title), h("span", null, String(list.length)), note ? h("small", null, note) : null)));
           list.forEach((r) => body.push(rowFor(r)));
         };
-        if (showM && markets.length) group("Markets", markets, "median sale $/SF from recorded sales");
+        if (showM && markets.length) group("Markets", markets, markets.some((r) => r.perAcre)
+          ? (markets.every((r) => r.perAcre) ? "median sale $/acre from recorded sales" : "median sale $/SF, land per acre, from recorded sales")
+          : "median sale $/SF from recorded sales");
         if (showP && (props.length || state.sitesLocked)) {
           group("Properties", props, "likely value from your last check");
           if (state.sitesLocked) body.push(h("tr", { class: "bd-gh" }, h("td", { colspan: "6" }, h("small", null, "Watching properties is part of Pro. "), h("a", { href: "/desk" }, "See your plan"))));
@@ -453,6 +462,6 @@
     return { reload: load };
   }
 
-  return { PROP_TYPES, QUARTERS, QUARTER_MIN, median, quarterSeries, pct, short, psfLabel, figure, move, street, marketOf,
+  return { PROP_TYPES, QUARTERS, QUARTER_MIN, median, quarterSeries, pct, short, psfLabel, acreLabel, perAcre, figure, move, street, marketOf,
     marketRow, propertyRow, watched, summary, parseAdd, mount };
 });

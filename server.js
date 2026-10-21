@@ -2621,9 +2621,23 @@ async function buildWatchlistFeed(user, ent, cutoffOf, opts) {
       .sort((a, b) => a - b);
     const median_psf = salePsf.length
       ? Math.round(salePsf[Math.floor(salePsf.length / 2)] * 100) / 100 : null;
+    // Land is quoted per acre (2026-10-21; vault.md, "Land is priced per
+    // acre"): a land market also carries its median sale $/acre over the
+    // same window and gate, and its change and line below are read in $/acre,
+    // since a land sale often has no square footage at all. median_psf stays
+    // for every market, because the digest quotes it.
+    const land = w.property_type === "Land";
+    const saleAcre = land ? rows
+      .filter((r) => new Date(r.ts).getTime() > sixMonthsAgo)
+      .filter((r) => !String(r.transaction || "").toLowerCase().startsWith("lease"))
+      .filter((r) => parseDealDate(r.deal_date) != null)
+      .map((r) => corpusNum(r.price_per_acre))
+      .filter(Boolean)
+      .sort((a, b) => a - b) : [];
+    const median_per_acre = saleAcre.length ? Math.round(saleAcre[Math.floor(saleAcre.length / 2)]) : null;
     // Direction: deal-date medians, last 6 months vs the 6 before —
     // >=3 comps each side or the field is omitted entirely.
-    const datedSales = saleRowsWithDates(rows);
+    const datedSales = saleRowsWithDates(rows, median_per_acre ? "price_per_acre" : "price_per_sqft");
     const nowFrac = new Date().getFullYear() + (new Date().getMonth() + 0.5) / 12;
     const curWin = datedSales.filter((d) => nowFrac - d.yearFrac >= 0 && nowFrac - d.yearFrac <= 0.5).map((d) => d.psf);
     const priWin = datedSales.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
@@ -2648,6 +2662,7 @@ async function buildWatchlistFeed(user, ent, cutoffOf, opts) {
     out.push({
       id: w.id, market: w.market, property_type: w.property_type,
       median_psf, new_count: fresh.length,
+      ...(median_per_acre ? { median_per_acre } : {}),
       ...(marketPage ? { market_page: marketPage } : {}),
       ...(direction ? { direction } : {}),
       ...(median_trend ? { median_trend } : {}),
@@ -2668,6 +2683,7 @@ async function buildWatchlistFeed(user, ent, cutoffOf, opts) {
       comps: fresh.slice(0, feedRowCap).map((r) => ({
         ts: r.ts, address: r.address, transaction: r.transaction, deal_date: r.deal_date,
         price_or_rate: r.price_or_rate, price_per_sqft: r.price_per_sqft,
+        ...(land ? { price_per_acre: r.price_per_acre, lot_acres: r.lot_acres } : {}),
         cap_rate: r.cap_rate, source_url: r.source_url,
       })),
     });
@@ -13423,10 +13439,13 @@ function renderBrokerProfileHTML(profile, subs, signedIn) {
 // like MARKET_CREDIT: one corpus query per TTL, no per-request DB reads.
 // ---------------------------------------------------------------------------
 // Sale rows with a parseable date and numeric $/SF — the trendable subset.
-function saleRowsWithDates(rows) {
+// `field` is the rate read (2026-10-21): price_per_sqft for every caller but
+// The Board's land markets, which read price_per_acre. The key stays `psf`
+// so quarterSeries and the trend windows read either unchanged.
+function saleRowsWithDates(rows, field = "price_per_sqft") {
   return (rows || [])
     .filter((r) => String(r.transaction || "").toLowerCase().startsWith("sale"))
-    .map((r) => ({ yearFrac: parseDealDate(r.deal_date), psf: corpusNum(r.price_per_sqft), dealText: String(r.deal_date || "") }))
+    .map((r) => ({ yearFrac: parseDealDate(r.deal_date), psf: corpusNum(r[field]), dealText: String(r.deal_date || "") }))
     .filter((r) => r.yearFrac != null && r.psf > 0);
 }
 // A calendar date onto parseDealDate's scale, so a snapshot timestamp and a

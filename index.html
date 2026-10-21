@@ -4450,7 +4450,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <h2 id="chartTitle" class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Market Position</h2>
             <span id="chartBasis" class="text-xs text-[#68707E]"></span>
           </div>
-          <p class="text-xs text-[#68707E] mb-3">Sale comps by price per square foot. Lease comps are excluded.</p>
+          <p id="chartCaption" class="text-xs text-[#68707E] mb-3">Sale comps by price per square foot. Lease comps are excluded.</p>
           <div id="chartWrap"></div>
         </div>
 
@@ -5103,6 +5103,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // feeds sorting and the exports, and a column meaning different things on
   // different reports is the two-bases hazard broker-vault.js refuses to take
   // on. Label it, move nothing.
+  // A size the source wrote as bare digits ("339768") reads with its commas
+  // on screen (2026-10-21; a land comp's lot runs to six figures). Anything
+  // else is shown as written, and the exports keep the value as stored.
+  function cellShown(col, val) {
+    if (col && col.key === "size_sqft" && /^\d{4,}(\.\d+)?$/.test(String(val).trim())) {
+      return Number(String(val).trim()).toLocaleString("en-US");
+    }
+    return val;
+  }
+
   function columnsForType(type, txFocus) {
     const cols = BASE_COLUMNS.slice();
     if (txFocus === "leases") {
@@ -5125,6 +5135,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const idx = cols.findIndex((c) => c.key === anchorKey);
       if (idx !== -1) cols.splice(idx + 1, 0, ...group);
     });
+    // Land reads per acre (2026-10-21): Acres, then $/acre, then zoning and
+    // the price, with the square-foot pair after the price, so the table
+    // leads with the unit a land buyer quotes and $/acre is on screen without
+    // scrolling sideways. Same columns and keys; only the order moves.
+    if (type === "Land") {
+      const acre = cols.find((c) => c.key === "price_per_acre");
+      const sf = cols.filter((c) => c.key === "size_sqft" || c.key === "price_per_sqft");
+      const rest = cols.filter((c) => c !== acre && !sf.includes(c));
+      const ac = rest.findIndex((c) => c.key === "lot_acres");
+      if (acre && ac !== -1) rest.splice(ac + 1, 0, acre);
+      const pr = rest.findIndex((c) => c.key === "price_or_rate");
+      if (pr !== -1) { rest.splice(pr + 1, 0, ...sf); return rest; }
+    }
     return cols;
   }
 
@@ -6892,6 +6915,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     Land:        { compKey: "price_per_acre", subjKey: "lot_acres", noun: "acre", askFor: "acreage",    label: "Price per acre cross-check", leads: true },
   };
 
+  // The market position chart plots land per acre (2026-10-21) when two or
+  // more of its sale comps published a price per acre, the hero's own unit.
+  function isLandChart(sales) {
+    return !!(currentMeta && currentMeta.type === "Land")
+      && (sales || []).filter((c) => numericValue(c.price_per_acre) > 0).length >= 2;
+  }
+  // A land subject's acreage: what the member typed, else its lot size (the
+  // size range, or the size the report looked up) over 43,560, the hero's
+  // rule. null when neither is known.
+  function subjectAcresOf(meta, sizeR) {
+    const typed = numericValue(((meta && meta.subject) || {}).details && meta.subject.details.lot_acres);
+    if (typed > 0) return typed;
+    const sf = sizeR ? (sizeR.min + sizeR.max) / 2 : numericValue(currentParsed && currentParsed.subject_size_sqft);
+    return sf > 0 ? Math.round((sf / 43560) * 100) / 100 : null;
+  }
+
   // Shared by the cross-check line and the headline fallback so the two can
   // never quote different statistics for the same comps. Deliberately reuses
   // robustPpsfRange — the $/SF headline's outlier-resistant band — rather than
@@ -7235,6 +7274,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         }
       }
     }
+    // Land is priced per acre (2026-10-21). ALT_BASIS.Land leads the hero,
+    // but only once the acreage is known, and it was known only when the
+    // member TYPED it: a land report with the lot size looked up from public
+    // records (or typed in SF) was quoted "at $15/SF", a unit a land buyer
+    // never uses. A parcel's size is its lot, so its acreage is that size over
+    // 43,560, exact rather than estimated. Typed acres still win, and the
+    // basis line says where a derived acreage came from.
+    let acresFromLot = null;
+    if (meta.type === "Land" && sizeR && !(numericValue((s.details || {}).lot_acres) > 0)) {
+      acresFromLot = Math.round(((sizeR.min + sizeR.max) / 2 / 43560) * 100) / 100;
+    }
+    const sAlt = acresFromLot > 0 ? { ...s, details: { ...(s.details || {}), lot_acres: acresFromLot } } : s;
     // Sale comps only — lease $/SF/yr is a different unit and would skew the
     // range. Comp objects are kept alongside their $/SF so the trust line can
     // count provenance tiers.
@@ -7616,7 +7667,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // that way and the owner told us the count. Computed up front because it
     // can either supplement the $/SF headline or, when no $/SF range exists,
     // become the headline itself.
-    const altRange = altBasisRange(meta, s, saleComps, parsed);
+    const altRange = altBasisRange(meta, sAlt, saleComps, parsed);
 
     // Which sales basis heads the hero. Land leads per-acre whenever acreage is
     // known; every other type leads on $/SF and falls back to the alternate
@@ -7694,7 +7745,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }];
       // Sits right after the sales-comparison line because it is the same
       // comps expressed in a different unit, not a separate approach.
-      const altEntry = altBasisEntry(meta, s, saleComps, parsed);
+      const altEntry = altBasisEntry(meta, sAlt, saleComps, parsed);
       if (altEntry) entries.push(altEntry);
       entries.push(...incomeApproachEntries(rr.low * sizeR.min, rr.high * sizeR.max));
       entries.push(costApproachEntry);
@@ -7720,11 +7771,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       setPpsf("ownerLowPpsf", "at " + per0(rr.low) + "/" + spec.noun);
       setPpsf("ownerMidPpsf", "at " + per0(rr.mid) + "/" + spec.noun + " · comp median");
       setPpsf("ownerHighPpsf", "at " + per0(rr.high) + "/" + spec.noun);
-      basisEl.textContent = `${qty.toLocaleString()} ${spec.noun}${plural} × ` + (rr.trimmed
+      // A derived acreage says where it came from, as the $/SF branch's size
+      // does: the lot size, and that size's own source.
+      const lotPhrase = !acresFromLot ? ""
+        : sizeSource === "public_record" ? " (the lot size from public records)"
+        : sizeSource === "listing" ? " (the lot size from a listing)"
+        : sizeSource ? " (the lot size, estimated from public data)"
+        // No source: typed, or carried in by a bulk run's own lookup, which
+        // stores the size it found as the subject's. Neither is claimed.
+        : " (from the lot size)";
+      basisEl.textContent = `${qty.toLocaleString()} ${spec.noun}${plural}${lotPhrase} × ` + (rr.trimmed
         ? `the middle range of ${per.length} sale comps`
         : `price per ${spec.noun} from ${per.length} sale comps`);
-      trustEl.textContent = `Based on ${per.length} sale comps that published a price per ${spec.noun}. `
-        + `Building size wasn't needed for this estimate.` + smallNNote(per.length);
+      trustEl.textContent = `Based on ${per.length} sale comps that published a price per ${spec.noun}.`
+        + (meta.type === "Land" ? "" : ` Building size wasn't needed for this estimate.`) + smallNNote(per.length);
       trustEl.classList.remove("hidden");
       // Same line, this type's own unit: the ledger above is quoting per unit
       // or per acre, so a $/SF scatter under it would be measuring something
@@ -9475,11 +9535,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // Locked comps are plotted too — the median line below must be the same
     // statistic as the hero's, and dropping them would make the two disagree
     // on the same report. A basis row has no address, so its dot says so.
-    const pts = valuationComps()
-      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
-      .map((c) => ({ v: numericValue(c.price_per_sqft), address: c.address || "Locked comparable" }))
+    // Land is plotted per acre (2026-10-21), the unit its hero leads with,
+    // whenever two or more sale comps published one; otherwise per square
+    // foot as before. One unit per chart, never a mix.
+    const sales = valuationComps()
+      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"));
+    const perAcre = isLandChart(sales);
+    const unit = perAcre ? "/acre" : "/SF";
+    const pts = sales
+      .map((c) => ({ v: numericValue(perAcre ? c.price_per_acre : c.price_per_sqft), address: c.address || "Locked comparable" }))
       .filter((p) => p.v > 0)
       .sort((a, b) => a.v - b.v);
+    const capEl = document.getElementById("chartCaption");
+    if (capEl) capEl.textContent = `Sale comps by price per ${perAcre ? "acre" : "square foot"}. Lease comps are excluded.`;
     if (pts.length < 2) { card.classList.add("hidden"); return; }
 
     // Median, not mean — the hero's Likely value is a median, and showing a
@@ -9490,12 +9558,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       : (pts[pts.length / 2 - 1].v + pts[pts.length / 2].v) / 2;
 
     // Subject $/SF (single value or band) — same math as renderComparison.
+    // Per acre, the subject's asking price over its acres, typed or derived
+    // from the lot size exactly as the hero derives them.
     const sizeR = subjectRangeFromMeta("size");
     const priceR = askingRangeFrom(currentParsed);
     let youLo = null, youHi = null, youMid = null, isBand = false;
-    if (sizeR && priceR) {
-      youLo = priceR.min / sizeR.max;
-      youHi = priceR.max / sizeR.min;
+    const subjAcres = perAcre ? subjectAcresOf(currentMeta, sizeR) : null;
+    if (perAcre ? (subjAcres > 0 && priceR) : (sizeR && priceR)) {
+      youLo = perAcre ? priceR.min / subjAcres : priceR.min / sizeR.max;
+      youHi = perAcre ? priceR.max / subjAcres : priceR.max / sizeR.min;
       youMid = (youLo + youHi) / 2;
       isBand = youHi - youLo > 0.005;
     }
@@ -9525,7 +9596,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // once inserted, repaints with the site theme on its own (a toggle mid-
     // report needs no re-render). fill/stroke on an SVG presentation
     // attribute resolve var() exactly like a stylesheet declaration would.
-    let svg = `<svg width="100%" viewBox="0 0 ${W} ${H}" role="img" aria-label="Sale comps by price per square foot">`;
+    let svg = `<svg width="100%" viewBox="0 0 ${W} ${H}" role="img" aria-label="Sale comps by price per ${perAcre ? "acre" : "square foot"}">`;
     svg += `<line class="ch-fade" x1="${EDGE}" y1="${baseY}" x2="${W - EDGE}" y2="${baseY}" stroke="var(--line)" stroke-width="2"/>`;
 
     // Subject band behind everything else.
@@ -9548,14 +9619,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const py = baseY + offsets[oi];
       prevX = px;
       const delay = Math.min(0.15 + i * 0.07, 0.8).toFixed(2);
-      svg += `<circle class="ch-pop" style="animation-delay:${delay}s" cx="${px.toFixed(1)}" cy="${py}" r="6" fill="var(--ink-mute)" fill-opacity="0.85" stroke="var(--card)" stroke-width="1.5"><title>${esc(p.address)} · ${formatUsd(p.v)}/SF</title></circle>`;
+      svg += `<circle class="ch-pop" style="animation-delay:${delay}s" cx="${px.toFixed(1)}" cy="${py}" r="6" fill="var(--ink-mute)" fill-opacity="0.85" stroke="var(--card)" stroke-width="1.5"><title>${esc(p.address)} · ${perAcre ? formatUsd(p.v, { maximumFractionDigits: 0 }) : formatUsd(p.v)}${unit}</title></circle>`;
     });
 
     // Min/max labels under the strip.
     const lo = pts[0].v, hi = pts[pts.length - 1].v;
     const loHiY = compact ? baseY + 52 : baseY + 38;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${perAcre ? formatUsd(lo, { maximumFractionDigits: 0 }) : formatUsd(lo)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${perAcre ? formatUsd(hi, { maximumFractionDigits: 0 }) : formatUsd(hi)}</text>`;
 
     // "You" marker on top.
     if (youLo !== null) {
@@ -20498,7 +20569,7 @@ async function renderMyDesk() {
             ? "Weighted in the valuation as " + m.label.toLowerCase() + ": " + m.reasons.join(", ") + "."
             : "How much this comp counts toward the valuation.";
         } else {
-          cell.textContent = (val === undefined || val === null || val === "") ? "-" : val;
+          cell.textContent = (val === undefined || val === null || val === "") ? "-" : cellShown(col, val);
           if (col.key === "notes" && val) cell.title = String(val);
           if (col.isDate) {
             const b = outsideWindowBadge(val);
@@ -20562,11 +20633,15 @@ async function renderMyDesk() {
     // A sales median has no place over a leases-only view, and an empty
     // table needs no closing rule.
     if (txFilter === "leases" || visibleComps().length === 0) return;
-    const psfIdx = COLUMNS.findIndex((c) => c.key === "price_per_sqft");
+    // Land closes on its median $/acre (2026-10-21), the chart's own rule.
+    const sales = valuationComps()
+      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"));
+    const acre = isLandChart(sales);
+    const rateKey = acre ? "price_per_acre" : "price_per_sqft";
+    const psfIdx = COLUMNS.findIndex((c) => c.key === rateKey);
     if (psfIdx < 1) return;
-    const vals = valuationComps()
-      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
-      .map((c) => numericValue(c.price_per_sqft))
+    const vals = sales
+      .map((c) => numericValue(c[rateKey]))
       .filter((v) => v > 0)
       .sort((a, b) => a - b);
     if (vals.length < 2) return;
@@ -20582,7 +20657,7 @@ async function renderMyDesk() {
     // label is the only part guaranteed visible without a scroll. A printed
     // page unclips the table and shows both — same number, statement-style.
     lab.textContent = "Median of " + vals.length + " sale comps · "
-      + formatUsd(med, { maximumFractionDigits: 0 }) + "/SF";
+      + formatUsd(med, { maximumFractionDigits: 0 }) + (acre ? "/acre" : "/SF");
     tr.appendChild(lab);
     const val = document.createElement("td");
     val.className = "px-4 py-3 text-right whitespace-nowrap";
@@ -20778,7 +20853,7 @@ async function renderMyDesk() {
           dd.className = "mt-0.5 " + m.cls;
           dd.title = m.reasons.length ? m.reasons.join(", ") : "";
         } else {
-          dd.textContent = empty ? "-" : val;
+          dd.textContent = empty ? "-" : cellShown(col, val);
           // Same recomputed-$/SF disclosure as the desktop table.
           if (col.key === "price_per_sqft" && comp.psf_reconciled && !empty) {
             dd.title = "Recomputed from sale price ÷ building size";
@@ -21600,7 +21675,9 @@ async function renderMyDesk() {
           };
           const cap = (text, x, y, w) => s.addText(text, T({ x, y, w, h: 0.5, fontSize: 9, color: PPTX_MUTE, valign: "top" }));
           const MAP_CAP = "Red pin = the subject; numbered dots match the comps table.";
-          const CHART_CAP = "Sale comps by price per square foot, with the comp median and the subject's range.";
+          // The same unit the chart on the page plots (land per acre, 2026-10-21).
+          const chartUnit = isLandChart(valuationComps().filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))) ? "acre" : "square foot";
+          const CHART_CAP = `Sale comps by price per ${chartUnit}, with the comp median and the subject's range.`;
           if (map && chart) {
             const h1 = fit(map, 0.5, 1.15, 7.4, 4.9);
             cap(MAP_CAP, 0.5, 1.2 + h1, 7.4);

@@ -64,6 +64,15 @@ paths:
   is the same bytes for every member: `board.js` (the global `BOARD`,
   createElement only, pure helpers tested in `test/board.test.js`) reads
   `/api/watchlist/feed`, `/api/portfolio` and `/api/sites` itself.
+  - **A land market reads per acre (2026-10-21).** `buildWatchlistFeed`
+    adds `median_per_acre` for a Land market (the same six-month window and
+    closed-deal gate as `median_psf`, over `price_per_acre`), reads its
+    `median_trend` and `spark` in $/acre (`saleRowsWithDates(rows, field)`,
+    whose rate key stays `psf`), and puts `price_per_acre`/`lot_acres` on its
+    new comps. `median_psf` is kept for every market, because the digest
+    quotes it. board.js reads a land row per acre (`BOARD.perAcre`,
+    "$637K/acre") whenever the feed priced one, else per SF as before.
+    Pinned in `test/board.test.js` and `test/board-land-run.test.js`.
   - **One watchlist, two kinds of row.** A MARKET (`watchlist_items`): its
     six-month median sale $/SF, the move against the six months before
     (`median_trend`), a line of quarterly medians (the feed's new

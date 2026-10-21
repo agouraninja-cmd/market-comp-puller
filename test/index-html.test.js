@@ -538,6 +538,46 @@ test("Residential comps table drops tenancy and keeps year built", () => {
   assert.equal(land.includes("year_built"), false);
 });
 
+test("land's comp table leads with acres and $/acre, and a bare-digit size gets its commas (2026-10-21)", () => {
+  const start = html.indexOf("  const BASE_COLUMNS = [");
+  const fn = html.indexOf("  function columnsForType(type, txFocus) {", start);
+  const end = html.indexOf("\n  }", fn);
+  const ctx = vm.createContext({});
+  new vm.Script(html.slice(start, end + 4) + "\n;this.columnsForType = columnsForType; this.cellShown = cellShown;", { filename: "index.html" }).runInContext(ctx);
+  const land = ctx.columnsForType("Land").map((c) => c.key);
+  const at = (k) => land.indexOf(k);
+  assert.equal(at("price_per_acre"), at("lot_acres") + 1, "$/acre sits beside Acres: " + land.join(","));
+  assert.ok(at("price_per_acre") < at("price_or_rate") && at("price_or_rate") < at("size_sqft") && at("size_sqft") < at("price_per_sqft"),
+    "the square-foot pair follows the price on a land report: " + land.join(","));
+  assert.equal(new Set(land).size, land.length, "no column twice");
+  // Every other type keeps its order: Size, then the price, then $/SF.
+  const office = ctx.columnsForType("Office").map((c) => c.key);
+  assert.ok(office.indexOf("size_sqft") < office.indexOf("price_or_rate"));
+  const size = { key: "size_sqft" };
+  assert.equal(ctx.cellShown(size, "339768"), "339,768");
+  assert.equal(ctx.cellShown(size, "20,000 SF"), "20,000 SF", "a size written with its own unit is left as written");
+  assert.equal(ctx.cellShown(size, "950"), "950");
+  assert.equal(ctx.cellShown({ key: "price_or_rate" }, "5070000"), "5070000", "only the size is reformatted");
+});
+
+test("a land report leads per acre from the lot size when no acreage was typed (2026-10-21)", () => {
+  const hero = html.slice(html.indexOf("  function renderOwnerHero(parsed, meta) {"), html.indexOf("  function renderOwnerHero(parsed, meta) {") + 40000);
+  assert.match(hero, /if \(meta\.type === "Land" && sizeR && !\(numericValue\(\(s\.details \|\| \{\}\)\.lot_acres\) > 0\)\) \{\s*acresFromLot = Math\.round\(\(\(sizeR\.min \+ sizeR\.max\) \/ 2 \/ 43560\) \* 100\) \/ 100;/);
+  assert.match(hero, /const altRange = altBasisRange\(meta, sAlt, saleComps, parsed\);/);
+  assert.match(hero, /const altEntry = altBasisEntry\(meta, sAlt, saleComps, parsed\);/);
+  assert.match(hero, /: sizeSource === "public_record" \? " \(the lot size from public records\)"/);
+  assert.doesNotMatch(hero, /the lot size you entered/, "a bulk run stores its own lookup as the subject's size: never claim the member typed it");
+  const foot = html.slice(html.indexOf("  function renderTableFoot() {"), html.indexOf("  function renderTableFoot() {") + 3000);
+  assert.match(foot, /const rateKey = acre \? "price_per_acre" : "price_per_sqft";/);
+  assert.match(foot, /\+ \(acre \? "\/acre" : "\/SF"\);/);
+  assert.doesNotMatch(hero.slice(hero.indexOf("} else if (altRange) {")), /^[^\n]*`Building size wasn't needed for this estimate\.`\s*\+ smallNNote/m,
+    "a land parcel is not told its building size was not needed");
+  const chart = html.slice(html.indexOf("  function renderMarketChart() {"), html.indexOf('    // "You" marker on top.'));
+  assert.match(chart, /const perAcre = isLandChart\(sales\);/);
+  assert.match(chart, /aria-label="Sale comps by price per \$\{perAcre \? "acre" : "square foot"\}"/);
+  assert.match(html, /<p id="chartCaption" class="text-xs text-\[#68707E\] mb-3">Sale comps by price per square foot\. Lease comps are excluded\.<\/p>/);
+});
+
 test("comps table rows are compact throughout, and notes stay on one line", () => {
   assert.match(html, /#compsTable td,\s*#compsTable thead th button \{ padding: 6px 12px; \}/);
   assert.match(html, /td\.comp-notes/);

@@ -2211,13 +2211,20 @@ async function sitesV2Ready() {
 }
 
 // The firm a member's deals can be shared with: the one they are an active
-// member of (messagingFirmOf, the firm Messages reads), with its name and
-// kind. null for no firm, or a failed read, and then nothing is shared.
+// member of (ORG.membershipOf, the rule messagingFirmOf applies), with its
+// name and kind. null means no firm. A failed membership read THROWS rather
+// than answering "no firm" (messagingFirmOf's choice), so a share asked for
+// is refused rather than saved private, and /sites says it couldn't tell
+// rather than "Sites is for development firms". The firm's own row is
+// fail-open (orgsByIds), so a missing one leaves `kind` null: unknown, never
+// guessed as a broker shop.
 async function sitesFirmOf(user) {
-  const f = await messagingFirmOf(user);
-  if (!f) return null;
-  const org = (await orgsByIds([f.orgId])).get(f.orgId);
-  return { orgId: f.orgId, name: (org && org.name) || "your firm", kind: ORG.kindOf(org) };
+  if (!DB_CONFIGURED || !user || !user.email) return null;
+  const membership = ORG.membershipOf(await orgMembershipsFor(user.email), user.email);
+  if (!membership) return null;
+  const orgId = String(membership.org_id);
+  const org = (await orgsByIds([orgId])).get(orgId);
+  return { orgId, name: (org && org.name) || "your firm", kind: org ? ORG.kindOf(org) : null };
 }
 
 // The deals a member's colleagues shared with the firm. A SEPARATE read, by
@@ -2249,10 +2256,11 @@ async function sitesSharedWithFirm(orgId, selfId, select) {
 // through us, never in a URL the browser builds). Run in the background after
 // the read or write that found a deal without a place, a few at a time, and
 // written only while geo_source is still empty, so it never overwrites a
-// place and never touches anything a person typed. Still a write, so a read
-// asks for it only when it is not speculative (sitesPayload's `place`, rule
-// 15). A miss is stamped "none" for good; an outage marks nothing and the
-// next read tries again.
+// place and never touches anything a person typed. Still a write, so the one
+// read that asks for it is the /sites page's render when it is not
+// speculative (sitesPayload's `place`, rule 15); adds and address edits ask
+// too. A miss is stamped "none" for good; an outage marks nothing and the
+// next visit tries again.
 const SITES_PLACE_MAX = 5;
 const sitesPlacing = new Set();
 function sitesPlaceLater(userId, rows) {
@@ -2268,8 +2276,13 @@ function sitesPlaceLater(userId, rows) {
         const g = await censusPlace(String(r.address));
         if (g.error) break;
         const patch = g.ll ? { lat: g.ll.lat, lng: g.ll.lng, geo_source: "census" } : { geo_source: "none" };
+        // Only while the deal still has the address that was looked up: an
+        // edit made during the lookup (which clears no field that is still
+        // empty) must not be given the old address's place, for good. A
+        // deal skipped this way is placed on the next visit to /sites.
         await sbRequest("PATCH", `user_sites?id=eq.${encodeURIComponent(r.id)}` +
-          `&user_id=eq.${encodeURIComponent(userId)}&geo_source=is.null`, patch, { prefer: "return=minimal" });
+          `&user_id=eq.${encodeURIComponent(userId)}&geo_source=is.null&address=eq.${encodeURIComponent(String(r.address))}`,
+          patch, { prefer: "return=minimal" });
       }
     } catch (err) {
       console.error("Placing a site failed (it is placed on a later read):", err.message);
@@ -2291,11 +2304,15 @@ async function sitesForPermits(user) {
   try {
     if (!user || !(await sitesV2Ready())) return [];
     const sel = "id,address,stage,portfolio_item_id,lat,lng";
-    const [own, firm] = await Promise.all([
+    const [own, firm, ent] = await Promise.all([
       sbRequest("GET", `user_sites?user_id=eq.${encodeURIComponent(user.id)}&select=${sel}&limit=${SITES.MAX_ROWS}`),
       sitesFirmOf(user),
+      getEntitlements(user),
     ]);
-    const theirs = firm && firm.kind === "development" ? await sitesSharedWithFirm(firm.orgId, user.id, sel) : [];
+    // A colleague's shared deal is named only to a member Sites is open to
+    // (requireSites' canUseVault), the same people who can open it there.
+    const theirs = firm && firm.kind === "development" && ent && ent.canUseVault
+      ? await sitesSharedWithFirm(firm.orgId, user.id, sel) : [];
     return [...(own || []), ...theirs].filter((s) => s && s.portfolio_item_id == null && SITES.isBuying(s.stage) &&
       s.lat != null && s.lng != null);
   } catch (err) {
@@ -2752,9 +2769,10 @@ async function buildWatchlistFeed(user, ent, cutoffOf, opts) {
       ? Math.round(salePsf[Math.floor(salePsf.length / 2)] * 100) / 100 : null;
     // Land is quoted per acre (2026-10-21; vault.md, "Land is priced per
     // acre"): a land market also carries its median sale $/acre over the
-    // same window and gate, and its change and line below are read in $/acre,
-    // since a land sale often has no square footage at all. median_psf stays
-    // for every market, because the digest quotes it.
+    // same window and gate, and a change and line of its own in $/acre
+    // (median_trend_acre, spark_acre), since a land sale often has no square
+    // footage at all. median_psf, median_trend and spark stay in $/SF for
+    // every market, because the digest email quotes them with "/SF".
     const land = w.property_type === "Land";
     const saleAcre = land ? rows
       .filter((r) => new Date(r.ts).getTime() > sixMonthsAgo)
@@ -2766,17 +2784,22 @@ async function buildWatchlistFeed(user, ent, cutoffOf, opts) {
     const median_per_acre = saleAcre.length ? Math.round(saleAcre[Math.floor(saleAcre.length / 2)]) : null;
     // Direction: deal-date medians, last 6 months vs the 6 before —
     // >=3 comps each side or the field is omitted entirely.
-    const datedSales = saleRowsWithDates(rows, median_per_acre ? "price_per_acre" : "price_per_sqft");
     const nowFrac = new Date().getFullYear() + (new Date().getMonth() + 0.5) / 12;
-    const curWin = datedSales.filter((d) => nowFrac - d.yearFrac >= 0 && nowFrac - d.yearFrac <= 0.5).map((d) => d.psf);
-    const priWin = datedSales.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
-    const median_trend = curWin.length >= 3 && priWin.length >= 3
-      ? { current: medianPsfOf(curWin), prior: medianPsfOf(priWin) } : null;
+    const trendOf = (dated) => {
+      const cur = dated.filter((d) => nowFrac - d.yearFrac >= 0 && nowFrac - d.yearFrac <= 0.5).map((d) => d.psf);
+      const pri = dated.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
+      return cur.length >= 3 && pri.length >= 3 ? { current: medianPsfOf(cur), prior: medianPsfOf(pri) } : null;
+    };
+    const datedSales = saleRowsWithDates(rows);
+    const median_trend = trendOf(datedSales);
+    const datedAcre = median_per_acre ? saleRowsWithDates(rows, "price_per_acre") : [];
+    const median_trend_acre = median_per_acre ? trendOf(datedAcre) : null;
     // The Board's trend line (2026-10-09): the median sale $/SF of each of
     // the last eight calendar quarters with at least two dated sales
     // (board.js quarterSeries). Two points or it is left off; the digest
     // ignores the key.
     const spark = BOARD.quarterSeries(datedSales, nowFrac);
+    const spark_acre = median_per_acre ? BOARD.quarterSeries(datedAcre, nowFrac) : [];
     // The watched market's standing /market/<slug> page, when one exists —
     // the desk's feed section links each market it reports on to the page
     // that covers it. Absent key = no page = no link; the digest builder
@@ -2796,6 +2819,8 @@ async function buildWatchlistFeed(user, ent, cutoffOf, opts) {
       ...(direction ? { direction } : {}),
       ...(median_trend ? { median_trend } : {}),
       ...(spark.length >= 2 ? { spark } : {}),
+      ...(median_trend_acre ? { median_trend_acre } : {}),
+      ...(spark_acre.length >= 2 ? { spark_acre } : {}),
       // Always present for a subscriber, including at zero — "nobody searched
       // this market in 30 days" is a true answer and a useful one, and an
       // omitted field would blank the line on exactly the quiet markets worth
@@ -23640,24 +23665,31 @@ const server = http.createServer((req, res) =>
   // (null when that read failed: the page says so rather than showing none),
   // and `share`, which says sharing can be offered at all (061 has run and
   // the member is in a firm). `place` lets the read start placing unplaced
-  // deals; the caller withholds it from a speculative render and from the
-  // desk boot's fan-out (which a prerendered Home makes without saying so),
-  // rule 15, as attachPropertyCoords' backfill is withheld.
+  // deals, and only the /sites page's render passes it, never on a
+  // speculative render (rule 15, as attachPropertyCoords' backfill is
+  // withheld); GET /api/sites stays a pure read.
   const sitesPayload = async (user, opts) => {
     const v2 = await sitesV2Ready();
     const sel = v2 ? SITES_SELECT_V2 : SITES_SELECT;
+    let firmFailed = false;
     const [rows, firm] = await Promise.all([
       sbRequest("GET", `user_sites?user_id=eq.${encodeURIComponent(user.id)}` +
         `&select=${sel}&order=created_at.desc&limit=${SITES.MAX_ROWS}`),
-      sitesFirmOf(user),
+      sitesFirmOf(user).catch((err) => {
+        console.error("Sites firm read failed (the page says so):", err.message);
+        firmFailed = true;
+        return null;
+      }),
     ]);
-    let firmSites = [];
+    // A firm read that failed: the member's own deals stand, the team's are
+    // "couldn't be loaded" (firmSites null), and nothing is offered to share.
+    let firmSites = firmFailed ? null : [];
     if (v2 && firm) {
       try { firmSites = await sitesSharedWithFirm(firm.orgId, user.id, SITES_SELECT_V2); }
       catch (err) { console.error("Firm sites read failed (the page says so):", err.message); firmSites = null; }
     }
     if (v2 && opts && opts.place) sitesPlaceLater(user.id, rows);
-    return { sites: rows || [], today: sitesToday(), firm, firmSites,
+    return { sites: rows || [], today: sitesToday(), firm, firmSites, ...(firmFailed ? { firmFailed: true } : {}),
       share: v2 && firm ? { orgId: firm.orgId, name: firm.name } : null };
   };
   // The permits near one deal (2026-10-21), for its pane on Home and /sites:
@@ -23692,9 +23724,15 @@ const server = http.createServer((req, res) =>
       const [feed, alertRows] = await Promise.all([
         permitTrackerPayload(user, { near: false }),
         sbRequest("GET", `permit_alerts?user_id=eq.${encodeURIComponent(user.id)}` +
-          `&select=id,area_lat,area_lng,area_miles&limit=${PERMIT_ALERTS.MAX_ALERTS_PER_USER}`).catch(() => []),
+          `&select=id,area_lat,area_lng,area_miles&limit=${PERMIT_ALERTS.MAX_ALERTS_PER_USER}`).then((r) => r || [], (err) => {
+          console.error("Site permits: alerts read failed (no alert is offered):", err.message);
+          return null;
+        }),
       ]);
       const near = SITES.permitsNear(site, feed.filings);
+      // Alerts unread is "unknown", never "none": the pane then offers no
+      // new one, which could be a second alert for the same mile.
+      const alertsKnown = Array.isArray(alertRows);
       const alerts = (alertRows || []).filter((a) => a.area_lat != null && a.area_lng != null && a.area_miles != null)
         .map((a) => ({ id: a.id, area: { lat: a.area_lat, lng: a.area_lng, miles: a.area_miles } }));
       return sendJson(res, 200, {
@@ -23704,7 +23742,7 @@ const server = http.createServer((req, res) =>
           status: f.status, description: f.description, projectName: f.projectName, address: f.address, city: f.city,
           street: HOMEMAP.tidyCaps(String(f.address || "").split(",")[0].trim()),
           appliedDate: f.appliedDate, daysAgo: f.daysAgo, applicant: f.applicant, sourceUrl: f.sourceUrl, miles: f.miles })),
-        alert: SITES.alertCovering(site, alerts), canAlert: !!ent.canTrackPermits,
+        alert: alertsKnown ? SITES.alertCovering(site, alerts) : null, canAlert: !!ent.canTrackPermits && alertsKnown,
       });
     })().catch((err) => {
       console.error("site permits read failed:", err.message);
@@ -23801,8 +23839,11 @@ const server = http.createServer((req, res) =>
         try {
           // `today` is the server's, so the page's countdowns and the stage
           // stamps a write makes agree on what day it is.
-          return sendJson(res, 200, await sitesPayload(user, { place:
-            !INSTANTNAV.isSpeculative(req.headers) && !req.headers[DESK_BOOT_HEADER] }));
+          // A read only: this GET places no deal. A prerendered page's live
+          // fetch carries no sign of being speculative, so a GET that wrote
+          // would have to be held (HOLD_PATHS); old deals are placed by the
+          // /sites page's own render instead, which can tell.
+          return sendJson(res, 200, await sitesPayload(user));
         } catch (err) {
           console.error("sites read failed:", err.message);
           return sendJson(res, 503, { error: "Couldn't load your properties. Please try again in a minute." });
@@ -32419,7 +32460,9 @@ const server = http.createServer((req, res) =>
         current: "/sites",
         head: INTER_FONT_HEAD,
         testerBadge: true,
-        shop: boot && boot.s === 200 && boot.firm ? (boot.firm.kind === "development" ? "development" : "broker") : undefined,
+        // Only a kind actually read: a failed firm read must not tell the
+        // rail this member is a broker shop and swap Sites for Pipeline.
+        shop: boot && boot.s === 200 && boot.firm && boot.firm.kind ? (boot.firm.kind === "development" ? "development" : "broker") : undefined,
         body: renderSitesBody(boot) + visitTag,
       }));
     })();

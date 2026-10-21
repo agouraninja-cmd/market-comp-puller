@@ -163,7 +163,16 @@ test("a deal's pane reads its nearby permits once, when drawn, and its alert is 
   assert.ok(pane.indexOf("nearBlock(key, s),") > pane.indexOf('blk("Notes"'), "under the key terms, dates and notes");
   assert.ok(pane.indexOf("nearBlock(key, s),") < pane.indexOf('h("div", { class: "hs-foot" }'), "above the pane's buttons");
   assert.match(pane, /send\("GET", "\/api\/sites\/permits\?id=" \+ encodeURIComponent\(s\.id\)\)/);
-  assert.match(pane, /if \(!s \|\| !s\.id \|\| !\("lat" in s \|\| "geo_source" in s\)\) return null;/, "before 061 a deal has no place, and no block");
+  assert.match(pane, /if \(!s \|\| !s\.id \|\| !\("lat" in s \|\| "geo_source" in s\) \|\| !S\.isBuying\(s\.stage\)\) return null;/,
+    "before 061 a deal has no place, and no block; nor does a passed deal, which the tracker does not measure from");
+  // Found in review: the answer landing redrew the whole pane (wiping an Edit
+  // or a date half typed), and its cache ignored the address, so an edited
+  // deal showed its old address's permits.
+  const near = SRC.slice(SRC.indexOf("const nearby = {};"), SRC.indexOf("function nearBlock("));
+  assert.match(near, /const nearKey = \(s\) => \[s\.id, s\.address, s\.lat, s\.lng, s\.geo_source\]/);
+  assert.match(near, /nearby\[k\] = r;\s*placeNear\(s\.id\);/, "only the block is swapped when the answer lands");
+  assert.doesNotMatch(near, /refill\(/);
+  assert.match(near, /if \(!cur \|\| cur\.id !== id \|\| !old\) return;/, "a form showing (no block) is left alone");
   assert.match(pane, /send\("POST", "\/api\/permits\/alerts", \{ areaAddress: s\.address, areaMiles: S\.NEAR_MILES \|\| 1,/);
   assert.match(pane, /href: "\/permits\?near=1#filings" \}, "See them on Permits →"/);
   assert.match(pane, /CompNinja reads permits in /, "an empty answer names the cities it looked in");

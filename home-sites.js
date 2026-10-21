@@ -391,21 +391,35 @@
     // carries no place at all and the block is left out; a read that fails
     // says so, and an empty answer names the cities CompNinja reads, so a
     // quiet block never reads as "nothing was filed" when nothing was looked at.
+    // Keyed on where the deal IS (address and place), so an edited address
+    // never shows the old one's permits or its "couldn't find" line. When the
+    // answer lands only the block is swapped, never the pane, so an Edit or
+    // "+ Add a date" form opened meanwhile keeps what was typed.
     const nearby = {};
+    const nearKey = (s) => [s.id, s.address, s.lat, s.lng, s.geo_source].map((v) => (v == null ? "" : String(v))).join("|");
+    function placeNear(id) {
+      if (!live || !live.el || !live.row) return;
+      const cur = sigOf(live.row).s;
+      const old = live.el.querySelector(".hs-near");
+      if (!cur || cur.id !== id || !old) return;   // another deal, or a form showing with no block
+      const fresh = nearBlock(live.key, cur);
+      if (fresh) old.replaceWith(fresh); else old.remove();
+    }
     function nearFor(s) {
-      const k = s.id + (s.lat != null ? ":placed" : "");
+      const k = nearKey(s);
       if (!nearby[k]) {
         nearby[k] = { busy: true };
         send("GET", "/api/sites/permits?id=" + encodeURIComponent(s.id)).then((r) => {
           nearby[k] = r;
-          const cur = live && live.row ? sigOf(live.row).s : null;
-          if (cur && cur.id === s.id) refill();
+          placeNear(s.id);
         });
       }
       return nearby[k];
     }
     function nearBlock(key, s) {
-      if (!s || !s.id || !("lat" in s || "geo_source" in s)) return null;
+      // A deal still being bought, and only once 061 has given deals a place;
+      // a passed deal is not one the tracker measures from (sitesForPermits).
+      if (!s || !s.id || !("lat" in s || "geo_source" in s) || !S.isBuying(s.stage)) return null;
       const n = nearFor(s), title = "Permits within a mile";
       const line = (t) => h("p", { class: "hs-mute" }, t);
       if (n.busy) return h("div", { class: "hs-blk hs-near" }, h("h4", null, title), line("Checking the permits filed near it…"));
@@ -415,7 +429,7 @@
       if (!j.placed) {
         return h("div", { class: "hs-blk hs-near" }, h("h4", null, title), line(j.geo === "none"
           ? "We couldn't find this address on the map, so we can't show the permits near it. Check the address with Edit."
-          : "Placing this deal on the map. The permits near it show here once it's placed."));
+          : "This deal isn't on the map yet. Opening Sites places it, and the permits near it show here after that."));
       }
       const days = j.windowDays || 30;
       const said = j.total
@@ -450,8 +464,8 @@
           name: "Near " + (street(s.address) || "a site") }).then((r) => {
           if (r.s !== 200) return fail(key, r.j.error || "That alert didn't save. Nothing was changed.");
           delete state.msg[key];
-          Object.keys(nearby).forEach((k) => { if (k.indexOf(s.id) === 0) delete nearby[k]; });
-          refill();
+          delete nearby[nearKey(s)];
+          placeNear(s.id);
           ctx.say("Done. You'll get an email when a permit is filed within a mile of " + (street(s.address) || "this site") + ".");
         });
       } }, "Email me when one is filed");

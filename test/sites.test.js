@@ -187,3 +187,15 @@ test("a deal's permits: within the mile, newest day first and nearest within a d
   assert.equal(SITES.alertCovering(site, [area(43.7, -116.265, 5)]), null, "nor a wide one too far off");
   assert.equal(SITES.alertCovering(site, [{ id: "plain", area: null }]), null, "a city alert is not an area alert");
 });
+
+test("an estimate is refused rather than repaired: dollars only, a whole dollar or more (2026-10-21)", () => {
+  // Found in review: Number() took true as 1, [5] as 5 and "0x10" as 16, and
+  // the positive check ran before rounding, so 0.4 was stored as a likely $0.
+  const ok = SITES.cleanEstimate({ low: "5075000", likely: 5775000.4, high: 6275000 }, { today: "2026-10-21" });
+  assert.deepEqual(ok, { ok: true, value: { low: 5075000, likely: 5775000, high: 6275000, report: null, at: "2026-10-21" } });
+  for (const likely of [0.4, 0, -5, true, [5], "0x10", "1e6", "5,000,000", "$5000000", NaN, Infinity, {}]) {
+    assert.equal(SITES.cleanEstimate({ likely }, {}).ok, false, JSON.stringify(likely));
+  }
+  assert.equal(SITES.cleanEstimate({ likely: 5000000, low: true }, {}).ok, false, "every figure, not just likely");
+  assert.deepEqual(SITES.cleanEstimate(null, {}), { ok: true, value: null }, "null still clears it");
+});

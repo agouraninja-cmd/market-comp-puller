@@ -12538,7 +12538,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   async function openHistoryReport(r) {
     const full = await hydrateHistoryRow(r);
+    // A Sites deal waiting on this report's value (?site=) is told whether
+    // THIS is the report: it is stamped only by this render, and dropped if
+    // the report cannot be opened, so no later report lands on the deal.
+    const forSite = pendingSiteEstimate && r && pendingSiteEstimate.recentId === r.recentId;
     if (!full) {
+      if (forSite) pendingSiteEstimate = null;
       showStatus("That report is no longer stored. Re-run the search to get a fresh one.", "info");
       return;
     }
@@ -12550,6 +12555,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     restoreFormFromMeta(full.meta);
     const when = full.ts ? ` generated ${histDate(full.ts)}` : "";
     showStatus(`Reopened a saved report${when}. Run a new search for fresh data.`, "info");
+    if (forSite) pendingSiteEstimate.ready = true;
     renderResults(full.data, { ...full.meta, fromHistory: true, generatedAt: full.ts || Date.now() });
   }
 
@@ -19988,12 +19994,16 @@ async function renderMyDesk() {
   async function maybeStampSiteEstimate(meta) {
     const el = document.getElementById("siteEstimateNotice");
     const p = pendingSiteEstimate;
-    if (!p) {
+    // Only the render openHistoryReport marked as the deal's own report.
+    if (!p || !p.ready) {
       if (el && meta && el.dataset.for !== String(meta.address || "")) el.classList.add("hidden");
       return;
     }
-    if (!currentUser || !meta || meta.shared || meta.sample || !lastValuation || !(lastValuation.likely > 0)) return;
+    // Consumed by that render whatever comes of it: a report with no likely
+    // value saves nothing, and must not leave the deal waiting for the next
+    // report opened in this tab.
     pendingSiteEstimate = null;
+    if (!currentUser || !meta || meta.shared || meta.sample || !lastValuation || !(lastValuation.likely > 0)) return;
     try {
       const res = await fetch("/api/sites/update", {
         method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" },

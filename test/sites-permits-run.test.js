@@ -26,6 +26,9 @@ const PEOPLE = [
   { id: "u-casey", email: "casey@ridgeline.example", name: "Casey Lin" },
   { id: "u-out", email: "out@other.example", name: "Out Sider" },
 ];
+// A teammate with no Pro: Sites is not open to them, so neither are the
+// colleagues' deals it shows.
+const PAT = { id: "u-pat", email: "pat@ridgeline.example", name: "Pat Free" };
 // Where the Census stand-in puts each street, and two permits near each.
 const PLACES = { overland: [43.5893, -116.265], ustick: [43.6331, -116.2915] };
 const fl = (street, lat, lng, over) => ({
@@ -50,8 +53,8 @@ async function startCensus() {
 
 test("a deal's pane lists the permits filed within a mile, offers an alert, and /permits marks them", async (t) => {
   const tables = {
-    users: PEOPLE.map((p) => ({ ...p, pro_tester: false, vault_beta: false, digest_optout: false, created_at: "2025-01-01T00:00:00Z" })),
-    sessions: PEOPLE.map((p) => ({ token_hash: sha256("tok-" + p.id), user_id: p.id, expires_at: YEAR_OUT })),
+    users: [...PEOPLE, PAT].map((p) => ({ ...p, pro_tester: false, vault_beta: false, digest_optout: false, created_at: "2025-01-01T00:00:00Z" })),
+    sessions: [...PEOPLE, PAT].map((p) => ({ token_hash: sha256("tok-" + p.id), user_id: p.id, expires_at: YEAR_OUT })),
     subscriptions: PEOPLE.map((p) => ({ user_id: p.id, plan: "pro_monthly", status: "active", current_period_end: YEAR_OUT, cancel_at_period_end: false })),
     orgs: [], org_members: [], org_subscriptions: [], org_buildings: [], user_sites: [], portfolio_items: [], analytics_events: [],
     permit_filings: [
@@ -81,6 +84,9 @@ test("a deal's pane lists the permits filed within a mile, offers an alert, and 
   assert.equal(org.s, 200, JSON.stringify(org.j));
   assert.equal((await call("u-jordan", "POST", "/api/org/invite", { orgId: org.j.id, emails: ["casey@ridgeline.example"] })).s, 200);
   assert.equal((await call("u-casey", "POST", "/api/org/accept", { orgId: org.j.id })).s, 200);
+  assert.equal((await call("u-jordan", "POST", "/api/org/invite", { orgId: org.j.id, emails: [PAT.email] })).s, 200);
+  const patIn = await call("u-pat", "POST", "/api/org/accept", { orgId: org.j.id });
+  assert.equal(patIn.s, 200, "a member without Pro still joins the firm: " + JSON.stringify(patIn.j));
   assert.equal((await call("u-out", "POST", "/api/org", { name: "Elsewhere", kind: "development" })).s, 200);
 
   const mine = (await call("u-jordan", "POST", "/api/sites", { address: "5600 W Overland Rd, Boise, ID 83709" })).j.site;
@@ -137,9 +143,43 @@ test("a deal's pane lists the permits filed within a mile, offers an alert, and 
     const c = await page("u-casey");
     assert.deepEqual(near(c)["NEAR-OVERLAND"], null, "Jordan's unshared deal marks nothing for Casey");
     assert.equal(near(c)["NEAR-USTICK"], "8800 W Ustick Rd, Boise, ID 83704");
+    const p = await page("u-pat");
+    assert.equal(p.j.nearSites, 0, "a teammate Sites is not open to is not shown colleagues' deals");
+    assert.ok(p.j.filings.every((f) => f.nearSite === null));
     const o = await page("u-out");
     assert.equal(o.j.nearSites, 0);
     assert.ok(o.j.filings.every((f) => f.nearSite === null), "another firm's reader sees no deal's address");
   });
   assert.equal(db.unparsed.length, 0, JSON.stringify(db.unparsed));
+});
+
+test("alerts that can't be read are unknown, not none: no alert is offered (2026-10-21)", async (t) => {
+  // Found in review: a failed permit_alerts read answered alert: null with
+  // canAlert true, offering a second alert for a mile one already covers.
+  const tables = {
+    users: [{ ...PEOPLE[0], pro_tester: false, vault_beta: false, digest_optout: false, created_at: "2025-01-01T00:00:00Z" }],
+    sessions: [{ token_hash: sha256("tok-u-jordan"), user_id: "u-jordan", expires_at: YEAR_OUT }],
+    subscriptions: [{ user_id: "u-jordan", plan: "pro_monthly", status: "active", current_period_end: YEAR_OUT, cancel_at_period_end: false }],
+    orgs: [], org_members: [], org_subscriptions: [], org_buildings: [], user_sites: [], portfolio_items: [], analytics_events: [],
+    permit_filings: [fl("5650 W OVERLAND RD", 43.5899, -116.2672, { permit_number: "NEAR-OVERLAND" })],
+    permit_filing_events: [], permit_alerts: [],
+  };
+  const db = await fake.start({ tables, missingColumns: { permit_alerts: ["area_lat"] } });
+  const census = await startCensus();
+  const srv = await shared.boot({ ACCOUNT_WALL: "off", PRO_ENABLED: "on", SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key",
+    CENSUS_API_URL: census.url });
+  t.after(async () => { srv.stop(); await census.stop(); await db.stop(); });
+  const call = async (method, p, body) => {
+    const r = await fetch(srv.base + p, { method, headers: { "content-type": "application/json", cookie: "cn_session=tok-u-jordan" },
+      body: body === undefined ? undefined : JSON.stringify(body) });
+    return { s: r.status, j: await r.json().catch(() => ({})) };
+  };
+  const site = (await call("POST", "/api/sites", { address: "5600 W Overland Rd, Boise, ID 83709" })).j.site;
+  const end = Date.now() + 3000;
+  while (Date.now() < end && !(tables.user_sites[0] && tables.user_sites[0].geo_source)) await new Promise((r) => setTimeout(r, 25));
+  const r = await call("GET", `/api/sites/permits?id=${site.id}`);
+  assert.equal(r.s, 200, JSON.stringify(r.j));
+  assert.deepEqual(r.j.permits.map((p) => p.permitNumber), ["NEAR-OVERLAND"], "the permits still show");
+  assert.equal(r.j.alert, null);
+  assert.equal(r.j.canAlert, false, "and no alert is offered while the member's alerts are unknown");
 });

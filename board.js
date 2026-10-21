@@ -95,7 +95,12 @@
   }
   function psfLabel(n) { n = num(n); return n == null ? "" : "$" + (n >= 100 ? Math.round(n) : n.toFixed(2).replace(/\.00$/, "")) + "/SF"; }
   // Land is quoted per acre (2026-10-21): "$637K/acre".
-  function acreLabel(n) { n = num(n); return n == null || !(n > 0) ? "" : short(n) + "/acre"; }
+  // A comp's own $/acre arrives as the model wrote it ("$410,000"), so the
+  // digits are read the way server.js's corpusNum reads them.
+  function acreLabel(n) {
+    n = typeof n === "string" ? num(n.replace(/[^0-9.]/g, "")) : num(n);
+    return n == null || !(n > 0) ? "" : short(n) + "/acre";
+  }
   // A land market the feed priced per acre reads per acre; anything else, and
   // a land market with no priced acre yet, per square foot as before.
   function perAcre(item) { return !!item && item.property_type === "Land" && num(item.median_per_acre) > 0; }
@@ -130,9 +135,14 @@
   // One market as a row. `readOf` is BUYINGREAD.buyingRead, or nothing (no
   // script, no read: a row never invents one).
   function marketRow(item, readOf) {
-    const t = item && item.median_trend;
+    // A land market priced per acre reads its change and line per acre too
+    // (the feed's median_trend_acre and spark_acre), never a $/SF move under
+    // a $/acre price.
+    const acre = perAcre(item);
+    const t = item && (acre ? item.median_trend_acre : item.median_trend);
     const change = t ? pct(t.current, t.prior) : null;
-    const spark = (Array.isArray(item && item.spark) ? item.spark : []).map((q) => num(q.psf)).filter((v) => v > 0);
+    const spark = (Array.isArray(item && (acre ? item.spark_acre : item.spark)) ? (acre ? item.spark_acre : item.spark) : [])
+      .map((q) => num(q.psf)).filter((v) => v > 0);
     return {
       kind: "market", key: "m:" + item.id, id: item.id,
       name: String(item.market || ""), sub: String(item.property_type || ""),
@@ -303,8 +313,8 @@
           h("ul", null, r.read.reasons.map((x) => h("li", null, h("b", { "aria-hidden": "true" }, x.dir === "down" ? "▼" : x.dir === "up" ? "▲" : "■"), x.text)))));
       }
       const facts = [];
-      const acre = perAcre(item);
-      if (Array.isArray(item.spark) && item.spark.length) facts.push("Trend: quarterly median sale " + (acre ? "$/acre" : "$/SF") + ", " + item.spark[0].label + " to " + item.spark[item.spark.length - 1].label);
+      const acre = perAcre(item), line = acre ? item.spark_acre : item.spark;
+      if (Array.isArray(line) && line.length) facts.push("Trend: quarterly median sale " + (acre ? "$/acre" : "$/SF") + ", " + line[0].label + " to " + line[line.length - 1].label);
       if (item.demand && item.demand.viewers) facts.push(item.demand.viewers + " " + (item.demand.viewers === 1 ? "person" : "people") + " searched here in " + (item.demand.window_days || 30) + " days");
       if (facts.length) out.push(h("p", { class: "bd-mute" }, facts.join(" · ")));
       const comps = Array.isArray(item.comps) ? item.comps : [];

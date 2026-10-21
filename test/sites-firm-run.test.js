@@ -170,20 +170,21 @@ test("a report's estimate is written onto the owner's deal, checked, and a deal 
     await call("u-jordan", "POST", "/api/sites/update", { id: miss.j.site.id, address: "5700 W Overland Rd, Boise, ID 83709" });
     assert.ok(await waitFor(() => row(miss.j.site.id).geo_source === "census"));
   });
-  await t.test("a read places an older deal, but never a speculative one (rule 15)", async () => {
-    // A deal from before 061 has no place yet.
+  await t.test("the /sites page places an older deal when it is really viewed; no read of the API ever does (rule 15)", async () => {
+    // A deal from before 061 has no place yet. GET /api/sites is a pure read
+    // (a prerendered page's live fetch cannot be told from a real one), so
+    // only the page's own render, which can tell, places it.
     const r = row(d.j.site.id);
     delete r.lat; delete r.lng; delete r.geo_source;
     const quiet = async () => { await new Promise((ok) => setTimeout(ok, 400)); return row(d.j.site.id).geo_source == null; };
-    assert.equal((await call("u-jordan", "GET", "/api/sites", undefined, { "sec-purpose": "prefetch;prerender" })).s, 200);
-    assert.ok(await quiet(), "a prerendered read wrote nothing");
-    assert.equal((await call("u-jordan", "GET", "/api/sites", undefined, { "x-cn-desk-boot": "1" })).s, 200);
-    assert.ok(await quiet(), "nor did the desk boot's fan-out, which a prerendered Home makes");
-    const page = await fetch(base + "/sites", { headers: { cookie: "cn_session=tok-u-jordan", "sec-purpose": "prefetch;prerender" } });
-    assert.equal(page.status, 200);
-    assert.ok(await quiet(), "nor a prerendered /sites");
     assert.equal((await call("u-jordan", "GET", "/api/sites")).s, 200);
-    assert.ok(await waitFor(() => row(d.j.site.id).geo_source === "census"), "a real read places it");
+    assert.ok(await quiet(), "the API read wrote nothing");
+    const spec = await fetch(base + "/sites", { headers: { cookie: "cn_session=tok-u-jordan", "sec-purpose": "prefetch;prerender" } });
+    assert.equal(spec.status, 200);
+    assert.ok(await quiet(), "nor a prerendered /sites");
+    const page = await fetch(base + "/sites", { headers: { cookie: "cn_session=tok-u-jordan" } });
+    assert.equal(page.status, 200);
+    assert.ok(await waitFor(() => row(d.j.site.id).geo_source === "census"), "the page, really viewed, places it");
   });
   assert.equal(db.unparsed.length, 0, JSON.stringify(db.unparsed));
 });
@@ -205,4 +206,62 @@ test("before migration 061 runs, Sites works as it did and offers none of the th
   assert.equal((await call("u-jordan", "POST", "/api/sites/update", { id: add.j.site.id, estimate: { likely: 1 } })).s, 503);
   assert.equal(JSON.stringify(tables.user_sites), before);
   assert.equal((await call("u-jordan", "POST", "/api/sites/update", { id: add.j.site.id, stage: "loi" })).s, 200, "a stage move still works");
+});
+
+test("an address edited while the old one is being placed never gets the old place (2026-10-21)", async (t) => {
+  // Found in review: the background PATCH filtered on geo_source alone, and
+  // the edit clears nothing that is still empty, so the old address's point
+  // landed on the new address for good.
+  const tables = baseTables();
+  const db = await fake.start({ tables });
+  const census = http.createServer((req, res) => {
+    const line = new URL(req.url, "http://x").searchParams.get("address") || "";
+    const y = /old st/i.test(line) ? 10 : 20;
+    setTimeout(() => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ result: { addressMatches: [{ coordinates: { x: -100, y }, matchedAddress: line.toUpperCase() }] } }));
+    }, 600);
+  });
+  await new Promise((r) => census.listen(0, r));
+  const srv = await shared.boot({ ACCOUNT_WALL: "off", PRO_ENABLED: "on", SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key",
+    CENSUS_API_URL: `http://localhost:${census.address().port}/geocoder` });
+  t.after(async () => { srv.stop(); await new Promise((r) => census.close(r)); await db.stop(); });
+  const call = async (method, p, body) => {
+    const r = await fetch(srv.base + p, { method, headers: { "content-type": "application/json", cookie: "cn_session=tok-u-jordan" },
+      body: body === undefined ? undefined : JSON.stringify(body) });
+    return { s: r.status, j: await r.json().catch(() => ({})) };
+  };
+  const a = await call("POST", "/api/sites", { address: "100 Old St, Boise, ID 83702" });
+  assert.equal(a.s, 200);
+  assert.equal((await call("POST", "/api/sites/update", { id: a.j.site.id, address: "200 New St, Boise, ID 83702" })).s, 200);
+  await new Promise((r) => setTimeout(r, 1200));
+  const row = () => tables.user_sites.find((s) => s.id === a.j.site.id);
+  assert.notEqual(row().lat, 10, "the old address's point never lands on the new one");
+  assert.equal(row().geo_source == null, true, "it waits, unplaced, for the next visit to /sites");
+  assert.equal((await fetch(srv.base + "/sites", { headers: { cookie: "cn_session=tok-u-jordan" } })).status, 200);
+  assert.ok(await waitFor(() => row().lat === 20), JSON.stringify(row()));
+});
+
+test("a firm read that fails is said, never taken for no firm or a broker shop (2026-10-21)", async (t) => {
+  // Found in review: the firm was read through messagingFirmOf, which answers
+  // a failed read as "no firm", so a share asked for was saved private with a
+  // 200 and /sites told a development member "Sites is for development firms"
+  // and switched their rail to Pipeline. org_members' auto_share column is
+  // made to 400 here, which fails exactly the membership read.
+  const tables = baseTables();
+  const ORG_ID = "0a1b2c3d-0000-4000-8000-000000000061";
+  tables.orgs.push({ id: ORG_ID, name: "Ridgeline Dev", share_default: "none", seats: 5, kind: "development" });
+  tables.org_members.push({ id: crypto.randomUUID(), org_id: ORG_ID, email: "jordan@ridgeline.example", user_id: "u-jordan",
+    role: "owner", invited_at: "2026-01-01T00:00:00Z", joined_at: "2026-01-01T00:00:00Z", removed_at: null, auto_share: null });
+  const { call, srv } = await bootWith(t, { db: { tables, missingColumns: { org_members: ["auto_share"] } } });
+  const g = await call("u-jordan", "GET", "/api/sites");
+  assert.equal(g.s, 200, "the member's own deals still load: " + JSON.stringify(g.j));
+  assert.equal(g.j.firmFailed, true);
+  assert.equal(g.j.firmSites, null, "the team's deals are 'couldn't be loaded', not none");
+  assert.equal(g.j.share, null, "nothing is offered to share");
+  const add = await call("u-jordan", "POST", "/api/sites", { address: "5600 W Overland Rd, Boise, ID 83709", share: true });
+  assert.equal(add.s, 503, "a share asked for is refused, not saved private: " + JSON.stringify(add.j));
+  const page = await (await fetch(srv.base + "/sites", { headers: { cookie: "cn_session=tok-u-jordan" } })).text();
+  assert.match(page, /"firmFailed":true/);
+  assert.doesNotMatch(page, /<script>window\.cnShopNav&&cnShopNav\(/, "the rail is not told this member is a broker shop");
 });

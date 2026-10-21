@@ -147,6 +147,11 @@ function renderSitesBody(boot) {
   if (BOOT.s === 401) { wall([["Sign in to see your sites. ", ["Sign in", "/?auth=signin"]]]); return; }
   if (BOOT.s === 403) { wall([["Tracking the sites you're buying is part of Pro. ", ["See Pro", "/pricing"]]]); return; }
   if (BOOT.s !== 200) { wall([["Your sites are unavailable right now. Please try again in a minute."]]); return; }
+  // A firm read that failed is said as such, never as "not a development firm".
+  if (BOOT.firmFailed || (BOOT.firm && !BOOT.firm.kind)) {
+    wall([["Your firm couldn't be loaded just now, so your sites can't be shown. ", ["Try again", "/sites"], "."]]);
+    return;
+  }
   if (!BOOT.firm || BOOT.firm.kind !== "development") {
     wall([["Sites is for development firms: the land and buildings a developer is buying, by stage."],
       ["Your properties are on ", ["Home", "/desk#properties"], "."]]);
@@ -163,6 +168,7 @@ function renderSitesBody(boot) {
   // and the page says so rather than showing the firm none.
   var firmSites = BOOT.firmSites === null ? null : (Array.isArray(BOOT.firmSites) ? BOOT.firmSites : []);
   var share = BOOT.share || null;
+  var FIRM_FAILED = "Your team's shared deals couldn't be loaded just now. Yours are all here.", firmSaid = false;
   var today = BOOT.today || new Date().toISOString().slice(0, 10);
   var openKey = "";       // the open card: "site:<id>", or "a:<address>" until the read that names it
   var passedOpen = false;
@@ -275,7 +281,10 @@ function renderSitesBody(boot) {
       ? "The land and buildings your team is buying, by stage. A deal you add is shared with " + share.name +
         " unless you untick the box, and only its owner can change it."
       : "The land and buildings you're buying, by stage. Only you can see them.";
-    if (firmSites === null) say("Your team's shared deals couldn't be loaded just now. Yours are all here.");
+    // Said when the team's read fails, not on every draw (it would cover the
+    // line a write just said), and taken down once a read comes back.
+    if (firmSites === null && !firmSaid) { firmSaid = true; say(FIRM_FAILED); }
+    else if (firmSites !== null && firmSaid) { firmSaid = false; if ($("spMsg").textContent === FIRM_FAILED) say(""); }
 
     // The figures across every deal in play.
     var figs = $("spFigs");

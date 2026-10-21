@@ -3109,3 +3109,45 @@ test("the report names the building it values and the comps it used, in Home's w
   assert.ok(html.includes("s.addText(`Your property · ${metaLine(meta)} · Generated ${dateStr}`"));
   assert.ok(html.includes('"Comps used · leases"') && html.includes('"Comps used · sales"'));
 });
+
+test("a Sites deal is given its own report's value once, and never a later report's (2026-10-21)", async () => {
+  // Found in review: a deal's report with no likely value left the deal
+  // waiting, and the next report opened in the tab was saved onto it.
+  const src = html.slice(html.indexOf("async function maybeStampSiteEstimate("), html.indexOf("async function maybeAutoShareToFirm("));
+  const posts = [];
+  const el = { textContent: "", dataset: {}, classList: { add() {}, remove() {} }, append() {} };
+  const ctx = vm.createContext({
+    document: { getElementById: () => el, createElement: () => ({}) },
+    fetch: async (url, init) => { posts.push([url, JSON.parse(init.body)]); return { ok: true }; },
+    currentUser: { id: "u1" }, lastValuation: null, formatUsd: (n) => "$" + n,
+  });
+  vm.runInContext("var pendingSiteEstimate = null;\n" + src, ctx);
+  const run = (code) => vm.runInContext(code, ctx);
+  const meta = { address: "5600 W Overland Rd" };
+  ctx.meta = meta;
+  // Waiting, but this render is not the deal's report: nothing is saved, and it still waits.
+  run('pendingSiteEstimate = { siteId: "s1", recentId: "r1" }');
+  ctx.lastValuation = { low: 1, likely: 2, high: 3 };
+  await run("maybeStampSiteEstimate(meta)");
+  assert.deepEqual(posts, []);
+  assert.ok(run("pendingSiteEstimate"), "still waiting for its own report");
+  // Its own report, with no figure: consumed, nothing saved...
+  run("pendingSiteEstimate.ready = true");
+  ctx.lastValuation = null;
+  await run("maybeStampSiteEstimate(meta)");
+  assert.equal(run("pendingSiteEstimate"), null, "consumed whatever came of it");
+  // ...so the next report opened in the tab, with a figure, saves nothing either.
+  ctx.lastValuation = { low: 1, likely: 2, high: 3 };
+  await run("maybeStampSiteEstimate(meta)");
+  assert.deepEqual(posts, []);
+  // Its own report with a figure: saved once, onto that deal, naming that report.
+  run('pendingSiteEstimate = { siteId: "s2", recentId: "r2", ready: true }');
+  await run("maybeStampSiteEstimate(meta)");
+  await run("maybeStampSiteEstimate(meta)");
+  assert.deepEqual(posts, [["/api/sites/update", { id: "s2", estimate: { low: 1, likely: 2, high: 3, report: "r2" } }]]);
+  // openHistoryReport marks only its own report ready, and drops the wait if it cannot open it.
+  const open = html.slice(html.indexOf("async function openHistoryReport("), html.indexOf("// Put the search form back"));
+  assert.match(open, /const forSite = pendingSiteEstimate && r && pendingSiteEstimate\.recentId === r\.recentId;/);
+  assert.ok(open.indexOf("if (forSite) pendingSiteEstimate = null;") < open.indexOf("no longer stored"));
+  assert.ok(open.indexOf("if (forSite) pendingSiteEstimate.ready = true;") < open.indexOf("renderResults(full.data"));
+});

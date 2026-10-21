@@ -44,6 +44,11 @@ test("a land market on The Board is priced per acre; an industrial one is untouc
     comp_corpus: [
       sale(1, "Land", 650000, 15, 1), sale(2, "Land", 600000, null, 2), sale(3, "Land", 700000, null, 3),
       sale(4, "Industrial", null, 160, 1), sale(5, "Industrial", null, 170, 2), sale(6, "Industrial", null, 180, 3),
+      // The six months before, so the land market has an acre trend.
+      // Harvested back then too, so the six-month median above stays the
+      // three recent sales.
+      ...[sale(7, "Land", 480000, null, 8), sale(8, "Land", 500000, null, 9), sale(9, "Land", 520000, null, 10)]
+        .map((r) => ({ ...r, ts: new Date(Date.now() - 270 * 864e5).toISOString() })),
     ],
     analytics_events: [], search_cache: [], market_pages: [],
   };
@@ -58,6 +63,11 @@ test("a land market on The Board is priced per acre; an industrial one is untouc
   assert.ok(land && ind, JSON.stringify(j.items.map((x) => x.property_type)));
   assert.equal(land.median_per_acre, 650000, "the upper-middle of 600K, 650K and 700K");
   assert.equal(land.median_psf, 15, "median_psf stays, for the digest");
+  // Its change is per acre, beside (never in place of) the $/SF trend the
+  // digest email quotes with "/SF": one $/SF sale a side is no trend at all.
+  assert.deepEqual(land.median_trend_acre, { current: 650000, prior: 500000 });
+  assert.equal(land.median_trend, undefined, "the $/SF trend is never filled with acre figures");
+  assert.equal(ind.median_trend_acre, undefined);
   assert.ok(land.comps.every((c) => "price_per_acre" in c), "a land market's new comps carry their $/acre");
   assert.equal(ind.median_per_acre, undefined, "only land is priced per acre");
   assert.equal(ind.median_psf, 170);

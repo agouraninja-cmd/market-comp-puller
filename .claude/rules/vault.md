@@ -1316,18 +1316,41 @@ paths:
 >   against it, the day, and "Open the report"). Only the three figures and
 >   an id are stored; the report itself stays where it was.
 > - **Where a deal is.** `sitesPlaceLater` geocodes up to five unplaced
->   deals after an add, an address change, or a read, through `censusPlace`
->   (our own server, rule 7), and writes only where `geo_source=is.null`:
->   "census" with lat/lng, or "none" on a miss so it is asked once. An
->   address change resets all three. A read places only when it is not
->   speculative (`sitesPayload(user, { place })`: never a prerendered
->   `/sites` or `GET /api/sites`, and never the desk boot's fan-out, which a
->   prerendered Home makes without a `sec-purpose` header; rule 15).
+>   deals after an add, an address change, or a visit to `/sites`, through
+>   `censusPlace` (our own server, rule 7), and writes only where
+>   `geo_source=is.null` AND the address is still the one looked up (an
+>   edit during the lookup, which clears nothing still empty, once got the
+>   old address's point for good): "census" with lat/lng, or "none" on a
+>   miss so it is asked once. An address change resets all three. **`GET
+>   /api/sites` places nothing**: a prerendered page's live fetch carries no
+>   sign it is speculative, so a GET that wrote would have to be held
+>   (`HOLD_PATHS`). Only the `/sites` page's render places, and only when it
+>   is not speculative (`sitesPayload(user, { place })`, rule 15). A deal
+>   from before 061 is placed on its owner's next real visit to /sites.
+> - **A firm read that fails is said, never guessed.** `sitesFirmOf` reads
+>   the membership itself and THROWS on a failed read (messagingFirmOf
+>   answers "no firm"), and a firm whose own row did not come back has
+>   `kind: null`. So a share asked for is a 503 with nothing saved (never a
+>   private deal with a 200), `sitesPayload` answers `firmFailed: true` with
+>   `firmSites: null` and no `share`, /sites says "Your firm couldn't be
+>   loaded just now" rather than "Sites is for development firms", and the
+>   rail is told a shop kind only when one was read.
+> - **The estimate is refused, never repaired** (`cleanEstimate`): each
+>   figure is a number or a plain decimal string, a whole dollar or more
+>   once rounded (Number() alone took `true`, `[5]` and `"0x10"`).
 > - **Permits within a mile (same day; permits.md, "Near your Sites
 >   deals").** A deal's pane carries a "Permits within a mile" block from
 >   `GET /api/sites/permits?id=` with "Email me when one is filed" (an
 >   ordinary area alert), and /permits marks and filters the filings near
->   the reader's deals. Permits near a deal read them (`SITES.NEAR_MILES`,
+>   the reader's deals. The block is for a deal still being bought, is
+>   cached by where the deal is (id, address, place), and when its answer
+>   lands only the block is swapped, so a form open in the pane is kept.
+> - **The report's value lands only on its own deal.** `pendingSiteEstimate`
+>   is marked `ready` by `openHistoryReport` for the `?recent=` report it
+>   was set for, dropped if that report cannot be opened, and consumed by
+>   that report's render whatever comes of it, so a report with no likely
+>   value never leaves the deal waiting for the next one opened in the tab
+>   (`test/index-html.test.js` runs it). Permits near a deal read them (`SITES.NEAR_MILES`,
 >   `SITES.milesBetween`; permits.md).
 
 The owner's pick "M2" of the Sites drafts

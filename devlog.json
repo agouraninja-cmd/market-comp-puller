@@ -4879,5 +4879,11 @@
     "type": "feature",
     "title": "Permits within a mile of your Sites deals, with one-click alerts",
     "details": "Each deal's pane now lists the permits filed within a mile in the last 30 days (type, street, distance, status, and a link to the city's record), and says plainly when the deal can't be placed on the map or when nothing was filed in the cities CompNinja reads. \"Email me when one is filed\" sets up an ordinary area alert in one click; once one covers the deal, the pane says so and links to it. On Permits, the Filings tab has a \"Within a mile of your sites\" filter, and each nearby permit names the deal it's near. Only you (and teammates, for deals shared with the firm) see which permits are near your deals."
+  },
+  {
+    "date": "2026-10-21",
+    "type": "fix",
+    "title": "Fixes from a review of today's Sites, land and permits work",
+    "details": "A second look before release found eleven problems, all fixed. The weekly email would have said a land market went \"up from $600000/SF\" (The Board's land trend now has its own per-acre figures, and the email keeps $/SF). A deal edited while it was being put on the map could keep the old address's spot. If the firm couldn't be loaded, Sites said \"Sites is for development firms\", saved a shared deal as private, and switched the sidebar to Pipeline; now it says it couldn't load and saves nothing. A report with no value could leave a deal waiting, so the next report opened got saved onto it. The permits list could wipe a half-typed Edit form, and could show the old address's permits after an edit. The Board's $/acre column was blank for land comps. Plus four smaller ones: estimates refuse odd values, no duplicate alert is offered when alerts can't be read, passed deals don't show permits, and the team-load warning no longer covers newer messages."
   }
 ]

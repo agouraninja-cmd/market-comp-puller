@@ -93,6 +93,10 @@ test("each refusal is said in words, and the board never draws behind one", () =
     [{ s: 503 }, /unavailable right now/],
     [{ s: 200, sites: [], today: TODAY, firm: null }, /Sites is for development firms[\s\S]*Your properties are on Home/],
     [{ s: 200, sites: [], today: TODAY, firm: { name: "Summit", kind: "broker" } }, /Sites is for development firms/],
+    // A firm read that failed, or a firm whose own row did not come back, is
+    // said as such, never as "not a development firm" (2026-10-21).
+    [{ s: 200, sites: [], today: TODAY, firm: null, firmFailed: true, firmSites: null }, /Your firm couldn't be loaded just now/],
+    [{ s: 200, sites: [], today: TODAY, firm: { name: "your firm", kind: null } }, /Your firm couldn't be loaded just now/],
   ]) {
     const { ids } = run(boot);
     assert.equal(ids.spWall.hidden, false, JSON.stringify(boot));
@@ -205,6 +209,9 @@ test("server.js serves /sites through requireSites' gate and marks its rail row"
   // same thing), still the member's own rows by user_id.
   // A prerendered /sites places no deal on the map (rule 15).
   const order = ["getSessionUser(req)", "canUseVault", "DB_CONFIGURED", "sitesPayload(user, { place: !INSTANTNAV.isSpeculative(req.headers) })"];
+  // GET /api/sites is a pure read: nothing there places a deal.
+  const api = server.slice(server.indexOf('if (req.url.split("?")[0] === "/api/sites") {'), server.indexOf('if (req.url.split("?")[0] === "/api/sites") {') + 1500);
+  assert.match(api, /sendJson\(res, 200, await sitesPayload\(user\)\)/);
   let at = -1;
   for (const s of order) { const i = route.indexOf(s); assert.ok(i > at, s + " is missing or out of order"); at = i; }
   const payload = server.slice(server.indexOf("const sitesPayload = async (user, opts) => {"), server.indexOf('if (req.method === "POST" && req.url.split("?")[0] === "/api/sites/update")'));
@@ -212,4 +219,15 @@ test("server.js serves /sites through requireSites' gate and marks its rail row"
   assert.match(route, /logPageVisit\(req, "sites_visit"/);
   assert.match(route, /current: "\/sites"/);
   assert.match(server, /"\/home-sites\.css": \{ file: "home-sites\.css", type: "text\/css; charset=utf-8", maxAge: 0 \}/);
+});
+
+test("a failed read of the team's deals is said once, not over every later line (2026-10-21)", () => {
+  // Found in review: draw() said it on every draw, covering what a write had
+  // just said, and nothing took it down once a read came back.
+  const { ids } = run({ s: 200, sites: [deal({ id: "a", stage: "loi" })], today: TODAY, firm: DEV, firmSites: null });
+  assert.equal(ids.spMsg.hidden, false);
+  assert.match(ids.spMsg.textContent, /Your team's shared deals couldn't be loaded just now\. Yours are all here\./);
+  ids.spMsg.textContent = "5600 W Overland Rd is shared with Ridgeline Dev.";
+  ids.spBoard.byClass("sp-card")[0].fire("click");   // a draw
+  assert.equal(ids.spMsg.textContent, "5600 W Overland Rd is shared with Ridgeline Dev.", "a later draw leaves the newer line alone");
 });

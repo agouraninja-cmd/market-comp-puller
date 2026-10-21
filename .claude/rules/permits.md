@@ -790,7 +790,8 @@ migration of its own. Five rules:
 - **The tracker marks each filing with the reader's nearest deal**
   (`f.nearSite = { id, address, miles }` in `permitTrackerPayload`, from
   `sitesForPermits`): the reader's own deals still being bought (their
-  `user_id=eq.` read) and, in a development firm only, the deals colleagues
+  `user_id=eq.` read) and, in a development firm only and only for a member
+  Sites is open to (`canUseVault`, requireSites' gate), the deals colleagues
   shared with it (`sitesSharedWithFirm`, rule 3). The deal's street is the
   reader's own or shared with them, and the feed goes to that reader alone;
   another firm's reader gets `nearSite: null` on every filing
@@ -810,8 +811,10 @@ migration of its own. Five rules:
   each with `miles` and a `street` in ordinary case (`HOMEMAP.tidyCaps`,
   which server.js now requires), the cities read, and whether an alert
   covers it. An unplaced deal answers `{ placed: false, geo }` and the pane
-  says why ("We couldn't find this address on the map" for `none`, "Placing
-  this deal on the map" while it waits). An empty answer names the cities
+  says why ("We couldn't find this address on the map" for `none`, "This
+  deal isn't on the map yet. Opening Sites places it" while it waits). A
+  failed read of the member's alerts is unknown, not none: `canAlert` is
+  false, so no second alert for the same mile is offered. An empty answer names the cities
   CompNinja reads (§7). Read once per deal and place per page, when the pane
   is first drawn, never in a boot; a READ, so a prerendered page may make it.
 - **"Email me when one is filed" is an ordinary area alert**: the pane

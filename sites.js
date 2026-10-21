@@ -238,10 +238,16 @@
   function cleanEstimate(v, opts) {
     if (v === null) return { ok: true, value: null };
     if (!v || typeof v !== "object" || Array.isArray(v)) return { ok: false, error: "An estimate is a low, likely and high value." };
+    // A dollar figure is a number or a plain decimal string, a whole dollar
+    // or more once rounded; Number() alone would take true as 1, [5] as 5,
+    // "0x10" as 16, and 0.4 would round to a "required" likely of $0.
     const n = (x) => {
       if (x == null || x === "") return null;
-      const k = Number(x);
-      return Number.isFinite(k) && k > 0 && k < MAX_VALUE ? Math.round(k) : NaN;
+      const k = typeof x === "number" ? x
+        : typeof x === "string" && /^\s*\d+(\.\d+)?\s*$/.test(x) ? Number(x) : NaN;
+      if (!Number.isFinite(k)) return NaN;
+      const r = Math.round(k);
+      return r >= 1 && r < MAX_VALUE ? r : NaN;
     };
     const low = n(v.low), likely = n(v.likely), high = n(v.high);
     if ([low, likely, high].some((x) => Number.isNaN(x))) return { ok: false, error: "An estimate's values must be positive dollar figures." };

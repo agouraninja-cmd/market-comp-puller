@@ -4849,5 +4849,11 @@
     "type": "fix",
     "title": "Team accounts can save more than 100 properties",
     "details": "Team accounts with free Pro were stopped at 100 saved properties, the free plan's limit, even though everywhere else they had Pro's 500. Saving a property now counts their Pro like the rest of the site does."
+  },
+  {
+    "date": "2026-10-21",
+    "type": "fix",
+    "title": "“Run a land report” on a deal opens the report tool, filled in",
+    "details": "On a development firm’s deal, “Run a land report” opened Home and did nothing. It now opens Run a comp report with the deal’s address, type, acres and zoning already filled in, so you just press Run the report."
   }
 ]

@@ -1300,9 +1300,15 @@ Sites tab, whose reads answer 503 until it runs, never another surface).
 - **Owned value counts Owned only.** Properties adds every row into its
   combined value; Sites leaves Tracking buildings out of it, because a
   building you watch is not part of what you own.
-- **Run a land report** links to `/?type=<type>&address=<address>`.
-  index.html's `?address=` (added with this) fills an EMPTY address field and
-  runs nothing.
+- **Run a land report** links to `/bulk?address=&type=&acres=&zoning=`
+  (`HOMESITES.reportHref`, since 2026-10-21). It linked to
+  `/?type=<type>&address=<address>` until then, and once Home lost its report
+  form (2026-10-08) a member's `/` was Home, so the address went into a
+  hidden box and nothing ran. bulk-page.js fills the type (one it offers)
+  and that type's own fields where they are empty, beside its `?address=`,
+  and runs nothing: every report is a billed search. No price rides the
+  link (a deal's figures stay out of an address). index.html's `?address=`
+  still fills an empty field for a signed-out visitor's link.
 - **The Book, for the same member (2026-10-06, owner's call).** `applyShop()`
   decides three more things, keyed on the firm's kind alone (`shop`), not on
   the Sites script:

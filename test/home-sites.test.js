@@ -131,3 +131,17 @@ test("a building watched rather than owned is The Board's: Home neither adds one
   // It leaves Home, so its pane closes and the member is told where it went.
   assert.match(pane, /\? after\(null, street\(it\.address\) \+ " is on The Board now, on the Markets page\."\)/);
 });
+
+test("Run a land report opens the comp report tool filled in from the deal, and carries no price (2026-10-21)", () => {
+  // It linked to "/?type=&address=", which since Home lost its report form
+  // (2026-10-08) opened Home and ran nothing.
+  const href = HS.reportHref(deal({ address: "5600 W Overland Rd, Boise, ID 83709", acres: 9.2, zoning: "R-3", asking_price: 5800000, earnest_money: 50000 }));
+  assert.equal(href, "/bulk?address=5600%20W%20Overland%20Rd%2C%20Boise%2C%20ID%2083709&type=Land&acres=9.2&zoning=R-3");
+  assert.doesNotMatch(href, /5800000|50000|asking|earnest/, "a deal's figures stay out of an address");
+  // A deal missing a fact simply leaves it out.
+  assert.equal(HS.reportHref(deal({ address: "1 Main St, Boise, ID", acres: null, zoning: "", property_type: "Multifamily" })),
+    "/bulk?address=1%20Main%20St%2C%20Boise%2C%20ID&type=Multifamily");
+  const pane = SRC.slice(SRC.indexOf("function dealPane("), SRC.indexOf("function editForm("));
+  assert.match(pane, /h\("a", \{ class: "hm-btn", href: reportHref\(s\) \}, "Run a " \+ type\.toLowerCase\(\) \+ " report"\)/);
+  assert.doesNotMatch(SRC, /href: "\/\?type="/, "the dead link came back");
+});

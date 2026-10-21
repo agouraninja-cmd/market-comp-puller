@@ -75,6 +75,19 @@
     return "$" + Math.round(n);
   }
   function acres(n) { n = num(n); return n == null ? "" : String(Math.round(n * 10) / 10); }
+  // "Run a land report" (2026-10-21): the comp report tool, /bulk, filled in
+  // from the deal: its address, type, acres and zoning. It linked to
+  // "/?type=&address=" until then, and since 2026-10-08 (Home holds no comp
+  // report) that opened Home with the address in a hidden box and ran
+  // nothing. It fills and never runs (every report is a billed search), and
+  // carries no price: a deal's figures stay out of an address.
+  function reportHref(s) {
+    const q = [["address", s && s.address], ["type", (s && s.property_type) || "Land"],
+      ["acres", num(s && s.acres) > 0 ? String(num(s.acres)) : ""], ["zoning", s && s.zoning]]
+      .filter(([, v]) => v != null && String(v).trim() !== "")
+      .map(([k, v]) => k + "=" + encodeURIComponent(String(v).trim()));
+    return "/bulk?" + q.join("&");
+  }
   function perAcre(s) {
     const a = num(s && s.asking_price), ac = num(s && s.acres);
     return a && ac ? a / ac : null;
@@ -315,8 +328,7 @@
           blk("Key dates", dates.length ? h("ul", { class: "hs-dates" }, dateRows) : h("p", { class: "hs-mute" }, "No dates yet."), dateForm),
           blk("Notes", h("p", { class: "hs-notes" }, s.notes || h("span", { class: "hs-mute" }, "None yet.")))),
         h("div", { class: "hs-foot" },
-          h("a", { class: "hm-btn", href: "/?type=" + encodeURIComponent(type) + "&address=" + encodeURIComponent(s.address || "") },
-            "Run a " + type.toLowerCase() + " report"),
+          h("a", { class: "hm-btn", href: reportHref(s) }, "Run a " + type.toLowerCase() + " report"),
           btn("Edit", "", () => { state.editing = s.id; refill(true); }),
           h("button", { type: "button", class: "hs-rm", onclick: () => removeDeal(key, s) }, "Remove")),
       ];
@@ -592,5 +604,5 @@
     return { pane, addForm };
   }
 
-  return { PROP_TYPES, money, short, acres, perAcre, dayLabel, tsLabel, countdown, figures, figuresLine, steps, held, statusFor, onFirmList, street, mount };
+  return { PROP_TYPES, money, short, acres, perAcre, reportHref, dayLabel, tsLabel, countdown, figures, figuresLine, steps, held, statusFor, onFirmList, street, mount };
 });

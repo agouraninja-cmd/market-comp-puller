@@ -18061,11 +18061,13 @@ async function renderMyDesk() {
       }
     }
   } catch (_) { /* private mode etc. — a nicety, not a requirement */ }
-  // ?address= fills the address field and runs nothing (2026-10-05): the
-  // Data page's Sites tab links "Run a land report" here with the site's
-  // address and ?type=Land, so the member presses Search instead of retyping
-  // it. Only an EMPTY field is filled, so a restored report or a shared one
-  // that already set the address keeps it; capped like every address input.
+  // ?address= fills the address field and runs nothing (2026-10-05). It was
+  // written for the Sites tab's "Run a land report", which since 2026-10-21
+  // opens /bulk instead: a member's "/" is Home, and Home holds no report
+  // form, so the address landed in a hidden box. A signed-out visitor's link
+  // still lands on the form here. Only an EMPTY field is filled, so a
+  // restored report or a shared one that already set the address keeps it;
+  // capped like every address input.
   try {
     const urlAddr = String(new URLSearchParams(location.search).get("address") || "").trim().slice(0, 300);
     const addrInput = document.getElementById("address");

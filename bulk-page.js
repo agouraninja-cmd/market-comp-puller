@@ -1131,6 +1131,16 @@ function start(boot){
   if(live)BULKRUN.poll(live.id);
 
   $("bulkText").addEventListener("input",refreshCount);
+  // A deal handed over from Sites' "Run a land report" (2026-10-21): ?type=
+  // picks one of the offered types, and ?acres= / ?zoning= fill that type's
+  // own fields where they are empty. Like ?address= below it fills once and
+  // runs nothing.
+  try{var qs=new URLSearchParams(location.search),qt=qs.get("type");
+    if(qt&&TYPES.indexOf(qt)>=0&&$("bulkType").value!==qt){$("bulkType").value=qt;renderSubjectFields(qt);}
+    [["acres","lot_acres"],["zoning","zoning"]].forEach(function(p){
+      var v=qs.get(p[0]),el=$("bulkSubj_"+p[1]);
+      if(v&&el&&!el.value)el.value=String(v).slice(0,40);});
+    refreshMore();}catch(e){}
   // An address handed over from Home's find box (2026-10-07): ?address= fills
   // an EMPTY box once and runs nothing, because every address is a billed
   // search and the member still presses the button.

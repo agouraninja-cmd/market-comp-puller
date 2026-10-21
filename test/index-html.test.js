@@ -1126,13 +1126,13 @@ test("a member's own properties are worked in place on Home's Properties tab, de
   // HOMESITES is told whether this member has deals, and whether a Tracking
   // status (Pro) may be written, so it never offers what the server refuses.
   assert.ok(html.includes("deals: () => HOMEMAP.dealsOn(hmFirmKind()),"));
-  assert.ok(html.includes("canSites: hmCanVault(), today: hmTodayIso() }),"));
+  assert.ok(html.includes("canSites: hmCanVault(), today: hmTodayIso(), share: deskSitesShare }),"));
   // The Owned group's head adds the buildings up (HOMEMAP.ownedTotal).
   assert.ok(html.includes("const own = HOMEMAP.ownedTotal(hmRows);"));
   assert.ok(html.includes('[["buying", "Buying", buyNote], ["owned", "Owned", ownNote],'));
   // Deals are listed and dated only for that member (HOMEMAP decides).
-  assert.match(html, /HOMEMAP\.properties\(\{[^}]*firmKind: hmFirmKind\(\) \}\)/);
-  assert.match(html, /HOMEMAP\.agenda\(\{[\s\S]{0,400}firmKind: hmFirmKind\(\), today \}\)/);
+  assert.match(html, /HOMEMAP\.properties\(\{[^}]*firmKind: hmFirmKind\(\),\s*shareOrg: deskSitesShare \? deskSitesShare\.orgId : "" \}\)/);
+  assert.match(html, /HOMEMAP\.agenda\(\{[\s\S]{0,400}firmKind: hmFirmKind\(\), today, shareOrg: deskSitesShare \? deskSitesShare\.orgId : "" \}\)/);
   // A row of the member's own opens its pane; every row still opens its map card.
   const row = html.slice(html.indexOf("function hmPropRow("), html.indexOf("function hmGroupHead("));
   assert.ok(row.includes("row._hm = r;") && row.includes("const works = hmWorkHere() && (r.siteId != null || r.portfolioId != null);"));

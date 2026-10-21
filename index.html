@@ -3363,7 +3363,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                 <button type="button" id="hmAddProp" class="hm-btn" aria-expanded="false" aria-controls="hmAddChoice">+ Add a property</button></div>
               <div id="hmAddChoice" class="hidden hm-choice">
                 <button type="button" id="hmAddFirm" class="hm-ch"><b>One of the firm's buildings</b><small>Everyone at <span id="hmAddFirmName">your firm</span> sees its address, size and lease dates.</small></button>
-                <a id="hmAddDeal" class="hm-ch hidden" href="#properties"><b>A deal you're working on</b><small>Only you can see it. It's tracked with its stage, asking price and next date.</small></a>
+                <a id="hmAddDeal" class="hm-ch hidden" href="#properties"><b>A deal you're working on</b><small>Tracked with its stage, asking price and next date. You choose whether your firm sees it.</small></a>
                 <a id="hmAddOwn" class="hm-ch" href="#properties"><b>A property you own</b><small>Only you can see it. It gets a value you can refresh, and its numbers stay private.</small></a>
               </div>
               <!-- A development firm's add form (home-sites.js), opened here
@@ -4048,6 +4048,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            no-print/no-capture reasoning as the notice above — it is about the
            link, not the building. Built by renderAutoShareNotice(). -->
       <p id="autoShareNotice" class="hidden no-print no-capture text-xs leading-6 text-[#5A6473] mb-3"></p>
+      <p id="siteEstimateNotice" class="hidden no-print no-capture text-xs leading-6 text-[#5A6473] mb-3"></p>
 
       <!-- Toolbar (not captured in the image / not printed) -->
       <div class="flex flex-wrap items-center justify-end gap-2 mb-4 no-print">
@@ -12200,6 +12201,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // Hero first: a looked-up building size auto-fills the form input, and the
     // comparison + chart below read that same input.
     renderOwnerHero(parsed, meta);
+    maybeStampSiteEstimate(meta);
     renderAnalysisCluster(parsed, meta, true);
     setReportTab("report");   // every fresh render lands on the familiar report
     renderValueDrivers(parsed, meta);
@@ -13840,6 +13842,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const recentParam = new URLSearchParams(location.search).get("recent");
     if (currentUser && recentParam) {
       const qs = new URLSearchParams(location.search);
+      // ?site=<deal id> rides along when the run began at a Sites deal's
+      // "Run a land report" (2026-10-21): the report writes its value back
+      // onto that deal once it has drawn (maybeStampSiteEstimate).
+      const siteParam = qs.get("site");
+      if (siteParam && /^[0-9a-f-]{36}$/i.test(siteParam)) pendingSiteEstimate = { siteId: siteParam, recentId: recentParam };
+      qs.delete("site");
       qs.delete("recent");
       history.replaceState({}, "", location.pathname + (qs.toString() ? "?" + qs : ""));
       openHistoryReport({ meta: {}, data: null, ts: 0, recentId: recentParam });
@@ -14273,6 +14281,7 @@ async function renderMyDesk() {
   // is text a person typed (the desk's standing rule).
   // ---------------------------------------------------------------------------
   let deskSites = null;      // GET /api/sites' rows; null = not read, refused or failed
+  let deskSitesShare = null; // GET /api/sites' `share` (061): whether a deal can be shared with the firm
   let deskPortfolio = null;  // renderMyDesk's GET /api/portfolio items; null = not read
   let firmMembers = [];      // renderFirmMembers' roster, for People
   let hmLeads = null;        // GET /api/broker/leads' requests once read; null until then
@@ -14348,7 +14357,7 @@ async function renderMyDesk() {
       propTypes: HM_TYPES,
       data: () => ({ sites: deskSites || [], portfolio: deskPortfolio || [], buildings: myFirm() ? firmBuildings : [],
         firm: myFirm(), showValues: (() => { try { return Boolean(proConfig && proConfig.portfolioValues); } catch (_) { return false; } })(),
-        canSites: hmCanVault(), today: hmTodayIso() }),
+        canSites: hmCanVault(), today: hmTodayIso(), share: deskSitesShare }),
       deals: () => HOMEMAP.dealsOn(hmFirmKind()),
       reload: hmReloadMine,
       open: (key) => { hmWork = key || ""; },
@@ -14637,6 +14646,7 @@ async function renderMyDesk() {
       if (res.ok) {
         const j = await res.json();
         deskSites = Array.isArray(j && j.sites) ? j.sites : [];
+        deskSitesShare = j && j.share && j.share.orgId ? j.share : null;
       }
     } catch (_) { /* no deals on the map; the rest of Home stands */ }
   }
@@ -14696,7 +14706,7 @@ async function renderMyDesk() {
   }
 
   function resetHomeMap() {
-    deskSites = null; deskPortfolio = null; firmMembers = [];
+    deskSites = null; deskSitesShare = null; deskPortfolio = null; firmMembers = [];
     hmSites = null; hmWork = ""; hmPassedOpen = false;
     { const a = document.getElementById("hmMineAdd"); if (a) a.textContent = ""; }
     { const m = document.getElementById("hmPropMsg"); if (m) { m.textContent = ""; m.classList.add("hidden"); } }
@@ -14899,13 +14909,14 @@ async function renderMyDesk() {
     const firm = myFirm();
     const today = hmTodayIso();
     hmRows = HOMEMAP.properties({ buildings: firm ? firmBuildings : [], sites: deskSites || [], portfolio: deskPortfolio || [],
-      critical: firm && Array.isArray(deskCritical) ? deskCritical : [], today, firmKind: hmFirmKind() });
+      critical: firm && Array.isArray(deskCritical) ? deskCritical : [], today, firmKind: hmFirmKind(),
+      shareOrg: deskSitesShare ? deskSitesShare.orgId : "" });
     const canLeads = hmCanLeads();
     if (canLeads && !hmLeadsAsked && deskFilledFor) hmLoadLeads();
     hmItems = HOMEMAP.agenda({ critical: firm && Array.isArray(deskCritical) ? deskCritical : [],
       threads: firm && deskThreadsStat ? deskThreadsStat.unreadList : [], sites: deskSites || [],
       leads: canLeads && Array.isArray(hmLeads) ? hmLeads.map((l) => ({ ...l, ts: hmLocalDay(l.ts) })) : [],
-      firmKind: hmFirmKind(), today });
+      firmKind: hmFirmKind(), today, shareOrg: deskSitesShare ? deskSitesShare.orgId : "" });
 
     // The head: the day, the firm, a greeting, one sentence of status.
     document.getElementById("hmDay").textContent = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
@@ -19966,6 +19977,42 @@ async function renderMyDesk() {
   //   - It is fire-and-forget from the caller's point of view: a firm that
   //     cannot be reached leaves the report exactly as it is, unshared and
   //     unannounced. Failing quiet is right in that direction only.
+  // A report opened from a Sites deal (2026-10-21, migration 061) writes its
+  // value back onto that deal, once, so the deal says "CompNinja estimate:
+  // $5.78M likely" beside its asking price. Only the member's own deal: the
+  // route scopes the write by user_id, and a refusal (somebody else's deal,
+  // 061 not run yet) changes nothing and says nothing, since the report
+  // itself is what the member came for. The boot block above sets it from
+  // ?site=, after its first await, so always after this line has run.
+  var pendingSiteEstimate = null;
+  async function maybeStampSiteEstimate(meta) {
+    const el = document.getElementById("siteEstimateNotice");
+    const p = pendingSiteEstimate;
+    if (!p) {
+      if (el && meta && el.dataset.for !== String(meta.address || "")) el.classList.add("hidden");
+      return;
+    }
+    if (!currentUser || !meta || meta.shared || meta.sample || !lastValuation || !(lastValuation.likely > 0)) return;
+    pendingSiteEstimate = null;
+    try {
+      const res = await fetch("/api/sites/update", {
+        method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: p.siteId, estimate: { low: lastValuation.low, likely: lastValuation.likely,
+          high: lastValuation.high, report: p.recentId } }),
+      });
+      if (!res.ok || !el) return;
+      el.textContent = "";
+      el.dataset.for = String(meta.address || "");
+      el.append(`Saved on your deal: ${formatUsd(Math.round(lastValuation.likely), { maximumFractionDigits: 0 })} likely, beside its asking price. `);
+      const a = document.createElement("a");
+      a.href = "/sites";
+      a.className = "text-[#B91C1C] hover:text-[#991B1B] font-medium underline";
+      a.textContent = "Open Sites";
+      el.append(a);
+      el.classList.remove("hidden");
+    } catch (_) { /* the report stands; the deal keeps its last estimate */ }
+  }
+
   async function maybeAutoShareToFirm(meta) {
     try {
       if (!currentUser || !meta || meta.autoShared) return;

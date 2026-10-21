@@ -438,7 +438,15 @@ paths:
 >   until 2026-10-12; it is `/sites` now, the deals alone on a stage board
 >   (`sites-page.js`), and Home's Properties tab is only Home. The deal
 >   pane's styles moved from index.html to `/home-sites.css`, which both
->   pages link.
+>   pages link. **A deal shared with the firm (2026-10-21, 061; vault.md's
+>   "A deal can be shared" box)** is still listed only for its owner here:
+>   home-map.js marks it `shared` (`sharedWith`: its `org_id` is the firm
+>   the member is in NOW, `shareOrg`, so a deal still marked for a firm they
+>   left reads as theirs alone) and its scope reads "Firm", and the pane
+>   carries the switch and the deal's estimate. Colleagues' shared deals are
+>   on `/sites`, never on Home; `data().share` (`deskSitesShare`, from
+>   `GET /api/sites`' `share`) decides whether the switch and the add form's
+>   "Share with {firm}" box are offered at all.
 > - **The Board is on the Markets page** (2026-10-09; markets.md): drawn on
 >   `/markets` for a signed-in member, where its `.mboard` door was, and a
 >   market page's "Add to The Board" has "Open The Board →" under it.

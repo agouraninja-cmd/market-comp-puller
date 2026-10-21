@@ -73,3 +73,13 @@
 .hs-kind button.on { background: var(--card); font-weight: 600; color: var(--ink); box-shadow: 0 1px 3px rgba(15, 23, 42, .15); }
 .hs-kind button:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
 @media (max-width: 420px) { .hs-kind button { font-size: 12px; padding: 7px 4px; } .hs-form { grid-template-columns: minmax(0, 1fr); } .hs-sl { font-size: 10.5px; } }
+/* Sharing a deal with the firm (2026-10-21, migration 061): the owner's
+   switch in the pane and on the add form, the line on a colleague's deal,
+   and the estimate's sentence under the key terms. */
+.hs-share { display: flex; align-items: flex-start; gap: 9px; margin-top: 12px; font-size: 13px; color: var(--ink-2); cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.hs-share input { margin: 2px 0 0; width: 15px; height: 15px; accent-color: var(--red-fill); flex: none; }
+.hs-share b { font-weight: 600; color: var(--ink); }
+.hs-share small { display: block; font-size: 12px; color: var(--ink-3); }
+.hs-form .hs-share { flex-direction: row; gap: 9px; font-size: 13px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ink-2); }
+.hs-owner { margin-top: 10px; }
+.hs-est { margin-top: 8px; }

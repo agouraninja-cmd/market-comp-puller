@@ -229,10 +229,46 @@
     return { ok: true, patch };
   }
 
+  // The value a comp report wrote back onto the deal it was run from
+  // (2026-10-21, migration 061): its Low, Likely and High, the saved report
+  // that holds them, and the day. Refused rather than repaired, the file's
+  // rule: a likely value is required, the three must be in order, and a
+  // report id is a short token or nothing. null clears it.
+  const MAX_VALUE = 1e11;
+  function cleanEstimate(v, opts) {
+    if (v === null) return { ok: true, value: null };
+    if (!v || typeof v !== "object" || Array.isArray(v)) return { ok: false, error: "An estimate is a low, likely and high value." };
+    const n = (x) => {
+      if (x == null || x === "") return null;
+      const k = Number(x);
+      return Number.isFinite(k) && k > 0 && k < MAX_VALUE ? Math.round(k) : NaN;
+    };
+    const low = n(v.low), likely = n(v.likely), high = n(v.high);
+    if ([low, likely, high].some((x) => Number.isNaN(x))) return { ok: false, error: "An estimate's values must be positive dollar figures." };
+    if (likely == null) return { ok: false, error: "An estimate needs its likely value." };
+    if ((low != null && low > likely) || (high != null && high < likely)) return { ok: false, error: "An estimate's low, likely and high are out of order." };
+    const report = v.report == null || v.report === "" ? null : String(v.report);
+    if (report && !/^[A-Za-z0-9_-]{1,80}$/.test(report)) return { ok: false, error: "Unknown report." };
+    const at = String((opts && opts.today) || "");
+    return { ok: true, value: { low, likely, high, report, at: at || null } };
+  }
+
+  // Great-circle miles between two points, and the radius "near a site"
+  // means (2026-10-21): the permits filed within a mile of a deal are the
+  // ones a developer watches, the competing project across the street.
+  const NEAR_MILES = 1;
+  function milesBetween(lat1, lng1, lat2, lng2) {
+    const v = [lat1, lng1, lat2, lng2].map(Number);
+    if (v.some((x) => !Number.isFinite(x))) return null;
+    const r = Math.PI / 180, dLat = (v[2] - v[0]) * r, dLng = (v[3] - v[1]) * r;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(v[0] * r) * Math.cos(v[2] * r) * Math.sin(dLng / 2) ** 2;
+    return 3958.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
   return {
-    STAGES, LABELS, STEPS, BUYING, HELD, MAX_ROWS, MAX_DATES,
+    STAGES, LABELS, STEPS, BUYING, HELD, MAX_ROWS, MAX_DATES, NEAR_MILES,
     isStage, isBuying, isHeld, labelOf, nextStage,
     cleanMoney, cleanAcres, cleanDate, cleanDates, nextDeadline, daysUntil,
-    validateNew, validatePatch,
+    validateNew, validatePatch, cleanEstimate, milesBetween,
   };
 });

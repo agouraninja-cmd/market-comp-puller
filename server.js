@@ -2175,6 +2175,107 @@ async function requireSites(req, res) {
   return user;
 }
 
+// --- Sites, migration 061 (2026-10-21) --------------------------------------
+// What a deal gained: `org_id` (shared with the member's firm, its owner's
+// switch, the owner's pick of the three ways offered), `estimate` (the latest
+// comp report run from it), and `lat`/`lng`/`geo_source` (where it sits, so
+// permits near it can be found). The columns are PROBED, never assumed: the
+// Sites routes name them only once a read has seen them, so a deploy that
+// runs ahead of 061 keeps every Sites route working exactly as before and
+// simply offers none of the three. A missing column is re-checked every few
+// minutes (the migration may be run while the process is up); an outage
+// decides nothing.
+const SITES_V2_COLS = ["org_id", "estimate", "lat", "lng", "geo_source"];
+const SITES_SCHEMA_RECHECK_MS = 5 * 60 * 1000;
+const sitesSchema = { ready: null, at: 0 };
+function isMissingColumn(err) {
+  const m = String((err && err.message) || "");
+  return /\(400\)/.test(m) && /42703|PGRST204|does not exist|Could not find the '/.test(m);
+}
+async function sitesV2Ready() {
+  if (!DB_CONFIGURED) return false;
+  if (sitesSchema.ready === true) return true;
+  if (sitesSchema.ready === false && Date.now() - sitesSchema.at < SITES_SCHEMA_RECHECK_MS) return false;
+  try {
+    await sbRequest("GET", `user_sites?select=${SITES_V2_COLS.join(",")}&limit=1`);
+    sitesSchema.ready = true;
+  } catch (err) {
+    if (!isMissingColumn(err)) { console.error("Sites schema probe failed (sharing waits):", err.message); return false; }
+    sitesSchema.ready = false;
+  }
+  sitesSchema.at = Date.now();
+  return sitesSchema.ready;
+}
+
+// The firm a member's deals can be shared with: the one they are an active
+// member of (messagingFirmOf, the firm Messages reads), with its name and
+// kind. null for no firm, or a failed read, and then nothing is shared.
+async function sitesFirmOf(user) {
+  const f = await messagingFirmOf(user);
+  if (!f) return null;
+  const org = (await orgsByIds([f.orgId])).get(f.orgId);
+  return { orgId: f.orgId, name: (org && org.name) || "your firm", kind: ORG.kindOf(org) };
+}
+
+// The deals a member's colleagues shared with the firm. A SEPARATE read, by
+// org_id, beside the owner's own user_id=eq. read, which is never widened
+// (CLAUDE.md rule 3; the shape shared_reports.org_id already has). Three
+// limits, each fail-closed: only deals (a held property's status is what a
+// member OWNS, and stays theirs), only colleagues who are active members NOW
+// (someone who left takes their deals out of the firm's view, and a member
+// row with no user id shows nothing), and never the reader's own (theirs
+// arrive through their own read). Read-only to everyone but the owner: every
+// write is still scoped by user_id.
+async function sitesSharedWithFirm(orgId, selfId, select) {
+  const members = (await orgMemberRows(orgId)).filter(ORG.isActive)
+    .map((m) => (m.user_id == null ? "" : String(m.user_id))).filter((id) => id && id !== String(selfId));
+  if (!members.length) return [];
+  const rows = (await sbRequest("GET", `user_sites?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&user_id=in.(${pgInList([...new Set(members)])})&portfolio_item_id=is.null` +
+    `&select=${select},user_id&order=created_at.desc&limit=${SITES.MAX_ROWS}`)) || [];
+  const people = await memberPeople(rows.map((r) => r.user_id));
+  return rows.map((r) => {
+    const p = people.get(String(r.user_id)) || {};
+    const { user_id, ...rest } = r;
+    return { ...rest, owner: { name: String(p.name || p.email || "A colleague") } };
+  });
+}
+
+// Where a deal sits, looked up from our own server (the Census geocoder
+// behind /api/geocode; rule 7: a private address reaches a third party only
+// through us, never in a URL the browser builds). Run in the background after
+// the read or write that found a deal without a place, a few at a time, and
+// written only while geo_source is still empty, so it never overwrites a
+// place and never touches anything a person typed. Still a write, so a read
+// asks for it only when it is not speculative (sitesPayload's `place`, rule
+// 15). A miss is stamped "none" for good; an outage marks nothing and the
+// next read tries again.
+const SITES_PLACE_MAX = 5;
+const sitesPlacing = new Set();
+function sitesPlaceLater(userId, rows) {
+  if (!DB_CONFIGURED || !userId) return;
+  const todo = (Array.isArray(rows) ? rows : [])
+    .filter((r) => r && r.id && r.address && r.geo_source == null && r.lat == null && !sitesPlacing.has(r.id))
+    .slice(0, SITES_PLACE_MAX);
+  if (!todo.length) return;
+  todo.forEach((r) => sitesPlacing.add(r.id));
+  (async () => {
+    try {
+      for (const r of todo) {
+        const g = await censusPlace(String(r.address));
+        if (g.error) break;
+        const patch = g.ll ? { lat: g.ll.lat, lng: g.ll.lng, geo_source: "census" } : { geo_source: "none" };
+        await sbRequest("PATCH", `user_sites?id=eq.${encodeURIComponent(r.id)}` +
+          `&user_id=eq.${encodeURIComponent(userId)}&geo_source=is.null`, patch, { prefer: "return=minimal" });
+      }
+    } catch (err) {
+      console.error("Placing a site failed (it is placed on a later read):", err.message);
+    } finally {
+      todo.forEach((r) => sitesPlacing.delete(r.id));
+    }
+  })();
+}
+
 // --- password resets (memory + best-effort DB, 1-hour tokens) ---
 const resetCache = new Map(); // token_hash -> { user_id, expires_at, used }
 async function createPasswordReset(userId) {
@@ -23494,6 +23595,33 @@ const server = http.createServer((req, res) =>
     const m = marketOf(String(address || ""));
     return LEADSVC.isCanonicalMarket(m) ? m : null;
   };
+  // 061's columns ride along only once the probe has seen them.
+  const SITES_SELECT_V2 = SITES_SELECT + "," + SITES_V2_COLS.join(",");
+  // GET /api/sites and the /sites page answer the same thing: the member's
+  // own rows, the firm they are in, the deals colleagues shared with it
+  // (null when that read failed: the page says so rather than showing none),
+  // and `share`, which says sharing can be offered at all (061 has run and
+  // the member is in a firm). `place` lets the read start placing unplaced
+  // deals; the caller withholds it from a speculative render and from the
+  // desk boot's fan-out (which a prerendered Home makes without saying so),
+  // rule 15, as attachPropertyCoords' backfill is withheld.
+  const sitesPayload = async (user, opts) => {
+    const v2 = await sitesV2Ready();
+    const sel = v2 ? SITES_SELECT_V2 : SITES_SELECT;
+    const [rows, firm] = await Promise.all([
+      sbRequest("GET", `user_sites?user_id=eq.${encodeURIComponent(user.id)}` +
+        `&select=${sel}&order=created_at.desc&limit=${SITES.MAX_ROWS}`),
+      sitesFirmOf(user),
+    ]);
+    let firmSites = [];
+    if (v2 && firm) {
+      try { firmSites = await sitesSharedWithFirm(firm.orgId, user.id, SITES_SELECT_V2); }
+      catch (err) { console.error("Firm sites read failed (the page says so):", err.message); firmSites = null; }
+    }
+    if (v2 && opts && opts.place) sitesPlaceLater(user.id, rows);
+    return { sites: rows || [], today: sitesToday(), firm, firmSites,
+      share: v2 && firm ? { orgId: firm.orgId, name: firm.name } : null };
+  };
   if (req.method === "POST" && req.url.split("?")[0] === "/api/sites/update") {
     let body = "";
     req.setEncoding("utf8");
@@ -23508,21 +23636,61 @@ const server = http.createServer((req, res) =>
         const parsed = JSON.parse(body || "{}");
         const id = String(parsed.id || "");
         if (!isUuidish(id)) return sendJson(res, 400, { error: "Missing or malformed id." });
+        const v2 = await sitesV2Ready();
         const scope = `user_sites?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`;
-        const existing = ((await sbRequest("GET", `${scope}&select=${SITES_SELECT}&limit=1`)) || [])[0];
+        const existing = ((await sbRequest("GET", `${scope}&select=${v2 ? SITES_SELECT_V2 : SITES_SELECT}&limit=1`)) || [])[0];
         if (!existing) return sendJson(res, 404, { error: "That property is not in your list." });
-        const v = SITES.validatePatch(existing, parsed, sitesOpts());
-        if (!v.ok) return sendJson(res, 400, { error: v.error });
-        if (v.patch.portfolio_item_id && !(await getPortfolioItem(user.id, v.patch.portfolio_item_id))) {
+        // 061's two writes, beside the fields sites.js validates: the share
+        // switch (the owner's own firm, or nobody) and a report's estimate.
+        // Both need the migration, and say so rather than drop the request.
+        const extra = {};
+        if (parsed.share !== undefined) {
+          if (!v2) return sendJson(res, 503, { error: "Sharing deals with your firm isn't switched on yet. Nothing was changed." });
+          if (typeof parsed.share !== "boolean") return sendJson(res, 400, { error: "Bad request." });
+          if (existing.portfolio_item_id != null) return sendJson(res, 400, { error: "Only a deal you're buying can be shared with your firm." });
+          if (parsed.share) {
+            const f = await sitesFirmOf(user);
+            if (!f) return sendJson(res, 400, { error: "Join a firm to share a deal with it." });
+            extra.org_id = f.orgId;
+          } else extra.org_id = null;
+        }
+        if (parsed.estimate !== undefined) {
+          if (!v2) return sendJson(res, 503, { error: "Saving a report's estimate on a deal isn't switched on yet." });
+          const e = SITES.cleanEstimate(parsed.estimate, sitesOpts());
+          if (!e.ok) return sendJson(res, 400, { error: e.error });
+          extra.estimate = e.value;
+        }
+        const fields = { ...parsed };
+        delete fields.id; delete fields.share; delete fields.estimate;
+        let patch = {};
+        if (Object.keys(fields).length || !Object.keys(extra).length) {
+          const v = SITES.validatePatch(existing, fields, sitesOpts());
+          if (!v.ok) return sendJson(res, 400, { error: v.error });
+          patch = v.patch;
+        }
+        if (patch.portfolio_item_id && !(await getPortfolioItem(user.id, patch.portfolio_item_id))) {
           return sendJson(res, 404, { error: "That property is not in your list." });
         }
-        if (v.patch.address !== undefined) v.patch.market = sitesMarket(v.patch.address);
-        v.patch.updated_at = new Date().toISOString();
-        const rows = await sbRequest("PATCH", scope, v.patch, { prefer: "return=representation" });
-        if (v.patch.stage && v.patch.stage !== existing.stage) {
-          logEvent("site_stage", { prop_type: existing.property_type, market: existing.market || "", source: v.patch.stage });
+        Object.assign(patch, extra);
+        if (patch.address !== undefined) {
+          patch.market = sitesMarket(patch.address);
+          // A new address is a new place: looked up again after the write.
+          if (v2 && patch.address !== existing.address) Object.assign(patch, { lat: null, lng: null, geo_source: null });
         }
-        return sendJson(res, 200, { site: (rows && rows[0]) || { ...existing, ...v.patch } });
+        // A deal that closes is something the member OWNS, which is theirs
+        // alone: it leaves the firm's view (sitesSharedWithFirm reads deals only).
+        if (v2 && patch.stage && SITES.isHeld(patch.stage)) patch.org_id = null;
+        patch.updated_at = new Date().toISOString();
+        const rows = await sbRequest("PATCH", scope, patch, { prefer: "return=representation" });
+        if (patch.stage && patch.stage !== existing.stage) {
+          logEvent("site_stage", { prop_type: existing.property_type, market: existing.market || "", source: patch.stage });
+        }
+        if (extra.org_id !== undefined && extra.org_id !== (existing.org_id == null ? null : existing.org_id)) {
+          logEvent("site_share", { prop_type: existing.property_type, market: existing.market || "", source: extra.org_id ? "on" : "off" });
+        }
+        const site = (rows && rows[0]) || { ...existing, ...patch };
+        if (v2) sitesPlaceLater(user.id, [site]);
+        return sendJson(res, 200, { site });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("site update failed:", err.message);
@@ -23541,11 +23709,10 @@ const server = http.createServer((req, res) =>
         const user = await requireSites(req, res);
         if (!user) return;
         try {
-          const rows = await sbRequest("GET", `user_sites?user_id=eq.${encodeURIComponent(user.id)}` +
-            `&select=${SITES_SELECT}&order=created_at.desc&limit=${SITES.MAX_ROWS}`);
           // `today` is the server's, so the page's countdowns and the stage
           // stamps a write makes agree on what day it is.
-          return sendJson(res, 200, { sites: rows || [], today: sitesToday() });
+          return sendJson(res, 200, await sitesPayload(user, { place:
+            !INSTANTNAV.isSpeculative(req.headers) && !req.headers[DESK_BOOT_HEADER] }));
         } catch (err) {
           console.error("sites read failed:", err.message);
           return sendJson(res, 503, { error: "Couldn't load your properties. Please try again in a minute." });
@@ -23564,7 +23731,8 @@ const server = http.createServer((req, res) =>
           }
           const user = await requireSites(req, res);
           if (!user) return;
-          const v = SITES.validateNew(JSON.parse(body || "{}"), sitesOpts());
+          const input = JSON.parse(body || "{}");
+          const v = SITES.validateNew(input, sitesOpts());
           if (!v.ok) return sendJson(res, 400, { error: v.error });
           const row = v.row;
           const pid = row.portfolio_item_id;
@@ -23583,12 +23751,24 @@ const server = http.createServer((req, res) =>
           if (count >= SITES.MAX_ROWS) {
             return sendJson(res, 400, { error: `Your list holds ${SITES.MAX_ROWS} sites. Remove one to add another.` });
           }
+          // A new deal is shared with the member's firm when the add form
+          // says so (its switch starts on, the owner's call); a caller that
+          // says nothing shares nothing. 061's column is named only once it
+          // exists, so a deploy ahead of the migration still adds deals.
+          const v2 = await sitesV2Ready();
+          let orgId = null;
+          if (v2 && input.share === true && !pid) {
+            const f = await sitesFirmOf(user);
+            if (f) orgId = f.orgId;
+          }
           const rows = await sbRequest("POST", "user_sites", [{
-            ...row, user_id: user.id, market: sitesMarket(row.address),
+            ...row, user_id: user.id, market: sitesMarket(row.address), ...(v2 ? { org_id: orgId } : {}),
           }], { prefer: "return=representation" });
           // PII-free, like every analytics event: market and type only.
           logEvent("site_add", { prop_type: row.property_type, market: sitesMarket(row.address) || "", source: row.stage });
-          return sendJson(res, 200, { site: (rows && rows[0]) || null });
+          const site = (rows && rows[0]) || null;
+          if (v2 && site) sitesPlaceLater(user.id, [site]);
+          return sendJson(res, 200, { site });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("site add failed:", err.message);
@@ -32128,18 +32308,7 @@ const server = http.createServer((req, res) =>
         if (!user) boot = { s: 401 };
         else if (!(await entitlementsFor(req)).canUseVault) boot = { s: 403 };
         else if (!DB_CONFIGURED) boot = { s: 503 };
-        else {
-          const [rows, firm] = await Promise.all([
-            sbRequest("GET", `user_sites?user_id=eq.${encodeURIComponent(user.id)}` +
-              `&select=${SITES_SELECT}&order=created_at.desc&limit=${SITES.MAX_ROWS}`),
-            messagingFirmOf(user).then(async (f) => {
-              if (!f) return null;
-              const org = (await orgsByIds([f.orgId])).get(f.orgId);
-              return { name: (org && org.name) || "your firm", kind: ORG.kindOf(org) };
-            }),
-          ]);
-          boot = { s: 200, sites: rows || [], today: sitesToday(), firm };
-        }
+        else boot = { s: 200, ...(await sitesPayload(user, { place: !INSTANTNAV.isSpeculative(req.headers) })) };
       } catch (err) {
         console.error("sites page boot failed:", err.message);
       }

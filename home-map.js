@@ -139,12 +139,12 @@
   // `portfolio` the properties they hold (GET /api/portfolio), `critical` the
   // leases read's dated list. `today` dates the next-date column. A deal is
   // listed only for a development firm (`firmKind`, dealsOn).
-  function properties({ buildings = [], sites = [], portfolio = [], critical = [], today = "", firmKind = "" } = {}) {
+  function properties({ buildings = [], sites = [], portfolio = [], critical = [], today = "", firmKind = "", shareOrg = "" } = {}) {
     const deals = dealsOn(firmKind);
     const rows = new Map();
     const put = (key, address, base) => {
       if (!key) return null;
-      if (!rows.has(key)) rows.set(key, { key, address, type: "", group: "", stage: "", firm: false, you: false,
+      if (!rows.has(key)) rows.set(key, { key, address, type: "", group: "", stage: "", firm: false, you: false, shared: false,
         buildingId: null, siteId: null, portfolioId: null, acres: null, size: null, value: null, valueNote: "",
         change: null, next: null, lat: null, lng: null, ...base });
       return rows.get(key);
@@ -168,7 +168,7 @@
           .sort((a, b) => str(a.on).localeCompare(str(b.on)))[0];
         const r = put(addressKey(s.address), s.address, {});
         if (!r) return;
-        Object.assign(r, { type: s.property_type || r.type, group: "buying", stage: s.stage, you: true, siteId: s.id,
+        Object.assign(r, { type: s.property_type || r.type, group: "buying", stage: s.stage, you: true, siteId: s.id, shared: sharedWith(s, shareOrg),
           acres: num(s.acres), value: num(s.asking_price), valueNote: num(s.asking_price) ? "asking" : "",
           next: upcoming ? { on: str(upcoming.on).slice(0, 10), label: str(upcoming.label) } : null });
         return;
@@ -229,8 +229,18 @@
     });
   }
 
-  // Rule 2.
+  // A deal its owner shared with the firm (2026-10-21, migration 061):
+  // `shareOrg` is GET /api/sites' `share.orgId`, the firm the member is in
+  // now, so a deal still marked for a firm they have left (whose members no
+  // longer see it) reads as theirs alone.
+  function sharedWith(s, shareOrg) {
+    return !!shareOrg && s && s.org_id != null && String(s.org_id) === String(shareOrg);
+  }
+
+  // Rule 2. A deal shared with the firm is the firm's to see, numbers and
+  // all, so it reads "Firm".
   function scopeOf(row) {
+    if (row && row.shared) return "firm";
     if (row && row.firm && row.you) return "both";
     return row && row.firm ? "firm" : "you";
   }
@@ -278,7 +288,7 @@
   // inside BOV_DAYS and the member has not asked for an introduction.
   // A deal's dates are a development firm's only (`firmKind`, dealsOn), and
   // its row opens the deal on Home's Properties tab.
-  function agenda({ critical = [], threads = [], sites = [], leads = [], firmKind = "", today = "" } = {}) {
+  function agenda({ critical = [], threads = [], sites = [], leads = [], firmKind = "", today = "", shareOrg = "" } = {}) {
     const out = [];
     (Array.isArray(threads) ? threads : []).forEach((t) => {
       if (!t || !t.unread) return;
@@ -311,7 +321,7 @@
         const n = d && d.on ? daysUntil(d.on, today) : null;
         if (n == null || n < 0 || n > DEAL_DAYS) return;
         out.push({ kind: "deal", n, date: str(d.on).slice(0, 10), label: str(d.label) || "Deal date", who: "", address: str(s.address),
-          place: street(s.address) + (town(s.address) ? " · " + town(s.address) : ""), scope: "you", act: "Open deal",
+          place: street(s.address) + (town(s.address) ? " · " + town(s.address) : ""), scope: sharedWith(s, shareOrg) ? "firm" : "you", act: "Open deal",
           href: "/desk#properties", stage: s.stage });
       });
     });

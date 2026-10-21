@@ -201,9 +201,14 @@ test("the page is built from text, interpolates only its boot, and loads Home's 
 test("server.js serves /sites through requireSites' gate and marks its rail row", () => {
   const server = fs.readFileSync(path.join(ROOT, "server.js"), "utf8");
   const route = server.slice(server.indexOf('pagePath === "/sites"'), server.indexOf('pagePath === "/permits"'));
-  const order = ["getSessionUser(req)", "canUseVault", "DB_CONFIGURED", "user_sites?user_id=eq.${encodeURIComponent(user.id)}"];
+  // The read is sitesPayload's since 2026-10-21 (GET /api/sites answers the
+  // same thing), still the member's own rows by user_id.
+  // A prerendered /sites places no deal on the map (rule 15).
+  const order = ["getSessionUser(req)", "canUseVault", "DB_CONFIGURED", "sitesPayload(user, { place: !INSTANTNAV.isSpeculative(req.headers) })"];
   let at = -1;
   for (const s of order) { const i = route.indexOf(s); assert.ok(i > at, s + " is missing or out of order"); at = i; }
+  const payload = server.slice(server.indexOf("const sitesPayload = async (user, opts) => {"), server.indexOf('if (req.method === "POST" && req.url.split("?")[0] === "/api/sites/update")'));
+  assert.ok(payload.includes("user_sites?user_id=eq.${encodeURIComponent(user.id)}"), "the page's read is the member's own rows");
   assert.match(route, /logPageVisit\(req, "sites_visit"/);
   assert.match(route, /current: "\/sites"/);
   assert.match(server, /"\/home-sites\.css": \{ file: "home-sites\.css", type: "text\/css; charset=utf-8", maxAge: 0 \}/);

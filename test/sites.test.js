@@ -35,6 +35,16 @@ test("the migration's CHECK lists exactly the stages sites.js knows, and it dest
   assert.match(code, /enable row level security/, "a private table without RLS is readable through PostgREST");
 });
 
+test("061 only adds the five columns server.js probes for, and its index", () => {
+  const sql = fs.readFileSync(path.join(__dirname, "..", "migrations", "061-user-sites-firm.sql"), "utf8");
+  const code = sql.split("\n").filter((l) => !/^\s*--/.test(l)).join("\n");
+  assert.ok(!/\b(drop|truncate|delete\s+from|update\s+\w+\s+set)\b/i.test(code), "061 changes no existing row or column");
+  const added = [...code.matchAll(/alter table user_sites add column if not exists (\w+)/g)].map((m) => m[1]);
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const probed = JSON.parse(/const SITES_V2_COLS = (\[[^\]]*\]);/.exec(src)[1]);
+  assert.deepEqual(added, probed, "the probe names exactly what 061 adds");
+});
+
 test("a new deal starts on Prospect, today, with its fields cleaned", () => {
   const r = SITES.validateNew({ address: " 2410 W Amity Rd, Meridian, ID 83642 ", acres: "18.4 ac",
     zoning: "R-8", asking_price: "$3,450,000", notes: "Sewer at the road." }, { isPropertyType: types, today: TODAY });

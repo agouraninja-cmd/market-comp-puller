@@ -81,12 +81,44 @@
   // report) that opened Home with the address in a hidden box and ran
   // nothing. It fills and never runs (every report is a billed search), and
   // carries no price: a deal's figures stay out of an address.
-  function reportHref(s) {
+  // `site` (the member's own deal only) names the deal, so the report it
+  // runs writes its value back onto it (2026-10-21, migration 061).
+  function reportHref(s, opts) {
+    const own = !!(opts && opts.site) && s && /^[0-9a-f-]{36}$/i.test(String(s.id || ""));
     const q = [["address", s && s.address], ["type", (s && s.property_type) || "Land"],
-      ["acres", num(s && s.acres) > 0 ? String(num(s.acres)) : ""], ["zoning", s && s.zoning]]
+      ["acres", num(s && s.acres) > 0 ? String(num(s.acres)) : ""], ["zoning", s && s.zoning], ["site", own ? s.id : ""]]
       .filter(([, v]) => v != null && String(v).trim() !== "")
       .map(([k, v]) => k + "=" + encodeURIComponent(String(v).trim()));
     return "/bulk?" + q.join("&");
+  }
+  // A deal's CompNinja estimate as its pane says it (2026-10-21, 061): the
+  // likely value, the range, how the asking price sits against it, the day,
+  // and the saved report behind it. null: no estimate yet.
+  function estimateLine(s) {
+    const e = s && s.estimate && typeof s.estimate === "object" ? s.estimate : null;
+    const likely = num(e && e.likely);
+    if (!likely) return null;
+    const ask = num(s.asking_price);
+    let vs = "";
+    if (ask) {
+      const raw = ((ask - likely) / likely) * 100, pct = Math.round(raw);
+      vs = Math.abs(raw) < 1 ? "Asking is within 1% of the likely value"
+        : "Asking is " + Math.abs(pct) + "% " + (pct > 0 ? "over" : "under") + " the likely value";
+    }
+    return {
+      likely: short(likely),
+      range: num(e.low) && num(e.high) ? short(e.low) + " to " + short(e.high) : "",
+      vs, at: String(e.at || ""),
+      href: e.report && /^[A-Za-z0-9_-]{1,80}$/.test(String(e.report)) ? "/?recent=" + encodeURIComponent(e.report) : "",
+    };
+  }
+  // Whether the member can share a deal with their firm (`share` is GET
+  // /api/sites' own: migration 061 has run and they are in a firm), and
+  // whether this one is shared with it now. A deal shared with a firm they
+  // have since left reads as not shared, so the switch can put it right.
+  function shareState(s, share) {
+    const can = !!(share && share.orgId) && !!s && s.portfolio_item_id == null && !s.owner;
+    return { can, on: can && s.org_id != null && String(s.org_id) === String(share.orgId), firm: share ? String(share.name || "your firm") : "" };
   }
   function perAcre(s) {
     const a = num(s && s.asking_price), ac = num(s && s.acres);
@@ -171,7 +203,10 @@
 
   // ---- the browser half -----------------------------------------------------
   // ctx (index.html's Home):
-  //   data()        -> { sites, portfolio, buildings, firm, showValues, canSites, today }
+  //   data()        -> { sites, portfolio, buildings, firm, showValues, canSites, today,
+  //                      share, firmSites }: `share` and `firmSites` are GET
+  //                      /api/sites' own (061): whether a deal can be shared,
+  //                      and the deals colleagues shared (read only here)
   //   deals()       -> whether this member works deals here (HOMEMAP.dealsOn)
   //   reload()      -> re-read the deals and holdings, then draw Home again
   //   open(key)     -> which row's pane Home keeps open (null: none)
@@ -281,11 +316,14 @@
     }
 
     // ---- a deal ----
-    function dealPane(key, s) {
-      if (state.editing === s.id) return [editForm(key, s), msgLine(key)];
+    // `ro`: a colleague's deal, shared with the firm (2026-10-21, 061). It is
+    // theirs, so it is read here and changed nowhere: no stage moves, dates,
+    // Edit or Remove (the server scopes every write by user_id anyway).
+    function dealPane(key, s, ro) {
+      if (!ro && state.editing === s.id) return [editForm(key, s), msgLine(key)];
       const isPassed = s.stage === "passed";
       const per = perAcre(s), next = S.nextStage(s.stage);
-      const acts = isPassed
+      const acts = ro ? [] : isPassed
         ? [btn("Back to Prospect", "red", (e) => { e.currentTarget.disabled = true; move(key, s, "prospect"); })]
         : [next ? btn("Move to " + S.labelOf(next) + " →", "red", (e) => { e.currentTarget.disabled = true; move(key, s, next); }) : null,
           btn("Pass on it", "", (e) => { e.currentTarget.disabled = true; move(key, s, "passed"); })];
@@ -293,17 +331,24 @@
         ["Acres", s.acres != null ? acres(s.acres) : "—"], ["Zoning", s.zoning || "—"]];
       if (s.earnest_money != null) terms.push(["Earnest money", money(s.earnest_money)]);
       if (s.seller) terms.push(["Seller", s.seller]);
+      // The latest comp report run from this deal (its value written back
+      // when the report drew), against the asking price.
+      const est = estimateLine(s);
+      if (est) {
+        terms.push(["CompNinja estimate", est.likely + " likely"]);
+        if (est.range) terms.push(["Estimate range", est.range]);
+      }
       const dates = Array.isArray(s.dates) ? s.dates : [];
       const dateRows = dates.map((d, i) => {
         const past = d.on < today(), c = past ? null : countdown(d.on, today());
         return h("li", { class: past ? "past" : null },
           h("span", { class: "hs-dd" }, dayLabel(d.on, today())), h("span", { class: "hs-dw" }, d.label),
           past ? h("span", { class: "hs-mute" }, "Done") : c ? chip(c.text, c.hot ? "hot" : "") : h("span"),
-          h("button", { type: "button", class: "hs-xs", "aria-label": "Remove " + d.label, onclick: () => {
+          ro ? null : h("button", { type: "button", class: "hs-xs", "aria-label": "Remove " + d.label, onclick: () => {
             update(key, s.id, { dates: dates.filter((_, j) => j !== i) });
           } }, "×"));
       });
-      const dateForm = state.dating === s.id
+      const dateForm = ro ? null : state.dating === s.id
         ? h("form", { class: "hs-dform", onsubmit: (e) => {
           e.preventDefault();
           const f = e.currentTarget, on = f.elements.on.value, label = f.elements.label.value.trim();
@@ -317,21 +362,42 @@
           h("button", { type: "button", class: "hs-lnk", onclick: () => { state.dating = null; refill(); } }, "Cancel"))
         : h("button", { type: "button", class: "hs-lnk", onclick: () => { state.dating = s.id; refill(true); } }, "+ Add a date");
       const type = String(s.property_type || "Land");
+      const sh = shareState(s, data().share);
       return [
         stepper(isPassed ? "" : s.stage, s.stage_dates),
-        isPassed ? h("p", { class: "hs-mute hs-passed" }, "You passed on this" +
+        isPassed ? h("p", { class: "hs-mute hs-passed" }, (ro ? "Passed" : "You passed on this") +
           (s.stage_dates && s.stage_dates.passed ? " on " + dayLabel(s.stage_dates.passed, today()) : "") + ".") : null,
-        h("div", { class: "hs-acts" }, acts),
+        ro ? h("p", { class: "hs-mute hs-owner" }, "Shared with your firm by " + ((s.owner && s.owner.name) || "a colleague") + ". Only they can change it.") : null,
+        acts.length ? h("div", { class: "hs-acts" }, acts) : null,
+        sh.can ? shareSwitch(key, s, sh) : null,
         msgLine(key),
         h("div", { class: "hs-grid" },
-          blk("Key terms", h("dl", { class: "hs-terms" }, terms.map(([k, v]) => h("div", null, h("dt", null, k), h("dd", null, v))))),
+          blk("Key terms", h("dl", { class: "hs-terms" }, terms.map(([k, v]) => h("div", null, h("dt", null, k), h("dd", null, v)))),
+            est && (est.vs || est.at) ? h("p", { class: "hs-mute hs-est" }, [est.vs, est.at ? "from the report on " + dayLabel(est.at, today()) : ""].filter(Boolean).join(", ") + ".") : null),
           blk("Key dates", dates.length ? h("ul", { class: "hs-dates" }, dateRows) : h("p", { class: "hs-mute" }, "No dates yet."), dateForm),
           blk("Notes", h("p", { class: "hs-notes" }, s.notes || h("span", { class: "hs-mute" }, "None yet.")))),
         h("div", { class: "hs-foot" },
-          h("a", { class: "hm-btn", href: reportHref(s) }, "Run a " + type.toLowerCase() + " report"),
-          btn("Edit", "", () => { state.editing = s.id; refill(true); }),
-          h("button", { type: "button", class: "hs-rm", onclick: () => removeDeal(key, s) }, "Remove")),
+          h("a", { class: "hm-btn", href: reportHref(s, { site: !ro }) }, "Run a " + type.toLowerCase() + " report"),
+          est && est.href && !ro ? h("a", { class: "hm-btn", href: est.href, title: "Open the report behind the estimate (no new search, no cost)" }, "Open the report") : null,
+          ro ? null : btn("Edit", "", () => { state.editing = s.id; refill(true); }),
+          ro ? null : h("button", { type: "button", class: "hs-rm", onclick: () => removeDeal(key, s) }, "Remove")),
       ];
+    }
+    // The owner's switch: shared with their firm, or theirs alone. Written
+    // at once; a refusal puts the box back and says why.
+    function shareSwitch(key, s, sh) {
+      const box = h("input", { type: "checkbox", checked: sh.on, onchange: (e) => {
+        const want = e.currentTarget.checked;
+        e.currentTarget.disabled = true;
+        send("POST", "/api/sites/update", { id: s.id, share: want }).then((r) => {
+          if (r.s !== 200) return fail(key, r.j.error || "That didn't save. Nothing has been lost.");
+          delete state.msg[key];
+          return after(undefined, want ? street(s.address) + " is shared with " + sh.firm + "." : "Only you can see " + street(s.address) + " now.");
+        });
+      } });
+      return h("label", { class: "hs-share" }, box,
+        h("span", null, h("b", null, "Share with " + sh.firm), " ",
+          h("small", null, sh.on ? "Your team sees it on Sites. Only you can change it." : "Only you can see it.")));
     }
     function editForm(key, s) {
       const stages = S.BUYING.concat(["passed"]).map((k) => [k, S.labelOf(k)]);
@@ -474,13 +540,17 @@
     // ---- the pane Home places under an open row ----
     function sigOf(row) {
       const d = data();
-      const s = row.siteId != null ? (d.sites || []).find((x) => x.id === row.siteId) || null : null;
+      const own = row.siteId != null ? (d.sites || []).find((x) => x.id === row.siteId) || null : null;
+      // A colleague's shared deal (061) opens read-only: found only among
+      // the firm's, never mistaken for one of the member's own.
+      const theirs = !own && row.siteId != null ? (d.firmSites || []).find((x) => x.id === row.siteId) || null : null;
+      const s = own || theirs;
       const it = row.portfolioId != null ? (d.portfolio || []).find((x) => String(x.id) === String(row.portfolioId)) || null : null;
-      return { s, it, sig: JSON.stringify([s, it, it ? statusFor(d.sites, it.id) : null, !!d.showValues,
-        d.firm ? d.firm.name : null, it ? onFirmList(it, d.buildings) : null]) };
+      return { s, it, ro: !!theirs, sig: JSON.stringify([s, it, it ? statusFor(d.sites, it.id) : null, !!d.showValues,
+        d.firm ? d.firm.name : null, it ? onFirmList(it, d.buildings) : null, d.share || null, !!theirs]) };
     }
-    function fill(el, key, s, it) {
-      const body = it ? heldPane(key, it, statusFor(data().sites, it.id)) : s ? dealPane(key, s) : [];
+    function fill(el, key, s, it, ro) {
+      const body = it ? heldPane(key, it, statusFor(data().sites, it.id)) : s ? dealPane(key, s, ro) : [];
       el.replaceChildren(...body.flat().filter(Boolean));
     }
     // The working pane for one of Home's rows, or null when the row is not
@@ -489,22 +559,22 @@
     // redraws (a geocode landing, say) never wipe a half-typed form.
     function pane(row) {
       if (!row || !row.key) return null;
-      const { s, it, sig } = sigOf(row);
+      const { s, it, ro, sig } = sigOf(row);
       if (!s && !it) return null;
       if (live && live.key === row.key && live.sig === sig && live.el) { live.row = row; return live.el; }
       if (!live || live.key !== row.key) { state.editing = null; state.dating = null; }
       const el = h("div", { class: "hs-pane", role: "region", "aria-label": street((s || it).address) });
       live = { key: row.key, el, sig, row };
-      fill(el, row.key, s, it);
+      fill(el, row.key, s, it, ro);
       return el;
     }
     // Draw the open pane again after something inside it changed (a form
     // opened, a write refused). `focus` puts the cursor in its first field.
     function refill(focus) {
       if (!live || !live.el) return;
-      const { s, it, sig } = sigOf(live.row);
+      const { s, it, ro, sig } = sigOf(live.row);
       live.sig = sig;
-      fill(live.el, live.key, s, it);
+      fill(live.el, live.key, s, it, ro);
       if (focus) { const f = live.el.querySelector("form input, form select"); if (f) f.focus(); }
     }
 
@@ -523,7 +593,7 @@
     }
     function keep() {
       const f = liveAdd && liveAdd.querySelector("form");
-      return f ? Array.from(f.elements).filter((x) => x.name).map((x) => [x.name, x.value]) : [];
+      return f ? Array.from(f.elements).filter((x) => x.name).map((x) => [x.name, x.type === "checkbox" ? x.checked : x.value]) : [];
     }
     // A select keeps its value only where the redrawn form still offers it:
     // "I own it" has a "Choose one" that "I'm buying it" does not.
@@ -533,6 +603,7 @@
       kept.forEach(([n, v]) => {
         const el = g.elements[n];
         if (!el) return;
+        if (el.type === "checkbox") { el.checked = !!v; return; }
         if (el.tagName === "SELECT" && !Array.from(el.options).some((o) => o.value === v)) return;
         el.value = v;
       });
@@ -550,6 +621,14 @@
               const b = liveAdd.querySelector('[role="radio"][aria-checked="true"]'); if (b) b.focus();
             } }, t)));
       const typeOpts = (k === "buy" ? [] : [["", "Choose one"]]).concat(types.map((t) => [t, t]));
+      // A new deal starts shared with the member's firm (the owner's call,
+      // 2026-10-21), and the box is right here to untick before it is added.
+      const share = data().share;
+      const shareBox = k === "buy" && share && share.orgId
+        ? h("label", { class: "hs-share hs-wide" }, h("input", { type: "checkbox", name: "share", checked: true }),
+          h("span", null, h("b", null, "Share with " + (share.name || "your firm")), " ",
+            h("small", null, "Your team sees it on Sites. Only you can change it, and you can stop sharing any time.")))
+        : null;
       const fields = k === "buy"
         ? [field("Property type", select("property_type", typeOpts, "Land")),
           field("Stage", select("stage", S.BUYING.map((s) => [s, S.labelOf(s)]), "prospect")),
@@ -557,7 +636,7 @@
           field("Asking price", input("asking_price", "", { placeholder: "3,450,000", inputmode: "decimal" })),
           field("Next deadline", h("input", { type: "date", name: "next_on" })),
           field("What it is", input("next_label", "", { maxlength: 80, placeholder: "Due diligence ends" })),
-          field("Notes", input("notes", "", { maxlength: 1000, placeholder: "Optional" }), true)]
+          field("Notes", input("notes", "", { maxlength: 1000, placeholder: "Optional" }), true), shareBox]
         : [field("Property type", select("property_type", typeOpts, ""), true),
           h("p", { class: "hs-wide hs-mute" }, "No search runs. Use Refresh on it when you want a value. A building you only want to watch goes on The Board, on the Markets page.")];
       liveAdd.replaceChildren(h("form", { class: "hs-form", "aria-label": "Add a property", onsubmit: submitAdd },
@@ -584,7 +663,8 @@
       if (state.addKind === "buy") {
         state.busy = true;
         const body = { address, property_type: v("property_type") || "Land", stage: v("stage") || "prospect",
-          acres: v("acres"), asking_price: v("asking_price"), notes: v("notes") };
+          acres: v("acres"), asking_price: v("asking_price"), notes: v("notes"),
+          share: !!(f.elements.share && f.elements.share.checked) };
         if (v("next_on") || v("next_label")) body.dates = [{ on: v("next_on"), label: v("next_label") }];
         send("POST", "/api/sites", body).then((r) => r.s !== 200
           ? addFail(r.j.error || "That didn't save. Nothing has been lost.")
@@ -604,5 +684,5 @@
     return { pane, addForm };
   }
 
-  return { PROP_TYPES, money, short, acres, perAcre, reportHref, dayLabel, tsLabel, countdown, figures, figuresLine, steps, held, statusFor, onFirmList, street, mount };
+  return { PROP_TYPES, money, short, acres, perAcre, reportHref, estimateLine, shareState, dayLabel, tsLabel, countdown, figures, figuresLine, steps, held, statusFor, onFirmList, street, mount };
 });

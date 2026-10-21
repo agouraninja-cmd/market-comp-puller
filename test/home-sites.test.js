@@ -142,6 +142,14 @@ test("Run a land report opens the comp report tool filled in from the deal, and 
   assert.equal(HS.reportHref(deal({ address: "1 Main St, Boise, ID", acres: null, zoning: "", property_type: "Multifamily" })),
     "/bulk?address=1%20Main%20St%2C%20Boise%2C%20ID&type=Multifamily");
   const pane = SRC.slice(SRC.indexOf("function dealPane("), SRC.indexOf("function editForm("));
-  assert.match(pane, /h\("a", \{ class: "hm-btn", href: reportHref\(s\) \}, "Run a " \+ type\.toLowerCase\(\) \+ " report"\)/);
+  assert.match(pane, /h\("a", \{ class: "hm-btn", href: reportHref\(s, \{ site: !ro \}\) \}, "Run a " \+ type\.toLowerCase\(\) \+ " report"\)/);
   assert.doesNotMatch(SRC, /href: "\/\?type="/, "the dead link came back");
+});
+
+test("the owner's report link names the deal, so the estimate comes back onto it; a colleague's never does (2026-10-21)", () => {
+  const id = "0b7c2d1e-4f5a-4b6c-8d9e-0f1a2b3c4d5e";
+  const s = deal({ id, address: "5600 W Overland Rd, Boise, ID 83709", acres: 9.2 });
+  assert.match(HS.reportHref(s, { site: true }), new RegExp("&site=" + id + "$"));
+  assert.doesNotMatch(HS.reportHref(s), /site=/, "no opt-in, no deal id");
+  assert.doesNotMatch(HS.reportHref(deal({ id: "../x", address: "1 Main St" }), { site: true }), /site=/, "only a real id rides along");
 });

@@ -4867,5 +4867,11 @@
     "type": "fix",
     "title": "Sites shows as Sites in the sidebar on a new device, and firm shares say where they went",
     "details": "A development firm’s member who opened Sites on a new browser saw “Pipeline” in the sidebar until they visited Home. The Sites page now sets the sidebar itself. And sharing a report with your firm now says “Everyone at your firm can open it in Messages, under Reports” instead of “It is on your firm’s desk now”."
+  },
+  {
+    "date": "2026-10-21",
+    "type": "feature",
+    "title": "Sites: share a deal with your firm, and the land report's value lands on the deal",
+    "details": "Each deal on Sites has a \"Share with your firm\" switch. New deals start shared; deals from before stay private. Teammates see a shared deal on /sites, read-only, with the owner's name on it, and someone who leaves the firm takes their deals with them. \"Run a land report\" now remembers which deal it came from, and when the report draws, its low, likely and high values are saved onto the deal and shown beside the asking price, with a link back to the report. Deals are also placed on the map in the background (through our own server), ready for permits nearby. Needs migration 061; until it runs, Sites works exactly as before."
   }
 ]

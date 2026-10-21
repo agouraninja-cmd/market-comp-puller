@@ -3163,8 +3163,17 @@ ${tabButtons}
   // to know about where a row came from.
   function pipeRows(){
     var out=[];
+    // A request the broker asked to be introduced to IS a BOV from then on:
+    // the intro route writes its broker_bovs row, keyed by lead_id. So it is
+    // listed once, as that BOV. Listing the lead as well counted one request
+    // twice: a New row saying "Intro requested" beside its own Open BOV, and a
+    // strip of 4 new under a tab saying 3 new (2026-10-21). Only when the BOVs
+    // arrived: with that half failed, the lead row is all there is to show.
+    var logged={};
+    if(bovsOk)bovs.forEach(function(b){ if(b.lead_id!=null)logged[String(b.lead_id)]=true; });
     if(leadsOk){
       leads.forEach(function(l){
+        if(logged[String(l.id)])return;
         out.push({kind:"lead",id:l.id,stage:"new",stageRank:0,
           received:String(l.ts||"").slice(0,10),market:l.market||"",address:"",
           property_type:l.type||"",size_sqft:l.size_sqft||null,

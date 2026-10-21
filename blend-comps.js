@@ -119,6 +119,13 @@ function toReportComp(row) {
     if (v === null || v === undefined || v === "") continue;
     out[key] = v;
   }
+  // The book stores "sale" / "lease" (broker-vault.js's parseTransaction); the
+  // report's own comps say "Sale" / "Lease", and a table mixing the two read
+  // as two kinds of deal. Every reader compares case-blind, so this changes
+  // the word on screen and in exports, nothing else.
+  if (typeof out.transaction === "string") {
+    out.transaction = out.transaction.charAt(0).toUpperCase() + out.transaction.slice(1);
+  }
   if (!out.address) return null;      // a comp with no address cannot render
   out.source_type = PRIVATE_SOURCE_TYPE;
   out.private = true;

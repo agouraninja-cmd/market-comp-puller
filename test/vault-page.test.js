@@ -4916,6 +4916,29 @@ test("the tabs count what is in them, and new owner requests are red", async () 
   assert.equal(quiet.doc.getElementById("tabPipeN").className, "");
 });
 
+// Found filming the analyst walkthrough (2026-10-21): asking for an
+// introduction writes the request's BOV row, and the Pipeline listed both, a
+// New row saying "Intro requested" beside its own Open BOV, under a strip of
+// 4 new and a tab of 3 new.
+test("a request with its own BOV row is listed once, as the BOV", async () => {
+  const comps = [comp({ id: "a" })];
+  const leads = [LEAD({}), LEAD({ id: "L2" }), LEAD({ id: 9275, intro_requested: true })];
+  const { doc } = await runPage(comps, null, { page: "pipeline",
+    leads: deskLeads(leads),
+    bovs: deskBovs([BOV({}), BOV({ id: "B2", lead_id: "9275", market: "Boise, ID", source: "compninja" })]),
+  });
+  const rows = doc.getElementById("pipeRows").innerHTML;
+  assert.doesNotMatch(rows, /Intro requested/, "the introduced request shows as its BOV, not again as a New row");
+  assert.match(doc.getElementById("pipeStrip").innerHTML, /New<\/span><div class="sfig[^"]*">2</, "the strip counts 2 new");
+  assert.equal(String(doc.getElementById("tabPipeN").textContent), "2 new", "and agrees with the tab");
+  // With the BOVs unread there is no row to fold into: the lead row is all there is.
+  const failed = await runPage(comps, null, { page: "pipeline",
+    leads: deskLeads(leads),
+    bovs: () => Promise.resolve(jsonResponse(503, { error: "Couldn't load your BOVs." })),
+  });
+  assert.match(failed.doc.getElementById("pipeRows").innerHTML, /Intro requested/);
+});
+
 // Presses one of the ledger's quick views (or a pill's ×) the way a click would.
 function pressView(doc, attr, val) {
   doc.getElementById("bmViews").fire("click", { target: { closest: () => ({

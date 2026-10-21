@@ -4861,5 +4861,11 @@
     "type": "improvement",
     "title": "Land reports and The Board quote land per acre",
     "details": "A land report now leads with price per acre even when you didn’t type the acreage: it works the acres out from the lot size it found. The value, the market position chart, the comp table’s closing median and the PowerPoint caption all read per acre, and the comp table puts Acres and $/acre first so you can see them without scrolling. A land market on The Board shows its median price per acre too."
+  },
+  {
+    "date": "2026-10-21",
+    "type": "fix",
+    "title": "Sites shows as Sites in the sidebar on a new device, and firm shares say where they went",
+    "details": "A development firm’s member who opened Sites on a new browser saw “Pipeline” in the sidebar until they visited Home. The Sites page now sets the sidebar itself. And sharing a report with your firm now says “Everyone at your firm can open it in Messages, under Reports” instead of “It is on your firm’s desk now”."
   }
 ]

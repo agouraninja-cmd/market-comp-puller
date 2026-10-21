@@ -20024,7 +20024,7 @@ async function renderMyDesk() {
         // and its other half is object identity on currentParsed, neither of
         // which a revoke changes — so a member who undoes the auto-share and
         // then chooses Share and picks My firm was handed the SAME dead URL
-        // under "Link copied. It is on <firm>'s desk now.", with nothing
+        // under "Link copied. Everyone at <firm> can open it …", with nothing
         // published and nothing for a colleague to open. Same reasoning as
         // curation's reset: what the memo is holding stopped being true.
         lastPublished = { parsed: null, key: "", result: null };
@@ -22398,11 +22398,13 @@ async function renderMyDesk() {
       // say only that the link was copied rather than guess a number.
       out.textContent = (visibility === "invited" && typeof result.invited === "number")
         ? `Link copied. ${result.invited} ${result.invited === 1 ? "person" : "people"} invited.`
-        // A firm share is not mailed to anybody — it appears on the firm's
-        // desk — so saying "link copied" alone would leave the sharer
-        // wondering whether to send it on. Say where it landed.
+        // A firm share is not mailed to anybody — it lands in the firm's
+        // Reports, in Messages — so saying "link copied" alone would leave
+        // the sharer wondering whether to send it on. Say where it landed,
+        // in copy's words (it said "on <firm>'s desk now" until 2026-10-21:
+        // "desk" is a code name, and "Companies's" read wrong).
         : (visibility === "org" && firm)
-          ? `Link copied. It is on ${firm.name}'s desk now.`
+          ? `Link copied. Everyone at ${firm.name} can open it in Messages, under Reports.`
           : "Link copied.";
     } catch (err) {
       // A paywall refusal is an offer, not an error message. Branch on the

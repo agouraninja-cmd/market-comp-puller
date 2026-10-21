@@ -14577,7 +14577,7 @@ function brandGraph() {
 // Keep this note OUT of the function body: theme.test.js reads only
 // marketShell's first 2000 characters looking for THEME_BOOT, and six lines of
 // comment in there is enough to push the boot script out of that window.
-function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn, hero, ogImage, current, testerBadge }) {
+function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn, hero, ogImage, current, testerBadge, shop }) {
   const shareImage = ogImage || `${SITE_URL}/og-image.png`;
   const shellClass = signedIn && NAV_SHELL_CLASS ? ` class="${NAV_SHELL_CLASS}"` : "";
   return `<!DOCTYPE html>\n<html lang="en"${shellClass}>\n<head>\n` +
@@ -14612,6 +14612,12 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     // Pipeline or Sites, decided before first paint (SHOP_NAV_JS). Members
     // only: a stranger's bar has neither row.
     (signedIn ? `<script>${SHOP_NAV_JS}</script>\n` : "") +
+    // A page that has READ the firm's kind (`shop`: "development" or
+    // "broker"; /sites, 2026-10-21) corrects the note before the rail
+    // paints, so a member opening /sites on a new browser reads Sites, not
+    // Pipeline, on that page and every page after. Absent: say nothing.
+    (signedIn && (shop === "development" || shop === "broker")
+      ? `<script>window.cnShopNav&&cnShopNav(${shop === "development"})</script>\n` : "") +
     `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn, current || "")}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n` +
     // On every page a MEMBER reads (2026-10-17), so the rail's Feedback row
     // sits in the same place whichever page they are on; until then it was
@@ -32154,6 +32160,7 @@ const server = http.createServer((req, res) =>
         current: "/sites",
         head: INTER_FONT_HEAD,
         testerBadge: true,
+        shop: boot && boot.s === 200 && boot.firm ? (boot.firm.kind === "development" ? "development" : "broker") : undefined,
         body: renderSitesBody(boot) + visitTag,
       }));
     })();

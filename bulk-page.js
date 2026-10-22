@@ -984,7 +984,8 @@ function refreshCount(){
 // A finished one-address run started here opens its report (the row's own
 // ?recent= door, user-scoped like every other read of it); a failed one
 // stays as a row with its reason, because a redirect to nothing would hide
-// the one line that says what went wrong.
+// the one line that says what went wrong. ran=1 tells the report it was just
+// run, so it is not introduced as a saved one being reopened (2026-10-21).
 function onRunState(job,items){
   refreshCount();
   if(!singleJob||!job||job.id!==singleJob||job.status==="running")return;
@@ -993,7 +994,7 @@ function onRunState(job,items){
   var id=it&&it.status==="done"&&it.recent_item_id;
   if(!id)return;
   BULKRUN.msg("Valued. Opening the report\\u2026",false);
-  location.href="/?recent="+encodeURIComponent(id);
+  location.href="/?recent="+encodeURIComponent(id)+"&ran=1";
 }
 
 // Fill the box with the example addresses.

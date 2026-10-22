@@ -345,3 +345,38 @@ test("list mode does not disturb the single-address form's type machinery", () =
   assert.ok(enter.includes('typeResolution === "explicit"'),
     "the type is preselected from something other than an explicit resolution");
 });
+
+// Sites' "Run a land report" (2026-10-21) opens this page with the deal's
+// type, acres and zoning beside its address. They fill EMPTY fields once and
+// run nothing; an unknown type is ignored rather than added.
+test("a deal handed over from Sites fills the type and its fields, and runs nothing", () => {
+  const js = MOD.BULK_JS;
+  const at = js.indexOf("try{var qs=new URLSearchParams(location.search),qt=qs.get(\"type\");");
+  assert.ok(at > -1, "the Sites hand-over is gone");
+  const snippet = js.slice(at, js.indexOf("refreshMore();}catch(e){}", at) + "refreshMore();}catch(e){}".length);
+  const run = (search, types, pre) => {
+    const els = { bulkType: { value: "Industrial" } };
+    const calls = [];
+    const ctx = {
+      location: { search }, URLSearchParams, TYPES: types,
+      $: (id) => els[id],
+      renderSubjectFields: (t) => { calls.push("render:" + t);
+        els.bulkSubj_lot_acres = { value: (pre && pre.acres) || "" }; els.bulkSubj_zoning = { value: (pre && pre.zoning) || "" }; },
+      refreshMore: () => calls.push("more"),
+    };
+    vm.runInNewContext(snippet, ctx);
+    return { els, calls };
+  };
+  const a = run("?address=5600%20W%20Overland%20Rd&type=Land&acres=9.2&zoning=R-3", ["Industrial", "Land"]);
+  assert.equal(a.els.bulkType.value, "Land");
+  assert.equal(a.els.bulkSubj_lot_acres.value, "9.2");
+  assert.equal(a.els.bulkSubj_zoning.value, "R-3");
+  assert.deepEqual(a.calls, ["render:Land", "more"]);
+  // Something already typed is kept.
+  const b = run("?type=Land&acres=9.2", ["Land"], { acres: "12" });
+  assert.equal(b.els.bulkSubj_lot_acres.value, "12", "an acreage already in the box is not overwritten");
+  // A type the page does not offer changes nothing.
+  const c = run("?type=Castle&acres=3", ["Industrial", "Land"]);
+  assert.equal(c.els.bulkType.value, "Industrial");
+  assert.doesNotMatch(snippet, /run\(\)|\.click\(\)|\/api\/bulk/, "a hand-over must never start a billed run");
+});

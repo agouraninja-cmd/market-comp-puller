@@ -296,6 +296,7 @@ const COLUMNS = [
   // answers "Couldn't load your sites" for everybody.
   ["user_sites",        ["stage", "stage_dates", "dates", "portfolio_item_id", "asking_price",
                          "earnest_money", "seller", "acres", "zoning", "market", "updated_at"], "060-user-sites.sql"],
+  ["user_sites",        ["org_id", "estimate", "lat", "lng", "geo_source"],  "061-user-sites-firm.sql"],
 ];
 
 // What this tool deliberately CANNOT see: 037-org-shop-kind-tenant-rep.sql

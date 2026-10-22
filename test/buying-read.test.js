@@ -48,3 +48,12 @@ test("the module is the read and nothing else: the wall, its cards and its photo
     assert.ok(!fs.existsSync(path.join(__dirname, "..", f)), f + " is back");
   }
 });
+
+test("a land market priced per acre reads its acre trend, in $/acre (2026-10-21)", () => {
+  const land = { property_type: "Land", median_per_acre: 640000, median_trend: { current: 14, prior: 15 },
+    median_trend_acre: { current: 640000, prior: 600000 } };
+  const r = BR.buyingRead(land);
+  assert.equal(r.reasons[0].text, "Prices up 6.7% in six months ($600K to $640K/acre)");
+  assert.equal(BR.buyingRead({ ...land, median_trend_acre: undefined }), null, "no acre trend, no price read");
+  assert.match(BR.buyingRead({ ...land, median_per_acre: null }).reasons[0].text, /\/SF\)$/, "no priced acre: the $/SF read, as before");
+});

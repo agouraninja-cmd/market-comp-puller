@@ -32,10 +32,22 @@
   var FLAT_PCT = 2;
   var LEANS = { good: "Favorable", mid: "Mixed", bad: "Tough" };
 
-  // The six-month move in a market's median $/SF, as a percentage, or null
-  // when the feed has no trend (fewer than three sales on either side).
+  // A land market the feed priced per acre is read per acre (2026-10-21):
+  // its median_trend_acre, never the $/SF trend under a $/acre price.
+  function perAcre(item) {
+    return !!item && item.property_type === "Land" && Number(item.median_per_acre) > 0;
+  }
+  function trendOf(item) { return item && (perAcre(item) ? item.median_trend_acre : item.median_trend); }
+  function acreText(x) {
+    x = Math.round(Number(x));
+    return "$" + (x >= 1e6 ? (Math.round(x / 1e4) / 100) + "M" : x >= 1e4 ? Math.round(x / 1e3) + "K" : String(x)) + "/acre";
+  }
+
+  // The six-month move in a market's median $/SF (per acre for land), as a
+  // percentage, or null when the feed has no trend (fewer than three sales on
+  // either side).
   function priceMove(item) {
-    var t = item && item.median_trend;
+    var t = trendOf(item);
     if (!t || t.current == null || t.prior == null) return null;
     var cur = Number(t.current), prior = Number(t.prior);
     if (!isFinite(cur) || !isFinite(prior) || prior <= 0) return null;
@@ -54,8 +66,10 @@
     var pct = priceMove(item);
     if (pct != null) {
       seen++;
-      var t = item.median_trend, r = Math.round(Math.abs(pct) * 10) / 10;
-      var span = " in six months ($" + Math.round(t.prior) + " to $" + Math.round(t.current) + "/SF)";
+      var t = trendOf(item), r = Math.round(Math.abs(pct) * 10) / 10;
+      var span = perAcre(item)
+        ? " in six months (" + acreText(t.prior).replace("/acre", "") + " to " + acreText(t.current) + ")"
+        : " in six months ($" + Math.round(t.prior) + " to $" + Math.round(t.current) + "/SF)";
       if (pct <= -FLAT_PCT) { score++; reasons.push({ dir: "down", helps: "buyers", text: "Prices down " + r + "%" + span }); }
       else if (pct >= FLAT_PCT) { score--; reasons.push({ dir: "up", helps: "against", text: "Prices up " + r + "%" + span }); }
       else reasons.push({ dir: "flat", helps: "", text: "Prices flat" + span });

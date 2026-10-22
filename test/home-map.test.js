@@ -445,3 +445,21 @@ test("the start screen's map is one dot per city, counting its market pages", ()
   assert.equal(HM.marketsLine([]), "", "no dots, no key");
   assert.deepEqual(HM.marketCities("not a list"), []);
 });
+
+test("a deal its owner shared with the firm reads Firm, in the list and in Today (2026-10-21)", () => {
+  const shared = SITE({ id: "s2", address: "5600 W Overland Rd, Boise, ID 83709", org_id: "org-1",
+    dates: [{ on: "2026-10-16", label: "Offer due" }] });
+  const rows = HM.properties({ today: TODAY, firmKind: DEV, sites: [SITE({}), shared], shareOrg: "org-1" });
+  const by = Object.fromEntries(rows.map((r) => [HM.street(r.address), HM.scopeOf(r)]));
+  assert.equal(by["5600 W Overland Rd"], "firm", "shared: the firm sees it, numbers and all");
+  assert.equal(by["2410 W Amity Rd"], "you", "not shared: only you");
+  const due = HM.agenda({ today: TODAY, firmKind: DEV, sites: [shared], shareOrg: "org-1" }).find((x) => x.kind === "deal");
+  assert.equal(due.scope, "firm");
+  // Shared with a firm the member has since left (or before 061, no firm to
+  // share with): nobody else sees it, so it says so.
+  for (const shareOrg of ["org-2", "", undefined]) {
+    const r = HM.properties({ today: TODAY, firmKind: DEV, sites: [shared], shareOrg }).find((x) => x.siteId === "s2");
+    assert.equal(HM.scopeOf(r), "you", String(shareOrg));
+    assert.equal(HM.agenda({ today: TODAY, firmKind: DEV, sites: [shared], shareOrg }).find((x) => x.kind === "deal").scope, "you");
+  }
+});

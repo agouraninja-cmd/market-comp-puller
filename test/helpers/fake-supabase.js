@@ -167,8 +167,19 @@ function applyOrder(rows, order) {
 // prove it. 040's hub_notify is the first user: it is wrapped so that a
 // missing table costs the notification email and never the note itself, which
 // is a promise in a comment until something executes it.
-function start({ tables = {}, resendStatus = 200, missingTables = [] } = {}) {
+//
+// `missingColumns` ({ table: ["col", ...] }) is the same state one level
+// down: a migration that ADDS columns to a table that already exists. A
+// request naming one of them answers as PostgREST does until it has run, a
+// 400 that names the column, whether the name is in the select, a filter, the
+// order, or a written body. 061's columns on user_sites are the first user:
+// the Sites routes probe for them and must keep working without them.
+function start({ tables = {}, resendStatus = 200, missingTables = [], missingColumns = {} } = {}) {
   const missing = new Set(missingTables);
+  const missingCols = (table, names) => {
+    const gone = new Set((missingColumns && missingColumns[table]) || []);
+    return names.map((n) => String(n || "").trim()).find((n) => gone.has(n)) || null;
+  };
   const sent = [];        // every email posted to the Resend stand-in
   const requests = [];    // every PostgREST call, for asserting what was asked
   const unparsed = [];    // filters this fake refused, so a test can fail loudly
@@ -205,6 +216,24 @@ function start({ tables = {}, resendStatus = 200, missingTables = [] } = {}) {
       tables[table] = tables[table] || [];
       const params = [...url.searchParams.entries()];
       requests.push({ method: req.method, table, query: url.search, body: body || null });
+      {
+        const RESERVED = new Set(["select", "order", "limit", "offset", "on_conflict"]);
+        const named = [
+          ...String(url.searchParams.get("select") || "").split(","),
+          ...params.map(([k]) => k).filter((k) => !RESERVED.has(k)),
+          String(url.searchParams.get("order") || "").split(".")[0],
+        ];
+        let written = [];
+        if ((req.method === "POST" || req.method === "PATCH") && body) {
+          try { const b = JSON.parse(body); written = (Array.isArray(b) ? b : [b]).flatMap((r) => Object.keys(r || {})); } catch (_) { /* the handler below says so */ }
+        }
+        const col = missingCols(table, named) || missingCols(table, written);
+        if (col) {
+          return written.includes(col)
+            ? json(400, { code: "PGRST204", details: null, hint: null, message: `Could not find the '${col}' column of '${table}' in the schema cache` })
+            : json(400, { code: "42703", details: null, hint: null, message: `column ${table}.${col} does not exist` });
+        }
+      }
 
       try {
         if (req.method === "GET") {

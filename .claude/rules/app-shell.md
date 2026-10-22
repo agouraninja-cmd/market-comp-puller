@@ -79,7 +79,13 @@ paths:
 >   `cnShop`). Without it a development member reads Pipeline, and
 >   `/pipeline` sends them to `/sites` anyway (`applyShop`). Sign-out
 >   (`doSignOut`, `doDeleteAccount`) and a dead session (`ACCOUNT_NAV_JS`'s
->   `!me`) clear it.
+>   `!me`) clear it. **A third writer since 2026-10-21: `/sites`**, which
+>   reads the firm's kind for its own wall, passes `marketShell({ shop })`
+>   and the shell calls `cnShopNav` in `<head>`, right after `SHOP_NAV_JS`
+>   and before the rail paints, so a member opening /sites on a new browser
+>   no longer reads "Pipeline" on the page that is Sites. A page that read
+>   no firm says nothing (`shop` absent). Pinned in
+>   `test/sites-shop-run.test.js`.
 > - **The mark is the path's.** marketBar marks Pipeline for `/pipeline`.
 >   Until 2026-10-13 vault-page.js's `setTab` moved `aria-current`
 >   (`markRail`) as /vault's tabs changed; since then each page is its own

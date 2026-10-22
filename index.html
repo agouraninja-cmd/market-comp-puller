@@ -3363,7 +3363,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                 <button type="button" id="hmAddProp" class="hm-btn" aria-expanded="false" aria-controls="hmAddChoice">+ Add a property</button></div>
               <div id="hmAddChoice" class="hidden hm-choice">
                 <button type="button" id="hmAddFirm" class="hm-ch"><b>One of the firm's buildings</b><small>Everyone at <span id="hmAddFirmName">your firm</span> sees its address, size and lease dates.</small></button>
-                <a id="hmAddDeal" class="hm-ch hidden" href="#properties"><b>A deal you're working on</b><small>Only you can see it. It's tracked with its stage, asking price and next date.</small></a>
+                <a id="hmAddDeal" class="hm-ch hidden" href="#properties"><b>A deal you're working on</b><small>Tracked with its stage, asking price and next date. You choose whether your firm sees it.</small></a>
                 <a id="hmAddOwn" class="hm-ch" href="#properties"><b>A property you own</b><small>Only you can see it. It gets a value you can refresh, and its numbers stay private.</small></a>
               </div>
               <!-- A development firm's add form (home-sites.js), opened here
@@ -4048,6 +4048,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            no-print/no-capture reasoning as the notice above — it is about the
            link, not the building. Built by renderAutoShareNotice(). -->
       <p id="autoShareNotice" class="hidden no-print no-capture text-xs leading-6 text-[#5A6473] mb-3"></p>
+      <p id="siteEstimateNotice" class="hidden no-print no-capture text-xs leading-6 text-[#5A6473] mb-3"></p>
 
       <!-- Toolbar (not captured in the image / not printed) -->
       <div class="flex flex-wrap items-center justify-end gap-2 mb-4 no-print">
@@ -4450,7 +4451,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <h2 id="chartTitle" class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Market Position</h2>
             <span id="chartBasis" class="text-xs text-[#68707E]"></span>
           </div>
-          <p class="text-xs text-[#68707E] mb-3">Sale comps by price per square foot. Lease comps are excluded.</p>
+          <p id="chartCaption" class="text-xs text-[#68707E] mb-3">Sale comps by price per square foot. Lease comps are excluded.</p>
           <div id="chartWrap"></div>
         </div>
 
@@ -5103,6 +5104,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // feeds sorting and the exports, and a column meaning different things on
   // different reports is the two-bases hazard broker-vault.js refuses to take
   // on. Label it, move nothing.
+  // A size the source wrote as bare digits ("339768") reads with its commas
+  // on screen (2026-10-21; a land comp's lot runs to six figures). Anything
+  // else is shown as written, and the exports keep the value as stored.
+  function cellShown(col, val) {
+    if (col && col.key === "size_sqft" && /^\d{4,}(\.\d+)?$/.test(String(val).trim())) {
+      return Number(String(val).trim()).toLocaleString("en-US");
+    }
+    return val;
+  }
+
   function columnsForType(type, txFocus) {
     const cols = BASE_COLUMNS.slice();
     if (txFocus === "leases") {
@@ -5125,6 +5136,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const idx = cols.findIndex((c) => c.key === anchorKey);
       if (idx !== -1) cols.splice(idx + 1, 0, ...group);
     });
+    // Land reads per acre (2026-10-21): Acres, then $/acre, then zoning and
+    // the price, with the square-foot pair after the price, so the table
+    // leads with the unit a land buyer quotes and $/acre is on screen without
+    // scrolling sideways. Same columns and keys; only the order moves.
+    if (type === "Land") {
+      const acre = cols.find((c) => c.key === "price_per_acre");
+      const sf = cols.filter((c) => c.key === "size_sqft" || c.key === "price_per_sqft");
+      const rest = cols.filter((c) => c !== acre && !sf.includes(c));
+      const ac = rest.findIndex((c) => c.key === "lot_acres");
+      if (acre && ac !== -1) rest.splice(ac + 1, 0, acre);
+      const pr = rest.findIndex((c) => c.key === "price_or_rate");
+      if (pr !== -1) { rest.splice(pr + 1, 0, ...sf); return rest; }
+    }
     return cols;
   }
 
@@ -6892,6 +6916,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     Land:        { compKey: "price_per_acre", subjKey: "lot_acres", noun: "acre", askFor: "acreage",    label: "Price per acre cross-check", leads: true },
   };
 
+  // The market position chart plots land per acre (2026-10-21) when two or
+  // more of its sale comps published a price per acre, the hero's own unit.
+  function isLandChart(sales) {
+    return !!(currentMeta && currentMeta.type === "Land")
+      && (sales || []).filter((c) => numericValue(c.price_per_acre) > 0).length >= 2;
+  }
+  // A land subject's acreage: what the member typed, else its lot size (the
+  // size range, or the size the report looked up) over 43,560, the hero's
+  // rule. null when neither is known.
+  function subjectAcresOf(meta, sizeR) {
+    const typed = numericValue(((meta && meta.subject) || {}).details && meta.subject.details.lot_acres);
+    if (typed > 0) return typed;
+    const sf = sizeR ? (sizeR.min + sizeR.max) / 2 : numericValue(currentParsed && currentParsed.subject_size_sqft);
+    return sf > 0 ? Math.round((sf / 43560) * 100) / 100 : null;
+  }
+
   // Shared by the cross-check line and the headline fallback so the two can
   // never quote different statistics for the same comps. Deliberately reuses
   // robustPpsfRange — the $/SF headline's outlier-resistant band — rather than
@@ -7235,6 +7275,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         }
       }
     }
+    // Land is priced per acre (2026-10-21). ALT_BASIS.Land leads the hero,
+    // but only once the acreage is known, and it was known only when the
+    // member TYPED it: a land report with the lot size looked up from public
+    // records (or typed in SF) was quoted "at $15/SF", a unit a land buyer
+    // never uses. A parcel's size is its lot, so its acreage is that size over
+    // 43,560, exact rather than estimated. Typed acres still win, and the
+    // basis line says where a derived acreage came from.
+    let acresFromLot = null;
+    if (meta.type === "Land" && sizeR && !(numericValue((s.details || {}).lot_acres) > 0)) {
+      acresFromLot = Math.round(((sizeR.min + sizeR.max) / 2 / 43560) * 100) / 100;
+    }
+    const sAlt = acresFromLot > 0 ? { ...s, details: { ...(s.details || {}), lot_acres: acresFromLot } } : s;
     // Sale comps only — lease $/SF/yr is a different unit and would skew the
     // range. Comp objects are kept alongside their $/SF so the trust line can
     // count provenance tiers.
@@ -7616,7 +7668,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // that way and the owner told us the count. Computed up front because it
     // can either supplement the $/SF headline or, when no $/SF range exists,
     // become the headline itself.
-    const altRange = altBasisRange(meta, s, saleComps, parsed);
+    const altRange = altBasisRange(meta, sAlt, saleComps, parsed);
 
     // Which sales basis heads the hero. Land leads per-acre whenever acreage is
     // known; every other type leads on $/SF and falls back to the alternate
@@ -7694,7 +7746,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }];
       // Sits right after the sales-comparison line because it is the same
       // comps expressed in a different unit, not a separate approach.
-      const altEntry = altBasisEntry(meta, s, saleComps, parsed);
+      const altEntry = altBasisEntry(meta, sAlt, saleComps, parsed);
       if (altEntry) entries.push(altEntry);
       entries.push(...incomeApproachEntries(rr.low * sizeR.min, rr.high * sizeR.max));
       entries.push(costApproachEntry);
@@ -7720,11 +7772,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       setPpsf("ownerLowPpsf", "at " + per0(rr.low) + "/" + spec.noun);
       setPpsf("ownerMidPpsf", "at " + per0(rr.mid) + "/" + spec.noun + " · comp median");
       setPpsf("ownerHighPpsf", "at " + per0(rr.high) + "/" + spec.noun);
-      basisEl.textContent = `${qty.toLocaleString()} ${spec.noun}${plural} × ` + (rr.trimmed
+      // A derived acreage says where it came from, as the $/SF branch's size
+      // does: the lot size, and that size's own source.
+      const lotPhrase = !acresFromLot ? ""
+        : sizeSource === "public_record" ? " (the lot size from public records)"
+        : sizeSource === "listing" ? " (the lot size from a listing)"
+        : sizeSource ? " (the lot size, estimated from public data)"
+        // No source: typed, or carried in by a bulk run's own lookup, which
+        // stores the size it found as the subject's. Neither is claimed.
+        : " (from the lot size)";
+      basisEl.textContent = `${qty.toLocaleString()} ${spec.noun}${plural}${lotPhrase} × ` + (rr.trimmed
         ? `the middle range of ${per.length} sale comps`
         : `price per ${spec.noun} from ${per.length} sale comps`);
-      trustEl.textContent = `Based on ${per.length} sale comps that published a price per ${spec.noun}. `
-        + `Building size wasn't needed for this estimate.` + smallNNote(per.length);
+      trustEl.textContent = `Based on ${per.length} sale comps that published a price per ${spec.noun}.`
+        + (meta.type === "Land" ? "" : ` Building size wasn't needed for this estimate.`) + smallNNote(per.length);
       trustEl.classList.remove("hidden");
       // Same line, this type's own unit: the ledger above is quoting per unit
       // or per acre, so a $/SF scatter under it would be measuring something
@@ -9475,11 +9536,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // Locked comps are plotted too — the median line below must be the same
     // statistic as the hero's, and dropping them would make the two disagree
     // on the same report. A basis row has no address, so its dot says so.
-    const pts = valuationComps()
-      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
-      .map((c) => ({ v: numericValue(c.price_per_sqft), address: c.address || "Locked comparable" }))
+    // Land is plotted per acre (2026-10-21), the unit its hero leads with,
+    // whenever two or more sale comps published one; otherwise per square
+    // foot as before. One unit per chart, never a mix.
+    const sales = valuationComps()
+      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"));
+    const perAcre = isLandChart(sales);
+    const unit = perAcre ? "/acre" : "/SF";
+    const pts = sales
+      .map((c) => ({ v: numericValue(perAcre ? c.price_per_acre : c.price_per_sqft), address: c.address || "Locked comparable" }))
       .filter((p) => p.v > 0)
       .sort((a, b) => a.v - b.v);
+    const capEl = document.getElementById("chartCaption");
+    if (capEl) capEl.textContent = `Sale comps by price per ${perAcre ? "acre" : "square foot"}. Lease comps are excluded.`;
     if (pts.length < 2) { card.classList.add("hidden"); return; }
 
     // Median, not mean — the hero's Likely value is a median, and showing a
@@ -9490,12 +9559,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       : (pts[pts.length / 2 - 1].v + pts[pts.length / 2].v) / 2;
 
     // Subject $/SF (single value or band) — same math as renderComparison.
+    // Per acre, the subject's asking price over its acres, typed or derived
+    // from the lot size exactly as the hero derives them.
     const sizeR = subjectRangeFromMeta("size");
     const priceR = askingRangeFrom(currentParsed);
     let youLo = null, youHi = null, youMid = null, isBand = false;
-    if (sizeR && priceR) {
-      youLo = priceR.min / sizeR.max;
-      youHi = priceR.max / sizeR.min;
+    const subjAcres = perAcre ? subjectAcresOf(currentMeta, sizeR) : null;
+    if (perAcre ? (subjAcres > 0 && priceR) : (sizeR && priceR)) {
+      youLo = perAcre ? priceR.min / subjAcres : priceR.min / sizeR.max;
+      youHi = perAcre ? priceR.max / subjAcres : priceR.max / sizeR.min;
       youMid = (youLo + youHi) / 2;
       isBand = youHi - youLo > 0.005;
     }
@@ -9525,7 +9597,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // once inserted, repaints with the site theme on its own (a toggle mid-
     // report needs no re-render). fill/stroke on an SVG presentation
     // attribute resolve var() exactly like a stylesheet declaration would.
-    let svg = `<svg width="100%" viewBox="0 0 ${W} ${H}" role="img" aria-label="Sale comps by price per square foot">`;
+    let svg = `<svg width="100%" viewBox="0 0 ${W} ${H}" role="img" aria-label="Sale comps by price per ${perAcre ? "acre" : "square foot"}">`;
     svg += `<line class="ch-fade" x1="${EDGE}" y1="${baseY}" x2="${W - EDGE}" y2="${baseY}" stroke="var(--line)" stroke-width="2"/>`;
 
     // Subject band behind everything else.
@@ -9548,14 +9620,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const py = baseY + offsets[oi];
       prevX = px;
       const delay = Math.min(0.15 + i * 0.07, 0.8).toFixed(2);
-      svg += `<circle class="ch-pop" style="animation-delay:${delay}s" cx="${px.toFixed(1)}" cy="${py}" r="6" fill="var(--ink-mute)" fill-opacity="0.85" stroke="var(--card)" stroke-width="1.5"><title>${esc(p.address)} · ${formatUsd(p.v)}/SF</title></circle>`;
+      svg += `<circle class="ch-pop" style="animation-delay:${delay}s" cx="${px.toFixed(1)}" cy="${py}" r="6" fill="var(--ink-mute)" fill-opacity="0.85" stroke="var(--card)" stroke-width="1.5"><title>${esc(p.address)} · ${perAcre ? formatUsd(p.v, { maximumFractionDigits: 0 }) : formatUsd(p.v)}${unit}</title></circle>`;
     });
 
     // Min/max labels under the strip.
     const lo = pts[0].v, hi = pts[pts.length - 1].v;
     const loHiY = compact ? baseY + 52 : baseY + 38;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${perAcre ? formatUsd(lo, { maximumFractionDigits: 0 }) : formatUsd(lo)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${perAcre ? formatUsd(hi, { maximumFractionDigits: 0 }) : formatUsd(hi)}</text>`;
 
     // "You" marker on top.
     if (youLo !== null) {
@@ -12129,6 +12201,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // Hero first: a looked-up building size auto-fills the form input, and the
     // comparison + chart below read that same input.
     renderOwnerHero(parsed, meta);
+    maybeStampSiteEstimate(meta);
     renderAnalysisCluster(parsed, meta, true);
     setReportTab("report");   // every fresh render lands on the familiar report
     renderValueDrivers(parsed, meta);
@@ -12465,7 +12538,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   async function openHistoryReport(r) {
     const full = await hydrateHistoryRow(r);
+    // A Sites deal waiting on this report's value (?site=) is told whether
+    // THIS is the report: it is stamped only by this render, and dropped if
+    // the report cannot be opened, so no later report lands on the deal.
+    const forSite = pendingSiteEstimate && r && pendingSiteEstimate.recentId === r.recentId;
     if (!full) {
+      if (forSite) pendingSiteEstimate = null;
       showStatus("That report is no longer stored. Re-run the search to get a fresh one.", "info");
       return;
     }
@@ -12477,6 +12555,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     restoreFormFromMeta(full.meta);
     const when = full.ts ? ` generated ${histDate(full.ts)}` : "";
     showStatus(`Reopened a saved report${when}. Run a new search for fresh data.`, "info");
+    if (forSite) pendingSiteEstimate.ready = true;
     renderResults(full.data, { ...full.meta, fromHistory: true, generatedAt: full.ts || Date.now() });
   }
 
@@ -13769,6 +13848,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const recentParam = new URLSearchParams(location.search).get("recent");
     if (currentUser && recentParam) {
       const qs = new URLSearchParams(location.search);
+      // ?site=<deal id> rides along when the run began at a Sites deal's
+      // "Run a land report" (2026-10-21): the report writes its value back
+      // onto that deal once it has drawn (maybeStampSiteEstimate).
+      const siteParam = qs.get("site");
+      if (siteParam && /^[0-9a-f-]{36}$/i.test(siteParam)) pendingSiteEstimate = { siteId: siteParam, recentId: recentParam };
+      qs.delete("site");
       qs.delete("recent");
       history.replaceState({}, "", location.pathname + (qs.toString() ? "?" + qs : ""));
       openHistoryReport({ meta: {}, data: null, ts: 0, recentId: recentParam });
@@ -14202,6 +14287,7 @@ async function renderMyDesk() {
   // is text a person typed (the desk's standing rule).
   // ---------------------------------------------------------------------------
   let deskSites = null;      // GET /api/sites' rows; null = not read, refused or failed
+  let deskSitesShare = null; // GET /api/sites' `share` (061): whether a deal can be shared with the firm
   let deskPortfolio = null;  // renderMyDesk's GET /api/portfolio items; null = not read
   let firmMembers = [];      // renderFirmMembers' roster, for People
   let hmLeads = null;        // GET /api/broker/leads' requests once read; null until then
@@ -14277,7 +14363,7 @@ async function renderMyDesk() {
       propTypes: HM_TYPES,
       data: () => ({ sites: deskSites || [], portfolio: deskPortfolio || [], buildings: myFirm() ? firmBuildings : [],
         firm: myFirm(), showValues: (() => { try { return Boolean(proConfig && proConfig.portfolioValues); } catch (_) { return false; } })(),
-        canSites: hmCanVault(), today: hmTodayIso() }),
+        canSites: hmCanVault(), today: hmTodayIso(), share: deskSitesShare }),
       deals: () => HOMEMAP.dealsOn(hmFirmKind()),
       reload: hmReloadMine,
       open: (key) => { hmWork = key || ""; },
@@ -14566,6 +14652,7 @@ async function renderMyDesk() {
       if (res.ok) {
         const j = await res.json();
         deskSites = Array.isArray(j && j.sites) ? j.sites : [];
+        deskSitesShare = j && j.share && j.share.orgId ? j.share : null;
       }
     } catch (_) { /* no deals on the map; the rest of Home stands */ }
   }
@@ -14625,7 +14712,7 @@ async function renderMyDesk() {
   }
 
   function resetHomeMap() {
-    deskSites = null; deskPortfolio = null; firmMembers = [];
+    deskSites = null; deskSitesShare = null; deskPortfolio = null; firmMembers = [];
     hmSites = null; hmWork = ""; hmPassedOpen = false;
     { const a = document.getElementById("hmMineAdd"); if (a) a.textContent = ""; }
     { const m = document.getElementById("hmPropMsg"); if (m) { m.textContent = ""; m.classList.add("hidden"); } }
@@ -14828,13 +14915,14 @@ async function renderMyDesk() {
     const firm = myFirm();
     const today = hmTodayIso();
     hmRows = HOMEMAP.properties({ buildings: firm ? firmBuildings : [], sites: deskSites || [], portfolio: deskPortfolio || [],
-      critical: firm && Array.isArray(deskCritical) ? deskCritical : [], today, firmKind: hmFirmKind() });
+      critical: firm && Array.isArray(deskCritical) ? deskCritical : [], today, firmKind: hmFirmKind(),
+      shareOrg: deskSitesShare ? deskSitesShare.orgId : "" });
     const canLeads = hmCanLeads();
     if (canLeads && !hmLeadsAsked && deskFilledFor) hmLoadLeads();
     hmItems = HOMEMAP.agenda({ critical: firm && Array.isArray(deskCritical) ? deskCritical : [],
       threads: firm && deskThreadsStat ? deskThreadsStat.unreadList : [], sites: deskSites || [],
       leads: canLeads && Array.isArray(hmLeads) ? hmLeads.map((l) => ({ ...l, ts: hmLocalDay(l.ts) })) : [],
-      firmKind: hmFirmKind(), today });
+      firmKind: hmFirmKind(), today, shareOrg: deskSitesShare ? deskSitesShare.orgId : "" });
 
     // The head: the day, the firm, a greeting, one sentence of status.
     document.getElementById("hmDay").textContent = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
@@ -18061,11 +18149,13 @@ async function renderMyDesk() {
       }
     }
   } catch (_) { /* private mode etc. — a nicety, not a requirement */ }
-  // ?address= fills the address field and runs nothing (2026-10-05): the
-  // Data page's Sites tab links "Run a land report" here with the site's
-  // address and ?type=Land, so the member presses Search instead of retyping
-  // it. Only an EMPTY field is filled, so a restored report or a shared one
-  // that already set the address keeps it; capped like every address input.
+  // ?address= fills the address field and runs nothing (2026-10-05). It was
+  // written for the Sites tab's "Run a land report", which since 2026-10-21
+  // opens /bulk instead: a member's "/" is Home, and Home holds no report
+  // form, so the address landed in a hidden box. A signed-out visitor's link
+  // still lands on the form here. Only an EMPTY field is filled, so a
+  // restored report or a shared one that already set the address keeps it;
+  // capped like every address input.
   try {
     const urlAddr = String(new URLSearchParams(location.search).get("address") || "").trim().slice(0, 300);
     const addrInput = document.getElementById("address");
@@ -19893,6 +19983,46 @@ async function renderMyDesk() {
   //   - It is fire-and-forget from the caller's point of view: a firm that
   //     cannot be reached leaves the report exactly as it is, unshared and
   //     unannounced. Failing quiet is right in that direction only.
+  // A report opened from a Sites deal (2026-10-21, migration 061) writes its
+  // value back onto that deal, once, so the deal says "CompNinja estimate:
+  // $5.78M likely" beside its asking price. Only the member's own deal: the
+  // route scopes the write by user_id, and a refusal (somebody else's deal,
+  // 061 not run yet) changes nothing and says nothing, since the report
+  // itself is what the member came for. The boot block above sets it from
+  // ?site=, after its first await, so always after this line has run.
+  var pendingSiteEstimate = null;
+  async function maybeStampSiteEstimate(meta) {
+    const el = document.getElementById("siteEstimateNotice");
+    const p = pendingSiteEstimate;
+    // Only the render openHistoryReport marked as the deal's own report.
+    if (!p || !p.ready) {
+      if (el && meta && el.dataset.for !== String(meta.address || "")) el.classList.add("hidden");
+      return;
+    }
+    // Consumed by that render whatever comes of it: a report with no likely
+    // value saves nothing, and must not leave the deal waiting for the next
+    // report opened in this tab.
+    pendingSiteEstimate = null;
+    if (!currentUser || !meta || meta.shared || meta.sample || !lastValuation || !(lastValuation.likely > 0)) return;
+    try {
+      const res = await fetch("/api/sites/update", {
+        method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: p.siteId, estimate: { low: lastValuation.low, likely: lastValuation.likely,
+          high: lastValuation.high, report: p.recentId } }),
+      });
+      if (!res.ok || !el) return;
+      el.textContent = "";
+      el.dataset.for = String(meta.address || "");
+      el.append(`Saved on your deal: ${formatUsd(Math.round(lastValuation.likely), { maximumFractionDigits: 0 })} likely, beside its asking price. `);
+      const a = document.createElement("a");
+      a.href = "/sites";
+      a.className = "text-[#B91C1C] hover:text-[#991B1B] font-medium underline";
+      a.textContent = "Open Sites";
+      el.append(a);
+      el.classList.remove("hidden");
+    } catch (_) { /* the report stands; the deal keeps its last estimate */ }
+  }
+
   async function maybeAutoShareToFirm(meta) {
     try {
       if (!currentUser || !meta || meta.autoShared) return;
@@ -19951,7 +20081,7 @@ async function renderMyDesk() {
         // and its other half is object identity on currentParsed, neither of
         // which a revoke changes — so a member who undoes the auto-share and
         // then chooses Share and picks My firm was handed the SAME dead URL
-        // under "Link copied. It is on <firm>'s desk now.", with nothing
+        // under "Link copied. Everyone at <firm> can open it …", with nothing
         // published and nothing for a colleague to open. Same reasoning as
         // curation's reset: what the memo is holding stopped being true.
         lastPublished = { parsed: null, key: "", result: null };
@@ -20496,7 +20626,7 @@ async function renderMyDesk() {
             ? "Weighted in the valuation as " + m.label.toLowerCase() + ": " + m.reasons.join(", ") + "."
             : "How much this comp counts toward the valuation.";
         } else {
-          cell.textContent = (val === undefined || val === null || val === "") ? "-" : val;
+          cell.textContent = (val === undefined || val === null || val === "") ? "-" : cellShown(col, val);
           if (col.key === "notes" && val) cell.title = String(val);
           if (col.isDate) {
             const b = outsideWindowBadge(val);
@@ -20560,11 +20690,15 @@ async function renderMyDesk() {
     // A sales median has no place over a leases-only view, and an empty
     // table needs no closing rule.
     if (txFilter === "leases" || visibleComps().length === 0) return;
-    const psfIdx = COLUMNS.findIndex((c) => c.key === "price_per_sqft");
+    // Land closes on its median $/acre (2026-10-21), the chart's own rule.
+    const sales = valuationComps()
+      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"));
+    const acre = isLandChart(sales);
+    const rateKey = acre ? "price_per_acre" : "price_per_sqft";
+    const psfIdx = COLUMNS.findIndex((c) => c.key === rateKey);
     if (psfIdx < 1) return;
-    const vals = valuationComps()
-      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
-      .map((c) => numericValue(c.price_per_sqft))
+    const vals = sales
+      .map((c) => numericValue(c[rateKey]))
       .filter((v) => v > 0)
       .sort((a, b) => a - b);
     if (vals.length < 2) return;
@@ -20580,7 +20714,7 @@ async function renderMyDesk() {
     // label is the only part guaranteed visible without a scroll. A printed
     // page unclips the table and shows both — same number, statement-style.
     lab.textContent = "Median of " + vals.length + " sale comps · "
-      + formatUsd(med, { maximumFractionDigits: 0 }) + "/SF";
+      + formatUsd(med, { maximumFractionDigits: 0 }) + (acre ? "/acre" : "/SF");
     tr.appendChild(lab);
     const val = document.createElement("td");
     val.className = "px-4 py-3 text-right whitespace-nowrap";
@@ -20776,7 +20910,7 @@ async function renderMyDesk() {
           dd.className = "mt-0.5 " + m.cls;
           dd.title = m.reasons.length ? m.reasons.join(", ") : "";
         } else {
-          dd.textContent = empty ? "-" : val;
+          dd.textContent = empty ? "-" : cellShown(col, val);
           // Same recomputed-$/SF disclosure as the desktop table.
           if (col.key === "price_per_sqft" && comp.psf_reconciled && !empty) {
             dd.title = "Recomputed from sale price ÷ building size";
@@ -21598,7 +21732,9 @@ async function renderMyDesk() {
           };
           const cap = (text, x, y, w) => s.addText(text, T({ x, y, w, h: 0.5, fontSize: 9, color: PPTX_MUTE, valign: "top" }));
           const MAP_CAP = "Red pin = the subject; numbered dots match the comps table.";
-          const CHART_CAP = "Sale comps by price per square foot, with the comp median and the subject's range.";
+          // The same unit the chart on the page plots (land per acre, 2026-10-21).
+          const chartUnit = isLandChart(valuationComps().filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))) ? "acre" : "square foot";
+          const CHART_CAP = `Sale comps by price per ${chartUnit}, with the comp median and the subject's range.`;
           if (map && chart) {
             const h1 = fit(map, 0.5, 1.15, 7.4, 4.9);
             cap(MAP_CAP, 0.5, 1.2 + h1, 7.4);
@@ -22319,11 +22455,13 @@ async function renderMyDesk() {
       // say only that the link was copied rather than guess a number.
       out.textContent = (visibility === "invited" && typeof result.invited === "number")
         ? `Link copied. ${result.invited} ${result.invited === 1 ? "person" : "people"} invited.`
-        // A firm share is not mailed to anybody — it appears on the firm's
-        // desk — so saying "link copied" alone would leave the sharer
-        // wondering whether to send it on. Say where it landed.
+        // A firm share is not mailed to anybody — it lands in the firm's
+        // Reports, in Messages — so saying "link copied" alone would leave
+        // the sharer wondering whether to send it on. Say where it landed,
+        // in copy's words (it said "on <firm>'s desk now" until 2026-10-21:
+        // "desk" is a code name, and "Companies's" read wrong).
         : (visibility === "org" && firm)
-          ? `Link copied. It is on ${firm.name}'s desk now.`
+          ? `Link copied. Everyone at ${firm.name} can open it in Messages, under Reports.`
           : "Link copied.";
     } catch (err) {
       // A paywall refusal is an offer, not an error message. Branch on the

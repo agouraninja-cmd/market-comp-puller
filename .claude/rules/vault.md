@@ -22,6 +22,7 @@ paths:
   - "sites.js"
   - "test/sites.test.js"
   - "test/sites-run.test.js"
+  - "test/sites-firm-run.test.js"
   - "buying-read.js"
   - "test/buying-read.test.js"
 ---
@@ -1250,6 +1251,108 @@ paths:
 >   and the bare address for everyone. The page's header line for that firm
 >   says "Your properties are on Home".
 
+> **A deal can be shared with the firm, carries its estimate, and knows where
+> it is (2026-10-21; migration `061-user-sites-firm.sql`, deploy order SOFT;
+> the owner's pick of a per-deal switch over "everyone sees every deal" or
+> "keep them private").** Found making the Hawkins Companies demo: Sites
+> was a development firm's tool and each deal was one person's alone, so
+> the acquisitions lead could not see the analyst's pipeline, and a land
+> report run from a deal never came back to it.
+> - **Three columns, probed, never assumed.** `org_id`, `estimate`,
+>   `lat`/`lng`/`geo_source` (061, additive). server.js names them only once
+>   `sitesV2Ready()` has seen them: one `select=` of the five, cached
+>   `true` for good, and rechecked every five minutes after a 42703/PGRST204
+>   ("missing column"); an outage decides nothing and reads as not ready.
+>   Before 061 runs every Sites route works as it did, offers none of the
+>   three (`share: null`, `firmSites: []`), and the two writes that need
+>   them answer 503 "Nothing was changed". `test/sites-firm-run.test.js`
+>   proves that half with the stand-in's `missingColumns` option, which
+>   400s a SELECT, filter or body naming a column the table lacks, the way
+>   PostgREST does.
+> - **The switch is the owner's, per deal.** `org_id` set means "shared with
+>   my firm"; NULL means only the owner. The add form's "Share with
+>   {firm}" box is checked by default (a NEW deal starts shared); every deal
+>   from before stays private, because nothing backfills the column.
+>   `POST /api/sites/update {id, share}` takes a boolean only, 400s a
+>   status row (a property you own is never on this switch) and a member in
+>   no firm, and a deal that becomes a property (Owned or Tracking) is
+>   unshared. The firm is the one the session resolves now (`sitesFirmOf`),
+>   never one the browser names.
+> - **The firm read is its own query (rule 3).** `sitesSharedWithFirm` reads
+>   `user_sites?org_id=eq.<firm>&user_id=in.(<active colleagues>)&
+>   portfolio_item_id=is.null` beside the owner's untouched
+>   `user_id=eq.` read, never an `or=` of the two. Colleagues are
+>   `orgMemberRows(orgId).filter(ORG.isActive)` minus the caller, so a
+>   member who left or was removed drops off the firm's view at once while
+>   the deal stays theirs. Rows go out with `owner: {name}` and without
+>   `user_id`. A failed firm read is `firmSites: null`, and /sites says
+>   "Your team's shared deals couldn't be loaded just now. Yours are all
+>   here.", never an empty board.
+> - **A colleague's deal is read-only, and on /sites only.** The board lists
+>   it beside the member's own (`all()`), with a `.theirs` card and an "X's
+>   deal" chip, and its pane (`sigOf` finds it in `firmSites`) says "Shared
+>   with your firm by X. Only they can change it." in place of every
+>   control; every write route is still scoped `user_id=eq.<caller>`, so a
+>   forged update 404s. Home lists only the member's own deals, as before; a
+>   shared one is marked `shared` by home-map.js and reads as the firm's
+>   (`scopeOf` "firm"), so every row still says who can see it. Every one of
+>   those marks (Home's, the /sites chip, the pane's switch) compares
+>   `org_id` with the firm the member is in now (`share.orgId`): a deal
+>   still marked for a firm they have left is seen by nobody, so it reads as
+>   theirs alone and the switch can re-share it. `sitesPayload(user)`
+>   is the one builder of `{sites, today, firm, firmSites, share}` for
+>   `GET /api/sites` and the /sites boot alike.
+> - **The estimate comes back to the deal.** The owner's "Run a land report"
+>   adds `site=<uuid>` (`reportHref(s, {site: true})`; a colleague's pane
+>   never does). bulk-page.js keeps it only while the box still holds the
+>   handed-over address, and sends it on to `/?recent=<id>&site=<uuid>`.
+>   index.html's `maybeStampSiteEstimate`, right after `renderOwnerHero`,
+>   posts the hero's low/likely/high and the recent's id once, and says
+>   "Saved on your deal: $X likely, beside its asking price. Open Sites".
+>   `SITES.cleanEstimate` decides what is stored (likely required, low ≤
+>   likely ≤ high, a report id of `[A-Za-z0-9_-]{1,80}`, null clears) and
+>   the server stamps `at` with its own today. The pane shows it in Key terms
+>   (`HOMESITES.estimateLine`: likely, the range, how the asking price sits
+>   against it, the day, and "Open the report"). Only the three figures and
+>   an id are stored; the report itself stays where it was.
+> - **Where a deal is.** `sitesPlaceLater` geocodes up to five unplaced
+>   deals after an add, an address change, or a visit to `/sites`, through
+>   `censusPlace` (our own server, rule 7), and writes only where
+>   `geo_source=is.null` AND the address is still the one looked up (an
+>   edit during the lookup, which clears nothing still empty, once got the
+>   old address's point for good): "census" with lat/lng, or "none" on a
+>   miss so it is asked once. An address change resets all three. **`GET
+>   /api/sites` places nothing**: a prerendered page's live fetch carries no
+>   sign it is speculative, so a GET that wrote would have to be held
+>   (`HOLD_PATHS`). Only the `/sites` page's render places, and only when it
+>   is not speculative (`sitesPayload(user, { place })`, rule 15). A deal
+>   from before 061 is placed on its owner's next real visit to /sites.
+> - **A firm read that fails is said, never guessed.** `sitesFirmOf` reads
+>   the membership itself and THROWS on a failed read (messagingFirmOf
+>   answers "no firm"), and a firm whose own row did not come back has
+>   `kind: null`. So a share asked for is a 503 with nothing saved (never a
+>   private deal with a 200), `sitesPayload` answers `firmFailed: true` with
+>   `firmSites: null` and no `share`, /sites says "Your firm couldn't be
+>   loaded just now" rather than "Sites is for development firms", and the
+>   rail is told a shop kind only when one was read.
+> - **The estimate is refused, never repaired** (`cleanEstimate`): each
+>   figure is a number or a plain decimal string, a whole dollar or more
+>   once rounded (Number() alone took `true`, `[5]` and `"0x10"`).
+> - **Permits within a mile (same day; permits.md, "Near your Sites
+>   deals").** A deal's pane carries a "Permits within a mile" block from
+>   `GET /api/sites/permits?id=` with "Email me when one is filed" (an
+>   ordinary area alert), and /permits marks and filters the filings near
+>   the reader's deals. The block is for a deal still being bought, is
+>   cached by where the deal is (id, address, place), and when its answer
+>   lands only the block is swapped, so a form open in the pane is kept.
+> - **The report's value lands only on its own deal.** `pendingSiteEstimate`
+>   is marked `ready` by `openHistoryReport` for the `?recent=` report it
+>   was set for, dropped if that report cannot be opened, and consumed by
+>   that report's render whatever comes of it, so a report with no likely
+>   value never leaves the deal waiting for the next one opened in the tab
+>   (`test/index-html.test.js` runs it). Permits near a deal read them (`SITES.NEAR_MILES`,
+>   `SITES.milesBetween`; permits.md).
+
 The owner's pick "M2" of the Sites drafts
 (https://claude.ai/artifact/BMeJY9d3vegjmDxcAPtxzR, rounds 1-3). Migration
 `060-user-sites.sql` (**run before deploying**; deploy-first costs only the
@@ -1300,9 +1403,15 @@ Sites tab, whose reads answer 503 until it runs, never another surface).
 - **Owned value counts Owned only.** Properties adds every row into its
   combined value; Sites leaves Tracking buildings out of it, because a
   building you watch is not part of what you own.
-- **Run a land report** links to `/?type=<type>&address=<address>`.
-  index.html's `?address=` (added with this) fills an EMPTY address field and
-  runs nothing.
+- **Run a land report** links to `/bulk?address=&type=&acres=&zoning=`
+  (`HOMESITES.reportHref`, since 2026-10-21). It linked to
+  `/?type=<type>&address=<address>` until then, and once Home lost its report
+  form (2026-10-08) a member's `/` was Home, so the address went into a
+  hidden box and nothing ran. bulk-page.js fills the type (one it offers)
+  and that type's own fields where they are empty, beside its `?address=`,
+  and runs nothing: every report is a billed search. No price rides the
+  link (a deal's figures stay out of an address). index.html's `?address=`
+  still fills an empty field for a signed-out visitor's link.
 - **The Book, for the same member (2026-10-06, owner's call).** `applyShop()`
   decides three more things, keyed on the firm's kind alone (`shop`), not on
   the Sites script:

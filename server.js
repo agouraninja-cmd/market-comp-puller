@@ -17380,6 +17380,7 @@ footer{background:var(--ink);color:var(--foot-ink);font-size:var(--t5)}
 footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
 footer .wordmark{color:#fff}
 footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
+${THEME.FIELD_FLOOR}
 </style></head><body>
 <header class="hdr">
   <div class="wrap">
@@ -18372,6 +18373,7 @@ footer{background:var(--ink);color:var(--foot-ink);font-size:var(--t5)}
 footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
 footer .wordmark{color:#fff}
 footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
+${THEME.FIELD_FLOOR}
 </style></head><body>
 <header class="hdr">
   <div class="wrap">
@@ -18872,6 +18874,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 /* LAST in the sheet on purpose — same specificity as the rules above, so the
    collapse only wins by being declared later. */
 @media(max-width:620px){.grid{grid-template-columns:1fr}.row .meta{align-items:flex-start}}
+${THEME.FIELD_FLOOR}
 </style></head><body>
 <header class="hdr">
   <div class="wrap">
@@ -20165,6 +20168,7 @@ footer{background:var(--ink);color:var(--foot-ink);font-size:var(--t5)}
 footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
 footer .wordmark{color:#fff}
 footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
+${THEME.FIELD_FLOOR}
 </style></head><body>
 <header class="hdr">
   <div class="wrap">

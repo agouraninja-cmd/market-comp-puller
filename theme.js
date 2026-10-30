@@ -253,10 +253,29 @@ const AUTOFILL_COVER =
   "-webkit-text-fill-color:var(--ink);caret-color:var(--ink);" +
   "box-shadow:0 0 0 1000px var(--card) inset;transition:background-color 9999s ease-out}";
 
+// iOS Safari zooms the page in when a field whose text is under 16px takes
+// focus, and leaves it zoomed. Desktop sizes fields at 13-14px all over the
+// app (Tailwind's text-sm, `font-size:13px` in the page stylesheets), so
+// below the 640px breakpoint every text field and dropdown is lifted to 16px
+// (measured 2026-10-30: 42 of 84 on the app, and 2 to 16 on each member page,
+// were 12-14px). Desktop is untouched.
+// The selector is the DARK_CHROME exclusion chain on purpose: :is() counts as
+// its one element, so all three tags weigh 0,9,1 and out-rank a page's own
+// `.pt-tools input[type=search]` (0,2,1) or `.filters.vb-ledger>label.vd-grp
+// select` (0,4,1) wherever it sits in the document. .rd-in is left out: it is
+// 16px already and .rd-in-lg (the main address box) is 17px, which this would
+// shrink. A field meant to be LARGER than 16px on a phone needs the same
+// exemption, or it comes out at 16. Mirrored in index.html's style block,
+// which never templates this file; test/theme.test.js holds the two together.
+const FIELD_FLOOR =
+  "@media (max-width:639.98px){:is(input,select,textarea):not(.rd-in):not([type=checkbox]):not([type=radio])" +
+  ":not([type=range]):not([type=color]):not([type=file]):not([type=submit]):not([type=button]):not([type=reset])" +
+  "{font-size:16px}}";
+
 function rootCss() {
   const decl = (key) =>
     Object.entries(THEME_TOKENS).map(([n, v]) => `--${n}:${v[key]}`).join(";");
-  return `:root{${decl("light")};--lift:none}@media screen{[data-theme="dark"]{${decl("dark")};color-scheme:dark;--lift:${DARK_LIFT}}}${DARK_CHROME}${AUTOFILL_COVER}`;
+  return `:root{${decl("light")};--lift:none}@media screen{[data-theme="dark"]{${decl("dark")};color-scheme:dark;--lift:${DARK_LIFT}}}${DARK_CHROME}${AUTOFILL_COVER}${FIELD_FLOOR}`;
 }
 
-module.exports = { THEME_TOKENS, DARK_LIFT, DARK_CHROME, AUTOFILL_COVER, rootCss };
+module.exports = { THEME_TOKENS, DARK_LIFT, DARK_CHROME, AUTOFILL_COVER, FIELD_FLOOR, rootCss };

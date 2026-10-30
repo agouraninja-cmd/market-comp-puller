@@ -1345,3 +1345,84 @@ test("the tester badge stylesheet themes itself, like every other one", () => {
 // scroll-revealed content, restore this from git history rather than
 // rewriting it: the reduced-motion half is the part that is easy to forget.
 
+
+// ---------------------------------------------------------------------------
+// The 16px field floor on a phone (2026-10-30). iOS Safari zooms the page in
+// when a field under 16px takes focus and leaves it zoomed. Measured in a
+// browser at 390px that day: 42 of the app's 84 text fields and dropdowns
+// were 12-14px, and every member page had some (13 of 15 on /permits). One
+// rule lifts them on a phone and leaves desktop alone; these tests keep it
+// reaching every page and keep anything from getting past it.
+// ---------------------------------------------------------------------------
+const { FIELD_FLOOR } = require("../theme.js");
+
+// The rule reduced to what it means: no whitespace and no last semicolon,
+// so index.html's readable copy and theme.js's minified one compare equal.
+const squash = (css) => css.replace(/\s+/g, "").replace(/;\}/g, "}");
+
+test("rootCss carries the phone field floor, so every server page lifts its fields to 16px", () => {
+  assert.ok(rootCss().includes(FIELD_FLOOR), "FIELD_FLOOR missing from rootCss()");
+  assert.ok(FIELD_FLOOR.startsWith("@media (max-width:639.98px){"),
+    "the floor is for phones only: desktop keeps its 13-14px fields");
+  assert.ok(FIELD_FLOOR.includes("{font-size:16px}"), "16px is iOS Safari's zoom threshold");
+  // The main address box is .rd-in-lg at 17px; lifting it to 16px would
+  // shrink it. Checkboxes and the like have no text to zoom on.
+  for (const not of [":not(.rd-in)", ":not([type=checkbox])", ":not([type=radio])", ":not([type=range])",
+    ":not([type=color])", ":not([type=file])", ":not([type=submit])", ":not([type=button])", ":not([type=reset])"]) {
+    assert.ok(FIELD_FLOOR.includes(not), `the floor lost ${not}`);
+  }
+  assert.ok(FIELD_FLOOR.includes(":is(input,select,textarea)"),
+    "all three tags must share the :not() chain, or select and textarea weigh 0,1,1 and lose to `.x select`");
+  assert.equal(FIELD_FLOOR.includes("`"), false);
+  assert.equal(FIELD_FLOOR.includes("${"), false);
+});
+
+test("index.html's copy of the field floor matches theme.js", () => {
+  // index.html never templates theme.js, so it carries the rule by hand.
+  const m = INDEX_HTML.match(/@media \(max-width: 639\.98px\) \{\s*:is\(input, select, textarea\)[^{]*\{[^}]*\}\s*\}/);
+  assert.ok(m, "index.html's field floor is gone: 42 of the app's fields drop back to 14px on a phone");
+  assert.equal(squash(m[0]), squash(FIELD_FLOOR), "index.html's field floor disagrees with theme.js FIELD_FLOOR");
+});
+
+test("the four owner dashboards carry the field floor in their own stylesheets", () => {
+  // They declare their own :root rather than taking rootCss(), so each
+  // interpolates the floor itself.
+  for (const fn of ["renderAdminHTML", "renderDevHubHTML", "renderContactsHTML", "renderHqHTML"]) {
+    const start = SERVER_JS.indexOf(`function ${fn}()`);
+    assert.notEqual(start, -1, `${fn} not found`);
+    const end = SERVER_JS.indexOf("</style>", start);
+    assert.ok(SERVER_JS.slice(start, end).includes("${THEME.FIELD_FLOOR}"), `${fn}'s stylesheet has no field floor`);
+  }
+});
+
+test("nothing gets a field past the floor: no inline font-size, and every id rule under 16px restates it", () => {
+  // The floor weighs 0,9,1, which beats any class rule but not an id or an
+  // inline style. Found two of each kind of id rule while measuring
+  // (#pasteBox at 13px, #peopleEmails at 13.5px); each now restates 16px on
+  // a phone, after the rule it overrides.
+  const files = fs.readdirSync(path.join(__dirname, "..")).filter((f) => /\.(js|html|css)$/.test(f) && !/^tailwind/.test(f));
+  const src = Object.fromEntries(files.map((f) => [f, root(f)]));
+  const ids = new Set();
+  for (const s of Object.values(src)) {
+    for (const m of s.matchAll(/<(?:input|select|textarea)\b[^>]*\bid=["']([A-Za-z][\w-]*)["']/g)) ids.add(m[1]);
+  }
+  assert.ok(ids.has("pasteBox") && ids.has("hmFind"), "the field scan found nothing: it is checking no ids");
+  const offenders = [];
+  for (const [f, s] of Object.entries(src)) {
+    // /dev/shipped's key box is inline at 16px, which is fine.
+    for (const m of s.matchAll(/<(?:input|select|textarea)\b[^>]*\bstyle=["'][^"']*font-size\s*:\s*([\d.]+)px/g)) {
+      if (Number(m[1]) < 16) offenders.push(`${f}: inline ${m[1]}px on ${m[0].slice(0, 60)}`);
+    }
+    for (const m of s.matchAll(/([^{}]*)\{([^{}]*)\}/g)) {
+      const size = (m[2].match(/font-size\s*:\s*([\d.]+)px/) || [])[1];
+      if (!size || Number(size) >= 16) continue;
+      for (const id of ids) {
+        if (!new RegExp(`#${id}(?![\\w-])`).test(m[1])) continue;
+        const restated = new RegExp(`@media \\(max-width:639\\.98px\\)\\{#${id}\\{font-size:16px\\}\\}`);
+        const at = s.search(restated);
+        if (at < m.index) offenders.push(`${f}: #${id} is ${size}px with no phone override after it`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, []);
+});

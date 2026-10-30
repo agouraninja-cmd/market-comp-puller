@@ -305,6 +305,10 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 #pdfTable td.ro{font-variant-numeric:tabular-nums;white-space:nowrap;cursor:text}
 #mapDetails>summary{cursor:pointer;color:var(--ink-2);font-size:var(--t5);margin:var(--s3) 0}
 #pasteBox{width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.4;padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);background:var(--card);color:var(--ink);resize:vertical}
+/* theme.js FIELD_FLOOR lifts every field to 16px on a phone (iOS zooms on
+   anything smaller), but an id out-ranks it, so this one restates it,
+   after the rule it overrides. */
+@media (max-width:639.98px){#pasteBox{font-size:16px}}
 .msg ul{margin:var(--s3) 0 0;padding-left:var(--s6)}
 .msg li{margin-top:var(--s1);font-variant-numeric:tabular-nums}
 #gate .msg{max-width:44ch;margin-top:var(--s7)}

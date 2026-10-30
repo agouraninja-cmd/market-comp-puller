@@ -291,7 +291,7 @@ something new, pick from these tables.
 | **13–13.5px** | Inter | Navigation, tables, small buttons |
 | **14.5px** | Inter | Body copy |
 | 15px | Inter 600 | Wordmark |
-| 16px | Inter | Form inputs — **never smaller** (iOS Safari zooms below 16px and stays zoomed) |
+| 16px | Inter | Form inputs on a phone — **never smaller** (iOS Safari zooms below 16px and stays zoomed). Desktop fields may be 13–14px; `FIELD_FLOOR` lifts them below 640px |
 | 17–19px | Georgia 500 | Card headings |
 | 20–24px | Georgia 500 | Section headings, ledger figures |
 | 22px | Georgia 500 | CTA headings |
@@ -437,7 +437,16 @@ and closes with a double rule under the total — the accounting look.
 **Input** — 16px text, 1px `--edge` border. Focus turns the border red and
 adds a 1px red ring. Radius and padding differ by surface: server pages use
 6px and about 9–10px × 12px; the app uses Tailwind's `rounded` (4px). **16px
-is a hard floor** — see §9 for the fields that break it. The app's search
+is a hard floor on a phone.** Many fields are 13–14px on desktop (`text-sm`,
+`font-size:13px` in a page's own stylesheet), and one rule, `FIELD_FLOOR` in
+`theme.js` (mirrored in `index.html`), lifts every text field and dropdown to
+16px below 640px, so nothing new has to remember it. It out-ranks any class
+rule but not an id or an inline style: a field styled by its id restates
+16px in a phone media query after its own rule (`#pasteBox`,
+`#peopleEmails`), and `test/theme.test.js` fails the build on one that does
+not. `.rd-in` is exempt because it is 16px already and `.rd-in-lg` is 17px;
+a field meant to be larger than 16px on a phone needs the same exemption.
+The app's search
 card is the exception in shape: there the *cell* (`.rd-cell`) draws the box
 and focus ring, and the field inside (`.rd-in`) is borderless and
 transparent.
@@ -472,6 +481,7 @@ have their own tab styles (§9).
 | **Colours — mirror copy (must match)** | `index.html`, the two token blocks at the top of its `<style>` (about line 145) |
 | **Colours — the app's dark mode bridge** | `index.html`, the "Dark mode bridge" block right below them |
 | Server-rendered page styles | `MARKET_CSS` in `server.js` |
+| The 16px field floor on a phone | `FIELD_FLOOR` in `theme.js` (in every page's `rootCss()`, the four owner dashboards by hand); mirror in `index.html`'s `<style>` |
 | Signed-in rail | `RAIL_CSS` in `server.js` (twin rules in `index.html`) |
 | Header | `marketBar` in `server.js` |
 | Footer | `MARKET_FOOTER`, `FOOTER_LINKS_CSS`, `FOOTER_DARK_CSS` in `server.js` |
@@ -535,8 +545,9 @@ node --test test/theme.test.js
 
 It checks that every token has a valid light and dark value, that
 `index.html`'s copy matches `theme.js`, that every app colour class has a dark
-bridge rule, and that the stylesheets carry no stray hex codes outside the
-allowlist. It will catch a typo'd colour immediately. The full suite
+bridge rule, that the stylesheets carry no stray hex codes outside the
+allowlist, and that the phone field floor reaches every page with nothing
+getting past it. It will catch a typo'd colour immediately. The full suite
 (`npm test`) runs on GitHub on every push.
 
 **If you touched `index.html` and added a new Tailwind utility class**, the
@@ -602,14 +613,16 @@ new one-off value — they are the reason to stop.
 4. **The Public record badge has no token.** `.rd-badge.p` is literal
    `#46536A` on `#EAEEF4`, with a separate hand-written dark rule. It needs a
    `--pr-text` / `--pr-bg` pair like Estimate and Your comp have.
-5. **Half the app's form fields are below the 16px floor.** Measured in a
-   browser at phone width (390px), 42 of the 84 text fields and dropdowns in
-   `index.html` render at 14px (Tailwind's `text-sm`), so iOS Safari zooms in
-   when one is tapped. They include Home's find box and add-a-building form,
-   the firm settings, the report form's property details (custom lookback,
-   clear height, dock doors, market note, target price, NOI, cap rate), the
-   add-a-comp form, and the DCF, operating-expense, debt and development
-   calculators. The main address search is fine.
+5. ~~**Half the app's form fields are below the 16px floor.**~~ **Fixed
+   2026-10-30.** At phone width (390px), 42 of the 84 text fields and
+   dropdowns in `index.html` rendered at 12–14px, and every member page had
+   some too (`/permits` 13 of 15, `/bulk` 12 of 14, a building sheet 16 of
+   18, `/messages` 9 of 11), so iOS Safari zoomed in when one was tapped.
+   `FIELD_FLOOR` (§6, Input) now lifts them all on a phone. Measured again in
+   a browser across 33 pages: 0 of 425 fields under 16px at 390px, and not
+   one of 463 fields changed size at 1280px. Two costs on a phone: a long
+   placeholder is cut sooner (the market note's, the `/permits` search's),
+   and a building sheet's Market moves under Year built.
 6. **Two public pages are not checked for stray hex.** The theme test scans
    `MARKET_CSS`, the rail, the account nav, `/faq` and `/pricing`, but not the
    home page (`home-page.js`) or `/brokers-firms` (`brokers-firms-page.js`).

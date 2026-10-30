@@ -168,6 +168,8 @@ test("a one-address run opens its report; a list, a failure, and an old run do n
   assert.ok(hook.includes('it.status==="done"&&it.recent_item_id'), "a failed row stays on screen with its reason");
   assert.ok(hook.includes('location.href="/?recent="+encodeURIComponent(id)'),
     "the report opens through index.html's own user-scoped ?recent= door");
+  assert.ok(hook.includes('encodeURIComponent(id)+"&ran=1"'),
+    "and says it was just run, so it does not open as a reopened saved report (2026-10-21)");
   assert.ok(js.includes("BULKRUN.init({max:MAX,onState:onRunState,onList:loadList,onRunAgain:runAgain})"),
     "the hook is what BULKRUN reports state through");
   // The copy follows: the button and the lede say one address is a report.

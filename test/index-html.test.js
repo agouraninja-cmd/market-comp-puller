@@ -3151,3 +3151,35 @@ test("a Sites deal is given its own report's value once, and never a later repor
   assert.ok(open.indexOf("if (forSite) pendingSiteEstimate = null;") < open.indexOf("no longer stored"));
   assert.ok(open.indexOf("if (forSite) pendingSiteEstimate.ready = true;") < open.indexOf("renderResults(full.data"));
 });
+
+// ----------------------------------------------------------------------------
+// Found filming the analyst walkthrough (2026-10-21).
+// ----------------------------------------------------------------------------
+test("a report /bulk just ran opens as a new report, not as a reopened one", () => {
+  // /bulk's one-address run lands through the ?recent= door, which every
+  // "Open" of an OLD report also uses, so a report searched seconds earlier
+  // opened under "Reopened a saved report. Run a new search for fresh data."
+  // ran=1 marks the one door that is not a reopening.
+  const door = html.match(/const recentParam = new URLSearchParams\(location\.search\)\.get\("recent"\);[\s\S]*?\n    \}\n/);
+  assert.ok(door, "index.html must still read ?recent=");
+  assert.match(door[0], /const justRan = qs\.get\("ran"\) === "1";/, "the door reads ran=1");
+  assert.match(door[0], /qs\.delete\("ran"\);/, "and takes it off the address, so a reload is a reopening");
+  assert.ok(door[0].includes("openHistoryReport({ meta: {}, data: null, ts: 0, recentId: recentParam, justRan });"),
+    "and hands it to the report");
+  const fn = html.match(/async function openHistoryReport\(r\) \{[\s\S]*?\n  \}\n/);
+  assert.ok(fn, "index.html must define openHistoryReport()");
+  const said = fn[0].indexOf("Reopened a saved report"), gate = fn[0].indexOf("if (r.justRan) hideStatus();");
+  assert.ok(gate > -1 && said > gate, "the reopened notice is said only when the report was not just run");
+});
+
+test("the market position chart's two ends are in one precision", () => {
+  // formatUsd keeps cents only when there are some, so the strip read
+  // "$128.97" at one end and "$155" at the other.
+  const chart = html.match(/function renderMarketChart\(\)[\s\S]*?getElementById\("chartWrap"\)\.innerHTML = svg;/);
+  assert.ok(chart, "index.html must define renderMarketChart()");
+  assert.match(chart[0], /const axisDigits = hi >= 10 \? 0 : 2;/);
+  assert.match(chart[0], /formatUsd\(v, \{ minimumFractionDigits: axisDigits, maximumFractionDigits: axisDigits \}\)/,
+    "both ends are held to the same digits, not formatUsd's default");
+  assert.ok(chart[0].includes("${axisUsd(lo)}</text>") && chart[0].includes("${axisUsd(hi)}</text>"), "both labels use it");
+  assert.doesNotMatch(chart[0], /\$\{formatUsd\((lo|hi)\)\}/, "no end falls back to the default precision");
+});

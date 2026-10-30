@@ -473,3 +473,13 @@ test("archiveIsStrong mirrors corpusIsStrong's threshold: four usable comps", ()
   assert.equal(BLEND.archiveIsStrong(NaN), false);
   assert.equal(BLEND.archiveIsStrong(undefined), false);
 });
+
+// Found filming the analyst walkthrough (2026-10-21): the book stores "sale"
+// and "lease", the report's own comps say "Sale" and "Lease", and a comp table
+// mixing the two read as two kinds of deal.
+test("a vault comp says Sale or Lease the way the report's own comps do", () => {
+  assert.equal(toReportComp(vaultRow()).transaction, "Sale");
+  assert.equal(toReportComp(vaultRow({ transaction: "lease" })).transaction, "Lease");
+  assert.equal(toReportComp(vaultRow({ transaction: "Sale" })).transaction, "Sale", "already capitalized stays as it is");
+  assert.equal("transaction" in toReportComp(vaultRow({ transaction: null })), false, "an absent transaction is still dropped");
+});

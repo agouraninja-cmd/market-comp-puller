@@ -9623,11 +9623,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       svg += `<circle class="ch-pop" style="animation-delay:${delay}s" cx="${px.toFixed(1)}" cy="${py}" r="6" fill="var(--ink-mute)" fill-opacity="0.85" stroke="var(--card)" stroke-width="1.5"><title>${esc(p.address)} · ${perAcre ? formatUsd(p.v, { maximumFractionDigits: 0 }) : formatUsd(p.v)}${unit}</title></circle>`;
     });
 
-    // Min/max labels under the strip.
+    // Min/max labels under the strip. Both ends in ONE precision: whole dollars
+    // once the figures are in the tens (the hero's own axis reads "$129/SF"),
+    // cents only below that, where they are the figure. formatUsd's default
+    // keeps cents only when there are some, so one end read "$128.97" and the
+    // other "$155" (2026-10-21).
     const lo = pts[0].v, hi = pts[pts.length - 1].v;
+    const axisDigits = hi >= 10 ? 0 : 2;
+    const axisUsd = (v) => formatUsd(v, { minimumFractionDigits: axisDigits, maximumFractionDigits: axisDigits }) + unit;
     const loHiY = compact ? baseY + 52 : baseY + 38;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${perAcre ? formatUsd(lo, { maximumFractionDigits: 0 }) : formatUsd(lo)}</text>`;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${perAcre ? formatUsd(hi, { maximumFractionDigits: 0 }) : formatUsd(hi)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${axisUsd(lo)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${axisUsd(hi)}</text>`;
 
     // "You" marker on top.
     if (youLo !== null) {
@@ -12553,8 +12559,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // this report's meta carries no figure of its own, so anything left in the
     // form from the last search would multiply this report's $/SF.
     restoreFormFromMeta(full.meta);
-    const when = full.ts ? ` generated ${histDate(full.ts)}` : "";
-    showStatus(`Reopened a saved report${when}. Run a new search for fresh data.`, "info");
+    // A report /bulk ran seconds ago is not a reopening: it says nothing,
+    // exactly as a search run on this page does when it lands.
+    if (r.justRan) hideStatus();
+    else {
+      const when = full.ts ? ` generated ${histDate(full.ts)}` : "";
+      showStatus(`Reopened a saved report${when}. Run a new search for fresh data.`, "info");
+    }
     if (forSite) pendingSiteEstimate.ready = true;
     renderResults(full.data, { ...full.meta, fromHistory: true, generatedAt: full.ts || Date.now() });
   }
@@ -13845,6 +13856,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // has to lead to the comps behind its own number. User-scoped for the same
     // reason and cleared the same way. ?property= is still honoured because
     // runs finished before that date filed their reports on the desk.
+    // ?ran=1 rides along only from /bulk's one-address run, the moment it
+    // lands: that report was searched seconds ago, so it opens as the report
+    // just run, not as "Reopened a saved report" (2026-10-21). Every other
+    // door here (an Earlier runs row, a saved link) is a reopening and says so.
     const recentParam = new URLSearchParams(location.search).get("recent");
     if (currentUser && recentParam) {
       const qs = new URLSearchParams(location.search);
@@ -13854,9 +13869,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const siteParam = qs.get("site");
       if (siteParam && /^[0-9a-f-]{36}$/i.test(siteParam)) pendingSiteEstimate = { siteId: siteParam, recentId: recentParam };
       qs.delete("site");
+      const justRan = qs.get("ran") === "1";
       qs.delete("recent");
+      qs.delete("ran");
       history.replaceState({}, "", location.pathname + (qs.toString() ? "?" + qs : ""));
-      openHistoryReport({ meta: {}, data: null, ts: 0, recentId: recentParam });
+      openHistoryReport({ meta: {}, data: null, ts: 0, recentId: recentParam, justRan });
     }
     // Both run after the user is known, because their whole job is to wait for
     // THIS user's entitlements to catch up with their payment. They key off

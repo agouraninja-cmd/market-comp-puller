@@ -161,3 +161,34 @@ test("reading the feed marks it seen, so news read on The Board is not mailed ag
   assert.match(SRC, /Not investment advice\./);
   assert.ok((SRC.match(/Nothing has been lost/g) || []).length >= 4);
 });
+
+test("a land market reads per acre when the feed priced one, and per SF when it did not (2026-10-21)", () => {
+  const land = { id: "w3", market: "Boise, ID", property_type: "Land", median_psf: 14.2, median_per_acre: 637000, new_count: 0 };
+  const r = BOARD.marketRow(land, null);
+  assert.equal(r.priceText, "$637K/acre");
+  assert.equal(r.price, 637000);
+  assert.equal(r.perAcre, true);
+  // No priced acre yet: the square-foot median, as before.
+  const sf = BOARD.marketRow({ ...land, median_per_acre: null }, null);
+  assert.equal(sf.priceText, "$14.20/SF");
+  assert.equal(sf.perAcre, false);
+  // Only land is ever read per acre.
+  assert.equal(BOARD.marketRow({ ...land, property_type: "Industrial" }, null).priceText, "$14.20/SF");
+  assert.equal(BOARD.acreLabel(519863), "$520K/acre");
+  assert.equal(BOARD.acreLabel(null), "");
+  // A comp's $/acre as the model writes it, which the corpus stores as text.
+  assert.equal(BOARD.acreLabel("$410,000"), "$410K/acre");
+  assert.equal(BOARD.acreLabel("n/a"), "");
+});
+
+test("a land market's change and line are per acre too, never a $/SF move under a $/acre price (2026-10-21)", () => {
+  const land = { id: "w3", market: "Boise, ID", property_type: "Land", median_psf: 14.2, median_per_acre: 637000, new_count: 0,
+    median_trend: { current: 14, prior: 15 }, spark: [{ label: "Q1 2026", psf: 15 }, { label: "Q2 2026", psf: 14 }],
+    median_trend_acre: { current: 640000, prior: 600000 }, spark_acre: [{ label: "Q1 2026", psf: 600000 }, { label: "Q2 2026", psf: 640000 }] };
+  const r = BOARD.marketRow(land, null);
+  assert.deepEqual(r.move, { dir: "up", text: "▲ 6.7%" }, "the acre trend, which rose, not the $/SF one, which fell");
+  assert.deepEqual(r.spark, [600000, 640000]);
+  const none = BOARD.marketRow({ ...land, median_trend_acre: undefined, spark_acre: undefined }, null);
+  assert.equal(none.move, null, "no acre trend: no change, rather than the $/SF one");
+  assert.deepEqual(none.spark, []);
+});

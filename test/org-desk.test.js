@@ -1089,7 +1089,7 @@ test("undoing an auto-share forgets the link it just revoked", async () => {
   // The publish memo keys on the audience and on object identity, and a
   // revoke changes neither. Without this reset, Undo followed by Share to the
   // same firm handed back the URL that had just been revoked, under "Link
-  // copied. It is on <firm>'s desk now." — nothing published, nothing for a
+  // copied. Everyone at <firm> can open it …" — nothing published, nothing for a
   // colleague to open, and no error anywhere.
   assert.equal(ctx.memo().result, null, "the publish memo still holds the revoked link");
   assert.equal(ctx.memo().parsed, null);

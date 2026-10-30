@@ -826,6 +826,11 @@ var LEFT=null,DAILY=null;
 // tool). Scoped to runs THIS page started: an earlier single run re-opened
 // from the list below is being looked at as a row, not re-run, so it stays.
 var singleJob=null;
+// The Sites deal a one-address run was started from (2026-10-21): its id
+// and the address it handed over. The report it opens writes its value back
+// onto that deal (index.html's ?site=). Dropped if the address was changed,
+// so a value never lands on the wrong deal.
+var SITE=null,singleSite=null;
 
 // The per-type subject fields, a MIRROR of index.html's TYPE_SUBJECT_FIELDS
 // (this file cannot require index.html and index.html is not a module).
@@ -994,7 +999,8 @@ function onRunState(job,items){
   var id=it&&it.status==="done"&&it.recent_item_id;
   if(!id)return;
   BULKRUN.msg("Valued. Opening the report\\u2026",false);
-  location.href="/?recent="+encodeURIComponent(id)+"&ran=1";
+  var site=singleSite;singleSite=null;
+  location.href="/?recent="+encodeURIComponent(id)+"&ran=1"+(site?"&site="+encodeURIComponent(site):"");
 }
 
 // Fill the box with the example addresses.
@@ -1056,9 +1062,12 @@ function run(){
     txFocus:$("bulkFocus").value
   };
   if(parsedCount===1)body.subject=readSubject();
+  var same=function(a){return String(a||"").trim().toLowerCase();};
+  var siteFor=SITE&&parsedCount===1&&same($("bulkText").value)===same(SITE.address)?SITE.id:null;
   BULKRUN.api("POST","/api/bulk",body).then(function(d){
     var one=Boolean(d.job&&d.job.total===1);
     singleJob=one?d.job.id:null;
+    singleSite=one?siteFor:null;
     BULKRUN.msg(one
       ? "Running. The comp report opens here when it finishes; if you leave, the row below keeps its link."
       : "Running. You can close this tab \\u2014 the valuations keep going and land on Home.",false);
@@ -1132,6 +1141,18 @@ function start(boot){
   if(live)BULKRUN.poll(live.id);
 
   $("bulkText").addEventListener("input",refreshCount);
+  // A deal handed over from Sites' "Run a land report" (2026-10-21): ?type=
+  // picks one of the offered types, and ?acres= / ?zoning= fill that type's
+  // own fields where they are empty. Like ?address= below it fills once and
+  // runs nothing.
+  try{var qs=new URLSearchParams(location.search),qt=qs.get("type");
+    if(qt&&TYPES.indexOf(qt)>=0&&$("bulkType").value!==qt){$("bulkType").value=qt;renderSubjectFields(qt);}
+    [["acres","lot_acres"],["zoning","zoning"]].forEach(function(p){
+      var v=qs.get(p[0]),el=$("bulkSubj_"+p[1]);
+      if(v&&el&&!el.value)el.value=String(v).slice(0,40);});
+    var qsite=qs.get("site");
+    if(qsite&&/^[0-9a-f-]{36}$/i.test(qsite)&&qs.get("address"))SITE={id:qsite,address:String(qs.get("address")).slice(0,200)};
+    refreshMore();}catch(e){}
   // An address handed over from Home's find box (2026-10-07): ?address= fills
   // an EMPTY box once and runs nothing, because every address is a billed
   // search and the member still presses the button.

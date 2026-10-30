@@ -538,6 +538,46 @@ test("Residential comps table drops tenancy and keeps year built", () => {
   assert.equal(land.includes("year_built"), false);
 });
 
+test("land's comp table leads with acres and $/acre, and a bare-digit size gets its commas (2026-10-21)", () => {
+  const start = html.indexOf("  const BASE_COLUMNS = [");
+  const fn = html.indexOf("  function columnsForType(type, txFocus) {", start);
+  const end = html.indexOf("\n  }", fn);
+  const ctx = vm.createContext({});
+  new vm.Script(html.slice(start, end + 4) + "\n;this.columnsForType = columnsForType; this.cellShown = cellShown;", { filename: "index.html" }).runInContext(ctx);
+  const land = ctx.columnsForType("Land").map((c) => c.key);
+  const at = (k) => land.indexOf(k);
+  assert.equal(at("price_per_acre"), at("lot_acres") + 1, "$/acre sits beside Acres: " + land.join(","));
+  assert.ok(at("price_per_acre") < at("price_or_rate") && at("price_or_rate") < at("size_sqft") && at("size_sqft") < at("price_per_sqft"),
+    "the square-foot pair follows the price on a land report: " + land.join(","));
+  assert.equal(new Set(land).size, land.length, "no column twice");
+  // Every other type keeps its order: Size, then the price, then $/SF.
+  const office = ctx.columnsForType("Office").map((c) => c.key);
+  assert.ok(office.indexOf("size_sqft") < office.indexOf("price_or_rate"));
+  const size = { key: "size_sqft" };
+  assert.equal(ctx.cellShown(size, "339768"), "339,768");
+  assert.equal(ctx.cellShown(size, "20,000 SF"), "20,000 SF", "a size written with its own unit is left as written");
+  assert.equal(ctx.cellShown(size, "950"), "950");
+  assert.equal(ctx.cellShown({ key: "price_or_rate" }, "5070000"), "5070000", "only the size is reformatted");
+});
+
+test("a land report leads per acre from the lot size when no acreage was typed (2026-10-21)", () => {
+  const hero = html.slice(html.indexOf("  function renderOwnerHero(parsed, meta) {"), html.indexOf("  function renderOwnerHero(parsed, meta) {") + 40000);
+  assert.match(hero, /if \(meta\.type === "Land" && sizeR && !\(numericValue\(\(s\.details \|\| \{\}\)\.lot_acres\) > 0\)\) \{\s*acresFromLot = Math\.round\(\(\(sizeR\.min \+ sizeR\.max\) \/ 2 \/ 43560\) \* 100\) \/ 100;/);
+  assert.match(hero, /const altRange = altBasisRange\(meta, sAlt, saleComps, parsed\);/);
+  assert.match(hero, /const altEntry = altBasisEntry\(meta, sAlt, saleComps, parsed\);/);
+  assert.match(hero, /: sizeSource === "public_record" \? " \(the lot size from public records\)"/);
+  assert.doesNotMatch(hero, /the lot size you entered/, "a bulk run stores its own lookup as the subject's size: never claim the member typed it");
+  const foot = html.slice(html.indexOf("  function renderTableFoot() {"), html.indexOf("  function renderTableFoot() {") + 3000);
+  assert.match(foot, /const rateKey = acre \? "price_per_acre" : "price_per_sqft";/);
+  assert.match(foot, /\+ \(acre \? "\/acre" : "\/SF"\);/);
+  assert.doesNotMatch(hero.slice(hero.indexOf("} else if (altRange) {")), /^[^\n]*`Building size wasn't needed for this estimate\.`\s*\+ smallNNote/m,
+    "a land parcel is not told its building size was not needed");
+  const chart = html.slice(html.indexOf("  function renderMarketChart() {"), html.indexOf('    // "You" marker on top.'));
+  assert.match(chart, /const perAcre = isLandChart\(sales\);/);
+  assert.match(chart, /aria-label="Sale comps by price per \$\{perAcre \? "acre" : "square foot"\}"/);
+  assert.match(html, /<p id="chartCaption" class="text-xs text-\[#68707E\] mb-3">Sale comps by price per square foot\. Lease comps are excluded\.<\/p>/);
+});
+
 test("comps table rows are compact throughout, and notes stay on one line", () => {
   assert.match(html, /#compsTable td,\s*#compsTable thead th button \{ padding: 6px 12px; \}/);
   assert.match(html, /td\.comp-notes/);
@@ -1086,13 +1126,13 @@ test("a member's own properties are worked in place on Home's Properties tab, de
   // HOMESITES is told whether this member has deals, and whether a Tracking
   // status (Pro) may be written, so it never offers what the server refuses.
   assert.ok(html.includes("deals: () => HOMEMAP.dealsOn(hmFirmKind()),"));
-  assert.ok(html.includes("canSites: hmCanVault(), today: hmTodayIso() }),"));
+  assert.ok(html.includes("canSites: hmCanVault(), today: hmTodayIso(), share: deskSitesShare }),"));
   // The Owned group's head adds the buildings up (HOMEMAP.ownedTotal).
   assert.ok(html.includes("const own = HOMEMAP.ownedTotal(hmRows);"));
   assert.ok(html.includes('[["buying", "Buying", buyNote], ["owned", "Owned", ownNote],'));
   // Deals are listed and dated only for that member (HOMEMAP decides).
-  assert.match(html, /HOMEMAP\.properties\(\{[^}]*firmKind: hmFirmKind\(\) \}\)/);
-  assert.match(html, /HOMEMAP\.agenda\(\{[\s\S]{0,400}firmKind: hmFirmKind\(\), today \}\)/);
+  assert.match(html, /HOMEMAP\.properties\(\{[^}]*firmKind: hmFirmKind\(\),\s*shareOrg: deskSitesShare \? deskSitesShare\.orgId : "" \}\)/);
+  assert.match(html, /HOMEMAP\.agenda\(\{[\s\S]{0,400}firmKind: hmFirmKind\(\), today, shareOrg: deskSitesShare \? deskSitesShare\.orgId : "" \}\)/);
   // A row of the member's own opens its pane; every row still opens its map card.
   const row = html.slice(html.indexOf("function hmPropRow("), html.indexOf("function hmGroupHead("));
   assert.ok(row.includes("row._hm = r;") && row.includes("const works = hmWorkHere() && (r.siteId != null || r.portfolioId != null);"));
@@ -3068,6 +3108,48 @@ test("the report names the building it values and the comps it used, in Home's w
   // The PowerPoint export builds its own text, so it says the same thing itself.
   assert.ok(html.includes("s.addText(`Your property · ${metaLine(meta)} · Generated ${dateStr}`"));
   assert.ok(html.includes('"Comps used · leases"') && html.includes('"Comps used · sales"'));
+});
+
+test("a Sites deal is given its own report's value once, and never a later report's (2026-10-21)", async () => {
+  // Found in review: a deal's report with no likely value left the deal
+  // waiting, and the next report opened in the tab was saved onto it.
+  const src = html.slice(html.indexOf("async function maybeStampSiteEstimate("), html.indexOf("async function maybeAutoShareToFirm("));
+  const posts = [];
+  const el = { textContent: "", dataset: {}, classList: { add() {}, remove() {} }, append() {} };
+  const ctx = vm.createContext({
+    document: { getElementById: () => el, createElement: () => ({}) },
+    fetch: async (url, init) => { posts.push([url, JSON.parse(init.body)]); return { ok: true }; },
+    currentUser: { id: "u1" }, lastValuation: null, formatUsd: (n) => "$" + n,
+  });
+  vm.runInContext("var pendingSiteEstimate = null;\n" + src, ctx);
+  const run = (code) => vm.runInContext(code, ctx);
+  const meta = { address: "5600 W Overland Rd" };
+  ctx.meta = meta;
+  // Waiting, but this render is not the deal's report: nothing is saved, and it still waits.
+  run('pendingSiteEstimate = { siteId: "s1", recentId: "r1" }');
+  ctx.lastValuation = { low: 1, likely: 2, high: 3 };
+  await run("maybeStampSiteEstimate(meta)");
+  assert.deepEqual(posts, []);
+  assert.ok(run("pendingSiteEstimate"), "still waiting for its own report");
+  // Its own report, with no figure: consumed, nothing saved...
+  run("pendingSiteEstimate.ready = true");
+  ctx.lastValuation = null;
+  await run("maybeStampSiteEstimate(meta)");
+  assert.equal(run("pendingSiteEstimate"), null, "consumed whatever came of it");
+  // ...so the next report opened in the tab, with a figure, saves nothing either.
+  ctx.lastValuation = { low: 1, likely: 2, high: 3 };
+  await run("maybeStampSiteEstimate(meta)");
+  assert.deepEqual(posts, []);
+  // Its own report with a figure: saved once, onto that deal, naming that report.
+  run('pendingSiteEstimate = { siteId: "s2", recentId: "r2", ready: true }');
+  await run("maybeStampSiteEstimate(meta)");
+  await run("maybeStampSiteEstimate(meta)");
+  assert.deepEqual(posts, [["/api/sites/update", { id: "s2", estimate: { low: 1, likely: 2, high: 3, report: "r2" } }]]);
+  // openHistoryReport marks only its own report ready, and drops the wait if it cannot open it.
+  const open = html.slice(html.indexOf("async function openHistoryReport("), html.indexOf("// Put the search form back"));
+  assert.match(open, /const forSite = pendingSiteEstimate && r && pendingSiteEstimate\.recentId === r\.recentId;/);
+  assert.ok(open.indexOf("if (forSite) pendingSiteEstimate = null;") < open.indexOf("no longer stored"));
+  assert.ok(open.indexOf("if (forSite) pendingSiteEstimate.ready = true;") < open.indexOf("renderResults(full.data"));
 });
 
 // ----------------------------------------------------------------------------

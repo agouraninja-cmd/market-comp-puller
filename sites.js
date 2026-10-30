@@ -229,10 +229,98 @@
     return { ok: true, patch };
   }
 
+  // The value a comp report wrote back onto the deal it was run from
+  // (2026-10-21, migration 061): its Low, Likely and High, the saved report
+  // that holds them, and the day. Refused rather than repaired, the file's
+  // rule: a likely value is required, the three must be in order, and a
+  // report id is a short token or nothing. null clears it.
+  const MAX_VALUE = 1e11;
+  function cleanEstimate(v, opts) {
+    if (v === null) return { ok: true, value: null };
+    if (!v || typeof v !== "object" || Array.isArray(v)) return { ok: false, error: "An estimate is a low, likely and high value." };
+    // A dollar figure is a number or a plain decimal string, a whole dollar
+    // or more once rounded; Number() alone would take true as 1, [5] as 5,
+    // "0x10" as 16, and 0.4 would round to a "required" likely of $0.
+    const n = (x) => {
+      if (x == null || x === "") return null;
+      const k = typeof x === "number" ? x
+        : typeof x === "string" && /^\s*\d+(\.\d+)?\s*$/.test(x) ? Number(x) : NaN;
+      if (!Number.isFinite(k)) return NaN;
+      const r = Math.round(k);
+      return r >= 1 && r < MAX_VALUE ? r : NaN;
+    };
+    const low = n(v.low), likely = n(v.likely), high = n(v.high);
+    if ([low, likely, high].some((x) => Number.isNaN(x))) return { ok: false, error: "An estimate's values must be positive dollar figures." };
+    if (likely == null) return { ok: false, error: "An estimate needs its likely value." };
+    if ((low != null && low > likely) || (high != null && high < likely)) return { ok: false, error: "An estimate's low, likely and high are out of order." };
+    const report = v.report == null || v.report === "" ? null : String(v.report);
+    if (report && !/^[A-Za-z0-9_-]{1,80}$/.test(report)) return { ok: false, error: "Unknown report." };
+    const at = String((opts && opts.today) || "");
+    return { ok: true, value: { low, likely, high, report, at: at || null } };
+  }
+
+  // Great-circle miles between two points, and the radius "near a site"
+  // means (2026-10-21): the permits filed within a mile of a deal are the
+  // ones a developer watches, the competing project across the street.
+  const NEAR_MILES = 1;
+  // A missing coordinate is no place at all, never 0 (Number(null) is 0,
+  // which would put a deal with no place off the coast of Africa and measure
+  // every permit from there).
+  function milesBetween(lat1, lng1, lat2, lng2) {
+    const raw = [lat1, lng1, lat2, lng2];
+    if (raw.some((x) => x == null || x === "" || typeof x === "boolean")) return null;
+    const v = raw.map(Number);
+    if (v.some((x) => !Number.isFinite(x))) return null;
+    const r = Math.PI / 180, dLat = (v[2] - v[0]) * r, dLng = (v[3] - v[1]) * r;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(v[0] * r) * Math.cos(v[2] * r) * Math.sin(dLng / 2) ** 2;
+    return 3958.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+  // The deal nearest a point, within `miles` (a mile unless said), as
+  // { id, address, miles } to a tenth, or null. Only a deal with a place
+  // counts; the permit tracker marks each filing with this.
+  function nearestSite(lat, lng, sites, miles) {
+    const limit = miles == null ? NEAR_MILES : Number(miles);
+    let best = null;
+    (Array.isArray(sites) ? sites : []).forEach((s) => {
+      const d = s ? milesBetween(lat, lng, s.lat, s.lng) : null;
+      if (d == null || d > limit || (best && d >= best.d)) return;
+      best = { d, id: s.id, address: String(s.address || "") };
+    });
+    return best ? { id: best.id, address: best.address, miles: Math.round(best.d * 10) / 10 } : null;
+  }
+  // The permits within `miles` of one deal, nearest-first within a day and
+  // newest day first, each with its distance to a tenth. A deal with no
+  // place has none (the caller says why, rather than "none filed").
+  function permitsNear(site, filings, miles) {
+    const limit = miles == null ? NEAR_MILES : Number(miles);
+    if (!site) return [];
+    return (Array.isArray(filings) ? filings : [])
+      .map((f) => ({ f, d: f ? milesBetween(site.lat, site.lng, f.lat, f.lng) : null }))
+      .filter((x) => x.d != null && x.d <= limit)
+      .sort((a, b) => String(b.f.appliedDate || "").localeCompare(String(a.f.appliedDate || "")) || a.d - b.d)
+      .map((x) => Object.assign({}, x.f, { miles: Math.round(x.d * 10) / 10 }));
+  }
+  // An area alert that already covers a deal's mile: a circle at least a
+  // mile wide centred on the deal (within COVER_MILES, because the Census
+  // geocoder places one address a few yards differently from two lines of
+  // text), or any circle that holds the whole mile around it. null: none
+  // does, so the pane offers one.
+  const COVER_MILES = 0.15;
+  function alertCovering(site, alerts) {
+    if (!site) return null;
+    for (const a of Array.isArray(alerts) ? alerts : []) {
+      const area = a && a.area, miles = Number(area && area.miles);
+      if (!area || !(miles >= NEAR_MILES)) continue;
+      const d = milesBetween(site.lat, site.lng, area.lat, area.lng);
+      if (d != null && (d <= COVER_MILES || d + NEAR_MILES <= miles)) return { id: a.id, miles };
+    }
+    return null;
+  }
+
   return {
-    STAGES, LABELS, STEPS, BUYING, HELD, MAX_ROWS, MAX_DATES,
+    STAGES, LABELS, STEPS, BUYING, HELD, MAX_ROWS, MAX_DATES, NEAR_MILES,
     isStage, isBuying, isHeld, labelOf, nextStage,
     cleanMoney, cleanAcres, cleanDate, cleanDates, nextDeadline, daysUntil,
-    validateNew, validatePatch,
+    validateNew, validatePatch, cleanEstimate, milesBetween, nearestSite, permitsNear, alertCovering,
   };
 });

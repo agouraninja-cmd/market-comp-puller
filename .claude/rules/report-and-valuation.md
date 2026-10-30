@@ -20,6 +20,29 @@ paths:
 
 ## Architecture
 
+- **A land report reads per acre throughout (2026-10-21).** `ALT_BASIS.Land`
+  has led the hero since it was written, but only once the acreage was
+  known, and it was known only when the member TYPED it; a land report whose
+  lot size came from public records (or a bulk run, which stores the size it
+  found as the subject's) was quoted "at $15/SF". Now, for Land with no typed
+  acres, `renderOwnerHero` derives them from the lot size (`acresFromLot` =
+  the size over 43,560, exact, since a parcel's size is its lot) and hands
+  `altBasisRange`/`altBasisEntry` a copy of the subject carrying them
+  (`sAlt`); typed acres still win, and the basis line says "(the lot size
+  from public records)" or, with no source, "(from the lot size)", never
+  "you entered", because a bulk run's lookup arrives looking typed. The trust
+  line drops "Building size wasn't needed" for land. **The market position
+  chart, the table's footer and the PowerPoint caption** read per acre when
+  `isLandChart(sales)` (Land, and two or more sale comps with a
+  `price_per_acre`), so all three quote the hero's unit with the same median;
+  `subjectAcresOf` places the "You" marker at the asking price over the acres.
+  **The comp table** orders Land as Acres, $/acre, Zoning, Price / Rate, then
+  Size (SF) and $/SF (`columnsForType`), so $/acre is on screen without a
+  sideways scroll; and `cellShown` writes a bare-digit size with its commas
+  ("339768" → "339,768") on screen only, exports unchanged. The Board's
+  land markets read per acre too (markets.md). Pinned in
+  test/index-html.test.js.
+
 - **Property vs comp in the report (2026-10-07).** A property is the building being valued; a comp is a past deal it is valued against (the wording Home uses since Draft C). The header's first chip reads "Your property" (`renderReportMeta`, styled `.rd-chip.rd-chip-subj`), matching the tag on the subject's row in the comp table, and the table is headed "Comps Used", never "Comparable Properties". PNG and print photograph the header; the PowerPoint export writes its own text, so its first slide says "Your property · …" and its comp slides are "Comps used" ("· sales" / "· leases" by focus). Pinned in test/index-html.test.js.
 
 **`index.html`** — the entire front-end (Tailwind vendored as `tailwind.css`,

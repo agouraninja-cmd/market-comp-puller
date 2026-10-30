@@ -64,6 +64,23 @@ paths:
   is the same bytes for every member: `board.js` (the global `BOARD`,
   createElement only, pure helpers tested in `test/board.test.js`) reads
   `/api/watchlist/feed`, `/api/portfolio` and `/api/sites` itself.
+  - **A land market reads per acre (2026-10-21).** `buildWatchlistFeed`
+    adds `median_per_acre` for a Land market (the same six-month window and
+    closed-deal gate as `median_psf`, over `price_per_acre`), a change and
+    line of its own in $/acre (`median_trend_acre`, `spark_acre`, from
+    `saleRowsWithDates(rows, "price_per_acre")`, whose rate key stays
+    `psf`), and puts `price_per_acre`/`lot_acres` on its new comps.
+    **`median_psf`, `median_trend` and `spark` stay in $/SF for every
+    market**: the digest email quotes them with "/SF", and a first build
+    that switched them to $/acre for land mailed "up from $600000/SF"
+    (caught in review). board.js reads a land row per acre (`BOARD.perAcre`,
+    "$637K/acre") whenever the feed priced one, its change and line from the
+    acre fields only (none at all rather than a $/SF move under a $/acre
+    price), and buying-read.js reads `median_trend_acre` for it too ("$600K
+    to $640K/acre"). A comp's own `price_per_acre` is text as the model
+    wrote it ("$410,000"), so `acreLabel` reads its digits the way
+    `corpusNum` does. Pinned in `test/board.test.js`,
+    `test/buying-read.test.js` and `test/board-land-run.test.js`.
   - **One watchlist, two kinds of row.** A MARKET (`watchlist_items`): its
     six-month median sale $/SF, the move against the six months before
     (`median_trend`), a line of quarterly medians (the feed's new

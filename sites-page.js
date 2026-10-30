@@ -76,6 +76,8 @@ function renderSitesBody(boot) {
 .sp-cn{display:block;margin-top:6px;font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums}
 .sp-cd{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:7px;font-size:12px;color:var(--ink-3)}
 .sp-cd .w{min-width:0;overflow-wrap:anywhere}
+.sp-co{display:inline-block;margin-top:7px;padding:2px 7px;border-radius:999px;background:var(--wash);box-shadow:inset 0 0 0 1px var(--line);font-size:11px;font-weight:600;color:var(--ink-2)}
+.sp-card.theirs{background:var(--paper,var(--card))}
 .sp-none{padding:14px 6px 12px;font-size:12.5px;color:var(--ink-3);text-align:center}
 /* The open deal, worked under the board with Home's pane (home-sites.css). */
 .sp-open{margin-top:18px;scroll-margin-top:16px}
@@ -145,6 +147,11 @@ function renderSitesBody(boot) {
   if (BOOT.s === 401) { wall([["Sign in to see your sites. ", ["Sign in", "/?auth=signin"]]]); return; }
   if (BOOT.s === 403) { wall([["Tracking the sites you're buying is part of Pro. ", ["See Pro", "/pricing"]]]); return; }
   if (BOOT.s !== 200) { wall([["Your sites are unavailable right now. Please try again in a minute."]]); return; }
+  // A firm read that failed is said as such, never as "not a development firm".
+  if (BOOT.firmFailed || (BOOT.firm && !BOOT.firm.kind)) {
+    wall([["Your firm couldn't be loaded just now, so your sites can't be shown. ", ["Try again", "/sites"], "."]]);
+    return;
+  }
   if (!BOOT.firm || BOOT.firm.kind !== "development") {
     wall([["Sites is for development firms: the land and buildings a developer is buying, by stage."],
       ["Your properties are on ", ["Home", "/desk#properties"], "."]]);
@@ -156,6 +163,12 @@ function renderSitesBody(boot) {
   }
 
   var sites = Array.isArray(BOOT.sites) ? BOOT.sites : [];
+  // The deals colleagues shared with the firm (2026-10-21, migration 061):
+  // on the board beside the member's own, read-only. null: that read failed,
+  // and the page says so rather than showing the firm none.
+  var firmSites = BOOT.firmSites === null ? null : (Array.isArray(BOOT.firmSites) ? BOOT.firmSites : []);
+  var share = BOOT.share || null;
+  var FIRM_FAILED = "Your team's shared deals couldn't be loaded just now. Yours are all here.", firmSaid = false;
   var today = BOOT.today || new Date().toISOString().slice(0, 10);
   var openKey = "";       // the open card: "site:<id>", or "a:<address>" until the read that names it
   var passedOpen = false;
@@ -169,9 +182,10 @@ function renderSitesBody(boot) {
   function norm(a){ return String(a || "").trim().toLowerCase().replace(/\\s+/g, " "); }
   function cityOf(a){ var p = String(a || "").split(","); return p.slice(1).join(",").trim(); }
   function isDeal(s){ return s && s.portfolio_item_id == null; }
-  function buying(){ return sites.filter(function(s){ return isDeal(s) && SITES.isBuying(s.stage); }); }
-  function passed(){ return sites.filter(function(s){ return isDeal(s) && s.stage === "passed"; }); }
-  function byId(id){ for (var i = 0; i < sites.length; i++) if (sites[i].id === id) return sites[i]; return null; }
+  function all(){ return sites.concat(firmSites || []); }
+  function buying(){ return all().filter(function(s){ return isDeal(s) && SITES.isBuying(s.stage); }); }
+  function passed(){ return all().filter(function(s){ return isDeal(s) && s.stage === "passed"; }); }
+  function byId(id){ var l = all(); for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return null; }
 
   // An add or a stage move names the deal by its address (keyOf) before the
   // read that carries its id: the next draw turns that into the card's key.
@@ -184,7 +198,8 @@ function renderSitesBody(boot) {
   var view = HOMESITES.mount({
     propTypes: HOMESITES.PROP_TYPES,
     buyOnly: true,
-    data: function(){ return { sites: sites, portfolio: [], buildings: [], firm: null, showValues: false, today: today }; },
+    data: function(){ return { sites: sites, portfolio: [], buildings: [], firm: null, showValues: false, today: today,
+      share: share, firmSites: firmSites || [] }; },
     reload: reload,
     open: function(key){ openKey = key || ""; },
     keyOf: function(address){ return "a:" + norm(address); },
@@ -202,7 +217,11 @@ function renderSitesBody(boot) {
     return fetch("/api/sites", { credentials: "same-origin" }).then(function(r){
       return r.ok ? r.json() : null;
     }).then(function(j){
-      if (j && Array.isArray(j.sites)) { sites = j.sites; if (j.today) today = j.today; }
+      if (j && Array.isArray(j.sites)) {
+        sites = j.sites; if (j.today) today = j.today;
+        firmSites = j.firmSites === null ? null : (Array.isArray(j.firmSites) ? j.firmSites : []);
+        share = j.share || null;
+      }
     }, function(){ /* the last read stands: an outage is never an absence */ }).then(draw);
   }
   function openAdd(){
@@ -217,7 +236,7 @@ function renderSitesBody(boot) {
 
   function card(s){
     var key = "site:" + s.id, on = key === openKey;
-    var b = el("button", "sp-card");
+    var b = el("button", "sp-card" + (s.owner ? " theirs" : ""));
     b.type = "button";
     b.setAttribute("aria-expanded", on ? "true" : "false");
     b.setAttribute("aria-controls", "spOpen");
@@ -240,6 +259,10 @@ function renderSitesBody(boot) {
     } else if (s.stage_dates && s.stage_dates[s.stage]) {
       b.append(el("span", "sp-cd", (s.stage === "passed" ? "Passed " : "Since ") + HOMESITES.dayLabel(s.stage_dates[s.stage], today)));
     }
+    // Whose it is: a colleague's shared deal names them; the member's own
+    // shared one says so, the rest are theirs alone (the switch is in the pane).
+    if (s.owner) b.append(el("span", "sp-co", (s.owner.name || "A colleague") + "'s deal"));
+    else if (share && s.org_id != null && String(s.org_id) === String(share.orgId)) b.append(el("span", "sp-co", "Shared"));
     b.addEventListener("click", function(){
       openKey = openKey === key ? "" : key;
       draw();
@@ -253,6 +276,15 @@ function renderSitesBody(boot) {
     var deals = buying(), gone = passed(), f = HOMESITES.figures(deals, today);
     $("spApp").hidden = false;
     $("spAddBtn").hidden = false;
+    // Who can see what: the line under the heading says it in a sentence.
+    $("spSub").textContent = share
+      ? "The land and buildings your team is buying, by stage. A deal you add is shared with " + share.name +
+        " unless you untick the box, and only its owner can change it."
+      : "The land and buildings you're buying, by stage. Only you can see them.";
+    // Said when the team's read fails, not on every draw (it would cover the
+    // line a write just said), and taken down once a read comes back.
+    if (firmSites === null && !firmSaid) { firmSaid = true; say(FIRM_FAILED); }
+    else if (firmSites !== null && firmSaid) { firmSaid = false; if ($("spMsg").textContent === FIRM_FAILED) say(""); }
 
     // The figures across every deal in play.
     var figs = $("spFigs");

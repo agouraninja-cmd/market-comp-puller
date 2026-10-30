@@ -134,6 +134,8 @@ function renderPermitsBody(boot) {
 .pt-addr .c{font-size:13px;color:var(--ink-3)}
 .pt-board{font-size:12px;font-weight:500;color:var(--ok-text)}
 .pt-board:hover{color:var(--ok-text);text-decoration:underline;text-underline-offset:3px}
+.pt-near{font-size:12px;font-weight:500;color:var(--warn-text)}
+.pt-near:hover{color:var(--warn-text);text-decoration:underline;text-underline-offset:3px}
 .pt-hit{display:inline-flex;align-items:baseline;gap:5px;font-size:12px;color:var(--ink-2)}
 .pt-hit::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ink-4);transform:translateY(-1px)}
 .pt-l2{font-size:12.5px;color:var(--ink-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -496,11 +498,14 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
     {g:"stage",label:"Status",val:function(f){return f.stage||"open"},names:STAGE_NAMES,order:["open","attention","approved","issued","ended"]},
     {g:"type",label:"Permit type",val:function(f){return f.type||"Other"}}
   ];
-  var SEL={}, BOARD=false, ALERT=null;
+  // NEAR (2026-10-21): only the permits within a mile of one of the
+  // reader's Sites deals, marked by the server (f.nearSite); ?near=1 opens
+  // the tab with it on, the deal pane's "See them on Permits".
+  var SEL={}, BOARD=false, NEAR=false, ALERT=null;
   GROUPS.forEach(function(G){ SEL[G.g]={}; });
   function picked(g){ return Object.keys(SEL[g]).filter(function(k){return SEL[g][k]}); }
   function filtering(){
-    if(BOARD||ALERT||$("ptSearch").value.trim())return true;
+    if(BOARD||NEAR||ALERT||$("ptSearch").value.trim())return true;
     return GROUPS.some(function(G){return picked(G.g).length>0});
   }
   function facetGroup(g,label,rows){
@@ -520,28 +525,35 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
       if(!keys.length)return "";
       return facetGroup(G.g,G.label,keys.map(function(k){ return facetRow(G.g,k,G.names?G.names[k]:k,counts[k]||0); }).join(""));
     }).join("");
+    // Yours: at the firm's buildings, and near the reader's Sites deals.
+    var yours="";
     if(j.inFirm){
       var nb=items.filter(function(f){return f.onBoard}).length;
-      html+=facetGroup("board","Yours",facetRow("board","1","On your firm’s buildings",nb));
+      yours+=facetRow("board","1","On your firm’s buildings",nb);
     }
+    if(j.nearSites>0){
+      var nn=items.filter(function(f){return f.nearSite}).length;
+      yours+=facetRow("near","1","Within a mile of your sites",nn);
+    }
+    if(yours)html+=facetGroup("yours","Yours",yours);
     $("ptFac").innerHTML=html;
   }
   function facetMarks(){
     [].forEach.call($("ptFac").querySelectorAll(".pt-fg"),function(el){
-      var g=el.getAttribute("data-g"), n=g==="board"?(BOARD?1:0):picked(g).length;
+      var g=el.getAttribute("data-g"), n=g==="yours"?(BOARD?1:0)+(NEAR?1:0):picked(g).length;
       el.querySelector(".pt-fgh .c").textContent=n?String(n):"";
     });
   }
   function clearFilters(){
     GROUPS.forEach(function(G){ SEL[G.g]={}; });
-    BOARD=false; ALERT=null; $("ptSearch").value="";
+    BOARD=false; NEAR=false; ALERT=null; $("ptSearch").value="";
     [].forEach.call($("ptFac").querySelectorAll("input[type=checkbox]"),function(i){ i.checked=false; });
     facetMarks();
   }
   $("ptFac").addEventListener("change",function(e){
     var i=e.target; if(!i||!i.getAttribute||!i.getAttribute("data-g"))return;
     var g=i.getAttribute("data-g");
-    if(g==="board")BOARD=i.checked; else SEL[g][i.value]=i.checked;
+    if(g==="board")BOARD=i.checked; else if(g==="near")NEAR=i.checked; else SEL[g][i.value]=i.checked;
     facetMarks(); render();
   });
   $("ptFac").addEventListener("click",function(e){
@@ -581,7 +593,8 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
     var bits=[work,f.propertyType,f.applicant,f.contractor&&f.contractor!==f.applicant?f.contractor:""].filter(Boolean);
     var num=f.sourceUrl?'<a class="pt-num" href="'+esc(f.sourceUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(f.permitNumber)+"</a>":'<span class="pt-num">'+esc(f.permitNumber)+"</span>";
     return '<div class="pt-row"><div class="pt-main"><div class="pt-addr"><span class="a">'+esc(addr)+'</span><span class="c">'+esc(f.city)+"</span>"+
-      (f.onBoard?'<a class="pt-board" href="/building/'+esc(encodeURIComponent(f.onBoard.id))+'">Your firm’s building →</a>':"")+alertTag(f)+"</div>"+
+      (f.onBoard?'<a class="pt-board" href="/building/'+esc(encodeURIComponent(f.onBoard.id))+'">Your firm’s building →</a>':"")+
+      (f.nearSite?'<a class="pt-near" href="/sites">'+esc(f.nearSite.miles<0.1?"At ":f.nearSite.miles+" mi from ")+esc(street(f.nearSite.address))+" →</a>":"")+alertTag(f)+"</div>"+
       // Boise's descriptions run to whole paragraphs: one line here, the
       // full text on hover.
       '<div class="pt-l2"'+(f.description?' title="'+esc(f.description)+'"':"")+">"+esc(bits.join(" · "))+"</div></div>"+
@@ -592,6 +605,7 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
     var list=items.filter(function(f){
       for(var i=0;i<GROUPS.length;i++){ var G=GROUPS[i]; if(picked(G.g).length&&!SEL[G.g][G.val(f)])return false; }
       if(BOARD&&!f.onBoard)return false;
+      if(NEAR&&!f.nearSite)return false;
       if(ALERT&&!alertMatches(ALERT,f))return false;
       if(!q.length)return true;
       var hay=[f.address,f.applicant,f.contractor,f.description,f.projectName,f.permitNumber,f.type,f.status,f.zoning].join(" ").toLowerCase();
@@ -604,7 +618,7 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
     $("ptChips").className=ALERT?"pt-chips":"pt-chips hide";
     // One property type picked and nothing else: say it in words.
     var props=picked("prop");
-    var onlyProp=props.length===1&&!q.length&&!BOARD&&!ALERT&&GROUPS.every(function(G){return G.g==="prop"||!picked(G.g).length});
+    var onlyProp=props.length===1&&!q.length&&!BOARD&&!NEAR&&!ALERT&&GROUPS.every(function(G){return G.g==="prop"||!picked(G.g).length});
     var typeEmpty=!!(onlyProp&&!list.length&&items.length);
     $("ptTypeNoneText").textContent=typeEmpty?"No "+(props[0]==="Other"?"other":props[0].toLowerCase())+" permit filed in "+CITY_LINE+" in the last "+WIN+" days.":"";
     $("ptTypeNone").className=typeEmpty?"pt-empty2":"pt-empty2 hide";
@@ -1204,6 +1218,13 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
     var target=hash.indexOf("#pw-")===0?document.getElementById(decodeURIComponent(hash.slice(1))):null;
     if(target){ showTab("mine"); target.className+=" pw-focus"; target.scrollIntoView({block:"center"}); return; }
     if(/(^|[?&])track=1(&|$)/.test(String(location.search||""))&&MINE&&MINE.canTrack&&ownCount()<(MINE.max||25)){ showTab("mine"); openAdd(); return; }
+    // ?near=1, from a Sites deal's pane: Filings, with Within a mile of your
+    // sites ticked (offered only when the reader has a placed deal).
+    if(/(^|[?&])near=1(&|$)/.test(String(location.search||""))&&BOOT.j&&BOOT.j.nearSites>0){
+      NEAR=true;
+      var nb=$("ptFac").querySelector('input[data-g="near"]'); if(nb)nb.checked=true;
+      facetMarks(); render(); showTab("filings"); return;
+    }
     for(var i=0;i<TAB_ORDER.length;i++){ if(hash==="#"+TABS[TAB_ORDER[i]].hash){ showTab(TAB_ORDER[i]); return; } }
     showTab(MINE&&MINE.unread>0?"mine":"filings");
   }

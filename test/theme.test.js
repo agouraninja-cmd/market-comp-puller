@@ -600,6 +600,53 @@ test("every colour utility in index.html has a dark rule", () => {
   assert.deepEqual(missing, [], `utilities with no dark rule: ${missing.join(" ")}`);
 });
 
+// The token colour classes (2026-10-30). index.html writes text-ink-3,
+// bg-paper, focus:ring-red: tailwind.config.js builds one colour per
+// theme.js token as a var() of that token, so the class IS the token, light
+// and dark, and needs no bridge rule. Three things hold that up.
+const TAILWIND_CONFIG = require("../tailwind.config.js");
+const TAILWIND_CSS = root("tailwind.css");
+
+test("tailwind.config.js makes every theme.js token a colour class that is the token itself", () => {
+  const colors = TAILWIND_CONFIG.theme.extend.colors;
+  for (const name of Object.keys(THEME_TOKENS)) {
+    const v = colors[name];
+    // red and green are objects so they extend Tailwind's own palette
+    // (text-red-600 must keep working); the DEFAULT is the token.
+    const value = v && typeof v === "object" ? v.DEFAULT : v;
+    assert.equal(value, `var(--${name})`, `--${name} has no token colour class, or one with a typed value`);
+  }
+});
+
+test("no bridge rule re-points a hex that already IS its token's light value", () => {
+  // The ratchet. A hex class whose light value is exactly the token the
+  // bridge maps it to should have been that token's class: same light, same
+  // dark, no rule to keep in step. What may stay in the bridge is only a
+  // colour that is NOT a token in light (an off-palette hex, Tailwind's own
+  // palette), where swapping it would change light mode.
+  const lights = new Map(Object.entries(THEME_TOKENS).map(([n, v]) => [n, v.light.toUpperCase()]));
+  const offenders = [];
+  for (const m of INDEX_STYLE.matchAll(/\[data-theme="dark"\] \.[a-z:\\-]*?\\\[\\#([0-9A-Fa-f]{6})\\\][^{]*\{[^}]*var\(--([a-z0-9-]+)\)/g)) {
+    if (lights.get(m[2]) === "#" + m[1].toUpperCase()) offenders.push(`#${m[1]} -> --${m[2]}`);
+  }
+  assert.deepEqual(offenders, [], `use the token class instead of a bridge rule: ${offenders.join(", ")}`);
+});
+
+test("every token colour class index.html uses is in the vendored tailwind.css", () => {
+  // tailwind.css is generated; a class missing from it silently does not
+  // style. A token class that does not style is worse than a hex one: it
+  // falls back to the inherited colour in BOTH themes.
+  const names = Object.keys(THEME_TOKENS).sort((a, b) => b.length - a.length).join("|");
+  const re = new RegExp(`(?<![\\w:-])((?:hover|focus|focus-visible):)?(text|bg|border|ring|outline|decoration|accent|divide)-(${names})(?![\\w-])`, "g");
+  const used = new Set([...INDEX.matchAll(re)].map((m) => m[0]));
+  assert.ok(used.size > 20, `expected the app to use token classes, found ${used.size}`);
+  const missing = [...used].filter((cls) => {
+    const sel = "." + cls.replace(/:/g, "\\:");
+    return !TAILWIND_CSS.includes(sel + "{") && !TAILWIND_CSS.includes(sel + ":") && !TAILWIND_CSS.includes(sel + ">");
+  });
+  assert.deepEqual(missing, [], `regenerate tailwind.css (CLAUDE.md, Restart rule): missing ${missing.join(" ")}`);
+});
+
 test("the bridge cannot reach the print stylesheet", () => {
   // Wrapping the bridge in @media screen is what makes the 70-line
   // @media print block unreachable by the theme, so printing cannot

@@ -4891,5 +4891,11 @@
     "type": "fix",
     "title": "A report you just ran no longer says it was reopened, and the Pipeline counts each request once",
     "details": "Running one address from Comps › Run a comp report opened the finished report under “Reopened a saved report. Run a new search for fresh data.” It now opens as the new report it is; opening an older report still says it was reopened. In the Pipeline, a request you asked to be introduced to showed twice — as New with “Intro requested” and again as its Open BOV — so the strip said 4 new while the tab said 3. It now shows once, as the BOV. In the comp report, your own comps say Sale and Lease like every other row instead of sale and lease, and the market position chart reads $129/SF to $155/SF instead of $128.97 against $155."
+  },
+  {
+    "date": "2026-10-30",
+    "type": "fix",
+    "title": "The left bar is the same colour on every page in dark mode",
+    "details": "In dark mode the icon bar down the left of Home and the comp report was nearly the colour of the page, while on Markets, Comps, Pipeline and Permits it was a shade lighter, so it changed colour as you moved between tabs. It is the lighter slab everywhere now. Underneath, the app’s colours (about 880 of them) now name the site’s colour tokens directly instead of spelling out light-mode hex codes that a separate list had to translate for dark mode; nothing else looks different, checked element by element in both themes."
   }
 ]

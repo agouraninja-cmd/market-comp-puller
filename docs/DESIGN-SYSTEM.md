@@ -38,31 +38,45 @@ black text on a black background.
 
 So: to change a colour, change the token. Do not hunt for hex codes in the page
 files. If you find one, it is either a deliberate exception (documented in §7),
-the app's class bridge (below), or a bug.
+one of the app's leftover hex classes (below), or a bug.
 
-### ⚠ The app is the exception: its colours are class names
+### In the app, a colour is a class named after its token
 
-`index.html` (the app) is styled with Tailwind utility classes, and those
-classes spell colours as their **light** hex value — `text-[#68707E]`,
-`border-[#D8D4C9]`. About 870 of them. They are not tokens, so on their own
-they would never change in dark mode.
+`index.html` (the app) is styled with Tailwind utility classes. Every token
+in §4 is also a colour class there, named after the token:
 
-What makes them work is the **dark mode bridge**, a block near the top of
-`index.html`'s `<style>`. It re-points each colour class at its token in dark
-mode, one rule per class:
+| You want | Write |
+|---|---|
+| Muted label text (`--ink-3`) | `text-ink-3` |
+| The page background (`--paper`) | `bg-paper` |
+| A card border (`--edge`) | `border-edge` |
+| A hover that lifts (`--wash-2`) | `hover:bg-wash-2` |
+| A red focus ring (`--red`) | `focus:ring-red` |
+| Success text (`--ok-text`) | `text-ok-text` |
 
-```css
-[data-theme="dark"] .bg-\[\#FBFBF9\] { background-color: var(--paper) }
-```
+Each class is the token itself — `text-ink-3` is `color: var(--ink-3)` — so
+it follows dark mode with nothing else to do. `tailwind.config.js` builds the
+list from `theme.js`, so a new token gets its class on the next Tailwind
+regenerate (§8).
 
-So in the app, **adding a colour class nobody has used before means adding a
-bridge rule for it.** Forget, and light mode looks perfect while dark mode
-shows dark-on-dark text. `test/theme.test.js` ("every colour utility in
-index.html has a dark rule") fails the build when that happens, so you will
-find out — but that is why it fails.
+**Never write a token's hex as a class** (`text-[#68707E]`). It looks the
+same in light mode and stays light in dark mode. Until 2026-10-30 the whole app
+was written that way, about 870 classes, and kept working only through a
+hand-written "dark mode bridge" that re-pointed each one in dark mode.
 
-Reuse a colour class that already exists wherever you can. Each light hex in
-the token table in §4 is the class to use for that token.
+**What is still hex, and why.** A short bridge remains near the top of
+`index.html`'s `<style>`, for about 30 colour classes that are *not* a token in
+light mode: colours the palette never named (the footer's `#B8C0CC`, a
+`#F4FAF6` tint) and Tailwind's own reds and greens (`bg-brand-600` is
+`#DC2626`, brighter than `--red-fill`). Switching any of them to a token class
+would change how light mode looks, so each is a design decision, not a cleanup
+— see §9. A new hex class of this kind needs a bridge rule too, or it shows
+dark-on-dark text in dark mode.
+
+Three tests in `test/theme.test.js` hold this together: every hex colour class
+in the app has a bridge rule; no bridge rule is for a hex that is already a
+token (that one should be the token's class); and every token class the app
+uses is in the generated `tailwind.css`.
 
 ### ⚠ Two things about changing a colour
 
@@ -179,8 +193,8 @@ about 60 times. Changing the display font is still a find-and-replace.
 ## 4. Colours
 
 All values below are the live tokens in `theme.js`. Light value first, dark
-second. Use the **name**, never the hex — except in the app's Tailwind
-classes, where the light hex *is* the name (§1).
+second. Use the **name**, never the hex — `var(--ink-3)` in a stylesheet,
+`text-ink-3` in the app's Tailwind classes (§1).
 
 ### Surfaces
 
@@ -470,7 +484,8 @@ have their own tab styles (§9).
 |---|---|
 | **Colours — source of truth** | `theme.js` |
 | **Colours — mirror copy (must match)** | `index.html`, the two token blocks at the top of its `<style>` (about line 145) |
-| **Colours — the app's dark mode bridge** | `index.html`, the "Dark mode bridge" block right below them |
+| **Colours — the app's token classes** | `tailwind.config.js` (built from `theme.js`) |
+| **Colours — the app's leftover hex classes** | `index.html`, the "Dark mode bridge" block right below the token blocks |
 | Server-rendered page styles | `MARKET_CSS` in `server.js` |
 | Signed-in rail | `RAIL_CSS` in `server.js` (twin rules in `index.html`) |
 | Header | `marketBar` in `server.js` |
@@ -510,9 +525,13 @@ colour must *not* follow the theme:
 
 **A colour** — edit it in `theme.js` **and** in `index.html`'s two token blocks,
 light and dark in both. If it is one of the locked core tokens, update
-`test/theme.test.js` as well. In the app, a colour class nobody has used before
-also needs a bridge rule. See the warnings in §1 — this is the one change with
-a real trap in it.
+`test/theme.test.js` as well. In the app, use the token's class
+(`text-ink-3`); a new hex colour class also needs a bridge rule. See the
+warnings in §1 — this is the one change with a real trap in it.
+
+**A new token** — add it to `theme.js` and `index.html`'s two token blocks,
+then regenerate `tailwind.css` (below): the app gets its class
+(`text-<name>`, `bg-<name>`…) from `tailwind.config.js` automatically.
 
 **A number** (size, spacing, radius) — find it in the relevant stylesheet from
 §7. If it appears in more than one file, change all of them. Pick from the
@@ -534,9 +553,10 @@ node --test test/theme.test.js
 ```
 
 It checks that every token has a valid light and dark value, that
-`index.html`'s copy matches `theme.js`, that every app colour class has a dark
-bridge rule, and that the stylesheets carry no stray hex codes outside the
-allowlist. It will catch a typo'd colour immediately. The full suite
+`index.html`'s copy matches `theme.js`, that every token has a colour class
+and every one the app uses is in `tailwind.css`, that every leftover hex
+colour class has a dark bridge rule, and that the stylesheets carry no stray
+hex codes outside the allowlist. It will catch a typo'd colour immediately. The full suite
 (`npm test`) runs on GitHub on every push.
 
 **If you touched `index.html` and added a new Tailwind utility class**, the
@@ -583,12 +603,17 @@ Measured across every stylesheet on 2026-10-30. These are the known gaps, in
 rough order of how much trouble they cause. None of them is a reason to add a
 new one-off value — they are the reason to stop.
 
-1. **The app's colours are hex classes, held up by a bridge.** About 870
-   colour classes in `index.html` spell a light hex value (31 distinct), and
-   dark mode works only through the bridge in §1. Eleven of those 31 match no
-   token at all (`#B8C0CC`, the footer's text, alone is used 16 times). The fix
-   is to register the tokens in `tailwind.config.js` so the app can write
-   `text-ink-3` and the bridge can go.
+1. **Thirty app colours are still off the palette.** Since 2026-10-30 the
+   app's colours are token classes (§1), about 880 of them. What is left is
+   30 colour classes (215 uses) that are not a token in light mode, each
+   held up by a dark-mode bridge rule. The biggest is the app's primary
+   button and focus ring: `bg-brand-600` / `focus:ring-brand-600` are
+   `#DC2626`, while every server-rendered page's `.btn` is `--red-fill`
+   (`#B91C1C`), so the red button is a shade brighter in the app than
+   everywhere else. The rest are greys and tints the palette never named
+   (`#B8C0CC`, `#ECEAE3`, `#F4FAF6`…). Snapping each to its nearest token
+   would retire the bridge, but it changes light mode, so it needs a design
+   call per colour.
 2. **Sizes are not a system.** 35 different font sizes are in use, 18 corner
    radii, and 12 breakpoint widths. The type and spacing scales in §5 exist
    only on the dashboards and the Comps/Pipeline page, and the two copies

@@ -575,7 +575,7 @@ test("a land report leads per acre from the lot size when no acreage was typed (
   const chart = html.slice(html.indexOf("  function renderMarketChart() {"), html.indexOf('    // "You" marker on top.'));
   assert.match(chart, /const perAcre = isLandChart\(sales\);/);
   assert.match(chart, /aria-label="Sale comps by price per \$\{perAcre \? "acre" : "square foot"\}"/);
-  assert.match(html, /<p id="chartCaption" class="text-xs text-\[#68707E\] mb-3">Sale comps by price per square foot\. Lease comps are excluded\.<\/p>/);
+  assert.match(html, /<p id="chartCaption" class="text-xs text-ink-3 mb-3">Sale comps by price per square foot\. Lease comps are excluded\.<\/p>/);
 });
 
 test("comps table rows are compact throughout, and notes stay on one line", () => {
@@ -664,8 +664,10 @@ test("every Tailwind class the hub surfaces use is in the vendored stylesheet", 
   for (const cls of ["min-w-0", "inline-flex", "flex-1", "border-t", "pt-2", "gap-2"]) {
     assert.ok(css.includes("." + cls), `tailwind.css is missing .${cls}`);
   }
-  for (const hex of ["ECEAE3", "D8D4C9", "4C5665", "B91C1C", "1A2433", "68707E", "5A6473"]) {
-    assert.ok(css.includes(hex), `tailwind.css is missing the ${hex} colour utilities`);
+  // The colours are token classes since 2026-10-30 (#D8D4C9 is border-edge,
+  // #68707E text-ink-3, ...); #ECEAE3 is not a token and stays a hex class.
+  for (const cls of [".border-\\[\\#ECEAE3\\]", ".border-edge", ".text-ink-2", ".text-red", ".text-ink", ".text-ink-3", ".text-ink-mute"]) {
+    assert.ok(css.includes(cls + "{"), `tailwind.css is missing ${cls}`);
   }
 });
 

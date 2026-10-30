@@ -13043,12 +13043,12 @@ const navLinksHtml = (current = "", signedIn = false) =>
       `</a>`;
   }).join("");
 // index.html's rendering of the same list. The class string must be made of
-// classes index.html ALREADY uses (#pricingLink, one line above the marker,
-// carries this identical set): tailwind.css is purged against index.html
+// classes index.html ALREADY uses: tailwind.css is purged against index.html
 // alone, so a utility that existed only in this server-side string would
-// silently stop styling on the next regen. The dark-mode literal-hex bridge
-// in index.html's <style> covers these classes for the same reason.
-const APP_NAV_LINK_CLASS = "block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]";
+// silently stop styling on the next regen (test/index-html.test.js checks
+// each one against the vendored CSS). Its colours are token classes
+// (text-ink-body = var(--ink-body)), so they follow the theme by themselves.
+const APP_NAV_LINK_CLASS = "block px-3 py-2 text-ink-body hover:bg-wash-2 hover:text-ink";
 const NAV_LINKS_MARKER = "<!--NAV_LINKS-->";
 // nav-anon rides along for anonOnly entries: this string is injected into a
 // page served identically to members and strangers, so the entry has to ship

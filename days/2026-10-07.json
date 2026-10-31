@@ -1,0 +1,182 @@
+{
+  "day": "2026-10-07",
+  "updatedAt": "2026-10-08T13:20:02.511Z",
+  "period": {
+    "start": "2026-09-24",
+    "end": "2026-10-07",
+    "index": 14,
+    "length": 14,
+    "days": [
+      "2026-09-24",
+      "2026-09-25",
+      "2026-09-26",
+      "2026-09-27",
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30",
+      "2026-10-01",
+      "2026-10-02",
+      "2026-10-03",
+      "2026-10-04",
+      "2026-10-05",
+      "2026-10-06",
+      "2026-10-07"
+    ]
+  },
+  "resetsOn": "2026-10-08",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 15,
+        "prs": 11
+      },
+      "periodTotal": 97,
+      "periodPrs": 77,
+      "points": [
+        11,
+        26,
+        4,
+        0,
+        0,
+        11,
+        3,
+        9,
+        1,
+        0,
+        6,
+        2,
+        9,
+        15
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 2,
+      "periodPrs": 1,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 380,
+      "title": "Rail account circle off the window edge; Multifamily tag on one line",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 382,
+      "title": "Home buildings table: building sizes stay on one line",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 383,
+      "title": "Refresh six market pages' comps and momentum reads",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 381,
+      "title": "The Board becomes a deal wall",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 384,
+      "title": "Home buildings table: a next date is never split across lines",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 385,
+      "title": "Refresh every market page and add thirteen new ones",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 386,
+      "title": "Home as one map, and the side menu as five places (Draft C)",
+      "login": "agouraninja-cmd",
+      "commits": 4
+    },
+    {
+      "number": 387,
+      "title": "The comp report names your property and the comps it used",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 388,
+      "title": "Home: delete the old sections the map hid",
+      "login": "agouraninja-cmd",
+      "commits": 2
+    },
+    {
+      "number": 389,
+      "title": "Remove the reads nothing uses since Draft C's Home, and stop selling Firm activity",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 390,
+      "title": "Home page sample report: show what valueFromComps actually returns",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    }
+  ]
+}

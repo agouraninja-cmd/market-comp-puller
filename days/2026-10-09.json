@@ -1,0 +1,140 @@
+{
+  "day": "2026-10-09",
+  "updatedAt": "2026-10-10T12:23:55.042Z",
+  "period": {
+    "start": "2026-10-08",
+    "end": "2026-10-21",
+    "index": 2,
+    "length": 14,
+    "days": [
+      "2026-10-08",
+      "2026-10-09",
+      "2026-10-10",
+      "2026-10-11",
+      "2026-10-12",
+      "2026-10-13",
+      "2026-10-14",
+      "2026-10-15",
+      "2026-10-16",
+      "2026-10-17",
+      "2026-10-18",
+      "2026-10-19",
+      "2026-10-20",
+      "2026-10-21"
+    ]
+  },
+  "resetsOn": "2026-10-22",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 4,
+        "prs": 4
+      },
+      "periodTotal": 5,
+      "periodPrs": 5,
+      "points": [
+        1,
+        4,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 392,
+      "title": "Street photos of buildings instead of the aerial, behind a quality gate",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 393,
+      "title": "Let a firm's owner or an admin rename the firm",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 394,
+      "title": "Street photos by address, so nearly every building gets a real photo",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 395,
+      "title": "A development firm works its deals on Home; Sites and the deal wall go",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    }
+  ]
+}

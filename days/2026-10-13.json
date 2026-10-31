@@ -1,0 +1,170 @@
+{
+  "day": "2026-10-13",
+  "updatedAt": "2026-10-14T11:44:05.013Z",
+  "period": {
+    "start": "2026-10-08",
+    "end": "2026-10-21",
+    "index": 6,
+    "length": 14,
+    "days": [
+      "2026-10-08",
+      "2026-10-09",
+      "2026-10-10",
+      "2026-10-11",
+      "2026-10-12",
+      "2026-10-13",
+      "2026-10-14",
+      "2026-10-15",
+      "2026-10-16",
+      "2026-10-17",
+      "2026-10-18",
+      "2026-10-19",
+      "2026-10-20",
+      "2026-10-21"
+    ]
+  },
+  "resetsOn": "2026-10-22",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 11,
+        "prs": 9
+      },
+      "periodTotal": 19,
+      "periodPrs": 17,
+      "points": [
+        1,
+        4,
+        3,
+        0,
+        0,
+        11,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 399,
+      "title": "Build a market page from the /markets filter box",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 400,
+      "title": "Home opens with the firm: its logo, name and shop type",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 401,
+      "title": "Remove the vault: Comps becomes a section, owned properties work on Home",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 402,
+      "title": "Home's map cards open with the building's photo already in them",
+      "login": "agouraninja-cmd",
+      "commits": 3
+    },
+    {
+      "number": 403,
+      "title": "Hide the browser focus ring when a map is clicked or dragged",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 404,
+      "title": "Say \"your comps\", not \"your Data\": there is no Data page any more",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 405,
+      "title": "Comps: Run a comp report is the first tab",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 407,
+      "title": "Home map: open a pin's card on hover",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 406,
+      "title": "Firm & branding opens from Home's firm header, not the account menu",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    }
+  ]
+}

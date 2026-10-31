@@ -1,0 +1,140 @@
+{
+  "day": "2026-10-04",
+  "updatedAt": "2026-10-05T14:27:20.134Z",
+  "period": {
+    "start": "2026-09-24",
+    "end": "2026-10-07",
+    "index": 11,
+    "length": 14,
+    "days": [
+      "2026-09-24",
+      "2026-09-25",
+      "2026-09-26",
+      "2026-09-27",
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30",
+      "2026-10-01",
+      "2026-10-02",
+      "2026-10-03",
+      "2026-10-04",
+      "2026-10-05",
+      "2026-10-06",
+      "2026-10-07"
+    ]
+  },
+  "resetsOn": "2026-10-08",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 6,
+        "prs": 4
+      },
+      "periodTotal": 71,
+      "periodPrs": 56,
+      "points": [
+        11,
+        26,
+        4,
+        0,
+        0,
+        11,
+        3,
+        9,
+        1,
+        0,
+        6,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 2,
+      "periodPrs": 1,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 366,
+      "title": "Messages: who each chat is with, your own names, delete deal rooms",
+      "login": "agouraninja-cmd",
+      "commits": 3
+    },
+    {
+      "number": 367,
+      "title": "Vault subtitle speaks to development shops",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 368,
+      "title": "Rename Workspace to Home and the Vault to Data",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 369,
+      "title": "Book: one ledger grouped by market (Draft C)",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    }
+  ]
+}

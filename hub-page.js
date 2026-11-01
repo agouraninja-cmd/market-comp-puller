@@ -108,6 +108,9 @@ tr.thread td{background:var(--wash);padding:12px 10px}
 .mt10{margin-top:10px}
 #peopleEmails{width:100%;margin-top:3px;padding:7px 8px;border:1px solid var(--line);
   border-radius:6px;background:var(--card);color:var(--ink);font:inherit;font-size:13.5px}
+/* theme.js FIELD_FLOOR lifts every field to 16px on a phone (iOS zooms on
+   anything smaller), but an id out-ranks it, so this one restates it. */
+@media (max-width:639.98px){#peopleEmails{font-size:16px}}
 .prow{display:flex;align-items:baseline;gap:10px;padding:6px 0;font-size:13.5px;
   border-bottom:1px solid var(--line)}
 .prow:last-child{border-bottom:0}

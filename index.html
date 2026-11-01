@@ -1128,6 +1128,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       box-shadow: 0 0 0 1000px var(--card) inset;
       transition: background-color 9999s ease-out;
     }
+    /* .rd-in's 16px floor, for every other field, on a phone. Half the app's
+       fields are text-sm (14px) or smaller, so iOS Safari zoomed on 42 of 84
+       of them (measured 2026-10-30). Below Tailwind's sm breakpoint they are
+       lifted to 16px; desktop keeps its 14px. The :not() chain is what lets
+       one rule out-rank .text-sm and rules like `.hm-find input` (0,9,1).
+       .rd-in is exempt because .rd-in-lg is 17px, and a field meant to be
+       larger than 16px on a phone needs the same exemption. Mirrors theme.js
+       FIELD_FLOOR, which carries it to the server-rendered pages. */
+    @media (max-width: 639.98px) {
+      :is(input, select, textarea):not(.rd-in):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=submit]):not([type=button]):not([type=reset]) { font-size: 16px; }
+    }
     /* #68707E, same as the swept caption gray: #9AA2AD measured 2.6:1, below
        even the relaxed placeholder bar, and the example addresses rotating in
        the search field are real guidance, not decoration. Still clearly

@@ -79,10 +79,12 @@ test("the stylesheet is emitted in the BODY, not handed to the shell's head, and
   // The classes a body page must not use: tailwind.css is purged against
   // index.html alone, so a utility here styles nothing, silently.
   assert.doesNotMatch(html, /class="[^"]*\b(?:mt-\d|text-sm|hidden|flex|underline|rounded-lg)\b/);
-  // And every custom property it reads is a theme token.
-  const { THEME_TOKENS } = require("../theme.js");
+  // And every custom property it reads is a theme token: a colour, or a size
+  // from the shared scale.
+  const { THEME_TOKENS, SCALE_TOKENS } = require("../theme.js");
   for (const m of html.matchAll(/var\(--([a-z0-9-]+)\)/g)) {
-    assert.ok(Object.prototype.hasOwnProperty.call(THEME_TOKENS, m[1]), `--${m[1]} is not a theme token`);
+    assert.ok(Object.prototype.hasOwnProperty.call(THEME_TOKENS, m[1]) || Object.prototype.hasOwnProperty.call(SCALE_TOKENS, m[1]),
+      `--${m[1]} is not a theme token`);
   }
 });
 

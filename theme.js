@@ -1,6 +1,7 @@
-// The site's colour tokens, light and dark. Pure: no I/O, no clock, no
-// requires -- which is what lets `npm test` exercise the whole table with
-// nothing running.
+// The site's colour tokens, light and dark, and (since 2026-11-01, see
+// SCALE_TOKENS below) its size scale: fonts, text sizes, radii, spacing.
+// Pure: no I/O, no clock, no requires -- which is what lets `npm test`
+// exercise the whole table with nothing running.
 //
 // The NAMES and every light value below are copied verbatim from the :root
 // block vault-page.js and the four admin dashboards already share. That is
@@ -174,6 +175,74 @@ const THEME_TOKENS = {
   "bv-bg":          { light: "#EDE9F8", dark: "#1C1730" },
 };
 
+// The size scale (2026-11-01): fonts, text sizes, corner radii and spacing,
+// one value each, the same in both themes. Every page reads it: rootCss()
+// carries it into every server-rendered page, scaleCss() into the admin
+// pages that build their own document, and index.html hand-copies it
+// beside its colour tokens (theme.test.js pins the copy).
+//
+// The VALUES are the ones the site already used, so adopting a name never
+// moved a pixel. That is also why the text scale has neighbours half a pixel
+// apart (12/12.5, 13/13.5, 14/14.5): they were all in use, and folding them
+// together is a design call to make by changing a value here, where it then
+// moves every page at once. A size not on this list stays a literal, and
+// theme.test.js refuses a NEW off-scale size, so the list can only shrink.
+//
+// The spacing steps (--s1..--s9) and --serif are the names the admin pages
+// and the vault already used, with the values they already agreed on. Their
+// one disagreement, the largest heading and --r, became two names each
+// (--text-hero 32px / --text-h1-lg 34px, --r-sm 4px / --r-md 6px).
+const SCALE_TOKENS = {
+  // --- fonts --------------------------------------------------------------
+  serif:            "Georgia,'Times New Roman',serif",   // headings and every dollar figure
+  sans:             'Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif',
+  mono:             "ui-monospace,SFMono-Regular,Menlo,monospace",
+
+  // --- text sizes, smallest first ------------------------------------------
+  "text-micro":     "10.5px", // the uppercase micro-label: table heads, badges, tile labels
+  "text-tiny":      "11px",
+  "text-label":     "12px",
+  "text-note":      "12.5px", // captions, footnotes, the note under a figure
+  "text-small":     "13px",   // small buttons, the footer
+  "text-ui":        "13.5px", // navigation, tables
+  "text-compact":   "14px",
+  "text-body":      "14.5px", // body copy
+  "text-lead":      "15px",   // the wordmark, large buttons
+  "text-input":     "16px",   // form fields: never smaller, or iOS Safari zooms in
+  "text-title":     "19px",   // card headings (Georgia)
+  "text-subhead":   "20px",
+  "text-heading":   "24px",   // section headings, ledger figures
+  "text-figure":    "26px",   // the valuation hero's Low and High
+  "text-h1":        "28px",   // page H1 on a phone
+  "text-hero":      "32px",   // the valuation hero's Likely
+  "text-h1-lg":     "34px",   // page H1 from 640px up
+  "text-display":   "38px",   // home page headlines
+  "text-display-lg": "42px",
+
+  // --- corner radius -------------------------------------------------------
+  "r-xs":           "3px",    // badges
+  "r-sm":           "4px",    // buttons, chips
+  "r-md":           "6px",    // cards, panels, tables, inputs: the default
+  "r-lg":           "8px",    // dropdown menus
+  "r-xl":           "10px",   // rail rows
+  "r-2xl":          "12px",
+  "r-pill":         "999px",  // full pills
+
+  // --- spacing -------------------------------------------------------------
+  s1: "2px", s2: "4px", s3: "8px", s4: "12px", s5: "16px",
+  s6: "24px", s7: "32px", s8: "48px", s9: "80px",
+};
+
+// The scale as one custom-property list, for rootCss() and scaleCss().
+const scaleDecl = () => Object.entries(SCALE_TOKENS).map(([n, v]) => `--${n}:${v}`).join(";");
+
+// The scale alone, for a page that builds its own document and its own
+// colours (the admin dashboards, the hero review tool) and so never gets
+// rootCss().
+function scaleCss() {
+  return `:root{${scaleDecl()}}`;
+}
+
 // Emits both custom-property blocks as one line. Every in-scope stylesheet
 // is a JS template literal, so this must never contain a backtick or a
 // ${ sequence -- a test pins that.
@@ -256,7 +325,7 @@ const AUTOFILL_COVER =
 function rootCss() {
   const decl = (key) =>
     Object.entries(THEME_TOKENS).map(([n, v]) => `--${n}:${v[key]}`).join(";");
-  return `:root{${decl("light")};--lift:none}@media screen{[data-theme="dark"]{${decl("dark")};color-scheme:dark;--lift:${DARK_LIFT}}}${DARK_CHROME}${AUTOFILL_COVER}`;
+  return `:root{${decl("light")};--lift:none;${scaleDecl()}}@media screen{[data-theme="dark"]{${decl("dark")};color-scheme:dark;--lift:${DARK_LIFT}}}${DARK_CHROME}${AUTOFILL_COVER}`;
 }
 
-module.exports = { THEME_TOKENS, DARK_LIFT, DARK_CHROME, AUTOFILL_COVER, rootCss };
+module.exports = { THEME_TOKENS, SCALE_TOKENS, DARK_LIFT, DARK_CHROME, AUTOFILL_COVER, rootCss, scaleCss };

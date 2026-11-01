@@ -86,48 +86,48 @@ function renderMessagesBody(boot) {
    would silently restyle the shared header and footer around it. */
 .msg-page,.msg-page *{box-sizing:border-box}
 .msg-page{--rail:320px;--bubble-radius:14px}
-.msg-page .kicker{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.msg-page .kicker{font-size:var(--text-tiny);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
 /* One grid, two panes above 900px and one below it. The pane that shows on a
    phone is decided by a class on the wrapper, never by a media query alone —
    a query cannot know whether the reader has opened a thread yet. */
 .msg-page{display:grid;grid-template-columns:var(--rail) 1fr;gap:0;
-  border:1px solid var(--edge);border-radius:8px;overflow:hidden;
+  border:1px solid var(--edge);border-radius:var(--r-lg);overflow:hidden;
   background:var(--card);min-height:min(74vh,720px);margin:24px 0 48px}
 .msg-side{border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0;background:var(--card)}
 .msg-main{display:flex;flex-direction:column;min-width:0}
 .msg-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);min-height:60px}
-.msg-head h2{margin:0;font-size:15px;font-weight:600;color:var(--ink);
+.msg-head h2{margin:0;font-size:var(--text-lead);font-weight:600;color:var(--ink);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.msg-head .sub{font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;max-width:none}
+.msg-head .sub{font-size:var(--text-label);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;max-width:none}
 .msg-grow{flex:1;min-width:0}
 .msg-btn{appearance:none;border:1px solid var(--edge);background:var(--card);color:var(--ink);
-  border-radius:6px;padding:6px 11px;font-size:13px;font-weight:500;cursor:pointer;line-height:1.4}
+  border-radius:var(--r-md);padding:6px 11px;font-size:var(--text-small);font-weight:500;cursor:pointer;line-height:1.4}
 .msg-btn:hover{background:var(--wash)}
 .msg-btn.primary{background:var(--red-fill);border-color:var(--red-fill);color:#fff}
 .msg-btn.primary:hover{background:var(--red-fill-hover);border-color:var(--red-fill-hover)}
 .msg-btn:disabled{opacity:.5;cursor:default}
-.msg-btn.sm{padding:4px 9px;font-size:12px}
+.msg-btn.sm{padding:4px 9px;font-size:var(--text-label)}
 
 /* --- the thread list --------------------------------------------------- */
 /* Internal / External group labels. Labels, not tabs: both groups are always
    on screen, and the label exists so you always know which side of the wall a
    row is on before you click it. */
-.msg-sect{padding:12px 14px 4px;font-size:10.5px;letter-spacing:.14em;
+.msg-sect{padding:12px 14px 4px;font-size:var(--text-micro);letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink-faint);font-weight:600}
 .msg-sect+.msg-row{border-top:1px solid var(--hair)}
 /* A note written about one specific comp, tagged with the building it is
    about. */
-.msg-about{font-size:11px;color:var(--ink-faint);margin-bottom:1px}
+.msg-about{font-size:var(--text-tiny);color:var(--ink-faint);margin-bottom:1px}
 
 /* The firm, quietly, at the foot of the column. */
 .msg-firm{border-top:1px solid var(--hair);padding:9px 14px;font-size:11.5px;
   color:var(--ink-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Used by the New panel's people rows. */
-.msg-sub{display:block;font-size:12px;color:var(--ink-3);white-space:nowrap;
+.msg-sub{display:block;font-size:var(--text-label);color:var(--ink-3);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;margin-top:1px}
 .msg-search{padding:10px 12px;border-bottom:1px solid var(--hair)}
-.msg-search input{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;
-  padding:7px 10px;font:inherit;font-size:13px;background:var(--paper);color:var(--ink)}
+.msg-search input{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:var(--r-md);
+  padding:7px 10px;font:inherit;font-size:var(--text-small);background:var(--paper);color:var(--ink)}
 .msg-threads{flex:1;overflow-y:auto;min-height:0}
 .msg-row{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;
   padding:11px 14px;border:0;border-bottom:1px solid var(--hair);background:transparent;
@@ -135,21 +135,21 @@ function renderMessagesBody(boot) {
 .msg-row:hover{background:var(--wash)}
 .msg-row[aria-current="true"]{background:var(--wash-2);box-shadow:inset 3px 0 0 var(--red)}
 .msg-av{flex:0 0 34px;width:34px;height:34px;border-radius:50%;background:var(--slab);color:#fff;
-  font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;text-transform:uppercase}
+  font-size:var(--text-label);font-weight:600;display:flex;align-items:center;justify-content:center;text-transform:uppercase}
 .msg-av.chan{background:var(--wash-2);color:var(--ink-2);border:1px solid var(--edge)}
 .msg-rowbody{min-width:0;flex:1}
 .msg-rowtop{display:flex;align-items:baseline;gap:8px}
-.msg-name{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
-.msg-when{font-size:11px;color:var(--ink-faint);white-space:nowrap}
+.msg-name{font-weight:600;font-size:var(--text-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.msg-when{font-size:var(--text-tiny);color:var(--ink-faint);white-space:nowrap}
 /* display:block is load-bearing, not tidiness: this is a <span> and it is not
    a flex item (its parent .msg-rowbody is, .msg-prev is not), so as an INLINE
    box overflow and text-overflow do nothing at all — a long preview was
    clipped mid-word at the card edge with no ellipsis. Found at 375px, where
    every preview is long enough to hit it. */
-.msg-prev{display:block;font-size:12.5px;color:var(--ink-3);white-space:nowrap;
+.msg-prev{display:block;font-size:var(--text-note);color:var(--ink-3);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-.msg-unread{flex:0 0 auto;min-width:19px;height:19px;padding:0 6px;border-radius:10px;background:var(--red-fill);
-  color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.msg-unread{flex:0 0 auto;min-width:19px;height:19px;padding:0 6px;border-radius:var(--r-xl);background:var(--red-fill);
+  color:#fff;font-size:var(--text-tiny);font-weight:600;display:flex;align-items:center;justify-content:center}
 .msg-row.is-unread .msg-name{font-weight:700}
 .msg-row.is-unread .msg-prev{color:var(--ink-body)}
 
@@ -158,12 +158,12 @@ function renderMessagesBody(boot) {
    room somebody else started says so. A chat you named shows your name, with
    who it is with underneath. */
 .msg-deal{display:flex;align-items:center;gap:6px;min-width:0;margin-top:1px}
-.msg-dealname{font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.msg-from{flex:0 0 auto;font-size:10.5px;font-weight:600;color:var(--ink-3);border:1px solid var(--edge);
-  border-radius:4px;padding:0 5px;line-height:16px;background:var(--card)}
+.msg-dealname{font-size:var(--text-label);color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.msg-from{flex:0 0 auto;font-size:var(--text-micro);font-weight:600;color:var(--ink-3);border:1px solid var(--edge);
+  border-radius:var(--r-sm);padding:0 5px;line-height:16px;background:var(--card)}
 /* Closed deal rooms, folded under one heading at the foot of the list. */
 .msg-fold{display:flex;align-items:center;gap:6px;width:100%;padding:12px 14px 10px;border:0;
-  border-top:1px solid var(--hair);background:none;font:inherit;font-size:10.5px;letter-spacing:.14em;
+  border-top:1px solid var(--hair);background:none;font:inherit;font-size:var(--text-micro);letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink-faint);font-weight:600;cursor:pointer;text-align:left}
 .msg-fold:hover{color:var(--ink-2)}
 .msg-fold .msg-count{letter-spacing:0;color:var(--ink-3);background:var(--wash);border-radius:9px;padding:0 6px;line-height:16px}
@@ -182,7 +182,7 @@ function renderMessagesBody(boot) {
 .msg-sect+.msg-rowwrap>.msg-row,.msg-sect+.msg-confirm{border-top:1px solid var(--hair)}
 .msg-more{position:absolute;right:10px;top:50%;margin-top:-15px;width:30px;height:30px;
   display:flex;align-items:center;justify-content:center;padding:0;border:1px solid transparent;
-  border-radius:6px;background:transparent;color:var(--ink-3);cursor:pointer;
+  border-radius:var(--r-md);background:transparent;color:var(--ink-3);cursor:pointer;
   opacity:0;pointer-events:none}
 .msg-more svg,.msg-btn.icon svg{display:block}
 .msg-more:hover,.msg-rowwrap.is-menu .msg-more{color:var(--ink);border-color:var(--edge);background:var(--card)}
@@ -200,14 +200,14 @@ function renderMessagesBody(boot) {
 /* The menu, beside the pointer on a mouse and a sheet from the bottom on a
    phone. Fixed, so it is placed against the window it opened in. */
 .msg-menu{position:fixed;z-index:60;width:236px;background:var(--card);border:1px solid var(--edge);
-  border-radius:8px;box-shadow:0 14px 34px -12px rgba(15,23,42,.45);padding:5px}
+  border-radius:var(--r-lg);box-shadow:0 14px 34px -12px rgba(15,23,42,.45);padding:5px}
 .msg-mhead{padding:6px 10px 8px;font-size:11.5px;line-height:1.4;color:var(--ink-3);
   border-bottom:1px solid var(--hair);margin-bottom:4px;overflow-wrap:anywhere}
 .msg-mi{display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:0;background:none;
-  border-radius:5px;font:inherit;font-size:13px;color:var(--ink);text-align:left;cursor:pointer}
+  border-radius:5px;font:inherit;font-size:var(--text-small);color:var(--ink);text-align:left;cursor:pointer}
 .msg-mi:hover,.msg-mi:focus-visible{background:var(--wash);outline:none}
 .msg-mi svg{flex:0 0 auto;color:var(--ink-3);display:block}
-.msg-mi small{margin-left:auto;color:var(--ink-faint);font-size:11px}
+.msg-mi small{margin-left:auto;color:var(--ink-faint);font-size:var(--text-tiny)}
 .msg-mi.danger,.msg-mi.danger svg{color:var(--red)}
 .msg-msep{height:1px;background:var(--hair);margin:4px 2px}
 .msg-scrim{position:fixed;inset:0;background:rgba(15,23,42,.42);z-index:59}
@@ -216,33 +216,33 @@ function renderMessagesBody(boot) {
   box-shadow:0 -10px 30px rgba(0,0,0,.22);max-height:80vh;overflow-y:auto}
 .msg-menu.is-sheet:before,.msg-info.is-sheet:before{content:"";display:block;width:38px;height:4px;
   border-radius:2px;background:var(--edge);margin:2px auto 10px}
-.msg-menu.is-sheet .msg-mhead{font-size:13px;padding:4px 6px 10px}
-.msg-menu.is-sheet .msg-mi{padding:13px 6px;font-size:15px}
+.msg-menu.is-sheet .msg-mhead{font-size:var(--text-small);padding:4px 6px 10px}
+.msg-menu.is-sheet .msg-mi{padding:13px 6px;font-size:var(--text-lead)}
 
 /* About this chat: who it is with, how you got here, and the deal. */
 .msg-info{position:fixed;z-index:60;width:318px;background:var(--card);border:1px solid var(--edge);
-  border-radius:10px;box-shadow:0 18px 40px -14px rgba(15,23,42,.45);padding:16px 16px 14px;
+  border-radius:var(--r-xl);box-shadow:0 18px 40px -14px rgba(15,23,42,.45);padding:16px 16px 14px;
   max-height:min(80vh,560px);overflow-y:auto}
 .msg-info-pp{display:flex;gap:12px;align-items:center;min-width:0}
 .msg-info-pp+.msg-info-pp{margin-top:10px}
 .msg-info-av{flex:0 0 42px;width:42px;height:42px;border-radius:50%;background:var(--slab);color:#fff;
-  font-weight:600;font-size:16px;display:flex;align-items:center;justify-content:center;text-transform:uppercase}
+  font-weight:600;font-size:var(--text-input);display:flex;align-items:center;justify-content:center;text-transform:uppercase}
 .msg-info-pt{min-width:0}
-.msg-info-name{font-weight:600;font-size:15px;color:var(--ink)}
-.msg-info-mail{font-size:12.5px;color:var(--ink-3);overflow-wrap:anywhere}
+.msg-info-name{font-weight:600;font-size:var(--text-lead);color:var(--ink)}
+.msg-info-mail{font-size:var(--text-note);color:var(--ink-3);overflow-wrap:anywhere}
 .msg-info-state{font-size:11.5px;color:var(--ink-3);margin-top:1px}
 .msg-info-state.ok{color:var(--ok-text)}
-.msg-info-who{margin:10px 0 0;font-size:12.5px;line-height:1.5;color:var(--ink-2)}
-.msg-info-lab{display:block;margin:16px 0 5px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+.msg-info-who{margin:10px 0 0;font-size:var(--text-note);line-height:1.5;color:var(--ink-2)}
+.msg-info-lab{display:block;margin:16px 0 5px;font-size:var(--text-micro);letter-spacing:.14em;text-transform:uppercase;
   color:var(--ink-faint);font-weight:600}
-.msg-info-deal{font-size:14px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
-.msg-info-meta{font-size:12.5px;color:var(--ink-3);margin-top:1px}
+.msg-info-deal{font-size:var(--text-compact);font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.msg-info-meta{font-size:var(--text-note);color:var(--ink-3);margin-top:1px}
 .msg-info-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
 .msg-btn.danger{color:var(--red)}
 /* The rename box, in place of the row or under the header like the delete
    question. */
-.msg-rename-in{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;
-  padding:7px 10px;font:inherit;font-size:13.5px;background:var(--card);color:var(--ink);margin:6px 0 0}
+.msg-rename-in{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:var(--r-md);
+  padding:7px 10px;font:inherit;font-size:var(--text-ui);background:var(--card);color:var(--ink);margin:6px 0 0}
 .msg-btn.icon{display:inline-flex;align-items:center;justify-content:center;padding:4px 6px;color:var(--ink-3)}
 .msg-btn.icon:hover{color:var(--red)}
 /* The question, asked where it was raised: in place of the row, or under the
@@ -251,14 +251,14 @@ function renderMessagesBody(boot) {
 .msg-confirm{padding:11px 14px 12px;border-bottom:1px solid var(--hair);background:var(--wash);
   box-shadow:inset 3px 0 0 var(--red)}
 .msg-delbar{padding:11px 16px 12px;border-bottom:1px solid var(--line);background:var(--wash)}
-.msg-confirm-q{font-size:13.5px;font-weight:600;color:var(--ink)}
-.msg-confirm-sub{font-size:12px;color:var(--ink-3);line-height:1.5;margin:2px 0 9px}
+.msg-confirm-q{font-size:var(--text-ui);font-weight:600;color:var(--ink)}
+.msg-confirm-sub{font-size:var(--text-label);color:var(--ink-3);line-height:1.5;margin:2px 0 9px}
 .msg-confirm-go{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .msg-confirm-go .msg-hint{color:var(--red)}
 
 /* --- the stream --------------------------------------------------------- */
 .msg-stream{flex:1;overflow-y:auto;min-height:0;padding:16px;display:flex;flex-direction:column;gap:2px}
-.msg-day{align-self:center;font-size:11px;color:var(--ink-faint);background:var(--wash);
+.msg-day{align-self:center;font-size:var(--text-tiny);color:var(--ink-faint);background:var(--wash);
   border:1px solid var(--hair);border-radius:20px;padding:3px 12px;margin:14px 0 8px}
 .msg-line{display:flex;gap:10px;padding:2px 0}
 .msg-line .msg-av{margin-top:2px}
@@ -266,60 +266,60 @@ function renderMessagesBody(boot) {
 .msg-line.cont .msg-av{visibility:hidden;height:0;margin:0}
 .msg-body{min-width:0;flex:1}
 .msg-meta{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
-.msg-author{font-weight:600;font-size:13px}
-.msg-time{font-size:11px;color:var(--ink-faint)}
-.msg-text{font-size:14px;color:var(--ink-body);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
+.msg-author{font-weight:600;font-size:var(--text-small)}
+.msg-time{font-size:var(--text-tiny);color:var(--ink-faint)}
+.msg-text{font-size:var(--text-compact);color:var(--ink-body);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
 /* Unsend (2026-09-29, Draft A). Only a message you sent in the last fifteen
    minutes carries the button, so almost every line is untouched. The button
    shows on hover or focus with a mouse and is always drawn under (hover:none),
    the chat bin's rule. The negative margin and matching padding give the
    hover wash room without moving the text. */
-.msg-line.can-unsend{position:relative;margin:0 -8px;padding:3px 8px;border-radius:6px}
+.msg-line.can-unsend{position:relative;margin:0 -8px;padding:3px 8px;border-radius:var(--r-md)}
 .msg-line.can-unsend .msg-body{padding-right:74px}
 .msg-line.can-unsend:hover,.msg-line.is-asking{background:var(--wash)}
-.msg-unsend{position:absolute;right:8px;top:3px;opacity:0;pointer-events:none;font-size:12px;padding:3px 9px}
+.msg-unsend{position:absolute;right:8px;top:3px;opacity:0;pointer-events:none;font-size:var(--text-label);padding:3px 9px}
 .msg-line.can-unsend:hover .msg-unsend,.msg-unsend:focus-visible,.msg-line.is-asking .msg-unsend{opacity:1;pointer-events:auto}
 @media (hover:none){ .msg-unsend{opacity:1;pointer-events:auto} }
 .msg-unsendq{margin:4px 0 10px 44px;max-width:560px;padding:11px 14px 12px;background:var(--wash);
-  border:1px solid var(--edge);border-radius:8px}
-.msg-unsent{align-self:center;font-size:12px;font-style:italic;color:var(--ink-3);padding:6px 0 4px}
+  border:1px solid var(--edge);border-radius:var(--r-lg)}
+.msg-unsent{align-self:center;font-size:var(--text-label);font-style:italic;color:var(--ink-3);padding:6px 0 4px}
 
 /* --- a comp inside a message -------------------------------------------- */
-.msg-comp{border:1px solid var(--edge);border-radius:8px;padding:10px 12px;margin:6px 0;
+.msg-comp{border:1px solid var(--edge);border-radius:var(--r-lg);padding:10px 12px;margin:6px 0;
   background:var(--paper);max-width:520px}
-.msg-comp h4{margin:0 0 2px;font-size:13.5px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
-.msg-comp .facts{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink-3);margin:4px 0 8px}
+.msg-comp h4{margin:0 0 2px;font-size:var(--text-ui);font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.msg-comp .facts{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:var(--text-label);color:var(--ink-3);margin:4px 0 8px}
 .msg-comp .facts b{font-weight:600;color:var(--ink-body)}
 .msg-comp .foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.msg-saved{font-size:12px;color:var(--ok-text);font-weight:500}
-.msg-chip{display:inline-block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;
-  color:var(--ink-3);border:1px solid var(--edge);border-radius:4px;padding:1px 6px}
+.msg-saved{font-size:var(--text-label);color:var(--ok-text);font-weight:500}
+.msg-chip{display:inline-block;font-size:var(--text-tiny);letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ink-3);border:1px solid var(--edge);border-radius:var(--r-sm);padding:1px 6px}
 
 /* --- composer ------------------------------------------------------------ */
 .msg-comp-tray{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 8px}
-.msg-tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--wash);
+.msg-tag{display:inline-flex;align-items:center;gap:6px;font-size:var(--text-label);background:var(--wash);
   border:1px solid var(--edge);border-radius:20px;padding:3px 6px 3px 10px;color:var(--ink-body);max-width:100%}
 .msg-tag span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .msg-tag button{appearance:none;border:0;background:transparent;cursor:pointer;color:var(--ink-3);
-  font-size:14px;line-height:1;padding:0 2px}
+  font-size:var(--text-compact);line-height:1;padding:0 2px}
 .msg-composer{border-top:1px solid var(--line);padding:12px 16px 14px;background:var(--card)}
 .msg-composer textarea{width:100%;box-sizing:border-box;resize:none;border:1px solid var(--edge);
-  border-radius:8px;padding:10px 12px;font:inherit;font-size:14px;line-height:1.5;
+  border-radius:var(--r-lg);padding:10px 12px;font:inherit;font-size:var(--text-compact);line-height:1.5;
   background:var(--paper);color:var(--ink);min-height:44px;max-height:180px}
 .msg-actions{display:flex;align-items:center;gap:8px;margin-top:8px}
 .msg-hint{font-size:11.5px;color:var(--ink-faint)}
 
 /* --- empty states, notices ----------------------------------------------- */
-.msg-empty{margin:auto;text-align:center;padding:40px 24px;max-width:44ch;color:var(--ink-3);font-size:13.5px}
-.msg-empty h3{margin:0 0 6px;font-size:15px;color:var(--ink);font-weight:600}
+.msg-empty{margin:auto;text-align:center;padding:40px 24px;max-width:44ch;color:var(--ink-3);font-size:var(--text-ui)}
+.msg-empty h3{margin:0 0 6px;font-size:var(--text-lead);color:var(--ink);font-weight:600}
 .msg-empty p{margin:0 0 14px;line-height:1.6}
-.msg-note{font-size:12.5px;padding:8px 16px;color:var(--ink-3)}
+.msg-note{font-size:var(--text-note);padding:8px 16px;color:var(--ink-3)}
 .msg-note.bad{color:var(--red);font-weight:500}
 
 /* --- picker / new-thread panels ------------------------------------------ */
 .msg-panel{border-top:1px solid var(--line);background:var(--wash);padding:12px 16px;max-height:280px;overflow-y:auto}
-.msg-panel h3{margin:0 0 8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
-.msg-pick{display:flex;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid var(--hair);font-size:13px}
+.msg-panel h3{margin:0 0 8px;font-size:var(--text-label);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.msg-pick{display:flex;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid var(--hair);font-size:var(--text-small)}
 .msg-pick:last-child{border-bottom:0}
 .msg-pick label{display:flex;gap:8px;align-items:center;cursor:pointer;min-width:0;flex:1}
 .msg-pick .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -331,7 +331,7 @@ function renderMessagesBody(boot) {
    not because it is a link somewhere. */
 .msg-invite{display:block;width:100%;text-align:left;background:none;border:0;
   border-top:1px solid var(--hair);padding:8px 4px;margin-top:2px;
-  color:var(--ink-faint);font:inherit;font-size:12.5px;cursor:pointer}
+  color:var(--ink-faint);font:inherit;font-size:var(--text-note);cursor:pointer}
 .msg-invite:hover{color:var(--ink)}
 /* Selected people, as removable chips above the list. */
 .msg-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
@@ -340,10 +340,10 @@ function renderMessagesBody(boot) {
    line, sharing the text input's own box so the panel reads as one form. */
 .msg-newmeta{display:flex;gap:8px}
 .msg-newmeta input[type=text]{flex:1;min-width:0}
-.msg-newmeta select{box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;
-  background:var(--card);color:var(--ink);font:inherit;font-size:13px;padding:0 8px;max-width:44%}
-.msg-panel input[type=text]{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;
-  padding:7px 10px;font:inherit;font-size:13px;margin-bottom:8px;background:var(--card);color:var(--ink)}
+.msg-newmeta select{box-sizing:border-box;border:1px solid var(--edge);border-radius:var(--r-md);
+  background:var(--card);color:var(--ink);font:inherit;font-size:var(--text-small);padding:0 8px;max-width:44%}
+.msg-panel input[type=text]{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:var(--r-md);
+  padding:7px 10px;font:inherit;font-size:var(--text-small);margin-bottom:8px;background:var(--card);color:var(--ink)}
 .msg-panelfoot{display:flex;gap:8px;align-items:center;margin-top:10px}
 
 .msg-hide{display:none!important}
@@ -354,12 +354,12 @@ function renderMessagesBody(boot) {
    live there. */
 .msg-views{display:flex;gap:2px;min-width:0}
 .msg-views button{appearance:none;display:inline-flex;align-items:center;gap:6px;border:0;background:none;
-  padding:6px 10px;border-radius:6px;font:inherit;font-size:14.5px;font-weight:600;color:var(--ink-3);cursor:pointer;white-space:nowrap}
+  padding:6px 10px;border-radius:var(--r-md);font:inherit;font-size:var(--text-body);font-weight:600;color:var(--ink-3);cursor:pointer;white-space:nowrap}
 .msg-views button:hover{color:var(--ink);background:var(--wash)}
 .msg-views button[aria-selected="true"]{color:var(--ink);background:var(--wash-2)}
 .msg-views button:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
 .msg-vn{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red-fill);color:#fff;
-  font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
+  font-size:var(--text-tiny);font-weight:600;display:inline-flex;align-items:center;justify-content:center}
 .msg-vn:empty{display:none}
 .msg-page[data-view="reports"] #msgThreads,.msg-page[data-view="reports"] #msgNewBtn,
 .msg-page[data-view="reports"] #msgNewPanel,.msg-page[data-view="reports"] #msgMain{display:none!important}
@@ -367,42 +367,42 @@ function renderMessagesBody(boot) {
 .msg-page:not([data-view="reports"]) #msgShelfType{display:none!important}
 .msg-search{display:flex;gap:8px}
 .msg-search input{flex:1;min-width:0}
-.msg-search select{flex:0 0 auto;max-width:46%;box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;
-  background:var(--paper);color:var(--ink);font:inherit;font-size:13px;padding:0 6px}
+.msg-search select{flex:0 0 auto;max-width:46%;box-sizing:border-box;border:1px solid var(--edge);border-radius:var(--r-md);
+  background:var(--paper);color:var(--ink);font:inherit;font-size:var(--text-small);padding:0 6px}
 /* A report row is a chat row: the avatar is who it came from (or a link for
    one you sent), the name is the street, the line under it says what it is. */
 .msg-av.link{background:var(--wash-2);color:var(--ink-2);border:1px solid var(--edge)}
 .msg-av.link svg{display:block}
 .msg-row.is-off .msg-name,.msg-row.is-off .msg-prev{color:var(--ink-faint)}
-.msg-new{flex:0 0 auto;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
-  color:#fff;background:var(--red-fill);border-radius:4px;padding:2px 6px;line-height:1.3}
+.msg-new{flex:0 0 auto;font-size:var(--text-micro);font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  color:#fff;background:var(--red-fill);border-radius:var(--r-sm);padding:2px 6px;line-height:1.3}
 .msg-sect .msg-count{letter-spacing:0;color:var(--ink-3);background:var(--wash);border-radius:9px;padding:0 6px;
   line-height:16px;margin-left:6px;font-weight:600}
-.msg-sline{padding:0 14px 8px;font-size:12px;color:var(--ink-3)}
+.msg-sline{padding:0 14px 8px;font-size:var(--text-label);color:var(--ink-3)}
 .msg-sline.bad{color:var(--red)}
 /* The open report. */
 .msg-rbody{flex:1;overflow-y:auto;min-height:0;padding:20px 22px 28px}
-.msg-rfacts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:7px 18px;margin:0 0 20px;font-size:13.5px}
+.msg-rfacts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:7px 18px;margin:0 0 20px;font-size:var(--text-ui)}
 .msg-rfacts dt{color:var(--ink-3)}
 .msg-rfacts dd{margin:0;color:var(--ink);overflow-wrap:anywhere}
 .msg-racts{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 20px}
 .msg-racts a.msg-btn{text-decoration:none;display:inline-flex;align-items:center}
 .msg-rsec{border-top:1px solid var(--hair);padding-top:14px;margin-top:4px}
-.msg-rsec h3{margin:0 0 10px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
-.msg-rp{display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid var(--hair);font-size:13px}
+.msg-rsec h3{margin:0 0 10px;font-size:var(--text-micro);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+.msg-rp{display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid var(--hair);font-size:var(--text-small)}
 .msg-rp:last-child{border-bottom:0}
 .msg-rp .who{flex:1;min-width:0;overflow-wrap:anywhere;color:var(--ink)}
-.msg-rp .st{font-size:12px;color:var(--ink-3);white-space:nowrap}
+.msg-rp .st{font-size:var(--text-label);color:var(--ink-3);white-space:nowrap}
 .msg-rp .st.ok{color:var(--ok-text)}
-.msg-rbody textarea{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;padding:8px 10px;
-  font:inherit;font-size:13px;background:var(--paper);color:var(--ink);resize:vertical;min-height:64px;margin:4px 0 8px}
-.msg-rnote{font-size:12.5px;line-height:1.5;color:var(--ink-3);margin:0 0 12px}
+.msg-rbody textarea{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:var(--r-md);padding:8px 10px;
+  font:inherit;font-size:var(--text-small);background:var(--paper);color:var(--ink);resize:vertical;min-height:64px;margin:4px 0 8px}
+.msg-rnote{font-size:var(--text-note);line-height:1.5;color:var(--ink-3);margin:0 0 12px}
 .msg-rnote.bad{color:var(--red);font-weight:500}
-.msg-rbody .msg-confirm{border:1px solid var(--edge);border-radius:8px;margin:0 0 16px}
+.msg-rbody .msg-confirm{border:1px solid var(--edge);border-radius:var(--r-lg);margin:0 0 16px}
 .msg-rlink{display:flex;gap:6px;align-items:center;margin:6px 0}
-.msg-rlink span{font-size:12.5px;color:var(--ink-2);min-width:0;overflow-wrap:anywhere}
-.msg-rlink input{flex:1;min-width:120px;box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;padding:5px 8px;
-  font:inherit;font-size:12px;background:var(--paper);color:var(--ink)}
+.msg-rlink span{font-size:var(--text-note);color:var(--ink-2);min-width:0;overflow-wrap:anywhere}
+.msg-rlink input{flex:1;min-width:120px;box-sizing:border-box;border:1px solid var(--edge);border-radius:var(--r-md);padding:5px 8px;
+  font:inherit;font-size:var(--text-label);background:var(--paper);color:var(--ink)}
 
 /* Below 900px the two panes become one. .msg-page.on-thread is what says
    which of them is showing — the reader's own navigation, not the viewport. */

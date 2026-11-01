@@ -4,7 +4,7 @@
 // changed light value is a regression in the theme that already ships.
 const test = require("node:test");
 const assert = require("node:assert");
-const { THEME_TOKENS, DARK_LIFT: DARK_LIFT_SHADOW, DARK_CHROME, AUTOFILL_COVER, rootCss } = require("../theme.js");
+const { THEME_TOKENS, SCALE_TOKENS, DARK_LIFT: DARK_LIFT_SHADOW, DARK_CHROME, AUTOFILL_COVER, rootCss, scaleCss } = require("../theme.js");
 
 // The vocabulary that already exists in five shipped pages. If any light
 // value here drifts, those pages restyle silently.
@@ -346,7 +346,7 @@ test("the footer's dark ink clears AA on the slab it actually sits on", () => {
 });
 
 test("no in-scope stylesheet references an undefined variable", () => {
-  const defined = new Set(Object.keys(THEME_TOKENS).map((n) => `--${n}`));
+  const defined = new Set([...Object.keys(THEME_TOKENS), ...Object.keys(SCALE_TOKENS)].map((n) => `--${n}`));
   const blocks = {
     MARKET_CSS: cssBlock("MARKET_CSS"),
     ACCOUNT_NAV_CSS: cssBlock("ACCOUNT_NAV_CSS"),
@@ -364,12 +364,11 @@ test("no in-scope stylesheet references an undefined variable", () => {
   };
   for (const [where, css] of Object.entries(blocks)) {
     for (const m of css.matchAll(/var\((--[a-z0-9-]+)/g)) {
-      // vault-page.js and the market CSS also carry non-colour scales
-      // (--t1..--t6 type, --s1..--s9 spacing, --r radius, --serif, and the
-      // vault redesign's --shadow, and --lift which is elevation not a
-      // colour). Those are page-local / non-colour and not the theme table's
-      // business.
-      if (/^--(t\d|s\d|r|serif|shadow|lift)$/.test(m[1])) continue;
+      // The size scale is theme.js's too since 2026-11-01 (SCALE_TOKENS:
+      // fonts, text sizes, radii, --s1..--s9). Two names stay page-local:
+      // the vault redesign's --shadow, and --lift, which is elevation and
+      // defined beside the colours.
+      if (/^--(shadow|lift)$/.test(m[1])) continue;
       assert.ok(defined.has(m[1]), `${where} uses undefined ${m[1]}`);
     }
   }
@@ -645,6 +644,87 @@ test("every token colour class index.html uses is in the vendored tailwind.css",
     return !TAILWIND_CSS.includes(sel + "{") && !TAILWIND_CSS.includes(sel + ":") && !TAILWIND_CSS.includes(sel + ">");
   });
   assert.deepEqual(missing, [], `regenerate tailwind.css (CLAUDE.md, Restart rule): missing ${missing.join(" ")}`);
+});
+
+// The size scale (2026-11-01): SCALE_TOKENS in theme.js, the fonts, text
+// sizes, radii and spacing every page reads. Four things hold it up.
+
+test("the size scale is sizes, ordered, with no value named twice", () => {
+  const texts = Object.entries(SCALE_TOKENS).filter(([k]) => k.startsWith("text-"));
+  const radii = Object.entries(SCALE_TOKENS).filter(([k]) => k.startsWith("r-"));
+  const space = Object.entries(SCALE_TOKENS).filter(([k]) => /^s\d$/.test(k));
+  for (const [k, v] of [...texts, ...radii, ...space]) assert.match(v, /^\d+(\.\d+)?px$/, `--${k} is not a px size`);
+  // Smallest first, strictly: a name is a step, and two names for one size
+  // would let two pages pick different names for the same thing.
+  for (const list of [texts, radii, space]) {
+    const px = list.map(([, v]) => parseFloat(v));
+    assert.deepEqual(px, [...px].sort((a, b) => a - b), "a scale is out of order");
+    assert.equal(new Set(px).size, px.length, "a scale names one size twice");
+  }
+  for (const k of ["serif", "sans", "mono"]) assert.ok(SCALE_TOKENS[k], `--${k} missing`);
+  // Never a colour: those are THEME_TOKENS', which carry a dark value.
+  for (const v of Object.values(SCALE_TOKENS)) assert.doesNotMatch(v, /#[0-9a-f]{3,8}\b/i);
+});
+
+test("every page gets the scale: rootCss and scaleCss carry all of it, and nothing keeps a copy", () => {
+  for (const css of [rootCss(), scaleCss()]) {
+    for (const [k, v] of Object.entries(SCALE_TOKENS)) assert.ok(css.includes(`--${k}:${v}`), `--${k} missing`);
+    assert.equal(css.includes("`"), false);
+    assert.equal(css.includes("${"), false);
+  }
+  // The scale sits in rootCss's UNSCOPED :root, never the dark block, so
+  // print (which never reads the dark block) has every size too.
+  const css = rootCss();
+  assert.ok(css.indexOf("--text-body:") < css.indexOf("[data-theme"), "the scale must be in the light :root block");
+  // The admin pages and the hero review tool draw their own documents: they
+  // take the scale through SCALE_CSS, and none keeps its own copy (they
+  // disagreed: one --t1 was 32px, the other 34px).
+  for (const [where, src] of [["server.js", SERVER_JS], ["vault-page.js", VAULT_JS], ["market-hero-review.js", root("market-hero-review.js")]]) {
+    assert.doesNotMatch(src, /--(t[1-6]|r|s[1-9]):\s*\d/, `${where} defines its own copy of the scale`);
+    assert.doesNotMatch(src, /var\(--(t[1-6]|r)\)/, `${where} still reads a retired local name`);
+  }
+  assert.equal((SERVER_JS.match(/\n\$\{SCALE_CSS\}\n:root\{/g) || []).length, 4, "the four admin pages each take SCALE_CSS");
+});
+
+test("index.html declares the same scale theme.js does", () => {
+  // index.html is static and never templates theme.js, so it hand-copies the
+  // scale beside its colour tokens, the colours' own arrangement.
+  for (const [k, v] of Object.entries(SCALE_TOKENS)) {
+    assert.ok(INDEX_STYLE.includes(`--${k}:${v}`), `index.html --${k} missing or wrong`);
+  }
+});
+
+test("no stylesheet gains a text size or radius that is off the scale", () => {
+  // The ratchet. Every on-scale literal became its name; the sizes below
+  // were in use and are NOT on the scale, so they stay literal until a
+  // design call folds them in. The list may only shrink: a new one-off
+  // size fails here, with the scale's names to pick from instead.
+  const ALLOWED_TEXT = new Set([".8em", "9px", "9.5px", "10px", "11.5px", "15.5px", "16.5px", "17px", "18px", "21px", "22px", "23px", "25px", "29px", "30px", "36px"]);
+  const ALLOWED_RADIUS = new Set(["2px", "5px", "9px", "11px", "14px", "16px", "18px", "20px", "50%", "99px", "9999px"]);
+  const FILES = ["index.html", "server.js", "home-page.js", "brokers-firms-page.js", "faq-page.js", "pricing-page.js",
+    "vault-page.js", "messages-page.js", "permits-page.js", "sites-page.js", "buildings-page.js", "hub-page.js",
+    "market-rank-page.js", "bulk-page.js", "market-hero-review.js", "home-sites.css"];
+  // Stylesheets only: <style> spans and `const X_CSS = \`` literals. An
+  // email's inline style is not in scope, since a mail client has no :root.
+  const sheets = (text, file) => {
+    if (file.endsWith(".css")) return [text];
+    const out = [];
+    for (const m of text.matchAll(/<style[^>]*>/g)) { const e = text.indexOf("</style>", m.index); if (e > 0) out.push(text.slice(m.index, e)); }
+    if (!file.endsWith(".html")) for (const m of text.matchAll(/(?:^|\n)\s*(?:const|let) [A-Z0-9_]*CSS[A-Z0-9_]* =\s*`/g)) {
+      const s = m.index + m[0].length; out.push(text.slice(s, text.indexOf("`", s)));
+    }
+    return out;
+  };
+  const offenders = [];
+  for (const f of FILES) {
+    for (const sheet of sheets(root(f), f)) {
+      const css = sheet.replace(/\/\*[\s\S]*?\*\//g, "");
+      for (const m of css.matchAll(/font-size\s*:\s*([0-9.]+(?:px|rem|em|%))/g)) if (!ALLOWED_TEXT.has(m[1])) offenders.push(`${f} font-size:${m[1]}`);
+      for (const m of css.matchAll(/border-radius\s*:\s*([0-9.]+(?:px|%))\s*(?:!important)?\s*[;}\n"'`]/g)) if (!ALLOWED_RADIUS.has(m[1])) offenders.push(`${f} border-radius:${m[1]}`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    `use the scale's name (theme.js SCALE_TOKENS: var(--text-ui), var(--r-md), ...) instead of: ${offenders.join(", ")}`);
 });
 
 test("the bridge cannot reach the print stylesheet", () => {

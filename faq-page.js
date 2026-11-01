@@ -193,7 +193,7 @@ main.wrap{max-width:none;padding:0}
    and "For firms — Pro version"), which is what makes them read as one
    family across two pages; a 11.5px version of it is a different device. */
 .faqeye{font-size:18px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--red);line-height:1.35}
-.faqpg h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:36px;line-height:1.16;
+.faqpg h1{font-family:var(--serif);font-weight:500;font-size:36px;line-height:1.16;
   color:var(--ink);margin:10px 0 18px}
 
 /* --- The accordions -------------------------------------------------------
@@ -225,7 +225,7 @@ main.wrap{max-width:none;padding:0}
 .faqq summary::-webkit-details-marker{display:none}
 .faqq summary::marker{content:""}
 .faqq summary:focus-visible{outline:2px solid var(--red);outline-offset:3px}
-.faqq h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:20px;line-height:1.3;
+.faqq h2{font-family:var(--serif);font-weight:500;font-size:var(--text-subhead);line-height:1.3;
   color:var(--ink);margin:0}
 /* The + that becomes an ×. One glyph rotated 45deg, never two swapped: a
    swap needs a second element and gets the two out of step. */
@@ -234,7 +234,7 @@ main.wrap{max-width:none;padding:0}
 .faqq[open] > summary .faqm{transform:rotate(45deg)}
 @media (prefers-reduced-motion:reduce){.faqm{transition:none}}
 .faqa{padding:0 0 22px}
-.faqa p{font-size:14.5px;line-height:1.65;color:var(--ink-body);margin:0;max-width:74ch}
+.faqa p{font-size:var(--text-body);line-height:1.65;color:var(--ink-body);margin:0;max-width:74ch}
 
 /* Two CTAs, centered, with no sentence over them. The design's "Still have a
    question? Write to us" was dropped on 2026-09-01 and stays dropped: the
@@ -243,8 +243,8 @@ main.wrap{max-width:none;padding:0}
   display:flex;flex-wrap:wrap;gap:12px;justify-content:center}
 /* Outlined, against MARKET_CSS's solid red .btn beside it. Declared here
    rather than borrowed because MARKET_CSS has no ghost button. */
-.faqghost{display:inline-block;background:var(--paper);border:1px solid var(--edge);border-radius:4px;
-  padding:10px 18px;font-size:14px;font-weight:600;color:var(--ink);text-decoration:none}
+.faqghost{display:inline-block;background:var(--paper);border:1px solid var(--edge);border-radius:var(--r-sm);
+  padding:10px 18px;font-size:var(--text-compact);font-weight:600;color:var(--ink);text-decoration:none}
 .faqghost:hover{border-color:var(--ink-body)}
 
 /* Paper has no affordance to click, so a closed drawer on paper is content the

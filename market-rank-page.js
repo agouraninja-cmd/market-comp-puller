@@ -40,14 +40,14 @@ const CLASS_LABEL = {
 // a hardcoded colour would be a light island in dark mode.
 const RANK_CSS = `
 .rk-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 18px}
-.rk-tab{display:inline-block;padding:6px 12px;border:1px solid var(--edge);border-radius:4px;
-  background:var(--card);color:var(--ink-2);font-size:14px;font-weight:500;text-decoration:none}
+.rk-tab{display:inline-block;padding:6px 12px;border:1px solid var(--edge);border-radius:var(--r-sm);
+  background:var(--card);color:var(--ink-2);font-size:var(--text-compact);font-weight:500;text-decoration:none}
 .rk-tab:hover{background:var(--wash);color:var(--ink)}
 .rk-tab[aria-current="page"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
-.rk-scroll{overflow-x:auto;border:1px solid var(--edge);border-radius:6px;background:var(--card)}
-table.rk{border-collapse:collapse;width:100%;min-width:760px;font-size:14px}
+.rk-scroll{overflow-x:auto;border:1px solid var(--edge);border-radius:var(--r-md);background:var(--card)}
+table.rk{border-collapse:collapse;width:100%;min-width:760px;font-size:var(--text-compact)}
 table.rk th,table.rk td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--hair)}
-table.rk thead th{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+table.rk thead th{font-size:var(--text-tiny);font-weight:600;letter-spacing:.08em;text-transform:uppercase;
   color:var(--ink-3);border-bottom:1px solid var(--line);white-space:nowrap;background:var(--wash)}
 table.rk tbody tr:last-child td{border-bottom:0}
 table.rk tbody tr:hover{background:var(--wash)}
@@ -55,9 +55,9 @@ table.rk td.num,table.rk th.num{text-align:right;font-variant-numeric:tabular-nu
 .rk-mkt{font-weight:600}
 .rk-mkt a{color:var(--ink)}
 .rk-mkt a:hover{color:var(--red)}
-.rk-tier{font-size:11px;color:var(--ink-3);margin-left:6px;font-weight:400}
-.rk-pill{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.04em;
-  text-transform:uppercase;padding:2px 7px;border-radius:3px;white-space:nowrap}
+.rk-tier{font-size:var(--text-tiny);color:var(--ink-3);margin-left:6px;font-weight:400}
+.rk-pill{display:inline-block;font-size:var(--text-tiny);font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;padding:2px 7px;border-radius:var(--r-xs);white-space:nowrap}
 .rk-exp{background:var(--ok-bg);color:var(--ok-text);border:1px solid var(--ok-rule)}
 .rk-flat{background:var(--est-bg);color:var(--est-text);border:1px solid var(--edge)}
 .rk-con{background:var(--err-bg);color:var(--err-text);border:1px solid var(--err-rule)}
@@ -75,28 +75,28 @@ table.rk td.num,table.rk th.num{text-align:right;font-variant-numeric:tabular-nu
 .rk-tiers label.rk-tab{cursor:pointer;user-select:none}
 .rk-tiers input:checked + label.rk-tab{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 .rk-tiers input:focus-visible + label.rk-tab{outline:2px solid var(--red);outline-offset:1px}
-.rk-tab-n{margin-left:6px;font-size:11px;opacity:.65;font-variant-numeric:tabular-nums}
-.rk-tier-note{font-size:12px;color:var(--ink-3);margin-left:4px}
-.rk-note{font-size:13px;color:var(--ink-2);margin:14px 0 0}
-.rk-legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 0 0;font-size:12px;color:var(--ink-3)}
+.rk-tab-n{margin-left:6px;font-size:var(--text-tiny);opacity:.65;font-variant-numeric:tabular-nums}
+.rk-tier-note{font-size:var(--text-label);color:var(--ink-3);margin-left:4px}
+.rk-note{font-size:var(--text-small);color:var(--ink-2);margin:14px 0 0}
+.rk-legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 0 0;font-size:var(--text-label);color:var(--ink-3)}
 /* --- One market's component panels ------------------------------------- */
 /* Head is a single flex row: title, score, band, weight, coverage. It wraps
    rather than shrinking, because the score must never be squeezed onto two
    characters per line on a phone. */
 .rk-comp-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 10px}
 .rk-comp-head h2{margin:0;flex:1 1 auto;min-width:8rem}
-.rk-comp-score{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink)}
-.rk-comp-w{font-size:12px;color:var(--ink-3);white-space:nowrap}
-.rk-comp-story{font-size:14.5px;color:var(--ink-2);margin:0;max-width:68ch;line-height:1.55}
+.rk-comp-score{font-size:var(--text-heading);font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink)}
+.rk-comp-w{font-size:var(--text-label);color:var(--ink-3);white-space:nowrap}
+.rk-comp-story{font-size:var(--text-body);color:var(--ink-2);margin:0;max-width:68ch;line-height:1.55}
 .rk-comp-story::first-letter{text-transform:uppercase}
 /* The drill-down. Closed by default: the sentence above is the answer, this is
    the evidence, and a page that opens all its evidence at once is the flat
    table this replaced. */
 .rk-dig{margin:14px 0 0;border-top:1px solid var(--hair);padding-top:12px}
-.rk-dig summary{cursor:pointer;font-size:13.5px;font-weight:600;color:var(--ink-2);
+.rk-dig summary{cursor:pointer;font-size:var(--text-ui);font-weight:600;color:var(--ink-2);
   list-style:none;display:inline-flex;align-items:center;gap:6px}
 .rk-dig summary::-webkit-details-marker{display:none}
-.rk-dig summary::before{content:"▸";font-size:11px;color:var(--ink-3);transition:transform .12s}
+.rk-dig summary::before{content:"▸";font-size:var(--text-tiny);color:var(--ink-3);transition:transform .12s}
 .rk-dig[open] summary::before{transform:rotate(90deg)}
 .rk-dig summary:hover{color:var(--ink)}
 .rk-dig .rk-scroll{margin-top:12px}
@@ -105,38 +105,38 @@ table.rk td.num,table.rk th.num{text-align:right;font-variant-numeric:tabular-nu
 .rk-yours{border-color:var(--ink-4)}
 .rk-yours-act{margin:14px 0 0;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .rk-yours-act .rk-note{margin:0;flex:1 1 16rem;min-width:12rem}
-.rk-export p{font-size:14px;color:var(--ink-2);margin:0 0 12px;max-width:62ch}
+.rk-export p{font-size:var(--text-compact);color:var(--ink-2);margin:0 0 12px;max-width:62ch}
 .rk-export-links{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:0 0 10px}
-.rk-export-alt{font-size:13.5px;color:var(--ink-mute);text-decoration:underline;
+.rk-export-alt{font-size:var(--text-ui);color:var(--ink-mute);text-decoration:underline;
   text-decoration-color:var(--edge)}
 .rk-export-alt:hover{color:var(--ink)}
 /* --- The explorer's entry card (/markets) ------------------------------- */
 /* Two columns on a wide screen: the explanation and the class links on the
    left, the live top three on the right. One column below 720px, where a
    side-by-side would squeeze every market name onto two lines. */
-.rke{border:1px solid var(--edge);background:var(--card);border-radius:6px;
+.rke{border:1px solid var(--edge);background:var(--card);border-radius:var(--r-md);
   padding:22px 24px;margin:0 0 26px;box-shadow:var(--lift);
   display:grid;grid-template-columns:1.35fr 1fr;gap:8px 30px;align-items:start}
 .rke-head{grid-column:1}
 .rke h2{font-family:var(--serif);font-weight:500;font-size:21px;color:var(--ink);
   margin:0 0 6px;letter-spacing:normal;text-transform:none}
-.rke-head p{color:var(--ink-2);font-size:14px;margin:0;max-width:56ch}
+.rke-head p{color:var(--ink-2);font-size:var(--text-compact);margin:0;max-width:56ch}
 .rke-tabs{grid-column:1;display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:14px}
-.rke-lab{font-size:13px;color:var(--ink-2);font-weight:600;margin-right:2px}
+.rke-lab{font-size:var(--text-small);color:var(--ink-2);font-weight:600;margin-right:2px}
 /* The preview spans both left-hand rows so it sits beside the text, not under it. */
 .rke-top{grid-column:2;grid-row:1 / span 2;border-left:1px solid var(--hair);padding-left:26px}
-.rke-top h3{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+.rke-top h3{font-size:var(--text-tiny);font-weight:600;letter-spacing:.08em;text-transform:uppercase;
   color:var(--ink-3);margin:0 0 9px}
 .rke-list{list-style:none;margin:0;padding:0}
-.rke-list li{display:flex;align-items:center;gap:8px;font-size:14px;padding:5px 0;
+.rke-list li{display:flex;align-items:center;gap:8px;font-size:var(--text-compact);padding:5px 0;
   border-bottom:1px solid var(--hair)}
 .rke-list li:last-child{border-bottom:0}
-.rke-n{color:var(--ink-3);font-size:12px;font-variant-numeric:tabular-nums;min-width:.9rem}
+.rke-n{color:var(--ink-3);font-size:var(--text-label);font-variant-numeric:tabular-nums;min-width:.9rem}
 .rke-list a{color:var(--ink);font-weight:600;flex:1;min-width:0}
 .rke-list a:hover{color:var(--red)}
-.rke-s{font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:13px}
-.rke-more{margin:12px 0 0;font-size:13.5px}
-.rke-foot{grid-column:1;font-size:12px;color:var(--ink-3);margin:12px 0 0}
+.rke-s{font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:var(--text-small)}
+.rke-more{margin:12px 0 0;font-size:var(--text-ui)}
+.rke-foot{grid-column:1;font-size:var(--text-label);color:var(--ink-3);margin:12px 0 0}
 @media(max-width:720px){
   .rke{grid-template-columns:1fr;padding:20px}
   .rke-top{grid-column:1;grid-row:auto;border-left:0;padding-left:0;

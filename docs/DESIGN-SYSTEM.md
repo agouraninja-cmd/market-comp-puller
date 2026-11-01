@@ -9,11 +9,11 @@ page that uses it changes with it.
 
 **How the site is built, in one paragraph.** There is no build step, no design
 tool, and no CMS. The site is plain HTML and CSS written directly into a few
-files. Colours are the exception — they are named tokens (`--red`, `--ink`)
-defined centrally, so changing one changes every page at once. Sizes, spacing
-and fonts are mostly not tokenised: they are written into each stylesheet, so
-changing one means finding each place it appears. (A few pages do carry their
-own size scales — see §5 — but nothing shares them yet.)
+files. Colours, fonts, text sizes and corner radii are the exception — they are
+named tokens (`--red`, `--ink`, `--serif`, `--text-body`, `--r-md`) defined
+centrally in `theme.js`, so changing one changes every page at once. Spacing
+mostly is not: it is written into each stylesheet, so changing it means
+finding each place it appears (§5).
 
 **For the non-visual half of the brand** — name, legal entity, voice, and the
 language rules that are promises rather than style choices — see
@@ -183,10 +183,13 @@ buttons, table headers, emphasis · 700/800 rare.
 Figures use `font-variant-numeric: tabular-nums` so digits align in columns.
 Keep that on anything showing money.
 
-**Font tokens, partly.** The admin dashboards and the Comps/Pipeline page
-(`vault-page.js`) define `--serif` for the Georgia stack. Everywhere else —
-`MARKET_CSS`, `index.html`, the public pages — writes the stack out in full,
-about 60 times. Changing the display font is still a find-and-replace.
+**Font tokens.** `theme.js` names the three stacks: `--serif` (Georgia),
+`--sans` (Inter) and `--mono`. Every stylesheet writes `font-family:
+var(--serif)`, so changing the display font is one edit in `theme.js` (and its
+copy in `index.html`). About ten Inter and monospace stacks whose fallback
+list differs from the token's are still written out, `index.html`'s `body`
+rule among them: switching one to the token would change which font a browser
+falls back to.
 
 ---
 
@@ -291,61 +294,67 @@ cards ever read as undefined in dark, reach for `--lift` before `--edge`.
 
 ## 5. Numbers
 
-These are the values the main components use. Many more are in use around the
-site (35 font sizes, 18 corner radii) — §9 has the count. When adding
-something new, pick from these tables.
+Since 2026-11-01 the sizes are named tokens too: `SCALE_TOKENS` in `theme.js`,
+which every page receives (server pages through `rootCss()`, the admin pages
+through `scaleCss()`, and `index.html` through its hand-copy, which a test
+pins). A stylesheet writes `font-size: var(--text-ui)` and
+`border-radius: var(--r-md)`, never `13.5px` or `6px`.
+
+The values are the ones the site already used, so naming them moved nothing.
+That is why the text scale still has neighbours half a pixel apart (12/12.5,
+13/13.5, 14/14.5): folding them is now a one-line change in `theme.js` that
+moves every page at once, and a design call to make on purpose (§9).
+
+**A test holds the line**: `test/theme.test.js` ("no stylesheet gains a text
+size or radius that is off the scale") fails the build on a NEW size that is
+not a token. The sizes that were in use but are off the scale are listed there
+and may only be removed, never added to.
 
 ### Type scale
 
-| Size | Font | Use |
-|---|---|---|
-| 9–10px | Inter | Photo credits, finest print |
-| **10.5px** | Inter 600, uppercase, `.07–.12em` tracking | The micro-label — table headers, tile labels, badges. Also the rail's row labels (not uppercase) |
-| 12–12.5px | Inter | Captions, footnotes |
-| **13–13.5px** | Inter | Navigation, tables, small buttons |
-| **14.5px** | Inter | Body copy |
-| 15px | Inter 600 | Wordmark |
-| 16px | Inter | Form inputs — **never smaller** (iOS Safari zooms below 16px and stays zoomed) |
-| 17–19px | Georgia 500 | Card headings |
-| 20–24px | Georgia 500 | Section headings, ledger figures |
-| 22px | Georgia 500 | CTA headings |
-| 25px | Georgia 500 | Tile figures |
-| **26px / 32px** | Georgia 500 | **The valuation hero** — Low and High at 26px, Likely at 32px |
-| 27–29px | Georgia 500 | Landing sub-headings, emphasised ledger figure |
-| **28 → 34px** | Georgia 500, line-height 1.15 | Page H1 (28px, lifting to 34px at ≥640px) |
-| 38px / 42px | Georgia 400, line-height 1.12–1.15 | Home page headlines (`home-page.js`) |
+| Token | Size | Font | Use |
+|---|---|---|---|
+| `--text-micro` | **10.5px** | Inter 600, uppercase, `.07–.12em` tracking | The micro-label — table headers, tile labels, badges. Also the rail's row labels (not uppercase) |
+| `--text-tiny` | 11px | Inter | Fine print |
+| `--text-label` | 12px | Inter | Labels |
+| `--text-note` | 12.5px | Inter | Captions, footnotes, the note under a figure |
+| `--text-small` | 13px | Inter | Small buttons, the footer |
+| `--text-ui` | **13.5px** | Inter | Navigation, tables |
+| `--text-compact` | 14px | Inter | Dense body copy |
+| `--text-body` | **14.5px** | Inter | Body copy |
+| `--text-lead` | 15px | Inter 600 | Wordmark, large buttons |
+| `--text-input` | 16px | Inter | Form inputs — **never smaller** (iOS Safari zooms below 16px and stays zoomed) |
+| `--text-title` | 19px | Georgia 500 | Card headings |
+| `--text-subhead` | 20px | Georgia 500 | Sub-headings |
+| `--text-heading` | 24px | Georgia 500 | Section headings, ledger figures |
+| `--text-figure` | **26px** | Georgia 500 | **The valuation hero's** Low and High |
+| `--text-h1` | **28px** | Georgia 500, line-height 1.15 | Page H1 on a phone |
+| `--text-hero` | **32px** | Georgia 500 | **The valuation hero's** Likely; the admin pages' titles |
+| `--text-h1-lg` | **34px** | Georgia 500, line-height 1.15 | Page H1 from 640px up |
+| `--text-display` | 38px | Georgia 400, line-height 1.15 | Home page headlines (`home-page.js`) |
+| `--text-display-lg` | 42px | Georgia 400, line-height 1.12 | Home page headlines |
+
+Off the scale, still written as literals: 9, 9.5, 10, 11.5, 15.5, 16.5, 17, 18,
+21, 22, 23, 25, 29, 30 and 36px (about 110 uses in all; 11.5px alone is 30).
 
 Uppercase micro-labels always carry letter-spacing. Serif headings carry
 none (or a hair negative: `-.005em` on H1).
 
-**Scales that exist but are not shared.** The admin dashboards (`/dev`, `/hq`,
-analytics) and the Comps/Pipeline page (`vault-page.js`) each define a type
-scale `--t1`…`--t6`, a spacing scale `--s1`…`--s9` and a radius `--r`. They
-are page-local copies and they disagree:
-
-| | Dashboards | Comps/Pipeline |
-|---|---|---|
-| `--t1` (largest) | 32px | 34px |
-| `--t2` | 19px | 20px |
-| `--t3`…`--t6` | 15 · 14 · 12.5 · 11px | 15 · 14 · 12.5 · 11px |
-| `--s1`…`--s9` | 2 · 4 · 8 · 12 · 16 · 24 · 32 · 48 · 80px | same |
-| `--r` | 4px | 6px |
-
-The customer pages (`MARKET_CSS`, `index.html`, the public pages) do not use
-them. The theme test lets these names through as page-local; they are not in
-`theme.js`.
-
 ### Corner radius
 
-| Value | Use |
-|---|---|
-| 3px | Badges |
-| 4px | Buttons, chips, filter pills, and the app's inputs (Tailwind `rounded`) |
-| **6px** | Cards, panels, tables, server-page inputs — the default |
-| 8px | Dropdown menus |
-| 10px | Rail rows |
-| 999px | Full pills (the Comps section tabs) |
-| 50% | Circles (avatars, dots) |
+| Token | Value | Use |
+|---|---|---|
+| `--r-xs` | 3px | Badges |
+| `--r-sm` | 4px | Buttons, chips, filter pills, and the app's inputs (Tailwind `rounded`) |
+| `--r-md` | **6px** | Cards, panels, tables, server-page inputs — the default |
+| `--r-lg` | 8px | Dropdown menus |
+| `--r-xl` | 10px | Rail rows |
+| `--r-2xl` | 12px | Home's rows and start screen, the Sites board's columns |
+| `--r-pill` | 999px | Full pills (the Comps section tabs) |
+| — | 50% | Circles (avatars, dots) |
+
+Off the scale, still literal: 2, 5, 9, 11, 14, 16, 18 and 20px, and two other
+ways of writing a pill (99px, 9999px).
 
 ### Spacing and layout
 
@@ -360,7 +369,15 @@ them. The theme test lets these names through as page-local; they are not in
 - **Gaps:** 8px tight · 12px grid · 18px header items
 - **Card margin:** 18px between stacked cards
 
-Common step: 4 · 6 · 8 · 10 · 12 · 16 · 18 · 22 · 26 · 28.
+**The spacing scale** is `--s1` … `--s9`: 2 · 4 · 8 · 12 · 16 · 24 · 32 · 48 ·
+80px. The admin pages and the Comps/Pipeline page are built on it; the
+customer pages mostly are not. Their padding and margins were measured at 42
+different values, and the most common (10, 6, 14, 18, 20px) are not on the
+scale, so moving them onto it would visibly change spacing. New work should use
+the scale; the rest is a design pass, not a rename.
+
+Common steps in the customer pages today: 4 · 6 · 8 · 10 · 12 · 16 · 18 · 22 ·
+26 · 28.
 
 ### Line height and measure
 
@@ -533,13 +550,19 @@ warnings in §1 — this is the one change with a real trap in it.
 then regenerate `tailwind.css` (below): the app gets its class
 (`text-<name>`, `bg-<name>`…) from `tailwind.config.js` automatically.
 
-**A number** (size, spacing, radius) — find it in the relevant stylesheet from
-§7. If it appears in more than one file, change all of them. Pick from the
-tables in §5 rather than adding a new value.
+**A text size or a radius** — change its token in `theme.js` **and** in
+`index.html`'s copy (the scale sits at the end of the `:root{...}` block),
+and every page moves with it. To use one, write its name
+(`font-size: var(--text-ui)`), never the number: a size that is not a token
+fails `test/theme.test.js`. Need a size the scale lacks? Add it to
+`SCALE_TOKENS` deliberately, in order, rather than typing it into a page.
 
-**A font** — the family is written into each stylesheet's `body` rule and into
-every Georgia heading rule (about 60 places; a few pages use `--serif`). This
-is still a find-and-replace across files.
+**Spacing** — pick from `--s1` … `--s9` for new work. Existing padding and
+margins are mostly literals (§5), so changing one still means finding it in
+the stylesheets from §7.
+
+**A font** — change `--serif`, `--sans` or `--mono` in `theme.js` and in
+`index.html`'s copy. The few stacks still written out are listed in §3.
 
 **The logo** — both SVGs in `server.js`, plus regenerating the eight image
 files in §2.
@@ -614,10 +637,14 @@ new one-off value — they are the reason to stop.
    (`#B8C0CC`, `#ECEAE3`, `#F4FAF6`…). Snapping each to its nearest token
    would retire the bridge, but it changes light mode, so it needs a design
    call per colour.
-2. **Sizes are not a system.** 35 different font sizes are in use, 18 corner
-   radii, and 12 breakpoint widths. The type and spacing scales in §5 exist
-   only on the dashboards and the Comps/Pipeline page, and the two copies
-   disagree. The fix is one scale in `theme.js` that every page shares.
+2. **The size scale has near-duplicates, and spacing has no scale in
+   practice.** Since 2026-11-01 text sizes and radii are tokens every page
+   shares (§5), but the scale is today's values, so it still has 19 text
+   sizes, including pairs half a pixel apart (12/12.5, 13/13.5, 14/14.5),
+   plus about 110 uses of 15 sizes that are not on it at all. Folding them
+   is a design pass: each fold is a one-line change in `theme.js`, but it
+   moves every page that uses it. Spacing in the customer pages is still 42
+   literal values, and there are 12 breakpoint widths.
 3. **Components are copied, not shared.** `.btn` is restyled in 8 files (19
    rules), in at least three sizes. There are five separate tab styles:
    `.cs-tabs` (Comps section), `.vt-tab` (`vault-page.js`), `.pt-tab`

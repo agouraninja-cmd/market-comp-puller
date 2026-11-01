@@ -46,50 +46,50 @@ body{margin:0;background:var(--paper);color:var(--ink);
 a{color:inherit;text-decoration:none}
 .hdr{position:sticky;top:0;z-index:1000;background:var(--paper);border-bottom:1px solid var(--line);
   padding:12px 20px;display:flex;align-items:center;gap:18px}
-.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px;margin-left:auto}
+.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:var(--text-ui);margin-left:auto}
 .hdr nav a{color:var(--ink-2)}.hdr nav a:hover{color:var(--ink)}
 .wrap{max-width:1000px;margin:0 auto;padding:28px 20px 80px}
 h1{font-size:22px;margin:0 0 4px;line-height:1.2}
-.sub{color:var(--ink-2);font-size:13.5px;margin:0 0 24px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:20px}
-.msg{padding:14px 16px;border:1px solid var(--line);border-radius:8px;background:var(--wash);
-  color:var(--ink-body);font-size:14px}
+.sub{color:var(--ink-2);font-size:var(--text-ui);margin:0 0 24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-xl);padding:18px;margin-bottom:20px}
+.msg{padding:14px 16px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--wash);
+  color:var(--ink-body);font-size:var(--text-compact)}
 .msg.bad{border-color:var(--err-rule)}
 /* The one thing an unsigned reader can act on. Underlined rather than a
    button: it sits inside a sentence, and a button would read as the primary
    act of a page whose primary act is reading the comps. */
 a.signin{text-decoration:underline;font-weight:600;white-space:nowrap}
-h2{font-size:15px;margin:0 0 12px;letter-spacing:.01em}
+h2{font-size:var(--text-lead);margin:0 0 12px;letter-spacing:.01em}
 .tblwrap{overflow-x:auto}
-table{width:100%;min-width:640px;border-collapse:collapse;font-size:13.5px}
+table{width:100%;min-width:640px;border-collapse:collapse;font-size:var(--text-ui)}
 th{text-align:left;font-weight:600;color:var(--ink-2);border-bottom:1px solid var(--ink);
   padding:0 10px 7px 0;white-space:nowrap}
 td{padding:9px 10px 9px 0;border-bottom:1px solid var(--line);vertical-align:top}
 td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.badge{display:inline-block;font-size:11px;padding:1px 6px;border-radius:999px;
+.badge{display:inline-block;font-size:var(--text-tiny);padding:1px 6px;border-radius:var(--r-pill);
   border:1px solid var(--line);color:var(--ink-2);white-space:nowrap}
-.tally{color:var(--ink-2);font-size:13px;margin:0 0 10px}
+.tally{color:var(--ink-2);font-size:var(--text-small);margin:0 0 10px}
 /* The per-comp note affordance. Quiet until a comp actually has notes, so a
    column of "Add note" does not compete with the numbers beside it. */
-.notes{background:none;border:0;padding:0;font:inherit;font-size:12px;cursor:pointer;
+.notes{background:none;border:0;padding:0;font:inherit;font-size:var(--text-label);cursor:pointer;
   color:var(--ink-3);text-decoration:underline;white-space:nowrap}
 .notes:hover{color:var(--ink)}
 .notes.has{color:var(--ink-2);font-weight:600;text-decoration:none}
 /* A comp's thread sits in the table, under its own row: the note and the
    building it is about have to be readable together. */
 tr.thread td{background:var(--wash);padding:12px 10px}
-.link{background:none;border:0;padding:0;font:inherit;font-size:13px;cursor:pointer;
+.link{background:none;border:0;padding:0;font:inherit;font-size:var(--text-small);cursor:pointer;
   color:var(--ink-2);text-decoration:underline}
 .link:hover{color:var(--ink)}
-.addbox{border:1px solid var(--line);border-radius:8px;padding:14px;margin-top:10px;background:var(--card)}
-.addbox label{display:block;font-size:12.5px;color:var(--ink-2);margin-top:8px}
+.addbox{border:1px solid var(--line);border-radius:var(--r-lg);padding:14px;margin-top:10px;background:var(--card)}
+.addbox label{display:block;font-size:var(--text-note);color:var(--ink-2);margin-top:8px}
 .addbox input,.addbox select{width:100%;margin-top:3px;padding:7px 8px;border:1px solid var(--line);
-  border-radius:6px;background:var(--card);color:var(--ink);font:inherit;font-size:13.5px}
+  border-radius:var(--r-md);background:var(--card);color:var(--ink);font:inherit;font-size:var(--text-ui)}
 .mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 12px}
 /* The vault picker. A plain scrolling list of rows with checkboxes: a broker
    picking three comps out of two hundred needs to read addresses, not admire
    a grid. */
-.vlist{max-height:320px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;margin-top:10px}
+.vlist{max-height:320px;overflow-y:auto;border:1px solid var(--line);border-radius:var(--r-lg);margin-top:10px}
 /* SCOPED TO .addbox ON PURPOSE, and load-bearing. The picker's rows ARE
    labels and they live inside the add box, so the .addbox label rule above
    (0,1,1) out-specifies a bare .vrow (0,1,0) and every row lost its flex:
@@ -98,7 +98,7 @@ tr.thread td{background:var(--wash);padding:12px 10px}
    Found by opening the panel, not by reading it. Same cascade trap as
    ACCOUNT_NAV_CSS's [hidden] line and .deck.hide. */
 .addbox .vrow{display:flex;align-items:baseline;gap:10px;padding:8px 10px;
-  border-bottom:1px solid var(--line);font-size:13px}
+  border-bottom:1px solid var(--line);font-size:var(--text-small)}
 .vrow:last-child{border-bottom:0}
 .vrow input{margin:0}
 .vrow .addr{flex:1;min-width:0}
@@ -107,12 +107,12 @@ tr.thread td{background:var(--wash);padding:12px 10px}
 .vrow.sent .addr::after{content:" · already in this hub";color:var(--ink-3);font-size:11.5px}
 .mt10{margin-top:10px}
 #peopleEmails{width:100%;margin-top:3px;padding:7px 8px;border:1px solid var(--line);
-  border-radius:6px;background:var(--card);color:var(--ink);font:inherit;font-size:13.5px}
-.prow{display:flex;align-items:baseline;gap:10px;padding:6px 0;font-size:13.5px;
+  border-radius:var(--r-md);background:var(--card);color:var(--ink);font:inherit;font-size:var(--text-ui)}
+.prow{display:flex;align-items:baseline;gap:10px;padding:6px 0;font-size:var(--text-ui);
   border-bottom:1px solid var(--line)}
 .prow:last-child{border-bottom:0}
 .prow .who2{flex:1;min-width:0}
-.prow .state{color:var(--ink-3);font-size:12px;white-space:nowrap}
+.prow .state{color:var(--ink-3);font-size:var(--text-label);white-space:nowrap}
 .link.danger{color:var(--red)}
 .link.danger:hover{color:var(--red-fill)}
 /* A client's own find is marked as theirs and never wears the vault badge:
@@ -122,22 +122,22 @@ tr.thread td{background:var(--wash);padding:12px 10px}
 .threadbox .stream{margin-bottom:10px}
 /* The status control and the read-only chip are sized alike on purpose, so a
    tenant who can act and an observer who cannot see the same table shape. */
-select.st{font:inherit;font-size:12.5px;padding:2px 4px;border:1px solid var(--line);
-  border-radius:6px;background:var(--card);color:var(--ink)}
+select.st{font:inherit;font-size:var(--text-note);padding:2px 4px;border:1px solid var(--line);
+  border-radius:var(--r-md);background:var(--card);color:var(--ink)}
 .st-new{color:var(--ink-3)}
 .st-shortlist{color:var(--ink);font-weight:600}
 .st-passed{color:var(--ink-3);text-decoration:line-through}
 tr.passed td:not(:nth-last-child(-n+2)){opacity:.55}
 .stream{display:flex;flex-direction:column;gap:14px;margin-bottom:18px}
-.bub{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--card)}
-.bub .who{font-size:12px;color:var(--ink-3);margin-bottom:3px}
+.bub{border:1px solid var(--line);border-radius:var(--r-lg);padding:10px 12px;background:var(--card)}
+.bub .who{font-size:var(--text-label);color:var(--ink-3);margin-bottom:3px}
 .bub .txt{white-space:pre-wrap;word-break:break-word}
-textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);border-radius:8px;
+textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);border-radius:var(--r-lg);
   background:var(--card);color:var(--ink);font:inherit;resize:vertical}
 .btn{display:inline-block;border:1px solid var(--ink);background:var(--ink);color:var(--paper);
-  border-radius:8px;padding:8px 14px;font-size:13.5px;cursor:pointer;font-weight:600}
+  border-radius:var(--r-lg);padding:8px 14px;font-size:var(--text-ui);cursor:pointer;font-weight:600}
 .btn[disabled]{opacity:.5;cursor:default}
-.foot{color:var(--ink-3);font-size:12px;margin-top:30px;line-height:1.5}
+.foot{color:var(--ink-3);font-size:var(--text-label);margin-top:30px;line-height:1.5}
 .hide{display:none!important}
 </style></head><body>
 <header class="hdr">

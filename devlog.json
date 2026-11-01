@@ -4897,5 +4897,11 @@
     "type": "fix",
     "title": "The left bar is the same colour on every page in dark mode",
     "details": "In dark mode the icon bar down the left of Home and the comp report was nearly the colour of the page, while on Markets, Comps, Pipeline and Permits it was a shade lighter, so it changed colour as you moved between tabs. It is the lighter slab everywhere now. Underneath, the app’s colours (about 880 of them) now name the site’s colour tokens directly instead of spelling out light-mode hex codes that a separate list had to translate for dark mode; nothing else looks different, checked element by element in both themes."
+  },
+  {
+    "date": "2026-11-01",
+    "type": "fix",
+    "title": "The Board and Market rankings headings use the site’s heading font",
+    "details": "On the Markets page, the headings of The Board and the Market rankings card asked for the site’s serif heading font through a name that was never defined on that page, so they quietly fell back to the plain sans font. They now read in Georgia like every other card heading. Underneath, the site’s text sizes, corner radii, spacing steps and fonts now live in one list in theme.js that every page reads (about 930 sizes across 16 stylesheets now name it), so a size can be changed in one place; nothing else looks different, checked element by element on 22 pages at desktop and phone width."
   }
 ]

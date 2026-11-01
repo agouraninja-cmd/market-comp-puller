@@ -63,12 +63,12 @@ const PRICING_CSS = `
    the whole reason for the flex column; MARKET_CSS's .tile is a plain box. */
 .prc-tiles{grid-template-columns:repeat(3,1fr);gap:16px;align-items:stretch}
 .prc-tile{display:flex;flex-direction:column;position:relative;padding:20px}
-.prc-tile .prc-k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;
+.prc-tile .prc-k{font-size:var(--text-micro);text-transform:uppercase;letter-spacing:.1em;
   color:var(--ink-3);font-weight:600}
-.prc-tile .prc-v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:32px;
+.prc-tile .prc-v{font-family:var(--serif);font-weight:500;font-size:var(--text-hero);
   line-height:1.15;margin-top:6px;color:var(--ink);font-variant-numeric:tabular-nums}
-.prc-tile .prc-n{font-size:12.5px;color:var(--ink-3);margin-top:2px}
-.prc-sum{font-size:13.5px;line-height:1.55;color:var(--ink-body);margin:12px 0 0}
+.prc-tile .prc-n{font-size:var(--text-note);color:var(--ink-3);margin-top:2px}
+.prc-sum{font-size:var(--text-ui);line-height:1.55;color:var(--ink-body);margin:12px 0 0}
 /* The pin. Everything above it is content, this is what puts the button on
    the floor of the tile. */
 .prc-cta{margin-top:auto;padding-top:16px}
@@ -80,8 +80,8 @@ const PRICING_CSS = `
 .prc-mid{border-color:var(--red)}
 .prc-mid .prc-k{color:var(--red)}
 .prc-tag{position:absolute;top:-9px;left:14px;background:var(--red-fill);color:#fff;
-  font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
-  padding:3px 8px;border-radius:3px}
+  font-size:var(--text-micro);font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 8px;border-radius:var(--r-xs)}
 
 /* --- The annual band -------------------------------------------------------
    Sits directly under the tiles. It is a SLAB, not a fourth column: annual is
@@ -89,15 +89,15 @@ const PRICING_CSS = `
    fourth product. (This stylesheet ships in the page, so the history of what
    the band used to sell lives in the JS comment below it, not here.) Text
    colours are literal for the reason given above the stylesheet. */
-.prc-fm{background:var(--slab);border-radius:6px;padding:22px 26px;margin:20px 0 0;
+.prc-fm{background:var(--slab);border-radius:var(--r-md);padding:22px 26px;margin:20px 0 0;
   display:flex;flex-wrap:wrap;gap:22px;align-items:center;justify-content:space-between}
-.prc-fm-lab{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#F87171}
-.prc-fm-h{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:23px;line-height:1.25;
+.prc-fm-lab{font-size:var(--text-tiny);font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#F87171}
+.prc-fm-h{font-family:var(--serif);font-weight:500;font-size:23px;line-height:1.25;
   color:#fff;margin:8px 0 6px;font-variant-numeric:tabular-nums}
-.prc-fm-sub{font-size:13px;line-height:1.5;color:#B6C1CF;margin:0}
+.prc-fm-sub{font-size:var(--text-small);line-height:1.5;color:#B6C1CF;margin:0}
 .prc-fm-right{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
 .prc-fm-btn{display:inline-block;background:#DC2626;color:#fff;text-decoration:none;
-  border-radius:4px;padding:10px 18px;font-size:14px;font-weight:600;white-space:nowrap}
+  border-radius:var(--r-sm);padding:10px 18px;font-size:var(--text-compact);font-weight:600;white-space:nowrap}
 .prc-fm-btn:hover{background:#B91C1C;color:#fff}
 
 /* --- "Is it worth it" -----------------------------------------------------
@@ -105,16 +105,16 @@ const PRICING_CSS = `
    point of the section: the free column is what makes the paid column
    believable, so it gets equal structure rather than a shorter afterthought. */
 .prc-worth{display:grid;grid-template-columns:1.15fr 1fr;gap:16px;margin:26px 0 0}
-.prc-wc{border-radius:6px;padding:22px}
+.prc-wc{border-radius:var(--r-md);padding:22px}
 .prc-wc-pro{background:var(--wash);border:1px solid var(--line)}
 .prc-wc-free{background:var(--card);border:1px solid var(--edge)}
-.prc-wc h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:20px;line-height:1.3;
+.prc-wc h2{font-family:var(--serif);font-weight:500;font-size:var(--text-subhead);line-height:1.3;
   color:var(--ink);margin:0 0 14px}
 .prc-wl{list-style:none;margin:0;padding:0}
-.prc-wl li{display:flex;gap:12px;padding:9px 0;font-size:13.5px;line-height:1.55;color:var(--ink-body)}
+.prc-wl li{display:flex;gap:12px;padding:9px 0;font-size:var(--text-ui);line-height:1.55;color:var(--ink-body)}
 .prc-wl li + li{border-top:1px solid var(--line)}
 .prc-wc-free .prc-wl li + li{border-top-color:var(--hair)}
-.prc-num{flex:0 0 auto;color:var(--red);font-weight:600;font-size:12px;
+.prc-num{flex:0 0 auto;color:var(--red);font-weight:600;font-size:var(--text-label);
   font-variant-numeric:tabular-nums;padding-top:1px}
 
 @media (max-width:759.98px){
@@ -196,7 +196,7 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     per: "forever",
     sum: (reportsWord ? `${reportsWord[0].toUpperCase()}${reportsWord.slice(1)} reports a month, every` : "Every") +
       " comparable itemized, the same value range Pro sees, a three-year window, five exports a month.",
-    cta: `<p style="font-size:13px;margin:0">No card. ${signedIn ? "Your account starts here." : `<a href="/?auth=signup">Create an account &rarr;</a>`}</p>`,
+    cta: `<p style="font-size:var(--text-small);margin:0">No card. ${signedIn ? "Your account starts here." : `<a href="/?auth=signup">Create an account &rarr;</a>`}</p>`,
   });
 
   const proTile = tile({

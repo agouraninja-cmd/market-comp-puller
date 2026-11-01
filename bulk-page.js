@@ -60,28 +60,28 @@ const BULK_RUN_CSS = `
 .bk-run .deck{margin:0 0 28px}
 .bk-run .deckrule{display:flex;align-items:baseline;justify-content:space-between;gap:16px;
   border-bottom:1px solid var(--ink,#1A2433);padding-bottom:6px;margin:0 0 14px}
-.bk-run .deckrule h2{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:400;margin:0;letter-spacing:.01em;
+.bk-run .deckrule h2{font-family:var(--serif,Georgia,'Times New Roman',serif);font-size:var(--text-title,19px);font-weight:400;margin:0;letter-spacing:.01em;
   color:var(--ink,#1A2433)}
-.bk-run .msg{font-size:13px;margin:12px 0 0;color:var(--ink,#1A2433)}
+.bk-run .msg{font-size:var(--text-small,13px);margin:12px 0 0;color:var(--ink,#1A2433)}
 .bk-run .msg.bad{color:var(--red-deep,#991B1B)}
-.bk-run .notes{margin:12px 0 0;padding:10px 12px;border:1px solid var(--line,#E4E2DA);border-radius:6px;
-  font-size:12.5px;color:var(--ink,#1A2433)}
+.bk-run .notes{margin:12px 0 0;padding:10px 12px;border:1px solid var(--line,#E4E2DA);border-radius:var(--r-md,6px);
+  font-size:var(--text-note,12.5px);color:var(--ink,#1A2433)}
 .bk-run .notes ul{margin:6px 0 0;padding-left:18px}
 .bk-run .acts{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px}
-.bk-run button.lnk,.bk-run a.lnk{background:none;border:0;padding:0;font:inherit;font-size:13px;
+.bk-run button.lnk,.bk-run a.lnk{background:none;border:0;padding:0;font:inherit;font-size:var(--text-small,13px);
   color:var(--red,#B91C1C);cursor:pointer;text-decoration:underline}
 .bk-run .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;
-  background:var(--line,#E4E2DA);border:1px solid var(--line,#E4E2DA);border-radius:6px;overflow:hidden;margin:0 0 16px}
+  background:var(--line,#E4E2DA);border:1px solid var(--line,#E4E2DA);border-radius:var(--r-md,6px);overflow:hidden;margin:0 0 16px}
 .bk-run .strip div{background:var(--paper,#FBFBF9);padding:10px 12px}
-.bk-run .strip .k{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#1A2433)}
+.bk-run .strip .k{font-size:var(--text-micro,10.5px);letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#1A2433)}
 .bk-run .strip .v{font-size:17px;font-variant-numeric:tabular-nums;color:var(--ink,#1A2433)}
-.bk-run table{width:100%;border-collapse:collapse;font-size:13px;color:var(--ink,#1A2433)}
-.bk-run th{text-align:left;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#1A2433);
+.bk-run table{width:100%;border-collapse:collapse;font-size:var(--text-small,13px);color:var(--ink,#1A2433)}
+.bk-run th{text-align:left;font-size:var(--text-micro,10.5px);letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#1A2433);
   font-weight:500;padding:6px 8px;border-bottom:1px solid var(--ink,#1A2433)}
 .bk-run td{padding:7px 8px;border-bottom:1px solid var(--line,#E4E2DA);vertical-align:top}
 .bk-run td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .bk-run td a{color:var(--red,#B91C1C)}
-.bk-run .chip{display:inline-block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+.bk-run .chip{display:inline-block;font-size:var(--text-micro,10.5px);letter-spacing:.06em;text-transform:uppercase;
   padding:1px 7px;border:1px solid var(--line,#E4E2DA);border-radius:99px;color:var(--ink,#1A2433)}
 .bk-run .chip.run{border-color:var(--red,#B91C1C);color:var(--red,#B91C1C)}
 .bk-run .chip.bad{border-color:var(--red-deep,#991B1B);color:var(--red-deep,#991B1B)}
@@ -89,7 +89,7 @@ const BULK_RUN_CSS = `
    table of done rows reads as done at a glance rather than as a column of
    identical grey pills. */
 .bk-run .chip.ok{border-color:var(--ok-rule,#BFE5D2);background:var(--ok-bg,#E7F5EE);color:var(--ok-text,#06603A)}
-.bk-run .strip .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.02em;font-size:22px}
+.bk-run .strip .v{font-family:var(--serif,Georgia,'Times New Roman',serif);font-weight:500;letter-spacing:-.02em;font-size:22px}
 .bk-run .sub{color:var(--ink,#1A2433);font-size:11.5px}
 /* Earlier runs is a ledger (2026-09-04 evening): a table with the same
    headers as the rows table above it, not a list of links. */
@@ -99,8 +99,8 @@ const BULK_RUN_CSS = `
    run's usual gap IS the size and one click should not stand between a member
    and fixing it. Borderless until focus so a table of them still reads as a
    table. */
-.bk-run input.szin{width:88px;padding:2px 4px;font:inherit;font-size:13px;text-align:right;
-  color:var(--ink,#1A2433);background:transparent;border:1px solid transparent;border-radius:4px;
+.bk-run input.szin{width:88px;padding:2px 4px;font:inherit;font-size:var(--text-small,13px);text-align:right;
+  color:var(--ink,#1A2433);background:transparent;border:1px solid transparent;border-radius:var(--r-sm,4px);
   font-variant-numeric:tabular-nums}
 .bk-run input.szin:hover{border-color:var(--line,#E4E2DA)}
 .bk-run input.szin:focus{border-color:var(--red,#B91C1C);background:var(--paper,#FBFBF9);outline:none}
@@ -119,49 +119,49 @@ const BULK_RUN_CSS = `
 // .strip idiom) says the allowance as figures rather than a footnote.
 const BULK_CSS = `
 .bulk{max-width:1100px}
-.bulk .lede{color:var(--ink);font-size:14px;line-height:1.55;margin:6px 0 0;max-width:62ch}
+.bulk .lede{color:var(--ink);font-size:var(--text-compact);line-height:1.55;margin:6px 0 0;max-width:62ch}
 .bulk .top{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
 .bulk .top h1{margin:0}
 /* The chamber. */
-.bulk .desk{margin-top:28px;border:1px solid var(--edge);border-radius:6px;background:var(--card);
+.bulk .desk{margin-top:28px;border:1px solid var(--edge);border-radius:var(--r-md);background:var(--card);
   box-shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px -18px rgba(15,23,42,.25);display:flex;flex-direction:column}
 .bulk .dhead{padding:11px 16px;border-bottom:1px solid var(--hair);display:flex;align-items:center;
   justify-content:space-between;gap:16px}
-.bulk .dlab{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink);font-weight:600;line-height:1.5}
-.bulk .count{font-size:12.5px;color:var(--ink)}
+.bulk .dlab{font-size:var(--text-micro);letter-spacing:.12em;text-transform:uppercase;color:var(--ink);font-weight:600;line-height:1.5}
+.bulk .count{font-size:var(--text-note);color:var(--ink)}
 .bulk .addr{padding:14px 16px 12px;display:flex;flex-direction:column;gap:6px}
-.bulk label{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+.bulk label{display:block;font-size:var(--text-micro);letter-spacing:.1em;text-transform:uppercase;
   color:var(--ink);font-weight:600;margin:0 0 2px}
 .bulk label .opt{font-weight:400;letter-spacing:0;text-transform:none}
 /* Borderless fields: the card's hairlines draw the cells, so a box inside a
    box would be two borders for one input. */
 .bulk textarea,.bulk input[type=text],.bulk input[type=number],.bulk select{width:100%;box-sizing:border-box;padding:2px 0;
-  font:inherit;font-size:14px;color:var(--ink);background:transparent;border:0;outline:0}
-.bulk textarea{min-height:132px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-  font-size:14px;line-height:1.7;padding:0}
-.bulk .links{display:flex;align-items:center;gap:18px;font-size:13px;flex-wrap:wrap}
+  font:inherit;font-size:var(--text-compact);color:var(--ink);background:transparent;border:0;outline:0}
+.bulk textarea{min-height:132px;resize:vertical;font-family:var(--mono);
+  font-size:var(--text-compact);line-height:1.7;padding:0}
+.bulk .links{display:flex;align-items:center;gap:18px;font-size:var(--text-small);flex-wrap:wrap}
 .bulk .row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--hair)}
 .bulk .cell{padding:11px 16px;border-right:1px solid var(--hair)}
 .bulk .cell:last-child{border-right:0}
 .bulk .cell:focus-within{box-shadow:inset 0 0 0 2px var(--red)}
 .bulk .go-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;
   border-top:1px solid var(--hair);background:var(--wash);border-radius:0 0 6px 6px}
-.bulk button.go{flex:0 0 auto;background:var(--red);color:#fff;border:0;border-radius:6px;padding:12px 22px;
-  font:inherit;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px -6px rgba(185,28,28,.55)}
+.bulk button.go{flex:0 0 auto;background:var(--red);color:#fff;border:0;border-radius:var(--r-md);padding:12px 22px;
+  font:inherit;font-size:var(--text-compact);font-weight:600;cursor:pointer;box-shadow:0 4px 12px -6px rgba(185,28,28,.55)}
 /* Never dimmed (owner's call, 2026-09-04): "no parts of the bulk valuation
    dim". The button is solid red in every state; when it cannot run, the cost
    line beside it says why, and an empty box answers a click with a message
    (see run()) rather than with a control that looks switched off. The same
    call is why every muted colour in this file is full ink. */
 .bulk button.go[disabled]{cursor:default}
-.bulk .cost{color:var(--ink);font-size:13px;line-height:1.5;margin:0}
+.bulk .cost{color:var(--ink);font-size:var(--text-small);line-height:1.5;margin:0}
 .bulk .foot{margin-top:28px;padding-top:12px;border-top:1px solid var(--line);
-  color:var(--ink);font-size:12.5px;line-height:1.6;max-width:72ch}
+  color:var(--ink);font-size:var(--text-note);line-height:1.6;max-width:72ch}
 /* The Tab hint's key cap. Inline in the button so the shortcut is named where
    the action is, rather than in a legend somebody has to go and find. */
-.bulk .kbd{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-  font-size:10.5px;line-height:1.5;padding:0 5px;margin-left:4px;border:1px solid var(--line);
-  border-radius:4px;color:var(--ink);text-decoration:none;vertical-align:1px}
+.bulk .kbd{display:inline-block;font-family:var(--mono);
+  font-size:var(--text-micro);line-height:1.5;padding:0 5px;margin-left:4px;border:1px solid var(--line);
+  border-radius:var(--r-sm);color:var(--ink);text-decoration:none;vertical-align:1px}
 /* The folded details (2026-09-04). The summary is a row of the desk like the
    head row above it — label, the derived line, a red Change — and opens onto
    the same .row/.cell cells the visible settings use. */
@@ -170,13 +170,13 @@ const BULK_CSS = `
   padding:11px 16px;user-select:none}
 .bulk details.more summary::-webkit-details-marker{display:none}
 .bulk details.more summary:hover{background:var(--wash)}
-.bulk .moreline{flex:1;font-size:13px;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bulk .chg{font-size:13px;color:var(--red);text-decoration:underline;text-underline-offset:2px}
+.bulk .moreline{flex:1;font-size:var(--text-small);color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bulk .chg{font-size:var(--text-small);color:var(--red);text-decoration:underline;text-underline-offset:2px}
 .bulk details.more[open] .chg{visibility:hidden}
 .bulk details.more .row{border-top:1px solid var(--hair)}
 .bulk .cell.wide{grid-column:1 / -1}
-.bulk .listnote{margin:0;padding:11px 16px;border-top:1px solid var(--hair);font-size:13px;line-height:1.5;color:var(--ink)}
-.bulk .listnote code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+.bulk .listnote{margin:0;padding:11px 16px;border-top:1px solid var(--hair);font-size:var(--text-small);line-height:1.5;color:var(--ink)}
+.bulk .listnote code{font-family:var(--mono);font-size:var(--text-label)}
 @media (max-width:760px){
   .bulk .row{grid-template-columns:1fr}
   .bulk .cell{border-right:0;border-bottom:1px solid var(--hair)}

@@ -22,6 +22,40 @@ paths:
 > read "Your properties and comps" until 2026-10-13, when there stopped
 > being a /vault page at all; see below.)
 
+> **A report opened from Home stands alone (2026-11-10, the owner: "when you
+> click on a property it will have the comp search with the value a building
+> card and stuff above it which I thought we removed").** Read this before
+> the notes below, which it amends: where they say every report door enters
+> through `leaveDesk()` → `showHomeView()`, that is now true of the SEARCH
+> doors only (`rerunHistory`, `refreshPortfolioItem`).
+> - **`leaveDeskForReport()`** is how `openPortfolioItem` and
+>   `openHistoryReport` leave Home (a property's "Open report" on Home or
+>   The Board, `?property=`, `?recent=`, a /bulk run landing): the desk
+>   hides and nothing else shows, so the report is the page. No pitch, no
+>   "Value a building" chamber, no market explorer, no Recent searches. Not
+>   on the desk (a Recent searches row on the search view itself) it does
+>   nothing, and the form that row sits under stays.
+> - **`reportOnly`** is the state, declared beside `accountWall` (the same
+>   temporal-dead-zone reason), `setReportOnly` its one writer, and
+>   `applySearchLock` its one reader: `#searchSection` is hidden while it
+>   is true. `showDeskView` and `showHomeView` clear it. The form is hidden,
+>   never removed: every restore still writes it and the hero still reads it.
+> - **`#editDetailsBtn` ("Edit property details")** in the report's toolbar
+>   shows only while the form is held back. It clears `reportOnly`, opens
+>   `#subjectDetails` and scrolls to the form, because the size, asking
+>   price, NOI and cap rate boxes there still re-render the value in place
+>   and the report's own copy points at them ("edit Building size above").
+> - **Escape** on a report opened this way goes back to Home (`enterDesk`,
+>   with `preventDefault` so the desk's own listener does not see the key),
+>   and Escape on a signed-in member's Home does nothing: it used to
+>   `leaveDesk()` onto the pitch and the chamber. The signed-out `/desk`
+>   card still closes to the search view.
+> - **Not changed:** "Refresh value" (`?property=&refresh=1`) still opens
+>   the search view, since it submits that form and its confirm dialog and
+>   Run state live there.
+> - Tests: `test/report-from-home.test.js` executes the view functions
+>   against a stand-in document.
+
 > **The vault is taken apart (2026-10-13, the owner: "the vault doesn't
 > even exist any more").** Read this before the boxes below, which it
 > amends: where they send a member to `/vault` (its Properties tab, its

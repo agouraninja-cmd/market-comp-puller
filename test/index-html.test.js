@@ -2426,11 +2426,88 @@ test("a report card is scrolled to by its layout position, clear of the sticky b
   assert.match(html, /b\.addEventListener\("click", \(\) => scrollToReportCard\(sec\.el\)\)/);
 });
 
-test("the debt card's loan box follows the loan it shares with the collateral card", () => {
+test("the debt card's loan box follows the shared loan, except where its own contents are newer", () => {
   const debt = html.match(/function renderDebtCard\(parsed, meta, resetAssumptions\) \{[\s\S]*?\n  \}/);
   assert.ok(debt, "could not bound renderDebtCard");
-  assert.match(debt[0], /if \(document\.activeElement !== inLoan\) \{\s*inLoan\.value = d\.loanAmount > 0/,
-    "without this the debt card keeps showing a loan the collateral card has since changed");
+  // Follows the assumptions, so a loan the collateral card changed shows
+  // here. NOT while it is focused, NOT while it holds an edit that has not
+  // been committed (a render inside the debounce would hand the commit the
+  // old figure), and NOT while it holds text that could not be read.
+  assert.match(debt[0],
+    /if \(document\.activeElement !== inLoan && !debtDirty\.has\("debtLoan"\) && !debtLoanUnread\) \{\s*inLoan\.value = d\.loanAmount > 0/,
+    "the debt card's loan box no longer follows the shared loan, or redraws over an edit in flight");
+  assert.match(debt[0], /if \(resetAssumptions\) \{ debtDirty\.clear\(\); debtLoanUnread = false; \}/,
+    "a new report must not inherit the last report's uncommitted edits");
+  assert.match(debt[0], /debtLoanUnread \? "type the balance in full, like 2,000,000"/,
+    "a balance that could not be read is refused in silence");
+  // The collateral card's boxes carry the same guard.
+  assert.match(html, /function collBox\(el, text, force\) \{\s*if \(el && \(force \|\| \(document\.activeElement !== el && !collDirty\.has\(el\.id\)\)\)\) el\.value = text;/);
+});
+
+test("a debt edit reads only the box that was typed in, and never takes shorthand for a loan", () => {
+  // Cursor Bugbot, PR #416, twice. (1) The two cards share one loan, and the
+  // debt card used to read ALL THREE of its boxes on every edit: a loan box
+  // that had focus while the collateral card changed the loan stayed stale,
+  // and the next rate edit wrote the stale figure back. (2) Its loan box was
+  // parsed with numericValue, so "1.6M" became a $1.60 loan, which the
+  // collateral card then read as 0.0% LTV and "Covered".
+  const commit = html.match(/function commitDebt\(\) \{[\s\S]*?\n  \}/);
+  const figure = html.match(/function loanFigure\(raw\) \{[\s\S]*?\n  \}/);
+  assert.ok(commit && figure, "could not bound commitDebt / loanFigure");
+  const V = require("../valuation.js");
+  const boxes = { debtLoan: { value: "2,000,000" }, debtRate: { value: "6.75" }, debtAmort: { value: "25" } };
+  const assumptions = { debt: { loanAmount: 5000000, ratePct: null, amortYears: 30 } };
+  const calls = { persisted: 0, rendered: 0 };
+  const ctx = vm.createContext({
+    COLLATERAL: require("../collateral-check.js"), numericValue: V.numericValue, isFinite, Boolean, String, Math,
+    document: { getElementById: (id) => boxes[id] },
+    debtDirty: new Set(), debtLoanUnread: false, debtEditTimer: null, clearTimeout: () => {},
+    currentParsed: {}, currentMeta: {},
+    ensureAssumptions: () => assumptions,
+    persistAssumptions: () => { calls.persisted++; },
+    renderAnalysisCluster: () => { calls.rendered++; },
+  });
+  new vm.Script(figure[0] + "\n" + commit[0] + "\n;this.commit = commitDebt; this.unread = () => debtLoanUnread;", { filename: "index.html" }).runInContext(ctx);
+
+  // The collateral card set the loan to 5.0M while this card's loan box
+  // (still showing 2,000,000) had focus. The rate is typed next.
+  ctx.debtDirty.add("debtRate");
+  ctx.commit();
+  assert.equal(assumptions.debt.loanAmount, 5000000, "a rate edit wrote the debt card's stale loan box back over the shared loan");
+  assert.equal(assumptions.debt.ratePct, 6.75);
+  assert.equal(assumptions.debt.amortYears, 30, "an untouched amortization box was read");
+  assert.deepEqual(calls, { persisted: 1, rendered: 1 });
+
+  // Leaving a box nobody typed in re-renders (to bring it level) and saves nothing.
+  ctx.commit();
+  assert.deepEqual(calls, { persisted: 1, rendered: 2 });
+
+  // A typed loan is read, with or without commas.
+  ctx.debtDirty.add("debtLoan");
+  ctx.commit();
+  assert.equal(assumptions.debt.loanAmount, 2000000);
+
+  // Shorthand is refused, and remembered so the card can say so.
+  boxes.debtLoan.value = "1.6M";
+  ctx.debtDirty.add("debtLoan");
+  ctx.commit();
+  assert.equal(assumptions.debt.loanAmount, null, '"1.6M" in the debt card became a loan of $1.60');
+  assert.equal(ctx.unread(), true);
+  boxes.debtLoan.value = "";
+  ctx.debtDirty.add("debtLoan");
+  ctx.commit();
+  assert.equal(ctx.unread(), false, "an emptied box is not an unreadable one");
+
+  // Amortization is still clamped when it is the box that was typed in.
+  boxes.debtAmort.value = "400";
+  ctx.debtDirty.add("debtAmort");
+  ctx.commit();
+  assert.equal(assumptions.debt.amortYears, 30);
+
+  // Both cards commit the moment a box is left, so neither holds an edit
+  // for another card's render to land on.
+  assert.match(html, /el\.addEventListener\("blur", \(\) => setTimeout\(commitDebt, 0\)\);/);
+  assert.match(html, /el\.addEventListener\("blur", \(\) => setTimeout\(commitCollateral, 0\)\);/);
 });
 
 test("an income-led report hands the collateral card the hero's own three figures", () => {

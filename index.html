@@ -8824,14 +8824,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const inLoan = document.getElementById("debtLoan");
     const inRate = document.getElementById("debtRate");
     const inAmort = document.getElementById("debtAmort");
+    if (resetAssumptions) { debtDirty.clear(); debtLoanUnread = false; }
     if (resetAssumptions || (!inLoan.value && !inRate.value)) {
       inLoan.value = d.loanAmount > 0 ? Math.round(d.loanAmount).toLocaleString() : "";
       inRate.value = d.ratePct > 0 ? d.ratePct : "";
       inAmort.value = d.amortYears > 0 ? d.amortYears : 30;
     }
-    // The loan is shared with the Collateral Check card, which can change it:
-    // follow the assumptions unless this box is the one being typed in.
-    if (document.activeElement !== inLoan) {
+    // The loan is shared with the Collateral Check card, which can change it,
+    // so this box follows the assumptions. Three exceptions, each a box whose
+    // own contents are the newer truth: it is being typed in (focused), it
+    // holds an edit that has not been committed yet (dirty; any card's render
+    // can land inside the 250ms debounce), or it holds text that could not be
+    // read as a figure and is kept so the card can point at it.
+    if (d.loanAmount > 0) debtLoanUnread = false;
+    if (document.activeElement !== inLoan && !debtDirty.has("debtLoan") && !debtLoanUnread) {
       inLoan.value = d.loanAmount > 0 ? Math.round(d.loanAmount).toLocaleString() : "";
     }
 
@@ -8857,7 +8863,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       dscr == null ? "NOI ÷ debt service" :
       dscr >= REFI_DSCR ? "comfortably covered" : dscr >= 1 ? "thin coverage, lenders want 1.25×+" : "NOI doesn't cover the payments");
     set("debtLtv", ltv ? Math.round(ltv * 100) + "%" : "—",
-      ltv ? "of the likely value" : value ? "enter a loan balance" : "no value estimate yet");
+      ltv ? "of the likely value"
+        : debtLoanUnread ? "type the balance in full, like 2,000,000"
+        : value ? "enter a loan balance" : "no value estimate yet");
     set("debtYield", dyield ? (Math.round(dyield * 1000) / 10).toFixed(1) + "%" : "—",
       dyield ? "NOI ÷ loan balance" : "");
 
@@ -8889,23 +8897,60 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
 
   // Debt input edits: clamp into the shared assumptions object and re-render.
+  // The debt card shares its loan with the Collateral Check card, so its boxes
+  // follow that card's rules (commitCollateral, below), for that card's
+  // reasons. Until 2026-11-10 every debt edit read ALL THREE boxes: a loan box
+  // that had focus while the other card changed the loan stayed stale, and
+  // the next rate or amortization edit wrote that stale figure back over the
+  // loan (Cursor Bugbot, PR #416). Now ONLY A BOX SOMEBODY TYPED IN IS READ,
+  // a typed box is never redrawn before it is committed, and leaving a box
+  // commits at once rather than in 250ms.
+  const debtDirty = new Set();   // the debt boxes typed in since the last commit
+  let debtLoanUnread = false;    // the loan box holds text that is not a figure
+  // The loan, read the way collateral-check.js reads it: "1.6M" is refused,
+  // never read as $1.60. This box parsed with numericValue, which keeps the
+  // 1.6; that was a quirk of this card alone until the loan became the
+  // Collateral Check's too, where a $1.60 loan reads 0.0% LTV and "Covered".
+  function loanFigure(raw) {
+    if (typeof COLLATERAL !== "undefined") return COLLATERAL.money(raw);
+    const n = numericValue(raw);
+    return n > 0 ? n : null;
+  }
   let debtEditTimer = null;
-  ["debtLoan", "debtRate", "debtAmort"].forEach((id) => {
-    document.getElementById(id).addEventListener("input", () => {
-      if (!currentParsed || !currentMeta) return;
-      clearTimeout(debtEditTimer);
-      debtEditTimer = setTimeout(() => {
-        const a = ensureAssumptions(currentMeta, currentParsed);
-        const clamp = (v, lo, hi, fb) => (isFinite(v) && v >= lo && v <= hi ? v : fb);
-        const loan = numericValue(document.getElementById("debtLoan").value);
-        a.debt.loanAmount = loan > 0 ? Math.min(loan, 2e9) : null;
+  function commitDebt() {
+    clearTimeout(debtEditTimer);
+    if (!currentParsed || !currentMeta) return;
+    if (debtDirty.size) {
+      const a = ensureAssumptions(currentMeta, currentParsed);
+      const clamp = (v, lo, hi, fb) => (isFinite(v) && v >= lo && v <= hi ? v : fb);
+      if (debtDirty.has("debtLoan")) {
+        const raw = document.getElementById("debtLoan").value;
+        const loan = loanFigure(raw);
+        debtLoanUnread = loan == null && Boolean(String(raw).trim());
+        a.debt.loanAmount = loan != null ? Math.min(loan, 2e9) : null;
+      }
+      if (debtDirty.has("debtRate")) {
         const rate = numericValue(document.getElementById("debtRate").value);
         a.debt.ratePct = rate > 0 ? clamp(rate, 0.1, 20, null) : null;
+      }
+      if (debtDirty.has("debtAmort")) {
         a.debt.amortYears = clamp(Math.round(numericValue(document.getElementById("debtAmort").value)), 5, 40, 30);
-        persistAssumptions();
-        renderAnalysisCluster(currentParsed, currentMeta, false);
-      }, 250);
+      }
+      debtDirty.clear();
+      persistAssumptions();
+    }
+    renderAnalysisCluster(currentParsed, currentMeta, false);
+  }
+  ["debtLoan", "debtRate", "debtAmort"].forEach((id) => {
+    const el = document.getElementById(id);
+    el.addEventListener("input", () => {
+      debtDirty.add(id);
+      clearTimeout(debtEditTimer);
+      debtEditTimer = setTimeout(commitDebt, 250);
     });
+    // After the blur, so the box is no longer the focused one and the render
+    // brings it level with the loan (and tidies it).
+    el.addEventListener("blur", () => setTimeout(commitDebt, 0));
   });
 
   // ----------------------------------------------------------------------------
@@ -8959,11 +9004,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       loan: d.loanAmount, price: d.purchasePrice, limitPct: d.ltvLimitPct, value: range,
     });
   }
-  // Write a box from the assumptions unless it is the one being typed in. A
-  // new report (`force`) writes it regardless: the box then holds the LAST
+  // Write a box from the assumptions unless it is the one being typed in, or
+  // holds an edit not yet committed (another card's render can land between
+  // leaving a box and its commit, and would hand the commit the old figure).
+  // A new report (`force`) writes it regardless: the box then holds the LAST
   // report's figure, which is nobody's typing.
   function collBox(el, text, force) {
-    if (el && (force || document.activeElement !== el)) el.value = text;
+    if (el && (force || (document.activeElement !== el && !collDirty.has(el.id)))) el.value = text;
   }
 
   // Returns whether the card has something to put on paper, which is what the

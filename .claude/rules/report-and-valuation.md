@@ -66,6 +66,18 @@ paths:
     boxes typed in since the last commit (`collDirty`), and leaving a box
     commits at once. Reading every box wrote a stale, empty loan box back
     over the debt card's loan; the test executes that case.
+    **The debt card follows the same rules** (`commitDebt`, `debtDirty`;
+    Cursor Bugbot on PR #416, three findings, each reproduced in a browser
+    before the fix). It used to read all three of its boxes on every edit,
+    so a loan box that had focus while the collateral card changed the loan
+    stayed stale and the next rate edit wrote the stale figure back. Both
+    cards now read only typed boxes, never redraw a box holding an edit that
+    is not yet committed (any card's render can land inside the 250ms
+    debounce), and commit the moment a box is left. And the debt card's loan
+    is parsed by `loanFigure` (`COLLATERAL.money`), not `numericValue`:
+    "1.6M" there used to become a $1.60 loan, which this card then read as
+    0.0% LTV and "Covered". It is refused now, the box keeps what was typed,
+    and the LTV tile says to type the balance in full (`debtLoanUnread`).
   - **Private, by living in `debt`.** The price (`purchasePrice`) and limit
     (`ltvLimitPct`) sit in `meta.assumptions.debt` beside the loan, so
     `/api/share`'s `delete safeMeta.assumptions.debt` covers them, they ride

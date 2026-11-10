@@ -4951,5 +4951,11 @@
     "type": "feature",
     "title": "A page for lenders, with a working Collateral Check on it",
     "details": "There was a page for brokers and firms and nothing to send a lender. /lenders is that page: “Is the building worth the loan? Know before you order the appraisal.” In the middle of it is a working Collateral Check on a sample warehouse, so a lender can type a loan, a purchase price or their own LTV limit and watch the three figures and the sentence change, with no account. It runs the same arithmetic and the same words as the check on a real report, so the page cannot promise something the product does not do. The building and its figures are labelled as a sample in three places, nothing typed there is sent anywhere, and the fine print says what it is: an automated estimate, not an appraisal and not a bank evaluation, to help decide whether to order one and never in place of one. It is linked from the footer of every page and is not in the top menu, so it is mostly a page to send."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "The Debt & Refi card no longer reads “1.6M” as a $1.60 loan",
+    "details": "Typing a loan balance as shorthand, like 1.6M, in the Debt & Refi card was read as one dollar and sixty cents, so the card showed an LTV of 0% and a debt service of a few cents with nothing to say why. It is now refused the way the Collateral Check refuses it: the box keeps what you typed and the LTV tile says to type the balance in full, like 2,000,000. Editing the rate or the amortization also no longer re-reads the loan box, so a loan you changed in the Collateral Check can't be put back to its old figure by a later edit here."
   }
 ]

@@ -163,8 +163,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       --serif:Georgia,'Times New Roman',serif;
       --sans:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
       --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
-      --text-micro:10.5px;--text-tiny:11px;--text-label:12px;--text-note:12.5px;
-      --text-small:13px;--text-ui:13.5px;--text-compact:14px;--text-body:14.5px;
+      --text-tiny:11px;--text-label:12px;--text-small:13px;--text-compact:14px;
       --text-lead:15px;--text-input:16px;--text-title:19px;--text-subhead:20px;
       --text-heading:24px;--text-figure:26px;--text-h1:28px;--text-hero:32px;
       --text-h1-lg:34px;--text-display:38px;--text-display-lg:42px;
@@ -187,19 +186,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
 
     /* ---- Dark mode bridge ----------------------------------------------
-       Since 2026-10-30 most of index.html's colours are TOKEN classes:
-       text-ink-3, bg-paper, border-edge, focus:ring-red and so on, which
+       index.html's colours are TOKEN classes: text-ink-3, bg-paper,
+       border-edge, bg-red-fill, focus:ring-red and so on, which
        tailwind.config.js builds from theme.js's own table (each one is a
-       var() of its token), so they follow the theme with no rule here. USE THOSE. The
-       class for a token is its name: text-<token>, bg-<token>, ...
+       var() of its token), so they follow the theme with no rule here.
+       USE THOSE. The class for a token is its name: text-<token>,
+       bg-<token>, border-<token>, ...
 
-       What remains below are the colour classes that are NOT a token in
-       light mode: hex values the palette never named (the footer's
-       #B8C0CC, a #F4FAF6 tint) and Tailwind's own palette (bg-brand-600 is
-       #DC2626, a brighter red than --red-fill). Each is re-pointed at the
-       nearest token for dark only. They are kept as they were because
-       swapping any of them for a token class would change light mode;
-       folding them into the palette is a design call, not a refactor.
+       Until 2026-10-30 every colour here was a hex or a Tailwind palette
+       class, and this block re-pointed each one at a token for dark mode.
+       The app's red buttons, greens and tints followed on 2026-11-10 (the
+       primary button was Tailwind's #DC2626 while every other page's was
+       --red-fill; it is --red-fill now). What is left is five rules for
+       colours that are NOT a token and should not become one:
+         - the footer's three greys and its focus ring, which sit on the
+           slab, dark in BOTH themes, where the ink ramp runs backwards
+           (theme.js's footer note);
+         - the soft pink underline under a red link, which has no token.
        Specificity does the work with no !important: a rule here is (0,2,0)
        against Tailwind's own (0,1,0), and the state variants are matched at
        their own (0,3,0).
@@ -225,76 +228,28 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        and it also fails a rule here for a hex that IS a token's light
        value, since that one should have been the token's class. ---------- */
     @media screen {
-      /* surfaces */
-      [data-theme="dark"] .bg-\[\#F0EFE9\]   { background-color: var(--wash) }
-      [data-theme="dark"] .bg-\[\#F1F0EC\]   { background-color: var(--wash) }
-      /* already dark in light mode -- these LIFT, or they dissolve into the page */
-      [data-theme="dark"] .bg-slate-900      { background-color: var(--slab) }
-      /* filled brand: stays saturated, white text sits on it */
-      [data-theme="dark"] .bg-brand-600      { background-color: var(--red-fill) }
-      /* status tints */
-      [data-theme="dark"] .bg-\[\#F4FAF6\]   { background-color: var(--ok-bg) }
-      [data-theme="dark"] .bg-\[\#FBF8EF\]   { background-color: var(--warn-bg) }
-      [data-theme="dark"] .bg-red-50         { background-color: var(--err-bg) }
-      /* surface hovers */
-      [data-theme="dark"] .hover\:bg-\[\#FBFBF9\]:hover { background-color: var(--wash) }
-      [data-theme="dark"] .hover\:bg-slate-50:hover     { background-color: var(--wash-2) }
-      [data-theme="dark"] .hover\:bg-brand-700:hover    { background-color: var(--red-fill-hover) }
-      [data-theme="dark"] .hover\:bg-red-50:hover       { background-color: var(--err-bg) }
-
-      /* ink */
-      [data-theme="dark"] .text-\[\#46536A\] { color: var(--ink-body) }
-      [data-theme="dark"] .text-\[\#8A8577\] { color: var(--ink-3) }
-      /* #8F99A8 is the footer's small print, and in LIGHT mode it sits on
-         the DARK slab, where it reads 5.42:1 -- it was never a whisper.
-         Mapping it to --ink-faint gave it 3.69:1 on the dark slab, and the
-         2026-08-21 ramp change would have taken it lower still. --ink-3
-         (4.52:1 on --slab) is the honest equivalent. #9AA2AD IS a whisper
-         in both modes (2.58:1 on white): it is --ink-faint, and the
-         text-ink-faint class now. */
+      /* The footer's small print. In LIGHT mode it sits on the DARK slab,
+         where #8F99A8 reads 5.42:1 -- it was never a whisper. --ink-faint
+         gave it 3.69:1 on the dark slab; --ink-3 (4.52:1 on --slab) is the
+         honest equivalent. */
       [data-theme="dark"] .text-\[\#8F99A8\] { color: var(--ink-3) }
-      /* --ink-4 is right for an OUTLINE (see the focus-visible outline rule
-         below) but nearly invisible as TEXT on a dark surface -- its dark
-         value #475569 measured 2.06:1 against the footer's dark slab, well
-         under WCAG AA. --ink-faint was tried next (fix round 1) and was
-         ALSO wrong, at 4.07:1: that number was checked against --paper,
-         not against the --slab background this text actually sits on (fix
-         round 2). --ink-3's dark value (#8B98A8) measures 4.52:1 against
-         --slab, clearing AA (4.5:1 for this size/weight) with a hair of margin. */
+      /* --ink-4 is right for an OUTLINE but nearly invisible as TEXT on a
+         dark surface: its dark value #475569 measured 2.06:1 against the
+         footer's dark slab. --ink-faint was tried next and was ALSO wrong,
+         at 4.07:1 (checked against --paper, not the --slab this text sits
+         on). --ink-3's dark value (#8B98A8) measures 4.52:1 against --slab,
+         clearing AA with a hair of margin. */
       [data-theme="dark"] .text-\[\#B8C0CC\] { color: var(--ink-3) }
       [data-theme="dark"] .text-\[\#D5DAE2\] { color: var(--ink-3) }
-
-      /* brand text -- lightens for contrast; NOT the same value as the fill */
-      [data-theme="dark"] .text-brand-800    { color: var(--red) }
-      [data-theme="dark"] .text-red-600      { color: var(--red) }
-      [data-theme="dark"] .text-red-800      { color: var(--red) }
-
-      /* status text */
-      [data-theme="dark"] .text-emerald-700  { color: var(--ok-text) }
-      [data-theme="dark"] .hover\:text-\[\#04452A\]:hover { color: var(--ok-text) }
-      [data-theme="dark"] .text-\[\#7A5B12\] { color: var(--warn-text) }
-
-      /* rules */
-      [data-theme="dark"] .border-\[\#ECEAE3\] { border-color: var(--hair) }
-      [data-theme="dark"] .border-\[\#EFEDE7\] { border-color: var(--hair) }
-      [data-theme="dark"] .border-brand-600    { border-color: var(--red) }
-      [data-theme="dark"] .border-emerald-300  { border-color: var(--ok-rule) }
-      [data-theme="dark"] .border-red-200      { border-color: var(--red) }
-      [data-theme="dark"] .focus\:border-brand-600:focus    { border-color: var(--red) }
-
-      /* rings, outlines, decoration, accent */
-      [data-theme="dark"] .focus\:ring-brand-600:focus    { --tw-ring-color: var(--red) }
       /* Every real usage is focus-visible:outline-[#B8C0CC] (a keyboard-focus
          ring on the footer links), never the bare utility -- Tailwind emits
          .focus-visible\:outline-\[\#B8C0CC\]:focus-visible, which a selector
-         with neither the prefix nor the pseudo-class cannot match (fix
-         round 2; the old bare rule matched nothing and slipped past
-         coverage by an accident of two unrelated regexes agreeing on the
-         same bare substring). Targets --ink-3, not --ink-4: --ink-4 dark
-         (#475569) measured 1.93:1 as a focus indicator against --slab,
-         where --ink-3 dark (#8B98A8) measures 4.52:1. */
+         with neither the prefix nor the pseudo-class cannot match. Targets
+         --ink-3, not --ink-4: --ink-4 dark (#475569) measured 1.93:1 as a
+         focus indicator against --slab, where --ink-3 dark measures 4.52:1. */
       [data-theme="dark"] .focus-visible\:outline-\[\#B8C0CC\]:focus-visible { outline-color: var(--ink-3) }
-      [data-theme="dark"] .decoration-\[\#46536A\] { text-decoration-color: var(--ink-body) }
+      /* The soft underline under a red link (#FCA5A5): no token, and the
+         text red lightens in dark, so its underline follows it. */
       [data-theme="dark"] .decoration-brand-300    { text-decoration-color: var(--red) }
 
       /* Leaflet's own chrome (zoom/layers controls, attribution, popups) --
@@ -459,9 +414,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        Accents: brand red = actions + the subject property · slate-900 ink =
          selected state (segmented controls) · emerald = verified/positive ·
          amber = caution · plain red + left rule = errors. No blues.
-       Buttons: primary bg-brand-600 · secondary white, #D8D4C9-bordered · ghost
-         text-ink-3 hover:text-ink-body · on-dark inverse bg-card
-         text-brand-800. Brand-tinted chips are reserved for saved reports.
+       Buttons: primary bg-red-fill (hover bg-red-fill-hover) · secondary
+         bg-card, border-edge · ghost text-ink-3 hover:text-ink-body.
+         Brand-tinted chips are reserved for saved reports.
        Labels: eyebrow = text-xs font-semibold uppercase tracking-wider ·
          badge = text-[10px] font-medium uppercase tracking-wide.
        ------------------------------------------------------------------------ */
@@ -881,7 +836,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       #compsCard { border: 0 !important; border-radius: 0; }
       #reportArea h2.font-brand {
         font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
-        font-size: var(--text-micro); letter-spacing: .12em; font-weight: 600; color: #1A2433;
+        font-size: var(--text-tiny); letter-spacing: .12em; font-weight: 600; color: #1A2433;
         border-bottom: 1.5px solid #1A2433; padding-bottom: 5px; margin-bottom: 10px;
       }
       #reportArea div:not(.rd-bcard):has(> h2.font-brand) {
@@ -908,7 +863,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
 
     /* ---------------- Research Desk landing system ---------------- */
-    .rd-kicker { font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--red); font-weight: 600; }
+    .rd-kicker { font-size: var(--text-label); letter-spacing: 0.16em; text-transform: uppercase; color: var(--red); font-weight: 600; }
     .rd-h { font-family: var(--serif); font-weight: 500; letter-spacing: -0.005em; color: var(--ink); }
     /* The header bar could not wrap, so at 390px it squeezed instead: the theme
        toggle sat flush against the wordmark with a 0px gap, and "My Desk" and
@@ -941,7 +896,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     #exploreMenu { width: 15rem; }
     #exploreMenu a.nav-lead { background: var(--wash); color: var(--ink); font-weight: 500; }
     #exploreMenu a .nav-sub {
-      display: block; font-weight: 400; font-size: 11.5px; line-height: 1.35;
+      display: block; font-weight: 400; font-size: var(--text-label); line-height: 1.35;
       color: var(--ink-3); margin-top: 2px; white-space: normal;
     }
     /* --- The rail (NAV_SHELL=rail, 2026-08-28) ----------------------------
@@ -1043,7 +998,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       html.nav-rail .rd-appbar > nav > a, html.nav-rail .rd-appbar > nav > button {
         position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px;
         margin: 0 8px; padding: 10px 2px 9px; border-left: 0; border-radius: var(--r-xl); text-align: center;
-        font-size: var(--text-micro); font-weight: 500; line-height: 1.1; color: rgba(255, 255, 255, .68);
+        font-size: var(--text-tiny); font-weight: 500; line-height: 1.1; color: rgba(255, 255, 255, .68);
       }
       /* The rows above set display, which outranks Tailwind's .hidden: a
          signed-in member's Sign in button and an unresolved account circle
@@ -1084,7 +1039,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .rd-cell { padding: 11px 16px; border-right: 1px solid var(--hair); }
     .rd-cell:last-child { border-right: 0; }
     .rd-row { border-bottom: 1px solid var(--hair); }
-    .rd-lab { display: block; font-size: var(--text-micro); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 2px; }
+    .rd-lab { display: block; font-size: var(--text-tiny); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 2px; }
     /* 16px is load-bearing, not a taste choice: iOS Safari auto-zooms on focus
        for any input under 16px and never zooms back out, leaving the page
        zoomed and side-scrolled after tapping the address field — the site's
@@ -1202,7 +1157,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     .rd-desk-market-body { padding: 12px 18px 18px; }
     .rd-chamber-lab {
-      font-size: var(--text-micro);
+      font-size: var(--text-tiny);
       letter-spacing: 0.12em;
       text-transform: uppercase;
       color: var(--ink);
@@ -1252,7 +1207,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .rd-exhibit { border: 1px solid var(--edge); background: var(--card); border-radius: var(--r-md); overflow: hidden; box-shadow: var(--lift); }
     /* Own line-height so the chip box stays compact even inside a roomier
        parent line (the badge legend uses leading-6 to keep wrapped rows apart). */
-    .rd-badge { display: inline-block; font-size: var(--text-micro); font-weight: 600; border-radius: var(--r-xs); padding: 1.5px 7px; white-space: nowrap; line-height: 1.4; }
+    .rd-badge { display: inline-block; font-size: var(--text-tiny); font-weight: 600; border-radius: var(--r-xs); padding: 1.5px 7px; white-space: nowrap; line-height: 1.4; }
     .rd-badge.v { color: var(--ok-text); background: var(--ok-bg); }
     /* .rd-badge.p (a pale blue-gray pair) has no matching token -- flagged in
        task-4-report.md, left fully literal on purpose rather than guessed.
@@ -1272,6 +1227,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .rd-band { background: var(--wash); box-shadow: 0 0 0 100vmax var(--wash); clip-path: inset(0 -100vmax); }
     /* Broker cards */
     .rd-bcard { border: 1px solid var(--edge); background: var(--card); border-radius: var(--r-md); padding: 24px; box-shadow: var(--lift); }
+    /* The report's toolbar on a phone: Share across the top, the rest two to
+       a row at one width. Wrapped as a flex row it was seven buttons of seven
+       widths, ragged on both sides. */
+    .rd-tools > #shareBtn { margin-right: auto; }
+    @media (max-width: 639.98px) {
+      .rd-tools { display: grid; grid-template-columns: 1fr 1fr; }
+      .rd-tools > button { justify-content: center; }
+      .rd-tools > #shareBtn { grid-column: 1 / -1; margin-right: 0; }
+      .rd-tools > #exportAllowance { grid-column: 1 / -1; justify-content: center; }
+    }
 
     /* ------------- Research Desk report tokens (live report restyle) ------------- */
     /* Neutral value tile: paper alt tone + hairline — replaces the slate-50 bubbles. */
@@ -1404,7 +1369,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        place of the old floating labels. */
     .dk-rule { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1.5px solid var(--ink); padding-bottom: 4px; }
     .dk-rule .rd-lab { margin-bottom: 0; color: var(--ink); letter-spacing: .12em; }
-    .dk-note { font-size: var(--text-micro); color: var(--ink-3); text-align: right; }
+    .dk-note { font-size: var(--text-tiny); color: var(--ink-3); text-align: right; }
     /* Feed entries read as briefing cards since 2026-08-29, not ruled rows:
        each watched market is a self-contained "what changed" note, and the
        card edge is what keeps its comp list from reading as the next
@@ -1416,7 +1381,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        everything else on the card rather than needing its own override. */
     .dk-dem { font-size: var(--text-tiny); color: var(--ink-3); margin-top: 6px; }
     .dk-dem strong { color: var(--ink); font-weight: 600; }
-    .dk-crow { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: var(--ink-body); padding: 4px 0; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
+    .dk-crow { display: flex; justify-content: space-between; gap: 12px; font-size: var(--text-label); color: var(--ink-body); padding: 4px 0; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
     .dk-crow:last-child { border-bottom: 0; }
     /* The workspace's stand-in (2026-09-03). Shown ONLY while the first fill
        for an identity is in flight — see renderMyDesk — and swapped for the
@@ -1428,7 +1393,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-skel-agenda { height: 150px; margin-top: 24px; }
     .dk-skel-card { height: 72px; margin-top: 16px; }
 
-    .dk-kicker { font-size: var(--text-micro); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 5px; }
+    .dk-kicker { font-size: var(--text-tiny); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 5px; }
 
     /* The workspace ledger, promoted a full step (2026-08-29): with the
        workspace leading the page, this strip was its opening statement.
@@ -1460,27 +1425,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        */
     .dk-row { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--hair); }
     .dk-row:last-child { border-bottom: 0; }
-    .dk-row-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: var(--text-ui); font-weight: 500; color: var(--ink); }
+    .dk-row-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: var(--text-compact); font-weight: 500; color: var(--ink); }
     /* Addresses are plain ink until hovered, on every list and in the shares
        table too: a page where every address, Remove, Discuss and Turn off
        link is underlined reads as a list of links, not a record. */
     a.dk-row-name, a.dk-addr { text-decoration: none; }
     a.dk-row-name:hover, a.dk-addr:hover { text-decoration: underline; text-underline-offset: 2px; color: var(--ink); }
-    .dk-row-act { flex: 0 0 auto; font: inherit; font-size: 11.5px; color: var(--ink-3); background: none; border: 0; padding: 0; cursor: pointer; white-space: nowrap; text-decoration: none; }
+    .dk-row-act { flex: 0 0 auto; font: inherit; font-size: var(--text-label); color: var(--ink-3); background: none; border: 0; padding: 0; cursor: pointer; white-space: nowrap; text-decoration: none; }
     .dk-row-act:hover { color: var(--red); }
-    .dk-row-meta { flex-basis: 100%; order: 99; font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; margin-top: 2px; }
+    .dk-row-meta { flex-basis: 100%; order: 99; font-size: var(--text-label); color: var(--ink-3); font-variant-numeric: tabular-nums; margin-top: 2px; }
     /* Workspace copy on tokens (they were hex utilities — the exact light
        values of these tokens, so light mode does not move). */
     .dk-copy { font-size: var(--text-label); color: var(--ink-3); margin-top: 8px; }
     .dk-empty { font-size: var(--text-small); color: var(--ink-mute); margin-top: 8px; }
     .dk-msg { font-size: var(--text-small); color: var(--ink-2); margin-top: 8px; }
     .dk-msg.bad { color: var(--red); }
-    .dk-more { display: inline-block; font-size: var(--text-note); color: var(--ink); margin-top: 8px; text-decoration: none; }
+    .dk-more { display: inline-block; font-size: var(--text-small); color: var(--ink); margin-top: 8px; text-decoration: none; }
     .dk-more:hover { color: var(--red); }
     summary.dk-more { display: list-item; cursor: pointer; }
     /* The one control on a section rule that opens something — "+ Add by
        address", "+ Add or import". */
-    .dk-toggle { font: inherit; font-size: 11.5px; color: var(--ink); white-space: nowrap; background: none; border: 0; padding: 0; cursor: pointer; }
+    .dk-toggle { font: inherit; font-size: var(--text-label); color: var(--ink); white-space: nowrap; background: none; border: 0; padding: 0; cursor: pointer; }
     .dk-toggle:hover { color: var(--red); }
     /* The tints Draft C colours by — status and badge tokens, each already
        defined in both themes, so dark mode needs nothing of its own. Used
@@ -1513,7 +1478,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-gico { flex: 0 0 38px; height: 38px; border-radius: var(--r-xl); display: flex; align-items: center; justify-content: center; }
     .dk-gtxt { flex: 1 1 auto; min-width: 0; }
     .dk-gt { display: block; font-family: var(--serif); font-size: 15.5px; color: var(--ink); }
-    .dk-gx { display: block; margin-top: 1px; font-size: var(--text-note); line-height: 1.45; color: var(--ink-3); }
+    .dk-gx { display: block; margin-top: 1px; font-size: var(--text-small); line-height: 1.45; color: var(--ink-3); }
     .dk-gx a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
     @media (max-width: 640px) {
       .dk-ghost-card { flex-wrap: wrap; }
@@ -1526,12 +1491,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        Colours are the page's tokens only, so dark mode needs nothing. */
     .mc-row { display: flex; align-items: center; gap: 10px; width: calc(100% + 16px); margin: 0 -8px; padding: 7px 8px; border: 0; border-radius: var(--r-lg); background: none; font: inherit; font-size: var(--text-small); text-align: left; color: var(--ink-body); cursor: pointer; }
     .mc-row:hover, .mc-row[aria-expanded="true"] { background: var(--wash); }
-    .mc-row:focus-visible, .mc-btn:focus-visible, .mc-link:focus-visible { outline: 2px solid var(--red); outline-offset: 1px; }
+    .mc-row:focus-visible, .mc-link:focus-visible { outline: 2px solid var(--red); outline-offset: 1px; }
     .mc-av { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--wash) center / cover no-repeat; border: 1px solid var(--edge); color: var(--ink); font-size: var(--text-tiny); font-weight: 600; letter-spacing: .02em; }
     .mc-av.photo { color: transparent; }
     .mc-rname { font-weight: 500; color: var(--ink); font-size: var(--text-compact); }
     .mc-rmail { font-size: var(--text-label); color: var(--ink-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .mc-rrole { margin-left: auto; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+    .mc-rrole { margin-left: auto; font-size: var(--text-label); color: var(--ink-3); white-space: nowrap; }
     .mc-pop { position: fixed; z-index: 1300; width: 340px; max-height: calc(100vh - 32px); overflow: auto; padding: 18px; background: var(--card); color: var(--ink-body); border: 1px solid var(--edge); border-radius: 14px; box-shadow: 0 18px 50px -20px rgba(15,23,42,.45), 0 2px 6px rgba(15,23,42,.08); font-size: var(--text-compact); line-height: 1.5; }
     .mc-pop.hidden { display: none; }
     #memberCardBody { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
@@ -1545,14 +1510,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .mc-role.admin { background: var(--ok-bg); color: var(--ok-text); }
     .mc-title { font-size: var(--text-small); color: var(--ink-2); }
     .mc-muted { font-size: var(--text-label); color: var(--ink-3); overflow-wrap: anywhere; }
-    .mc-lab { font-size: var(--text-micro); letter-spacing: .14em; text-transform: uppercase; font-weight: 600; color: var(--ink-3); margin: 0 0 7px; }
+    .mc-lab { font-size: var(--text-tiny); letter-spacing: .14em; text-transform: uppercase; font-weight: 600; color: var(--ink-3); margin: 0 0 7px; }
     .mc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .mc-chip { font-size: var(--text-label); padding: 3px 9px; border-radius: var(--r-2xl); border: 1px solid var(--edge); color: var(--ink-body); white-space: nowrap; }
     .mc-chip b { font-weight: 600; color: var(--ink); }
     .mc-empty { font-size: var(--text-small); color: var(--ink-3); margin: 0; }
-    .mc-seat { font-size: var(--text-note); border-radius: var(--r-lg); padding: 8px 10px; background: var(--ok-bg); color: var(--ok-text); }
+    .mc-seat { font-size: var(--text-small); border-radius: var(--r-lg); padding: 8px 10px; background: var(--ok-bg); color: var(--ok-text); }
     .mc-seat.none { background: var(--warn-bg); color: var(--warn-text); }
-    .mc-self { font-size: var(--text-note); color: var(--ink-2); background: var(--wash); border-radius: var(--r-lg); padding: 8px 10px; margin: 0; }
+    .mc-self { font-size: var(--text-small); color: var(--ink-2); background: var(--wash); border-radius: var(--r-lg); padding: 8px 10px; margin: 0; }
     .mc-todo { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--hair); font-size: var(--text-small); color: var(--ink-body); }
     .mc-todo:first-of-type { border-top: 0; }
     .mc-todo i { flex: 0 0 18px; height: 18px; border-radius: 50%; border: 1.5px dashed var(--ink-4); }
@@ -1568,7 +1533,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .mc-edit { display: flex; flex-direction: column; gap: 8px; }
     .mc-edit.hidden { display: none; }
     .mc-edit input { font: inherit; font-size: var(--text-small); padding: 8px 10px; border: 1px solid var(--edge); border-radius: var(--r-lg); background: var(--card); color: var(--ink); min-width: 0; }
-    .mc-msg { font-size: var(--text-note); color: var(--err-text); margin: 0; }
+    .mc-msg { font-size: var(--text-small); color: var(--err-text); margin: 0; }
     .mc-msg:empty { display: none; }
     @media (max-width: 700px) {
       .mc-pop { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-height: 85vh; border-radius: 18px 18px 0 0; border-width: 1px 0 0; padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
@@ -1576,7 +1541,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     .dk-person .who { font-weight: 500; color: var(--ink); }
     .dk-person .what { font-size: var(--text-tiny); color: var(--ink-3); }
-    .dk-person .act { margin-left: auto; font-size: 11.5px; white-space: nowrap; }
+    .dk-person .act { margin-left: auto; font-size: var(--text-label); white-space: nowrap; }
     .dk-card { border: 1px solid var(--edge); border-radius: var(--r-md); background: var(--card); padding: 16px; }
     /* A collapsed settings row: the current state on the left, the way in on
        the right. list-style:none plus the ::-webkit-details-marker reset kills
@@ -1590,7 +1555,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-sum::-webkit-details-marker { display: none; }
     .dk-sum:hover { background: var(--wash); }
     .dk-sum-t { font-size: var(--text-small); color: var(--ink-body); min-width: 0; }
-    .dk-sum-a { margin-left: auto; flex: 0 0 auto; font-size: 11.5px; color: var(--red); }
+    .dk-sum-a { margin-left: auto; flex: 0 0 auto; font-size: var(--text-label); color: var(--red); }
     /* Refine's two groups (2026-08-21). A micro-label on a hairline, one
        step quieter than the desk decks: this is a subdivision inside an
        already-collapsed section, not a shelf of the page. .rf-grule is the
@@ -1601,7 +1566,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .rf-glab { font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
       font-weight: 700; color: var(--ink-2); white-space: nowrap; }
     .rf-grule { flex: 1; height: 0; border-top: 1px solid var(--hair); }
-    .rf-gnote { font-size: 11.5px; line-height: 1.5; color: var(--ink-3); margin: 4px 0 10px; }
+    .rf-gnote { font-size: var(--text-label); line-height: 1.5; color: var(--ink-3); margin: 4px 0 10px; }
     /* Report jump nav (2026-08-21). Sticky at the top of the viewport while
        any part of the report is in view. z-40 is chosen against this file's
        existing layers: above ordinary content (which sets no z-index), below
@@ -1632,7 +1597,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       .rd-ledger .rd-lcell:last-child { border-bottom: 0; }
     }
     /* Squared chip (meta chips, comp count, sale/lease pill) — replaces rounded-full. */
-    .rd-chip { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 500; color: var(--ink-2); background: var(--wash); border: 1px solid var(--line); border-radius: var(--r-xs); padding: 2px 8px; }
+    .rd-chip { display: inline-flex; align-items: center; font-size: var(--text-label); font-weight: 500; color: var(--ink-2); background: var(--wash); border: 1px solid var(--line); border-radius: var(--r-xs); padding: 2px 8px; }
     .rd-chip.rd-chip-subj { color: var(--ink); font-weight: 600; }
     .rd-chip.o { background: var(--card); border-color: var(--edge); color: var(--ink-mute); }
     /* Comp table/card marks. Replaced † ‡ § — those glyphs read as gray
@@ -1669,7 +1634,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        table's own geometry. Padding is the compact rule below (ID beats the
        JS-built py-3); alignment stays on the button classes.
        No background here so the sortable hover rule can win. */
-    #compsTable thead th { color: var(--ink-3); font-size: var(--text-micro); letter-spacing: 0.07em; text-transform: uppercase; border-bottom: 2px solid var(--ink); }
+    #compsTable thead th { color: var(--ink-3); font-size: var(--text-tiny); letter-spacing: 0.07em; text-transform: uppercase; border-bottom: 2px solid var(--ink); }
     /* One compact row height for the whole comps table. py-3 on the JS-built
        cells left the first handful of rows (longer notes, two-line addresses)
        looking roomy and everything after looking tight; ID beats the utility
@@ -1689,7 +1654,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        valuationComps() sales median the chart and hero read, so the three
        can never disagree on one report. */
     #compsTable tfoot td { border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); font-weight: 600; }
-    #compsTable tfoot .tf-lab { font-size: var(--text-micro); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-mute); }
+    #compsTable tfoot .tf-lab { font-size: var(--text-tiny); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-mute); }
     /* Driver rows: .rd-drv's hairline rhythm without flex gap (PNG exporter). */
     #driversList p { border-top: 1px solid var(--hair); padding: 7px 0; margin: 0; }
     #driversList p:first-child { border-top: 0; }
@@ -1767,7 +1732,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       html.nav-rail.hm-page .hm-head { padding: 28px 28px 0; }
       html.nav-rail.hm-page .hm-body { flex: 1; overflow-y: auto; min-height: 0; padding: 4px 16px 28px; }
     }
-    .hm-kick { font-size: var(--text-note); font-weight: 500; color: var(--ink-3); }
+    .hm-kick { font-size: var(--text-small); font-weight: 500; color: var(--ink-3); }
     .hm-fh { display: flex; align-items: center; gap: 11px; padding: 0 0 14px; margin: 0 0 16px; border-bottom: 1px solid var(--line); }
     .hm-fh.hidden { display: none; }
     .hm-fh-markw { flex: none; display: flex; }
@@ -1780,21 +1745,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     button.hm-fh-mark:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
     .hm-fh-txt { min-width: 0; flex: 1; }
     .hm-fh-txt b { display: block; font-size: var(--text-lead); font-weight: 600; line-height: 1.25; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .hm-fh-txt small { display: block; margin-top: 2px; font-size: var(--text-note); color: var(--ink-3); }
+    .hm-fh-txt small { display: block; margin-top: 2px; font-size: var(--text-label); color: var(--ink-3); }
     .hm-fh-txt small em { font-style: normal; font-weight: 600; color: var(--bv-text); }
-    .hm-fh-set { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid var(--edge); border-radius: var(--r-lg); background: var(--card); font: inherit; font-size: var(--text-note); font-weight: 600; color: var(--ink-2); white-space: nowrap; cursor: pointer; }
+    .hm-fh-set { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid var(--edge); border-radius: var(--r-lg); background: var(--card); font: inherit; font-size: var(--text-small); font-weight: 600; color: var(--ink-2); white-space: nowrap; cursor: pointer; }
     /* The logo's door, in words (2026-10-18): a red + on the initials did
        not say what it added. */
-    .hm-fh-logo { display: block; margin-top: 3px; padding: 0; border: 0; background: none; font: inherit; font-size: var(--text-note); font-weight: 600; color: var(--red); cursor: pointer; }
+    .hm-fh-logo { display: block; margin-top: 3px; padding: 0; border: 0; background: none; font: inherit; font-size: var(--text-small); font-weight: 600; color: var(--red); cursor: pointer; }
     .hm-fh-logo:hover { text-decoration: underline; text-underline-offset: 3px; }
     .hm-fh-logo:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
     .hm-fh-set.hidden { display: none; }
     .hm-fh-set:hover { border-color: var(--ink-3); }
     .hm-fh-set:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
-    .hm-fh-msg { margin: -8px 0 12px; font-size: var(--text-note); color: var(--ink-3); }
+    .hm-fh-msg { margin: -8px 0 12px; font-size: var(--text-small); color: var(--ink-3); }
     .hm-fh-msg.hidden { display: none; }
     .hm-title { margin: 6px 0 0; font-family: var(--serif); font-weight: 400; font-size: 30px; line-height: 1.12; letter-spacing: -.015em; color: var(--ink); }
-    .hm-sub { margin: 8px 0 0; font-size: var(--text-body); line-height: 1.5; color: var(--ink-2); }
+    .hm-sub { margin: 8px 0 0; font-size: var(--text-compact); line-height: 1.5; color: var(--ink-2); }
     .hm-find { position: relative; display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 0 12px; border: 1px solid var(--edge); border-radius: 11px; background: var(--card); color: var(--ink-3); }
     .hm-find:focus-within { border-color: var(--ink-3); box-shadow: 0 0 0 3px var(--hair); }
     .hm-find svg { flex: none; }
@@ -1803,7 +1768,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-fr { display: flex; flex-direction: column; width: 100%; padding: 8px 10px; border: 0; border-radius: var(--r-lg); background: none; text-align: left; font: inherit; color: var(--ink); cursor: pointer; text-decoration: none; }
     .hm-fr:hover, .hm-fr:focus-visible { background: var(--wash); outline: 0; }
     .hm-fr b { font-size: var(--text-compact); font-weight: 600; }
-    .hm-fr small { font-size: var(--text-note); color: var(--ink-3); }
+    .hm-fr small { font-size: var(--text-small); color: var(--ink-3); }
     .hm-find-res .hm-empty a { color: var(--red); font-weight: 600; }
     .hm-ph { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 10px 8px; }
     .hm-what { margin: 0; max-width: 36ch; font-size: var(--text-small); line-height: 1.45; color: var(--ink-3); }
@@ -1813,7 +1778,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-ch.hidden { display: none; }
     .hm-ch:hover { border-color: var(--ink-3); }
     .hm-ch b { display: block; font-size: var(--text-compact); font-weight: 600; color: var(--ink); }
-    .hm-ch small { display: block; margin-top: 2px; font-size: var(--text-note); color: var(--ink-3); }
+    .hm-ch small { display: block; margin-top: 2px; font-size: var(--text-small); color: var(--ink-3); }
     #hmPaneProps #buildingAddForm { margin: 0 10px 12px; }
     #hmPaneProps #buildingMsg { margin: 0 10px 10px; }
     .hm-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px 10px; border-radius: var(--r-2xl); color: inherit; cursor: pointer; }
@@ -1824,12 +1789,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-num.hot { border-color: var(--red-fill); background: var(--red-fill); color: #fff; }
     .hm-num.msg { display: flex; align-items: center; justify-content: center; border: 0; background: var(--slab); color: #fff; }
     .hm-rt { min-width: 0; }
-    .hm-rt b { display: block; font-size: var(--text-body); font-weight: 600; line-height: 1.3; color: var(--ink); }
+    .hm-rt b { display: block; font-size: var(--text-compact); font-weight: 600; line-height: 1.3; color: var(--ink); }
     .hm-rt b i { font-style: normal; font-weight: 500; color: var(--ink-3); }
     .hm-rt small { display: block; margin-top: 2px; font-size: var(--text-small); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .hm-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
     .hm-when { text-align: right; white-space: nowrap; }
-    .hm-when b { display: block; font-size: var(--text-ui); font-weight: 600; color: var(--ink); }
+    .hm-when b { display: block; font-size: var(--text-compact); font-weight: 600; color: var(--ink); }
     .hm-when small { font-size: var(--text-label); color: var(--ink-3); }
     .hm-when.hot b, .hm-when.hot small { color: var(--red); }
     .hm-scope { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 6px; border-radius: var(--r-pill); font-size: var(--text-tiny); font-weight: 600; line-height: 1.2; white-space: nowrap; }
@@ -1860,19 +1825,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-val small { font-size: var(--text-label); color: var(--ink-3); }
     .hm-val .up { color: var(--green); font-weight: 600; }
     .hm-val .dn { color: var(--red); font-weight: 600; }
-    .hm-empty { margin: 14px 10px; font-size: var(--text-ui); line-height: 1.5; color: var(--ink-3); }
+    .hm-empty { margin: 14px 10px; font-size: var(--text-compact); line-height: 1.5; color: var(--ink-3); }
     .hm-more { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 12px 10px 0; font-size: var(--text-small); }
     .hm-more.hidden { display: none; }
     .hm-more a { font-weight: 500; color: var(--ink-2); }
-    .hm-legal { margin: 26px 10px 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); }
+    .hm-legal { margin: 26px 10px 0; font-size: var(--text-label); line-height: 1.5; color: var(--ink-3); }
     #hmPanePeople #deskContacts > .dk-rule .rd-lab .dk-hico { display: none; }
     #hmPanePeople #deskContacts { margin: 0 10px; }
     #hmPanePeople #deskContacts { margin-top: 18px; }
     .hm-team { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: center; padding: 9px 10px; }
     .hm-av { width: 36px; height: 36px; border-radius: 99px; background: var(--slab); color: #fff; font-family: var(--serif); font-size: var(--text-compact); line-height: 36px; text-align: center; }
     .hm-team b { display: block; font-size: var(--text-compact); font-weight: 600; color: var(--ink); }
-    .hm-team b i { margin-left: 4px; font-style: normal; font-size: var(--text-micro); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
-    .hm-team small { display: block; font-size: var(--text-note); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hm-team b i { margin-left: 4px; font-style: normal; font-size: var(--text-tiny); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+    .hm-team small { display: block; font-size: var(--text-small); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .hm-start { display: flex; flex-direction: column; gap: 10px; padding: 14px 10px 0; }
     .hm-start.hidden { display: none; }
     .hm-st { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 14px; width: 100%; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); font: inherit; text-align: left; color: inherit; cursor: pointer; text-decoration: none; }
@@ -1881,10 +1846,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-sti { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: var(--r-xl); background: var(--wash-2); color: var(--ink); }
     .hm-st b { display: block; font-size: var(--text-lead); font-weight: 600; color: var(--ink); }
     .hm-st small { display: block; margin: 2px 0 10px; font-size: var(--text-small); line-height: 1.45; color: var(--ink-3); }
-    .hm-legend { position: absolute; left: 14px; bottom: 24px; z-index: 500; display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--card); font-size: var(--text-note); color: var(--ink-2); box-shadow: 0 4px 16px -8px rgba(15, 23, 42, .35); }
+    .hm-legend { position: absolute; left: 14px; bottom: 24px; z-index: 500; display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--card); font-size: var(--text-small); color: var(--ink-2); box-shadow: 0 4px 16px -8px rgba(15, 23, 42, .35); }
     .hm-legend.hidden { display: none; }
     /* On the phone strip the map's credit wraps to two lines; stay above it. */
-    @media (max-width: 899px) { .hm-legend { bottom: 44px; left: 10px; gap: 4px 10px; padding: 6px 10px; font-size: 11.5px; } }
+    @media (max-width: 899px) { .hm-legend { bottom: 44px; left: 10px; gap: 4px 10px; padding: 6px 10px; font-size: var(--text-label); } }
     .hm-legend span { display: inline-flex; align-items: center; gap: 6px; }
     .hm-legend span.hidden { display: none; }
     .hm-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 99px; }
@@ -1905,7 +1870,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-layers button[aria-pressed="true"] { color: var(--ink); font-weight: 600; background: var(--wash-2); box-shadow: inset 0 -2px 0 var(--red-fill); }
     .hm-layers button:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
     .hm-layers button.busy span::after { content: "\2026"; }
-    .hm-layer-note { position: absolute; left: 14px; top: 60px; z-index: 500; display: grid; gap: 6px; width: min(340px, calc(100% - 70px)); padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--card); font-size: var(--text-note); line-height: 1.45; color: var(--ink-2); box-shadow: 0 4px 16px -8px rgba(15, 23, 42, .35); }
+    .hm-layer-note { position: absolute; left: 14px; top: 60px; z-index: 500; display: grid; gap: 6px; width: min(340px, calc(100% - 70px)); padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--card); font-size: var(--text-small); line-height: 1.45; color: var(--ink-2); box-shadow: 0 4px 16px -8px rgba(15, 23, 42, .35); }
     .hm-layer-note.hidden { display: none; }
     .hm-layer-note p { margin: 0; }
     .hm-layer-note a, .hm-layer-note button { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--red); cursor: pointer; text-decoration: none; white-space: nowrap; }
@@ -1917,7 +1882,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     .hm-map-empty { position: absolute; left: 50%; top: 50%; z-index: 500; pointer-events: none; width: min(340px, calc(100% - 32px)); transform: translate(-50%, -50%); padding: 20px 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); text-align: center; box-shadow: 0 18px 40px -16px rgba(15, 23, 42, .4); }
     .hm-map-empty b { display: block; font-family: var(--serif); font-size: 21px; font-weight: 400; color: var(--ink); }
-    .hm-map-empty span { display: block; margin-top: 6px; font-size: var(--text-ui); color: var(--ink-3); }
+    .hm-map-empty span { display: block; margin-top: 6px; font-size: var(--text-compact); color: var(--ink-3); }
     /* Start here (2026-10-18; Draft C of the empty Home drafts). An account
        with nothing on Home: the list steps aside and one question sits over
        the map, which marks the cities with market pages. hmFirstShow()
@@ -1930,7 +1895,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm.hm-first-on .hm-map { position: relative; inset: auto; height: 240px; border-bottom: 1px solid var(--line); }
     .hm-first { position: relative; margin: 14px 12px 24px; padding: 24px 20px 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); box-shadow: 0 30px 70px -30px rgba(15, 23, 42, .45), 0 2px 6px rgba(15, 23, 42, .05); }
     .hm-first.hidden, .hm-first-key.hidden { display: none; }
-    .hm-first-kick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: var(--text-note); font-weight: 500; color: var(--ink-3); }
+    .hm-first-kick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: var(--text-small); font-weight: 500; color: var(--ink-3); }
     .hm-first-kick > span:not(:first-child) { display: inline-flex; align-items: center; gap: 6px 10px; }
     .hm-first-kick > span.hidden { display: none; }
     .hm-first-kick i { width: 3px; height: 3px; border-radius: 99px; background: var(--ink-4); }
@@ -1963,8 +1928,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-first-door svg { grid-row: span 2; color: var(--ink); }
     .hm-first-door b { font-size: var(--text-small); font-weight: 600; line-height: 1.25; color: var(--ink); white-space: nowrap; }
     .hm-first-door small { font-size: var(--text-label); line-height: 1.3; color: var(--ink-3); }
-    .hm-first-fine { margin: 16px 0 0; font-size: 11.5px; color: var(--ink-3); }
-    .hm-first-key { position: absolute; left: 10px; top: 196px; z-index: 500; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--card); font-size: 11.5px; color: var(--ink-2); }
+    .hm-first-fine { margin: 16px 0 0; font-size: var(--text-label); color: var(--ink-3); }
+    .hm-first-key { position: absolute; left: 10px; top: 196px; z-index: 500; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--card); font-size: var(--text-label); color: var(--ink-2); }
     .hm-first-key i { width: 9px; height: 9px; border-radius: 99px; background: var(--ink); }
     .hm-first-key a { font-weight: 600; color: var(--red); text-decoration: none; }
     /* The market dots: Leaflet circles, coloured here so they follow the theme. */
@@ -1981,7 +1946,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       html.nav-rail.hm-page .hm-first-form { flex-direction: row; }
       html.nav-rail.hm-page .hm-first-go { padding: 0 18px; }
       html.nav-rail.hm-page .hm-first-doors { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-      html.nav-rail.hm-page .hm-first-key { top: auto; left: auto; right: 16px; bottom: 24px; padding: 8px 12px; font-size: var(--text-note); }
+      html.nav-rail.hm-page .hm-first-key { top: auto; left: auto; right: 16px; bottom: 24px; padding: 8px 12px; font-size: var(--text-small); }
     }
     /* Next (2026-10-18, Draft C): an early account's next steps on Today. */
     .hm-next { margin: 14px 10px 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
@@ -1992,7 +1957,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-next-r:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
     .hm-next-r > span:first-child svg { display: block; width: 20px; height: 20px; color: var(--ink-2); }
     .hm-next-r b { display: block; font-size: var(--text-compact); font-weight: 600; color: var(--ink); }
-    .hm-next-r small { display: block; font-size: var(--text-note); color: var(--ink-3); }
+    .hm-next-r small { display: block; font-size: var(--text-small); color: var(--ink-3); }
     .hm-next-r em { font-style: normal; font-size: var(--text-small); font-weight: 600; color: var(--red); }
     .hm-mk { background: none !important; border: 0 !important; }
     .hm-pip { display: block; width: 14px; height: 14px; border: 2.5px solid var(--card); border-radius: 99px; box-shadow: 0 1px 4px rgba(15, 23, 42, .4); }
@@ -2012,7 +1977,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-pop-ph { position: relative; height: 104px; overflow: hidden; background: var(--wash-2); }
     .hm-pop-b { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px 14px; }
     .hm-pop-b > b { font-family: var(--serif); font-size: 18px; font-weight: 400; line-height: 1.2; color: var(--ink); }
-    .hm-pop-b > small { font-size: var(--text-note); color: var(--ink-3); }
+    .hm-pop-b > small { font-size: var(--text-small); color: var(--ink-3); }
     .hm-pop-r { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
     .hm-pop-v { margin-top: 8px; font-size: var(--text-small); color: var(--ink-3); }
     .hm-pop-v b { margin-right: 4px; font-size: 18px; font-weight: 600; color: var(--ink); }
@@ -2022,9 +1987,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* A permit's card (2026-10-08): its status tag is the tracker's own (the
        portal's words, coloured by what they mean: permits-page.js's .st),
        then what was filed and by whom. */
-    .hm-pop-d { font-size: var(--text-note); line-height: 1.4; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .hm-pop-at { margin-top: 6px; padding: 6px 8px; border-radius: var(--r-lg); background: var(--wash-2); font-size: var(--text-note); font-weight: 600; color: var(--ink); }
-    .hm-pop .hm-pop-a2 { align-self: flex-start; margin-top: 4px; font-size: var(--text-note); font-weight: 500; color: var(--ink-2); text-decoration: none; }
+    .hm-pop-d { font-size: var(--text-small); line-height: 1.4; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .hm-pop-at { margin-top: 6px; padding: 6px 8px; border-radius: var(--r-lg); background: var(--wash-2); font-size: var(--text-small); font-weight: 600; color: var(--ink); }
+    .hm-pop .hm-pop-a2 { align-self: flex-start; margin-top: 4px; font-size: var(--text-small); font-weight: 500; color: var(--ink-2); text-decoration: none; }
     .hm-pop .hm-pop-a2:hover { color: var(--ink); text-decoration: underline; }
     .hm-chip.pm-open { background: var(--wash); color: var(--ink-2); }
     .hm-chip.pm-approved { background: none; color: var(--ok-text); box-shadow: inset 0 0 0 1px var(--ok-rule); }
@@ -2051,7 +2016,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <div id="gate" class="hidden fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-card rounded-xl shadow-xl border border-line w-full max-w-sm p-6">
       <div class="flex items-center gap-2.5 mb-1">
-        <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[#F0EFE9] text-ink-body">
+        <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-wash text-ink-body">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         </span>
         <h2 class="text-lg font-semibold text-ink">Secure access</h2>
@@ -2059,10 +2024,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <p class="text-sm text-ink-3 mb-4">Please enter your access password to continue.</p>
       <form id="gateForm" class="space-y-3">
         <input id="gatePassword" type="password" autocomplete="current-password" placeholder="Access password" aria-label="Access password"
-          class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-        <p id="gateError" class="hidden text-sm text-red-600"></p>
+          class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
+        <p id="gateError" class="hidden text-sm text-red"></p>
         <button type="submit"
-          class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg">
+          class="btn-live w-full bg-red-fill hover:bg-red-fill-hover text-white font-semibold px-4 py-2 rounded-lg">
           Sign in
         </button>
       </form>
@@ -2076,18 +2041,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <p id="leadSubtitle" class="text-sm text-ink-3 mt-1 mb-4">Tell us who you are and we'll unlock CSV, image, and PDF exports for this browser, and follow up about your property and market.</p>
       <form id="leadForm" class="space-y-3">
         <input id="leadName" type="text" autocomplete="name" placeholder="Full name *" aria-label="Full name"
-          class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
         <input id="leadEmail" type="email" autocomplete="email" placeholder="Email *" aria-label="Email"
-          class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <input id="leadPhone" type="tel" autocomplete="tel" placeholder="Phone (optional)" aria-label="Phone (optional)"
-            class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
           <input id="leadCompany" type="text" autocomplete="organization" placeholder="Company (optional)" aria-label="Company (optional)"
-            class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
         </div>
-        <p id="leadError" class="hidden text-sm text-red-600"></p>
+        <p id="leadError" class="hidden text-sm text-red"></p>
         <button id="leadSubmit" type="submit"
-          class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60">
+          class="btn-live w-full bg-red-fill hover:bg-red-fill-hover text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60">
           Unlock exports
         </button>
         <button id="leadCancel" type="button"
@@ -2105,29 +2070,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <h2 id="acctTitle" class="text-lg font-semibold text-ink">Sign in</h2>
       <p id="acctNudge" class="hidden text-sm text-ink-3 mt-1"></p>
       <div id="acctTabs" class="flex gap-4 mt-3 mb-4 text-sm border-b border-line">
-        <button id="acctTabIn" type="button" class="pb-2 border-b-2 border-brand-600 font-medium text-ink">Sign in</button>
+        <button id="acctTabIn" type="button" class="pb-2 border-b-2 border-red font-medium text-ink">Sign in</button>
         <button id="acctTabUp" type="button" class="pb-2 border-b-2 border-transparent text-ink-3 hover:text-ink">Create account</button>
       </div>
       <form id="acctForm" class="space-y-3">
         <input id="acctName" type="text" autocomplete="name" placeholder="Name (optional)" aria-label="Name"
-          class="hidden w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          class="hidden w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
         <input id="acctEmail" type="email" autocomplete="email" placeholder="Email" aria-label="Email"
-          class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
         <!-- Password + its show/hide toggle. The wrapper is what setAcctMode()
              hides in "forgot" mode — hiding the input alone would leave the
              eye button floating over an empty row. -->
         <div id="acctPasswordRow" class="pwrap">
           <input id="acctPassword" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password"
-            class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
           <button id="acctPasswordToggle" type="button" class="pwtog" aria-controls="acctPassword" aria-pressed="false" aria-label="Show password" title="Show password">
             <svg class="pw-eye" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
             <svg class="pw-eye-off hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 6.2A9.9 9.9 0 0 1 12 6c6.5 0 10 7 10 7a17 17 0 0 1-3 3.8M6.2 6.4A17 17 0 0 0 2 13s3.5 7 10 7a9.7 9.7 0 0 0 4.6-1.1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m3 3 18 18"/></svg>
           </button>
         </div>
-        <p id="acctError" class="hidden text-sm text-red-600"></p>
+        <p id="acctError" class="hidden text-sm text-red"></p>
         <p id="acctInfo" class="hidden text-sm text-ink-2"></p>
         <button id="acctSubmit" type="submit"
-          class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60">Sign in</button>
+          class="btn-live w-full bg-red-fill hover:bg-red-fill-hover text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60">Sign in</button>
         <!-- "Continue with Google". Ships hidden; revealed only when
              /api/config says this deployment has Google sign-in configured
              AND the modal is on a tab where it applies (the Buy-button rule:
@@ -2156,7 +2121,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div id="acctImport" class="hidden">
         <p class="text-sm text-ink-2 mt-1">You're in. <span id="acctImportCount"></span> saved report(s) live only in this browser. Keep them in your account?</p>
         <div class="flex gap-2 mt-3">
-          <button id="acctImportYes" type="button" class="btn-live flex-1 bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg">Import</button>
+          <button id="acctImportYes" type="button" class="btn-live flex-1 bg-red-fill hover:bg-red-fill-hover text-white font-semibold px-4 py-2 rounded-lg">Import</button>
           <button id="acctImportNo" type="button" class="flex-1 text-sm text-ink-3 hover:text-ink-body border border-line rounded-lg">Skip</button>
         </div>
       </div>
@@ -2279,7 +2244,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            "every comparable the search finds". The vault bullet is the
            one-subscription decision made visible: every Pro member has one.
            Cancellation copy lives here once, not per-tile. -->
-      <div class="flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-3 border-t border-[#ECEAE3] text-xs text-ink-2">
+      <div class="flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-3 border-t border-hair text-xs text-ink-2">
         <span>10-year lookback</span>
         <span>Unlimited exports</span>
         <span>A private place for your own comps</span>
@@ -2330,7 +2295,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            Purchases already made are honored forever — handlePurchaseReturn(),
            /api/report-access and the per-report entitlement all remain. -->
 
-      <p id="pricingError" class="hidden mt-4 text-sm text-red bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
+      <p id="pricingError" class="hidden mt-4 text-sm text-red bg-err-bg border border-err-rule rounded-lg px-3 py-2"></p>
 
       <!-- The "Have a code?" disclosure lived here until 2026-08-31, when the
            tester-code box MOVED into the Settings panel (#passkeyRow, owner's
@@ -2357,24 +2322,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <div class="rd-lab">Your details</div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="compBrokerName" type="text" autocomplete="name" placeholder="Your name *" aria-label="Your name"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
             <input id="compBrokerEmail" type="email" autocomplete="email" placeholder="Email *" aria-label="Email"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="compBrokerPhone" type="tel" autocomplete="tel" placeholder="Phone (optional)" aria-label="Phone (optional)"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
             <input id="compBrokerCompany" type="text" autocomplete="organization" placeholder="Brokerage (optional)" aria-label="Brokerage (optional)"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
           </div>
           <div class="border-t border-line pt-3">
             <div class="text-xs font-semibold uppercase tracking-wider text-ink-faint mb-2">The comp</div>
             <input id="compAddress" type="text" placeholder="Property address *" aria-label="Property address"
-              class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
           </div>
           <div class="grid grid-cols-2 gap-3">
             <select id="compType" aria-label="Property type"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 bg-card focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 bg-card focus:ring-2 focus:ring-red focus:border-red outline-none">
               <option value="Industrial" selected>Industrial</option>
               <option value="Office">Office</option>
               <option value="Retail">Retail</option>
@@ -2383,7 +2348,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <option value="Residential">Residential</option>
             </select>
             <select id="compTx" aria-label="Transaction type"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 bg-card focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 bg-card focus:ring-2 focus:ring-red focus:border-red outline-none">
               <option value="Sale" selected>Sale</option>
               <option value="Lease">Lease</option>
             </select>
@@ -2392,21 +2357,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                instead of clipping in a half-width column. -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="compDate" type="text" placeholder="Close date, e.g. Mar 2026" aria-label="Close date"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
             <input id="compSize" type="text" placeholder="Size (SF), e.g. 86,400" aria-label="Size in square feet"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="compPrice" type="text" placeholder="Price / rate *" aria-label="Price or rate"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
             <input id="compCapRate" type="text" placeholder="Cap rate (optional)" aria-label="Cap rate (optional)"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
           </div>
           <textarea id="compNotes" rows="2" placeholder="Notes: tenant, condition, terms (optional)" aria-label="Notes (optional)"
-            class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
-          <p id="compError" class="hidden text-sm text-red-600"></p>
+            class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none"></textarea>
+          <p id="compError" class="hidden text-sm text-red"></p>
           <button id="compSubmitBtn" type="submit"
-            class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60">
+            class="btn-live w-full bg-red-fill hover:bg-red-fill-hover text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60">
             Submit comp
           </button>
           <button id="compCancel" type="button" class="w-full text-sm text-ink-3 hover:text-ink-body py-1">Cancel</button>
@@ -2467,7 +2432,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </div>
       <div id="shareEmailsWrap" class="hidden mt-3">
         <textarea id="shareEmails" rows="2" placeholder="client@company.com, partner@company.com" aria-label="Emails to invite"
-          class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
+          class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none"></textarea>
       </div>
       <!-- Shown only for a signed-in vault-entitled member on a report that
            actually has private comps blended in (private_count > 0). Nested
@@ -2479,7 +2444,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </label>
       <p id="shareResult" class="text-sm text-ink-3 mt-3"></p>
       <button id="shareCreateBtn" type="button"
-        class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60 mt-4">
+        class="btn-live w-full bg-red-fill hover:bg-red-fill-hover text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60 mt-4">
         Create link
       </button>
       <button id="shareCancelBtn" type="button" class="w-full text-sm text-ink-3 hover:text-ink-body py-1">Cancel</button>
@@ -2539,7 +2504,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <div class="text-sm font-medium text-ink">Appearance</div>
           <p class="text-xs text-ink-3 mt-0.5">Light unless you switch it. Remembered on this browser.</p>
         </div>
-        <button id="themeToggleApp" type="button" class="text-ink-mute hover:text-ink border border-edge hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5 leading-none"
+        <button id="themeToggleApp" type="button" class="text-ink-mute hover:text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5 leading-none"
           aria-label="Switch colour theme" title="Switch colour theme">
           <svg class="theme-moon w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
             d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg>
@@ -2565,16 +2530,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <button id="settingsUpgradeBtn" type="button"
             class="hidden btn-live text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-3 py-1.5">See pricing</button>
           <button id="settingsBillingBtn" type="button"
-            class="hidden text-sm font-medium text-ink border border-edge hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Manage billing</button>
+            class="hidden text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5">Manage billing</button>
           <!-- Admins only. Comped Pro hides every paywall from the one team
                that needs to see it work; this drops it for the session. It
                lived on the workspace's plan card until 2026-09-03, when that
                card went (it duplicated this row) — CLAUDE.md's "keep that
                button working" rule is why it moved rather than went with it. -->
           <button id="billingAdminOffBtn" type="button"
-            class="hidden text-sm font-medium text-ink border border-edge hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">View as a free user</button>
+            class="hidden text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5">View as a free user</button>
         </div>
-        <p id="settingsPlanError" class="hidden text-sm text-red-600 mt-2"></p>
+        <p id="settingsPlanError" class="hidden text-sm text-red mt-2"></p>
       </div>
       <!-- A code from us. Moved here from the pricing modal's "Have a code?"
            disclosure on 2026-08-31 (owner's call): the codes went to friends,
@@ -2602,7 +2567,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <p class="text-xs text-ink-3 mt-0.5">Got a code from us? Enter it here to add what it unlocks to this account.</p>
         <div class="mt-3 flex flex-col sm:flex-row gap-2">
           <input id="passkeyInput" type="text" autocomplete="off" placeholder="Enter your code" aria-label="Your code"
-            class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
           <button id="passkeySubmit" type="button"
             class="shrink-0 w-full sm:w-auto bg-slab text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
             Redeem
@@ -2622,7 +2587,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </span>
           <input id="settingsDigestToggle" type="checkbox" class="accent-red mt-1" />
         </label>
-        <p id="settingsDigestErr" class="hidden text-sm text-red-600 mt-2"></p>
+        <p id="settingsDigestErr" class="hidden text-sm text-red mt-2"></p>
       </div>
       <!-- Account, and since 2026-08-29 the ONLY home for the profile photo:
            the workspace header's cluster is gone. Change photo drives the same
@@ -2636,13 +2601,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div id="settingsAcctEmail" class="text-xs text-ink-faint mt-0.5 truncate"></div>
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <button id="settingsAvatarBtn" type="button"
-            class="text-sm font-medium text-ink border border-edge hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Change photo</button>
+            class="text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5">Change photo</button>
           <button id="settingsAvatarRemove" type="button"
-            class="hidden text-sm font-medium text-ink border border-edge hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Remove photo</button>
+            class="hidden text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5">Remove photo</button>
           <button id="settingsSignOutBtn" type="button"
-            class="text-sm font-medium text-ink border border-edge hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Sign out</button>
+            class="text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5">Sign out</button>
           <button id="settingsDeleteBtn" type="button"
-            class="text-sm font-medium text-red border border-edge hover:bg-red-50 rounded-lg px-3 py-1.5">Delete account…</button>
+            class="text-sm font-medium text-red border border-edge hover:bg-err-bg rounded-lg px-3 py-1.5">Delete account…</button>
         </div>
         <p id="settingsAvatarMsg" class="hidden text-sm mt-2"></p>
         <div id="settingsDeleteConfirm" class="hidden mt-3 border border-edge rounded-lg p-3">
@@ -2651,9 +2616,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <button id="settingsDeleteGo" type="button"
               class="btn-live text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-3 py-1.5">Permanently delete</button>
             <button id="settingsDeleteKeep" type="button"
-              class="text-sm font-medium text-ink border border-edge hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Keep my account</button>
+              class="text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5">Keep my account</button>
           </div>
-          <p id="settingsDeleteErr" class="hidden text-sm text-red-600 mt-2"></p>
+          <p id="settingsDeleteErr" class="hidden text-sm text-red mt-2"></p>
         </div>
       </div>
       <div class="mt-5 flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
@@ -2693,7 +2658,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     <div class="mcard bg-card rounded-xl shadow-xl border border-line w-full max-w-2xl p-6">
       <div class="rd-lab">Firm &amp; branding</div>
       <p class="text-sm text-ink-mute mt-1">Who is in your firm, how it shares, and the branding your reports carry. The firm's buildings are on Home, and its conversations and shelf of reports are in Messages.</p>
-      <p id="firmModalErr" class="hidden text-sm text-red-600 mt-4">Couldn't load your firm just now. Nothing has changed. Close this and try again in a moment.</p>
+      <p id="firmModalErr" class="hidden text-sm text-red mt-4">Couldn't load your firm just now. Nothing has changed. Close this and try again in a moment.</p>
       <!-- The fourth state. renderFirm() hides #deskFirm for an account that
            is in no firm, holds no invitation and could not create one (the
            paywall for firms lives in the pricing modal). On the workspace
@@ -2726,7 +2691,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <div class="mt-3 flex flex-wrap items-center gap-4 text-sm text-ink-2">
             <label for="firmKindSelect">What kind of shop is this?</label>
             <select id="firmKindSelect"
-              class="rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+              class="rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none">
               <option value="">Choose one</option>
               <option value="broker">Broker shop</option>
               <option value="development">Development shop</option>
@@ -2735,11 +2700,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <p id="firmKindNote" class="text-xs text-ink-3 mt-1.5"></p>
           <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
             <input id="firmNameInput" type="text" maxlength="80" placeholder="Your firm's name" aria-label="Firm name"
-              class="rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
             <button id="firmCreateBtn" type="button"
-              class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Create firm</button>
+              class="btn-live text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-3 py-1.5">Create firm</button>
           </div>
-          <p id="firmCreateErr" class="hidden text-red-600 text-xs mt-1.5"></p>
+          <p id="firmCreateErr" class="hidden text-red text-xs mt-1.5"></p>
         </div>
 
         <!-- 3. A member. -->
@@ -2747,10 +2712,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <div id="firmMemberRows" class="space-y-1.5"></div>
           <div id="firmInviteWrap" class="hidden mt-3">
             <textarea id="firmInviteEmails" rows="2" placeholder="colleague@yourfirm.com, analyst@yourfirm.com" aria-label="Colleagues to invite"
-              class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
+              class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none"></textarea>
             <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
               <button id="firmInviteBtn" type="button"
-                class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Invite colleagues</button>
+                class="btn-live text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-3 py-1.5">Invite colleagues</button>
               <span id="firmInviteMsg" class="text-xs text-ink-3"></span>
             </div>
           </div>
@@ -2768,9 +2733,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <form id="firmNameWrap" class="hidden flex flex-wrap items-center gap-4 text-sm text-ink-2">
               <label for="firmRenameInput">Firm name</label>
               <input id="firmRenameInput" type="text" maxlength="80" autocomplete="organization"
-                class="rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                class="rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
               <button id="firmRenameBtn" type="submit"
-                class="hidden btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 rounded-lg px-3 py-1.5">Rename</button>
+                class="hidden btn-live text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover disabled:opacity-60 rounded-lg px-3 py-1.5">Rename</button>
               <span id="firmRenameState" class="text-xs text-ink-3"></span>
             </form>
             <!-- Which shop this firm is. An owner/admin control, because it
@@ -2781,7 +2746,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div id="firmShopWrap" class="flex flex-wrap items-center gap-4 text-sm text-ink-2">
               <label for="firmShopSelect">This firm is a</label>
               <select id="firmShopSelect"
-                class="rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+                class="rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none">
                 <option value="broker">Broker shop</option>
                 <option value="development">Development shop</option>
               </select>
@@ -2794,7 +2759,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div class="flex flex-wrap items-center gap-4 text-sm text-ink-2">
               <label for="firmAutoShareSelect">My new reports</label>
               <select id="firmAutoShareSelect"
-                class="rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+                class="rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none">
                 <!-- The first two options produce the SAME outcome while the
                      firm default is on, so each one says what it does rather
                      than naming a mode: "follow" states the firm's current
@@ -2816,7 +2781,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <div id="firmBilling" class="hidden mt-3 flex flex-wrap items-center gap-4 text-sm">
             <span id="firmSeats" class="text-ink-2"></span>
             <button id="firmBuySeatsBtn" type="button"
-              class="hidden btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add seats</button>
+              class="hidden btn-live text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-3 py-1.5">Add seats</button>
             <button id="firmPortalBtn" type="button"
               class="hidden text-sm text-ink-mute hover:text-ink underline">Manage firm billing</button>
             <span id="firmBillingMsg" class="text-xs text-ink-3"></span>
@@ -2866,9 +2831,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              selected — same fields, same rules, a different save target. -->
         <div id="brandScopeRow" class="hidden mt-2 flex flex-wrap items-center gap-2" role="group" aria-label="Which branding to edit">
           <button type="button" id="brandScopeMine" aria-pressed="true"
-            class="btn-live text-sm font-medium text-white bg-brand-600 rounded-lg px-3 py-1.5">My branding</button>
+            class="btn-live text-sm font-medium text-white bg-red-fill rounded-lg px-3 py-1.5">My branding</button>
           <button type="button" id="brandScopeFirm" aria-pressed="false"
-            class="btn-live text-sm font-medium text-ink border border-edge hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Firm branding</button>
+            class="btn-live text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5">Firm branding</button>
         </div>
         <!-- Told only to a member whose reports are actually falling back to
              the firm's mark — updateBrandScopeUI() owns the condition. -->
@@ -2884,7 +2849,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <img id="brandLogoPreview" alt="Your logo" class="hidden h-9 rounded border border-edge bg-card"
               onerror="this.classList.add('hidden')" />
             <button type="button" id="brandLogo"
-              class="btn-live text-sm font-medium text-ink border border-edge hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Choose a logo</button>
+              class="btn-live text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5">Choose a logo</button>
             <button type="button" id="brandLogoRemove" class="text-sm text-ink-3 hover:text-ink-body">Remove logo</button>
             <input type="file" accept="image/png,image/jpeg" class="hidden" id="brandLogoFile" />
           </div>
@@ -2893,26 +2858,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                resizer a chosen file does. Nothing is saved until Save. -->
           <div class="flex flex-wrap items-center gap-2 mt-2">
             <input id="brandLogoSite" type="text" inputmode="url" placeholder="yourfirm.com" aria-label="Your firm's web address" maxlength="300"
-              class="w-52 min-w-0 rounded-lg border border-edge px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-52 min-w-0 rounded-lg border border-edge px-3 py-1.5 text-sm focus:ring-2 focus:ring-red focus:border-red outline-none" />
             <button type="button" id="brandLogoImport"
-              class="btn-live text-sm font-medium text-ink border border-edge hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Import logo from website</button>
+              class="btn-live text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5">Import logo from website</button>
           </div>
           <p class="text-xs text-ink-3 mt-1">PNG or JPEG, chosen from your computer or read from your website. Resized automatically for print.</p>
 
           <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="brandFirm" type="text" placeholder="Firm name" aria-label="Firm name" maxlength="80"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
             <input id="brandPreparer" type="text" placeholder="Prepared by" aria-label="Prepared by" maxlength="80"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
             <input id="brandPhone" type="tel" placeholder="Phone" aria-label="Phone" maxlength="40"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
             <input id="brandEmail" type="email" placeholder="Email" aria-label="Email" maxlength="120"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
             <input id="brandLicense" type="text" placeholder="License number" aria-label="License number" maxlength="40"
-              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
           </div>
           <textarea id="brandDisclaimer" rows="2" placeholder="Extra disclaimer for your reports (optional)" aria-label="Disclaimer (optional)" maxlength="300"
-            class="w-full rounded-lg border border-edge px-3 py-2 mt-3 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
+            class="w-full rounded-lg border border-edge px-3 py-2 mt-3 focus:ring-2 focus:ring-red focus:border-red outline-none"></textarea>
 
           <!-- Shown only when fillBrandForm() poured a suggestion into an
                empty field (2026-09-02, "one profile"): the member must know
@@ -2922,7 +2887,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
           <div class="mt-2 flex flex-wrap items-center gap-3">
             <button type="button" id="brandSave"
-              class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 disabled:opacity-60">Save</button>
+              class="btn-live text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-3 py-1.5 disabled:opacity-60">Save</button>
             <button type="button" id="brandDelete" class="text-sm text-ink-3 hover:text-ink-body">Remove branding</button>
           </div>
 
@@ -2959,7 +2924,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </svg>
         <span class="rd-wordmark uppercase">Comp<b>Ninja</b></span>
       </a>
-      <nav class="flex items-center gap-4 sm:gap-6 text-[13.5px] text-ink-mute">
+      <nav class="flex items-center gap-4 sm:gap-6 text-[14px] text-ink-mute">
         <!-- The browse links live behind one dropdown; the product surfaces
              (Market explorer, Workspace, the vault and bulk)
              sit in the bar itself, because the rail hides this dropdown and a
@@ -3215,7 +3180,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <button id="lockSharedSignIn" type="button"
           class="text-sm text-ink-mute hover:text-ink underline mt-4">Already have an account? Log in</button>
       </div>
-      <p class="text-[12.5px] text-[#8A8577] mt-4">An automated estimate, not an appraisal.</p>
+      <p class="text-[13px] text-ink-3 mt-4">An automated estimate, not an appraisal.</p>
     </div>
 
     <!-- My Desk view — its own /desk page (mutually exclusive with the home
@@ -3237,7 +3202,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div id="deskSignIn" class="hidden mt-8 dk-card">
         <p class="text-sm text-ink-2">Sign in to work with your firm, share reports, and keep your own book of properties.</p>
         <button id="deskSignInBtn" type="button"
-          class="btn-live mt-3 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Sign in or create account</button>
+          class="btn-live mt-3 text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-3 py-1.5">Sign in or create account</button>
       </div>
 
       <!-- Stand-in for the desk below while its data is read (2026-09-03).
@@ -3348,13 +3313,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                 <label class="flex-1 min-w-[10rem]">
                   <span class="rd-lab">Address</span>
                   <input id="buildingAddress" type="text" required maxlength="200" placeholder="100 Main St, Boise, ID"
-                    class="w-full rounded-lg border border-edge px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                    class="w-full rounded-lg border border-edge px-3 py-2 text-sm focus:ring-2 focus:ring-red focus:border-red outline-none" />
                 </label>
                 <label class="min-w-[10rem]">
                   <span class="rd-lab">Type</span>
                   <!-- The vault's PROPERTY_TYPES, restated: index.html cannot
                        require the module, and the server refuses anything else. -->
-                  <select id="buildingType" class="w-full rounded-lg border border-edge px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+                  <select id="buildingType" class="w-full rounded-lg border border-edge px-3 py-2 text-sm focus:ring-2 focus:ring-red focus:border-red outline-none">
                     <option value="">Any type</option>
                     <option value="Industrial">Industrial</option>
                     <option value="Office">Office</option>
@@ -3364,7 +3329,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                     <option value="Residential">Residential</option>
                   </select>
                 </label>
-                <button type="submit" class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add</button>
+                <button type="submit" class="btn-live text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-3 py-1.5">Add</button>
               </form>
               <p id="buildingMsg" class="hidden dk-msg"></p>
               <p id="hmPropMsg" class="hidden dk-msg" role="status"></p>
@@ -3391,19 +3356,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                   <label class="flex-1 min-w-[10rem]">
                     <span class="rd-lab">Name</span>
                     <input id="contactName" type="text" required maxlength="120" placeholder="Dana Wu"
-                      class="w-full rounded-lg border border-edge px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                      class="w-full rounded-lg border border-edge px-3 py-2 text-sm focus:ring-2 focus:ring-red focus:border-red outline-none" />
                   </label>
                   <label class="flex-1 min-w-[10rem]">
                     <span class="rd-lab">Email</span>
                     <input id="contactEmail" type="text" maxlength="200" placeholder="optional"
-                      class="w-full rounded-lg border border-edge px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                      class="w-full rounded-lg border border-edge px-3 py-2 text-sm focus:ring-2 focus:ring-red focus:border-red outline-none" />
                   </label>
                   <label class="flex-1 min-w-[10rem]">
                     <span class="rd-lab">Company</span>
                     <input id="contactCompany" type="text" maxlength="120" placeholder="optional"
-                      class="w-full rounded-lg border border-edge px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                      class="w-full rounded-lg border border-edge px-3 py-2 text-sm focus:ring-2 focus:ring-red focus:border-red outline-none" />
                   </label>
-                  <button type="submit" class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add</button>
+                  <button type="submit" class="btn-live text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-3 py-1.5">Add</button>
                   <!-- A second door for a list somebody already keeps in a
                        spreadsheet. It posts to the same route the Add button does. -->
                   <button type="button" id="contactImportBtn" class="text-sm font-medium text-ink-2 border border-edge rounded-lg px-3 py-1.5">Import a spreadsheet</button>
@@ -3618,7 +3583,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <input id="exploreAddrInput" type="text" placeholder="City, ST or 5-digit zip" aria-label="City and state, or zip code"
               class="w-56 rounded border border-edge px-2.5 py-1.5 text-sm text-ink focus:border-red focus:ring-1 focus:ring-red outline-none" />
             <button id="exploreAddrBtn" type="button"
-              class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded px-3 py-1.5">Find addresses</button>
+              class="btn-live text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded px-3 py-1.5">Find addresses</button>
             <span id="exploreAddrStatus" class="text-xs text-ink-3"></span>
           </div>
           <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
@@ -3804,7 +3769,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- Submit row; stays in normal flow on phones (no longer docks to the
              viewport bottom - the owner found that motion distracting). On
              desktop the red button sits on the right, per the approved mockup. -->
-        <div class="rd-desk-actions static px-4 py-3.5 bg-card border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="rd-desk-actions static px-4 py-3.5 bg-card border-t border-hair flex flex-col sm:flex-row sm:items-center gap-3">
           <button id="submitBtn" type="submit"
             class="btn-live w-full sm:w-auto sm:order-2 sm:ml-auto inline-flex items-center justify-center gap-2 bg-red-fill hover:bg-red-fill-hover text-white font-semibold px-7 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
             <span id="btnLabel">Run a report</span>
@@ -3843,17 +3808,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  makes Tab-then-Enter a billed 30-60s build. -->
             <input id="marketSearch" type="search" placeholder="e.g. industrial Ontario, CA" autocomplete="off"
                    class="rd-desk-market-in" />
-            <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-line bg-card shadow-sm py-1 text-[13.5px]"></div>
+            <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-line bg-card shadow-sm py-1 text-[14px]"></div>
           </div>
           <!-- The door to /markets — moved here from the Explore menu
                (owner's call, 2026-08-21): browsing markets belongs beside the
                box that searches them, not in the header. NAV_LINKS in
                server.js no longer carries it; the footer still does. -->
-          <a href="/markets" class="inline-block mt-2 text-[12.5px] text-ink-3 underline decoration-edge hover:text-ink">Our markets &rarr;</a>
+          <a href="/markets" class="inline-block mt-2 text-[13px] text-ink-3 underline decoration-edge hover:text-ink">Our markets &rarr;</a>
         </div>
       </aside>
       </div>
-      <div class="text-[12.5px] text-[#8A8577] mt-3">
+      <div class="text-[13px] text-ink-3 mt-3">
         <div>Cited comps · about a minute · every source disclosed</div>
         <div>An automated estimate, not an appraisal.</div>
         <!-- The free report allowance (2026-09-25), for a free account only.
@@ -3867,7 +3832,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            0 (what ACCOUNT_WALL forces) the visitor never had a free search and
            must not be told they used one. -->
 
-      <div id="guestSearchHint" class="hidden text-[12.5px] text-ink-mute mt-1">
+      <div id="guestSearchHint" class="hidden text-[13px] text-ink-mute mt-1">
         <span id="guestSearchHintLead">You've used your free search.</span>
         <button id="guestHintSignIn" type="button" class="underline hover:text-ink">Sign in free</button>
         to keep searching.
@@ -3909,7 +3874,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <div class="flex items-center gap-3">
             <span id="historyCount" class="text-xs text-ink-3"></span>
             <input id="historyFilter" type="search" autocomplete="off" placeholder="Filter by address or type"
-              class="hidden w-52 rounded-lg border border-edge px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="hidden w-52 rounded-lg border border-edge px-3 py-1.5 text-sm focus:ring-2 focus:ring-red focus:border-red outline-none" />
             <button id="clearHistoryBtn" type="button" class="text-xs text-ink-3 hover:text-ink-body underline decoration-edge">clear</button>
           </div>
         </div>
@@ -3951,8 +3916,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               </g>
             </svg>
           </div>
-          <div class="h-2 rounded-full bg-[#F0EFE9] overflow-hidden">
-            <div id="loadingBar" class="h-full rounded-full bg-brand-600" style="width:0%; transition:width .35s ease-out;"></div>
+          <div class="h-2 rounded-full bg-wash overflow-hidden">
+            <div id="loadingBar" class="h-full rounded-full bg-red-fill" style="width:0%; transition:width .35s ease-out;"></div>
           </div>
         </div>
       </div>
@@ -4026,8 +3991,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <p id="siteEstimateNotice" class="hidden no-print no-capture text-xs leading-6 text-ink-mute mb-3"></p>
 
       <!-- Toolbar (not captured in the image / not printed) -->
-      <div class="flex flex-wrap items-center justify-end gap-2 mb-4 no-print">
-        <button id="shareBtn" style="margin-right:auto"
+      <div class="rd-tools flex flex-wrap items-center justify-end gap-2 mb-4 no-print">
+        <button id="shareBtn"
           class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover border border-red rounded px-3 py-2.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
           <span id="shareBtnLabel">Share link</span>
@@ -4171,9 +4136,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- Owner value estimate hero (owner mode only). Sales-comp math runs
              in the browser via renderOwnerHero; NOI never leaves the page. -->
         <div id="ownerHero" data-assemble class="hidden rd-bcard print-shadow-none fade-in">
-          <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 id="ownerHeroTitle" class="font-brand uppercase tracking-wide text-base font-semibold text-ink">What This Building Is Worth</h2>
-            <span id="ownerBasis" class="text-xs text-ink-3 text-right"></span>
+          <!-- On a phone the heading takes its own line and the basis sits
+               under it: side by side, the heading was squeezed into a column
+               four words tall. From sm up the heading never wraps. -->
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-4 mb-4">
+            <h2 id="ownerHeroTitle" class="font-brand uppercase tracking-wide text-base font-semibold text-ink sm:shrink-0">What This Building Is Worth</h2>
+            <span id="ownerBasis" class="text-xs text-ink-3 sm:text-right"></span>
           </div>
           <div class="rd-ledger">
             <div class="rd-lcell">
@@ -4221,7 +4189,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                comparison / income / cost), each labeled and explained in plain
                English. Built by renderOwnerHero; margins only, no flex gap
                (this block IS captured in the PNG export). -->
-          <div id="ownerApproaches" class="hidden mt-4 pt-4 border-t border-[#ECEAE3]"></div>
+          <div id="ownerApproaches" class="hidden mt-4 pt-4 border-t border-hair"></div>
           <!-- The subject's OWN last sale, when the model found one. Sits with
                the approaches rather than in the ledger on purpose: it is
                evidence about this property, not a fourth estimate of it, and a
@@ -4270,7 +4238,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                disclaimed as an estimate from comparable SALES describes a
                different report. -->
           <p id="ownerEstimateNote" class="text-xs text-ink-3 mt-4">Automated estimate from recent comparable sales. Not an appraisal and not a broker opinion of value.</p>
-          <div id="bovCtaWrap" class="no-print mt-4 pt-4 border-t border-[#ECEAE3]">
+          <div id="bovCtaWrap" class="no-print mt-4 pt-4 border-t border-hair">
             <button id="bovCtaBtn" type="button"
               class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-red-fill hover:bg-red-fill-hover text-white font-semibold px-5 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
               Get a free Broker Opinion of Value
@@ -4376,7 +4344,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
         <!-- Comp map (shown when the comps carry coordinates) -->
         <div id="mapCard" class="hidden rd-exhibit overflow-hidden print-shadow-none fade-in">
-          <div class="px-6 py-4 border-b border-[#ECEAE3]">
+          <div class="px-6 py-4 border-b border-hair">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-ink">Comp Map</h2>
           </div>
           <div id="compMap" style="height: 340px;"></div>
@@ -4432,7 +4400,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
         <!-- Comps table -->
         <div id="compsCard" data-assemble class="rd-exhibit overflow-hidden print-shadow-none fade-in">
-          <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-[#ECEAE3]">
+          <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-hair">
             <!-- "Comps Used" (2026-10-07): a comp is a past deal you value against,
                  never a "property", which is the building this report is about. -->
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-ink">Comps Used</h2>
@@ -4550,7 +4518,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               </div>
               <p id="acError" class="hidden text-xs text-red mt-2"></p>
               <div class="flex items-center gap-3 mt-3">
-                <button id="acSubmit" type="button" class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-4 py-2">Add to report</button>
+                <button id="acSubmit" type="button" class="text-sm font-semibold text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-4 py-2">Add to report</button>
                 <button id="acCancel" type="button" class="text-sm font-medium text-ink-mute hover:text-ink">Cancel</button>
                 <span class="text-xs text-ink-3">Stays in your report, never added to CompNinja's data.</span>
               </div>
@@ -4656,7 +4624,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <p class="text-sm text-ink-mute mt-1">How your expense ratio compares to this market, plus DSCR, refi headroom, a value sensitivity grid, and lease-rollover risk, free with an account.</p>
             </div>
             <button id="analysisLockBtn" type="button"
-              class="btn-live text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-4 py-2">Create a free account</button>
+              class="btn-live text-sm font-semibold text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-4 py-2">Create a free account</button>
           </div>
         </div>
 
@@ -4907,9 +4875,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- "How it works" was the first link here until 2026-09-02, when that
              page was retired and 301'd to this one. The separator went with it:
              a single row needs no middle dot. -->
-        <a href="/brokers-firms" class="text-[13.5px] font-semibold text-red hover:text-red-deep">For brokers &amp; firms</a>
+        <a href="/brokers-firms" class="text-[14px] font-semibold text-red hover:text-red-deep">For brokers &amp; firms</a>
         <span class="text-ink-faint">·</span>
-        <a href="/faq" class="text-[13.5px] font-semibold text-red hover:text-red-deep">FAQ</a>
+        <a href="/faq" class="text-[14px] font-semibold text-red hover:text-red-deep">FAQ</a>
       </div>
     </div>
 
@@ -4938,7 +4906,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <span class="rd-wordmark uppercase" style="color:#fff">Comp<b style="color:#EF4444">Ninja</b></span>
           </div>
           <p class="mt-3 leading-relaxed text-[#8F99A8]">Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage: we connect you with local brokers for opinions of value. Comparables derive from publicly available data; verify independently before underwriting.</p>
-          <p class="mt-3"><a href="mailto:info@compninja.co" class="text-[#D5DAE2] hover:text-white underline decoration-[#46536A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">info@compninja.co</a></p>
+          <p class="mt-3"><a href="mailto:info@compninja.co" class="text-[#D5DAE2] hover:text-white underline decoration-ink-body focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">info@compninja.co</a></p>
           <p class="mt-3 text-[#8F99A8]">© 2026 CompNinja LLC</p>
         </div>
         <!-- Grouped rather than one 10-item column: the flat list had grown
@@ -6081,7 +6049,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const box = document.getElementById("statusBox");
     const styles = {
       info:  "bg-wash border-line text-ink-body",
-      error: "bg-red-50 border-red-200 border-l-4 border-l-red-600 text-red-800",
+      error: "bg-err-bg border-err-rule border-l-4 border-l-red text-err-text",
     };
     box.className = `mt-6 rounded-lg border px-4 py-3 text-sm no-print ${styles[kind] || styles.info}`;
     // Errors carry an alert icon + red left rule so they can't be mistaken for
@@ -6114,7 +6082,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (offerSignIn) {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "btn-live mt-3 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5";
+      btn.className = "btn-live mt-3 text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-3 py-1.5";
       btn.textContent = "Sign in or create account";
       btn.addEventListener("click", () => {
         // The account modal has no generic "on success" hook; reloading this
@@ -6633,7 +6601,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
 
     const aboveAsk = gap.dir === "above"; // estimate above the ask
-    deltaTile.className = "rd-tile " + (aboveAsk ? "text-ok-text" : "text-[#7A5B12]");
+    deltaTile.className = "rd-tile " + (aboveAsk ? "text-ok-text" : "text-warn-text");
     animateValue(deltaVal, Math.abs(val.likely - ask), money, aboveAsk ? "+" : "−");
     deltaPct.textContent = gap.pct + "% " + (aboveAsk ? "below" : "above") + " this estimate";
     verdict.textContent = aboveAsk
@@ -6735,7 +6703,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     // Neutral paper tile; above/below semantics carried by text color drawn
     // from the badge palette (children inherit via the opacity utilities).
-    deltaTile.className = "rd-tile " + (above ? "text-[#7A5B12]" : "text-ok-text");
+    deltaTile.className = "rd-tile " + (above ? "text-warn-text" : "text-ok-text");
     animateValue(deltaVal, Math.abs(delta), (v) => formatUsd(v), above ? "+" : "−");
     deltaPct.textContent = Math.abs(pct).toFixed(1) + "% " + (above ? "above" : "below") + " market average" + (isRange ? " (midpoint)" : "");
 
@@ -9038,9 +9006,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         const td = document.createElement("td");
         const v = dcfValue(noi, { holdYears: a.holdYears, noiGrowthPct: g, discountPct: a.discountPct, exitCapPct: c }).value;
         const isCenter = c === a.exitCapPct && g === a.noiGrowthPct;
-        td.className = "p-1.5 text-right tabular-nums border border-[#EFEDE7] " +
+        td.className = "p-1.5 text-right tabular-nums border border-hair " +
           (sellVal == null ? "text-ink-2 bg-card"
-            : v >= sellVal ? "text-ok-text bg-[#F4FAF6]" : "text-warn-text bg-[#FBF8EF]") +
+            : v >= sellVal ? "text-ok-text bg-ok-bg" : "text-warn-text bg-warn-bg") +
           (isCenter ? " outline outline-1 outline-red font-semibold" : "");
         td.textContent = fmtM(v);
         if (isCenter) td.title = "Current assumptions";
@@ -9174,10 +9142,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     st.buckets.forEach((b) => {
       const share = st.totRent > 0 ? b.rent / st.totRent : 0;
       const tr = document.createElement("tr");
-      tr.className = share > 0.5 ? "bg-err-bg" : share > 0.3 ? "bg-[#FBF8EF]" : "";
+      tr.className = share > 0.5 ? "bg-err-bg" : share > 0.3 ? "bg-warn-bg" : "";
       [b.year, String(b.count), b.sf ? b.sf.toLocaleString() : "—", Math.round(share * 100) + "%"].forEach((c, i) => {
         const td = document.createElement("td");
-        td.className = "p-1.5 border border-[#EFEDE7] tabular-nums " + (i === 0 ? "text-left" : "text-right") +
+        td.className = "p-1.5 border border-hair tabular-nums " + (i === 0 ? "text-left" : "text-right") +
           (share > 0.3 && i === 3 ? " font-semibold" : "");
         td.textContent = c;
         tr.appendChild(td);
@@ -10028,7 +9996,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       for (const a of addresses) {
         const b = document.createElement("button");
         b.type = "button";
-        b.className = "btn-live text-xs text-ink border border-edge bg-card hover:bg-[#FBFBF9] hover:text-red rounded px-2.5 py-1.5";
+        b.className = "btn-live text-xs text-ink border border-edge bg-card hover:bg-wash-2 hover:text-red rounded px-2.5 py-1.5";
         b.textContent = a.address;   // textContent on purpose: OSM data is untrusted
         if (a.type) {
           const typeTag = document.createElement("span");
@@ -10045,7 +10013,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         // for a hint whose failure mode is one ordinary billed search.
         if (a.cached) {
           const tag = document.createElement("span");
-          tag.className = "ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700";
+          tag.className = "ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-ok-text";
           tag.textContent = "Instant";
           b.appendChild(tag);
           b.title = "A recent report for this address is on file; it loads in about a second.";
@@ -13154,9 +13122,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("acctTabs").classList.toggle("hidden", mode === "reset");
     document.getElementById("acctForgotLink").classList.toggle("hidden", mode !== "signin");
     document.getElementById("acctTabIn").className = "pb-2 border-b-2 " +
-      (mode === "signin" ? "border-brand-600 font-medium text-ink" : "border-transparent text-ink-3 hover:text-ink");
+      (mode === "signin" ? "border-red font-medium text-ink" : "border-transparent text-ink-3 hover:text-ink");
     document.getElementById("acctTabUp").className = "pb-2 border-b-2 " +
-      (mode === "signup" ? "border-brand-600 font-medium text-ink" : "border-transparent text-ink-3 hover:text-ink");
+      (mode === "signup" ? "border-red font-medium text-ink" : "border-transparent text-ink-3 hover:text-ink");
     document.getElementById("acctError").classList.add("hidden");
     document.getElementById("acctInfo").classList.add("hidden");
     syncGoogleBtn();
@@ -16604,7 +16572,7 @@ async function renderMyDesk() {
       row.appendChild(note);
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5";
+      btn.className = "btn-live text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-3 py-1.5";
       btn.textContent = "Accept";
       btn.addEventListener("click", async () => {
         btn.disabled = true;
@@ -17757,8 +17725,8 @@ async function renderMyDesk() {
   // One form, two save targets. The row is revealed only to an owner/admin of
   // a firm; switching refills the form from the selected profile's last-saved
   // state (unsaved edits are dropped — the same thing a page reload does).
-  const BRAND_SCOPE_ON = "btn-live text-sm font-medium text-white bg-brand-600 rounded-lg px-3 py-1.5";
-  const BRAND_SCOPE_OFF = "btn-live text-sm font-medium text-ink border border-edge hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5";
+  const BRAND_SCOPE_ON = "btn-live text-sm font-medium text-white bg-red-fill rounded-lg px-3 py-1.5";
+  const BRAND_SCOPE_OFF = "btn-live text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5";
 
   function setBrandScope(scope) {
     if (brandScope === scope) return;
@@ -18455,8 +18423,8 @@ async function renderMyDesk() {
     // bar. No per-comp rows.
     const exploreProgressHtml = (type, city, state) =>
       `<div class="fade-in px-3 py-2">` +
-      `<div id="exploreProgHead" class="text-[#46536A]">Building the ${escq(type)} · ${escq(city)}, ${escq(state)} snapshot…</div>` +
-      `<div id="exploreProgDetail" class="mt-0.5 truncate text-[12.5px] text-ink-3">Usually 30–60 seconds.</div>` +
+      `<div id="exploreProgHead" class="text-ink-body">Building the ${escq(type)} · ${escq(city)}, ${escq(state)} snapshot…</div>` +
+      `<div id="exploreProgDetail" class="mt-0.5 truncate text-[13px] text-ink-3">Usually 30–60 seconds.</div>` +
       `<div class="mt-2 h-0.5 overflow-hidden rounded bg-line">` +
       `<div id="exploreProgBar" class="h-full bg-red-fill transition-all duration-700" style="width:6%"></div></div>` +
       `</div>`;
@@ -18646,7 +18614,7 @@ async function renderMyDesk() {
         return `<span class="shrink-0 text-[11px]" style="color:${DIR_COLOR[d]}">${escq(d[0].toUpperCase() + d.slice(1))}</span>`;
       };
       let html = matches.map((m) =>
-        `<a href="/market/${escq(m.slug)}" class="flex items-baseline justify-between gap-2 px-3 py-1.5 text-[#46536A] hover:text-ink hover:bg-[#FBFBF9]">` +
+        `<a href="/market/${escq(m.slug)}" class="flex items-baseline justify-between gap-2 px-3 py-1.5 text-ink-body hover:text-ink hover:bg-wash-2">` +
         `<span class="truncate">${escq(m.type)} · ${escq(m.city)}, ${escq(m.state)}</span>${dirBadge(m.direction)}</a>`).join("");
       // Explorer rows — only when the query doesn't resolve to a covered page.
       let p = parseExploreQuery(input.value.trim());
@@ -18670,13 +18638,13 @@ async function renderMyDesk() {
       const exactMatch = p.type && matches.some((m) =>
         m.type.toLowerCase() === p.type.toLowerCase() && m.city.toLowerCase() === p.city.toLowerCase() && m.state === p.state);
       if (p.type && !exactMatch) {
-        html += `<button type="button" id="marketSearchExplore" class="block w-full text-left px-3 py-1.5 font-semibold text-red hover:bg-[#FBFBF9]">Explore this market, build the ${escq(p.type)} · ${escq(p.city)}, ${escq(p.state)} page →</button>`;
+        html += `<button type="button" id="marketSearchExplore" class="block w-full text-left px-3 py-1.5 font-semibold text-red hover:bg-wash-2">Explore this market, build the ${escq(p.type)} · ${escq(p.city)}, ${escq(p.state)} page →</button>`;
       } else if (p.reason === "no-state" && !matches.length) {
         html += `<div class="px-3 py-1.5 text-ink-3">Add the state to explore a new market, e.g. “industrial Boise ID”</div>`;
       } else if (p.reason === "no-type" && !matches.length) {
         html += `<div class="px-3 py-1.5 text-ink-3">Explore ${escq(p.city)}, ${escq(p.state)} as:</div>` +
           EXPLORE_TYPES.map((t) =>
-            `<button type="button" data-explore-type="${t}" class="block w-full text-left px-3 py-1.5 font-semibold text-red hover:bg-[#FBFBF9]">${cap(t)} →</button>`).join("");
+            `<button type="button" data-explore-type="${t}" class="block w-full text-left px-3 py-1.5 font-semibold text-red hover:bg-wash-2">${cap(t)} →</button>`).join("");
       } else if (p.reason === "unsupported-type" && !matches.length) {
         html += `<div class="px-3 py-1.5 text-ink-3">The Explorer covers Industrial, Office, Retail and Multifamily markets.</div>`;
       } else if (p.reason === "no-city" && !matches.length) {
@@ -18756,12 +18724,12 @@ async function renderMyDesk() {
     // SWAP the resting colours for the green, never stack them: two classes
     // for one property are decided by their order in tailwind.css, and the
     // token classes sort after the palette's, so a stacked green lost.
-    copySummaryBtn.classList.replace("text-ink-mute", "text-emerald-700");
-    copySummaryBtn.classList.replace("border-edge", "border-emerald-300");
+    copySummaryBtn.classList.replace("text-ink-mute", "text-ok-text");
+    copySummaryBtn.classList.replace("border-edge", "border-ok-rule");
     setTimeout(() => {
       label.textContent = "Copy";
-      copySummaryBtn.classList.replace("text-emerald-700", "text-ink-mute");
-      copySummaryBtn.classList.replace("border-emerald-300", "border-edge");
+      copySummaryBtn.classList.replace("text-ok-text", "text-ink-mute");
+      copySummaryBtn.classList.replace("border-ok-rule", "border-edge");
     }, 1600);
   });
 
@@ -19589,7 +19557,7 @@ async function renderMyDesk() {
       // workspace they have never seen and were not looking for.
       if (Array.isArray(data.granted) && data.granted.indexOf("vault") !== -1) {
         msg.innerHTML = 'Your comps and pipeline are open. <a href="/comps" class="underline font-semibold">Go to your comps</a>.';
-        msg.className = "mt-2 text-sm text-emerald-700";
+        msg.className = "mt-2 text-sm text-ok-text";
         msg.classList.remove("hidden");
         return;
       }
@@ -19598,7 +19566,7 @@ async function renderMyDesk() {
       msg.textContent = data.already
         ? "This account already has everything that code unlocks."
         : "You're all set — your code is applied to this account.";
-      msg.className = "mt-2 text-sm text-emerald-700";
+      msg.className = "mt-2 text-sm text-ok-text";
       msg.classList.remove("hidden");
     } catch (ex) {
       msg.textContent = ex.message;
@@ -19822,7 +19790,7 @@ async function renderMyDesk() {
     const slug = String(comp.verified_by_slug || "");
     const linked = /^[a-z0-9-]{3,80}$/.test(slug);
     const cred = document.createElement(linked ? "a" : "span");
-    cred.className = "ml-1.5 text-[10px] text-ok-text align-middle" + (linked ? " underline hover:text-[#04452A]" : "");
+    cred.className = "ml-1.5 text-[10px] text-ok-text align-middle" + (linked ? " underline hover:text-ok-text" : "");
     cred.textContent = "· " + by;
     if (linked) {
       cred.href = "/broker/" + encodeURIComponent(slug);

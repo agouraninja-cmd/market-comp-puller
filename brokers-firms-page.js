@@ -91,48 +91,47 @@ main.wrap{max-width:none;padding:0}
 /* The SMALL eyebrow. /faq's .faqeye is the 18px variant from the same design
    set; this page uses the 10.5px one throughout, and mixing them reads as two
    different devices rather than one family. */
-.bfeye{font-size:var(--text-micro);font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--red);line-height:1.4}
+.bfeye{font-size:var(--text-tiny);font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--red);line-height:1.4}
 .bfhero{padding:56px 32px 48px}
 .bfhero h1{font-family:var(--serif);font-weight:500;font-size:var(--text-display-lg);line-height:1.14;
   letter-spacing:-.005em;color:var(--ink);margin:20px 0 0;max-width:20ch}
 .bflede{font-size:var(--text-input);line-height:1.62;color:var(--ink-body);margin:20px 0 0;max-width:64ch}
 .bfacts{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:24px 0 0}
-.bfacts .btn{font-size:var(--text-lead);padding:12px 24px}
 .bfalt{font-size:var(--text-compact);color:var(--ink-mute);text-decoration:underline;text-decoration-color:var(--edge)}
 .bfalt:hover{color:var(--ink)}
 /* Section headers. The band's h2 is the serif 29px of the design; .card h2 in
    MARKET_CSS is 19px and belongs to a card, not to a band. */
 .bfband h2{font-family:var(--serif);font-weight:500;font-size:29px;line-height:1.2;
   color:var(--ink);margin:8px 0 0;letter-spacing:normal;text-transform:none}
-.bfsub{font-size:var(--text-body);line-height:1.6;color:var(--ink-body);margin:12px 0 0}
+.bfsub{font-size:var(--text-lead);line-height:1.6;color:var(--ink-body);margin:12px 0 0}
 .bfhead{display:flex;align-items:flex-end;justify-content:space-between;gap:40px}
-.bfhnote{font-size:var(--text-body);line-height:1.6;color:var(--ink-body);margin:0 0 3px;max-width:38ch}
+.bfhnote{font-size:var(--text-lead);line-height:1.6;color:var(--ink-body);margin:0 0 3px;max-width:38ch}
 .bfcard{background:var(--card);border:1px solid var(--edge);border-radius:var(--r-md);overflow:hidden;
   margin-top:24px;box-shadow:var(--lift)}
 
 /* --- One - the upload panel (illustrative; see rule 4) --------------------- */
 .bfuptop{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 20px;
   border-bottom:1px solid var(--line)}
-.bffile{font-family:var(--mono);font-size:var(--text-ui);color:var(--ink)}
-.bfmeta{font-size:var(--text-note);color:var(--ink-3);margin-left:12px}
+.bffile{font-family:var(--mono);font-size:var(--text-compact);color:var(--ink)}
+.bfmeta{font-size:var(--text-small);color:var(--ink-3);margin-left:12px}
 .bffaint{font-size:var(--text-label);color:var(--ink-faint)}
 .bfupbody{display:grid;grid-template-columns:1fr}
 .bfmap{border-bottom:1px solid var(--hair)}
-.bfrowhd{padding:9px 20px;background:var(--wash);font-size:var(--text-micro);font-weight:600;letter-spacing:.07em;
+.bfrowhd{padding:9px 20px;background:var(--wash);font-size:var(--text-tiny);font-weight:600;letter-spacing:.07em;
   text-transform:uppercase;color:var(--ink-3)}
 .bfmap .bfrowhd,.bfmaprow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.bfmaprow{padding:11px 20px;border-top:1px solid var(--hair);font-size:var(--text-ui);align-items:center;color:var(--ink)}
-.bfsrc{font-family:ui-monospace,Menlo,monospace;font-size:var(--text-note);color:var(--ink-mute)}
+.bfmaprow{padding:11px 20px;border-top:1px solid var(--hair);font-size:var(--text-compact);align-items:center;color:var(--ink)}
+.bfsrc{font-family:ui-monospace,Menlo,monospace;font-size:var(--text-small);color:var(--ink-mute)}
 /* The skipped column. --ink-faint is a whisper token, below AA by design,
    which is the correct weight for a row that is being told it was ignored. */
 .bfmaprow.skip .bfsrc,.bfmaprow.skip span{color:var(--ink-faint)}
 .bfprevrow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 20px;
   border-top:1px solid var(--hair)}
 .bfprevrow .a{font-size:var(--text-compact);color:var(--ink)}
-.bfprevrow .m{font-size:var(--text-note);color:var(--ink-3);margin-top:2px}
+.bfprevrow .m{font-size:var(--text-small);color:var(--ink-3);margin-top:2px}
 .bffig{font-family:var(--serif);font-weight:500;font-size:18px;color:var(--ink);
   font-variant-numeric:tabular-nums;white-space:nowrap}
-.bfmore{padding:11px 20px;border-top:1px solid var(--hair);font-size:var(--text-note);color:var(--ink-3)}
+.bfmore{padding:11px 20px;border-top:1px solid var(--hair);font-size:var(--text-small);color:var(--ink-3)}
 .bfupfoot{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 20px;
   border-top:1px solid var(--line);background:var(--wash)}
 .bfupfoot span:first-child{font-size:var(--text-small);color:var(--ink-mute)}
@@ -143,23 +142,23 @@ main.wrap{max-width:none;padding:0}
 /* --- Two - the vault --------------------------------------------------- */
 .bfvault{display:grid;grid-template-columns:1fr;gap:20px;align-items:start;margin-top:22px}
 .bfvcard{background:var(--card);border:1px solid var(--edge);border-radius:var(--r-md);box-shadow:var(--lift)}
-.bfvhd{padding:11px 18px;border-bottom:1px solid var(--hair);font-size:var(--text-micro);font-weight:600;
+.bfvhd{padding:11px 18px;border-bottom:1px solid var(--hair);font-size:var(--text-tiny);font-weight:600;
   letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
 .bfvrow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 18px;
   border-bottom:1px solid var(--hair)}
-.bfvrow .a{font-size:var(--text-body);color:var(--ink)}
-.bfvrow .m{font-size:var(--text-note);color:var(--ink-3);margin-top:3px}
+.bfvrow .a{font-size:var(--text-lead);color:var(--ink)}
+.bfvrow .m{font-size:var(--text-small);color:var(--ink-3);margin-top:3px}
 .bfvrow .bffig{font-size:var(--text-subhead)}
-.bfvfoot{background:var(--wash);border-top:1px solid var(--hair);padding:12px 18px;font-size:var(--text-note);
+.bfvfoot{background:var(--wash);border-top:1px solid var(--hair);padding:12px 18px;font-size:var(--text-small);
   line-height:1.55;color:var(--ink-mute)}
 .bfvfoot strong{color:var(--ink);font-weight:600}
 .bfexits{display:flex;flex-direction:column;gap:10px}
 .bfexit{background:var(--card);border:1px solid var(--edge);border-radius:var(--r-md);padding:16px 18px;box-shadow:var(--lift)}
-.bfexit .k{font-size:var(--text-micro);font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);
+.bfexit .k{font-size:var(--text-tiny);font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);
   margin-bottom:6px}
-.bfexit p{font-size:var(--text-ui);line-height:1.6;color:var(--ink-body);margin:0}
+.bfexit p{font-size:var(--text-compact);line-height:1.6;color:var(--ink-body);margin:0}
 .bfpro{display:flex;align-items:flex-start;gap:12px;border-top:1px solid var(--line);padding-top:18px;
-  margin-top:22px;font-size:var(--text-ui);line-height:1.6;color:var(--ink-mute)}
+  margin-top:22px;font-size:var(--text-compact);line-height:1.6;color:var(--ink-mute)}
 .bfpro strong{color:var(--ink);font-weight:600}
 
 /* --- Three - the firm ledger and the shops ------------------------------- */
@@ -171,14 +170,14 @@ main.wrap{max-width:none;padding:0}
 .bfledcell{padding:22px;border-bottom:1px solid var(--hair)}
 .bfledcell:last-child{border-bottom:0}
 .bfledcell.mid{background:var(--wash)}
-.bfledcell .k{font-size:var(--text-micro);font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--red);
+.bfledcell .k{font-size:var(--text-tiny);font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--red);
   margin-bottom:8px}
 .bfledcell h3{font-family:var(--serif);font-weight:500;font-size:var(--text-title);color:var(--ink);
   line-height:1.28;margin:0 0 8px}
-.bfledcell p{font-size:var(--text-ui);line-height:1.6;color:var(--ink-body);margin:0}
+.bfledcell p{font-size:var(--text-compact);line-height:1.6;color:var(--ink-body);margin:0}
 .bfshops{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
 .bfshop{background:var(--card);border:1px solid var(--edge);border-radius:var(--r-md);padding:16px 18px;box-shadow:var(--lift)}
-.bfshop h3{font-size:var(--text-ui);font-weight:600;color:var(--ink);margin:0 0 4px}
+.bfshop h3{font-size:var(--text-compact);font-weight:600;color:var(--ink);margin:0 0 4px}
 .bfshop p{font-size:var(--text-small);line-height:1.55;color:var(--ink-body);margin:0}
 .bfshop.spare{display:flex;flex-direction:column;justify-content:center}
 .bfshop.spare p{color:var(--ink-3)}
@@ -186,11 +185,11 @@ main.wrap{max-width:none;padding:0}
 /* --- Price pair ---------------------------------------------------------- */
 .bfprice{display:grid;grid-template-columns:1fr;gap:16px}
 .bfplan{border:1px solid var(--edge);border-radius:var(--r-md);background:var(--card);padding:22px 24px;box-shadow:var(--lift)}
-.bfplan .k{font-size:var(--text-micro);font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+.bfplan .k{font-size:var(--text-tiny);font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
 .bfplan .f{font-family:var(--serif);font-weight:500;font-size:30px;color:var(--ink);
   font-variant-numeric:tabular-nums;margin:8px 0}
 .bfplan .f span{font-family:Inter,system-ui,sans-serif;font-size:var(--text-lead);color:var(--ink-3)}
-.bfplan p{font-size:var(--text-ui);line-height:1.6;color:var(--ink-body);margin:0}
+.bfplan p{font-size:var(--text-compact);line-height:1.6;color:var(--ink-body);margin:0}
 
 /* --- The two surfaces that are dark in BOTH themes (rule 5) -------------- */
 /* --slab is #1A2433 in light and lifts to #243044 in dark, so the SURFACE
@@ -205,15 +204,15 @@ main.wrap{max-width:none;padding:0}
 .bfcta{background:var(--slab);padding:44px 32px}
 .bfcta .bfin{display:flex;align-items:center;justify-content:space-between;gap:32px;flex-wrap:wrap}
 .bfcta h2{font-family:var(--serif);font-weight:500;font-size:var(--text-h1);color:#fff;margin:0 0 8px}
-.bfcta p{font-size:var(--text-body);color:#B6C1CF;margin:0}
+.bfcta p{font-size:var(--text-lead);color:#B6C1CF;margin:0}
 /* The one door onto the comp-submission modal that survived the merge. It is
    a QUERY, never a /#submit-comp fragment: ACCOUNT_WALL decides what "/"
    serves on the server and a fragment never reaches it, which is what left
    every logged-out broker on the landing page with no modal and no anchor. */
-.bfcta .sub{display:inline-block;margin-top:12px;font-size:var(--text-ui);color:#B6C1CF;text-decoration:underline;
+.bfcta .sub{display:inline-block;margin-top:12px;font-size:var(--text-compact);color:#B6C1CF;text-decoration:underline;
   text-decoration-color:rgba(182,193,207,.45)}
 .bfcta .sub:hover{color:#fff}
-.bfcta .btn{background:#DC2626;font-size:var(--text-lead);padding:12px 26px;white-space:nowrap}
+.bfcta .btn{background:#DC2626;white-space:nowrap}
 .bfcta .btn:hover{background:#B91C1C}
 .bffine{padding:20px 32px 26px}
 /* --ink-3, not the --ink-faint the design's #8A8F98 sits nearest. --ink-faint
@@ -221,7 +220,7 @@ main.wrap{max-width:none;padding:0}
    2.80:1 dark), and this paragraph is the page's legal disclosure — the one
    run of small print that has to survive being read. --ink-3 is what the
    site's own .disc already uses for exactly this text. */
-.bffine p{max-width:940px;margin:0 auto;font-size:11.5px;line-height:1.6;color:var(--ink-3)}
+.bffine p{max-width:940px;margin:0 auto;font-size:var(--text-label);line-height:1.6;color:var(--ink-3)}
 
 /* The handoff's breakpoint: below ~900px every 2- and 3-column grid collapses
    and the upload panel stacks with the MAPPING first, because checking the
@@ -352,7 +351,7 @@ function renderBrokersFirmsPageBody({
     `<h1>Your closed deals are comps. Put them to work.</h1>` +
     `<p class="bflede">Upload the comp book you already keep. It stays private, and your deals ` +
     `show up in every report you run. Bring the office and everyone works off one shelf.</p>` +
-    `<p class="bfacts"><a class="btn" href="${startHref}">${startLabel} &rarr;</a>` +
+    `<p class="bfacts"><a class="btn lg" href="${startHref}">${startLabel} &rarr;</a>` +
     `<a class="bfalt" href="/pricing">See pricing</a></p>` +
     `</div></div>` +
 
@@ -447,7 +446,7 @@ function renderBrokersFirmsPageBody({
     `<div><h2>Try it before you upload a single row.</h2>` +
     `<p>A free account values any commercial address, three years back.</p>` +
     `<a class="sub" href="/?submit=comp">Have a comp to submit? &rarr;</a></div>` +
-    `<a class="btn" href="${startHref}">${startLabel} &rarr;</a>` +
+    `<a class="btn lg" href="${startHref}">${startLabel} &rarr;</a>` +
     `</div></div>` +
 
     // --- Compliance. Not decoration: the owner is not a licensed broker. ---

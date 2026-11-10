@@ -27,6 +27,9 @@ function renderHubHTML(hubId, chrome) {
   const THEME_CSS = chrome.THEME_CSS || "";
   const THEME_BOOT = chrome.THEME_BOOT || "";
   const ACCOUNT_NAV_CSS = chrome.ACCOUNT_NAV_CSS || "";
+  // components.js's phone rule for form fields (16px, so an iPhone does not
+  // zoom in on a tap). The page draws its own buttons and takes nothing else.
+  const FIELD_CSS = chrome.FIELD_CSS || "";
   const ACCOUNT_NAV_JS = chrome.ACCOUNT_NAV_JS || "";
   const ACCOUNT_NAV_SLOTS = chrome.ACCOUNT_NAV_SLOTS || "";
   const ACCOUNT_NAV_PRICING = chrome.ACCOUNT_NAV_PRICING || "";
@@ -46,11 +49,11 @@ body{margin:0;background:var(--paper);color:var(--ink);
 a{color:inherit;text-decoration:none}
 .hdr{position:sticky;top:0;z-index:1000;background:var(--paper);border-bottom:1px solid var(--line);
   padding:12px 20px;display:flex;align-items:center;gap:18px}
-.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:var(--text-ui);margin-left:auto}
+.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:var(--text-compact);margin-left:auto}
 .hdr nav a{color:var(--ink-2)}.hdr nav a:hover{color:var(--ink)}
 .wrap{max-width:1000px;margin:0 auto;padding:28px 20px 80px}
 h1{font-size:22px;margin:0 0 4px;line-height:1.2}
-.sub{color:var(--ink-2);font-size:var(--text-ui);margin:0 0 24px}
+.sub{color:var(--ink-2);font-size:var(--text-compact);margin:0 0 24px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-xl);padding:18px;margin-bottom:20px}
 .msg{padding:14px 16px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--wash);
   color:var(--ink-body);font-size:var(--text-compact)}
@@ -61,7 +64,7 @@ h1{font-size:22px;margin:0 0 4px;line-height:1.2}
 a.signin{text-decoration:underline;font-weight:600;white-space:nowrap}
 h2{font-size:var(--text-lead);margin:0 0 12px;letter-spacing:.01em}
 .tblwrap{overflow-x:auto}
-table{width:100%;min-width:640px;border-collapse:collapse;font-size:var(--text-ui)}
+table{width:100%;min-width:640px;border-collapse:collapse;font-size:var(--text-compact)}
 th{text-align:left;font-weight:600;color:var(--ink-2);border-bottom:1px solid var(--ink);
   padding:0 10px 7px 0;white-space:nowrap}
 td{padding:9px 10px 9px 0;border-bottom:1px solid var(--line);vertical-align:top}
@@ -82,9 +85,9 @@ tr.thread td{background:var(--wash);padding:12px 10px}
   color:var(--ink-2);text-decoration:underline}
 .link:hover{color:var(--ink)}
 .addbox{border:1px solid var(--line);border-radius:var(--r-lg);padding:14px;margin-top:10px;background:var(--card)}
-.addbox label{display:block;font-size:var(--text-note);color:var(--ink-2);margin-top:8px}
+.addbox label{display:block;font-size:var(--text-small);color:var(--ink-2);margin-top:8px}
 .addbox input,.addbox select{width:100%;margin-top:3px;padding:7px 8px;border:1px solid var(--line);
-  border-radius:var(--r-md);background:var(--card);color:var(--ink);font:inherit;font-size:var(--text-ui)}
+  border-radius:var(--r-md);background:var(--card);color:var(--ink);font:inherit;font-size:var(--text-compact)}
 .mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 12px}
 /* The vault picker. A plain scrolling list of rows with checkboxes: a broker
    picking three comps out of two hundred needs to read addresses, not admire
@@ -104,11 +107,11 @@ tr.thread td{background:var(--wash);padding:12px 10px}
 .vrow .addr{flex:1;min-width:0}
 .vrow .fig{color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
 .vrow.sent{opacity:.55}
-.vrow.sent .addr::after{content:" · already in this hub";color:var(--ink-3);font-size:11.5px}
+.vrow.sent .addr::after{content:" · already in this hub";color:var(--ink-3);font-size:var(--text-label)}
 .mt10{margin-top:10px}
 #peopleEmails{width:100%;margin-top:3px;padding:7px 8px;border:1px solid var(--line);
-  border-radius:var(--r-md);background:var(--card);color:var(--ink);font:inherit;font-size:var(--text-ui)}
-.prow{display:flex;align-items:baseline;gap:10px;padding:6px 0;font-size:var(--text-ui);
+  border-radius:var(--r-md);background:var(--card);color:var(--ink);font:inherit;font-size:var(--text-compact)}
+.prow{display:flex;align-items:baseline;gap:10px;padding:6px 0;font-size:var(--text-compact);
   border-bottom:1px solid var(--line)}
 .prow:last-child{border-bottom:0}
 .prow .who2{flex:1;min-width:0}
@@ -122,7 +125,7 @@ tr.thread td{background:var(--wash);padding:12px 10px}
 .threadbox .stream{margin-bottom:10px}
 /* The status control and the read-only chip are sized alike on purpose, so a
    tenant who can act and an observer who cannot see the same table shape. */
-select.st{font:inherit;font-size:var(--text-note);padding:2px 4px;border:1px solid var(--line);
+select.st{font:inherit;font-size:var(--text-small);padding:2px 4px;border:1px solid var(--line);
   border-radius:var(--r-md);background:var(--card);color:var(--ink)}
 .st-new{color:var(--ink-3)}
 .st-shortlist{color:var(--ink);font-weight:600}
@@ -135,10 +138,11 @@ tr.passed td:not(:nth-last-child(-n+2)){opacity:.55}
 textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);border-radius:var(--r-lg);
   background:var(--card);color:var(--ink);font:inherit;resize:vertical}
 .btn{display:inline-block;border:1px solid var(--ink);background:var(--ink);color:var(--paper);
-  border-radius:var(--r-lg);padding:8px 14px;font-size:var(--text-ui);cursor:pointer;font-weight:600}
+  border-radius:var(--r-lg);padding:8px 14px;font-size:var(--text-compact);cursor:pointer;font-weight:600}
 .btn[disabled]{opacity:.5;cursor:default}
 .foot{color:var(--ink-3);font-size:var(--text-label);margin-top:30px;line-height:1.5}
 .hide{display:none!important}
+${FIELD_CSS}
 </style></head><body>
 <header class="hdr">
   <a href="/" aria-label="CompNinja">${CN_LOGO}</a>

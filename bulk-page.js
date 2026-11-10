@@ -65,7 +65,7 @@ const BULK_RUN_CSS = `
 .bk-run .msg{font-size:var(--text-small,13px);margin:12px 0 0;color:var(--ink,#1A2433)}
 .bk-run .msg.bad{color:var(--red-deep,#991B1B)}
 .bk-run .notes{margin:12px 0 0;padding:10px 12px;border:1px solid var(--line,#E4E2DA);border-radius:var(--r-md,6px);
-  font-size:var(--text-note,12.5px);color:var(--ink,#1A2433)}
+  font-size:var(--text-small,13px);color:var(--ink,#1A2433)}
 .bk-run .notes ul{margin:6px 0 0;padding-left:18px}
 .bk-run .acts{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px}
 .bk-run button.lnk,.bk-run a.lnk{background:none;border:0;padding:0;font:inherit;font-size:var(--text-small,13px);
@@ -73,15 +73,15 @@ const BULK_RUN_CSS = `
 .bk-run .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;
   background:var(--line,#E4E2DA);border:1px solid var(--line,#E4E2DA);border-radius:var(--r-md,6px);overflow:hidden;margin:0 0 16px}
 .bk-run .strip div{background:var(--paper,#FBFBF9);padding:10px 12px}
-.bk-run .strip .k{font-size:var(--text-micro,10.5px);letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#1A2433)}
+.bk-run .strip .k{font-size:var(--text-tiny,11px);letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#1A2433)}
 .bk-run .strip .v{font-size:17px;font-variant-numeric:tabular-nums;color:var(--ink,#1A2433)}
 .bk-run table{width:100%;border-collapse:collapse;font-size:var(--text-small,13px);color:var(--ink,#1A2433)}
-.bk-run th{text-align:left;font-size:var(--text-micro,10.5px);letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#1A2433);
+.bk-run th{text-align:left;font-size:var(--text-tiny,11px);letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#1A2433);
   font-weight:500;padding:6px 8px;border-bottom:1px solid var(--ink,#1A2433)}
 .bk-run td{padding:7px 8px;border-bottom:1px solid var(--line,#E4E2DA);vertical-align:top}
 .bk-run td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .bk-run td a{color:var(--red,#B91C1C)}
-.bk-run .chip{display:inline-block;font-size:var(--text-micro,10.5px);letter-spacing:.06em;text-transform:uppercase;
+.bk-run .chip{display:inline-block;font-size:var(--text-tiny,11px);letter-spacing:.06em;text-transform:uppercase;
   padding:1px 7px;border:1px solid var(--line,#E4E2DA);border-radius:99px;color:var(--ink,#1A2433)}
 .bk-run .chip.run{border-color:var(--red,#B91C1C);color:var(--red,#B91C1C)}
 .bk-run .chip.bad{border-color:var(--red-deep,#991B1B);color:var(--red-deep,#991B1B)}
@@ -90,7 +90,7 @@ const BULK_RUN_CSS = `
    identical grey pills. */
 .bk-run .chip.ok{border-color:var(--ok-rule,#BFE5D2);background:var(--ok-bg,#E7F5EE);color:var(--ok-text,#06603A)}
 .bk-run .strip .v{font-family:var(--serif,Georgia,'Times New Roman',serif);font-weight:500;letter-spacing:-.02em;font-size:22px}
-.bk-run .sub{color:var(--ink,#1A2433);font-size:11.5px}
+.bk-run .sub{color:var(--ink,#1A2433);font-size:var(--text-label,12px)}
 /* Earlier runs is a ledger (2026-09-04 evening): a table with the same
    headers as the rows table above it, not a list of links. */
 .bk-run .runs td a{font-weight:500}
@@ -127,10 +127,10 @@ const BULK_CSS = `
   box-shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px -18px rgba(15,23,42,.25);display:flex;flex-direction:column}
 .bulk .dhead{padding:11px 16px;border-bottom:1px solid var(--hair);display:flex;align-items:center;
   justify-content:space-between;gap:16px}
-.bulk .dlab{font-size:var(--text-micro);letter-spacing:.12em;text-transform:uppercase;color:var(--ink);font-weight:600;line-height:1.5}
-.bulk .count{font-size:var(--text-note);color:var(--ink)}
+.bulk .dlab{font-size:var(--text-tiny);letter-spacing:.12em;text-transform:uppercase;color:var(--ink);font-weight:600;line-height:1.5}
+.bulk .count{font-size:var(--text-small);color:var(--ink)}
 .bulk .addr{padding:14px 16px 12px;display:flex;flex-direction:column;gap:6px}
-.bulk label{display:block;font-size:var(--text-micro);letter-spacing:.1em;text-transform:uppercase;
+.bulk label{display:block;font-size:var(--text-tiny);letter-spacing:.1em;text-transform:uppercase;
   color:var(--ink);font-weight:600;margin:0 0 2px}
 .bulk label .opt{font-weight:400;letter-spacing:0;text-transform:none}
 /* Borderless fields: the card's hairlines draw the cells, so a box inside a
@@ -156,11 +156,11 @@ const BULK_CSS = `
 .bulk button.go[disabled]{cursor:default}
 .bulk .cost{color:var(--ink);font-size:var(--text-small);line-height:1.5;margin:0}
 .bulk .foot{margin-top:28px;padding-top:12px;border-top:1px solid var(--line);
-  color:var(--ink);font-size:var(--text-note);line-height:1.6;max-width:72ch}
+  color:var(--ink);font-size:var(--text-small);line-height:1.6;max-width:72ch}
 /* The Tab hint's key cap. Inline in the button so the shortcut is named where
    the action is, rather than in a legend somebody has to go and find. */
 .bulk .kbd{display:inline-block;font-family:var(--mono);
-  font-size:var(--text-micro);line-height:1.5;padding:0 5px;margin-left:4px;border:1px solid var(--line);
+  font-size:var(--text-tiny);line-height:1.5;padding:0 5px;margin-left:4px;border:1px solid var(--line);
   border-radius:var(--r-sm);color:var(--ink);text-decoration:none;vertical-align:1px}
 /* The folded details (2026-09-04). The summary is a row of the desk like the
    head row above it — label, the derived line, a red Change — and opens onto

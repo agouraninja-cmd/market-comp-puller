@@ -129,10 +129,6 @@ main.wrap{max-width:none;padding:0}
 /* The intro's own call to action. Until Draft 1 the first sign-up door was the
    comp finder, a full band further down. */
 .hmctas{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
-.hmctas .btn{border-radius:var(--r-md);padding:13px 24px;font-size:var(--text-lead)}
-.hmctas .btn2{display:inline-block;border:1px solid var(--edge);background:var(--card);color:var(--ink);
-  font-weight:600;font-size:var(--text-lead);padding:12px 22px;border-radius:var(--r-md)}
-.hmctas .btn2:hover{border-color:var(--ink);color:var(--ink)}
 /* The photo. aspect-ratio holds the 3:1 frame at every width, so the band
    cannot collapse while the image decodes and shove the page down. */
 .hmphoto{position:relative;border:1px solid var(--edge);border-radius:var(--r-lg);overflow:hidden;
@@ -162,10 +158,10 @@ main.wrap{max-width:none;padding:0}
    then — a chosen type is real text. Driven by a class the script toggles,
    because :has() on a select's own value is not something CSS can ask. */
 .hmrow select.ph{color:var(--ink-3)}
-.hmrow .btn{border-radius:var(--r-md);padding:13px 24px;font-size:var(--text-lead);flex-shrink:0}
+.hmrow .btn{flex-shrink:0}
 .hmfine{font-size:var(--text-small);color:var(--ink-3);margin:0}
 .hmlegend{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:6px}
-.hmlegend .badge{font-size:11.5px;padding:3px 9px;border-radius:var(--r-sm)}
+.hmlegend .badge{font-size:var(--text-label);padding:3px 9px;border-radius:var(--r-sm)}
 /* Two badge variants MARKET_CSS does not carry (it has .v and .li, and its
    bare .badge already IS public record's neutral). Same tokens index.html's
    own chips use, so the page and the product agree. .bv is an OWNERSHIP
@@ -193,7 +189,7 @@ main.wrap{max-width:none;padding:0}
 .hmcap .ill{color:var(--ink-faint)}
 .hmsubj{padding:24px 24px 18px}
 .hmaddr{font-family:var(--serif);font-size:var(--text-heading);color:var(--ink)}
-.hmchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:var(--text-note);color:var(--ink-mute)}
+.hmchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:var(--text-small);color:var(--ink-mute)}
 .hmchips span{background:var(--wash);padding:3px 9px;border-radius:var(--r-sm)}
 .hmlab{font-size:var(--text-tiny);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
 .hmrange{margin:0 24px;border:1px solid var(--edge);border-radius:var(--r-md);display:grid;grid-template-columns:1fr 1fr 1fr}
@@ -204,7 +200,7 @@ main.wrap{max-width:none;padding:0}
 .hmfig{font-family:var(--serif);font-size:var(--text-figure);color:var(--ink);font-variant-numeric:tabular-nums;
   margin-top:8px}
 .hmrcell.mid .hmfig{font-size:var(--text-hero)}
-.hmpsf{font-size:var(--text-note);color:var(--ink-3);margin-top:4px}
+.hmpsf{font-size:var(--text-small);color:var(--ink-3);margin-top:4px}
 .hmdrv{display:flex;gap:10px;font-size:var(--text-compact);line-height:1.55;color:var(--ink-body)}
 .hmdrv .up{color:var(--green)}
 .hmdrv .flat{color:var(--ink-3)}
@@ -214,7 +210,7 @@ main.wrap{max-width:none;padding:0}
 .hmtable{min-width:620px}
 .hmtr{display:grid;grid-template-columns:2.2fr 1fr 1fr .8fr 1.8fr;padding:11px 24px;border-top:1px solid var(--hair);
   font-size:var(--text-compact);color:var(--ink-body);font-variant-numeric:tabular-nums;align-items:center}
-.hmtr.head{padding:9px 24px;background:var(--wash);font-size:var(--text-micro);font-weight:600;letter-spacing:.07em;
+.hmtr.head{padding:9px 24px;background:var(--wash);font-size:var(--text-tiny);font-weight:600;letter-spacing:.07em;
   text-transform:uppercase;color:var(--ink-3);border-top:0}
 .hmtr.med{border-top:2px solid var(--ink);font-weight:600;color:var(--ink)}
 /* The working, beside the median it multiplies. "≈" and not "=": 219 x 21,600
@@ -248,12 +244,12 @@ main.wrap{max-width:none;padding:0}
 .hmvault .hmcap{padding:12px 20px;letter-spacing:.08em}
 .hmvtable{min-width:600px}
 .hmvr{display:grid;grid-template-columns:2.4fr 1fr 1fr .9fr 1.5fr;padding:11px 20px;border-top:1px solid var(--hair);
-  font-size:var(--text-ui);color:var(--ink-body);font-variant-numeric:tabular-nums;align-items:center}
-.hmvr.head{padding:9px 20px;background:var(--wash);font-size:var(--text-micro);font-weight:600;letter-spacing:.07em;
+  font-size:var(--text-compact);color:var(--ink-body);font-variant-numeric:tabular-nums;align-items:center}
+.hmvr.head{padding:9px 20px;background:var(--wash);font-size:var(--text-tiny);font-weight:600;letter-spacing:.07em;
   text-transform:uppercase;color:var(--ink-3);border-top:0}
 .hmvr .who{display:flex;gap:6px;align-items:center;white-space:nowrap}
-.hmvr .shown{font-size:var(--text-note);color:var(--ink-3)}
-.hmvfoot{background:var(--wash);border-top:1px solid var(--hair);padding:12px 20px;font-size:var(--text-note);
+.hmvr .shown{font-size:var(--text-label);color:var(--ink-3)}
+.hmvfoot{background:var(--wash);border-top:1px solid var(--hair);padding:12px 20px;font-size:var(--text-small);
   line-height:1.55;color:var(--ink-mute)}
 .hmmore h2{font-family:var(--serif);font-weight:400;font-size:var(--text-heading);color:var(--ink);margin:0 0 14px}
 .hmtiles{grid-template-columns:repeat(3,1fr)}
@@ -282,11 +278,13 @@ main.wrap{max-width:none;padding:0}
 .hmclose h2{font-family:var(--serif);font-weight:400;font-size:var(--text-hero);color:#fff;margin:0 0 12px}
 .hmclose p{font-size:var(--text-input);line-height:1.6;color:#B6C1CF;margin:0 auto 24px;max-width:46ch}
 .hmbtns{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
-.hmclose .btn{background:#DC2626;padding:13px 26px;font-size:var(--text-lead);border-radius:var(--r-md)}
+/* The band is dark in both themes, so its buttons take the dark theme's
+   colours as literals: the brighter red, and an outline with no card. Size
+   and shape are the shared large button's (.btn.lg). */
+.hmclose .btn{background:#DC2626}
 .hmclose .btn:hover{background:#B91C1C}
-.hmclose .btn2{display:inline-block;border:1px solid #3D4B5F;color:#D5DDE8;font-size:var(--text-lead);font-weight:600;
-  padding:12px 22px;border-radius:var(--r-md)}
-.hmclose .btn2:hover{color:#fff;border-color:#5A6980}
+.hmclose .btn2{background:transparent;border-color:#3D4B5F;color:#D5DDE8}
+.hmclose .btn2:hover{background:transparent;color:#fff;border-color:#5A6980}
 
 /* --- Below ~900px every 2- and 3-column grid becomes one column, the search
        row stacks, and the photo goes 16:9 so a 3:1 strip does not become a
@@ -405,9 +403,9 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     // goes to the workspace (public-pages.test.js's signup-door rule).
     `<div class="hmctas">` +
     (signedIn
-      ? `<a class="btn" href="/desk">Go to Home</a>`
-      : `<a class="btn" href="/?auth=signup">Create a free account</a>`) +
-    `<a class="btn2" href="#sample">See a sample report</a>` +
+      ? `<a class="btn lg" href="/desk">Go to Home</a>`
+      : `<a class="btn lg" href="/?auth=signup">Create a free account</a>`) +
+    `<a class="btn lg ghost" href="#sample">See a sample report</a>` +
     `</div>` +
     // width/height are the asset's own pixels: they give the browser the
     // aspect ratio before the bytes arrive, so nothing reflows around it.
@@ -429,7 +427,7 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<input id="homeAddress" type="text" required autocomplete="street-address" placeholder="Enter an address">` +
     `<label class="sr-only" for="homeType">Property type</label>` +
     `<select id="homeType" class="ph">${typeOptions}</select>` +
-    `<button class="btn" type="submit">Run a report</button>` +
+    `<button class="btn lg" type="submit">Run a report</button>` +
     `</form></div>` +
     `<p class="hmfine">Free account &middot; about a minute &middot; an automated estimate, not an appraisal.</p>` +
     `<div class="hmlegend">${legend}</div>` +
@@ -508,9 +506,9 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `and your branding.</p>` +
     `<div class="hmbtns">` +
     (signedIn
-      ? `<a class="btn" href="/desk">Go to Home &rarr;</a>`
-      : `<a class="btn" href="/?auth=signup">Create a free account &rarr;</a>` +
-        `<a class="btn2" href="/?auth=signin">Sign in</a>`) +
+      ? `<a class="btn lg" href="/desk">Go to Home &rarr;</a>`
+      : `<a class="btn lg" href="/?auth=signup">Create a free account &rarr;</a>` +
+        `<a class="btn lg btn2" href="/?auth=signin">Sign in</a>`) +
     `</div></section>`
   );
 }

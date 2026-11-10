@@ -4903,5 +4903,29 @@
     "type": "fix",
     "title": "The Board and Market rankings headings use the site’s heading font",
     "details": "On the Markets page, the headings of The Board and the Market rankings card asked for the site’s serif heading font through a name that was never defined on that page, so they quietly fell back to the plain sans font. They now read in Georgia like every other card heading. Underneath, the site’s text sizes, corner radii, spacing steps and fonts now live in one list in theme.js that every page reads (about 930 sizes across 16 stylesheets now name it), so a size can be changed in one place; nothing else looks different, checked element by element on 22 pages at desktop and phone width."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "improvement",
+    "title": "One red, and buttons and tabs that look the same on every page",
+    "details": "The red buttons inside the app (Share link, Invite colleagues, Sign in) were a brighter red than the buttons on every other page, so two reds could sit side by side in one panel. They are the same red everywhere now. Buttons also share one shape: 8px corners, one height for each size whatever page they are on, a visible ring when you reach one with the keyboard, and a soft colour fade on hover. Home, Comps, Pipeline and Permits now draw their tabs the same way, with a red line under the current one (Permits’ was black). The home page, the brokers and firms page and the FAQ use the shared button instead of copies of their own."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "Tapping a field on an iPhone no longer zooms the page in",
+    "details": "An iPhone zooms the whole page in when you tap a form field with small text, and does not zoom back out. Most fields on CompNinja were 13 or 14px, so it happened on Home’s find box, firm settings, the report’s property details, Messages, Permits, the comp report tool and the building sheet. On a phone every text field and dropdown is now 16px, which is the size that stops it. Measured at phone width across 25 pages: 442 fields were too small, none are now. Desktop is unchanged."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "improvement",
+    "title": "The comp report reads better on a phone",
+    "details": "On a phone the report’s heading “What this building is worth” was squeezed into a column four words tall beside the note about how the figure was reached; it now has its own line with the note under it. The buttons above the report (Share link, Save, Download, Print, Export, Excel, PowerPoint) were seven different widths wrapping raggedly; Share now runs across the top and the rest sit two to a row. Also fixed: the list of a firm’s buildings scrolled sideways on a phone because Remove was pushed off the edge."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "improvement",
+    "title": "Small text comes in whole sizes",
+    "details": "The site used ten small text sizes, several only half a pixel apart (10.5 and 11, 12 and 12.5, 13 and 13.5, 14 and 14.5), none of them chosen on purpose. There are six now: 11, 12, 13, 14, 15 and 16px. Each half size moved up to the whole size beside it, so nothing got smaller. Checked on 30 screens at four widths, phone to desktop: nothing runs off the side, and three labels that no longer fit their line were set a size down instead."
   }
 ]

@@ -49,42 +49,42 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:var(--text-lead);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
-.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s4) var(--s5);font-size:var(--text-note)}
+.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s4) var(--s5);font-size:var(--text-small)}
 .hdr nav a{color:var(--ink-2);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
 main{flex:1;padding:var(--s8) 0 var(--s9)}
 .kicker{font-size:var(--text-tiny);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
 h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:var(--s4) 0 0;font-size:var(--text-hero);line-height:1.15}
 .sub{color:var(--ink-2);font-size:var(--text-compact);max-width:62ch;margin:var(--s4) 0 0}
 .gate{background:#fff;border:1px solid var(--edge);border-radius:var(--r-sm);padding:var(--s6);max-width:400px;margin:var(--s8) auto;text-align:center}
-.gate .lab{display:block;font-size:var(--text-note);color:var(--ink-3)}
+.gate .lab{display:block;font-size:var(--text-small);color:var(--ink-3)}
 .gate input{width:100%;padding:var(--s4);border:1px solid var(--edge);border-radius:var(--r-sm);margin:var(--s4) 0;
   font-size:var(--text-compact);font-family:inherit;color:var(--ink);background:var(--paper)}
 .gate input:focus{outline:none;border-color:var(--red)}
 .gate button,.btn{background:var(--red);color:#fff;border:0;border-radius:var(--r-sm);padding:var(--s4) var(--s6);font-weight:600;
   font-size:var(--text-compact);font-family:inherit;cursor:pointer}
 .gate button:hover,.btn:hover{background:var(--red-deep)}
-.btn.mute{background:transparent;color:var(--ink-2);border:1px solid var(--edge);padding:var(--s3) var(--s4);font-weight:600;font-size:var(--text-note)}
+.btn.mute{background:transparent;color:var(--ink-2);border:1px solid var(--edge);padding:var(--s3) var(--s4);font-weight:600;font-size:var(--text-small)}
 .btn.mute.on{color:var(--ink);border-color:var(--ink)}
-.err{color:var(--red);font-size:var(--text-note);margin-top:var(--s3)}
+.err{color:var(--red);font-size:var(--text-small);margin-top:var(--s3)}
 .bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4);margin:var(--s6) 0}
 .tally{font-size:var(--text-compact);color:var(--ink-2)}
 .tally b{color:var(--ink);font-weight:600}
 .card{border-top:1px solid var(--line);padding:var(--s6) 0}
 .card-h{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:var(--s3) var(--s5);margin:0 0 var(--s4)}
 .card-h h2{font-family:var(--serif);font-weight:500;font-size:var(--text-title);letter-spacing:-.005em;color:var(--ink);margin:0}
-.meta{font-size:var(--text-note);color:var(--ink-3)}
+.meta{font-size:var(--text-small);color:var(--ink-3)}
 .badge{font-size:var(--text-tiny);letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--ink-2)}
 .badge.look{color:var(--red)}
 .who{font-size:var(--text-tiny);letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--ink-3);margin-right:var(--s4)}
-.judge{color:var(--ink-2);font-size:var(--text-note);margin:var(--s3) 0 0}
+.judge{color:var(--ink-2);font-size:var(--text-small);margin:var(--s3) 0 0}
 .frame{position:relative;height:340px;overflow:hidden;background:var(--ink);color:#fff}
 .frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 40%}
 .frame.full{height:auto;background:var(--wash)}
 .frame.full img{position:static;width:100%;height:auto;object-fit:contain;display:block}
-.reasons{color:var(--red);font-size:var(--text-note);margin:var(--s3) 0 0}
-.links{font-size:var(--text-note);margin:var(--s3) 0 0}
+.reasons{color:var(--red);font-size:var(--text-small);margin:var(--s3) 0 0}
+.links{font-size:var(--text-small);margin:var(--s3) 0 0}
 .links a{margin-right:var(--s5)}
-footer{background:var(--ink);color:var(--foot-ink);font-size:var(--text-note)}
+footer{background:var(--ink);color:var(--foot-ink);font-size:var(--text-small)}
 footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
 footer .wordmark{color:#fff}
 footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}

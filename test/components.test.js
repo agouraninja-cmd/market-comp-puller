@@ -69,22 +69,34 @@ test("the canon: what a button and a tab ARE", () => {
   // Changing one of these moves every page. That is the point of having one
   // place, and the reason a change has to be made on purpose, here too.
   assert.deepEqual(C.BUTTON.sizes, {
-    action: { pad: "11px 26px", size: "var(--text-body)", radius: "var(--r-sm)", weight: "600" },
-    compact: { pad: "7px 12px", size: "var(--text-small)", radius: "var(--r-md)", weight: "600" },
+    action: { pad: "10px 24px", size: "var(--text-compact)", radius: "var(--r-lg)", weight: "600" },
+    compact: { pad: "7px 12px", size: "var(--text-small)", radius: "var(--r-lg)", weight: "600" },
+    large: { pad: "12px 26px", size: "var(--text-lead)" },
   });
+  // One line height for every button, stated: a button that read its row's
+  // leading was 35px on one page and 45px on another.
+  assert.equal(C.BUTTON.lineHeight, "1.4");
   assert.equal(C.BUTTON.looks.primary.bg, "var(--red-fill)", "a filled button is --red-fill, never the text red");
   assert.equal(C.BUTTON.looks.primary.ink, "#fff");
   assert.equal(C.BUTTON.looks.secondary.bg, "var(--card)");
   assert.equal(C.BUTTON.looks.secondary.edge, "var(--edge)");
   assert.equal(C.TABS.tab.line, "var(--red)");
   assert.equal(C.TABS.tab.size, "var(--text-compact)");
+  assert.equal(C.TABS.tab.weight, "500");
+  assert.equal(C.TABS.tab.pad, "10px 12px");
   assert.match(C.SEGMENTED.item.on, /background:var\(--ink\);color:var\(--paper\)/);
 
   // The canonical classes exist, for new work.
-  assert.equal(ruleFor(CSS, ".btn"), "display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:var(--r-sm);font-size:var(--text-body)");
+  assert.equal(ruleFor(CSS, ".btn"), "display:inline-block;background:var(--red-fill);color:#fff;border:1px solid transparent;font-weight:600;padding:10px 24px;border-radius:var(--r-lg);font-size:var(--text-compact);line-height:1.4;text-align:center;transition:background-color .12s,border-color .12s,color .12s");
   assert.equal(ruleFor(CSS, ".btn:hover"), "background:var(--red-fill-hover);color:#fff");
-  assert.equal(ruleFor(CSS, "button.btn"), "border:0;cursor:pointer;font-family:inherit");
-  assert.equal(ruleFor(CSS, ".btn.ghost"), "background:var(--card);color:var(--ink);border:1px solid var(--edge)");
+  // No border:0 here: every .btn carries the 1px edge, so the red one and the
+  // outlined one are the same size.
+  assert.equal(ruleFor(CSS, "button.btn"), "cursor:pointer;font-family:inherit");
+  assert.equal(ruleFor(CSS, ".btn.sm"), "padding:7px 12px;font-size:var(--text-small)");
+  assert.equal(ruleFor(CSS, ".btn.lg"), "padding:12px 26px;font-size:var(--text-lead)");
+  assert.equal(ruleFor(CSS, ".btn.ghost"), "background:var(--card);color:var(--ink);border-color:var(--edge)");
+  assert.equal(ruleFor(CSS, ".btn[disabled]"), "opacity:.6;cursor:default");
+  assert.equal(ruleFor(CSS, ".btn:focus-visible"), "outline:2px solid var(--red);outline-offset:2px");
   // A secondary button states its whole hover: .btn:hover has the same
   // weight and would otherwise turn it red.
   const ghostHover = ruleFor(CSS, ".btn.ghost:hover");
@@ -94,14 +106,51 @@ test("the canon: what a button and a tab ARE", () => {
   }
 });
 
-test("a compact button is the same box whether it is red or outlined", () => {
+test("a button is the same box whether it is red or outlined", () => {
   // Both looks carry a 1px border, or a red button beside an outlined one is
   // 2px shorter and the row jumps when one becomes the other.
   for (const f of C.BUTTON_FAMILIES.filter((x) => x.primary)) {
-    const base = ruleFor(UNIFIED, f.sel), pri = ruleFor(UNIFIED, f.sel + f.primary);
+    const base = ruleFor(CSS, f.sel), pri = ruleFor(CSS, f.sel + f.primary);
     assert.match(decl(base, "border"), /^1px solid /, `${f.sel} has no border`);
     assert.ok(decl(pri, "border-color"), `${f.sel}${f.primary} drops the border instead of colouring it`);
     assert.equal(decl(pri, "padding"), null, `${f.sel}${f.primary} resizes the button`);
+  }
+  // The same for the canonical button: .ghost recolours the edge the red one
+  // already has, and never adds or removes it.
+  assert.match(decl(ruleFor(CSS, ".btn"), "border"), /^1px solid /);
+  assert.equal(decl(ruleFor(CSS, ".btn.ghost"), "border"), null);
+  assert.equal(decl(ruleFor(CSS, ".btn.ghost"), "padding"), null);
+  assert.equal(decl(ruleFor(CSS, "button.btn"), "border"), null, "button.btn out-ranks .btn: a border here would strip the edge from every real <button>");
+});
+
+test("every button has the same shape, height, focus ring and disabled look", () => {
+  const c = C.BUTTON.sizes.compact;
+  for (const f of C.BUTTON_FAMILIES) {
+    const base = ruleFor(CSS, f.sel);
+    assert.equal(decl(base, "border-radius"), C.BUTTON.sizes.action.radius, `${f.sel}: one corner for every button`);
+    assert.equal(decl(base, "line-height"), C.BUTTON.lineHeight, `${f.sel}: a button states its own line height`);
+    assert.equal(decl(base, "padding"), c.pad, f.sel);
+    assert.equal(ruleFor(CSS, f.sel + ":focus-visible"), C.BUTTON.focus, `${f.sel} has no keyboard focus ring`);
+    assert.equal(ruleFor(CSS, f.sel + "[disabled]"), C.BUTTON.disabled, `${f.sel} does not dim when disabled`);
+    // The hover restates the label's colour: a button that is a link would
+    // otherwise take its page's a:hover colour.
+    assert.ok(decl(ruleFor(CSS, f.sel + ":hover"), "color"), `${f.sel}:hover does not restate its colour`);
+    if (f.primary) assert.equal(decl(ruleFor(CSS, f.sel + f.primary + ":hover"), "color"), "#fff", `${f.sel}${f.primary}:hover`);
+  }
+});
+
+test("tabs: a hairline under the row, a red line under the current tab, and no negative margin", () => {
+  // The hairline is an inset shadow and the line is the tab's own border, so
+  // a row that scrolls sideways on a phone does not also scroll 1px up and
+  // down (a -1px margin under overflow-x:auto does exactly that).
+  assert.doesNotMatch(CSS, /margin-bottom:-1px/);
+  for (const f of C.TAB_FAMILIES) {
+    assert.equal(decl(ruleFor(CSS, f.list), "box-shadow"), `inset 0 -1px 0 ${C.TABS.list.rule}`, f.list);
+    assert.equal(decl(ruleFor(CSS, f.list), "border-bottom"), null, f.list);
+    assert.equal(decl(ruleFor(CSS, f.tab), "border-bottom"), "2px solid transparent", f.tab);
+    assert.equal(decl(ruleFor(CSS, f.on), "border-bottom-color"), "var(--red)", f.on);
+    // An empty count is taken out, or it holds the label's gap open.
+    if (f.count) assert.equal(ruleFor(CSS, f.count + ":empty"), "display:none", f.count);
   }
 });
 
@@ -113,7 +162,7 @@ test("unified, every family is the canon: the differences are all in `differs`",
     assert.equal(decl(base, "border-radius"), c.radius, f.sel);
     assert.equal(decl(base, "font-size"), c.size, f.sel);
     assert.equal(decl(base, "font-weight"), c.weight, f.sel);
-    assert.equal(decl(base, "line-height"), null, f.sel);
+    assert.equal(decl(base, "line-height"), C.BUTTON.lineHeight, f.sel);
   }
   for (const f of C.TAB_FAMILIES) {
     const tab = ruleFor(UNIFIED, f.tab), on = ruleFor(UNIFIED, f.on);
@@ -121,7 +170,7 @@ test("unified, every family is the canon: the differences are all in `differs`",
     assert.equal(decl(tab, "font-size"), C.TABS.tab.size, f.tab);
     assert.equal(decl(tab, "color"), C.TABS.tab.ink, f.tab);
     assert.equal(decl(on, "border-bottom-color"), C.TABS.tab.line, f.on);
-    assert.equal(decl(ruleFor(UNIFIED, f.list), "border-bottom"), `1px solid ${C.TABS.list.rule}`, f.list);
+    assert.equal(decl(ruleFor(UNIFIED, f.list), "box-shadow"), `inset 0 -1px 0 ${C.TABS.list.rule}`, f.list);
   }
   for (const f of C.SEGMENTED_FAMILIES) {
     assert.equal(decl(ruleFor(UNIFIED, f.item), "padding"), C.SEGMENTED.item.pad, f.item);
@@ -141,18 +190,12 @@ test("no new family, and no new difference: both lists may only shrink", () => {
 
   // Each entry is one place a family still looks different from the canon.
   // Deleting one from components.js is a visible change on that family's
-  // pages (before and after pictures); adding one is refused here.
+  // pages (before and after pictures); adding one is refused here. On
+  // 2026-11-10 the 34 button and underlined-tab differences were all deleted:
+  // every button and every underlined tab is the canon. What is left is
+  // Messages' Chats / Reports switch, which sits inside a card's header with
+  // an unread count in it and is a quieter control than the ink pill.
   const DIFFERENCES = [
-    ".btn.sm: pad",
-    ".hm-btn: pad", ".hm-btn: radius", ".hm-btn: primaryHover",
-    ".mc-btn: pad", ".mc-btn: radius", ".mc-btn: weight", ".mc-btn: hover", ".mc-btn: primaryHover",
-    ".pw-btn: weight", ".pw-btn: lineHeight", ".pw-btn: primaryHover",
-    ".msg-btn: pad", ".msg-btn: weight", ".msg-btn: lineHeight", ".msg-btn: hover", ".msg-btn: disabledStyle",
-    ".bd-btn: pad",
-    ".bs-btn: radius", ".bs-btn: border", ".bs-btn: hover",
-    ".vt-tabs: rule",
-    ".pt-tabs: gap", ".pt-tabs: pad", ".pt-tabs: size", ".pt-tabs: underline", ".pt-tabs: line", ".pt-tabs: focus",
-    ".hm-tabs: pad", ".hm-tabs: weight", ".hm-tabs: ink", ".hm-tabs: hover", ".hm-tabs: line", ".hm-tabs: countGap",
     ".msg-views: frame", ".msg-views: listDisplay", ".msg-views: radius", ".msg-views: pad", ".msg-views: size", ".msg-views: weight",
     ".msg-views: ink", ".msg-views: hover", ".msg-views: on", ".msg-views: focus",
   ];
@@ -161,7 +204,32 @@ test("no new family, and no new difference: both lists may only shrink", () => {
   // Every `differs` key must be a look the generator knows, or it is silently
   // ignored and the list above under-counts.
   const total = [...C.BUTTON_FAMILIES, ...C.TAB_FAMILIES, ...C.SEGMENTED_FAMILIES].reduce((n, f) => n + Object.keys(f.differs || {}).length, 0);
-  assert.equal(now.length, total + 1, "a `differs` key the generator does not read");
+  assert.equal(now.length, total, "a `differs` key the generator does not read");
+  // No button and no underlined tab may grow a difference back.
+  for (const f of [...C.BUTTON_FAMILIES, ...C.TAB_FAMILIES]) assert.deepEqual(f.differs, {}, `${f.sel || f.list} departs from the canon again`);
+});
+
+test("on a phone every form field is 16px, so an iPhone does not zoom in on a tap", () => {
+  const css = C.fieldCss();
+  assert.ok(CSS.includes(css), "the field rule is not in the served stylesheet");
+  // A narrow window OR a touch screen: an iPhone on its side is wider than
+  // any phone breakpoint.
+  assert.match(css, /^@media \(max-width:640px\),\(pointer:coarse\)\{/);
+  const [[sel, body]] = rulesOf(css).slice(0, 1);
+  assert.equal(body, "font-size:var(--text-input)!important");
+  assert.equal(SCALE_TOKENS["text-input"], "16px", "iOS zooms under 16px exactly");
+  const sels = rulesOf(css).map(([s]) => s);
+  assert.ok(sels.includes("select") && sels.includes("textarea"));
+  // The kinds of <input> that are not text keep their own size.
+  for (const t of ["checkbox", "radio", "range", "button", "submit", "file", "hidden"]) assert.ok(sel.includes(`[type=${t}]`), `input[type=${t}] must be left alone`);
+  // One line: test/vault-shell.test.js reads a rule from the line it starts
+  // on, and would otherwise hold the vault's own select and textarea to it.
+  assert.equal(css.includes("\n"), false);
+  // It is the only !important in the file.
+  assert.equal(CSS.split("!important").length - 1, 1);
+  // The deal room draws its own document and takes this one rule by hand.
+  assert.match(root("server.js"), /FIELD_CSS: COMPONENTS\.fieldCss\(\)/);
+  assert.match(root("hub-page.js"), /\$\{FIELD_CSS\}\n<\/style>/);
 });
 
 // --- no page keeps a copy -------------------------------------------------
@@ -186,7 +254,9 @@ function sheetsOf(file) {
 test("no page writes a rule the component already draws", () => {
   // The component's own selectors, minus the canonical .btn set that two
   // kinds of page restate ON PURPOSE (below).
-  const drawn = new Set(rulesOf(CSS).map(([s]) => s));
+  // (Its @media rule is the phone field size, which names bare `select` and
+  // `textarea`; every page has rules of its own for those, as it should.)
+  const drawn = new Set(rulesOf(CSS).filter(([, , media]) => !media).map(([s]) => s));
   const FILES = ["index.html", "server.js", "home-page.js", "brokers-firms-page.js", "faq-page.js", "pricing-page.js", "messages-page.js",
     "permits-page.js", "sites-page.js", "buildings-page.js", "market-rank-page.js", "bulk-page.js", "home-sites.css", "vault-page.js"];
   // server.js also holds the admin pages, which draw their own documents and
@@ -195,9 +265,10 @@ test("no page writes a rule the component already draws", () => {
   const serverScope = (css, file) => css;
   const ALLOWED = {
     // The Comps and Pipeline pages restate the button whole, at their own
-    // size (9px 16px, 13.5px, 6px corners): vault-page.js keeps a complete
-    // design system of its own and test/vault-shell.test.js holds every
-    // shared selector to that. It is the one page-level copy left.
+    // size (8px 15px at 14px, between compact and action): vault-page.js
+    // keeps a complete design system of its own and test/vault-shell.test.js
+    // holds every shared selector to that. It is the one page-level copy
+    // left, and it takes the canon's corner, line height and border (below).
     "vault-page.js": new Set([".btn", ".btn:hover", ".btn.ghost", ".btn.ghost:hover"]),
   };
   const offenders = [];
@@ -229,10 +300,14 @@ test("the pages that restyle .btn for one spot are counted, so a new one is a de
   // button, but different here". Each is small; together they are how one
   // button became four sizes. The list may shrink (fold one into a size the
   // canon has) and may not grow.
+  // 2026-11-10: the marketing pages' big buttons became .btn.lg and The
+  // Board's add button .btn.sm, which took four off this list. The two dark
+  // bands keep a rule each for their colour alone (a brighter red on a
+  // surface that is dark in both themes).
   const KNOWN = [
-    "brokers-firms-page.js .bfacts .btn", "brokers-firms-page.js .bfcta .btn",
-    "home-page.js .hmclose .btn", "home-page.js .hmctas .btn", "home-page.js .hmrow .btn",
-    "server.js .bd .btn.bd-addbtn", "server.js .bd .btn.bd-go", "server.js .mbuild .mb-types .btn",
+    "brokers-firms-page.js .bfcta .btn",
+    "home-page.js .hmclose .btn",
+    "server.js .bd .btn.bd-go", "server.js .mbuild .mb-types .btn",
     "vault-page.js .filters.vb-ledger .btn", "vault-page.js .vd-tray.on .btn.ghost",
   ];
   const LOOK = /(^|;)\s*(padding|border-radius|font-size|font-weight|background|border)\s*:/;
@@ -254,7 +329,28 @@ test("the pages that restyle .btn for one spot are counted, so a new one is a de
       found.add(`${file} ${sel}`);
     }
   }
-  assert.deepEqual([...found].filter((x) => !KNOWN.includes(x)).sort(), [], "a new page-level restyle of .btn: use .btn, .btn.sm or .btn.ghost, or add a size to the canon");
+  assert.deepEqual([...found].filter((x) => !KNOWN.includes(x)).sort(), [], "a new page-level restyle of .btn: use .btn, .btn.sm, .btn.lg or .btn.ghost, or add a size to the canon");
+  // And the list is exact, so a rule that goes takes its name with it.
+  assert.deepEqual(KNOWN.filter((x) => !found.has(x)), [], "a page-level restyle on the list is gone: delete its name");
+});
+
+test("the vault's own button takes the canon's shape", () => {
+  // vault-page.js restates .btn at its own size. Shape is not size: the
+  // corner, the line height and the always-there 1px edge are the canon's.
+  const vault = sheetsOf("vault-page.js").join("\n");
+  const btn = ruleFor(vault, ".btn");
+  assert.equal(decl(btn, "border-radius"), C.BUTTON.sizes.action.radius);
+  assert.equal(decl(btn, "line-height"), C.BUTTON.lineHeight);
+  assert.equal(decl(btn, "border"), "1px solid transparent");
+  assert.equal(decl(ruleFor(vault, ".btn.ghost"), "border"), null, "the vault's outlined button must recolour the edge, not add one: that made it 2px taller than the red one");
+});
+
+test("the marketing pages use the shared sizes, never a button of their own", () => {
+  for (const file of ["home-page.js", "brokers-firms-page.js", "faq-page.js", "pricing-page.js"]) {
+    const text = root(file);
+    assert.doesNotMatch(text, /class="faqghost"/, `${file}: the outlined button is .btn.ghost`);
+    for (const m of text.matchAll(/class="([^"]*\bbtn2\b[^"]*)"/g)) assert.match(m[1], /\bbtn\b/, `${file}: .btn2 is a colour for the dark band, on top of .btn`);
+  }
 });
 
 // --- delivery --------------------------------------------------------------

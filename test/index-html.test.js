@@ -665,8 +665,8 @@ test("every Tailwind class the hub surfaces use is in the vendored stylesheet", 
     assert.ok(css.includes("." + cls), `tailwind.css is missing .${cls}`);
   }
   // The colours are token classes since 2026-10-30 (#D8D4C9 is border-edge,
-  // #68707E text-ink-3, ...); #ECEAE3 is not a token and stays a hex class.
-  for (const cls of [".border-\\[\\#ECEAE3\\]", ".border-edge", ".text-ink-2", ".text-red", ".text-ink", ".text-ink-3", ".text-ink-mute"]) {
+  // #68707E text-ink-3, ...), and #ECEAE3 snapped to border-hair on 2026-11-10.
+  for (const cls of [".border-hair", ".border-edge", ".text-ink-2", ".text-red", ".text-ink", ".text-ink-3", ".text-ink-mute"]) {
     assert.ok(css.includes(cls + "{"), `tailwind.css is missing ${cls}`);
   }
 });

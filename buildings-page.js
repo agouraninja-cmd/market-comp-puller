@@ -50,7 +50,7 @@ function renderBuildingsBody(boot) {
   border-radius:var(--r-lg);background:var(--card);color:var(--ink)}
 .bl-tools input{flex:1 1 220px;min-width:0}
 .bl-shown{font-size:var(--text-label);color:var(--ink-3);font-variant-numeric:tabular-nums}
-.bl-row{display:flex;align-items:baseline;gap:10px;padding:8px 0;border-bottom:1px solid var(--hair);font-size:var(--text-ui)}
+.bl-row{display:flex;align-items:baseline;gap:10px;padding:8px 0;border-bottom:1px solid var(--hair);font-size:var(--text-compact)}
 .bl-row:last-child{border-bottom:0}
 .bl-addr{flex:1 1 auto;min-width:0;color:var(--ink);font-family:var(--serif);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -58,7 +58,15 @@ function renderBuildingsBody(boot) {
 .bl-rm{appearance:none;border:0;background:none;padding:0;font:inherit;font-size:var(--text-tiny);color:var(--ink-3);
   text-decoration:underline;cursor:pointer}
 .bl-rm:hover{color:var(--red)}
-.bl-note{font-size:var(--text-note);color:var(--ink-3);margin:10px 0 0}
+/* On a phone the address takes the first line and the facts and Remove the
+   second: side by side, the facts cannot shrink and pushed Remove off the
+   right edge, so the whole page scrolled sideways. */
+@media (max-width:560px){
+  .bl-row{flex-wrap:wrap;gap:2px 10px}
+  .bl-addr{flex-basis:100%}
+  .bl-meta{flex:1 1 auto;min-width:0;white-space:normal}
+}
+.bl-note{font-size:var(--text-small);color:var(--ink-3);margin:10px 0 0}
 .bl-msg{font-size:var(--text-small);color:var(--ink-2);margin:10px 0 0}
 .bl-msg.bad{color:var(--err-text)}
 .bl-wall{border:1px solid var(--edge);border-radius:var(--r-lg);background:var(--card);padding:18px 20px;margin:18px 0}
@@ -261,7 +269,7 @@ function renderBuildingSheetBody(boot) {
 .bs-page .kicker a{color:var(--ink-3)}
 .bs-head{border-bottom:1.5px solid var(--ink);padding-bottom:8px;margin-bottom:6px}
 .bs-head h1{margin:0;font-family:var(--serif);font-weight:400;font-size:var(--text-figure);color:var(--ink)}
-.bs-sub{font-size:var(--text-note);color:var(--ink-3);margin:0 0 18px}
+.bs-sub{font-size:var(--text-small);color:var(--ink-3);margin:0 0 18px}
 .bs-id{display:flex;flex-wrap:wrap;gap:14px 28px;margin:0 0 22px}
 .bs-id label{display:flex;flex-direction:column;gap:4px;font-size:var(--text-tiny);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
 .bs-id input,.bs-id select{font:inherit;font-size:var(--text-compact);padding:6px 8px;border:1px solid var(--edge);border-radius:var(--r-md);
@@ -271,19 +279,19 @@ function renderBuildingSheetBody(boot) {
 .bs-rule{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
   border-bottom:1.5px solid var(--ink);padding-bottom:4px;margin-bottom:6px}
 .bs-rule .lab{font-size:var(--text-tiny);letter-spacing:.12em;text-transform:uppercase;color:var(--ink);font-weight:600}
-.bs-rule .n{font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.bs-rule .n{font-size:var(--text-label);color:var(--ink-3);font-variant-numeric:tabular-nums}
 .bs-row{display:flex;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px solid var(--hair);font-size:var(--text-small)}
 .bs-row:last-child{border-bottom:0}
 .bs-row .a{flex:1 1 auto;min-width:0;color:var(--ink)}
 .bs-row .m{flex:0 0 auto;font-size:var(--text-tiny);color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .bs-row .fig{font-variant-numeric:tabular-nums;color:var(--ink)}
-.bs-note{font-size:var(--text-note);color:var(--ink-3);margin:6px 0 0}
+.bs-note{font-size:var(--text-small);color:var(--ink-3);margin:6px 0 0}
 .bs-lnk{appearance:none;border:0;background:none;padding:0;font:inherit;font-size:var(--text-tiny);color:var(--ink-3);text-decoration:underline;cursor:pointer}
 .bs-lnk:hover{color:var(--red)}
 .bs-lnk.on{color:var(--ok-text);text-decoration:none}
-.bs-notes .body{white-space:pre-wrap;font-size:var(--text-ui);color:var(--ink-body);margin:0}
+.bs-notes .body{white-space:pre-wrap;font-size:var(--text-compact);color:var(--ink-body);margin:0}
 .bs-lease{display:grid;grid-template-columns:repeat(auto-fill,minmax(9rem,1fr));gap:8px 12px;margin:10px 0 12px}
-.bs-lease label{display:flex;flex-direction:column;gap:3px;font-size:var(--text-micro);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.bs-lease label{display:flex;flex-direction:column;gap:3px;font-size:var(--text-tiny);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
 .bs-lease input,.bs-lease select{font:inherit;font-size:var(--text-small);padding:6px 8px;border:1px solid var(--edge);border-radius:var(--r-md);background:var(--card);color:var(--ink);min-width:0}
 .bs-lease .wide{grid-column:1/-1}
 .bs-lease-act{display:flex;gap:10px;align-items:center;margin:0 0 12px}
@@ -292,7 +300,7 @@ function renderBuildingSheetBody(boot) {
 .bs-row .st{font:inherit;font-size:var(--text-tiny);padding:2px 4px;border:1px solid var(--edge);border-radius:var(--r-sm);background:var(--card);color:var(--ink)}
 .bs-row .due{color:var(--red)}
 .bs-notes form{display:flex;flex-direction:column;gap:8px;margin:10px 0 14px}
-.bs-notes textarea{font:inherit;font-size:var(--text-ui);padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r-lg);
+.bs-notes textarea{font:inherit;font-size:var(--text-compact);padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r-lg);
   background:var(--card);color:var(--ink);min-height:64px;resize:vertical}
 .bs-msg{font-size:var(--text-small);color:var(--ink-2);margin:8px 0 0}
 .bs-msg.bad{color:var(--err-text)}

@@ -152,7 +152,7 @@ h1.h{font-family:var(--serif);font-weight:500;margin:0;font-size:var(--text-h1-l
 .lfig{font-family:var(--serif);font-weight:500;letter-spacing:-.02em;font-size:var(--text-h1);
   line-height:1.15;color:var(--ink);font-variant-numeric:tabular-nums}
 .lcell.mid .lfig{color:var(--green)}
-.lsub{color:var(--ink-3);font-size:var(--text-note);margin-top:4px}
+.lsub{color:var(--ink-3);font-size:var(--text-small);margin-top:4px}
 /* Exactly four cells, so the 2x2 wrap can place its dividers by position. */
 @media (max-width:640px){
   .ledger{grid-template-columns:1fr 1fr}
@@ -160,7 +160,7 @@ h1.h{font-family:var(--serif);font-weight:500;margin:0;font-size:var(--text-h1-l
   .lcell:nth-child(even){border-left:1px solid var(--hair)}
   .lcell:nth-child(-n+2){border-bottom:1px solid var(--hair)}
 }
-.trust .note{color:var(--ink-3);font-size:var(--text-note);margin:var(--s4) 0 0;max-width:62ch}
+.trust .note{color:var(--ink-3);font-size:var(--text-small);margin:var(--s4) 0 0;max-width:62ch}
 #creditLine{margin-top:var(--s3)}
 #creditLine strong{color:var(--ink);font-weight:600}
 #idForm{margin-top:var(--s4);padding:18px 20px;border:1px solid var(--edge);border-radius:var(--r-md);
@@ -173,20 +173,20 @@ section > .sub{margin-top:0;margin-bottom:var(--s5)}
   background:var(--card);transition:border-color .15s,background .15s,box-shadow .15s}
 .drop.over{border-color:var(--red);border-style:solid;background:var(--err-bg);box-shadow:inset 0 0 0 1px var(--red)}
 .drop-k{margin:0 0 var(--s4);font-family:var(--serif);font-size:17px;font-weight:500;color:var(--ink)}
-.drop p{margin:var(--s4) 0 0;color:var(--ink-2);font-size:var(--text-note)}
+.drop p{margin:var(--s4) 0 0;color:var(--ink-2);font-size:var(--text-small)}
 /* display is stated for the .ledger reason above. MARKET_CSS's .btn is an
    inline-block anchor; these are real <button>s, and the a.btn rule further
    down restores inline-block for the two that are links. */
-.btn{background:var(--red-fill);color:#fff;border:0;border-radius:var(--r-md);padding:9px 16px;
-  display:inline-block;font-weight:600;font-size:var(--text-ui);font-family:inherit;cursor:pointer;line-height:1.3}
+.btn{background:var(--red-fill);color:#fff;border:1px solid transparent;border-radius:var(--r-lg);padding:8px 15px;
+  display:inline-block;font-weight:600;font-size:var(--text-compact);font-family:inherit;cursor:pointer;line-height:1.4;
+  text-align:center;transition:background-color .12s,border-color .12s,color .12s}
 /* color is stated for the .ledger reason: MARKET_CSS's .btn:hover sets it too.
    Same value the button already has, so nothing moves -- but the leak test
    compares declarations, not outcomes, and a silent match today is a silent
    mismatch the day either file changes its red. */
 .btn:hover{background:var(--red-fill-hover);color:#fff}
-.btn[disabled]{background:var(--ink-4);cursor:default}
-.btn.ghost{background:var(--card);color:var(--ink-2);border:1px solid var(--edge)}
-.btn.ghost:hover{background:var(--wash);color:var(--ink);border-color:var(--ink-4)}
+.btn.ghost{background:var(--card);color:var(--ink);border-color:var(--edge)}
+.btn.ghost:hover{background:var(--wash);color:var(--ink);border-color:var(--ink-3)}
 /* The display above beats .hide (see the note on .hide), which left the
    filter row's Clear showing with no filter set and two empty publish buttons
    (since removed) as outlined boxes. Also outranks a.btn's display further down. */
@@ -214,7 +214,7 @@ select,input[type=text],input[type=date]{padding:8px 10px;border:1px solid var(-
   font-family:inherit;font-size:var(--text-input);background:var(--card);color:var(--ink);min-height:40px}
 select:focus,input[type=text]:focus,input[type=date]:focus{outline:none;border-color:var(--ink);
   box-shadow:0 0 0 3px color-mix(in srgb, var(--ink) 8%, transparent)}
-/* 16px, not var(--text-note): iOS Safari zooms on focus for any input under 16px
+/* 16px, not var(--text-small): iOS Safari zooms on focus for any input under 16px
    and stays zoomed — on a data-entry page that means every filter tap. */
 .filters{padding:14px 16px;margin-top:var(--s4);background:var(--card);border:1px solid var(--edge);
   border-radius:var(--r-md);align-items:flex-end}
@@ -240,7 +240,7 @@ td:first-child,th:first-child{min-width:0}
 /* Statement tables (approved as "Vault B", 2026-08-08): an ink rule closes
    every header on this page — the broker's own book of record earns the same
    audited-statement vocabulary the report's comp table shipped. */
-th{text-align:left;font-size:var(--text-micro);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+th{text-align:left;font-size:var(--text-tiny);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
   font-weight:600;padding:12px 14px;border-bottom:2px solid var(--ink);white-space:nowrap;background:var(--card)}
 th[data-k],th[data-bk]{cursor:pointer}
 th[data-k]:hover,th[data-bk]:hover{color:var(--ink)}
@@ -249,7 +249,7 @@ td{padding:12px 14px;border-top:0;border-bottom:1px solid var(--hair);vertical-a
 td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 tbody tr:hover td{background:var(--wash)}
 .addr{color:var(--ink);font-weight:500}
-.tag{display:inline-block;font-size:var(--text-micro);font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+.tag{display:inline-block;font-size:var(--text-tiny);font-weight:600;letter-spacing:.04em;text-transform:uppercase;
   color:var(--ink-2);background:var(--wash);border-radius:var(--r-xs);padding:2px 7px}
 /* The comps table seals with a median row under a double rule. The last body
    row's hairline is dropped explicitly: with collapsed borders two same-width
@@ -286,20 +286,20 @@ tfoot .lab{font-size:var(--text-tiny);letter-spacing:.07em;text-transform:upperc
   background-repeat:no-repeat;
   background-size:28px 100%,28px 100%,13px 100%,13px 100%;
   background-attachment:local,local,scroll,scroll}
-.msg{margin-top:var(--s4);padding:12px 16px;border-radius:var(--r-md);font-size:var(--text-note);border:1px solid}
+.msg{margin-top:var(--s4);padding:12px 16px;border-radius:var(--r-md);font-size:var(--text-small);border:1px solid}
 .msg.ok{background:var(--ok-bg);border-color:var(--ok-rule);color:var(--ok-text)}
 .msg.bad{background:var(--err-bg);border-color:var(--err-rule);color:var(--err-text)}
 #pdfTable tbody tr.need-fix td,#pdfTable tbody tr.need-fix:hover td{background:var(--err-bg)}
-#pdfTable tbody tr.pdf-src td,#pdfTable tbody tr.pdf-src:hover td{padding-top:12px;font-size:var(--text-micro);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);background:none;border-bottom:0}
+#pdfTable tbody tr.pdf-src td,#pdfTable tbody tr.pdf-src:hover td{padding-top:12px;font-size:var(--text-tiny);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);background:none;border-bottom:0}
 /* The line under a refused row saying what is wrong with it, and the
    read-only cells of a row that read cleanly (2026-09-02). */
-#pdfTable tbody tr.pdf-err td,#pdfTable tbody tr.pdf-err:hover td{background:var(--err-bg);color:var(--err-text);font-size:var(--text-note);padding-top:0;border-top:0}
+#pdfTable tbody tr.pdf-err td,#pdfTable tbody tr.pdf-err:hover td{background:var(--err-bg);color:var(--err-text);font-size:var(--text-small);padding-top:0;border-top:0}
 /* A row on a building the book already holds (050): says so, and names the
    cells filled in from the broker's other deals there. Same shape as the
    refusal line, in the muted ink because it is context, not a problem. */
-#pdfTable tbody tr.pdf-known td,#pdfTable tbody tr.pdf-known:hover td{background:none;color:var(--ink-3);font-size:var(--text-note);padding-top:0;border-top:0}
+#pdfTable tbody tr.pdf-known td,#pdfTable tbody tr.pdf-known:hover td{background:none;color:var(--ink-3);font-size:var(--text-small);padding-top:0;border-top:0}
 #pdfTable td.ro{font-variant-numeric:tabular-nums;white-space:nowrap;cursor:text}
-#mapDetails>summary{cursor:pointer;color:var(--ink-2);font-size:var(--text-note);margin:var(--s3) 0}
+#mapDetails>summary{cursor:pointer;color:var(--ink-2);font-size:var(--text-small);margin:var(--s3) 0}
 #pasteBox{width:100%;box-sizing:border-box;font:inherit;font-size:var(--text-small);line-height:1.4;padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r-md);background:var(--card);color:var(--ink);resize:vertical}
 .msg ul{margin:var(--s3) 0 0;padding-left:var(--s6)}
 .msg li{margin-top:var(--s1);font-variant-numeric:tabular-nums}
@@ -310,14 +310,14 @@ tfoot .lab{font-size:var(--text-tiny);letter-spacing:.07em;text-transform:upperc
   animation:load 1.15s ease-in-out infinite}
 @keyframes load{0%{transform:translateX(-120%)}100%{transform:translateX(360%)}}
 .empty{color:var(--ink-3);padding:36px 20px;text-align:center}
-.fine{color:var(--ink-3);font-size:var(--text-note);font-weight:400;letter-spacing:0;text-transform:none}
+.fine{color:var(--ink-3);font-size:var(--text-small);font-weight:400;letter-spacing:0;text-transform:none}
 .up{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s4);
-  padding:12px 0;border-bottom:1px solid var(--hair);font-size:var(--text-note)}
+  padding:12px 0;border-bottom:1px solid var(--hair);font-size:var(--text-small)}
 .up:last-child{border-bottom:0}
 .up .meta{color:var(--ink-3)}
 /* Padding + offsetting negative margin: a real tap target on the one control
    that DELETES an import, without moving the row's baseline layout. */
-.up button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-family:inherit;font-size:var(--text-note);
+.up button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-family:inherit;font-size:var(--text-small);
   padding:var(--s3) var(--s3);margin:calc(-1 * var(--s3)) calc(-1 * var(--s3))}
 .up button:hover{color:var(--red)}
 /* Publish state as the statement's badge chip (Vault B): green tint only once
@@ -334,14 +334,14 @@ tfoot .lab{font-size:var(--text-tiny);letter-spacing:.07em;text-transform:upperc
 .cites{display:inline-block;margin-left:6px;color:var(--ink-3);font-size:var(--text-label);
   font-weight:600;font-variant-numeric:tabular-nums;cursor:default}
 .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--edge);border-radius:var(--r-pill);
-  padding:5px 8px 5px 12px;font-size:var(--text-note);background:var(--card);color:var(--ink-2);font-weight:600;
+  padding:5px 8px 5px 12px;font-size:var(--text-small);background:var(--card);color:var(--ink-2);font-weight:600;
   letter-spacing:0;text-transform:none}
 .chip button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:var(--text-input);line-height:1;
   padding:0 2px;font-family:inherit}
 .chip button:hover{color:var(--red)}
 /* Quieter than the market it qualifies: it is a footnote on the chip, not a
    second fact competing with the market name. */
-.chip .near{margin-left:6px;color:var(--ink-3);font-weight:500;font-size:11.5px;letter-spacing:.02em}
+.chip .near{margin-left:6px;color:var(--ink-3);font-weight:500;font-size:var(--text-label);letter-spacing:.02em}
 /* Row actions: Delete is a trash icon — quiet ink that goes red on hover, the
    same pattern as removing an import. A red "Delete" word next to Publish was
    a second shout on the row. Edit used to sit beside it as a text link; the
@@ -413,16 +413,16 @@ td.rowact{white-space:nowrap}
 /* margin:0 for the .ledger reason above — MARKET_CSS's .card is a 22px-padded
    article card with an 18px vertical margin, this is a compact clickable tile. */
 .card{border:1px solid var(--edge);border-radius:var(--r-md);background:var(--card);padding:16px 18px;
-  text-align:left;font-family:inherit;font-size:var(--text-note);color:var(--ink);cursor:pointer;
+  text-align:left;font-family:inherit;font-size:var(--text-small);color:var(--ink);cursor:pointer;
   display:flex;flex-direction:column;gap:2px;margin:0;transition:border-color .15s,background .15s,box-shadow .15s;
   box-shadow:var(--shadow),var(--lift)}
 .card:hover{border-color:var(--ink-4);background:var(--card)}
 .card.on{border-color:var(--red);background:var(--card);box-shadow:inset 0 0 0 1px var(--red),var(--shadow),var(--lift)}
 .card .mk{font-weight:600;font-size:var(--text-lead);line-height:1.3;color:var(--ink)}
-.card .ty{color:var(--ink-3);font-size:var(--text-micro);letter-spacing:.12em;text-transform:uppercase;font-weight:600}
+.card .ty{color:var(--ink-3);font-size:var(--text-tiny);letter-spacing:.12em;text-transform:uppercase;font-weight:600}
 .card .big{font-family:var(--serif);font-size:22px;font-weight:500;margin-top:8px;letter-spacing:-.02em;
   font-variant-numeric:tabular-nums}
-.card .big span{font-family:Inter,system-ui,sans-serif;font-size:var(--text-note);color:var(--ink-3);
+.card .big span{font-family:Inter,system-ui,sans-serif;font-size:var(--text-small);color:var(--ink-3);
   letter-spacing:0;margin-left:6px}
 .card .fine{color:var(--ink-3);font-size:var(--text-tiny);font-weight:400;letter-spacing:0;text-transform:none}
 .card .fine.pub{color:var(--green);font-weight:600}
@@ -449,7 +449,7 @@ td.rowact{white-space:nowrap}
 .chart-bar{fill:var(--ink-mute)}
 .chart-bar.hi{fill:var(--red-fill)}
 .chart-endpoint{fill:var(--ink)}
-.rep{border-top:1px solid var(--hair);padding:10px 0;font-size:var(--text-note)}
+.rep{border-top:1px solid var(--hair);padding:10px 0;font-size:var(--text-small)}
 .rep:first-child{border-top:0;padding-top:0}
 .rep .addr{font-weight:600}
 .rep .deal{color:var(--ink-2);font-variant-numeric:tabular-nums;font-size:var(--text-small);margin-top:2px}
@@ -457,16 +457,16 @@ td.rowact{white-space:nowrap}
    they disagree — the line where a broker sees that fixing one cell fixes
    the building (050). */
 .rep .facts{color:var(--ink-3);font-size:var(--text-small);margin-top:4px}
-.note{color:var(--ink-3);font-size:var(--text-note)}
+.note{color:var(--ink-3);font-size:var(--text-small)}
 /* ---- Gut check ----------------------------------------------------------
    Verdict chips stay in the page's existing voice: the pubbtn border style,
    ink for facts, green only for "in line" (the calm state), never red for a
    divergence — above/below is "worth a look", not an error. */
 .gc{border:1px solid var(--edge);border-radius:var(--r-md);background:var(--card);
-  padding:16px 18px;font-size:var(--text-note);display:flex;
+  padding:16px 18px;font-size:var(--text-small);display:flex;
   flex-direction:column;gap:4px;box-shadow:var(--shadow),var(--lift)}
 .gc .mk{font-weight:600;font-size:var(--text-lead)}
-.gc .ty{color:var(--ink-3);font-size:var(--text-micro);letter-spacing:.12em;text-transform:uppercase;font-weight:600}
+.gc .ty{color:var(--ink-3);font-size:var(--text-tiny);letter-spacing:.12em;text-transform:uppercase;font-weight:600}
 .gcv{display:inline-block;border:1px solid var(--edge);border-radius:var(--r-pill);
   padding:2px 10px;font-size:var(--text-tiny);color:var(--ink-2);font-weight:600;
   align-self:flex-start;margin-top:6px}
@@ -482,14 +482,14 @@ td.rowact{white-space:nowrap}
 .invite{margin:8px 0 var(--s6);max-width:36em}
 .invite > p{margin:0 0 var(--s4);color:var(--ink-2)}
 .invite details{margin:0 0 var(--s4)}
-.invite details summary{cursor:pointer;color:var(--ink-3);font-size:var(--text-note);user-select:none;list-style-position:inside}
+.invite details summary{cursor:pointer;color:var(--ink-3);font-size:var(--text-small);user-select:none;list-style-position:inside}
 .invite details summary:hover{color:var(--ink-2)}
-.invite details .fine{margin:var(--s3) 0 0;color:var(--ink-3);font-size:var(--text-note)}
+.invite details .fine{margin:var(--s3) 0 0;color:var(--ink-3);font-size:var(--text-small)}
 /* The template link is an <a> styled as a button, so it needs the same box the
    <button>s get — .btn alone leaves it inline and underlined. */
 a.btn{display:inline-block;text-decoration:none;color:#fff}
 a.btn:hover{color:#fff}
-a.btn.ghost{color:var(--ink-2)}
+a.btn.ghost{color:var(--ink)}
 a.btn.ghost:hover{color:var(--ink)}
 /* ---- Deck rules (Vault Direction U, approved 2026-08-10) -----------------
    This page is two products sharing one scroll: the book a broker keeps, and
@@ -509,7 +509,7 @@ a.btn.ghost:hover{color:var(--ink)}
 .deck.hide{display:none}
 .dlab{font-family:var(--serif);font-weight:500;font-size:22px;white-space:nowrap;letter-spacing:-.015em}
 .dln{flex:1;height:0;border-top:2px solid var(--ink);transform:translateY(-6px)}
-.dact{background:var(--card);border:1px solid var(--red);border-radius:var(--r-md);padding:6px 12px;
+.dact{background:var(--card);border:1px solid var(--red);border-radius:var(--r-lg);padding:6px 12px;
   font-family:inherit;font-size:var(--text-small);font-weight:600;color:var(--red);cursor:pointer;white-space:nowrap}
 .dact:hover{background:var(--red-fill);color:#fff}
 /* The uploader and the column mapper stopped being sections when they moved
@@ -551,12 +551,12 @@ a.btn.ghost:hover{color:var(--ink)}
 .scell:first-child{border-left:0}
 .scell.act{cursor:pointer}
 .scell.act:hover{background:var(--wash)}
-.slab{display:block;font-size:var(--text-micro);letter-spacing:.12em;text-transform:uppercase;
+.slab{display:block;font-size:var(--text-tiny);letter-spacing:.12em;text-transform:uppercase;
   color:var(--ink-3);font-weight:600;margin-bottom:6px}
 .sfig{font-family:var(--serif);font-weight:500;font-size:var(--text-heading);line-height:1.15;color:var(--ink);
   letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .sfig.ok{color:var(--green)}
-.ssub{color:var(--ink-3);font-size:var(--text-note);margin-top:4px}
+.ssub{color:var(--ink-3);font-size:var(--text-small);margin-top:4px}
 .scell.act .ssub{color:var(--red)}
 @media (max-width:640px){
   .strip{grid-template-columns:1fr}
@@ -581,7 +581,7 @@ a.btn.ghost:hover{color:var(--ink)}
 .stg.rej{color:var(--ink-3)}
 .dbox{border:1px solid var(--edge);border-radius:var(--r-md);background:var(--card);
   padding:12px 18px;margin-top:var(--s4);box-shadow:var(--shadow),var(--lift)}
-.dbox>summary{cursor:pointer;font-size:var(--text-micro);letter-spacing:.1em;text-transform:uppercase;
+.dbox>summary{cursor:pointer;font-size:var(--text-tiny);letter-spacing:.1em;text-transform:uppercase;
   color:var(--ink-3);font-weight:600;user-select:none;list-style-position:inside}
 .dbox>summary:hover{color:var(--ink)}
 .dbox[open]>summary{margin-bottom:var(--s4);color:var(--ink)}
@@ -590,7 +590,7 @@ a.btn.ghost:hover{color:var(--ink)}
    block and the rail all arrive with MARKET_CSS. This page's own prose
    footer -- and the four-lines-and-no-links dead end it had been -- is gone.
    Its privacy sentence stayed, as the page's own closing line. */
-.vfoot{color:var(--ink-3);font-size:var(--text-note);margin:var(--s8) 0 0;max-width:62ch}
+.vfoot{color:var(--ink-3);font-size:var(--text-small);margin:var(--s8) 0 0;max-width:62ch}
 /* ---- The vault, Draft B (2026-09-25) ---------------------------------------
    The owner's pick of the vault redesign drafts: Draft B, "Find it, use it".
    Every class is prefixed vd- or vt- so none can share a name with MARKET_CSS
@@ -612,7 +612,7 @@ a.btn.ghost:hover{color:var(--ink)}
 .vt-panel>.deck .dact:hover{background:var(--red-fill-hover);border-color:var(--red-fill-hover);color:#fff}
 .vd-pv{display:inline-flex;border:1px solid var(--edge);border-radius:var(--r-md);overflow:hidden;background:var(--card);align-self:center}
 .vd-pv.hide{display:none}
-.vd-pv button{font:inherit;font-size:var(--text-note);color:var(--ink-2);background:none;border:0;border-left:1px solid var(--edge);
+.vd-pv button{font:inherit;font-size:var(--text-small);color:var(--ink-2);background:none;border:0;border-left:1px solid var(--edge);
   padding:6px 12px;cursor:pointer}
 .vd-pv button:first-child{border-left:0}
 .vd-pv button[aria-pressed="true"]{background:var(--slab);color:#fff}
@@ -635,13 +635,13 @@ a.btn.ghost:hover{color:var(--ink)}
 .filters.vb-ledger>.vd-bv,.filters.vb-ledger>#shown,.filters.vb-ledger>#sheetToggle,.filters.vb-ledger>.exp{display:none}
 .filters:not(.vb-ledger)>.vd-qv,.filters:not(.vb-ledger)>label.vd-grp,.filters:not(.vb-ledger)>.vd-morew{display:none}
 .vd-qv{display:flex;flex-wrap:wrap;align-items:flex-end;gap:2px 4px;flex:1 1 auto;min-width:0;align-self:flex-end;margin-bottom:-1px}
-.vd-qb{font:inherit;font-size:var(--text-ui);color:var(--ink-2);background:none;border:0;border-bottom:2px solid transparent;
+.vd-qb{font:inherit;font-size:var(--text-compact);color:var(--ink-2);background:none;border:0;border-bottom:2px solid transparent;
   padding:9px 10px 10px;cursor:pointer;white-space:nowrap}
 .vd-qb i{font-style:normal;font-size:var(--text-label);color:var(--ink-3);margin-left:2px;font-variant-numeric:tabular-nums}
 .vd-qb:hover{color:var(--ink)}
 .vd-qb.on{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
 .vd-qb:focus-visible,.vd-pill:focus-visible,.vd-gn:focus-visible,.vd-menu>*:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
-.vd-pill{font:inherit;font-size:var(--text-note);color:#fff;background:var(--slab);border:0;border-radius:var(--r-pill);padding:4px 10px;
+.vd-pill{font:inherit;font-size:var(--text-small);color:#fff;background:var(--slab);border:0;border-radius:var(--r-pill);padding:4px 10px;
   margin:0 0 7px 6px;align-self:center;cursor:pointer;white-space:nowrap}
 .vd-pill span{opacity:.7;margin-left:2px}
 .vd-morew{position:relative;margin-bottom:0}
@@ -651,13 +651,13 @@ a.btn.ghost:hover{color:var(--ink)}
   box-shadow:0 18px 40px -16px rgba(15,23,42,.35),0 2px 6px rgba(15,23,42,.08)}
 .vd-menu.hide{display:none}
 .vd-menu>button,.vd-menu>a{width:100%;padding:8px 10px;border:0;background:none;border-radius:5px;
-  font:inherit;font-size:var(--text-ui);color:var(--ink);text-align:left;text-decoration:none;cursor:pointer}
+  font:inherit;font-size:var(--text-compact);color:var(--ink);text-align:left;text-decoration:none;cursor:pointer}
 .vd-menu>button:hover,.vd-menu>a:hover{background:var(--wash)}
 .vd-menu small{display:block;font-size:var(--text-label);color:var(--ink-3);margin-top:1px}
 /* The map band: the same view() the ledger lists, across the top. */
 .vd-band{position:relative;height:230px;margin-top:var(--s5);border:1px solid var(--edge);border-radius:var(--r-md);
   overflow:hidden;background:var(--wash)}
-.vd-mapx{position:absolute;z-index:500;top:10px;right:10px;padding:5px 10px;font-size:var(--text-note);font-weight:500}
+.vd-mapx{position:absolute;z-index:500;top:10px;right:10px;padding:5px 10px;font-size:var(--text-small);font-weight:500}
 #bmNoLoc{margin:8px 0 0}
 /* The empty book: the country on a map, with the way in laid over it. */
 #bookEmpty.invite{position:relative;max-width:none;height:520px;margin:var(--s5) 0 var(--s6);border:1px solid var(--edge);
@@ -666,7 +666,7 @@ a.btn.ghost:hover{color:var(--ink)}
 .vd-drop{position:absolute;z-index:600;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,calc(100% - 32px));
   background:var(--card);border:2px dashed var(--ink-4);border-radius:var(--r-xl);padding:24px 26px;box-shadow:0 20px 50px -20px rgba(0,0,0,.35)}
 .vd-drop>p{margin:0 0 var(--s4);color:var(--ink-2)}
-.vd-drop>p.vd-drop-k{margin:0;font-size:var(--text-micro);letter-spacing:.12em;text-transform:uppercase;color:var(--red);font-weight:600}
+.vd-drop>p.vd-drop-k{margin:0;font-size:var(--text-tiny);letter-spacing:.12em;text-transform:uppercase;color:var(--red);font-weight:600}
 .vd-drop-h{margin:6px 0 8px;font-size:21px;line-height:1.25}
 .vd-drop .row{margin-top:var(--s4)}
 /* The book: Ledger or Table. The class lives on #bookViews because
@@ -702,14 +702,14 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 .vd-lt td{padding:7px 10px;color:var(--ink-2);white-space:nowrap;vertical-align:middle}
 .vd-lt td.vd-lc,.vd-lt th:first-child{width:36px;padding-left:14px;padding-right:0}
 .vd-la{max-width:340px;overflow:hidden;text-overflow:ellipsis}
-.vd-name{background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--ink);font-size:var(--text-ui);
+.vd-name{background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--ink);font-size:var(--text-compact);
   cursor:pointer;text-align:left}
 .vd-name:hover{text-decoration:underline;text-underline-offset:3px}
 .vd-name:focus-visible{outline:2px solid var(--red);outline-offset:2px}
 .vd-lcity{color:var(--ink-3);margin-left:8px}
 .vd-ld{color:var(--ink-3)}
 .vd-lmeta,.vd-lsub{display:none}
-.vd-lrate b{font-family:var(--serif);font-weight:500;font-size:var(--text-body);color:var(--ink)}
+.vd-lrate b{font-family:var(--serif);font-weight:500;font-size:var(--text-lead);color:var(--ink)}
 .vd-na{font-family:inherit;font-style:italic;font-size:var(--text-label);font-weight:400;color:var(--ink-3)}
 .vd-lr{cursor:pointer}
 .vd-lr.on td,.vd-lr.open td{background:var(--wash)}
@@ -720,7 +720,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 .vd-lg.shut td{background:var(--card)}
 .vd-lt tbody tr.vd-lg:hover td{background:var(--wash)}
 .vd-gn{display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:0;font:inherit;font-weight:600;
-  font-size:var(--text-ui);color:var(--ink);cursor:pointer}
+  font-size:var(--text-compact);color:var(--ink);cursor:pointer}
 .vd-gn svg{color:var(--ink-3);transform:rotate(90deg)}
 .vd-lg.shut .vd-gn svg{transform:none}
 .vd-gs{margin-left:12px;font-size:var(--text-label);color:var(--ink-3);font-variant-numeric:tabular-nums}

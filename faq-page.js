@@ -234,18 +234,13 @@ main.wrap{max-width:none;padding:0}
 .faqq[open] > summary .faqm{transform:rotate(45deg)}
 @media (prefers-reduced-motion:reduce){.faqm{transition:none}}
 .faqa{padding:0 0 22px}
-.faqa p{font-size:var(--text-body);line-height:1.65;color:var(--ink-body);margin:0;max-width:74ch}
+.faqa p{font-size:var(--text-lead);line-height:1.65;color:var(--ink-body);margin:0;max-width:74ch}
 
 /* Two CTAs, centered, with no sentence over them. The design's "Still have a
    question? Write to us" was dropped on 2026-09-01 and stays dropped: the
    site has no contact route that guarantees a human reply. */
 .faqfoot{border-top:1px solid var(--edge);padding-top:26px;margin-top:8px;
   display:flex;flex-wrap:wrap;gap:12px;justify-content:center}
-/* Outlined, against MARKET_CSS's solid red .btn beside it. Declared here
-   rather than borrowed because MARKET_CSS has no ghost button. */
-.faqghost{display:inline-block;background:var(--paper);border:1px solid var(--edge);border-radius:var(--r-sm);
-  padding:10px 18px;font-size:var(--text-compact);font-weight:600;color:var(--ink);text-decoration:none}
-.faqghost:hover{border-color:var(--ink-body)}
 
 /* Paper has no affordance to click, so a closed drawer on paper is content the
    reader simply does not get. Forced open for print and for anything that
@@ -276,7 +271,6 @@ main.wrap{max-width:none;padding:0}
   .faqpg{padding:40px 16px 48px}
   .faqpg h1{font-size:30px}
   .faqfoot{flex-direction:column}
-  .faqghost,.faqfoot .btn{text-align:center}
 }`;
 
 /**
@@ -323,7 +317,7 @@ function renderFaqPageBody({ signedIn = false, pricing = {}, esc = (s) => s } = 
     // asked the same question again about the firm answer's "talk to us", and
     // got the same answer.
     `<div class="faqfoot">` +
-    `<a class="faqghost" href="/">Run a report &rarr;</a>` +
+    `<a class="btn ghost" href="/">Run a report &rarr;</a>` +
     `<a class="btn" href="${startHref}">${startLabel} &rarr;</a>` +
     `</div>` +
     `</div>`

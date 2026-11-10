@@ -181,12 +181,14 @@ const THEME_TOKENS = {
 // pages that build their own document, and index.html hand-copies it
 // beside its colour tokens (theme.test.js pins the copy).
 //
-// The VALUES are the ones the site already used, so adopting a name never
-// moved a pixel. That is also why the text scale has neighbours half a pixel
-// apart (12/12.5, 13/13.5, 14/14.5): they were all in use, and folding them
-// together is a design call to make by changing a value here, where it then
-// moves every page at once. A size not on this list stays a literal, and
-// theme.test.js refuses a NEW off-scale size, so the list can only shrink.
+// The VALUES are the ones the site already used. Until 2026-11-10 that meant
+// neighbours half a pixel apart (10.5/11, 12/12.5, 13/13.5, 14/14.5), each in
+// use and none of them chosen. They were folded together that day: the small
+// text sizes are now 11, 12, 13, 14, 15 and 16px, one pixel apart, and
+// --text-micro, --text-note, --text-ui and --text-body are gone (each use
+// took the whole size beside it: 11, 13, 14, and 15 for reading copy or 14
+// for a control). A size not on this list stays a literal, and theme.test.js
+// refuses a NEW off-scale size, so the list can only shrink.
 //
 // The spacing steps (--s1..--s9) and --serif are the names the admin pages
 // and the vault already used, with the values they already agreed on. Their
@@ -199,15 +201,11 @@ const SCALE_TOKENS = {
   mono:             "ui-monospace,SFMono-Regular,Menlo,monospace",
 
   // --- text sizes, smallest first ------------------------------------------
-  "text-micro":     "10.5px", // the uppercase micro-label: table heads, badges, tile labels
-  "text-tiny":      "11px",
-  "text-label":     "12px",
-  "text-note":      "12.5px", // captions, footnotes, the note under a figure
-  "text-small":     "13px",   // small buttons, the footer
-  "text-ui":        "13.5px", // navigation, tables
-  "text-compact":   "14px",
-  "text-body":      "14.5px", // body copy
-  "text-lead":      "15px",   // the wordmark, large buttons
+  "text-tiny":      "11px",   // the uppercase micro-label: table heads, badges, tile labels
+  "text-label":     "12px",   // chips, counts, the smallest sentence
+  "text-small":     "13px",   // captions and notes, compact buttons, the footer
+  "text-compact":   "14px",   // navigation, tables, buttons, the app's own text
+  "text-lead":      "15px",   // reading copy, the wordmark, large buttons
   "text-input":     "16px",   // form fields: never smaller, or iOS Safari zooms in
   "text-title":     "19px",   // card headings (Georgia)
   "text-subhead":   "20px",
@@ -221,9 +219,9 @@ const SCALE_TOKENS = {
 
   // --- corner radius -------------------------------------------------------
   "r-xs":           "3px",    // badges
-  "r-sm":           "4px",    // buttons, chips
+  "r-sm":           "4px",    // chips
   "r-md":           "6px",    // cards, panels, tables, inputs: the default
-  "r-lg":           "8px",    // dropdown menus
+  "r-lg":           "8px",    // every button (components.js), dropdown menus
   "r-xl":           "10px",   // rail rows
   "r-2xl":          "12px",
   "r-pill":         "999px",  // full pills

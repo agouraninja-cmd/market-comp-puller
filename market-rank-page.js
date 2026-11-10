@@ -87,13 +87,13 @@ table.rk td.num,table.rk th.num{text-align:right;font-variant-numeric:tabular-nu
 .rk-comp-head h2{margin:0;flex:1 1 auto;min-width:8rem}
 .rk-comp-score{font-size:var(--text-heading);font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink)}
 .rk-comp-w{font-size:var(--text-label);color:var(--ink-3);white-space:nowrap}
-.rk-comp-story{font-size:var(--text-body);color:var(--ink-2);margin:0;max-width:68ch;line-height:1.55}
+.rk-comp-story{font-size:var(--text-lead);color:var(--ink-2);margin:0;max-width:68ch;line-height:1.55}
 .rk-comp-story::first-letter{text-transform:uppercase}
 /* The drill-down. Closed by default: the sentence above is the answer, this is
    the evidence, and a page that opens all its evidence at once is the flat
    table this replaced. */
 .rk-dig{margin:14px 0 0;border-top:1px solid var(--hair);padding-top:12px}
-.rk-dig summary{cursor:pointer;font-size:var(--text-ui);font-weight:600;color:var(--ink-2);
+.rk-dig summary{cursor:pointer;font-size:var(--text-compact);font-weight:600;color:var(--ink-2);
   list-style:none;display:inline-flex;align-items:center;gap:6px}
 .rk-dig summary::-webkit-details-marker{display:none}
 .rk-dig summary::before{content:"▸";font-size:var(--text-tiny);color:var(--ink-3);transition:transform .12s}
@@ -107,7 +107,7 @@ table.rk td.num,table.rk th.num{text-align:right;font-variant-numeric:tabular-nu
 .rk-yours-act .rk-note{margin:0;flex:1 1 16rem;min-width:12rem}
 .rk-export p{font-size:var(--text-compact);color:var(--ink-2);margin:0 0 12px;max-width:62ch}
 .rk-export-links{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:0 0 10px}
-.rk-export-alt{font-size:var(--text-ui);color:var(--ink-mute);text-decoration:underline;
+.rk-export-alt{font-size:var(--text-compact);color:var(--ink-mute);text-decoration:underline;
   text-decoration-color:var(--edge)}
 .rk-export-alt:hover{color:var(--ink)}
 /* --- The explorer's entry card (/markets) ------------------------------- */
@@ -135,7 +135,7 @@ table.rk td.num,table.rk th.num{text-align:right;font-variant-numeric:tabular-nu
 .rke-list a{color:var(--ink);font-weight:600;flex:1;min-width:0}
 .rke-list a:hover{color:var(--red)}
 .rke-s{font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:var(--text-small)}
-.rke-more{margin:12px 0 0;font-size:var(--text-ui)}
+.rke-more{margin:12px 0 0;font-size:var(--text-compact)}
 .rke-foot{grid-column:1;font-size:var(--text-label);color:var(--ink-3);margin:12px 0 0}
 @media(max-width:720px){
   .rke{grid-template-columns:1fr;padding:20px}
@@ -891,7 +891,8 @@ function round2(v) { return Math.round(v * 100) / 100; }
 function fmtPlain(v) { return typeof v === "number" && isFinite(v) ? round2(v) : "no data"; }
 function pct(v) { return typeof v === "number" && isFinite(v) ? Math.round(v * 100) + "%" : ""; }
 
-module.exports = { ASSET_CLASSES, CLASS_LABEL, RANK_CSS, renderRankingsBody,
+module.exports = { ASSET_CLASSES, CLASS_LABEL, RANK_CSS, renderRankingsBody,
+
   fmtScore, bandClass, bandWord, coverageBar, assetTabs, renderMarketCardBody, renderExplorerEntry,
   narrateBlock, renderComponent, renderYourRead, componentBand,
   rankingsCsvRows, marketCsvRows };

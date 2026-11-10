@@ -63,12 +63,12 @@ const PRICING_CSS = `
    the whole reason for the flex column; MARKET_CSS's .tile is a plain box. */
 .prc-tiles{grid-template-columns:repeat(3,1fr);gap:16px;align-items:stretch}
 .prc-tile{display:flex;flex-direction:column;position:relative;padding:20px}
-.prc-tile .prc-k{font-size:var(--text-micro);text-transform:uppercase;letter-spacing:.1em;
+.prc-tile .prc-k{font-size:var(--text-tiny);text-transform:uppercase;letter-spacing:.1em;
   color:var(--ink-3);font-weight:600}
 .prc-tile .prc-v{font-family:var(--serif);font-weight:500;font-size:var(--text-hero);
   line-height:1.15;margin-top:6px;color:var(--ink);font-variant-numeric:tabular-nums}
-.prc-tile .prc-n{font-size:var(--text-note);color:var(--ink-3);margin-top:2px}
-.prc-sum{font-size:var(--text-ui);line-height:1.55;color:var(--ink-body);margin:12px 0 0}
+.prc-tile .prc-n{font-size:var(--text-label);color:var(--ink-3);margin-top:2px}
+.prc-sum{font-size:var(--text-compact);line-height:1.55;color:var(--ink-body);margin:12px 0 0}
 /* The pin. Everything above it is content, this is what puts the button on
    the floor of the tile. */
 .prc-cta{margin-top:auto;padding-top:16px}
@@ -80,7 +80,7 @@ const PRICING_CSS = `
 .prc-mid{border-color:var(--red)}
 .prc-mid .prc-k{color:var(--red)}
 .prc-tag{position:absolute;top:-9px;left:14px;background:var(--red-fill);color:#fff;
-  font-size:var(--text-micro);font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  font-size:var(--text-tiny);font-weight:600;letter-spacing:.08em;text-transform:uppercase;
   padding:3px 8px;border-radius:var(--r-xs)}
 
 /* --- The annual band -------------------------------------------------------
@@ -111,7 +111,7 @@ const PRICING_CSS = `
 .prc-wc h2{font-family:var(--serif);font-weight:500;font-size:var(--text-subhead);line-height:1.3;
   color:var(--ink);margin:0 0 14px}
 .prc-wl{list-style:none;margin:0;padding:0}
-.prc-wl li{display:flex;gap:12px;padding:9px 0;font-size:var(--text-ui);line-height:1.55;color:var(--ink-body)}
+.prc-wl li{display:flex;gap:12px;padding:9px 0;font-size:var(--text-compact);line-height:1.55;color:var(--ink-body)}
 .prc-wl li + li{border-top:1px solid var(--line)}
 .prc-wc-free .prc-wl li + li{border-top-color:var(--hair)}
 .prc-num{flex:0 0 auto;color:var(--red);font-weight:600;font-size:var(--text-label);

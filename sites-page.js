@@ -51,7 +51,7 @@ function renderSitesBody(boot) {
 .sp-wall a{color:var(--red);text-decoration:underline}
 .sp-page .dk-msg{font-size:var(--text-small);color:var(--ink-2);margin-top:8px}
 .sp-page .dk-msg.bad{color:var(--red)}
-.sp-msg{margin:12px 0 0;font-size:var(--text-ui);color:var(--ink-2)}
+.sp-msg{margin:12px 0 0;font-size:var(--text-compact);color:var(--ink-2)}
 .sp-addbox .hs-add{margin:14px 0 0}
 /* The board: one column per buying stage. Four across on a desktop, two on a
    tablet, one stack on a phone (each column's head stays, so an empty stage
@@ -60,7 +60,7 @@ function renderSitesBody(boot) {
 .sp-col{min-width:0;border-radius:var(--r-2xl);background:var(--wash);padding:10px 8px 8px}
 .sp-ch{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:2px 4px 8px}
 .sp-ch h2{margin:0;font-size:var(--text-label);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
-.sp-ch .n{font-size:var(--text-note);font-weight:600;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.sp-ch .n{font-size:var(--text-small);font-weight:600;color:var(--ink-3);font-variant-numeric:tabular-nums}
 .sp-cf{padding:0 4px 8px;font-size:var(--text-label);color:var(--ink-3);font-variant-numeric:tabular-nums;min-height:15px}
 .sp-cards{display:flex;flex-direction:column;gap:8px}
 .sp-card{display:block;width:100%;text-align:left;font:inherit;color:inherit;padding:10px 11px;border:1px solid var(--edge);border-radius:var(--r-xl);background:var(--card);cursor:pointer;box-shadow:0 1px 2px rgba(15,23,42,.05)}
@@ -68,13 +68,13 @@ function renderSitesBody(boot) {
 .sp-card:focus-visible{outline:2px solid var(--red);outline-offset:2px}
 .sp-card[aria-expanded="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
 .sp-ca{display:block;font-size:var(--text-compact);font-weight:600;color:var(--ink);overflow-wrap:anywhere}
-.sp-cc{display:block;margin-top:1px;font-size:var(--text-note);color:var(--ink-3);overflow-wrap:anywhere}
-.sp-cn{display:block;margin-top:6px;font-size:var(--text-note);color:var(--ink-2);font-variant-numeric:tabular-nums}
+.sp-cc{display:block;margin-top:1px;font-size:var(--text-small);color:var(--ink-3);overflow-wrap:anywhere}
+.sp-cn{display:block;margin-top:6px;font-size:var(--text-small);color:var(--ink-2);font-variant-numeric:tabular-nums}
 .sp-cd{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:7px;font-size:var(--text-label);color:var(--ink-3)}
 .sp-cd .w{min-width:0;overflow-wrap:anywhere}
 .sp-co{display:inline-block;margin-top:7px;padding:2px 7px;border-radius:var(--r-pill);background:var(--wash);box-shadow:inset 0 0 0 1px var(--line);font-size:var(--text-tiny);font-weight:600;color:var(--ink-2)}
 .sp-card.theirs{background:var(--paper,var(--card))}
-.sp-none{padding:14px 6px 12px;font-size:var(--text-note);color:var(--ink-3);text-align:center}
+.sp-none{padding:14px 6px 12px;font-size:var(--text-small);color:var(--ink-3);text-align:center}
 /* The open deal, worked under the board with Home's pane (home-sites.css). */
 .sp-open{margin-top:18px;scroll-margin-top:16px}
 .sp-oh{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 12px;padding:14px 14px 10px;border:1px solid var(--edge);border-bottom:0;border-radius:12px 12px 0 0;background:var(--card)}
@@ -85,9 +85,9 @@ function renderSitesBody(boot) {
 .sp-open .hs-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 .sp-empty{margin-top:20px;padding:26px 22px;border:1px dashed var(--edge);border-radius:var(--r-2xl);background:var(--card);text-align:center}
 .sp-empty h2{margin:0 0 6px;font-family:var(--serif);font-weight:400;font-size:21px;color:var(--ink)}
-.sp-empty p{margin:0 auto 14px;max-width:52ch;font-size:var(--text-ui);line-height:1.5;color:var(--ink-3)}
+.sp-empty p{margin:0 auto 14px;max-width:52ch;font-size:var(--text-compact);line-height:1.5;color:var(--ink-3)}
 .sp-fold{margin-top:22px;border-top:1px solid var(--line)}
-.sp-fold>summary{padding:12px 0;cursor:pointer;font-size:var(--text-ui);font-weight:600;color:var(--ink-2)}
+.sp-fold>summary{padding:12px 0;cursor:pointer;font-size:var(--text-compact);font-weight:600;color:var(--ink-2)}
 .sp-fold>summary span{margin-left:4px;color:var(--ink-3)}
 .sp-fold .sp-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .sp-foot{margin-top:22px;font-size:var(--text-small);color:var(--ink-3)}

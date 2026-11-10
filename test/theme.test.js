@@ -469,7 +469,11 @@ const INDEX_STYLE = INDEX.slice(INDEX.indexOf("<style>"), INDEX.indexOf("</style
 // slab, both of which stay dark in dark mode, so white text remains
 // correct. Listed explicitly so the coverage test below stays honest
 // rather than being loosened.
-const NOT_DARKENED = new Set(["text-white", "hover:text-white"]);
+// White text sits on a filled red button in both themes. bg-slate-900 is the
+// modal scrim, only ever written as bg-slate-900/70: a 70% veil over the page
+// is dark in both themes on purpose, and it has no token (a var() colour
+// cannot take Tailwind's opacity suffix).
+const NOT_DARKENED = new Set(["text-white", "hover:text-white", "bg-slate-900"]);
 
 // Every colour utility index.html actually uses, base and state-variant.
 // The prefix group must list every variant actually used with a colour
@@ -666,6 +670,23 @@ test("the size scale is sizes, ordered, with no value named twice", () => {
   for (const v of Object.values(SCALE_TOKENS)) assert.doesNotMatch(v, /#[0-9a-f]{3,8}\b/i);
 });
 
+test("the text scale has no half pixels, and the four names that held them are gone", () => {
+  // 10.5, 12.5, 13.5 and 14.5px sat half a pixel from a neighbour, each in
+  // use and none of them chosen. Folded on 2026-11-10: the small sizes are a
+  // pixel apart, and a size that is not a whole pixel cannot come back.
+  const sizes = Object.entries(SCALE_TOKENS).filter(([k]) => k.startsWith("text-"));
+  for (const [k, v] of sizes) assert.match(v, /^\d+px$/, `--${k} is ${v}: the scale is whole pixels`);
+  assert.deepEqual(sizes.slice(0, 6).map(([, v]) => v), ["11px", "12px", "13px", "14px", "15px", "16px"]);
+  const RETIRED = /var\(--text-(micro|note|ui|body)\b/;
+  for (const f of ["index.html", "server.js", "components.js", "home-page.js", "brokers-firms-page.js", "faq-page.js", "pricing-page.js",
+    "vault-page.js", "messages-page.js", "permits-page.js", "sites-page.js", "buildings-page.js", "hub-page.js",
+    "market-rank-page.js", "bulk-page.js", "market-hero-review.js", "home-sites.css", "board.js", "home-sites.js"]) {
+    assert.doesNotMatch(root(f), RETIRED, `${f} reads a text size that no longer exists, so that text falls back to its parent's size`);
+  }
+  // The app's own half-pixel utilities went the same way.
+  assert.doesNotMatch(INDEX, /\btext-\[1[0-4]\.5px\]/, "a half-pixel Tailwind text size in index.html");
+});
+
 test("every page gets the scale: rootCss and scaleCss carry all of it, and nothing keeps a copy", () => {
   for (const css of [rootCss(), scaleCss()]) {
     for (const [k, v] of Object.entries(SCALE_TOKENS)) assert.ok(css.includes(`--${k}:${v}`), `--${k} missing`);
@@ -675,7 +696,7 @@ test("every page gets the scale: rootCss and scaleCss carry all of it, and nothi
   // The scale sits in rootCss's UNSCOPED :root, never the dark block, so
   // print (which never reads the dark block) has every size too.
   const css = rootCss();
-  assert.ok(css.indexOf("--text-body:") < css.indexOf("[data-theme"), "the scale must be in the light :root block");
+  assert.ok(css.indexOf("--text-lead:") < css.indexOf("[data-theme"), "the scale must be in the light :root block");
   // The admin pages and the hero review tool draw their own documents: they
   // take the scale through SCALE_CSS, and none keeps its own copy (they
   // disagreed: one --t1 was 32px, the other 34px).
@@ -699,7 +720,7 @@ test("no stylesheet gains a text size or radius that is off the scale", () => {
   // were in use and are NOT on the scale, so they stay literal until a
   // design call folds them in. The list may only shrink: a new one-off
   // size fails here, with the scale's names to pick from instead.
-  const ALLOWED_TEXT = new Set([".8em", "9px", "9.5px", "10px", "11.5px", "15.5px", "16.5px", "17px", "18px", "21px", "22px", "23px", "25px", "29px", "30px", "36px"]);
+  const ALLOWED_TEXT = new Set([".8em", "9px", "9.5px", "10px", "15.5px", "16.5px", "17px", "18px", "21px", "22px", "23px", "25px", "29px", "30px", "36px"]);
   const ALLOWED_RADIUS = new Set(["2px", "5px", "9px", "11px", "14px", "16px", "18px", "20px", "50%", "99px", "9999px"]);
   const FILES = ["index.html", "server.js", "home-page.js", "brokers-firms-page.js", "faq-page.js", "pricing-page.js",
     "vault-page.js", "messages-page.js", "permits-page.js", "sites-page.js", "buildings-page.js", "hub-page.js",
@@ -724,7 +745,7 @@ test("no stylesheet gains a text size or radius that is off the scale", () => {
     }
   }
   assert.deepEqual(offenders, [],
-    `use the scale's name (theme.js SCALE_TOKENS: var(--text-ui), var(--r-md), ...) instead of: ${offenders.join(", ")}`);
+    `use the scale's name (theme.js SCALE_TOKENS: var(--text-compact), var(--r-md), ...) instead of: ${offenders.join(", ")}`);
 });
 
 test("the bridge cannot reach the print stylesheet", () => {

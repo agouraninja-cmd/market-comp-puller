@@ -1,7 +1,9 @@
 ---
 paths:
   - "theme.js"
+  - "components.js"
   - "instant-nav.js"
+  - "test/components.test.js"
   - "test/nav-*.test.js"
   - "test/theme.test.js"
   - "test/instant-nav.test.js"
@@ -295,6 +297,93 @@ paths:
   index.html (its auth chrome, account menu and pricing button are SPA
   behavior owned by `refreshBillingUI()`); what is single-sourced is the
   markup every header shares.
+
+## The shared button and tabs (2026-11-10)
+
+`components.js` defines the button and the tabs once (step 4 of the design
+system work; `docs/DESIGN-SYSTEM.md` §6 has the values). Pure like theme.js.
+Read its header before touching it; the rules a future editor will trip on:
+
+- **A table, not a stylesheet.** Each component is its canon (`BUTTON`,
+  `TABS`, `SEGMENTED`) plus the page families that predate it
+  (`.hm-btn`, `.mc-btn`, `.pw-btn`, `.msg-btn`, `.bd-btn`, `.bs-btn`;
+  `.vt-tabs`, `.pt-tabs`, `.hm-tabs`; `.cs-tabs`, `.msg-views`), each listing
+  only where it still `differs`. `componentCss()` generates one rule set per
+  family UNDER THE FAMILY'S OWN CLASS NAMES, so no markup, script or test
+  changed and nothing moved on screen the day it shipped.
+- **New work uses `.btn`, `.btn.sm`, `.btn.lg`, `.btn.ghost`, `.tabs` /
+  `.tab`, `.seg`.** Never a new family. `test/components.test.js` refuses a
+  new family, a new `differs`, a page rule the component already draws, and a
+  page-level restyle of `.btn` that is not on its list of six. All four lists
+  may only shrink.
+- **Every button and every underlined tab IS the canon (the design pass the
+  same day, owner's ask: "implement the design changes").** The 34 button and
+  tab `differs` were deleted; only `.msg-views` (Messages' Chats / Reports
+  switch) still lists any, on purpose. A button is 8px-cornered, states its
+  own `line-height:1.4` (it read its row's before: 35px on The Board, 45px on
+  a marketing page), carries a 1px border in BOTH looks (the red one's is
+  transparent, so a page that repaints it, like the dark bands, need not
+  repaint an edge), and has one focus ring, one disabled look and a .12s
+  colour fade. `button.btn` must never set `border` again: it out-ranks `.btn`
+  and would strip the edge from every real `<button>`. Tabs draw their
+  hairline as an inset shadow on the row and the red line as the tab's own
+  bottom border, with NO negative margin: under `overflow-x:auto` (Home's and
+  Permits' rows on a phone) a -1px margin made the row scroll a pixel up and
+  down. A count is a flex item 6px from its label and is `display:none` while
+  empty. The marketing pages' big buttons are `.btn.lg` (their own `.btn2` /
+  `.faqghost` copies went; `.btn2` survives only as a COLOUR on top of `.btn`
+  in the home page's dark band).
+- **Form fields are 16px on a phone, from one rule here** (`fieldCss()`:
+  `@media (max-width:640px),(pointer:coarse)`, `!important`, the only one in
+  the file). An iPhone zooms in on a tap into a smaller field and stays
+  zoomed; 442 fields across 25 pages were under 16px at phone width, none
+  after. It is one line on purpose (`test/vault-shell.test.js` reads a rule
+  from the line it starts on), its selector chains `:not()`s rather than
+  listing them (the tests split selectors on commas), and `hub-page.js`,
+  which takes nothing else from this file, is handed it as `FIELD_CSS`.
+  **It is a floor, never a ceiling:** `.rd-in-lg` (the report's main address
+  box, 17px) is excluded by name, because the first version shrank it to 16px
+  on every phone and the under-16px sweep could not see that. A field meant
+  to be larger than 16px needs the same `:not()`; check with a sweep for
+  fields OVER 16px before and after, not only under.
+- **Two deliveries, one string.** `MARKET_CSS` interpolates `COMPONENT_CSS`
+  (every marketShell page), and the `/` handler writes it into index.html at
+  `<!--COMPONENT_CSS-->` (the NAV_LINKS rule: a marker, never a hand-copy).
+  The marker sits AFTER the tailwind.css link and BEFORE the page's own
+  `<style>`, and nothing above it may contain the text `<style>`
+  (theme.test.js slices the page's stylesheet from the first one).
+- **Order is the risk, not the values.** A family's base rule used to sit in
+  its page's stylesheet; it now sits earlier, in the head. A page rule of
+  EQUAL specificity now wins where the base used to. The one case that bit:
+  on `/sites` the copy was `.sp-page .hm-btn` (0,2,0), which out-ranked
+  MARKET_CSS's `a:hover` colour; as `.hm-btn` (0,1,0) it did not, and a link
+  button's label turned red on hover. Hence the canon's secondary hover
+  restates `color`. Any change here wants the before/after sweep, hover
+  included, not a read of the diff.
+- **Deleting a `differs` entry is a visible change** on that family's pages:
+  before and after pictures. `componentCss({ unified: true })` emits the CSS
+  with every `differs` ignored, for a preview and for the tests; nothing
+  serves it.
+- **Not on it, on purpose:** `vault-page.js` restates `.btn` whole at its own
+  size (vault.md's complete-design-system rule; `test/vault-shell.test.js`
+  now expands `COMPONENT_CSS` on the MARKET side and exempts only the
+  vault's own `.vt-tab` family); the admin pages and `hub-page.js` draw
+  their own documents and never receive it; the app's Tailwind-string
+  buttons are the right red since 2026-11-10 (`bg-red-fill`, when
+  `bg-brand-600` and every other off-palette colour class in index.html
+  became a token class and the dark-mode bridge shrank to the footer's five
+  rules) but are still utility strings, not `.btn`. The vault's `.btn` took
+  the canon's corner, line height and always-there border the same day
+  (its outlined button had been 2px taller than its red one).
+- **The text scale has no half pixels (2026-11-10).** `--text-micro`,
+  `--text-note`, `--text-ui` and `--text-body` are GONE from theme.js: 10.5,
+  12.5, 13.5 and 14.5px each took the whole size beside it (11, 13, 14, and 15
+  for reading copy or 14 for a control), and literal 11.5px became
+  `--text-label`. A `var()` naming a retired size computes to nothing and the
+  text silently takes its parent's size, so `test/theme.test.js` fails the
+  build on one. Text only grew, by half a pixel; the sweep that cleared it
+  compared every short label's line count at 1280, 1024, 768 and 390px, and
+  three labels that no longer fit took the size below instead.
 
 ## Instant tab switching (2026-09-26)
 

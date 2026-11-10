@@ -370,7 +370,7 @@
           rows.length ? h("div", { class: "bd-seg", role: "group", "aria-label": "Show" },
             [["all", "All"], ["markets", "Markets"], ["properties", "Properties"]].map(([k, t]) =>
               h("button", { type: "button", "aria-pressed": state.show === k ? "true" : "false", onclick: () => { state.show = k; render(); } }, t))) : null,
-          state.adding || empty ? null : h("button", { type: "button", class: "btn bd-addbtn", onclick: () => { state.adding = true; state.msg = ""; render(); focusAdd(); } }, "+ Add to The Board")));
+          state.adding || empty ? null : h("button", { type: "button", class: "btn sm bd-addbtn", onclick: () => { state.adding = true; state.msg = ""; render(); focusAdd(); } }, "+ Add to The Board")));
       const parts = [head];
       if (state.msg) parts.push(h("p", { class: "bd-msg" + (state.msgBad ? " bad" : ""), role: state.msgBad ? "alert" : "status" }, state.msg));
       if (state.adding || empty) parts.push(addForm(empty));

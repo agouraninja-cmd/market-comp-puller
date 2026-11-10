@@ -47,8 +47,28 @@ const UNREAD_DENVER = (() => {
   return { "office-denver-co": p };
 })();
 
+// A share as it was stored BEFORE 2026-11-10, when POST /api/share did not
+// yet strip development costs: the row itself holds a budget, and no share
+// made through today's route could put one there. Seeded as a file so the
+// read side can be shown to strip it (see "a share stored before the fix").
+const OLD_SHARE_ID = "oldshare-devcost";
+const OLD_SHARE = {
+  data: { comps: [{ address: "9 Stored Ave, Boise, ID", date: "2026-02-01", price_or_rate: "1000000" }] },
+  meta: {
+    address: "9 Stored Ave, Boise, ID", type: "Land", shared: true, generatedAt: 1773964800000,
+    subject: { sizeMin: 43560, sizeMax: 43560, noi: null },
+    assumptions: {
+      holdYears: 5, exitCapPct: 6.25,
+      devCost: { land: 866866, hard: 977977, soft: 188188, contingencyPct: 5, buildMonths: 18 },
+    },
+  },
+};
+
 test("bare environment", async (t) => {
-  const srv = await boot({ DATA_FILES: { "market-pages-dynamic.json": UNREAD_DENVER } });
+  const srv = await boot({ DATA_FILES: {
+    "market-pages-dynamic.json": UNREAD_DENVER,
+    "shared-reports.json": { [OLD_SHARE_ID]: OLD_SHARE },
+  } });
   t.after(() => srv.stop());
 
   await t.test("healthz answers", async () => {
@@ -459,7 +479,7 @@ test("bare environment", async (t) => {
   // page shipping without the chrome: accountNavSlots() is one call, so
   // forgetting it is the easy mistake, not getting it subtly wrong.
   await t.test("every server-rendered page carries the signed-in header chrome", async () => {
-    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers-firms",
+    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers-firms", "/lenders",
       "/how-it-works", "/faq", "/terms", "/privacy", "/comps", "/pipeline", "/leadership"];
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
@@ -526,7 +546,7 @@ test("bare environment", async (t) => {
     // /how-it-works is in this list because THIS file boots with the wall off,
     // which makes it a page of its own rather than the render `/` is serving.
     // Its walled behavior — no self-link — is pinned in account-wall.test.js.
-    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers-firms",
+    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers-firms", "/lenders",
       "/download", "/terms", "/privacy", "/leadership",
       // /how-it-works joined this list unconditionally on 2026-09-01. It was
       // already here because THIS file boots with the wall off; it now also
@@ -1040,6 +1060,7 @@ test("bare environment", async (t) => {
       ["/market/industrial-ontario-ca", /Industrial Comps in Ontario/],
       ["/how-it-works", /<title>/],
       ["/brokers-firms", /For Commercial Real Estate Brokers and Firms/],
+      ["/lenders", /For Lenders: Check the Collateral Before the Appraisal/],
       ["/download", /<title>/],
       ["/leadership", /<title>/],
       ["/terms", /<title>/],
@@ -1071,7 +1092,7 @@ test("bare environment", async (t) => {
   // the canonical has to keep pointing at the clean one -- otherwise this fix
   // trades a dead link for a pile of duplicate URLs in Search Console.
   await t.test("a tagged page canonicalizes to its clean URL", async () => {
-    for (const p of ["/markets", "/market/industrial-ontario-ca", "/brokers-firms"]) {
+    for (const p of ["/markets", "/market/industrial-ontario-ca", "/brokers-firms", "/lenders"]) {
       const html = await (await fetch(srv.base + p + "?utm_source=newsletter")).text();
       assert.match(html, new RegExp(`<link rel="canonical" href="[^"]*${p}"`),
         p + " canonicalizes a tagged link to something other than its clean URL");
@@ -1422,6 +1443,88 @@ test("bare environment", async (t) => {
     const excluded = (payload.meta && payload.meta.curation && payload.meta.curation.excluded) || [];
     assert.ok(!excluded.includes(excludedKey), "the excluded key must be dropped once the comp it points to is gone from the share");
     assert.deepEqual(payload.data.comps.map((c) => c.address), ["1 Public Ave, Boise, ID"], "only the surviving public comp should remain");
+  });
+
+  // Never-break rule 6, wired. The browser holds an owner's NOI, loan, rent
+  // roll, gross income and development costs in meta, and sends the whole of
+  // meta when it shares; this route is the only thing between those figures
+  // and a link that can be forwarded. Nothing tested it until 2026-11-10,
+  // and on that day development costs turned out to have been passing
+  // straight through while two comments said they were stripped.
+  //
+  // Every private figure below is a number that appears nowhere else in the
+  // payload, so one substring sweep catches a field this list never heard of
+  // being added under any of these keys.
+  await t.test("a share never carries the owner's private finances", async () => {
+    const r = await fetch(srv.base + "/api/share", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { comps: [{ address: "1 Public Ave, Boise, ID", date: "2026-01-01", price_or_rate: "1000000" }] },
+        meta: {
+          address: "1 Public Ave, Boise, ID", type: "Industrial",
+          generatedAt: SHARE_GENERATED_AT,
+          subject: { sizeMin: 20000, sizeMax: 20000, noi: 311311 },
+          assumptions: {
+            holdYears: 7, noiGrowthPct: 2.5, discountPct: 8.5, exitCapPct: 6.5,
+            // The Collateral Check card's price and limit live in `debt`.
+            debt: { loanAmount: 422422, ratePct: 6.75, amortYears: 25, purchasePrice: 533533, ltvLimitPct: 77 },
+            rentRoll: [{ label: "Suite A", sf: 5000, rent: 644644, endYear: 2029 }],
+            opex: { grossIncome: 755755 },
+            devCost: { land: 866866, hard: 977977, soft: 188188, contingencyPct: 5, buildMonths: 18 },
+          },
+        },
+      }),
+    });
+    assert.equal(r.status, 200);
+    const { id } = await r.json();
+    const shared = await fetch(srv.base + "/api/shared?id=" + encodeURIComponent(id));
+    assert.equal(shared.status, 200);
+    const payload = await shared.json();
+    const raw = JSON.stringify(payload);
+
+    for (const [figure, what] of [
+      ["311311", "the NOI"], ["422422", "the loan amount"], ["533533", "the purchase price"],
+      ["644644", "a tenant's rent"], ["755755", "the gross income"],
+      ["866866", "the land cost"], ["977977", "the hard costs"], ["188188", "the soft costs"],
+    ]) {
+      assert.ok(!raw.includes(figure), `${what} reached a shared report`);
+    }
+    const a = payload.meta.assumptions;
+    for (const key of ["debt", "rentRoll", "opex", "devCost"]) {
+      assert.equal(key in a, false, `meta.assumptions.${key} must be removed whole, not emptied field by field`);
+    }
+    // The DCF's four assumptions are opinions, not finances, and stay.
+    assert.equal(a.holdYears, 7);
+    assert.equal(a.exitCapPct, 6.5);
+    // And the subject's public facts stay with them.
+    assert.equal(payload.meta.subject.sizeMin, 20000);
+    assert.equal(payload.meta.subject.noi, null);
+  });
+
+  // The other half of that fix. A stored row is only as clean as the code
+  // that wrote it, and development costs were not stripped on write until
+  // 2026-11-10: fixing the writer alone would have left every earlier link
+  // carrying its budget. So the READ strips too, and this row (seeded as a
+  // file, since no share made through today's route could hold one) proves
+  // it, twice: the second read is served from the in-memory copy, which a
+  // strip that mutated instead of copying would have "cleaned" by accident
+  // and a strip that forgot the cached path would not clean at all.
+  await t.test("a share stored before the fix is stripped when it is read", async () => {
+    for (const pass of ["first read", "second read, from memory"]) {
+      const r = await fetch(srv.base + "/api/shared?id=" + OLD_SHARE_ID);
+      assert.equal(r.status, 200, pass);
+      const payload = await r.json();
+      const raw = JSON.stringify(payload);
+      for (const figure of ["866866", "977977", "188188"]) {
+        assert.ok(!raw.includes(figure), `${pass}: a development cost stored in an old share reached its reader`);
+      }
+      assert.equal("devCost" in payload.meta.assumptions, false, pass);
+      // Everything that was never private is untouched.
+      assert.equal(payload.meta.assumptions.holdYears, 5, pass);
+      assert.equal(payload.meta.assumptions.exitCapPct, 6.25, pass);
+      assert.equal(payload.meta.address, "9 Stored Ave, Boise, ID", pass);
+      assert.equal(payload.data.comps.length, 1, pass);
+    }
   });
 
   await t.test("every share-management route refuses an anonymous caller and exists", async () => {

@@ -262,7 +262,7 @@ test("no page writes a rule the component already draws", () => {
   // (Its @media rule is the phone field size, which names bare `select` and
   // `textarea`; every page has rules of its own for those, as it should.)
   const drawn = new Set(rulesOf(CSS).filter(([, , media]) => !media).map(([s]) => s));
-  const FILES = ["index.html", "server.js", "home-page.js", "brokers-firms-page.js", "faq-page.js", "pricing-page.js", "messages-page.js",
+  const FILES = ["index.html", "server.js", "home-page.js", "brokers-firms-page.js", "lenders-page.js", "faq-page.js", "pricing-page.js", "messages-page.js",
     "permits-page.js", "sites-page.js", "buildings-page.js", "market-rank-page.js", "bulk-page.js", "home-sites.css", "vault-page.js"];
   // server.js also holds the admin pages, which draw their own documents and
   // their own .btn and never receive the component; they sit after
@@ -317,7 +317,7 @@ test("the pages that restyle .btn for one spot are counted, so a new one is a de
   ];
   const LOOK = /(^|;)\s*(padding|border-radius|font-size|font-weight|background|border)\s*:/;
   const found = new Set();
-  for (const file of ["index.html", "server.js", "home-page.js", "brokers-firms-page.js", "faq-page.js", "pricing-page.js", "vault-page.js",
+  for (const file of ["index.html", "server.js", "home-page.js", "brokers-firms-page.js", "lenders-page.js", "faq-page.js", "pricing-page.js", "vault-page.js",
     "messages-page.js", "permits-page.js", "sites-page.js", "buildings-page.js", "market-rank-page.js", "bulk-page.js", "home-sites.css"]) {
     const text = root(file), adminAt = file === "server.js" ? text.indexOf("function renderAdminHTML() {") : -1;
     let sheets = sheetsOf(file);
@@ -351,7 +351,7 @@ test("the vault's own button takes the canon's shape", () => {
 });
 
 test("the marketing pages use the shared sizes, never a button of their own", () => {
-  for (const file of ["home-page.js", "brokers-firms-page.js", "faq-page.js", "pricing-page.js"]) {
+  for (const file of ["home-page.js", "brokers-firms-page.js", "lenders-page.js", "faq-page.js", "pricing-page.js"]) {
     const text = root(file);
     assert.doesNotMatch(text, /class="faqghost"/, `${file}: the outlined button is .btn.ghost`);
     for (const m of text.matchAll(/class="([^"]*\bbtn2\b[^"]*)"/g)) assert.match(m[1], /\bbtn\b/, `${file}: .btn2 is a colour for the dark band, on top of .btn`);

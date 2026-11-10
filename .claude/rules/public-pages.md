@@ -3,9 +3,11 @@ paths:
   - "home-page.js"
   - "faq-page.js"
   - "brokers-firms-page.js"
+  - "lenders-page.js"
   - "docs/SEO.md"
   - "test/faq-page.test.js"
   - "test/brokers-firms-page.test.js"
+  - "test/lenders-page.test.js"
   - "test/public-pages.test.js"
 ---
 # Public pages and SEO
@@ -197,6 +199,59 @@ paths:
   asks for an industrial aerial cropped 3.4:1, supplies none, and says to ship
   without the band rather than with stock filler. Listed in `sitemap.xml`.
   Do not confuse this with `GET /broker/<slug>`, the per-contributor profile.
+- `GET /lenders` — **"For lenders", the page the owner sends a lender**
+  (2026-11-10; Draft C, "Try it on the page", of the lender page drafts at
+  https://claude.ai/artifact/4mb99gNEuPNgt7gdohzAxH). Body in
+  **`lenders-page.js`**; server.js owns the route, the SEO metadata and the
+  shell. The reader lends on a building its owner works out of (the owner's
+  example was an SBA lender), so there is no NOI, the report's Debt & Refi
+  card never opens for them and the Collateral Check does
+  (report-and-valuation.md). Order: hero → **Try it here** (a working
+  Collateral Check on a sample building, with three side cards) → **What you
+  get** (three cells) → dark CTA → compliance. It draws with
+  `/brokers-firms`' own bands (`BF_CSS`, required from that module, so the
+  two pitch pages cannot drift apart) plus `LN_CSS` for the check's panel,
+  all on theme.js's tokens and scale. Five standing rules, each test-pinned
+  in `test/lenders-page.test.js`:
+  - **It is a pre-screen, and says so.** The Terms say an estimate must not
+    be relied on for lending. The page sells the look BEFORE the appraisal
+    (the title and the meta description say so too, since those are what a
+    pasted link shows), and the fine print reads "not an appraisal and not a
+    bank evaluation ... never in place of one". "Evaluation" is a regulatory
+    term for a bank: the page says the word once, to say it is not one, and
+    never states or implies a lending limit (80% is only where the box
+    starts).
+  - **It names no bank.** A lender's name on a public page reads as their
+    endorsement.
+  - **The check is the report's own, not a copy.** `collateral-check.js`'s
+    `summarize()` and `describe()` are the report card's own arithmetic and
+    words. The server renders the first state with them, so the page is
+    complete with no script; the page script (`liveScript()`) calls them
+    again on every keystroke and holds no arithmetic and no wording of its
+    own. `whose: "this sample's"` is the one thing the page tells them.
+    Two things the script does besides redraw (Cursor Bugbot, PR #416): a
+    dollar box holding text that is not a figure is SAID, for the price as
+    well as the loan (`COLLATERAL.unreadable`, `COLLATERAL.UNREAD`, the
+    report card's own sentences), because "7M" refused in silence leaves the
+    check reading value alone as if no price had been given; and the limit
+    box is put back to the limit in use when it is left, since an emptied or
+    out-of-range limit computes at the default and a box showing 150 over
+    "80% limit" is two answers on one card.
+  - **The building is a sample, and says so three times** (under the
+    heading, on its card, under the check). Its figures are illustrative:
+    the app's sample report's address and range. Nothing about a real
+    property is ever shown.
+  - **Nothing typed there goes anywhere.** The script reads three boxes and
+    writes text into the page; it makes no request and stores nothing (which
+    also keeps it inside never-break rule 15).
+  The doors change with auth state like the sibling's: a visitor gets
+  "Create a free account" (`/?auth=signup`), a member "Run a comp report"
+  (`/bulk`, which needs Pro or the trial; the drafts' finding 4, left as
+  drawn). **Linked from the footer (both footers: `FOOTER_LINK_COLS` and
+  index.html's own) and listed in `sitemap.xml`, and deliberately NOT in the
+  Explore menu** (the drafts' finding 3): it is mostly a page the owner
+  sends. Matched on `pagePath`, so a link pasted into an email with a
+  tracking query still lands.
 - **Brand entity** (not a route — `brandGraph()` in server.js). CompNinja is
   online-only, so it is **not eligible for a Google Business Profile** (Google
   requires face-to-face customer contact and video-verifies it against a real

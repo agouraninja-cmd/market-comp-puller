@@ -678,7 +678,7 @@ test("the text scale has no half pixels, and the four names that held them are g
   for (const [k, v] of sizes) assert.match(v, /^\d+px$/, `--${k} is ${v}: the scale is whole pixels`);
   assert.deepEqual(sizes.slice(0, 6).map(([, v]) => v), ["11px", "12px", "13px", "14px", "15px", "16px"]);
   const RETIRED = /var\(--text-(micro|note|ui|body)\b/;
-  for (const f of ["index.html", "server.js", "components.js", "home-page.js", "brokers-firms-page.js", "faq-page.js", "pricing-page.js",
+  for (const f of ["index.html", "server.js", "components.js", "home-page.js", "brokers-firms-page.js", "lenders-page.js", "faq-page.js", "pricing-page.js",
     "vault-page.js", "messages-page.js", "permits-page.js", "sites-page.js", "buildings-page.js", "hub-page.js",
     "market-rank-page.js", "bulk-page.js", "market-hero-review.js", "home-sites.css", "board.js", "home-sites.js"]) {
     assert.doesNotMatch(root(f), RETIRED, `${f} reads a text size that no longer exists, so that text falls back to its parent's size`);
@@ -722,7 +722,7 @@ test("no stylesheet gains a text size or radius that is off the scale", () => {
   // size fails here, with the scale's names to pick from instead.
   const ALLOWED_TEXT = new Set([".8em", "9px", "9.5px", "10px", "15.5px", "16.5px", "17px", "18px", "21px", "22px", "23px", "25px", "29px", "30px", "36px"]);
   const ALLOWED_RADIUS = new Set(["2px", "5px", "9px", "11px", "14px", "16px", "18px", "20px", "50%", "99px", "9999px"]);
-  const FILES = ["index.html", "server.js", "home-page.js", "brokers-firms-page.js", "faq-page.js", "pricing-page.js",
+  const FILES = ["index.html", "server.js", "home-page.js", "brokers-firms-page.js", "lenders-page.js", "faq-page.js", "pricing-page.js",
     "vault-page.js", "messages-page.js", "permits-page.js", "sites-page.js", "buildings-page.js", "hub-page.js",
     "market-rank-page.js", "bulk-page.js", "market-hero-review.js", "home-sites.css"];
   // Stylesheets only: <style> spans and `const X_CSS = \`` literals. An

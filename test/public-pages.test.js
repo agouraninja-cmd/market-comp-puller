@@ -35,7 +35,7 @@ const MARKET = require("../market-seed.json")[MARKET_SLUG];
 
 // Every page that renders through marketShell(). /broker/<slug> is omitted: it
 // needs a database to resolve a profile and 404s without one.
-const SHELL_PAGES = ["/markets", MARKET_PAGE, "/brokers-firms", "/terms", "/privacy"];
+const SHELL_PAGES = ["/markets", MARKET_PAGE, "/brokers-firms", "/lenders", "/terms", "/privacy"];
 
 test("the public pages let a visitor sign in", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
@@ -260,7 +260,7 @@ test("the cost answer matches what the product actually sells", async (t) => {
   await t.test("no public page reuses the retired Method three-up", async () => {
     const how = await fetch(srv.base + "/how-it-works", { redirect: "manual" });
     assert.equal(how.status, 301, "the methodology page is retired, not restyled");
-    for (const p of ["/", "/faq", "/brokers-firms", "/pricing"]) {
+    for (const p of ["/", "/faq", "/brokers-firms", "/lenders", "/pricing"]) {
       const html = await (await fetch(srv.base + p)).text();
       assert.ok(!/class="steps"/.test(html), p + " must not reuse Method's three-up");
     }

@@ -2223,6 +2223,350 @@ test("development costs are private: never sent to the server's search", () => {
   }
 });
 
+// --- Collateral Check card ---------------------------------------------------
+// One loan read against the hero's Low / Likely / High, for the reader the
+// debt card never opens for: a lender on an owner-occupied building, which
+// has no NOI. The arithmetic is pinned in test/collateral-check.test.js; what
+// is pinned here is the wiring, which fails the way renderDevCard's does (a
+// renamed id writes into nothing) plus two rules of its own: it must work
+// with no NOI, and it shares its loan with the debt card without ever
+// writing a stale box over it.
+
+test("every element renderCollateralCard writes to exists in the markup", () => {
+  const ids = [
+    "collCard", "collBasis", "collLoan", "collPrice", "collLimit",
+    "collLow", "collLowSub", "collLikely", "collLikelySub", "collHigh", "collHighSub",
+    "collNeed", "collNeedSub", "collRead",
+  ];
+  for (const id of ids) {
+    assert.ok(html.includes(`id="${id}"`), `the collateral card writes to #${id}, which index.html does not contain`);
+  }
+});
+
+test("collateral-check.js is loaded by the page and served with no caching", () => {
+  assert.ok(/<script src="\/collateral-check\.js"><\/script>/.test(html),
+    "index.html must load /collateral-check.js — the inline script calls COLLATERAL");
+  const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const entry = server.match(/"\/collateral-check\.js":\s*\{[^}]*\}/);
+  assert.ok(entry, "server.js does not serve /collateral-check.js");
+  assert.match(entry[0], /maxAge:\s*0\b/, "/collateral-check.js must be served with maxAge: 0, like /valuation.js");
+});
+
+test("the collateral card needs no NOI, and the tab's renderer draws it", () => {
+  const render = html.match(/function renderCollateralCard\(parsed, meta, resetAssumptions\) \{[\s\S]*?\n  \}/);
+  assert.ok(render, "could not bound renderCollateralCard");
+  // The debt card opens with `if (!noi || !currentUser)`. This one must not:
+  // an owner-occupied building has no NOI, and that reader is who it is for.
+  assert.ok(!/noi/i.test(render[0]), "renderCollateralCard gates on an NOI, which is the debt card's rule and the reason this card exists");
+  assert.match(render[0], /currentUser \? collateralSummary\(parsed, meta\) : null/, "signed-in only, like the rest of the tab");
+
+  const cluster = html.match(/function renderAnalysisCluster\(parsed, meta, resetAssumptions\) \{[\s\S]*?\n  \}/);
+  assert.ok(cluster, "could not bound renderAnalysisCluster");
+  assert.match(cluster[0], /const collPrints = renderCollateralCard\(parsed, meta, resetAssumptions\)/);
+  // The print-only appendix heading must print for this card alone, or a
+  // lender's collateral check lands on paper under no heading at all.
+  assert.match(cluster[0], /analysisSeam[\s\S]{0,60}!\(hasNoi \|\| collPrints\)/);
+});
+
+test("the collateral card says what it is not", () => {
+  // The owner is not a licensed broker or appraiser, and a lender is the one
+  // reader for whom "evaluation" is a term of art with its own rules.
+  const card = html.match(/<div id="collCard"[\s\S]*?\n        <\/div>/);
+  assert.ok(card, "could not bound the collateral card's markup");
+  assert.match(card[0], /not an appraisal and not a bank evaluation/);
+  assert.match(card[0], /never on shared links/);
+});
+
+test("the loan, the price and the limit live in assumptions.debt, which /api/share deletes whole", () => {
+  const commit = html.match(/function commitCollateral\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(commit, "could not bound commitCollateral");
+  const written = [...commit[0].matchAll(/\ba\.(\w+)\.(\w+) = /g)].map((m) => m[1] + "." + m[2]).sort();
+  assert.deepEqual(written, ["debt.loanAmount", "debt.ltvLimitPct", "debt.purchasePrice"],
+    "a collateral figure stored outside assumptions.debt is not stripped from a shared report");
+  const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const list = server.match(/const SHARE_PRIVATE_ASSUMPTIONS = (\[[^\]]*\]);/);
+  assert.ok(list, "server.js's list of what a share strips is gone or renamed");
+  assert.ok(JSON.parse(list[1]).includes("debt"), "/api/share no longer strips assumptions.debt");
+  assert.match(server, /for \(const k of SHARE_PRIVATE_ASSUMPTIONS\) delete safeMeta\.assumptions\[k\];/,
+    "POST /api/share no longer applies the list");
+  // And none of it rides the search: it would enter the cache key.
+  const body = html.match(/JSON\.stringify\(\{\s*address[\s\S]{0,600}?\}\)/g) || [];
+  for (const b of body) {
+    assert.ok(!/purchasePrice|ltvLimitPct|loanAmount/.test(b), "a loan figure reached the /api/comps request body");
+  }
+});
+
+test("only a box somebody typed in is read, so a stale box never overwrites the shared loan", () => {
+  // The card shares meta.assumptions.debt.loanAmount with the debt card, and
+  // its render leaves a FOCUSED box alone. So a box can lag the assumptions
+  // while it has focus; a commit that read every box would write that stale
+  // figure back over a loan the debt card changed a moment ago. Executed, not
+  // scanned: the difference is one `if`.
+  const commit = html.match(/function commitCollateral\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(commit, "could not bound commitCollateral");
+  const boxes = { collLoan: { value: "" }, collPrice: { value: "7,900,000" }, collLimit: { value: "80" } };
+  const assumptions = { debt: { loanAmount: 5250000, purchasePrice: null, ltvLimitPct: null } };
+  const calls = { persisted: 0, rendered: 0 };
+  const ctx = vm.createContext({
+    COLLATERAL: require("../collateral-check.js"),
+    numericValue: require("../valuation.js").numericValue,
+    document: { getElementById: (id) => boxes[id] },
+    collDirty: new Set(), collUnread: new Set(), collEditTimer: null,
+    clearTimeout: () => {},
+    currentParsed: {}, currentMeta: {},
+    ensureAssumptions: () => assumptions,
+    persistAssumptions: () => { calls.persisted++; },
+    renderAnalysisCluster: () => { calls.rendered++; },
+  });
+  new vm.Script(commit[0] + "\n;this.commit = commitCollateral;", { filename: "index.html" }).runInContext(ctx);
+
+  // The price was typed. The loan box is empty and untouched (it had focus
+  // while the debt card set 5.25M), and must be left out of the commit.
+  ctx.collDirty.add("collPrice");
+  ctx.commit();
+  assert.equal(assumptions.debt.loanAmount, 5250000, "an untouched, stale loan box overwrote the debt card's loan");
+  assert.equal(assumptions.debt.purchasePrice, 7900000);
+  assert.equal(assumptions.debt.ltvLimitPct, null, "an untouched limit box was read");
+  assert.equal(ctx.collDirty.size, 0);
+  assert.deepEqual(calls, { persisted: 1, rendered: 1 });
+
+  // Leaving a box nobody typed in re-renders (to tidy it) and saves nothing.
+  ctx.commit();
+  assert.deepEqual(calls, { persisted: 1, rendered: 2 });
+
+  // Shorthand is refused and remembered, so the card can say so.
+  boxes.collLoan.value = "1.6M";
+  ctx.collDirty.add("collLoan");
+  ctx.commit();
+  assert.equal(assumptions.debt.loanAmount, null, '"1.6M" must not become a $1.60 loan');
+  assert.ok(ctx.collUnread.has("collLoan"));
+  // A real figure retires the complaint.
+  boxes.collLoan.value = "1,600,000";
+  ctx.collDirty.add("collLoan");
+  ctx.commit();
+  assert.equal(assumptions.debt.loanAmount, 1600000);
+  assert.equal(ctx.collUnread.has("collLoan"), false);
+
+  // An emptied limit is "back to the default", stored as null and never 0.
+  boxes.collLimit.value = "";
+  ctx.collDirty.add("collLimit");
+  ctx.commit();
+  assert.equal(assumptions.debt.ltvLimitPct, null);
+  boxes.collLimit.value = "75";
+  ctx.collDirty.add("collLimit");
+  ctx.commit();
+  assert.equal(assumptions.debt.ltvLimitPct, 75);
+});
+
+test("the hero's door to the collateral card shows only when the card does, and never prints", () => {
+  // The card sits in the Analysis tab, which held one line of text without
+  // an NOI until the card shipped, so a lender reading the value had no
+  // reason to open it. The door is a line under the estimate's disclaimer.
+  const door = html.match(/<p id="collDoor" class="([^"]*)">[\s\S]*?<\/p>/);
+  assert.ok(door, "the door to the Collateral Check is gone from the hero");
+  for (const cls of ["hidden", "no-print", "no-capture"]) {
+    // #ownerHero is printed and photographed, and the door is navigation. It
+    // ships hidden because a signed-out visitor has no card to open.
+    assert.ok(door[1].split(/\s+/).includes(cls), `#collDoor must carry ${cls}`);
+  }
+  assert.match(door[0], /<button id="collDoorBtn" type="button"/);
+  // The copy rule: the door offers a check against an ESTIMATE.
+  assert.match(door[0], /Check a loan against this estimate/);
+
+  // One writer, keyed on the card itself, so the two cannot disagree.
+  const cluster = html.match(/function renderAnalysisCluster\(parsed, meta, resetAssumptions\) \{[\s\S]*?\n  \}/);
+  assert.ok(cluster, "could not bound renderAnalysisCluster");
+  assert.match(cluster[0],
+    /getElementById\("collDoor"\)\.classList\.toggle\("hidden",\s*document\.getElementById\("collCard"\)\.classList\.contains\("hidden"\)\)/);
+  assert.equal((html.match(/getElementById\("collDoor"\)/g) || []).length, 1,
+    "a second writer of #collDoor can leave the door up with no card behind it");
+
+  // A new search hides it with the rest of the previous report's hero.
+  const asm = html.match(/\[("widenSearchWrap"[^\]]*)\]\.forEach\(\(id\) =>\s*document\.getElementById\(id\)\.classList\.add\("asm-hidden"\)\)/);
+  assert.ok(asm, "could not find beginAssembly's hero hide list");
+  assert.ok(asm[1].includes('"collDoor"'), "the last report's door would hang under the next report's placeholder");
+
+  // The click: open the tab, bring the card up, cursor in the loan box.
+  const click = html.match(/getElementById\("collDoorBtn"\)\.addEventListener\("click", \(\) => \{[\s\S]*?\n  \}\);/);
+  assert.ok(click, "the door has no click handler");
+  assert.match(click[0], /setReportTab\("analysis"\)/);
+  assert.match(click[0], /scrollToReportCard\(card\)/);
+  assert.match(click[0], /getElementById\("collLoan"\)\.focus\(\{ preventScroll: true \}\)/,
+    "a plain focus() scrolls a second time and fights the scroll just asked for");
+});
+
+test("a report card is scrolled to by its layout position, clear of the sticky bar", () => {
+  // The jump bar and the door share this. It must not measure with
+  // scrollIntoView or getBoundingClientRect: a card in a tab that was just
+  // shown is mid entrance animation, drawn lower than where it comes to
+  // rest, and the first build of the door stopped 12px low, after which the
+  // card rose under the bar. Transforms do not move offsetTop.
+  const fn = html.match(/function scrollToReportCard\(el\) \{[\s\S]*?\n  \}/);
+  assert.ok(fn, "could not bound scrollToReportCard");
+  assert.ok(!/scrollIntoView|getBoundingClientRect/.test(fn[0]),
+    "scrollToReportCard measures where the card is drawn, which is wrong while it animates in");
+  let asked = null;
+  const run = (navHeight, reduced) => {
+    const ctx = vm.createContext({
+      document: { getElementById: (id) => (id === "reportNav" ? { offsetHeight: navHeight } : null) },
+      window: {
+        scrollTo: (o) => { asked = o; },
+        matchMedia: () => ({ matches: reduced }),
+      },
+    });
+    new vm.Script(fn[0] + "\n;this.go = scrollToReportCard;", { filename: "index.html" }).runInContext(ctx);
+    // A card 300px into a panel that itself starts 2,000px down the page.
+    ctx.go({ offsetTop: 300, offsetParent: { offsetTop: 2000, offsetParent: null } });
+  };
+  run(40, false);
+  assert.deepEqual({ ...asked }, { top: 2300 - 40 - 8, behavior: "smooth" });
+  run(0, true);       // no bar on a short report; reduced motion jumps
+  assert.deepEqual({ ...asked }, { top: 2300 - 8, behavior: "auto" });
+  // And the jump bar goes through it, rather than keeping a copy.
+  assert.match(html, /b\.addEventListener\("click", \(\) => scrollToReportCard\(sec\.el\)\)/);
+});
+
+test("the debt card's loan box follows the shared loan, except where its own contents are newer", () => {
+  const debt = html.match(/function renderDebtCard\(parsed, meta, resetAssumptions\) \{[\s\S]*?\n  \}/);
+  assert.ok(debt, "could not bound renderDebtCard");
+  // Follows the assumptions, so a loan the collateral card changed shows
+  // here. NOT while it is focused, NOT while it holds an edit that has not
+  // been committed (a render inside the debounce would hand the commit the
+  // old figure), and NOT while it holds text that could not be read.
+  assert.match(debt[0],
+    /if \(document\.activeElement !== inLoan && !debtDirty\.has\("debtLoan"\) && !debtLoanUnread\) \{\s*inLoan\.value = d\.loanAmount > 0/,
+    "the debt card's loan box no longer follows the shared loan, or redraws over an edit in flight");
+  // A new report starts clean WHETHER OR NOT the card shows for it. The
+  // reset sat below the no-NOI return for one commit (Cursor Bugbot, PR
+  // #416), so a report with no NOI kept the last report's unreadable "1.6M",
+  // its typed-box flags and its pending debounce. Executed: a new report
+  // with no NOI, arriving while all three are set.
+  const boxes = { debtLoan: { value: "1.6M" }, debtRate: { value: "6.75" }, debtAmort: { value: "25" } };
+  const card = { hidden: false, classList: { add(c) { if (c === "hidden") card.hidden = true; } } };
+  let cleared = null;
+  const ctx = vm.createContext({
+    document: { getElementById: (id) => (id === "debtCard" ? card : boxes[id]) },
+    currentUser: { id: "u1" }, debtDirty: new Set(["debtLoan", "debtRate"]), debtEditTimer: 41,
+    clearTimeout: (t) => { cleared = t; },
+  });
+  new vm.Script("var debtLoanUnread = true;\n" + debt[0] +
+    "\n;this.render = renderDebtCard; this.unread = () => debtLoanUnread;", { filename: "index.html" }).runInContext(ctx);
+  ctx.render({}, { subject: { noi: null } }, true);
+  assert.equal(card.hidden, true, "the card shows on a report with no NOI");
+  assert.equal(ctx.debtDirty.size, 0, "the last report's typed boxes would be committed into this report's loan");
+  assert.equal(ctx.unread(), false, "the last report's unreadable loan is still being complained about");
+  assert.equal(cleared, 41, "a debounce pending from the last report can still fire into this one");
+  assert.deepEqual([boxes.debtLoan.value, boxes.debtRate.value, boxes.debtAmort.value], ["", "", ""],
+    "the boxes still hold the last report's figures, which the fill for an NOI typed later would never replace");
+  // The collateral card clears its own before it can return early, too.
+  const coll = html.match(/function renderCollateralCard\(parsed, meta, resetAssumptions\) \{[\s\S]*?\n  \}/);
+  assert.ok(coll, "could not bound renderCollateralCard");
+  assert.ok(coll[0].indexOf("collDirty.clear(); collUnread.clear(); clearTimeout(collEditTimer);") <
+    coll[0].indexOf("card.classList.add(\"hidden\"); return false;"),
+  "the collateral card's reset must come before its early return");
+  assert.match(debt[0], /debtLoanUnread \? "type the balance in full, like 2,000,000"/,
+    "a balance that could not be read is refused in silence");
+  // The collateral card's boxes carry the same guard.
+  assert.match(html, /function collBox\(el, text, force\) \{\s*if \(el && \(force \|\| \(document\.activeElement !== el && !collDirty\.has\(el\.id\)\)\)\) el\.value = text;/);
+});
+
+test("a debt edit reads only the box that was typed in, and never takes shorthand for a loan", () => {
+  // Cursor Bugbot, PR #416, twice. (1) The two cards share one loan, and the
+  // debt card used to read ALL THREE of its boxes on every edit: a loan box
+  // that had focus while the collateral card changed the loan stayed stale,
+  // and the next rate edit wrote the stale figure back. (2) Its loan box was
+  // parsed with numericValue, so "1.6M" became a $1.60 loan, which the
+  // collateral card then read as 0.0% LTV and "Covered".
+  const commit = html.match(/function commitDebt\(\) \{[\s\S]*?\n  \}/);
+  const figure = html.match(/function loanFigure\(raw\) \{[\s\S]*?\n  \}/);
+  assert.ok(commit && figure, "could not bound commitDebt / loanFigure");
+  const V = require("../valuation.js");
+  const boxes = { debtLoan: { value: "2,000,000" }, debtRate: { value: "6.75" }, debtAmort: { value: "25" } };
+  const assumptions = { debt: { loanAmount: 5000000, ratePct: null, amortYears: 30 } };
+  const calls = { persisted: 0, rendered: 0 };
+  const ctx = vm.createContext({
+    COLLATERAL: require("../collateral-check.js"), numericValue: V.numericValue, isFinite, Boolean, String, Math,
+    document: { getElementById: (id) => boxes[id] },
+    debtDirty: new Set(), debtLoanUnread: false, debtEditTimer: null, clearTimeout: () => {},
+    currentParsed: {}, currentMeta: {},
+    ensureAssumptions: () => assumptions,
+    persistAssumptions: () => { calls.persisted++; },
+    renderAnalysisCluster: () => { calls.rendered++; },
+  });
+  new vm.Script(figure[0] + "\n" + commit[0] + "\n;this.commit = commitDebt; this.unread = () => debtLoanUnread;", { filename: "index.html" }).runInContext(ctx);
+
+  // The collateral card set the loan to 5.0M while this card's loan box
+  // (still showing 2,000,000) had focus. The rate is typed next.
+  ctx.debtDirty.add("debtRate");
+  ctx.commit();
+  assert.equal(assumptions.debt.loanAmount, 5000000, "a rate edit wrote the debt card's stale loan box back over the shared loan");
+  assert.equal(assumptions.debt.ratePct, 6.75);
+  assert.equal(assumptions.debt.amortYears, 30, "an untouched amortization box was read");
+  assert.deepEqual(calls, { persisted: 1, rendered: 1 });
+
+  // Leaving a box nobody typed in re-renders (to bring it level) and saves nothing.
+  ctx.commit();
+  assert.deepEqual(calls, { persisted: 1, rendered: 2 });
+
+  // A typed loan is read, with or without commas.
+  ctx.debtDirty.add("debtLoan");
+  ctx.commit();
+  assert.equal(assumptions.debt.loanAmount, 2000000);
+
+  // Shorthand is refused, and remembered so the card can say so.
+  boxes.debtLoan.value = "1.6M";
+  ctx.debtDirty.add("debtLoan");
+  ctx.commit();
+  assert.equal(assumptions.debt.loanAmount, null, '"1.6M" in the debt card became a loan of $1.60');
+  assert.equal(ctx.unread(), true);
+  boxes.debtLoan.value = "";
+  ctx.debtDirty.add("debtLoan");
+  ctx.commit();
+  assert.equal(ctx.unread(), false, "an emptied box is not an unreadable one");
+
+  // Amortization is still clamped when it is the box that was typed in.
+  boxes.debtAmort.value = "400";
+  ctx.debtDirty.add("debtAmort");
+  ctx.commit();
+  assert.equal(assumptions.debt.amortYears, 30);
+
+  // Both cards commit the moment a box is left, so neither holds an edit
+  // for another card's render to land on.
+  assert.match(html, /el\.addEventListener\("blur", \(\) => setTimeout\(commitDebt, 0\)\);/);
+  assert.match(html, /el\.addEventListener\("blur", \(\) => setTimeout\(commitCollateral, 0\)\);/);
+});
+
+test("an income-led report hands the collateral card the hero's own three figures", () => {
+  // ⚠ collateralValueRange mirrors renderOwnerHero's income branch. Read off
+  // sellTodayEstimate alone it got the midpoint with no ends and told the
+  // reader "one value, not a range" under a hero showing three.
+  const range = html.match(/function collateralValueRange\(parsed, meta\) \{[\s\S]*?\n  \}/);
+  assert.ok(range, "could not bound collateralValueRange");
+  const V = require("../valuation.js");
+  const ctx = vm.createContext({
+    lastValuation: null, numericValue: V.numericValue, heroRound: V.heroRound,
+    sellTodayEstimate: () => ({ value: 8602389, source: "income-approach midpoint" }),
+  });
+  new vm.Script(range[0] + "\n;this.fn = collateralValueRange;", { filename: "index.html" }).runInContext(ctx);
+  const parsed = { market_cap_rate_range: { low: "5.8%", high: "6.3%" } };
+  const r = ctx.fn(parsed, { subject: { noi: 520000 } });
+  // The hero's own lines: noi / capHi, the geometric midpoint, noi / capLo,
+  // each through heroRound as fmtTotal does.
+  const lo = 520000 / 0.063, hi = 520000 / 0.058;
+  assert.equal(r.low, V.heroRound(lo));
+  assert.equal(r.likely, V.heroRound(Math.sqrt(lo * hi)));
+  assert.equal(r.high, V.heroRound(hi));
+  // No market cap range: one figure, never an invented spread.
+  const one = ctx.fn({}, { subject: { noi: 520000 } });
+  assert.equal(one.low, undefined);
+  assert.equal(one.high, undefined);
+  assert.equal(one.likely, V.heroRound(8602389));
+  // The comp-based range, when the hero has one, wins outright.
+  ctx.lastValuation = { low: 8025000, likely: 8325000, high: 8625000, median_psf: 112 };
+  const comps = ctx.fn(parsed, { subject: { noi: 520000 } });
+  assert.deepEqual([comps.low, comps.likely, comps.high], [8025000, 8325000, 8625000]);
+});
+
 // The SECOND mirrored string of the firm panel, and the one with no map to
 // hide behind. The browser refuses an unanswered shop question itself rather
 // than spending a round trip on it, so the sentence exists twice; the sentence

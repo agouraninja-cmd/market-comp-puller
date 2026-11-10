@@ -105,6 +105,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <!-- Development returns (C6). Served max-age 0 like /valuation.js and for
        the same reason: it must never be cached stale against the HTML. -->
   <script src="/dev-returns.js"></script>
+  <!-- Collateral check: a loan read against the report's value range. Same
+       max-age 0 rule, same reason. -->
+  <script src="/collateral-check.js"></script>
   <script src="/explore-query.js"></script>
   <script src="/market-snapshot.js"></script>
   <!-- Home as one map (2026-10-07): what goes in Today and Properties
@@ -4238,6 +4241,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                disclaimed as an estimate from comparable SALES describes a
                different report. -->
           <p id="ownerEstimateNote" class="text-xs text-ink-3 mt-4">Automated estimate from recent comparable sales. Not an appraisal and not a broker opinion of value.</p>
+          <!-- The door to the Collateral Check card (2026-11-10, the owner's
+               OK). That card lives in the Analysis tab, and without an NOI the
+               tab held one line of text until the card shipped, so nobody had
+               a reason to open it; a lender reading the value would never
+               find the one tool built for them. Shown exactly when the card
+               is (renderAnalysisCluster is the one writer), hidden while a
+               new report assembles. no-print/no-capture: it is navigation,
+               and #ownerHero is printed and photographed. -->
+          <p id="collDoor" class="hidden no-print no-capture text-xs text-ink-mute mt-2">Lending or borrowing against it?
+            <button id="collDoorBtn" type="button" class="disclose text-xs font-medium text-ink-mute underline decoration-edge hover:text-ink">Check a loan against this estimate</button></p>
           <div id="bovCtaWrap" class="no-print mt-4 pt-4 border-t border-hair">
             <button id="bovCtaBtn" type="button"
               class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-red-fill hover:bg-red-fill-hover text-white font-semibold px-5 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
@@ -4723,6 +4736,64 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <p class="text-xs text-ink-3 mt-4">Loan terms stay in your browser and your own portfolio, never on shared links. Screening math at market-standard limits, not a loan quote.</p>
         </div>
 
+        <!-- Collateral check — one loan read against the hero's Low / Likely /
+             High. It needs NO NOI, which is the point: an owner-occupied
+             building has none, so the debt card above never opens for the
+             lender most small commercial buildings meet (the business repays
+             the loan; the building is collateral). Math in
+             /collateral-check.js (pure, tested, dual-exported); built by
+             renderCollateralCard(). The loan is the debt card's own figure
+             (one loan per report, two boxes kept in step), and it, the price
+             and the limit all live in meta.assumptions.debt, so /api/share
+             strips them with the rest of the loan terms. Signed-in only. -->
+        <div id="collCard" class="hidden rd-bcard print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-ink">Collateral Check</h2>
+            <span id="collBasis" class="text-xs text-ink-3 text-right"></span>
+          </div>
+          <div class="no-print grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+            <div>
+              <label class="rd-lab" for="collLoan">Loan amount ($)</label>
+              <input id="collLoan" type="text" inputmode="numeric" placeholder="e.g. 1,600,000"
+                class="mt-1 w-full rounded border border-edge px-2.5 py-1.5 text-sm text-ink focus:border-red focus:ring-1 focus:ring-red outline-none" />
+            </div>
+            <div>
+              <label class="rd-lab" for="collPrice">Purchase price ($)</label>
+              <input id="collPrice" type="text" inputmode="numeric" placeholder="if it is a purchase"
+                class="mt-1 w-full rounded border border-edge px-2.5 py-1.5 text-sm text-ink focus:border-red focus:ring-1 focus:ring-red outline-none" />
+            </div>
+            <div>
+              <label class="rd-lab" for="collLimit">Your LTV limit %</label>
+              <input id="collLimit" type="number" min="1" max="100" step="1"
+                class="mt-1 w-full rounded border border-edge px-2.5 py-1.5 text-sm text-ink focus:border-red focus:ring-1 focus:ring-red outline-none" />
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="rd-tile">
+              <div class="rd-lab">LTV at the low value</div>
+              <div id="collLow" class="text-2xl font-semibold text-ink mt-1">—</div>
+              <div id="collLowSub" class="text-xs text-ink-3 mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">LTV at the likely value</div>
+              <div id="collLikely" class="text-2xl font-semibold text-ink mt-1">—</div>
+              <div id="collLikelySub" class="text-xs text-ink-3 mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">LTV at the high value</div>
+              <div id="collHigh" class="text-2xl font-semibold text-ink mt-1">—</div>
+              <div id="collHighSub" class="text-xs text-ink-3 mt-1"></div>
+            </div>
+          </div>
+          <div class="rd-tile-hi mt-4">
+            <div class="rd-lab">Value this loan needs</div>
+            <div id="collNeed" class="rd-h text-[30px] mt-1">—</div>
+            <div id="collNeedSub" class="text-xs text-ink-mute mt-1"></div>
+          </div>
+          <p id="collRead" class="text-sm text-ink-body mt-4"></p>
+          <p class="text-xs text-ink-3 mt-4">A pre-screen against an automated estimate, not an appraisal and not a bank evaluation: use it to decide whether a deal is worth ordering one. The loan and the price stay in your browser and your own portfolio, never on shared links.</p>
+        </div>
+
         <!-- Development returns — cost -> stabilized value -> return. Math in
              /dev-returns.js (pure, tested, dual-exported); built by
              renderDevCard(). Costs are private like NOI and debt terms: they
@@ -4835,7 +4906,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </div>
 
         <!-- no-print: an instruction to interact with the app is noise on paper. -->
-        <p id="analysisEmpty" class="hidden no-print text-sm text-ink-mute">Enter an NOI in Details for comps above to unlock the analysis tools for this building.</p>
+        <p id="analysisEmpty" class="hidden no-print text-sm text-ink-mute">Enter an NOI in Details for comps above to unlock the income, debt and risk tools for this building.</p>
 
         </div><!-- /tabAnalysis -->
 
@@ -4923,6 +4994,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <ul class="mt-3 space-y-2" aria-label="Explore">
               <li><a href="/markets" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Markets</a></li>
               <li><a href="/brokers-firms" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">For brokers &amp; firms</a></li>
+              <li><a href="/lenders" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">For lenders</a></li>
               <!-- Every server-rendered footer has carried /pricing since the
                    page existed; this one had not, which did not matter while
                    the nav had a Pricing row. It does now (2026-08-30): that
@@ -6227,7 +6299,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ["ownerLow", "ownerMid", "ownerHigh"].forEach((id) => { document.getElementById(id).textContent = "-"; });
     ["ownerLowPpsf", "ownerMidPpsf", "ownerHighPpsf"].forEach((id) => { document.getElementById(id).textContent = ""; });
     document.getElementById("ownerBasis").textContent = "Valuation computes when all comps are in";
-    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerYearBuilt", "ownerImproved", "ownerTrust", "ownerTrustHowWrap", "bovCtaWrap"].forEach((id) =>
+    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerYearBuilt", "ownerImproved", "ownerTrust", "ownerTrustHowWrap", "collDoor", "bovCtaWrap"].forEach((id) =>
       document.getElementById(id).classList.add("asm-hidden"));
     document.getElementById("ownerHero").classList.remove("hidden");
     // A repeat search must not show the previous report's prose or rows.
@@ -8789,17 +8861,42 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   function renderDebtCard(parsed, meta, resetAssumptions) {
     const card = document.getElementById("debtCard");
+    const inLoan = document.getElementById("debtLoan");
+    const inRate = document.getElementById("debtRate");
+    const inAmort = document.getElementById("debtAmort");
+    // A new report starts clean WHETHER OR NOT this card shows for it. This
+    // sat below the no-NOI return for one commit (Cursor Bugbot, PR #416): a
+    // report with no NOI never reached it, so the last report's unreadable
+    // "1.6M" and its typed-box flags outlived that report, and surfaced in
+    // this one the moment an NOI was typed. The boxes are emptied here too,
+    // for the same reason: left holding the last report's rate, the fill
+    // below (which only fills EMPTY boxes) would never replace it. And a
+    // debounce still pending from the last report is dropped, so it cannot
+    // commit that report's boxes into this one's loan.
+    if (resetAssumptions) {
+      debtDirty.clear();
+      debtLoanUnread = false;
+      clearTimeout(debtEditTimer);
+      inLoan.value = ""; inRate.value = ""; inAmort.value = "";
+    }
     const noi = meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
     if (!noi || !currentUser) { card.classList.add("hidden"); return; }
     const a = ensureAssumptions(meta, parsed);
     const d = a.debt;
-    const inLoan = document.getElementById("debtLoan");
-    const inRate = document.getElementById("debtRate");
-    const inAmort = document.getElementById("debtAmort");
     if (resetAssumptions || (!inLoan.value && !inRate.value)) {
       inLoan.value = d.loanAmount > 0 ? Math.round(d.loanAmount).toLocaleString() : "";
       inRate.value = d.ratePct > 0 ? d.ratePct : "";
       inAmort.value = d.amortYears > 0 ? d.amortYears : 30;
+    }
+    // The loan is shared with the Collateral Check card, which can change it,
+    // so this box follows the assumptions. Three exceptions, each a box whose
+    // own contents are the newer truth: it is being typed in (focused), it
+    // holds an edit that has not been committed yet (dirty; any card's render
+    // can land inside the 250ms debounce), or it holds text that could not be
+    // read as a figure and is kept so the card can point at it.
+    if (d.loanAmount > 0) debtLoanUnread = false;
+    if (document.activeElement !== inLoan && !debtDirty.has("debtLoan") && !debtLoanUnread) {
+      inLoan.value = d.loanAmount > 0 ? Math.round(d.loanAmount).toLocaleString() : "";
     }
 
     const sell = sellTodayEstimate(parsed, meta);
@@ -8824,7 +8921,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       dscr == null ? "NOI ÷ debt service" :
       dscr >= REFI_DSCR ? "comfortably covered" : dscr >= 1 ? "thin coverage, lenders want 1.25×+" : "NOI doesn't cover the payments");
     set("debtLtv", ltv ? Math.round(ltv * 100) + "%" : "—",
-      ltv ? "of the likely value" : value ? "enter a loan balance" : "no value estimate yet");
+      ltv ? "of the likely value"
+        : debtLoanUnread ? "type the balance in full, like 2,000,000"
+        : value ? "enter a loan balance" : "no value estimate yet");
     set("debtYield", dyield ? (Math.round(dyield * 1000) / 10).toFixed(1) + "%" : "—",
       dyield ? "NOI ÷ loan balance" : "");
 
@@ -8856,23 +8955,244 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
 
   // Debt input edits: clamp into the shared assumptions object and re-render.
+  // The debt card shares its loan with the Collateral Check card, so its boxes
+  // follow that card's rules (commitCollateral, below), for that card's
+  // reasons. Until 2026-11-10 every debt edit read ALL THREE boxes: a loan box
+  // that had focus while the other card changed the loan stayed stale, and
+  // the next rate or amortization edit wrote that stale figure back over the
+  // loan (Cursor Bugbot, PR #416). Now ONLY A BOX SOMEBODY TYPED IN IS READ,
+  // a typed box is never redrawn before it is committed, and leaving a box
+  // commits at once rather than in 250ms.
+  const debtDirty = new Set();   // the debt boxes typed in since the last commit
+  let debtLoanUnread = false;    // the loan box holds text that is not a figure
+  // The loan, read the way collateral-check.js reads it: "1.6M" is refused,
+  // never read as $1.60. This box parsed with numericValue, which keeps the
+  // 1.6; that was a quirk of this card alone until the loan became the
+  // Collateral Check's too, where a $1.60 loan reads 0.0% LTV and "Covered".
+  function loanFigure(raw) {
+    if (typeof COLLATERAL !== "undefined") return COLLATERAL.money(raw);
+    const n = numericValue(raw);
+    return n > 0 ? n : null;
+  }
   let debtEditTimer = null;
-  ["debtLoan", "debtRate", "debtAmort"].forEach((id) => {
-    document.getElementById(id).addEventListener("input", () => {
-      if (!currentParsed || !currentMeta) return;
-      clearTimeout(debtEditTimer);
-      debtEditTimer = setTimeout(() => {
-        const a = ensureAssumptions(currentMeta, currentParsed);
-        const clamp = (v, lo, hi, fb) => (isFinite(v) && v >= lo && v <= hi ? v : fb);
-        const loan = numericValue(document.getElementById("debtLoan").value);
-        a.debt.loanAmount = loan > 0 ? Math.min(loan, 2e9) : null;
+  function commitDebt() {
+    clearTimeout(debtEditTimer);
+    if (!currentParsed || !currentMeta) return;
+    if (debtDirty.size) {
+      const a = ensureAssumptions(currentMeta, currentParsed);
+      const clamp = (v, lo, hi, fb) => (isFinite(v) && v >= lo && v <= hi ? v : fb);
+      if (debtDirty.has("debtLoan")) {
+        const raw = document.getElementById("debtLoan").value;
+        const loan = loanFigure(raw);
+        debtLoanUnread = loan == null && Boolean(String(raw).trim());
+        a.debt.loanAmount = loan != null ? Math.min(loan, 2e9) : null;
+      }
+      if (debtDirty.has("debtRate")) {
         const rate = numericValue(document.getElementById("debtRate").value);
         a.debt.ratePct = rate > 0 ? clamp(rate, 0.1, 20, null) : null;
+      }
+      if (debtDirty.has("debtAmort")) {
         a.debt.amortYears = clamp(Math.round(numericValue(document.getElementById("debtAmort").value)), 5, 40, 30);
-        persistAssumptions();
-        renderAnalysisCluster(currentParsed, currentMeta, false);
-      }, 250);
+      }
+      debtDirty.clear();
+      persistAssumptions();
+    }
+    renderAnalysisCluster(currentParsed, currentMeta, false);
+  }
+  ["debtLoan", "debtRate", "debtAmort"].forEach((id) => {
+    const el = document.getElementById(id);
+    el.addEventListener("input", () => {
+      debtDirty.add(id);
+      clearTimeout(debtEditTimer);
+      debtEditTimer = setTimeout(commitDebt, 250);
     });
+    // After the blur, so the box is no longer the focused one and the render
+    // brings it level with the loan (and tidies it).
+    el.addEventListener("blur", () => setTimeout(commitDebt, 0));
+  });
+
+  // ----------------------------------------------------------------------------
+  // Collateral check — one loan read against the hero's Low / Likely / High.
+  // Math lives in /collateral-check.js (pure, tested); this reads inputs, calls
+  // it once, and words the answer. Nothing is computed twice: the Excel sheet
+  // goes through collateralSummary() too.
+  //
+  // WHO SEES IT: any signed-in member, on any report that has a value. It is
+  // the one card in this tab that needs no NOI, because the reader it is for
+  // (a lender on an owner-occupied building) never has one.
+  //
+  // ONE LOAN PER REPORT. This card's loan is meta.assumptions.debt.loanAmount,
+  // the debt card's own figure, so the two cards can never quote two LTVs for
+  // one building. Each card writes the other's box when it is not the one
+  // being typed in (collBox, and the matching line in renderDebtCard). The
+  // price and the limit sit beside it in `debt`, which is what makes them
+  // private for free: /api/share deletes that whole object.
+  // ----------------------------------------------------------------------------
+  const collDirty = new Set();   // the boxes typed in since the last commit
+  const collUnread = new Set();  // the dollar boxes holding text that is not a figure
+  function collateralValueRange(parsed, meta) {
+    if (lastValuation && lastValuation.likely > 0) {
+      return { low: lastValuation.low, likely: lastValuation.likely, high: lastValuation.high };
+    }
+    // No sales range, so the hero led with the income approach (or with
+    // nothing). ⚠ Mirrors renderOwnerHero's income branch, figure for figure
+    // and rounded the way the hero rounds: this card quotes the three numbers
+    // the reader can see above it, never a fourth. It first read
+    // sellTodayEstimate alone here, which is the midpoint with no ends, and
+    // said "one value, not a range" under a hero showing three.
+    const noi = meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
+    const capR = parsed && parsed.market_cap_rate_range ? parsed.market_cap_rate_range : null;
+    const capLo = capR ? numericValue(capR.low) : NaN;
+    const capHi = capR ? numericValue(capR.high) : NaN;
+    if (noi && capLo > 0 && capHi >= capLo) {
+      const lo = noi / (capHi / 100), hi = noi / (capLo / 100);
+      return { low: heroRound(lo), likely: heroRound(Math.sqrt(lo * hi)), high: heroRound(hi) };
+    }
+    // One figure (the owner's own cap rate): collateral-check.js reads a
+    // single figure without inventing a spread around it.
+    const sell = sellTodayEstimate(parsed, meta);
+    return sell && sell.value > 0 ? { likely: heroRound(sell.value) } : null;
+  }
+  function collateralSummary(parsed, meta) {
+    if (typeof COLLATERAL === "undefined") return null;
+    const range = collateralValueRange(parsed, meta);
+    if (!range) return null;
+    const d = ensureAssumptions(meta, parsed).debt;
+    return COLLATERAL.summarize({
+      loan: d.loanAmount, price: d.purchasePrice, limitPct: d.ltvLimitPct, value: range,
+    });
+  }
+  // Write a box from the assumptions unless it is the one being typed in, or
+  // holds an edit not yet committed (another card's render can land between
+  // leaving a box and its commit, and would hand the commit the old figure).
+  // A new report (`force`) writes it regardless: the box then holds the LAST
+  // report's figure, which is nobody's typing.
+  function collBox(el, text, force) {
+    if (el && (force || (document.activeElement !== el && !collDirty.has(el.id)))) el.value = text;
+  }
+
+  // Returns whether the card has something to put on paper, which is what the
+  // print-only appendix heading asks before it prints.
+  function renderCollateralCard(parsed, meta, resetAssumptions) {
+    const card = document.getElementById("collCard");
+    if (!card) return false;
+    // Before anything that can return early, so a report this card does not
+    // show for still clears the last report's flags and pending debounce.
+    if (resetAssumptions) { collDirty.clear(); collUnread.clear(); clearTimeout(collEditTimer); }
+    const r = currentUser ? collateralSummary(parsed, meta) : null;
+    if (!r || !r.likely) { card.classList.add("hidden"); return false; }
+
+    // The words are collateral-check.js's (describe), shared with the public
+    // lender page so the two can never word one answer two ways. This
+    // function owns only what the report alone knows: its own money format
+    // (a report can be in another currency), the colours, and the prompts
+    // for a box nobody has typed a figure into.
+    const fmtT = (v) => formatUsd(Math.round(v), { maximumFractionDigits: 0 });
+    const d = COLLATERAL.describe(r, { money: fmtT });
+    const text = (id, t) => { document.getElementById(id).textContent = t; };
+
+    // A box holding something that could not be read ("1.6M") keeps what was
+    // typed, so the line under the tiles can point at it. Emptied, it would
+    // look as if the figure had simply been lost. A figure that has since
+    // arrived another way (the debt card's loan box) retires the complaint.
+    if (r.loan) collUnread.delete("collLoan");
+    if (r.price) collUnread.delete("collPrice");
+    if (!collUnread.has("collLoan")) {
+      collBox(document.getElementById("collLoan"), r.loan ? Math.round(r.loan).toLocaleString() : "", resetAssumptions);
+    }
+    if (!collUnread.has("collPrice")) {
+      collBox(document.getElementById("collPrice"), r.price ? Math.round(r.price).toLocaleString() : "", resetAssumptions);
+    }
+    collBox(document.getElementById("collLimit"), String(r.limitPct), resetAssumptions);
+
+    text("collBasis", d.basis);
+
+    // The three tiles. Green inside the limit, red past it.
+    const tile = (id, t, absent) => {
+      const el = document.getElementById(id);
+      el.className = "text-2xl font-semibold mt-1 " +
+        (!t || !t.tone ? "text-ink" : t.tone === "ok" ? "text-ok-text" : "text-red");
+      el.textContent = t && t.figure ? t.figure : "—";
+      text(id + "Sub", t ? t.sub : absent);
+    };
+    tile("collLow", d.low, "this report has one value, not a range");
+    tile("collLikely", d.likely, "");
+    tile("collHigh", d.high, "this report has one value, not a range");
+
+    // The figure a lender carries into the appraisal.
+    if (!d.need) {
+      text("collNeed", "—");
+      text("collNeedSub", collUnread.has("collLoan")
+        ? COLLATERAL.UNREAD.loan
+        : "Enter a loan amount to read it against this report's value" + (d.ranged ? " range." : "."));
+    } else {
+      text("collNeed", d.need.figure);
+      text("collNeedSub", d.need.sub);
+    }
+
+    const parts = d.read.slice();
+    if (collUnread.has("collPrice")) parts.push(COLLATERAL.UNREAD.price);
+    const readEl = document.getElementById("collRead");
+    readEl.textContent = parts.join(" ");
+    readEl.classList.toggle("hidden", !parts.length);
+
+    // With neither a loan nor a price the card is three boxes waiting to be
+    // typed in, and the boxes are no-print: keep the empty shell off paper and
+    // out of the PNG.
+    const printable = Boolean(r.loan || r.price);
+    card.classList.toggle("no-print", !printable);
+    card.classList.toggle("no-capture", !printable);
+    card.classList.remove("hidden");
+    return printable;
+  }
+
+  // Collateral inputs. The debt card's debounce-then-recompute shape, with one
+  // difference that matters because this card shares its loan with that one:
+  // ONLY A BOX SOMEBODY TYPED IN IS READ. The render above leaves a focused
+  // box alone, so a box can be behind the assumptions while it has focus (the
+  // debt card's loan changed a moment ago); reading every box on every commit
+  // would write that stale figure back over the loan. Leaving a box commits
+  // at once rather than in 250ms, so no other card ever renders across an
+  // edit still waiting here. Parsed by COLLATERAL.money, which refuses "1.6M"
+  // rather than reading it as $1.60.
+  let collEditTimer = null;
+  function commitCollateral() {
+    clearTimeout(collEditTimer);
+    if (!currentParsed || !currentMeta || typeof COLLATERAL === "undefined") return;
+    if (collDirty.size) {
+      const a = ensureAssumptions(currentMeta, currentParsed);
+      const dollars = (elId) => {
+        const raw = document.getElementById(elId).value;
+        const v = COLLATERAL.money(raw);
+        // Text that is not a figure is remembered, so the card can say so
+        // instead of quietly emptying the box.
+        if (COLLATERAL.unreadable(raw)) collUnread.add(elId); else collUnread.delete(elId);
+        return v != null ? Math.min(v, 2e9) : null;
+      };
+      if (collDirty.has("collLoan")) a.debt.loanAmount = dollars("collLoan");
+      if (collDirty.has("collPrice")) a.debt.purchasePrice = dollars("collPrice");
+      if (collDirty.has("collLimit")) {
+        // Stored only when it is a real limit; null reads as the default, so
+        // an emptied box goes back to where it started instead of to zero.
+        const lim = numericValue(document.getElementById("collLimit").value);
+        a.debt.ltvLimitPct = lim > 0 && lim <= 100 ? lim : null;
+      }
+      collDirty.clear();
+      persistAssumptions();
+    }
+    renderAnalysisCluster(currentParsed, currentMeta, false);
+  }
+  ["collLoan", "collPrice", "collLimit"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("input", () => {
+      collDirty.add(id);
+      clearTimeout(collEditTimer);
+      collEditTimer = setTimeout(commitCollateral, 250);
+    });
+    // After the blur, so the box is no longer the focused one and the render
+    // tidies it (commas, the default limit back in an emptied box).
+    el.addEventListener("blur", () => setTimeout(commitCollateral, 0));
   });
 
   // Development-cost inputs. Same debounce-then-recompute shape as the debt
@@ -9241,6 +9561,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     { id: "dcfCard",      label: "DCF" },
     { id: "opexCard",     label: "Expenses" },
     { id: "debtCard",     label: "Debt" },
+    { id: "collCard",     label: "Collateral" },
     { id: "sensCard",     label: "Sensitivity" },
     { id: "rentRollCard", label: "Rent roll" },
   ];
@@ -9276,20 +9597,34 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       b.className = "rn-link";
       b.textContent = sec.label;
       b.dataset.target = sec.id;
-      b.addEventListener("click", () => {
-        // scrollIntoView rather than an anchor href: the ids are report cards,
-        // not link targets, and a hash would land in the URL and then in a
-        // shared link. The sticky bar covers the top of whatever it scrolls
-        // to, so scroll-margin-top is set on the element itself.
-        sec.el.style.scrollMarginTop = (document.getElementById("reportNav").offsetHeight + 8) + "px";
-        sec.el.scrollIntoView({
-          block: "start",
-          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-        });
-      });
+      b.addEventListener("click", () => scrollToReportCard(sec.el));
       inner.appendChild(b);
     });
     markReportNavPosition();
+  }
+
+  // Bring one report card to the top of the screen. Shared by the jump bar
+  // and the hero's door to the Collateral Check.
+  //
+  // A scroll rather than an anchor href: the ids are report cards, not link
+  // targets, and a hash would land in the URL and then in a shared link. The
+  // sticky bar covers the top of whatever is scrolled to, so the card stops
+  // its height (plus a little air) short of the top; the bar measures 0 while
+  // it is hidden, which is right for a report too short to have one.
+  //
+  // Measured from LAYOUT offsets, never scrollIntoView or
+  // getBoundingClientRect. A card in a tab that was just shown is at the
+  // start of its entrance animation (.fade-in and the report cascade begin
+  // it translated down), and both of those measure where it is drawn, not
+  // where it comes to rest: the door's first build stopped 12px low and the
+  // card then rose under the sticky bar. Transforms do not move offsetTop.
+  function scrollToReportCard(el) {
+    let top = 0;
+    for (let n = el; n; n = n.offsetParent) top += n.offsetTop;
+    window.scrollTo({
+      top: Math.max(0, top - document.getElementById("reportNav").offsetHeight - 8),
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
   }
 
   // Scrollspy. Deliberately a scroll read rather than an IntersectionObserver:
@@ -9344,6 +9679,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
   document.getElementById("tabBtnReport").addEventListener("click", () => setReportTab("report"));
   document.getElementById("tabBtnAnalysis").addEventListener("click", () => setReportTab("analysis"));
+  // The hero's door to the Collateral Check: open the Analysis tab, bring the
+  // card to the top, and put the cursor in the one box it needs.
+  document.getElementById("collDoorBtn").addEventListener("click", () => {
+    setReportTab("analysis");
+    const card = document.getElementById("collCard");
+    if (card.classList.contains("hidden")) return;
+    scrollToReportCard(card);
+    // preventScroll: a plain focus() scrolls a second time, to wherever the
+    // browser thinks the box belongs, and fights the scroll just asked for.
+    document.getElementById("collLoan").focus({ preventScroll: true });
+  });
   // Arrow keys complete the tabs pattern (with only two tabs, every arrow is
   // "the other one"); the switch also moves focus, per the APG pattern.
   document.getElementById("reportTabs").addEventListener("keydown", (e) => {
@@ -9362,6 +9708,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderDcfCard(parsed, meta, resetAssumptions);
     renderOpexCard(parsed, meta, resetAssumptions);
     renderDebtCard(parsed, meta, resetAssumptions);
+    // The one card here that needs no NOI. It answers whether it has anything
+    // to print, which the appendix heading below needs to know.
+    const collPrints = renderCollateralCard(parsed, meta, resetAssumptions);
     renderDevCard(parsed, meta, resetAssumptions);
     renderSensCard(parsed, meta);
     renderRentRollCard(parsed, meta, resetAssumptions);
@@ -9370,17 +9719,28 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // the Analysis tab (and its "enter an NOI" empty state) until they open
     // Details and type one — investment SFR still unlocks the same cards.
     const hideResiToolkit = Boolean(meta && meta.type === "Residential" && !hasNoi);
-    if (hideResiToolkit) setReportTab("report");
+    if (hideResiToolkit) {
+      setReportTab("report");
+      // Print forces both tab panels open, so a card left showing inside the
+      // hidden tab would still reach paper, under no appendix heading.
+      document.getElementById("collCard").classList.add("hidden");
+    }
+    // The hero's door to that card shows exactly when the card is there to
+    // open: signed in, a dollar value on the report, the tab not hidden.
+    document.getElementById("collDoor").classList.toggle("hidden",
+      document.getElementById("collCard").classList.contains("hidden"));
     document.getElementById("tabBtnAnalysis").classList.toggle("hidden", hideResiToolkit);
     document.getElementById("reportTabs").classList.toggle("hidden", hideResiToolkit);
     document.getElementById("analysisLockCard").classList.toggle("hidden", Boolean(currentUser) || !hasNoi);
     document.getElementById("analysisEmpty").classList.toggle("hidden", hasNoi || hideResiToolkit);
     // The print-only appendix seam. It is a header for the cards below it, so
     // it prints only when at least one of them will: without an NOI every
-    // analysis card is hidden and a page break plus a heading would print
+    // income card is hidden and a page break plus a heading would print
     // over nothing. Keyed on the same hasNoi the cards themselves are, rather
-    // than on card visibility, so it cannot disagree with them.
-    document.getElementById("analysisSeam").classList.toggle("hidden", !hasNoi || hideResiToolkit);
+    // than on card visibility, so it cannot disagree with them; the
+    // collateral card is the one that prints without an NOI, and it says so
+    // itself (collPrints: a loan or a price has been entered).
+    document.getElementById("analysisSeam").classList.toggle("hidden", !(hasNoi || collPrints) || hideResiToolkit);
   }
   document.getElementById("analysisLockBtn").addEventListener("click", () =>
     openAcctModal("signup", "Create a free account to unlock the expense benchmark, debt, sensitivity, and rent-roll analysis for this report."));
@@ -21413,6 +21773,26 @@ async function renderMyDesk() {
             if (ox.note) aRows.push(["Range assumes", String(ox.note)]);
           }
         }
+      }
+      // Collateral check. Outside the NOI block on purpose: it is the one
+      // analysis that needs none. Same summary the card draws from, so the
+      // sheet cannot quote a different LTV than the screen.
+      const coll = collateralSummary(currentParsed, currentMeta);
+      if (coll && coll.loan) {
+        const pct1x = (v) => (Math.round(v * 10) / 10).toFixed(1) + "%";
+        aRows.push([], ["Collateral check"],
+          ["Loan amount", xlsxMoney(Math.round(coll.loan))],
+          ...(coll.price ? [["Purchase price", xlsxMoney(Math.round(coll.price))]] : []),
+          ["LTV limit", coll.limitPct + "%"],
+          ...coll.scenarios.map((sc) => [
+            // A label, so the figure in it is written out; the cells beside
+            // the labels above stay numbers a spreadsheet can add up.
+            `LTV at the ${sc.key} value (${formatUsd(Math.round(sc.value), { maximumFractionDigits: 0 })})`,
+            pct1x(sc.ltvPct) + (sc.basisIs === "price" ? " (on the price, the lesser of price and value)" : ""),
+          ]),
+          ["Value this loan needs at the limit", xlsxMoney(Math.round(coll.requiredValue))],
+          ...(coll.equityPct != null ? [["Borrower equity (of the price)", pct1x(coll.equityPct)]] : []),
+          ["A pre-screen against an automated estimate, not an appraisal and not a bank evaluation."]);
       }
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aRows), "Assumptions");
 

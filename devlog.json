@@ -4933,5 +4933,35 @@
     "type": "fix",
     "title": "Typing an NOI on the sample report no longer changes its value",
     "details": "On the sample report, typing a net operating income to try the analysis tools made the headline switch from the comp-based value ($8,325,000 at $112/SF) to an income-approach figure ($8,600,000), and the asking-price comparison disappeared. The sample was losing its 74,000 SF and its asking price on the first keystroke. Now the comp-based value stays, the income approach is added under it as a cross-check, and the analysis cards unlock, the same as on a real report. Typing your own size or asking price on the sample still revalues it, and emptying the box puts the sample’s figure back."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "feature",
+    "title": "Collateral Check: read a loan against the report's value range, no NOI needed",
+    "details": "The Analysis tab's Debt & Refi card only opens once an NOI is typed, and an owner-occupied building has none: the business repays the loan and the building is collateral. So a lender pre-screening that kind of deal (a vet clinic, a machine shop, a self-storage operator buying its site) got no loan math at all. The new Collateral Check card asks for one thing, the loan, and reads it against all three of the report's figures: loan-to-value at the Low, Likely and High values, the value the loan needs to sit inside your own LTV limit (80% to start, yours to change), and a plain sentence on where that leaves it: covered across the range, the appraisal decides, a stretch, or over the limit throughout. Add a purchase price and it counts the lesser of price and value the way a lender does, says where the price sits against the range, shows the borrower's equity, and tells you when the price itself is what breaks the limit, so no appraisal can fix it. The loan is the Debt card's own loan (one figure, the two boxes stay in step), everything rides into the Excel export and the printed appendix, and none of it leaves your browser and your own portfolio. It is a pre-screen against an automated estimate, not an appraisal and not a bank evaluation, and the card says so."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "Development costs no longer ride along on a shared report",
+    "details": "The Development Returns card says its costs stay in your browser and your own portfolio, “never on shared links”, and two comments in the code said the share route strips them. It did not: a report shared after typing land, hard and soft costs carried all three to anyone with the link, where they could be read from the page's data. The share route now removes them with the loan terms, the rent roll and the gross income, and a test proves all of those are gone from a shared report (nothing tested that before). Links shared before today are covered too: the same figures are now removed every time a shared report is read, whatever the stored copy holds."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "improvement",
+    "title": "A line under the value opens the Collateral Check",
+    "details": "The Collateral Check sits in the report's Analysis tab, and without an NOI that tab used to hold one line of text, so nobody had a reason to open it. Under the estimate's disclaimer the value card now says “Lending or borrowing against it? Check a loan against this estimate”. One click opens the tab, brings the card to the top of the screen and puts the cursor in the loan box. It shows for signed-in members on any report with a dollar value, and stays off printed and downloaded copies."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "feature",
+    "title": "A page for lenders, with a working Collateral Check on it",
+    "details": "There was a page for brokers and firms and nothing to send a lender. /lenders is that page: “Is the building worth the loan? Know before you order the appraisal.” In the middle of it is a working Collateral Check on a sample warehouse, so a lender can type a loan, a purchase price or their own LTV limit and watch the three figures and the sentence change, with no account. It runs the same arithmetic and the same words as the check on a real report, so the page cannot promise something the product does not do. The building and its figures are labelled as a sample in three places, nothing typed there is sent anywhere, and the fine print says what it is: an automated estimate, not an appraisal and not a bank evaluation, to help decide whether to order one and never in place of one. It is linked from the footer of every page and is not in the top menu, so it is mostly a page to send."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "The Debt & Refi card no longer reads “1.6M” as a $1.60 loan",
+    "details": "Typing a loan balance as shorthand, like 1.6M, in the Debt & Refi card was read as one dollar and sixty cents, so the card showed an LTV of 0% and a debt service of a few cents with nothing to say why. It is now refused the way the Collateral Check refuses it: the box keeps what you typed and the LTV tile says to type the balance in full, like 2,000,000. Editing the rate or the amortization also no longer re-reads the loan box, so a loan you changed in the Collateral Check can't be put back to its old figure by a later edit here."
   }
 ]

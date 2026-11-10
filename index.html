@@ -5841,7 +5841,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // saying the sample's building is some other size. Without the set, a size
   // left in the box by an earlier search (renderOwnerHero auto-fills it on
   // every real report) would replace the sample's the moment an NOI is typed.
-  // Emptying a box that was typed in puts the sample's own figure back.
+  // Emptying a box that was typed in puts the sample's own figure back, and
+  // takes the box out of sampleTyped: an emptied #targetSize is exactly what
+  // the footprint estimate fills for the NEXT address while its confirm
+  // dialog is open, and a box still counted as typed would hand that size to
+  // the sample behind the dialog (Cursor Bugbot, PR 417).
   //
   // NOI, cap rate and the per-type details are read exactly as before: the
   // sample brings none of its own, so there is nothing of its to keep.
@@ -5865,9 +5869,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     };
   }
   ["targetSize", "targetPrice", "capRate", "noi"].forEach((id) => {
-    document.getElementById(id).addEventListener("input", (e) => {
+    const box = document.getElementById(id);
+    box.addEventListener("input", (e) => {
       if (!currentParsed || !currentMeta) return;
-      if (currentMeta.sample && e.isTrusted) sampleTyped.add(id);
+      if (currentMeta.sample && e.isTrusted) {
+        if (String(box.value).trim()) sampleTyped.add(id);
+        else sampleTyped.delete(id);
+      }
       clearTimeout(subjectEditTimer);
       subjectEditTimer = setTimeout(() => {
         currentMeta.subject = subjectFromForm(currentMeta);

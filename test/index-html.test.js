@@ -2636,6 +2636,22 @@ test("an input event nobody typed does not resize the sample", () => {
   assert.equal(s.sizeMin, 74000, "a machine-written size was taken as the visitor's edit of the sample");
 });
 
+test("a size box the visitor emptied is not theirs any more when a script fills it", () => {
+  // Type a size on the sample, delete it, then start a search for another
+  // address: the confirm dialog's footprint estimate fills the empty box and
+  // dispatches "input". The box was typed in once, and if that were still
+  // remembered the sample behind the dialog would take the next building's
+  // size, and keep it when the dialog is cancelled.
+  const h = sampleEditHarness();
+  h.openSample();
+  assert.equal(h.type("targetSize", "100000").sizeMin, 100000);
+  assert.equal(h.type("targetSize", "").sizeMin, 74000);
+  assert.equal(h.machine("targetSize", "9900").sizeMin, 74000,
+    "a machine-written size was taken as the visitor's because they had typed in that box earlier");
+  // Typing in it again makes it theirs again.
+  assert.equal(h.type("targetSize", "88000").sizeMin, 88000);
+});
+
 test("opening the sample again starts from its own figures", () => {
   const h = sampleEditHarness();
   h.openSample();

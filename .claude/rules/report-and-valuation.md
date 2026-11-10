@@ -606,7 +606,9 @@ and exporting each slide to PNG (a PowerShell one-liner, no dependency).
      visitor has TYPED in that box since the sample opened (`sampleTyped`:
      trusted `input` events only, since the detail fields and the footprint
      estimate both dispatch `input` on `#targetSize`; cleared by `#sampleBtn`),
-     and puts them back when the box is emptied. Two things not to "simplify":
+     and puts them back when the box is emptied, which also takes the box out
+     of `sampleTyped`: an emptied `#targetSize` is what the footprint estimate
+     fills for the next address. Two things not to "simplify":
      **do not fill the form from the sample** the way the restore paths do.
      Those restore an address with the figures; the sample's would sit under
      whatever address is typed next, and the submit handler reads both (the

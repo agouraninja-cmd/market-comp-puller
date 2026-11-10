@@ -4981,5 +4981,11 @@
     "type": "feature",
     "title": "Running a comp report shows a loading bar with the time left",
     "details": "When you run a comp report, the page now shows a bar that fills as the search goes and says about how long is left (“About 35 seconds left”), counting down while you watch. A list shows it for the whole run. The time comes from how long recent searches actually took, three addresses at a time, so it stays right when searches get faster or slower. If a search runs past its usual time the bar says so instead of promising a few more seconds again. The time shown before you press the button now comes from the same estimate, so the two agree."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "The Market Explorer is back at the top of Markets: search any city and property type",
+    "details": "The Markets page now opens with a Market Explorer box: type a city and state, pick Industrial, Office, Retail or Multifamily, and press Search. If we already have that market, its page opens. If we don’t, we build it from recent sales while you watch, which takes about a minute, and then open it. Building a new market never stopped working, but the only way in was a box labelled “Filter” halfway down the page, and the offer to build only appeared once you had typed a type, a city and a two-letter state in one line, so it looked like the feature was gone. The box reads “Tulsa, OK”, “tulsa oklahoma” and “warehouse Tulsa OK” the same way, and asks again instead of guessing when the state is missing or you typed a zip code or a street address. A city we can’t find is refused before any search runs. Land and Residential still don’t have market pages. Signed-in members only, as before."
   }
 ]

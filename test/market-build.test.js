@@ -1,6 +1,7 @@
 // market-build.js — building a market from the /markets filter box
-// (2026-10-13). The pure helpers: which offer a query earns, the event-stream
-// reader, and the progress wording.
+// (2026-10-13) and from the Market Explorer form above it (2026-11-10). The
+// pure helpers: which offer a query earns, what the form was given, the
+// event-stream reader, and the progress wording.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
@@ -70,6 +71,35 @@ test("progress wording", () => {
   assert.equal(MB.progressOf({ phase: "comp" }, 3).detail, "3 recent sales found");
   assert.ok(MB.progressOf({ phase: "drafting", chars: 1e6 }, 0).pct <= 95);
   assert.deepEqual(MB.progressOf(null, 0), {});
+});
+
+test("the Market Explorer form reads a city and state, with the menu's type", () => {
+  const look = (q, type = "Office") => MB.resolveLookup(q, type, parseExploreQuery);
+  assert.deepEqual(look("Tulsa, OK"), { type: "Office", city: "Tulsa", state: "OK" });
+  assert.deepEqual(look("  tulsa   oklahoma "), { type: "Office", city: "Tulsa", state: "OK" });
+  assert.deepEqual(look("New York, NY", "retail"), { type: "Retail", city: "New York", state: "NY" });
+  assert.deepEqual(look("coeur d'alene id", "Multifamily"), { type: "Multifamily", city: "Coeur D'Alene", state: "ID" });
+  // A type typed into the box wins over the menu, as the Explorer always read it.
+  assert.deepEqual(look("warehouse Tulsa OK"), { type: "Industrial", city: "Tulsa", state: "OK" });
+});
+
+test("the Market Explorer form asks again rather than guessing", () => {
+  const err = (q, type = "Office") => MB.resolveLookup(q, type, parseExploreQuery).error;
+  assert.match(err(""), /city and state/);
+  assert.match(err("Tulsa"), /Add the state/);
+  assert.match(err("Oklahoma"), /city and state/);
+  assert.match(err("74103"), /zip code/);
+  assert.match(err("123 Main St, Boise, ID"), /street address/);
+  assert.match(err("land Tulsa OK"), /Industrial, Office, Retail and Multifamily/);
+  // A type the route does not build is never passed through from the menu.
+  assert.match(err("Tulsa, OK", "Land"), /Pick a property type/);
+  assert.match(err("Tulsa, OK", ""), /Pick a property type/);
+  // No parser, no search: the same rule as the offer.
+  assert.match(MB.resolveLookup("Tulsa, OK", "Office", null).error, /Reload/);
+  // Every refusal is a sentence and nothing else: no market to build.
+  for (const q of ["", "Tulsa", "74103", "land Tulsa OK"]) {
+    assert.deepEqual(Object.keys(MB.resolveLookup(q, "Office", parseExploreQuery)), ["error"]);
+  }
 });
 
 test("the browser half builds with textContent, never innerHTML", () => {

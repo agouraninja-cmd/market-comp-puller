@@ -15745,9 +15745,48 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
 const MARKET_BUILD =
   `<script src="/explore-query.js"></script><script src="/market-build.js"></script>` +
   `<script>(function(){var M=window.MARKETBUILD,Q=window.EXPLOREQ;if(!M||!Q)return;` +
-  `M.mount({input:document.getElementById("mq"),root:document.getElementById("mbuild"),count:document.getElementById("mcount"),parse:Q.parseExploreQuery});})();</script>`;
+  `M.mount({input:document.getElementById("mq"),root:document.getElementById("mbuild"),count:document.getElementById("mcount"),parse:Q.parseExploreQuery});` +
+  `M.mountLookup({form:document.getElementById("mlook"),input:document.getElementById("mlq"),type:document.getElementById("mlt"),root:document.getElementById("mlookOut"),parse:Q.parseExploreQuery});})();</script>`;
+// The Market Explorer form (2026-11-10; the owner: "make it so I can search
+// whatever city and building type for the market explorer and it will
+// generate a report. It used to be able to do that"). Nothing was broken: the
+// build offer above worked, but its only door was a box that says "Filter",
+// under The Board and the rankings, and it appeared only once the typed words
+// held a type, a city AND a two-letter state. This is the plain door at the
+// top of the page: a city box, a type menu and Search. A market that has a
+// page opens; one that does not is built by the same route, with the same
+// checks (market-build.js's mountLookup). Members only, the same bytes for
+// every member, and never on the anonymous page, which is cached publicly.
+const MARKET_LOOKUP =
+  `<form class="mlook" id="mlook" aria-labelledby="mlookH">` +
+  `<h2 id="mlookH">Market Explorer</h2>` +
+  `<p class="mlook-sub">Search any city and property type. If we have that market, its page opens. If we don&rsquo;t, we build it from recent sales, which takes about a minute.</p>` +
+  `<div class="mlook-row">` +
+  `<label class="mlook-q"><span>City and state</span>` +
+  `<input id="mlq" name="q" type="text" maxlength="80" autocomplete="off" placeholder="Tulsa, OK" required/></label>` +
+  `<label><span>Property type</span><select id="mlt" name="type">` +
+  EXPLORE_TYPES.map((t) => `<option>${t}</option>`).join("") +
+  `</select></label>` +
+  `<button type="submit" class="btn">Search</button>` +
+  `</div>` +
+  `<div class="mbuild" id="mlookOut" aria-live="polite" hidden></div>` +
+  `</form>`;
 // No backticks in here: this is a template literal.
 const MARKET_BUILD_CSS = `
+.mlook{margin:6px 0 22px;border:1px solid var(--edge);border-radius:var(--r-xl);background:var(--card);box-shadow:var(--lift);padding:18px 20px}
+.mlook h2{margin:0;font-family:var(--serif);font-weight:500;font-size:var(--text-heading);line-height:1.2;color:var(--ink)}
+.mlook-sub{margin:4px 0 14px;font-size:var(--text-compact);color:var(--ink-3);max-width:72ch}
+.mlook-row{display:grid;grid-template-columns:minmax(0,1fr) 200px auto;gap:10px;align-items:end}
+.mlook-row label{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:var(--text-tiny);letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--ink-3)}
+.mlook-row input,.mlook-row select{box-sizing:border-box;width:100%;min-width:0;font:inherit;font-size:var(--text-input);letter-spacing:0;text-transform:none;font-weight:400;color:var(--ink);background:var(--card);border:1px solid var(--edge);border-radius:var(--r-md);padding:9px 12px}
+.mlook-row input::placeholder{color:var(--ink-3)}
+.mlook-row input:focus,.mlook-row select:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
+.mlook .mbuild{max-width:none;margin-top:12px;background:var(--wash);box-shadow:none}
+@media (max-width:700px){
+  .mlook{padding:14px 12px}
+  .mlook-row{grid-template-columns:minmax(0,1fr) auto}
+  .mlook-q{grid-column:1/-1}
+}
 .mbuild{max-width:520px;margin-top:4px;padding:14px 16px;border:1px solid var(--edge);border-radius:var(--r-lg);background:var(--card);box-shadow:var(--lift)}
 .mbuild[hidden]{display:none}
 .mbuild p{margin:0}
@@ -16130,6 +16169,9 @@ function renderMarketDirectoryHTML(signedIn) {
     // and markets", drawn by /board.js from the member's own reads, so this
     // HTML is the same for every member and carries nothing of theirs.
     // Members only: the anonymous page is cached publicly and has no Board.
+    // The Market Explorer form leads, above The Board: searching a market is
+    // what the page is for, and under The Board it was not found (2026-11-10).
+    (signedIn ? MARKET_LOOKUP : "") +
     (signedIn ? BOARD_SECTION : "") +
     // The rankings, above the directory grid. Ordering is deliberate: the grid
     // below answers "what do you have on this city", the card answers "which

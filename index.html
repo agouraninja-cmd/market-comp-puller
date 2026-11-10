@@ -9063,7 +9063,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (!d.need) {
       text("collNeed", "—");
       text("collNeedSub", collUnread.has("collLoan")
-        ? "That loan amount could not be read. Type it in full, like 1,600,000."
+        ? COLLATERAL.UNREAD.loan
         : "Enter a loan amount to read it against this report's value" + (d.ranged ? " range." : "."));
     } else {
       text("collNeed", d.need.figure);
@@ -9071,9 +9071,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
 
     const parts = d.read.slice();
-    if (collUnread.has("collPrice")) {
-      parts.push("That purchase price could not be read. Type it in full, like 2,000,000.");
-    }
+    if (collUnread.has("collPrice")) parts.push(COLLATERAL.UNREAD.price);
     const readEl = document.getElementById("collRead");
     readEl.textContent = parts.join(" ");
     readEl.classList.toggle("hidden", !parts.length);
@@ -9108,7 +9106,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         const v = COLLATERAL.money(raw);
         // Text that is not a figure is remembered, so the card can say so
         // instead of quietly emptying the box.
-        if (v == null && String(raw).trim()) collUnread.add(elId); else collUnread.delete(elId);
+        if (COLLATERAL.unreadable(raw)) collUnread.add(elId); else collUnread.delete(elId);
         return v != null ? Math.min(v, 2e9) : null;
       };
       if (collDirty.has("collLoan")) a.debt.loanAmount = dollars("collLoan");

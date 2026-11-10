@@ -113,7 +113,16 @@ const usd = (n) => "$" + Math.round(n).toLocaleString("en-US");
 // The page script. It holds NO arithmetic and NO wording (rule 3): it reads
 // the three boxes, asks collateral-check.js, and writes the answer into the
 // elements the server already filled. The one sentence of its own is the
-// prompt for a box that could not be read, which is this page's to say.
+// prompt for an EMPTY loan box, which is this page's to say.
+//
+// Two things it must do besides redraw, both found by Cursor Bugbot on
+// PR #416. A dollar box holding text that is not a figure is SAID, for the
+// price as well as the loan: refused in silence, "7M" typed as a price
+// leaves the check reading value alone, as if no price had been given, and
+// can show "the appraisal decides" where the price would bind. And the limit
+// box is put back to the limit actually in use when it is left: an emptied
+// or out-of-range limit computes at the default, and a box showing 150 over
+// a line reading "80% limit" is two answers on one card.
 //
 // The range is interpolated from SAMPLE, so the script and the server's
 // first render can never be reading two different buildings.
@@ -125,19 +134,18 @@ function $(id){return document.getElementById(id)}
 function tile(id,t){var el=$(id);el.className="lnpct"+(t&&t.tone?" "+t.tone:"");
 el.textContent=t&&t.figure?t.figure:"\\u2014";$(id+"Sub").textContent=t?t.sub:""}
 function draw(){
-var loan=$("lnLoan").value;
-var r=COLLATERAL.summarize({loan:loan,price:$("lnPrice").value,limitPct:$("lnLimit").value,value:RANGE});
+var loan=$("lnLoan").value,price=$("lnPrice").value;
+var r=COLLATERAL.summarize({loan:loan,price:price,limitPct:$("lnLimit").value,value:RANGE});
 var d=COLLATERAL.describe(r,{whose:${JSON.stringify(WHOSE)}});
 $("lnBasis").textContent=d.basis;
 tile("lnLow",d.low);tile("lnLikely",d.likely);tile("lnHigh",d.high);
 $("lnNeed").textContent=d.need?d.need.figure:"\\u2014";
 $("lnNeedSub").textContent=d.need?d.need.sub:
-(String(loan).trim()&&COLLATERAL.money(loan)==null
-?"That loan amount could not be read. Type it in full, like 1,600,000."
-:"Type a loan amount to read it against this range.");
-$("lnRead").textContent=d.read.join(" ");
+(COLLATERAL.unreadable(loan)?COLLATERAL.UNREAD.loan:"Type a loan amount to read it against this range.");
+$("lnRead").textContent=d.read.concat(COLLATERAL.unreadable(price)?[COLLATERAL.UNREAD.price]:[]).join(" ");
 }
 ["lnLoan","lnPrice","lnLimit"].forEach(function(id){$(id).addEventListener("input",draw)});
+$("lnLimit").addEventListener("blur",function(){var el=$("lnLimit");el.value=COLLATERAL.limitPct(el.value);draw()});
 })();`;
 }
 

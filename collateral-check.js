@@ -79,6 +79,23 @@
     return Number.isFinite(n) && n > 0 ? n : null;
   }
 
+  // Text in a dollar box that is not a figure ("1.6M", "about two million").
+  // An EMPTY box is not unreadable; it is empty, and is asked for, not
+  // complained about.
+  function unreadable(raw) {
+    return raw != null && String(raw).trim() !== "" && money(raw) == null;
+  }
+  // What a page says about one. Here, with the rest of the words, so the
+  // report and the public lender page say it the same way. A figure that is
+  // refused in silence reads as a figure that was accepted: the lender page
+  // shipped (for one commit) flagging the loan and not the price, so "7M"
+  // typed as a price left the check reading value alone as if no price had
+  // been given (Cursor Bugbot, PR #416).
+  const UNREAD = {
+    loan: "That loan amount could not be read. Type it in full, like 1,600,000.",
+    price: "That purchase price could not be read. Type it in full, like 2,000,000.",
+  };
+
   // The lender's own LTV limit, as a percentage. Above 0, at most 100: a
   // "limit" past the whole value is not one. Anything else falls back to the
   // default rather than to null, because the card must always be reading
@@ -316,5 +333,5 @@
     return out;
   }
 
-  return { DEFAULT_LIMIT_PCT, money, limitPct, rangeOf, summarize, describe };
+  return { DEFAULT_LIMIT_PCT, UNREAD, money, unreadable, limitPct, rangeOf, summarize, describe };
 });

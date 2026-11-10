@@ -159,7 +159,8 @@ test("the page script holds no arithmetic and no wording of its own", () => {
   assert.match(js, /COLLATERAL\.summarize\(/);
   assert.match(js, /COLLATERAL\.describe\(/);
   assert.doesNotMatch(js, /[*/]\s*100|toFixed|Math\.|toLocaleString/, "the script does arithmetic or formats a figure itself");
-  for (const phrase of ["appraisal decides", "Covered", "A stretch", "over your limit", "of room", "limit allows", "price is what binds"]) {
+  for (const phrase of ["appraisal decides", "Covered", "A stretch", "over your limit", "of room", "limit allows", "price is what binds",
+    "could not be read"]) {
     assert.ok(!js.includes(phrase), `the script words an answer itself: "${phrase}"`);
   }
   // Rule 5: nothing typed here goes anywhere.
@@ -214,11 +215,35 @@ test("typing in the boxes redraws the check from the module, every time", () => 
   assert.equal(els.lnLow.className, "lnpct ok");
   assert.equal(els.lnBasis.textContent, "Value $8,025,000 to $8,625,000 · 90% limit");
 
+  // An unreadable PRICE is said too (Cursor Bugbot, PR #416). Refused in
+  // silence, "7M" leaves the check reading value alone as if no price had
+  // been given, and can show a read the intended price would have changed.
+  type("lnLimit", "80"); type("lnLoan", "6,000,000"); type("lnPrice", "7M");
+  const noPrice = expect("6,000,000", "", "80");
+  assert.equal(els.lnLikely.textContent, noPrice.likely.figure, "an unreadable price must not be half-read");
+  assert.equal(els.lnRead.textContent, noPrice.read.concat([COLLATERAL.UNREAD.price]).join(" "));
+  assert.match(els.lnRead.textContent, /That purchase price could not be read\. Type it in full, like 2,000,000\.$/);
+  type("lnPrice", "7,000,000");
+  assert.ok(!els.lnRead.textContent.includes("could not be read"), "a readable price is still being complained about");
+  type("lnLimit", "90");
+
+  // The limit box is put back to the limit in use when it is left. Emptied
+  // or out of range, the check computes at the default, and a box showing
+  // 150 over a line reading "80% limit" is two answers on one card.
+  assert.equal(typeof els.lnLimit.on.blur, "function", "the limit box is never tidied");
+  for (const [typed, shown] of [["150", "80"], ["", "80"], ["75%", "75"], ["abc", "80"], ["72.5", "72.5"]]) {
+    type("lnLimit", typed);
+    els.lnLimit.on.blur();
+    assert.equal(String(els.lnLimit.value), shown, `a limit typed as "${typed}" left the box showing ${els.lnLimit.value}`);
+    assert.ok(els.lnBasis.textContent.endsWith("· " + shown + "% limit"), "the box and the line under the title disagree about the limit");
+  }
+  type("lnLimit", "90");
+
   // Shorthand is refused, and the page says so instead of showing 0.0%.
   type("lnLoan", "1.6M");
   assert.equal(els.lnLikely.textContent, "—");
   assert.equal(els.lnNeed.textContent, "—");
-  assert.equal(els.lnNeedSub.textContent, "That loan amount could not be read. Type it in full, like 1,600,000.");
+  assert.equal(els.lnNeedSub.textContent, COLLATERAL.UNREAD.loan);
   // An emptied box is asked for, not complained about.
   type("lnLoan", "");
   assert.equal(els.lnNeedSub.textContent, "Type a loan amount to read it against this range.");

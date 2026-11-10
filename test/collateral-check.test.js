@@ -306,3 +306,16 @@ test("the report passes its own way of writing money", () => {
   assert.equal(d.low.sub, "on €1,800,000 · €60,000 over your limit");
   assert.ok(!JSON.stringify(d).includes("$"), "a dollar sign survived the report's own formatter");
 });
+
+test("text that is not a figure is unreadable, an empty box is only empty, and both pages say it one way", () => {
+  for (const raw of ["1.6M", "7M", "about two million", "$1.2m", "0", "-5"]) {
+    assert.equal(C.unreadable(raw), true, `"${raw}" should be refused out loud`);
+  }
+  for (const raw of ["", "   ", null, undefined, "1,600,000", "$1,600,000", 1600000]) {
+    assert.equal(C.unreadable(raw), false, `"${raw}" is not something to complain about`);
+  }
+  // The report card and the public lender page both say these, word for
+  // word, so a figure refused on one is refused the same way on the other.
+  assert.equal(C.UNREAD.loan, "That loan amount could not be read. Type it in full, like 1,600,000.");
+  assert.equal(C.UNREAD.price, "That purchase price could not be read. Type it in full, like 2,000,000.");
+});

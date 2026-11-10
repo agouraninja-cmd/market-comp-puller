@@ -229,6 +229,14 @@ paths:
     complete with no script; the page script (`liveScript()`) calls them
     again on every keystroke and holds no arithmetic and no wording of its
     own. `whose: "this sample's"` is the one thing the page tells them.
+    Two things the script does besides redraw (Cursor Bugbot, PR #416): a
+    dollar box holding text that is not a figure is SAID, for the price as
+    well as the loan (`COLLATERAL.unreadable`, `COLLATERAL.UNREAD`, the
+    report card's own sentences), because "7M" refused in silence leaves the
+    check reading value alone as if no price had been given; and the limit
+    box is put back to the limit in use when it is left, since an emptied or
+    out-of-range limit computes at the default and a box showing 150 over
+    "80% limit" is two answers on one card.
   - **The building is a sample, and says so three times** (under the
     heading, on its card, under the check). Its figures are illustrative:
     the app's sample report's address and range. Nothing about a real

@@ -4945,5 +4945,11 @@
     "type": "improvement",
     "title": "A line under the value opens the Collateral Check",
     "details": "The Collateral Check sits in the report's Analysis tab, and without an NOI that tab used to hold one line of text, so nobody had a reason to open it. Under the estimate's disclaimer the value card now says “Lending or borrowing against it? Check a loan against this estimate”. One click opens the tab, brings the card to the top of the screen and puts the cursor in the loan box. It shows for signed-in members on any report with a dollar value, and stays off printed and downloaded copies."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "feature",
+    "title": "A page for lenders, with a working Collateral Check on it",
+    "details": "There was a page for brokers and firms and nothing to send a lender. /lenders is that page: “Is the building worth the loan? Know before you order the appraisal.” In the middle of it is a working Collateral Check on a sample warehouse, so a lender can type a loan, a purchase price or their own LTV limit and watch the three figures and the sentence change, with no account. It runs the same arithmetic and the same words as the check on a real report, so the page cannot promise something the product does not do. The building and its figures are labelled as a sample in three places, nothing typed there is sent anywhere, and the fine print says what it is: an automated estimate, not an appraisal and not a bank evaluation, to help decide whether to order one and never in place of one. It is linked from the footer of every page and is not in the top menu, so it is mostly a page to send."
   }
 ]

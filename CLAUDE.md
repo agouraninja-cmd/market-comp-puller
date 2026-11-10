@@ -443,7 +443,7 @@ gone. Document a new feature in its area's file, not here.
 | `app-shell.md` | the `NAV_SHELL` rail, the signed-in header on server-rendered pages, nav parity with `index.html`, the shared button and tabs (`components.js`), instant tab switching (prerendered tabs, `/api/visit`) | `theme.js`, `components.js`, `instant-nav.js`, nav tests |
 | `sharing.md` | `POST /api/share`, `/api/shared`, `/r/<id>`, permissioned sharing | `report-access.js` |
 | `accounts.md` | account wall, guest limit, Google sign-in, accounts and portfolio, profile photo | `google-auth.js`, `account-avatar.js`, `portfolio-*.js` |
-| `public-pages.md` | home, FAQ, how-it-works, brokers-firms, the brand entity, `SITE_URL`, Search Console | `home-page.js`, `faq-page.js`, `brokers-firms-page.js` |
+| `public-pages.md` | home, FAQ, how-it-works, brokers-firms, the lender page (`/lenders`), the brand entity, `SITE_URL`, Search Console | `home-page.js`, `faq-page.js`, `brokers-firms-page.js`, `lenders-page.js` |
 | `markets.md` | market pages, momentum map, city photos and boundaries, the Market Explorer, broker directory | `market-*.js`, `city-check.js`, `gen-market-seed.js`, `broker-directory.js` |
 | `bulk.md` | bulk valuation | `bulk.js`, `bulk-page.js` |
 | `permits.md` | the permit sweep, `/permits`, tracking your own permit (notices by email and on CompNinja), and Home's Permits layer (`/api/permits/map`) | `permit-*.js`, `pdf-text.js`, `permits-page.js` |

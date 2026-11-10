@@ -275,6 +275,9 @@ const { renderSitesBody } = require("./sites-page");
 // from ORG and PRICING rather than required there, so this page can never
 // become a second copy of either.
 const { renderBrokersFirmsPageBody } = require("./brokers-firms-page");
+// /lenders — the public page to send a lender: a short pitch with a working
+// Collateral Check on a sample building. Body in lenders-page.js.
+const { renderLendersPageBody } = require("./lenders-page");
 // /pricing — the linkable rate card. Same body-only shape; the figures are
 // handed in from PRICING so the page and the FAQ cannot quote different ones.
 const { renderPricingPageBody } = require("./pricing-page");
@@ -13805,6 +13808,9 @@ const FOOTER_LINK_COLS =
   // only surface every public page shares, so a page missing from it is a page
   // nothing links to.
   `<li><a href="/brokers-firms">For brokers &amp; firms</a></li>` +
+  // The lender page's one standing door (2026-11-10). It is deliberately not
+  // in the Explore menu, so without this line nothing on the site reaches it.
+  `<li><a href="/lenders">For lenders</a></li>` +
   // Pricing had no URL at all until 2026-08-28 — only a modal inside
   // index.html, which cannot be linked, indexed, or sent in an email.
   `<li><a href="/pricing">Pricing</a></li>` +
@@ -16253,6 +16259,55 @@ function renderBrokersFirmsPageHTML(signedIn) {
 
   return marketShell({
     title, description, canonical, body, jsonLd, signedIn, current: "/brokers-firms",
+  });
+}
+
+// ---------------------------------------------------------------------------
+// /lenders — "For lenders" (2026-11-10; Draft C of the lender page drafts).
+//
+// marketShell like the other public pages; the body, and the five rules that
+// keep it honest, are in lenders-page.js. Two things this function owns:
+//
+// THE TITLE AND DESCRIPTION SAY "BEFORE THE APPRAISAL". They are what a
+// search result and a pasted link show, so they carry the page's first rule
+// to a reader who never opens it: this is a first look, not a substitute.
+//
+// It is linked from the footer and the sitemap and NOT from the Explore menu
+// (the drafts' finding 3): it is mostly a page the owner sends.
+// ---------------------------------------------------------------------------
+function renderLendersPageHTML(signedIn) {
+  const title = "For Lenders: Check the Collateral Before the Appraisal | CompNinja";
+  const canonical = `${SITE_URL}/lenders`;
+  // Kept under the ~160 characters Google renders.
+  const description =
+    "See what a commercial building is worth from recent comparable sales, and read your loan " +
+    "against it, before you order the appraisal. An automated estimate.";
+
+  const jsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      ...brandGraph(),
+      {
+        "@type": "WebPage",
+        name: "For lenders",
+        description,
+        url: canonical,
+        isPartOf: { "@id": WEBSITE_ID },
+        publisher: { "@id": ORG_ID },
+        breadcrumb: {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
+            { "@type": "ListItem", position: 2, name: "For lenders", item: canonical },
+          ],
+        },
+      },
+    ],
+  });
+
+  return marketShell({
+    title, description, canonical, body: renderLendersPageBody({ signedIn }), jsonLd, signedIn,
+    current: "/lenders",
   });
 }
 
@@ -31773,6 +31828,12 @@ const server = http.createServer((req, res) =>
   // Path-only match (split at "?" like /terms), or
   // /brokers-firms?utm_source=x 404s — found 2026-08-10 on the page this
   // replaced, when a cache-busting query string hit a 404.
+  // /lenders, on the path alone (rule 14): it is a page the owner sends, and
+  // a link pasted into an email or a chat arrives with a tracking query.
+  if (req.method === "GET" && pagePath === "/lenders") {
+    return sendShellPage(req, res, (signedIn) => renderLendersPageHTML(signedIn));
+  }
+
   if (req.method === "GET" && pagePath === "/brokers-firms") {
     return sendShellPage(req, res, (signedIn) => renderBrokersFirmsPageHTML(signedIn));
   }
@@ -32889,6 +32950,7 @@ const server = http.createServer((req, res) =>
       // One entry since 2026-09-01: /brokers and /firms merged here and now
       // 301, and a sitemap must never list a URL that redirects.
       `  <url><loc>${SITE_URL}/brokers-firms</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/lenders</loc></url>\n` +
       `  <url><loc>${SITE_URL}/pricing</loc></url>\n` +
       `  <url><loc>${SITE_URL}/download</loc></url>\n` +
       `  <url><loc>${SITE_URL}/leadership</loc></url>\n` +

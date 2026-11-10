@@ -37,6 +37,15 @@ paths:
     `test/collateral-check.test.js`). A missing number is null, never zero;
     shorthand ("1.6M") is refused, and the card says the figure could not be
     read (`collUnread`) instead of emptying the box.
+  - **The words are the module's too** (`COLLATERAL.describe(summary,
+    { money, whose })`, 2026-11-10): the line under the title, the three
+    tiles' figures, tones and lines, "Value this loan needs" and the read
+    sentences. Two pages draw this card, the report and the public lender
+    page (`lenders-page.js`, public-pages.md), and with the sentences in each
+    the public page would promise one wording while the product showed
+    another. `renderCollateralCard` keeps only what the report alone knows:
+    its money format (a report can be in another currency), the colour a
+    tone maps to, and the prompts for a box nobody has typed a figure into.
   - **Lesser of price and value.** With a purchase price the basis of each
     scenario is whichever is lower, so a tile's line says "on the $X price"
     when that is what it was measured on. `priceBinds` is the price alone

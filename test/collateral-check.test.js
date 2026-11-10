@@ -205,3 +205,104 @@ test("a price that already breaks the limit binds, whatever the appraisal says",
   // difference this flag exists to report.
   assert.equal(C.summarize({ loan: 1700000, value: RANGE, limitPct: 80 }).verdict, "stretch");
 });
+
+// --- the words -------------------------------------------------------------
+// describe() is the one copy of what a person reads, shared by the report's
+// card and the public lender page. These pin the sentences themselves: the
+// lender page shows them to somebody deciding whether to trust the product,
+// and the report shows the same ones afterwards.
+
+test("describe says nothing without a value to read against", () => {
+  assert.equal(C.describe(C.summarize({ loan: 1500000 })), null);
+  assert.equal(C.describe(null), null);
+});
+
+test("with no loan the tiles say what each value supports, and there is no read", () => {
+  const d = C.describe(C.summarize({ value: RANGE }));
+  assert.equal(d.basis, "Value $1,800,000 to $2,300,000 · 80% limit");
+  assert.deepEqual(d.low, { figure: null, tone: null, sub: "up to $1,440,000 on $1,800,000" });
+  assert.equal(d.likely.sub, "up to $1,600,000 on $2,000,000");
+  assert.equal(d.need, null);
+  assert.deepEqual(d.read, []);
+  assert.equal(d.ranged, true);
+});
+
+test("each tile carries its figure, its tone and what it was measured on", () => {
+  const d = C.describe(C.summarize({ loan: 1500000, value: RANGE }));
+  assert.deepEqual(d.low, { figure: "83.3%", tone: "over", sub: "on $1,800,000 · $60,000 over your limit" });
+  assert.deepEqual(d.likely, { figure: "75.0%", tone: "ok", sub: "on $2,000,000 · $100,000 of room" });
+  assert.deepEqual(d.high, { figure: "65.2%", tone: "ok", sub: "on $2,300,000 · $340,000 of room" });
+  assert.deepEqual(d.need, { figure: "$1,875,000", sub: "for $1,500,000 at your 80% limit · 6.3% under the likely value" });
+  // Exactly at the limit is said, not shown as "$0 of room".
+  const at = C.describe(C.summarize({ loan: 1600000, value: RANGE }));
+  assert.equal(at.likely.sub, "on $2,000,000 · at your limit");
+  assert.equal(at.need.sub, "for $1,600,000 at your 80% limit · right at the likely value");
+});
+
+test("the read has one sentence per verdict", () => {
+  const read = (loan, extra) => C.describe(C.summarize({ loan, value: RANGE, ...extra })).read;
+  assert.deepEqual(read(1400000),
+    ["Covered across the range. Even at the low value this loan sits inside your 80% limit."]);
+  assert.deepEqual(read(1500000),
+    ["The appraisal decides. This loan fits at the likely value and not at the low one, so it needs the building to come in at $1,875,000 or more."]);
+  assert.deepEqual(read(1700000),
+    ["A stretch. This loan is over your 80% limit at the likely value and fits only toward the top of the range."]);
+  assert.deepEqual(read(1900000),
+    ["Over your 80% limit across the whole range. At the likely value the limit allows $1,600,000, $300,000 less than this loan."]);
+  // The limit in the sentence is the lender's own.
+  assert.match(read(1500000, { limitPct: 72.5 })[0], /over your 72\.5% limit/);
+});
+
+test("a purchase price adds where it sits and what the borrower put in", () => {
+  const d = C.describe(C.summarize({ loan: 1500000, price: 1900000, value: RANGE }));
+  // Likely and high are worth more than the price, so they say so.
+  assert.equal(d.likely.sub, "on the $1,900,000 price · $20,000 of room");
+  assert.equal(d.low.sub, "on $1,800,000 · $60,000 over your limit");
+  assert.deepEqual(d.read.slice(1), [
+    "The $1,900,000 price sits inside this report's range.",
+    "The borrower's equity is 21.1% of the price.",
+  ]);
+  const above = C.describe(C.summarize({ loan: 1500000, price: 2600000, value: RANGE }));
+  assert.equal(above.read[1], "The $2,600,000 price is 13.0% above the top of this report's range.");
+  const below = C.describe(C.summarize({ loan: 1000000, price: 1620000, value: RANGE }));
+  assert.equal(below.read[1], "The $1,620,000 price is 10.0% below the bottom of this report's range.");
+  assert.equal(C.describe(C.summarize({ loan: 2000000, price: 2000000, value: RANGE })).read.pop(), "The loan is the whole price.");
+  assert.equal(C.describe(C.summarize({ loan: 2100000, price: 2000000, value: RANGE })).read.pop(), "The loan is more than the price.");
+});
+
+test("when the price binds, the figure and the read tell the same story", () => {
+  // 1.7M on a 1.9M purchase: the value this loan needs is above the price,
+  // so no appraisal gets there. Both lines must say so. They disagreed once
+  // ("3.6% above the likely value" over "whatever the appraisal says").
+  const d = C.describe(C.summarize({ loan: 1700000, price: 1900000, value: RANGE }));
+  assert.equal(d.need.figure, "$2,125,000");
+  assert.equal(d.need.sub, "for $1,700,000 at your 80% limit · more than the $1,900,000 price, which caps what a lender counts");
+  assert.equal(d.read[0], "The price is what binds here, not the value. A lender counts the lesser of the two, and at " +
+    "$1,900,000 your 80% limit allows $1,520,000: $180,000 less than this loan, whatever the appraisal says.");
+  assert.ok(!d.read.some((s) => /appraisal decides/.test(s)));
+});
+
+test("one figure is worded as one figure, and each page names whose it is", () => {
+  const one = { likely: 2000000 };
+  const d = C.describe(C.summarize({ loan: 1500000, price: 2100000, value: one }));
+  assert.equal(d.ranged, false);
+  assert.equal(d.basis, "Value $2,000,000 · 80% limit");
+  assert.equal(d.low, null);
+  assert.equal(d.high, null);
+  assert.equal(d.read[0], "Covered. At this report's value the loan sits inside your 80% limit.");
+  assert.equal(d.read[1], "The $2,100,000 price is 5.0% above this report's value.");
+  assert.equal(C.describe(C.summarize({ loan: 1700000, value: one })).read[0],
+    "Over your 80% limit at this report's value. At the likely value the limit allows $1,600,000, $100,000 less than this loan.");
+  // The lender page's check runs on a sample, and says so.
+  const sample = C.describe(C.summarize({ loan: 1500000, price: 1900000, value: RANGE }), { whose: "this sample's" });
+  assert.equal(sample.read[1], "The $1,900,000 price sits inside this sample's range.");
+});
+
+test("the report passes its own way of writing money", () => {
+  const eur = (v) => "€" + Math.round(v).toLocaleString("en-US");
+  const d = C.describe(C.summarize({ loan: 1500000, value: RANGE }), { money: eur });
+  assert.equal(d.basis, "Value €1,800,000 to €2,300,000 · 80% limit");
+  assert.equal(d.need.figure, "€1,875,000");
+  assert.equal(d.low.sub, "on €1,800,000 · €60,000 over your limit");
+  assert.ok(!JSON.stringify(d).includes("$"), "a dollar sign survived the report's own formatter");
+});

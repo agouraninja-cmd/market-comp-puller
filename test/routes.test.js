@@ -479,7 +479,7 @@ test("bare environment", async (t) => {
   // page shipping without the chrome: accountNavSlots() is one call, so
   // forgetting it is the easy mistake, not getting it subtly wrong.
   await t.test("every server-rendered page carries the signed-in header chrome", async () => {
-    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers-firms",
+    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers-firms", "/lenders",
       "/how-it-works", "/faq", "/terms", "/privacy", "/comps", "/pipeline", "/leadership"];
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
@@ -546,7 +546,7 @@ test("bare environment", async (t) => {
     // /how-it-works is in this list because THIS file boots with the wall off,
     // which makes it a page of its own rather than the render `/` is serving.
     // Its walled behavior — no self-link — is pinned in account-wall.test.js.
-    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers-firms",
+    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers-firms", "/lenders",
       "/download", "/terms", "/privacy", "/leadership",
       // /how-it-works joined this list unconditionally on 2026-09-01. It was
       // already here because THIS file boots with the wall off; it now also
@@ -1060,6 +1060,7 @@ test("bare environment", async (t) => {
       ["/market/industrial-ontario-ca", /Industrial Comps in Ontario/],
       ["/how-it-works", /<title>/],
       ["/brokers-firms", /For Commercial Real Estate Brokers and Firms/],
+      ["/lenders", /For Lenders: Check the Collateral Before the Appraisal/],
       ["/download", /<title>/],
       ["/leadership", /<title>/],
       ["/terms", /<title>/],
@@ -1091,7 +1092,7 @@ test("bare environment", async (t) => {
   // the canonical has to keep pointing at the clean one -- otherwise this fix
   // trades a dead link for a pile of duplicate URLs in Search Console.
   await t.test("a tagged page canonicalizes to its clean URL", async () => {
-    for (const p of ["/markets", "/market/industrial-ontario-ca", "/brokers-firms"]) {
+    for (const p of ["/markets", "/market/industrial-ontario-ca", "/brokers-firms", "/lenders"]) {
       const html = await (await fetch(srv.base + p + "?utm_source=newsletter")).text();
       assert.match(html, new RegExp(`<link rel="canonical" href="[^"]*${p}"`),
         p + " canonicalizes a tagged link to something other than its clean URL");

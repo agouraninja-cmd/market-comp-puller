@@ -4994,6 +4994,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <ul class="mt-3 space-y-2" aria-label="Explore">
               <li><a href="/markets" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Markets</a></li>
               <li><a href="/brokers-firms" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">For brokers &amp; firms</a></li>
+              <li><a href="/lenders" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">For lenders</a></li>
               <!-- Every server-rendered footer has carried /pricing since the
                    page existed; this one had not, which did not matter while
                    the nav had a Pricing row. It does now (2026-08-30): that
@@ -8974,9 +8975,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const r = currentUser ? collateralSummary(parsed, meta) : null;
     if (!r || !r.likely) { card.classList.add("hidden"); return false; }
 
+    // The words are collateral-check.js's (describe), shared with the public
+    // lender page so the two can never word one answer two ways. This
+    // function owns only what the report alone knows: its own money format
+    // (a report can be in another currency), the colours, and the prompts
+    // for a box nobody has typed a figure into.
     const fmtT = (v) => formatUsd(Math.round(v), { maximumFractionDigits: 0 });
-    const pct1 = (v) => (Math.round(v * 10) / 10).toFixed(1) + "%";
-    const limit = (Math.round(r.limitPct * 10) / 10) + "%";
+    const d = COLLATERAL.describe(r, { money: fmtT });
     const text = (id, t) => { document.getElementById(id).textContent = t; };
 
     // A box holding something that could not be read ("1.6M") keeps what was
@@ -8993,96 +8998,32 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     collBox(document.getElementById("collLimit"), String(r.limitPct), resetAssumptions);
 
-    const ranged = Boolean(r.low && r.high);
-    text("collBasis", (ranged
-      ? "Value " + fmtT(r.low.value) + " to " + fmtT(r.high.value)
-      : "Value " + fmtT(r.likely.value)) + " · " + limit + " limit");
+    text("collBasis", d.basis);
 
-    // The three tiles. Green inside the limit, red past it; the line under
-    // each says what it was measured on, because under the lesser-of rule that
-    // is sometimes the price rather than the value in the tile's own label.
-    const tile = (id, s, absent) => {
+    // The three tiles. Green inside the limit, red past it.
+    const tile = (id, t, absent) => {
       const el = document.getElementById(id);
-      const on = (x) => (x.basisIs === "price" ? "the " + fmtT(x.basis) + " price" : fmtT(x.basis));
-      if (!s) {
-        el.className = "text-2xl font-semibold mt-1 text-ink";
-        el.textContent = "—";
-        text(id + "Sub", absent);
-        return;
-      }
-      if (s.ltvPct == null) {
-        el.className = "text-2xl font-semibold mt-1 text-ink";
-        el.textContent = "—";
-        text(id + "Sub", "up to " + fmtT(s.maxLoan) + " on " + on(s));
-        return;
-      }
-      el.className = "text-2xl font-semibold mt-1 " + (s.within ? "text-ok-text" : "text-red");
-      el.textContent = pct1(s.ltvPct);
-      const room = Math.round(s.room);
-      text(id + "Sub", "on " + on(s) + " · " +
-        (room === 0 ? "at your limit" : s.within ? fmtT(room) + " of room" : fmtT(-room) + " over your limit"));
+      el.className = "text-2xl font-semibold mt-1 " +
+        (!t || !t.tone ? "text-ink" : t.tone === "ok" ? "text-ok-text" : "text-red");
+      el.textContent = t && t.figure ? t.figure : "—";
+      text(id + "Sub", t ? t.sub : absent);
     };
-    tile("collLow", r.low, "this report has one value, not a range");
-    tile("collLikely", r.likely, "");
-    tile("collHigh", r.high, "this report has one value, not a range");
+    tile("collLow", d.low, "this report has one value, not a range");
+    tile("collLikely", d.likely, "");
+    tile("collHigh", d.high, "this report has one value, not a range");
 
     // The figure a lender carries into the appraisal.
-    if (r.requiredValue == null) {
+    if (!d.need) {
       text("collNeed", "—");
       text("collNeedSub", collUnread.has("collLoan")
         ? "That loan amount could not be read. Type it in full, like 1,600,000."
-        : "Enter a loan amount to read it against this report's value" + (ranged ? " range." : "."));
+        : "Enter a loan amount to read it against this report's value" + (d.ranged ? " range." : "."));
     } else {
-      text("collNeed", fmtT(r.requiredValue));
-      const c = r.cushionPct;
-      // When the price binds, how the figure compares with the likely value
-      // is beside the point: no appraisal reaches it, because the price caps
-      // what counts. Said here so this tile never contradicts the read below.
-      text("collNeedSub", "for " + fmtT(r.loan) + " at your " + limit + " limit · " +
-        (r.priceBinds ? "more than the " + fmtT(r.price) + " price, which caps what a lender counts"
-          : Math.abs(c) < 0.05 ? "right at the likely value"
-          : c > 0 ? pct1(c) + " under the likely value"
-          : pct1(-c) + " above the likely value"));
+      text("collNeed", d.need.figure);
+      text("collNeedSub", d.need.sub);
     }
 
-    // The read: one sentence on the loan, then where the price sits.
-    const parts = [];
-    if (r.priceBinds) {
-      const maxAtPrice = r.price * (r.limitPct / 100);
-      parts.push("The price is what binds here, not the value. A lender counts the lesser of the two, and at " +
-        fmtT(r.price) + " your " + limit + " limit allows " + fmtT(maxAtPrice) + ": " +
-        fmtT(r.loan - maxAtPrice) + " less than this loan, whatever the appraisal says.");
-    } else if (r.verdict === "covered") {
-      parts.push(r.low
-        ? "Covered across the range. Even at the low value this loan sits inside your " + limit + " limit."
-        : "Covered. At this report's value the loan sits inside your " + limit + " limit.");
-    } else if (r.verdict === "depends") {
-      parts.push("The appraisal decides. This loan fits at the likely value and not at the low one, so it needs the building to come in at " +
-        fmtT(r.requiredValue) + " or more.");
-    } else if (r.verdict === "stretch") {
-      parts.push("A stretch. This loan is over your " + limit + " limit at the likely value and fits only toward the top of the range.");
-    } else if (r.verdict === "short") {
-      parts.push((r.high
-        ? "Over your " + limit + " limit across the whole range."
-        : "Over your " + limit + " limit at this report's value.") +
-        " At the likely value the limit allows " + fmtT(r.likely.maxLoan) + ", " +
-        fmtT(r.loan - r.likely.maxLoan) + " less than this loan.");
-    }
-    if (r.pricePosition === "above") {
-      parts.push("The " + fmtT(r.price) + " price is " + pct1(r.priceGapPct) + " above " +
-        (ranged ? "the top of this report's range." : "this report's value."));
-    } else if (r.pricePosition === "below") {
-      parts.push("The " + fmtT(r.price) + " price is " + pct1(r.priceGapPct) + " below " +
-        (ranged ? "the bottom of this report's range." : "this report's value."));
-    } else if (r.pricePosition === "inside") {
-      parts.push(ranged ? "The " + fmtT(r.price) + " price sits inside this report's range."
-        : "The " + fmtT(r.price) + " price matches this report's value.");
-    }
-    if (r.equityPct != null) {
-      parts.push(r.equityPct >= 0.05 ? "The borrower's equity is " + pct1(r.equityPct) + " of the price."
-        : r.equityPct > -0.05 ? "The loan is the whole price."
-        : "The loan is more than the price.");
-    }
+    const parts = d.read.slice();
     if (collUnread.has("collPrice")) {
       parts.push("That purchase price could not be read. Type it in full, like 2,000,000.");
     }

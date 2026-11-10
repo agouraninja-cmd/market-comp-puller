@@ -204,5 +204,117 @@
     return out;
   }
 
-  return { DEFAULT_LIMIT_PCT, money, limitPct, rangeOf, summarize };
+  // ---------------------------------------------------------------------------
+  // The words.
+  //
+  // describe() turns a summary into what a person reads: the line under the
+  // card's title, the three tiles, "Value this loan needs", and the read. It
+  // lives here, beside the arithmetic, because TWO pages draw this card: the
+  // report (index.html) and the public lender page (lenders-page.js, whose
+  // working check runs on a sample building). With the sentences in each
+  // page, the public page would promise one wording and the product would
+  // show another the first time either was edited. Both now call this, and
+  // the server renders the lender page's first state with it too.
+  //
+  // What stays with each page is what only that page knows: the DOM, the
+  // colours a tone maps to, and the prompts for a box nobody has typed in.
+  //
+  //   opts.money  how to write dollars. The report passes its own formatter
+  //               (a report can be in another currency); the default is USD.
+  //   opts.whose  whose range it is, in the sentences that name it. "this
+  //               report's" by default; the lender page says "this sample's".
+  // ---------------------------------------------------------------------------
+  const usd = (v) => "$" + Math.round(v).toLocaleString("en-US");
+  const pct1 = (v) => (Math.round(v * 10) / 10).toFixed(1) + "%";
+
+  function describe(r, opts) {
+    if (!r || !r.likely) return null;
+    const o = opts && typeof opts === "object" ? opts : {};
+    const fmt = typeof o.money === "function" ? o.money : usd;
+    const whose = typeof o.whose === "string" && o.whose ? o.whose : "this report's";
+    const limit = (Math.round(r.limitPct * 10) / 10) + "%";
+    const ranged = Boolean(r.low && r.high);
+
+    // Each tile says what it was measured on, because under the lesser-of
+    // rule that is sometimes the price rather than the value in its label.
+    const on = (s) => (s.basisIs === "price" ? "the " + fmt(s.basis) + " price" : fmt(s.basis));
+    const tile = (s) => {
+      if (!s) return null;
+      if (s.ltvPct == null) return { figure: null, tone: null, sub: "up to " + fmt(s.maxLoan) + " on " + on(s) };
+      const room = Math.round(s.room);
+      return {
+        figure: pct1(s.ltvPct),
+        tone: s.within ? "ok" : "over",
+        sub: "on " + on(s) + " · " +
+          (room === 0 ? "at your limit" : s.within ? fmt(room) + " of room" : fmt(-room) + " over your limit"),
+      };
+    };
+
+    const out = {
+      limit, ranged,
+      basis: (ranged
+        ? "Value " + fmt(r.low.value) + " to " + fmt(r.high.value)
+        : "Value " + fmt(r.likely.value)) + " · " + limit + " limit",
+      low: tile(r.low), likely: tile(r.likely), high: tile(r.high),
+      need: null,
+      read: [],
+    };
+
+    if (r.requiredValue != null) {
+      const c = r.cushionPct;
+      // When the price binds, how the figure compares with the likely value
+      // is beside the point: no appraisal reaches it, because the price caps
+      // what counts. Said here so this line never contradicts the read.
+      out.need = {
+        figure: fmt(r.requiredValue),
+        sub: "for " + fmt(r.loan) + " at your " + limit + " limit · " +
+          (r.priceBinds ? "more than the " + fmt(r.price) + " price, which caps what a lender counts"
+            : Math.abs(c) < 0.05 ? "right at the likely value"
+            : c > 0 ? pct1(c) + " under the likely value"
+            : pct1(-c) + " above the likely value"),
+      };
+    }
+
+    // The read: one sentence on the loan, then where the price sits.
+    if (r.priceBinds) {
+      const maxAtPrice = r.price * (r.limitPct / 100);
+      out.read.push("The price is what binds here, not the value. A lender counts the lesser of the two, and at " +
+        fmt(r.price) + " your " + limit + " limit allows " + fmt(maxAtPrice) + ": " +
+        fmt(r.loan - maxAtPrice) + " less than this loan, whatever the appraisal says.");
+    } else if (r.verdict === "covered") {
+      out.read.push(r.low
+        ? "Covered across the range. Even at the low value this loan sits inside your " + limit + " limit."
+        : "Covered. At " + whose + " value the loan sits inside your " + limit + " limit.");
+    } else if (r.verdict === "depends") {
+      out.read.push("The appraisal decides. This loan fits at the likely value and not at the low one, " +
+        "so it needs the building to come in at " + fmt(r.requiredValue) + " or more.");
+    } else if (r.verdict === "stretch") {
+      out.read.push("A stretch. This loan is over your " + limit +
+        " limit at the likely value and fits only toward the top of the range.");
+    } else if (r.verdict === "short") {
+      out.read.push((r.high
+        ? "Over your " + limit + " limit across the whole range."
+        : "Over your " + limit + " limit at " + whose + " value.") +
+        " At the likely value the limit allows " + fmt(r.likely.maxLoan) + ", " +
+        fmt(r.loan - r.likely.maxLoan) + " less than this loan.");
+    }
+    if (r.pricePosition === "above") {
+      out.read.push("The " + fmt(r.price) + " price is " + pct1(r.priceGapPct) + " above " +
+        (ranged ? "the top of " + whose + " range." : whose + " value."));
+    } else if (r.pricePosition === "below") {
+      out.read.push("The " + fmt(r.price) + " price is " + pct1(r.priceGapPct) + " below " +
+        (ranged ? "the bottom of " + whose + " range." : whose + " value."));
+    } else if (r.pricePosition === "inside") {
+      out.read.push(ranged ? "The " + fmt(r.price) + " price sits inside " + whose + " range."
+        : "The " + fmt(r.price) + " price matches " + whose + " value.");
+    }
+    if (r.equityPct != null) {
+      out.read.push(r.equityPct >= 0.05 ? "The borrower's equity is " + pct1(r.equityPct) + " of the price."
+        : r.equityPct > -0.05 ? "The loan is the whole price."
+        : "The loan is more than the price.");
+    }
+    return out;
+  }
+
+  return { DEFAULT_LIMIT_PCT, money, limitPct, rangeOf, summarize, describe };
 });

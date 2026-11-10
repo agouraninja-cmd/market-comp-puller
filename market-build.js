@@ -22,8 +22,18 @@
 //     two doors read one query the same way. Without it this file offers
 //     nothing rather than guessing.
 //   * A build is never automatic: it costs a billed search, so it runs only
-//     on a click on the button that names the market.
+//     on a click on the button that names the market, or on the Market
+//     Explorer form's Search, whose city box and type menu name it.
 //   * Built with createElement/textContent; progress text is model-written.
+//
+// The Market Explorer form (2026-11-10; the owner: "make it so I can search
+// whatever city and building type ... it used to be able to do that"). The
+// offer above only ever appeared under a box that says "Filter", below The
+// Board and the rankings, and only once the typed words held a type, a city
+// AND a two-letter state, so the door was there and nobody could find it.
+// mountLookup() is the plain version at the top of the page: a city box, a
+// type menu and Search. A market with a card opens; one without is built by
+// the same runner the offer uses, so both doors draw one progress panel.
 //
 // Dual-exported: Node gets the pure helpers (test/market-build.test.js), the
 // browser gets the global MARKETBUILD, whose mount() the Markets page calls.
@@ -109,70 +119,71 @@
     }
   }
 
-  function mount(opts) {
-    const input = opts.input, box = opts.root, parse = opts.parse, count = opts.count || null;
-    if (!input || !box || typeof parse !== "function") return;
-    const cards = [].slice.call(document.querySelectorAll(".mcard"));
-    const existing = new Set(cards.map((el) =>
-      (el.getAttribute("href") || "").replace(/^\/market\//, "")));
-    let building = false;
+  // What the Market Explorer form was given: a city and state in the box, a
+  // type in the menu. Returns { type, city, state } or { error }, and never
+  // guesses: a missing state, a zip code or a street address is asked for
+  // again rather than searched. A type typed into the box ("warehouse Tulsa
+  // OK") wins over the menu, which the form then moves to match.
+  function resolveLookup(text, type, parse) {
+    const q = String(text || "").trim();
+    if (!q) return { error: "Type a city and state, like Tulsa, OK." };
+    if (typeof parse !== "function") return { error: "Search could not load. Reload the page and try again." };
+    const p = parse(q) || {};
+    if (p.reason === "unsupported-type") return { error: "Market pages cover Industrial, Office, Retail and Multifamily." };
+    if (p.reason === "zip") return { error: "Type the city and state instead of a zip code, like Tulsa, OK." };
+    if (p.reason === "no-state") return { error: "Add the state, like Tulsa, OK." };
+    if (!p.city || !p.state) return { error: "Type a city and state, like Tulsa, OK." };
+    if (/\d/.test(p.city)) return { error: "That looks like a street address. Type just the city and state, like Tulsa, OK." };
+    const t = p.type || TYPES.find((x) => x.toLowerCase() === String(type || "").trim().toLowerCase());
+    if (!t) return { error: "Pick a property type." };
+    return { type: t, city: p.city, state: p.state };
+  }
 
-    const el = (tag, cls, text) => {
-      const n = document.createElement(tag);
-      if (cls) n.className = cls;
-      if (text != null) n.textContent = text;
-      return n;
-    };
+  // ---- the browser half -----------------------------------------------------
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const label = (t, c, s) => `${t} · ${c}, ${s}`;
+  const cardsOnPage = () => [].slice.call(document.querySelectorAll(".mcard"));
+  const slugsOf = (cards) => new Set(cards.map((c) =>
+    (c.getAttribute("href") || "").replace(/^\/market\//, "")));
+
+  // One build at a time on the page, whichever door started it.
+  let building = false;
+
+  // The build itself, drawn into `box`: the progress panel, the stream, the
+  // page it opens, and a refusal in the route's own words. onBusy(true|false)
+  // lets a door lock its own controls; retryNote is the line under a refusal.
+  function runner(box, onBusy, retryNote) {
     const clear = () => { while (box.firstChild) box.removeChild(box.firstChild); };
-    const shown = () => cards.filter((c) => c.style.display !== "none" && !c.classList.contains("mmhide")).length;
-    const label = (t, c, s) => `${t} · ${c}, ${s}`;
+    let mine = false;   // this door's build is the one running
+    const busy = (on) => { building = on; mine = on; if (typeof onBusy === "function") onBusy(on); };
 
-    function render() {
-      if (building) return;
+    // Back from the page a build opened: the browser can bring this page back
+    // exactly as it was left, mid-build, with its controls still locked and a
+    // progress panel that will never move. Put the door back as it started.
+    window.addEventListener("pageshow", (e) => {
+      if (!e.persisted || !mine) return;
+      busy(false);
       clear();
-      const o = offerFor(input.value, parse, existing, shown());
-      box.hidden = !o;
-      if (!o) return;
-      // The filter just said "No markets match"; the offer below says it
-      // better, so the two never stack.
-      if (count && o.kind !== "hint" && shown() === 0) count.textContent = "";
-      if (o.kind === "hint") { box.appendChild(el("p", "mb-note", o.text)); return; }
-      if (o.kind === "build") {
-        const line = el("p", "mb-line");
-        line.appendChild(document.createTextNode("No page for "));
-        line.appendChild(el("strong", null, label(o.type, o.city, o.state)));
-        line.appendChild(document.createTextNode(" yet."));
-        box.appendChild(line);
-        const btn = el("button", "btn sm", "Build it →");
-        btn.type = "button";
-        btn.id = "mbuildGo";
-        btn.addEventListener("click", () => build(o));
-        box.appendChild(btn);
-      } else {
-        const line = el("p", "mb-line");
-        line.appendChild(document.createTextNode("Build a page for "));
-        line.appendChild(el("strong", null, `${o.city}, ${o.state}`));
-        line.appendChild(document.createTextNode(" as:"));
-        box.appendChild(line);
-        const row = el("div", "mb-types");
-        o.types.forEach((t) => {
-          const b = el("button", "btn sm", t + " →");
-          b.type = "button";
-          b.addEventListener("click", () => build({ type: t, city: o.city, state: o.state }));
-          row.appendChild(b);
-        });
-        box.appendChild(row);
-      }
-      box.appendChild(el("p", "mb-note", "We pull recent sales and build the page. It takes about a minute and counts as one search."));
+      box.removeAttribute("aria-busy");
+      box.hidden = true;
+    });
+
+    // A line that is not a failed build: what the form still needs.
+    function say(msg) {
+      clear();
+      box.removeAttribute("aria-busy");
+      box.hidden = false;
+      box.appendChild(el("p", "mb-err", msg));
     }
 
     function fail(msg, signIn) {
-      building = false;
-      input.readOnly = false;
-      box.removeAttribute("aria-busy");
-      clear();
-      box.hidden = false;
-      box.appendChild(el("p", "mb-err", msg));
+      busy(false);
+      say(msg);
       if (signIn) {
         // The page was drawn for a member, but the session behind it has
         // gone; the route said so, and nothing was spent.
@@ -180,14 +191,13 @@
         a.href = "/?auth=signin";
         box.appendChild(a);
       } else {
-        box.appendChild(el("p", "mb-note", "Adjust the search and try again, e.g. industrial Twin Falls ID."));
+        box.appendChild(el("p", "mb-note", retryNote));
       }
     }
 
     async function build(o) {
       if (building) return;
-      building = true;
-      input.readOnly = true;
+      busy(true);
       clear();
       box.hidden = false;
       box.setAttribute("aria-busy", "true");
@@ -249,6 +259,58 @@
       }
     }
 
+    return { build, fail, say, clear };
+  }
+
+  function mount(opts) {
+    const input = opts.input, box = opts.root, parse = opts.parse, count = opts.count || null;
+    if (!input || !box || typeof parse !== "function") return;
+    const cards = cardsOnPage();
+    const existing = slugsOf(cards);
+    const run = runner(box, (on) => { input.readOnly = on; },
+      "Adjust the search and try again, e.g. industrial Twin Falls ID.");
+    const clear = run.clear, build = run.build;
+    const shown = () => cards.filter((c) => c.style.display !== "none" && !c.classList.contains("mmhide")).length;
+
+    function render() {
+      if (building) return;
+      clear();
+      const o = offerFor(input.value, parse, existing, shown());
+      box.hidden = !o;
+      if (!o) return;
+      // The filter just said "No markets match"; the offer below says it
+      // better, so the two never stack.
+      if (count && o.kind !== "hint" && shown() === 0) count.textContent = "";
+      if (o.kind === "hint") { box.appendChild(el("p", "mb-note", o.text)); return; }
+      if (o.kind === "build") {
+        const line = el("p", "mb-line");
+        line.appendChild(document.createTextNode("No page for "));
+        line.appendChild(el("strong", null, label(o.type, o.city, o.state)));
+        line.appendChild(document.createTextNode(" yet."));
+        box.appendChild(line);
+        const btn = el("button", "btn sm", "Build it →");
+        btn.type = "button";
+        btn.id = "mbuildGo";
+        btn.addEventListener("click", () => build(o));
+        box.appendChild(btn);
+      } else {
+        const line = el("p", "mb-line");
+        line.appendChild(document.createTextNode("Build a page for "));
+        line.appendChild(el("strong", null, `${o.city}, ${o.state}`));
+        line.appendChild(document.createTextNode(" as:"));
+        box.appendChild(line);
+        const row = el("div", "mb-types");
+        o.types.forEach((t) => {
+          const b = el("button", "btn sm", t + " →");
+          b.type = "button";
+          b.addEventListener("click", () => build({ type: t, city: o.city, state: o.state }));
+          row.appendChild(b);
+        });
+        box.appendChild(row);
+      }
+      box.appendChild(el("p", "mb-note", "We pull recent sales and build the page. It takes about a minute and counts as one search."));
+    }
+
     input.addEventListener("input", render);
     // Enter builds only when the filter left nothing to open: the filter's
     // own Enter opens the first card, and that must keep winning.
@@ -260,5 +322,31 @@
     render();
   }
 
-  return { offerFor, parseSse, progressOf, slugFor, mount, TYPES };
+  // The Market Explorer form: { form, input, type (the select), root (where
+  // progress and refusals are drawn), parse }. Search opens a market that has
+  // a card and builds one that does not. The card check is only a shortcut:
+  // the route makes the same check before it spends anything.
+  function mountLookup(opts) {
+    const form = opts.form, input = opts.input, select = opts.type, box = opts.root, parse = opts.parse;
+    if (!form || !input || !select || !box) return;
+    const existing = slugsOf(cardsOnPage());
+    const go = form.querySelector('button[type="submit"]');
+    const run = runner(box, (on) => {
+      input.readOnly = on;
+      select.disabled = on;
+      if (go) go.disabled = on;
+    }, "Check the city and state and try again.");
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (building) return;
+      const r = resolveLookup(input.value, select.value, parse);
+      if (r.error) { run.say(r.error); input.focus(); return; }
+      select.value = r.type;
+      const slug = slugFor(r.type, r.city, r.state);
+      if (existing.has(slug)) { window.location.href = "/market/" + slug; return; }
+      run.build(r);
+    });
+  }
+
+  return { offerFor, resolveLookup, parseSse, progressOf, slugFor, mount, mountLookup, TYPES };
 });

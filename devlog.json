@@ -4963,5 +4963,11 @@
     "type": "fix",
     "title": "The Debt & Refi card no longer reads “1.6M” as a $1.60 loan",
     "details": "Typing a loan balance as shorthand, like 1.6M, in the Debt & Refi card was read as one dollar and sixty cents, so the card showed an LTV of 0% and a debt service of a few cents with nothing to say why. It is now refused the way the Collateral Check refuses it: the box keeps what you typed and the LTV tile says to type the balance in full, like 2,000,000. Editing the rate or the amortization also no longer re-reads the loan box, so a loan you changed in the Collateral Check can't be put back to its old figure by a later edit here."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "The Market Explorer is back at the top of Markets: search any city and property type",
+    "details": "The Markets page now opens with a Market Explorer box: type a city and state, pick Industrial, Office, Retail or Multifamily, and press Search. If we already have that market, its page opens. If we don’t, we build it from recent sales while you watch, which takes about a minute, and then open it. Building a new market never stopped working, but the only way in was a box labelled “Filter” halfway down the page, and the offer to build only appeared once you had typed a type, a city and a two-letter state in one line, so it looked like the feature was gone. The box reads “Tulsa, OK”, “tulsa oklahoma” and “warehouse Tulsa OK” the same way, and asks again instead of guessing when the state is missing or you typed a zip code or a street address. A city we can’t find is refused before any search runs. Land and Residential still don’t have market pages. Signed-in members only, as before."
   }
 ]

@@ -28,6 +28,46 @@ paths:
 
 ## Architecture
 
+- **The Market Explorer form leads /markets (2026-11-10; the owner: "make it
+  so I can search whatever city and building type for the market explorer
+  and it will generate a report. It used to be able to do that").** Nothing
+  was broken: a build run by hand that day published a page. The door was
+  not findable: the offer below sits under a box that says "Filter", beneath
+  The Board and the rankings, and appears only once one line holds a type, a
+  city AND a two-letter state, while The Board's own add box above it (a
+  market + a type + Add) only FOLLOWS a market. So a member's page now opens
+  with `MARKET_LOOKUP`, above The Board: `<form id="mlook">` with a city box
+  (`#mlq`), a type menu (`#mlt`, `EXPLORE_TYPES`) and Search, mounted by
+  `MARKETBUILD.mountLookup` from the same `MARKET_BUILD` script. Rules:
+  - `resolveLookup(text, type, parse)` (pure, tested) reads the box with
+    `EXPLOREQ.parseExploreQuery`, the one parser: "Tulsa, OK", "tulsa
+    oklahoma", and a typed type winning over the menu ("warehouse Tulsa OK",
+    the menu then moves to match). A missing state, a zip code, a street
+    address (a digit in the city), Land or Residential is asked for again in
+    a sentence, never searched.
+  - Search OPENS a market that has a card and BUILDS one that does not. The
+    card check is a shortcut only; the route's own existing-page check, city
+    check, limiter and daily cap are unchanged and decide. The submit is the
+    consent to the billed search: the form names the market, and its copy
+    says a new one is built.
+  - Both doors share one `runner(box, onBusy, retryNote)` in market-build.js
+    (the progress panel, the stream, the refusal) and one module-level
+    `building` flag, so the page runs one build at a time whichever door
+    started it. Its panel is `.mbuild` inside the form (`#mlookOut`), restyled
+    flat by `.mlook .mbuild`. The runner resets its door on a `pageshow` that
+    is `persisted`: Back from the page a build opened can restore /markets
+    mid-build, controls locked, under a panel that will never move.
+  - Members only and the same bytes for every member; the anonymous page is
+    cached publicly and must never carry it. The Search button is a plain
+    `.btn` (no page-level restyle: `test/components.test.js` counts those)
+    and the fields are 16px (`--text-input`, the iOS zoom rule).
+  - Land and Residential still have no market pages: the page format is
+    $/SF and cap rates, a land market reads per acre, and adding either to
+    `EXPLORE_TYPES` would also start the piggyback publisher
+    (`maybePublishMarketSnapshot`) making public pages for them. A decision,
+    not an oversight.
+  Pinned in `test/market-build.test.js` and `test/public-pages.test.js`.
+
 - **Building a market from /markets (2026-10-13; the owner: "right now I
   don't see where to insert the city").** The Explorer's build step had lost
   its only door: its box (`#marketSearch`) sat beside the comp form, the

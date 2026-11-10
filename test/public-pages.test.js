@@ -446,6 +446,36 @@ test("a member can build a market from the /markets filter, and only a member", 
   assert.match(js.headers.get("cache-control") || "", /max-age=0/);
 });
 
+test("a member's /markets opens with the Market Explorer form, and only a member's", async (t) => {
+  // 2026-11-10 (the owner: "make it so I can search whatever city and
+  // building type for the market explorer ... it used to be able to do
+  // that"). The build offer under the filter worked and was not findable: a
+  // box that says "Filter", below The Board and the rankings. The form is
+  // the plain door, and it leads the page.
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+  const member = await (await fetch(srv.base + "/markets", { headers: SESSION })).text();
+  const at = member.indexOf('<form class="mlook" id="mlook"');
+  assert.ok(at > 0, "no Market Explorer form on a member's /markets");
+  assert.ok(at < member.indexOf('<section id="board"'), "the form sits above The Board");
+  const form = member.slice(at, member.indexOf("</form>", at));
+  assert.match(form, /<h2 id="mlookH">Market Explorer<\/h2>/);
+  assert.match(form, /<input id="mlq" name="q" type="text"[^>]*placeholder="Tulsa, OK"/);
+  // The menu offers exactly the types the route builds, in its order.
+  assert.deepEqual([...form.matchAll(/<option>([^<]+)<\/option>/g)].map((m) => m[1]), require("../market-build.js").TYPES);
+  assert.match(form, /<button type="submit" class="btn">Search<\/button>/);
+  assert.match(form, /<div class="mbuild" id="mlookOut" aria-live="polite" hidden><\/div>/);
+  // Mounted by the same script as the filter's offer, so after both modules.
+  assert.match(member, /M\.mountLookup\(\{form:document\.getElementById\("mlook"\),input:document\.getElementById\("mlq"\),type:document\.getElementById\("mlt"\),root:document\.getElementById\("mlookOut"\),parse:Q\.parseExploreQuery\}\)/);
+  assert.ok(member.indexOf("M.mountLookup(") > member.indexOf('<script src="/market-build.js"></script>'));
+  assert.match(member, /\.mlook\{/, "the form's styles ride with it");
+  // 16px fields: anything smaller makes iOS Safari zoom on focus.
+  assert.match(member, /\.mlook-row input,\.mlook-row select\{[^}]*font-size:var\(--text-input\)/);
+  const anon = await (await fetch(srv.base + "/markets")).text();
+  assert.ok(!anon.includes('id="mlook"') && !anon.includes("mountLookup") && !anon.includes(".mlook{"),
+    "the Market Explorer form on the public page, which is cached for everyone");
+});
+
 test("a lost visitor gets a page, not a bare string", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());

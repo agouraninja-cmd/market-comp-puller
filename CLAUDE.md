@@ -440,7 +440,7 @@ gone. Document a new feature in its area's file, not here.
 | `vault.md` | the broker vault (import, mapper, editing, publishing, dashboard, gut check, BOV, building facts), comp submissions, the lead inbox | `vault-*.js`, `broker-*.js`, `building-facts.js`, `gut-check.js`, `bov-log.js`, `blend-comps.js`, `xlsx.js` |
 | `firms.md` | firms: membership, shelf, buildings, sheets, leases, contacts, messaging doors, Messages' Reports view, auto-share, the shared vault, seats, shop kinds | `org-*.js`, `buildings-page.js`, `messaging.js`, `messages-page.js`, `report-inbox.js` |
 | `workspace.md` | the signed-in Home (`/desk`): Home as one map and its layer switch, layout history, one-paint fill, `DESK_BOOT`, `AUTH_BOOT`, `pagePath` | `index.html`, `home-map.js`, desk tests |
-| `app-shell.md` | the `NAV_SHELL` rail, the signed-in header on server-rendered pages, nav parity with `index.html`, instant tab switching (prerendered tabs, `/api/visit`) | `theme.js`, `instant-nav.js`, nav tests |
+| `app-shell.md` | the `NAV_SHELL` rail, the signed-in header on server-rendered pages, nav parity with `index.html`, the shared button and tabs (`components.js`), instant tab switching (prerendered tabs, `/api/visit`) | `theme.js`, `components.js`, `instant-nav.js`, nav tests |
 | `sharing.md` | `POST /api/share`, `/api/shared`, `/r/<id>`, permissioned sharing | `report-access.js` |
 | `accounts.md` | account wall, guest limit, Google sign-in, accounts and portfolio, profile photo | `google-auth.js`, `account-avatar.js`, `portfolio-*.js` |
 | `public-pages.md` | home, FAQ, how-it-works, brokers-firms, the brand entity, `SITE_URL`, Search Console | `home-page.js`, `faq-page.js`, `brokers-firms-page.js` |

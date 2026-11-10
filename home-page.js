@@ -112,8 +112,8 @@ main.wrap{max-width:none;padding:0}
    wide tracking (2026-09-23, Draft 1): the 18px it replaced shouted over the
    headings it introduces, while MARKET_CSS's 11.5px .kicker reads as a caption
    rather than as the line that opens a band. */
-.hmeye{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--red);line-height:1.35}
-.hmh{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
+.hmeye{font-size:var(--text-lead);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--red);line-height:1.35}
+.hmh{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
 
 /* --- Band 0: intro ------------------------------------------------------ */
 .hmintro{padding:72px 32px 64px;border-bottom:1px solid var(--line)}
@@ -123,37 +123,33 @@ main.wrap{max-width:none;padding:0}
 /* An ink rule over each half, so the two products read as a pair of columns
    rather than two loose paragraphs. */
 .hmtwo>div{border-top:2px solid var(--ink);padding-top:22px}
-.hmtwo h1,.hmtwo h2{font-family:Georgia,'Times New Roman',serif;font-weight:400;font-size:38px;line-height:1.15;
+.hmtwo h1,.hmtwo h2{font-family:var(--serif);font-weight:400;font-size:var(--text-display);line-height:1.15;
   letter-spacing:-.005em;color:var(--ink);margin:0 0 10px}
 .hmtwo p{font-size:16.5px;line-height:1.65;color:var(--ink-body);margin:0}
 /* The intro's own call to action. Until Draft 1 the first sign-up door was the
    comp finder, a full band further down. */
 .hmctas{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
-.hmctas .btn{border-radius:6px;padding:13px 24px;font-size:15px}
-.hmctas .btn2{display:inline-block;border:1px solid var(--edge);background:var(--card);color:var(--ink);
-  font-weight:600;font-size:15px;padding:12px 22px;border-radius:6px}
-.hmctas .btn2:hover{border-color:var(--ink);color:var(--ink)}
 /* The photo. aspect-ratio holds the 3:1 frame at every width, so the band
    cannot collapse while the image decodes and shove the page down. */
-.hmphoto{position:relative;border:1px solid var(--edge);border-radius:8px;overflow:hidden;
+.hmphoto{position:relative;border:1px solid var(--edge);border-radius:var(--r-lg);overflow:hidden;
   aspect-ratio:3/1;background:var(--wash)}
 .hmphoto img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 62%;display:block}
 
 /* --- Band 1: market comp finder ----------------------------------------- */
 .hmfind{display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center}
-.hmfind h2{font-size:42px;line-height:1.12;max-width:22ch}
+.hmfind h2{font-size:var(--text-display-lg);line-height:1.12;max-width:22ch}
 .hmfind .hmsub{font-size:17px;line-height:1.6;color:var(--ink-body);margin:0;max-width:36em}
 .heroCta{width:100%;max-width:720px;margin-top:8px}
 /* One search bar rather than three loose controls (Draft 1): the field, the
    type and the button share a single bordered box, and the box carries the
    focus ring, so the borderless input can drop its own outline. */
 .hmrow{display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;padding:6px;
-  border:1px solid var(--edge);border-radius:8px;background:var(--card);box-shadow:0 1px 2px rgba(26,36,51,.05),0 16px 36px -20px rgba(26,36,51,.2)}
+  border:1px solid var(--edge);border-radius:var(--r-lg);background:var(--card);box-shadow:0 1px 2px rgba(26,36,51,.05),0 16px 36px -20px rgba(26,36,51,.2)}
 .hmrow:focus-within{border-color:var(--ink)}
 [data-theme="dark"] .hmrow{box-shadow:var(--lift)}
 /* 16px, not smaller: iOS Safari zooms the page when a field under that size
    takes focus, and this is the one field the page exists to get typed into. */
-.hmrow input,.hmrow select{font-size:16px;padding:12px;border:0;background:transparent;color:var(--ink);
+.hmrow input,.hmrow select{font-size:var(--text-input);padding:12px;border:0;background:transparent;color:var(--ink);
   font-family:inherit}
 .hmrow input{flex:1;min-width:0;outline:none}
 .hmrow input::placeholder{color:var(--ink-3)}
@@ -162,10 +158,10 @@ main.wrap{max-width:none;padding:0}
    then — a chosen type is real text. Driven by a class the script toggles,
    because :has() on a select's own value is not something CSS can ask. */
 .hmrow select.ph{color:var(--ink-3)}
-.hmrow .btn{border-radius:6px;padding:13px 24px;font-size:15px;flex-shrink:0}
-.hmfine{font-size:13px;color:var(--ink-3);margin:0}
+.hmrow .btn{flex-shrink:0}
+.hmfine{font-size:var(--text-small);color:var(--ink-3);margin:0}
 .hmlegend{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:6px}
-.hmlegend .badge{font-size:11.5px;padding:3px 9px;border-radius:4px}
+.hmlegend .badge{font-size:var(--text-label);padding:3px 9px;border-radius:var(--r-sm)}
 /* Two badge variants MARKET_CSS does not carry (it has .v and .li, and its
    bare .badge already IS public record's neutral). Same tokens index.html's
    own chips use, so the page and the product agree. .bv is an OWNERSHIP
@@ -184,28 +180,28 @@ main.wrap{max-width:none;padding:0}
 
 /* --- Band 2: sample report ---------------------------------------------- */
 .hmreport{padding:8px 32px 80px;display:flex;justify-content:center}
-.hmcard{width:100%;max-width:900px;background:var(--card);border:1px solid var(--edge);border-radius:8px;
+.hmcard{width:100%;max-width:900px;background:var(--card);border:1px solid var(--edge);border-radius:var(--r-lg);
   box-shadow:0 1px 2px rgba(26,36,51,.05),0 16px 36px -20px rgba(26,36,51,.2);overflow:hidden}
 [data-theme="dark"] .hmcard{box-shadow:var(--lift)}
 .hmcap{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 24px;
-  border-bottom:1px solid var(--hair);font-size:11px;font-weight:600;letter-spacing:.1em;
+  border-bottom:1px solid var(--hair);font-size:var(--text-tiny);font-weight:600;letter-spacing:.1em;
   text-transform:uppercase;color:var(--ink-3)}
 .hmcap .ill{color:var(--ink-faint)}
 .hmsubj{padding:24px 24px 18px}
-.hmaddr{font-family:Georgia,'Times New Roman',serif;font-size:24px;color:var(--ink)}
-.hmchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:var(--ink-mute)}
-.hmchips span{background:var(--wash);padding:3px 9px;border-radius:4px}
-.hmlab{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
-.hmrange{margin:0 24px;border:1px solid var(--edge);border-radius:6px;display:grid;grid-template-columns:1fr 1fr 1fr}
+.hmaddr{font-family:var(--serif);font-size:var(--text-heading);color:var(--ink)}
+.hmchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:var(--text-small);color:var(--ink-mute)}
+.hmchips span{background:var(--wash);padding:3px 9px;border-radius:var(--r-sm)}
+.hmlab{font-size:var(--text-tiny);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.hmrange{margin:0 24px;border:1px solid var(--edge);border-radius:var(--r-md);display:grid;grid-template-columns:1fr 1fr 1fr}
 .hmrcell{padding:20px;border-right:1px solid var(--hair);text-align:center}
 .hmrcell:last-child{border-right:0}
 .hmrcell.mid{background:var(--wash-2)}
 .hmrcell.mid .hmlab{color:var(--red)}
-.hmfig{font-family:Georgia,'Times New Roman',serif;font-size:26px;color:var(--ink);font-variant-numeric:tabular-nums;
+.hmfig{font-family:var(--serif);font-size:var(--text-figure);color:var(--ink);font-variant-numeric:tabular-nums;
   margin-top:8px}
-.hmrcell.mid .hmfig{font-size:32px}
-.hmpsf{font-size:12.5px;color:var(--ink-3);margin-top:4px}
-.hmdrv{display:flex;gap:10px;font-size:14px;line-height:1.55;color:var(--ink-body)}
+.hmrcell.mid .hmfig{font-size:var(--text-hero)}
+.hmpsf{font-size:var(--text-small);color:var(--ink-3);margin-top:4px}
+.hmdrv{display:flex;gap:10px;font-size:var(--text-compact);line-height:1.55;color:var(--ink-body)}
 .hmdrv .up{color:var(--green)}
 .hmdrv .flat{color:var(--ink-3)}
 /* The comp table scrolls rather than crushing its columns — five columns at
@@ -213,8 +209,8 @@ main.wrap{max-width:none;padding:0}
 .hmscroll{overflow-x:auto}
 .hmtable{min-width:620px}
 .hmtr{display:grid;grid-template-columns:2.2fr 1fr 1fr .8fr 1.8fr;padding:11px 24px;border-top:1px solid var(--hair);
-  font-size:14px;color:var(--ink-body);font-variant-numeric:tabular-nums;align-items:center}
-.hmtr.head{padding:9px 24px;background:var(--wash);font-size:10.5px;font-weight:600;letter-spacing:.07em;
+  font-size:var(--text-compact);color:var(--ink-body);font-variant-numeric:tabular-nums;align-items:center}
+.hmtr.head{padding:9px 24px;background:var(--wash);font-size:var(--text-tiny);font-weight:600;letter-spacing:.07em;
   text-transform:uppercase;color:var(--ink-3);border-top:0}
 .hmtr.med{border-top:2px solid var(--ink);font-weight:600;color:var(--ink)}
 /* The working, beside the median it multiplies. "≈" and not "=": 219 x 21,600
@@ -224,7 +220,7 @@ main.wrap{max-width:none;padding:0}
 /* "Weighted median of 5 sale comps" runs on into the empty Sold and SF cells
    rather than wrapping in the address column at phone width. */
 .hmtr .hmmedlab{grid-column:span 3}
-.hmfoot{background:var(--wash);border-top:1px solid var(--hair);padding:14px 24px;font-size:13px;
+.hmfoot{background:var(--wash);border-top:1px solid var(--hair);padding:14px 24px;font-size:var(--text-small);
   line-height:1.55;color:var(--ink-mute)}
 
 /* --- Band 3: for firms -------------------------------------------------- */
@@ -232,38 +228,38 @@ main.wrap{max-width:none;padding:0}
 .hmfirms .hmcol{display:flex;flex-direction:column;gap:36px}
 .hmfhead{display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center}
 .hmfhead h2{font-size:36px;line-height:1.15;max-width:24ch}
-.hmfhead p{font-size:16px;line-height:1.65;color:var(--ink-body);margin:0;max-width:60ch}
+.hmfhead p{font-size:var(--text-input);line-height:1.65;color:var(--ink-body);margin:0;max-width:60ch}
 /* Hairline mesh: 1px gaps over the border colour, white cells on top. One
    grid rather than three bordered cards, so the rules between them are single
    hairlines instead of doubled borders. */
-.hmmesh{display:grid;gap:1px;background:var(--edge);border:1px solid var(--edge);border-radius:8px;overflow:hidden}
+.hmmesh{display:grid;gap:1px;background:var(--edge);border:1px solid var(--edge);border-radius:var(--r-lg);overflow:hidden}
 .hmmesh>div{background:var(--card)}
 .hmsteps{grid-template-columns:1fr 1fr 1fr}
 .hmsteps>div{padding:24px}
-.hmstep{font-family:Georgia,'Times New Roman',serif;font-size:15px;color:var(--red);margin-bottom:8px}
-.hmsteph{font-family:Georgia,'Times New Roman',serif;font-size:21px;line-height:1.25;color:var(--ink);margin-bottom:8px}
-.hmstepp{font-size:14px;line-height:1.6;color:var(--ink-body)}
-.hmvault{background:var(--card);border:1px solid var(--edge);border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgba(26,36,51,.05),0 16px 36px -20px rgba(26,36,51,.2)}
+.hmstep{font-family:var(--serif);font-size:var(--text-lead);color:var(--red);margin-bottom:8px}
+.hmsteph{font-family:var(--serif);font-size:21px;line-height:1.25;color:var(--ink);margin-bottom:8px}
+.hmstepp{font-size:var(--text-compact);line-height:1.6;color:var(--ink-body)}
+.hmvault{background:var(--card);border:1px solid var(--edge);border-radius:var(--r-lg);overflow:hidden;box-shadow:0 1px 2px rgba(26,36,51,.05),0 16px 36px -20px rgba(26,36,51,.2)}
 [data-theme="dark"] .hmvault{box-shadow:var(--lift)}
 .hmvault .hmcap{padding:12px 20px;letter-spacing:.08em}
 .hmvtable{min-width:600px}
 .hmvr{display:grid;grid-template-columns:2.4fr 1fr 1fr .9fr 1.5fr;padding:11px 20px;border-top:1px solid var(--hair);
-  font-size:13.5px;color:var(--ink-body);font-variant-numeric:tabular-nums;align-items:center}
-.hmvr.head{padding:9px 20px;background:var(--wash);font-size:10.5px;font-weight:600;letter-spacing:.07em;
+  font-size:var(--text-compact);color:var(--ink-body);font-variant-numeric:tabular-nums;align-items:center}
+.hmvr.head{padding:9px 20px;background:var(--wash);font-size:var(--text-tiny);font-weight:600;letter-spacing:.07em;
   text-transform:uppercase;color:var(--ink-3);border-top:0}
 .hmvr .who{display:flex;gap:6px;align-items:center;white-space:nowrap}
-.hmvr .shown{font-size:12.5px;color:var(--ink-3)}
-.hmvfoot{background:var(--wash);border-top:1px solid var(--hair);padding:12px 20px;font-size:12.5px;
+.hmvr .shown{font-size:var(--text-label);color:var(--ink-3)}
+.hmvfoot{background:var(--wash);border-top:1px solid var(--hair);padding:12px 20px;font-size:var(--text-small);
   line-height:1.55;color:var(--ink-mute)}
-.hmmore h2{font-family:Georgia,'Times New Roman',serif;font-weight:400;font-size:24px;color:var(--ink);margin:0 0 14px}
+.hmmore h2{font-family:var(--serif);font-weight:400;font-size:var(--text-heading);color:var(--ink);margin:0 0 14px}
 .hmtiles{grid-template-columns:repeat(3,1fr)}
 .hmtiles>div{padding:20px}
-.hmtlab{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--red);margin-bottom:6px}
-.hmtp{font-size:14px;line-height:1.6;color:var(--ink-body)}
+.hmtlab{font-size:var(--text-tiny);font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--red);margin-bottom:6px}
+.hmtp{font-size:var(--text-compact);line-height:1.6;color:var(--ink-body)}
 .hmprice{display:flex;align-items:center;justify-content:space-between;gap:24px;border-top:1px solid var(--edge);
-  padding-top:22px;font-size:15px;line-height:1.6;color:var(--ink-body)}
+  padding-top:22px;font-size:var(--text-lead);line-height:1.6;color:var(--ink-body)}
 .hmprice b{color:var(--ink);font-weight:600}
-.hmprice a{font-size:15px;font-weight:600;white-space:nowrap}
+.hmprice a{font-size:var(--text-lead);font-weight:600;white-space:nowrap}
 
 /* --- Closing band ------------------------------------------------------- */
 /* --slab is dark in BOTH themes, so the ink ramp runs backwards on it and
@@ -279,14 +275,16 @@ main.wrap{max-width:none;padding:0}
    different reasons — and the ramp is Jacob's. --edge is #333E4F in dark, a
    step up from the fill, so it reads as a rule and not as a line. */
 [data-theme="dark"] .hmclose{border-top:1px solid var(--edge)}
-.hmclose h2{font-family:Georgia,'Times New Roman',serif;font-weight:400;font-size:32px;color:#fff;margin:0 0 12px}
-.hmclose p{font-size:16px;line-height:1.6;color:#B6C1CF;margin:0 auto 24px;max-width:46ch}
+.hmclose h2{font-family:var(--serif);font-weight:400;font-size:var(--text-hero);color:#fff;margin:0 0 12px}
+.hmclose p{font-size:var(--text-input);line-height:1.6;color:#B6C1CF;margin:0 auto 24px;max-width:46ch}
 .hmbtns{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
-.hmclose .btn{background:#DC2626;padding:13px 26px;font-size:15px;border-radius:6px}
+/* The band is dark in both themes, so its buttons take the dark theme's
+   colours as literals: the brighter red, and an outline with no card. Size
+   and shape are the shared large button's (.btn.lg). */
+.hmclose .btn{background:#DC2626}
 .hmclose .btn:hover{background:#B91C1C}
-.hmclose .btn2{display:inline-block;border:1px solid #3D4B5F;color:#D5DDE8;font-size:15px;font-weight:600;
-  padding:12px 22px;border-radius:6px}
-.hmclose .btn2:hover{color:#fff;border-color:#5A6980}
+.hmclose .btn2{background:transparent;border-color:#3D4B5F;color:#D5DDE8}
+.hmclose .btn2:hover{background:transparent;color:#fff;border-color:#5A6980}
 
 /* --- Below ~900px every 2- and 3-column grid becomes one column, the search
        row stacks, and the photo goes 16:9 so a 3:1 strip does not become a
@@ -300,8 +298,8 @@ main.wrap{max-width:none;padding:0}
   .hmrow select{border-left:0;border-top:1px solid var(--line)}
   .hmrow .btn{width:100%;text-align:center}
   .hmtwo h1,.hmtwo h2{font-size:30px}
-  .hmfind h2{font-size:32px}
-  .hmfhead h2{font-size:26px}
+  .hmfind h2{font-size:var(--text-hero)}
+  .hmfhead h2{font-size:var(--text-figure)}
   .hmrange{grid-template-columns:1fr}
   .hmrcell{border-right:0;border-bottom:1px solid var(--hair)}
   .hmrcell:last-child{border-bottom:0}
@@ -405,9 +403,9 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     // goes to the workspace (public-pages.test.js's signup-door rule).
     `<div class="hmctas">` +
     (signedIn
-      ? `<a class="btn" href="/desk">Go to Home</a>`
-      : `<a class="btn" href="/?auth=signup">Create a free account</a>`) +
-    `<a class="btn2" href="#sample">See a sample report</a>` +
+      ? `<a class="btn lg" href="/desk">Go to Home</a>`
+      : `<a class="btn lg" href="/?auth=signup">Create a free account</a>`) +
+    `<a class="btn lg ghost" href="#sample">See a sample report</a>` +
     `</div>` +
     // width/height are the asset's own pixels: they give the browser the
     // aspect ratio before the bytes arrive, so nothing reflows around it.
@@ -429,7 +427,7 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<input id="homeAddress" type="text" required autocomplete="street-address" placeholder="Enter an address">` +
     `<label class="sr-only" for="homeType">Property type</label>` +
     `<select id="homeType" class="ph">${typeOptions}</select>` +
-    `<button class="btn" type="submit">Run a report</button>` +
+    `<button class="btn lg" type="submit">Run a report</button>` +
     `</form></div>` +
     `<p class="hmfine">Free account &middot; about a minute &middot; an automated estimate, not an appraisal.</p>` +
     `<div class="hmlegend">${legend}</div>` +
@@ -508,9 +506,9 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `and your branding.</p>` +
     `<div class="hmbtns">` +
     (signedIn
-      ? `<a class="btn" href="/desk">Go to Home &rarr;</a>`
-      : `<a class="btn" href="/?auth=signup">Create a free account &rarr;</a>` +
-        `<a class="btn2" href="/?auth=signin">Sign in</a>`) +
+      ? `<a class="btn lg" href="/desk">Go to Home &rarr;</a>`
+      : `<a class="btn lg" href="/?auth=signup">Create a free account &rarr;</a>` +
+        `<a class="btn lg btn2" href="/?auth=signin">Sign in</a>`) +
     `</div></section>`
   );
 }

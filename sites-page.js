@@ -39,66 +39,62 @@ function renderSitesBody(boot) {
   return `<style>
 .sp-page,.sp-page *{box-sizing:border-box}
 .sp-page{margin:24px 0 48px}
-.sp-page .kicker{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.sp-page .kicker{font-size:var(--text-tiny);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
 .sp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;border-bottom:1.5px solid var(--ink);padding-bottom:8px;margin-top:4px}
-.sp-head h1{margin:0;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:28px;line-height:1.15;color:var(--ink)}
-.sp-sub{font-size:13px;color:var(--ink-3);margin:10px 0 0;max-width:88ch}
-.sp-figs{display:flex;flex-wrap:wrap;gap:6px 22px;margin:14px 0 0;font-size:13px;color:var(--ink-3)}
-.sp-figs b{display:block;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:22px;color:var(--ink);font-variant-numeric:tabular-nums}
-.sp-wall{border:1px solid var(--edge);border-radius:8px;background:var(--card);padding:18px 20px;margin:18px 0}
-.sp-wall p{margin:0 0 8px;font-size:14px;color:var(--ink-body)}
+.sp-head h1{margin:0;font-family:var(--serif);font-weight:400;font-size:var(--text-h1);line-height:1.15;color:var(--ink)}
+.sp-sub{font-size:var(--text-small);color:var(--ink-3);margin:10px 0 0;max-width:88ch}
+.sp-figs{display:flex;flex-wrap:wrap;gap:6px 22px;margin:14px 0 0;font-size:var(--text-small);color:var(--ink-3)}
+.sp-figs b{display:block;font-family:var(--serif);font-weight:400;font-size:22px;color:var(--ink);font-variant-numeric:tabular-nums}
+.sp-wall{border:1px solid var(--edge);border-radius:var(--r-lg);background:var(--card);padding:18px 20px;margin:18px 0}
+.sp-wall p{margin:0 0 8px;font-size:var(--text-compact);color:var(--ink-body)}
 .sp-wall p:last-child{margin-bottom:0}
 .sp-wall a{color:var(--red);text-decoration:underline}
-.sp-page .hm-btn{flex:none;display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border:1px solid var(--edge);border-radius:8px;background:var(--card);font:inherit;font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;cursor:pointer;text-decoration:none}
-.sp-page .hm-btn:hover{border-color:var(--ink-3)}
-.sp-page .hm-btn.red{background:var(--red-fill);border-color:var(--red-fill);color:#fff}
-.sp-page .hm-btn.red:hover{background:var(--red-fill-hover)}
-.sp-page .dk-msg{font-size:13px;color:var(--ink-2);margin-top:8px}
+.sp-page .dk-msg{font-size:var(--text-small);color:var(--ink-2);margin-top:8px}
 .sp-page .dk-msg.bad{color:var(--red)}
-.sp-msg{margin:12px 0 0;font-size:13.5px;color:var(--ink-2)}
+.sp-msg{margin:12px 0 0;font-size:var(--text-compact);color:var(--ink-2)}
 .sp-addbox .hs-add{margin:14px 0 0}
 /* The board: one column per buying stage. Four across on a desktop, two on a
    tablet, one stack on a phone (each column's head stays, so an empty stage
    still says it is empty). */
 .sp-board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:20px}
-.sp-col{min-width:0;border-radius:12px;background:var(--wash);padding:10px 8px 8px}
+.sp-col{min-width:0;border-radius:var(--r-2xl);background:var(--wash);padding:10px 8px 8px}
 .sp-ch{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:2px 4px 8px}
-.sp-ch h2{margin:0;font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
-.sp-ch .n{font-size:12.5px;font-weight:600;color:var(--ink-3);font-variant-numeric:tabular-nums}
-.sp-cf{padding:0 4px 8px;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums;min-height:15px}
+.sp-ch h2{margin:0;font-size:var(--text-label);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
+.sp-ch .n{font-size:var(--text-small);font-weight:600;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.sp-cf{padding:0 4px 8px;font-size:var(--text-label);color:var(--ink-3);font-variant-numeric:tabular-nums;min-height:15px}
 .sp-cards{display:flex;flex-direction:column;gap:8px}
-.sp-card{display:block;width:100%;text-align:left;font:inherit;color:inherit;padding:10px 11px;border:1px solid var(--edge);border-radius:10px;background:var(--card);cursor:pointer;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+.sp-card{display:block;width:100%;text-align:left;font:inherit;color:inherit;padding:10px 11px;border:1px solid var(--edge);border-radius:var(--r-xl);background:var(--card);cursor:pointer;box-shadow:0 1px 2px rgba(15,23,42,.05)}
 .sp-card:hover{border-color:var(--ink-3)}
 .sp-card:focus-visible{outline:2px solid var(--red);outline-offset:2px}
 .sp-card[aria-expanded="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
-.sp-ca{display:block;font-size:14px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
-.sp-cc{display:block;margin-top:1px;font-size:12.5px;color:var(--ink-3);overflow-wrap:anywhere}
-.sp-cn{display:block;margin-top:6px;font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums}
-.sp-cd{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:7px;font-size:12px;color:var(--ink-3)}
+.sp-ca{display:block;font-size:var(--text-compact);font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.sp-cc{display:block;margin-top:1px;font-size:var(--text-small);color:var(--ink-3);overflow-wrap:anywhere}
+.sp-cn{display:block;margin-top:6px;font-size:var(--text-small);color:var(--ink-2);font-variant-numeric:tabular-nums}
+.sp-cd{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:7px;font-size:var(--text-label);color:var(--ink-3)}
 .sp-cd .w{min-width:0;overflow-wrap:anywhere}
-.sp-co{display:inline-block;margin-top:7px;padding:2px 7px;border-radius:999px;background:var(--wash);box-shadow:inset 0 0 0 1px var(--line);font-size:11px;font-weight:600;color:var(--ink-2)}
+.sp-co{display:inline-block;margin-top:7px;padding:2px 7px;border-radius:var(--r-pill);background:var(--wash);box-shadow:inset 0 0 0 1px var(--line);font-size:var(--text-tiny);font-weight:600;color:var(--ink-2)}
 .sp-card.theirs{background:var(--paper,var(--card))}
-.sp-none{padding:14px 6px 12px;font-size:12.5px;color:var(--ink-3);text-align:center}
+.sp-none{padding:14px 6px 12px;font-size:var(--text-small);color:var(--ink-3);text-align:center}
 /* The open deal, worked under the board with Home's pane (home-sites.css). */
 .sp-open{margin-top:18px;scroll-margin-top:16px}
 .sp-oh{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 12px;padding:14px 14px 10px;border:1px solid var(--edge);border-bottom:0;border-radius:12px 12px 0 0;background:var(--card)}
-.sp-oh h2{margin:0;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:21px;color:var(--ink);overflow-wrap:anywhere}
-.sp-oh .c{font-size:13px;color:var(--ink-3)}
-.sp-oh button{appearance:none;border:0;background:none;padding:0;font:inherit;font-size:13px;color:var(--ink-2);cursor:pointer}
+.sp-oh h2{margin:0;font-family:var(--serif);font-weight:400;font-size:21px;color:var(--ink);overflow-wrap:anywhere}
+.sp-oh .c{font-size:var(--text-small);color:var(--ink-3)}
+.sp-oh button{appearance:none;border:0;background:none;padding:0;font:inherit;font-size:var(--text-small);color:var(--ink-2);cursor:pointer}
 .sp-oh button:hover{color:var(--ink);text-decoration:underline}
 .sp-open .hs-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
-.sp-empty{margin-top:20px;padding:26px 22px;border:1px dashed var(--edge);border-radius:12px;background:var(--card);text-align:center}
-.sp-empty h2{margin:0 0 6px;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:21px;color:var(--ink)}
-.sp-empty p{margin:0 auto 14px;max-width:52ch;font-size:13.5px;line-height:1.5;color:var(--ink-3)}
+.sp-empty{margin-top:20px;padding:26px 22px;border:1px dashed var(--edge);border-radius:var(--r-2xl);background:var(--card);text-align:center}
+.sp-empty h2{margin:0 0 6px;font-family:var(--serif);font-weight:400;font-size:21px;color:var(--ink)}
+.sp-empty p{margin:0 auto 14px;max-width:52ch;font-size:var(--text-compact);line-height:1.5;color:var(--ink-3)}
 .sp-fold{margin-top:22px;border-top:1px solid var(--line)}
-.sp-fold>summary{padding:12px 0;cursor:pointer;font-size:13.5px;font-weight:600;color:var(--ink-2)}
+.sp-fold>summary{padding:12px 0;cursor:pointer;font-size:var(--text-compact);font-weight:600;color:var(--ink-2)}
 .sp-fold>summary span{margin-left:4px;color:var(--ink-3)}
 .sp-fold .sp-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-.sp-foot{margin-top:22px;font-size:13px;color:var(--ink-3)}
+.sp-foot{margin-top:22px;font-size:var(--text-small);color:var(--ink-3)}
 .sp-foot a{color:var(--ink-2)}
 .sp-foot a:hover{color:var(--ink)}
 @media (max-width:1000px){.sp-board,.sp-fold .sp-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.sp-open .hs-grid{grid-template-columns:minmax(0,1fr)}}
-@media (max-width:600px){.sp-board,.sp-fold .sp-cards{grid-template-columns:minmax(0,1fr)}.sp-head h1{font-size:24px}.sp-head{flex-wrap:wrap;align-items:baseline}}
+@media (max-width:600px){.sp-board,.sp-fold .sp-cards{grid-template-columns:minmax(0,1fr)}.sp-head h1{font-size:var(--text-heading)}.sp-head{flex-wrap:wrap;align-items:baseline}}
 </style>
 <link rel="stylesheet" href="/home-sites.css">
 <main class="wrap sp-page">

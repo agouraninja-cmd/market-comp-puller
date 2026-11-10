@@ -595,6 +595,30 @@ and exporting each slide to PNG (a PowerShell one-liner, no dependency).
    - **The subject-edit listener replaces `meta.subject` wholesale**, so it
      re-reads `details` from the DOM rather than merging — anything not
      re-read is lost on the next keystroke.
+     **The sample report is the one exception (2026-11-10)**, because it is
+     the one report the form does not describe. Its size and asking price
+     (`SAMPLE_SUBJECT`) go straight to `renderResults`, so the wholesale
+     re-read took two empty boxes at their word: typing an NOI on the sample
+     dropped its 74,000 SF, and the hero fell from the comp range ($8,325,000
+     at $112/SF) to the income approach ($8,600,000), taking the asking-price
+     comparison with it. The listener now calls `subjectFromForm(meta)`, which
+     on a `meta.sample` report keeps the sample's own size and price until the
+     visitor has TYPED in that box since the sample opened (`sampleTyped`:
+     trusted `input` events only, since the detail fields and the footprint
+     estimate both dispatch `input` on `#targetSize`; cleared by `#sampleBtn`),
+     and puts them back when the box is emptied. Two things not to "simplify":
+     **do not fill the form from the sample** the way the restore paths do.
+     Those restore an address with the figures; the sample's would sit under
+     whatever address is typed next, and the submit handler reads both (the
+     size rides `/api/comps`, is in the cache key and multiplies the next
+     hero; on a house the asking price is a `compWeight` factor). And **a
+     blank-box-only rule is not enough**: `renderOwnerHero` auto-fills
+     `#targetSize` on every real report, so after one search the box is never
+     blank, and the last building's size would replace the sample's on the
+     next keystroke. NOI, cap rate and `details` are read as on any report
+     (the sample brings none of its own). Pinned in `test/index-html.test.js`
+     ("Typing an NOI on the sample must not cost it its building"), which
+     runs the real listener and the real `#sampleBtn` handler.
    Unlike NOI/debt/rent-roll these are public property attributes, so they are
    sent to the server and **kept** in shared reports. `units` and `lot_acres`
    also drive the $/unit and $/acre cross-checks via `ALT_BASIS` /

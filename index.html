@@ -5815,26 +5815,62 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     refreshSearchSettingsLine();
   });
   let subjectEditTimer = null;
+  // THE SAMPLE REPORT IS THE ONE REPORT THIS FORM DOES NOT DESCRIBE. Every
+  // other report on screen either came out of these inputs or had them put
+  // back first (restoreFormFromMeta, loadSharedReport), so re-reading them is
+  // re-reading the report's own subject. The sample hands its 74,000 SF and
+  // its asking price straight to renderResults (SAMPLE_SUBJECT), and the
+  // wholesale re-read below took the empty #targetSize at its word: typing an
+  // NOI on the sample dropped the size, and the hero fell from the comp-based
+  // range ($8,325,000 at $112/SF) to the income approach ($8,600,000), with
+  // the asking-price comparison and the chart's "You" marker gone too.
+  //
+  // Deliberately NOT fixed by writing the sample's figures into the form, the
+  // way the restore paths do. Those restore an address with them; the sample
+  // would leave a made-up 74,000 SF and $8.14M under whatever address the
+  // visitor types next, and the submit handler reads both: the size rides
+  // /api/comps (it biases the comps and is in the cache key) and multiplies
+  // the next hero's $/SF, and on a house the asking price is a compWeight
+  // factor. So the form stays the visitor's, and the listener learns that on
+  // the sample a size or price box speaks only once it has been typed in.
+  //
+  // sampleTyped is which of those two boxes that is, since the sample opened
+  // (#sampleBtn clears it). "Typed" is e.isTrusted, the rule the size
+  // listener above already uses: the per-type detail fields and the footprint
+  // estimate both dispatch "input" on #targetSize, and neither is the visitor
+  // saying the sample's building is some other size. Without the set, a size
+  // left in the box by an earlier search (renderOwnerHero auto-fills it on
+  // every real report) would replace the sample's the moment an NOI is typed.
+  // Emptying a box that was typed in puts the sample's own figure back.
+  //
+  // NOI, cap rate and the per-type details are read exactly as before: the
+  // sample brings none of its own, so there is nothing of its to keep.
+  const sampleTyped = new Set();
+  function subjectFromForm(meta) {
+    const own = meta && meta.sample ? SAMPLE_SUBJECT : null;
+    const sizeR = !own || sampleTyped.has("targetSize") ? targetRange("targetSize", null) : null;
+    const priceR = !own || sampleTyped.has("targetPrice") ? targetRange("targetPrice", null) : null;
+    const noiVal = numericValue(document.getElementById("noi").value);
+    const capVal = numericValue(document.getElementById("capRate").value);
+    return {
+      sizeMin: sizeR ? sizeR.min : own ? own.sizeMin : null,
+      sizeMax: sizeR ? sizeR.max : own ? own.sizeMax : null,
+      priceMin: priceR ? priceR.min : own ? own.priceMin : null,
+      priceMax: priceR ? priceR.max : own ? own.priceMax : null,
+      noi: noiVal > 0 ? noiVal : null,
+      capRate: capVal > 0 ? capVal : null,
+      // Read from the DOM, not merged from the old object — this rebuild
+      // replaces subject wholesale, so anything not re-read is lost.
+      details: readSubjectDetails(),
+    };
+  }
   ["targetSize", "targetPrice", "capRate", "noi"].forEach((id) => {
-    document.getElementById(id).addEventListener("input", () => {
+    document.getElementById(id).addEventListener("input", (e) => {
       if (!currentParsed || !currentMeta) return;
+      if (currentMeta.sample && e.isTrusted) sampleTyped.add(id);
       clearTimeout(subjectEditTimer);
       subjectEditTimer = setTimeout(() => {
-        const sizeR = targetRange("targetSize", null);
-        const priceR = targetRange("targetPrice", null);
-        const noiVal = numericValue(document.getElementById("noi").value);
-        const capVal = numericValue(document.getElementById("capRate").value);
-        currentMeta.subject = {
-          sizeMin: sizeR ? sizeR.min : null,
-          sizeMax: sizeR ? sizeR.max : null,
-          priceMin: priceR ? priceR.min : null,
-          priceMax: priceR ? priceR.max : null,
-          noi: noiVal > 0 ? noiVal : null,
-          capRate: capVal > 0 ? capVal : null,
-          // Read from the DOM, not merged from the old object — this rebuild
-          // replaces subject wholesale, so anything not re-read is lost.
-          details: readSubjectDetails(),
-        };
+        currentMeta.subject = subjectFromForm(currentMeta);
         renderOwnerHero(currentParsed, currentMeta);
         renderAnalysisCluster(currentParsed, currentMeta, false);
         renderComparison(currentParsed);
@@ -18238,9 +18274,20 @@ async function renderMyDesk() {
     ],
   };
 
+  // Illustrative subject property so the sample also shows the
+  // subject-vs-market comparison and the red "You" marker on the chart.
+  // Named, because it is read in two places: the handler below opens the
+  // sample with it, and subjectFromForm keeps its size and asking price when
+  // the visitor types an NOI. These figures are never written into the form
+  // (the reason is on subjectFromForm), so the form cannot give them back.
+  const SAMPLE_SUBJECT = { sizeMin: 74000, sizeMax: 74000, priceMin: 8140000, priceMax: 8140000, noi: null };
+
   document.getElementById("sampleBtn").addEventListener("click", () => {
     hideLoadingCard();
     showStatus("This is a <strong>sample report</strong> with illustrative data. Run a real search above to pull live comps for your property.", "info");
+    // A sample opened again starts from its own figures: a size typed over
+    // it on an earlier look is still in the box, and is not this look's.
+    sampleTyped.clear();
     renderResults(SAMPLE_REPORT, {
       address: "1200 W Industrial Blvd, Dallas, TX",
       type: "Industrial",
@@ -18248,9 +18295,9 @@ async function renderMyDesk() {
       months: 24,
       txFocus: "both",
       sample: true,
-      // Illustrative subject property so the sample also shows the
-      // subject-vs-market comparison and the red "You" marker on the chart.
-      subject: { sizeMin: 74000, sizeMax: 74000, priceMin: 8140000, priceMax: 8140000, noi: null },
+      // A copy: the subject-edit listener replaces meta.subject, and nothing
+      // downstream may be handed the constant itself to write on.
+      subject: { ...SAMPLE_SUBJECT },
     });
   });
 

@@ -11483,6 +11483,27 @@ const INAPP_BOOT_MARKER = "<!--INAPP_BOOT-->";
 // this marker and never a hand-copy of the rules: the nav list's one-source
 // rule, for the same reason.
 const COMPONENT_CSS_MARKER = "<!--COMPONENT_CSS-->";
+// The app's stylesheet link carries a version, so a browser never pairs new
+// markup with a cached old tailwind.css. /tailwind.css is cached for five
+// minutes (STATIC_FILES) while index.html is no-store, and until 2026-11-10
+// that gap was harmless: a deploy added a class or two. Once the app's
+// colours became token classes (text-ink-3, bg-card, bg-red-fill), a stale
+// copy lacks every one of them, and a member who had the app open just before
+// a deploy would have met it without its colours until the cache ran out:
+// /valuation.js's hazard, in CSS. The version is the file's size and modified
+// time, read with the page (index.html is read from disk on every request
+// too), so a regenerated file is picked up without a restart. The static
+// route matches on the path without its query, so the versioned URL serves
+// the same file.
+const TAILWIND_LINK = 'href="/tailwind.css"';
+function tailwindLink() {
+  try {
+    const st = fs.statSync(path.join(__dirname, "tailwind.css"));
+    return `href="/tailwind.css?v=${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"`;
+  } catch {
+    return TAILWIND_LINK;
+  }
+}
 
 // Instant tab switching (2026-09-26): prerender the tab a member points at,
 // and keep the one they most likely want next warm, so the click swaps in a
@@ -31380,6 +31401,9 @@ const server = http.createServer((req, res) =>
         // The button and the tabs, from the same stylesheet every
         // server-rendered page gets inside MARKET_CSS.
         .replace(COMPONENT_CSS_MARKER, () => `<style>${COMPONENT_CSS}</style>`)
+        // And the stylesheet those classes come from, by a URL that changes
+        // whenever the file does (tailwindLink).
+        .replace(TAILWIND_LINK, tailwindLink)
         // The tester badge, from the same constant /vault and /bulk emit --
         // markup, its plain CSS and its handlers. index.html reveals it from
         // refreshBillingUI(), which already knows the entitlements.

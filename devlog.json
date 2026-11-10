@@ -4927,5 +4927,11 @@
     "type": "improvement",
     "title": "Small text comes in whole sizes",
     "details": "The site used ten small text sizes, several only half a pixel apart (10.5 and 11, 12 and 12.5, 13 and 13.5, 14 and 14.5), none of them chosen on purpose. There are six now: 11, 12, 13, 14, 15 and 16px. Each half size moved up to the whole size beside it, so nothing got smaller. Checked on 30 screens at four widths, phone to desktop: nothing runs off the side, and three labels that no longer fit their line were set a size down instead."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "Typing an NOI on the sample report no longer changes its value",
+    "details": "On the sample report, typing a net operating income to try the analysis tools made the headline switch from the comp-based value ($8,325,000 at $112/SF) to an income-approach figure ($8,600,000), and the asking-price comparison disappeared. The sample was losing its 74,000 SF and its asking price on the first keystroke. Now the comp-based value stays, the income approach is added under it as a cross-check, and the analysis cards unlock, the same as on a real report. Typing your own size or asking price on the sample still revalues it, and emptying the box puts the sample’s figure back."
   }
 ]

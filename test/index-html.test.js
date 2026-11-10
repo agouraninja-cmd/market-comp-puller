@@ -2454,6 +2454,239 @@ test("the sample report's stated search radius covers its own comps", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Typing an NOI on the sample must not cost it its building
+//
+// The subject-edit listener rebuilds meta.subject wholesale from the form,
+// which is right for every report the form describes. The sample is the one
+// it does not: its 74,000 SF and $8.14M asking price go straight to
+// renderResults and are never written into #targetSize / #targetPrice. So the
+// rebuild read two empty boxes, and typing 520000 into the NOI box (what the
+// sample's own "Enter an NOI in Details for comps" line asks for) moved the
+// hero from $8,025,000 / $8,325,000 / $8,625,000 "at $112/SF, comp median" to
+// $8,250,000 / $8,600,000 / $8,975,000 "income approach midpoint", and took
+// the asking-price comparison with it.
+//
+// These run the real listener, the real #sampleBtn handler and the real
+// targetRange / subjectRangeFromMeta against stand-in inputs. The last of
+// those is the call renderOwnerHero makes to decide whether it has a size to
+// multiply, so "it still returns 74,000" is "the hero stays comp-based".
+// ---------------------------------------------------------------------------
+
+function sampleEditHarness() {
+  const cut = (from, to, what) => {
+    const i = html.indexOf(from);
+    assert.ok(i > 0, `could not find ${what} — renamed or moved?`);
+    const j = html.indexOf(to, i);
+    assert.ok(j > i, `could not bound ${what}`);
+    return html.slice(i, j + to.length);
+  };
+  const subjectConst = html.match(/const SAMPLE_SUBJECT = \{[^}]*\};/);
+  assert.ok(subjectConst, "could not find SAMPLE_SUBJECT");
+  const src = [
+    "let currentMeta = null, currentParsed = null, subjectEditTimer = null;",
+    "const SAMPLE_REPORT = { comps: [] };",
+    // What renderResults does to the two the listener reads, and nothing else.
+    "function renderResults(parsed, meta) { currentParsed = parsed; currentMeta = meta; }",
+    cut("  function targetRange(minId, maxId) {", "\n  }\n", "targetRange"),
+    cut("  function subjectRangeFromMeta(kind) {", "\n  }\n", "subjectRangeFromMeta"),
+    // The listener, in the file's own order: SAMPLE_SUBJECT is declared some
+    // twelve thousand lines BELOW subjectFromForm, which only reads it once a
+    // sample is on screen. Assembled the other way round, this would pass
+    // even if that read ever moved somewhere it runs at load.
+    cut("  const sampleTyped = new Set();", "\n  });\n", "the subject-edit listener"),
+    subjectConst[0],
+    cut('  document.getElementById("sampleBtn").addEventListener("click", () => {', "\n  });\n", "the sample button's handler"),
+    "return {",
+    "  show: renderResults,",
+    "  subject: () => currentMeta.subject,",
+    "  sizeForHero: () => subjectRangeFromMeta('size'),",
+    "  priceForCard: () => subjectRangeFromMeta('price'),",
+    "  sampleSubject: () => SAMPLE_SUBJECT,",
+    "};",
+  ].join("\n");
+
+  const fields = {};
+  const doc = {
+    getElementById: (id) => (fields[id] = fields[id] || {
+      value: "",
+      on: {},
+      addEventListener(type, fn) { (this.on[type] = this.on[type] || []).push(fn); },
+    }),
+  };
+  // The 300ms debounce, run by hand.
+  let pending = null;
+  const seen = { hero: [], saved: 0 };
+  const noop = () => {};
+  const V = require("../valuation.js");
+  const api = new Function("document", "numericValue", "readSubjectDetails",
+    "renderOwnerHero", "renderAnalysisCluster", "renderComparison", "renderMarketChart",
+    "renderTableBody", "saveHistory", "hideLoadingCard", "showStatus", "setTimeout", "clearTimeout",
+    src)(doc, V.numericValue, () => ({}),
+    (parsed, meta) => { seen.hero.push({ ...meta.subject }); }, noop, noop, noop,
+    noop, () => { seen.saved++; }, noop, noop,
+    (fn) => { pending = fn; return 1; }, () => { pending = null; });
+
+  const input = (id, value, isTrusted) => {
+    doc.getElementById(id).value = value;
+    for (const fn of doc.getElementById(id).on.input) fn({ isTrusted });
+    assert.ok(pending, `an input on #${id} did not schedule the re-render`);
+    const run = pending;
+    pending = null;
+    run();
+    return api.subject();
+  };
+  return {
+    ...api,
+    fields,
+    seen,
+    field: (id) => doc.getElementById(id),
+    openSample: () => { for (const fn of doc.getElementById("sampleBtn").on.click) fn(); },
+    // A visitor's keystrokes, and a script's dispatchEvent(new Event("input")).
+    type: (id, value) => input(id, value, true),
+    machine: (id, value) => input(id, value, false),
+  };
+}
+
+test("typing an NOI on the sample keeps its size and asking price", () => {
+  const h = sampleEditHarness();
+  h.openSample();
+  assert.equal(h.subject().sizeMin, 74000, "the sample no longer opens with its 74,000 SF");
+
+  const s = h.type("noi", "520000");
+  assert.equal(s.noi, 520000, "the NOI the visitor typed has to arrive, or the analysis stays locked");
+  assert.equal(s.sizeMin, 74000,
+    "typing an NOI dropped the sample's size, so the hero falls from the comp range to the income approach");
+  assert.equal(s.sizeMax, 74000);
+  assert.equal(s.priceMin, 8140000, "typing an NOI dropped the sample's asking price");
+  assert.equal(s.priceMax, 8140000);
+
+  // What renderOwnerHero asks before it multiplies, and what it was handed.
+  assert.deepEqual(h.sizeForHero(), { min: 74000, max: 74000 });
+  assert.deepEqual(h.priceForCard(), { min: 8140000, max: 8140000 });
+  assert.equal(h.seen.hero.at(-1).sizeMin, 74000, "the hero was re-rendered without the size");
+
+  // The cap rate beside it behaves the same way.
+  const c = h.type("capRate", "6.25");
+  assert.equal(c.capRate, 6.25);
+  assert.equal(c.sizeMin, 74000);
+  assert.equal(c.priceMin, 8140000);
+
+  assert.equal(h.seen.saved, 0, "an edit on the sample was saved to history");
+});
+
+test("the sample is never written into the search form", () => {
+  // The other way to fix the test above is to fill #targetSize and
+  // #targetPrice when the sample opens, as the restore paths do. Those restore
+  // an address with them. The sample would leave 74,000 SF and $8.14M under
+  // whatever address is typed next, and the submit handler reads both: the
+  // size rides /api/comps and multiplies the next report's $/SF.
+  const h = sampleEditHarness();
+  h.openSample();
+  h.type("noi", "520000");
+  assert.equal(h.field("targetSize").value, "", "the sample's size was written into the form");
+  assert.equal(h.field("targetPrice").value, "", "the sample's asking price was written into the form");
+
+  // And nothing was handed the constant to write on: a second look at the
+  // sample has to open with the same figures as the first.
+  assert.notEqual(h.subject(), h.sampleSubject());
+  assert.deepEqual({ ...h.sampleSubject() },
+    { sizeMin: 74000, sizeMax: 74000, priceMin: 8140000, priceMax: 8140000, noi: null });
+});
+
+test("a size left in the form by an earlier search does not become the sample's", () => {
+  // renderOwnerHero auto-fills #targetSize on every real report, so after one
+  // search the box is never empty. "Keep the sample's size when the box is
+  // blank" would fix a cold page load and still swap in the last building's
+  // square footage here, the moment an NOI is typed.
+  const h = sampleEditHarness();
+  h.field("targetSize").value = "152400";
+  h.field("targetPrice").value = "21000000";
+  h.openSample();
+  const s = h.type("noi", "520000");
+  assert.equal(s.sizeMin, 74000, "the previous search's size replaced the sample's");
+  assert.equal(s.priceMin, 8140000, "the previous search's asking price replaced the sample's");
+});
+
+test("a size or price the visitor types on the sample does apply, and emptying it gives the sample's back", () => {
+  const h = sampleEditHarness();
+  h.openSample();
+
+  let s = h.type("targetSize", "100000");
+  assert.equal(s.sizeMin, 100000, "editing the size on the sample must still revalue it");
+  assert.equal(s.priceMin, 8140000, "a size edit took the asking price nobody touched");
+
+  s = h.type("targetPrice", "9000000");
+  assert.equal(s.priceMin, 9000000);
+  assert.equal(s.sizeMin, 100000, "a later edit forgot the size typed a moment ago");
+
+  // The sample has no looked-up size to fall back to, so a blank box that
+  // meant "no size" would strand it on the income approach again.
+  s = h.type("targetSize", "");
+  assert.equal(s.sizeMin, 74000);
+  assert.equal(s.priceMin, 9000000);
+});
+
+test("an input event nobody typed does not resize the sample", () => {
+  // Two scripts dispatch "input" on #targetSize: the per-type detail fields
+  // (to trigger this very re-render) and the footprint estimate, which fills
+  // the box for the NEXT address while its confirm dialog is open.
+  const h = sampleEditHarness();
+  h.openSample();
+  const s = h.machine("targetSize", "9900");
+  assert.equal(s.sizeMin, 74000, "a machine-written size was taken as the visitor's edit of the sample");
+});
+
+test("a size box the visitor emptied is not theirs any more when a script fills it", () => {
+  // Type a size on the sample, delete it, then start a search for another
+  // address: the confirm dialog's footprint estimate fills the empty box and
+  // dispatches "input". The box was typed in once, and if that were still
+  // remembered the sample behind the dialog would take the next building's
+  // size, and keep it when the dialog is cancelled.
+  const h = sampleEditHarness();
+  h.openSample();
+  assert.equal(h.type("targetSize", "100000").sizeMin, 100000);
+  assert.equal(h.type("targetSize", "").sizeMin, 74000);
+  assert.equal(h.machine("targetSize", "9900").sizeMin, 74000,
+    "a machine-written size was taken as the visitor's because they had typed in that box earlier");
+  // Typing in it again makes it theirs again.
+  assert.equal(h.type("targetSize", "88000").sizeMin, 88000);
+});
+
+test("opening the sample again starts from its own figures", () => {
+  const h = sampleEditHarness();
+  h.openSample();
+  assert.equal(h.type("targetSize", "100000").sizeMin, 100000);
+  // The 100,000 is still in the box. It was typed over the last look.
+  h.openSample();
+  assert.equal(h.subject().sizeMin, 74000);
+  assert.equal(h.type("noi", "520000").sizeMin, 74000,
+    "a size typed on an earlier look at the sample came back on the next keystroke");
+});
+
+test("a real report still takes its subject from the form, whole", () => {
+  // The sample's rule must not leak: on every other report the form IS the
+  // subject, a blank size means "none typed" (the hero then falls back to the
+  // looked-up one), and the edit is saved.
+  const h = sampleEditHarness();
+  // Even straight after a sample whose size box was typed in.
+  h.openSample();
+  h.type("targetSize", "100000");
+  h.field("targetSize").value = "";
+
+  h.show({ comps: [] }, { address: "12 Oak St, Boise, ID", type: "Industrial", subject: { sizeMin: 24800 } });
+  let s = h.type("noi", "210000");
+  assert.equal(s.sizeMin, null, "a real report kept a size its form no longer holds");
+  assert.equal(s.priceMin, null);
+  assert.equal(s.noi, 210000);
+  assert.equal(h.seen.saved, 1, "an edit on a real report must still be saved");
+
+  // Machine-written or typed, a real report's form size counts either way:
+  // that is how the footprint estimate and the detail fields reach it.
+  s = h.machine("targetSize", "24800");
+  assert.equal(s.sizeMin, 24800);
+});
+
+// ---------------------------------------------------------------------------
 // "Continue with Google" (2026-08-25). The button is a plain anchor into
 // GET /auth/google, shipped hidden and revealed only by /api/config's
 // googleAuth flag — the Buy-button rule, because most deployments (and every

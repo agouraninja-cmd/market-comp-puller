@@ -10747,6 +10747,18 @@ function seedSearchPace() {
   return SEARCH_PACE.seed;
 }
 
+// The same pace for the single report's loading card (index.html), as the
+// first event of its progress stream: the usual time, and how far in a search
+// stops being on time. Synchronous, because the stream opens inside
+// runCompSearch's onBilledStart callback, which is not awaited; /api/comps
+// starts the seed read when the request arrives, several database round trips
+// before that moment, so by then it has all but always landed. If it has not,
+// this is bulk.js's default, which errs long.
+function searchPaceNow() {
+  const typical = BULK.typicalSearchMs(SEARCH_PACE.samples);
+  return { typical_ms: typical, late_after_ms: Math.round(typical - BULK.lateLeftMs(typical)) };
+}
+
 async function typicalSearchMs() {
   let timer = null;
   await Promise.race([
@@ -20867,6 +20879,9 @@ const server = http.createServer((req, res) =>
         // window, daily cap, size memo, corpus retrieval, the billed call and
         // every side effect that must see the WHOLE report. See runCompSearch.
         let searched;
+        // Start the pace's one read now, unawaited (it never rejects), so it
+        // is in hand by the time the stream opens. See searchPaceNow.
+        if (wantsStream) seedSearchPace();
         try {
           searched = await runCompSearch({
             address: addressOk, type: typeOk, note: noteOk, months: monthsOk,
@@ -20892,6 +20907,10 @@ const server = http.createServer((req, res) =>
             onBilledStart: ({ corpus, market }) => {
               if (!wantsStream) return;
               sse = openSse(res);
+              // First, how long this usually takes: the loading card counts
+              // down from it (2026-11-10). Ours, not the model's, so it does
+              // not pass through guardComp.
+              sse.send("progress", { phase: "pace", ...searchPaceNow() });
               if (corpusIsStrong(corpus)) {
                 sse.send("progress", { phase: "corpus", coverage: corpus.coverage, market });
               }

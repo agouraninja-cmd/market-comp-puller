@@ -34,7 +34,7 @@ test("index.html carries the marker and none of the run view", () => {
   // Half two: and index.html authors NO part of the run view itself. This is
   // the rule the marker exists to enforce — a hand-copy here would drift from
   // /bulk and the two pages would quote different totals for one run.
-  for (const id of ["bkRows", "bkTotals", "bkJobDeck", "bkJobTitle", "bkJobMeta", "bkCancel", "bkDl"]) {
+  for (const id of ["bkRows", "bkTotals", "bkJobDeck", "bkJobTitle", "bkJobMeta", "bkCancel", "bkDl", "bkProg", "bkProgBar"]) {
     assert.equal(INDEX.includes('id="' + id + '"'), false,
       "index.html hand-copies the run view's " + id + " — it must come from the marker");
   }
@@ -381,4 +381,218 @@ test("a deal handed over from Sites fills the type and its fields, and runs noth
   const c = run("?type=Castle&acres=3", ["Industrial", "Land"]);
   assert.equal(c.els.bulkType.value, "Industrial");
   assert.doesNotMatch(snippet, /run\(\)|\.click\(\)|\/api\/bulk/, "a hand-over must never start a billed run");
+});
+
+// ---------------------------------------------------------------------------
+// The time-left bar (2026-11-10, the owner: "a loading bar ... so they can see
+// how much longer it is going to be searching for").
+//
+// The run view is EXECUTED here against a stand-in page, because every rule
+// the bar has is about what it shows over time and none of them is visible in
+// its source: it must not slide backwards, must not reach the end by itself,
+// and must not quote a time it was never given.
+// ---------------------------------------------------------------------------
+function mountRunView() {
+  const els = {};
+  const el = (id) => els[id] || (els[id] = {
+    id, className: "", textContent: "", innerHTML: "", href: "", style: {}, attrs: {},
+    setAttribute(k, v) { this.attrs[k] = String(v); },
+    getAttribute(k) { return this.attrs[k]; },
+    addEventListener() {},
+    querySelectorAll() { return []; },
+  });
+  const clock = { t: 1700000000000 };
+  const intervals = [];
+  const timeouts = [];
+  let reads = () => Promise.reject(new Error("offline"));
+  const ctx = {
+    document: { getElementById: el, querySelectorAll: () => [] },
+    Date: class extends Date { static now() { return clock.t; } },
+    setInterval: (fn, ms) => { intervals.push({ fn, ms }); return intervals.length; },
+    clearInterval: (id) => { if (id) intervals[id - 1] = null; },
+    setTimeout: (fn, ms) => { timeouts.push({ fn, ms }); return timeouts.length; },
+    clearTimeout: (id) => { if (id) timeouts[id - 1] = null; },
+    fetch: (...a) => reads(...a),
+    encodeURIComponent, confirm: () => true, prompt: () => null,
+  };
+  vm.runInNewContext(MOD.BULK_RUN_JS, ctx);
+  return {
+    el, clock, run: ctx.BULKRUN,
+    ticking: () => intervals.filter(Boolean),
+    pending: () => timeouts.filter(Boolean),
+    answer: (fn) => { reads = fn; },
+    bar: () => ({
+      shown: el("bkProg").className === "prog",
+      width: el("bkProgBar").style.width,
+      what: el("bkProgWhat").textContent,
+      left: el("bkProgLeft").textContent,
+    }),
+  };
+}
+const liveJob = (over) => ({
+  id: "j1", status: "running", total: 1, done_count: 0, property_type: "Industrial", months: 24, ...over,
+});
+const oneRow = [{ id: "a", status: "running", address: "1201 W Idaho St, Boise, ID" }];
+
+test("the time-left bar is part of the one run view", () => {
+  const view = MOD.renderBulkRunMarkup({ past: true });
+  for (const id of ["bkProg", "bkProgWhat", "bkProgLeft", "bkProgTrack", "bkProgBar"]) {
+    assert.ok(view.includes('id="' + id + '"'), "the run view lost #" + id);
+  }
+  assert.match(view, /id="bkProgTrack" role="progressbar"/, "the bar is announced as a progress bar");
+  assert.match(view, /class="prog hide" id="bkProg"/, "it ships hidden, like the deck it sits in");
+  // Between the heading and the totals, on both pages, from the one source.
+  assert.ok(view.indexOf('id="bkProg"') > view.indexOf('id="bkJobMeta"')
+    && view.indexOf('id="bkProg"') < view.indexOf('id="bkTotals"'));
+  assert.ok(MOD.renderBulkInlineBlock().includes('id="bkProgBar"'), "the homepage's run view has it too");
+  // Styled by the run view's own fallback-complete CSS, and never dimmed.
+  assert.match(MOD.BULK_RUN_CSS, /\.bk-run \.prog-fill\{[^}]*background:var\(--red,#B91C1C\)/);
+  assert.match(MOD.BULK_RUN_CSS, /prefers-reduced-motion:reduce\)\{\.bk-run \.prog-fill\{transition:none\}/);
+  assert.doesNotMatch(MOD.BULK_RUN_CSS, /\.bk-run \.prog\{[^}]*display:/,
+    ".prog must set no display, or .hide stops hiding it");
+});
+
+test("the bar counts down between polls, in round words", () => {
+  const v = mountRunView();
+  v.run.showRun({ job: liveJob(), items: oneRow, progress: { elapsed_ms: 10000, left_ms: 30000, late: false } });
+  assert.deepEqual(v.bar(), { shown: true, width: "25%", what: "Searching for comps", left: "About 30 seconds left" });
+  assert.equal(v.el("bkProgTrack").attrs["aria-valuenow"], "25");
+  assert.equal(v.el("bkProgTrack").attrs["aria-valuetext"], "Searching for comps, about 30 seconds left");
+  // One ticker, a second apart, and it moves the bar with no new answer.
+  assert.equal(v.ticking().length, 1);
+  assert.equal(v.ticking()[0].ms, 1000);
+  v.clock.t += 10000;
+  v.ticking()[0].fn();
+  assert.deepEqual(v.bar(), { shown: true, width: "50%", what: "Searching for comps", left: "About 20 seconds left" });
+  // A second draw does not arm a second ticker.
+  v.run.showRun({ job: liveJob(), items: oneRow, progress: { elapsed_ms: 20000, left_ms: 20000, late: false } });
+  assert.equal(v.ticking().length, 1);
+
+  // The words: coarse, so the figure does not flicker every second.
+  const span = v.run.span;
+  assert.equal(span(4000), "a few seconds");
+  assert.equal(span(12000), "15 seconds");
+  assert.equal(span(55000), "55 seconds");
+  assert.equal(span(70000), "a minute");
+  assert.equal(span(100000), "2 minutes");
+  assert.equal(span(799000), "13 minutes");
+});
+
+test("the bar never slides back, never finishes by itself, and never invents a time", () => {
+  const v = mountRunView();
+  v.run.showRun({ job: liveJob(), items: oneRow, progress: { elapsed_ms: 20000, left_ms: 20000, late: false } });
+  assert.equal(v.bar().width, "50%");
+
+  // The estimate grew (a slow search). The time says so; the bar holds.
+  v.run.showRun({ job: liveJob(), items: oneRow, progress: { elapsed_ms: 20000, left_ms: 60000, late: false } });
+  assert.equal(v.bar().width, "50%", "a bar that retreats reads as a crash");
+  assert.equal(v.bar().left, "About a minute left");
+
+  // Past its time: said, not promised again.
+  v.run.showRun({ job: liveJob(), items: oneRow, progress: { elapsed_ms: 80000, left_ms: 6000, late: true } });
+  assert.equal(v.bar().left, "Taking a little longer than usual");
+  assert.equal(v.bar().width, "93%");
+
+  // However long it runs, only a finished job fills the bar.
+  v.clock.t += 3600000;
+  v.ticking()[0].fn();
+  assert.equal(v.bar().width, "99%");
+  assert.equal(v.bar().left, "Taking a little longer than usual");
+
+  // A job the server could not time (it answers progress: null) shows its
+  // count and no clock.
+  const list = Array.from({ length: 4 }, (_, i) => ({ id: "r" + i, status: i ? "queued" : "done", address: i + " Main St" }));
+  v.run.showRun({ job: liveJob({ id: "j2", total: 4, done_count: 1 }), items: list, progress: null });
+  assert.deepEqual(v.bar(), { shown: true, width: "25%", what: "Valuing 4 addresses · 1 done", left: "" });
+});
+
+test("a finished run fills the bar once and takes it away; an old run never shows one", () => {
+  const v = mountRunView();
+  v.run.showRun({ job: liveJob(), items: oneRow, progress: { elapsed_ms: 10000, left_ms: 30000, late: false } });
+  v.run.showRun({ job: liveJob({ status: "done", done_count: 1 }), items: [{ ...oneRow[0], status: "done" }] });
+  assert.deepEqual(v.bar(), { shown: true, width: "100%", what: "Done", left: "" });
+  assert.equal(v.ticking().length, 0, "nothing goes on ticking after the run");
+  const hide = v.pending().filter((x) => x.ms === 1500);
+  assert.equal(hide.length, 1);
+  hide[0].fn();
+  assert.equal(v.bar().shown, false);
+
+  // An earlier run opened from the ledger was never watched: no bar at all.
+  const w = mountRunView();
+  w.run.showRun({ job: liveJob({ id: "old", status: "done", done_count: 1 }), items: [{ ...oneRow[0], status: "done" }] });
+  assert.equal(w.bar().shown, false);
+  assert.equal(w.ticking().length, 0);
+
+  // A cancelled or failed run just loses its bar.
+  const x = mountRunView();
+  x.run.showRun({ job: liveJob(), items: oneRow, progress: { elapsed_ms: 10000, left_ms: 30000, late: false } });
+  x.run.showRun({ job: liveJob({ status: "cancelled" }), items: oneRow });
+  assert.equal(x.bar().shown, false);
+});
+
+test("a failed poll or a hidden run view stops the countdown", async () => {
+  const v = mountRunView();
+  v.run.showRun({ job: liveJob(), items: oneRow, progress: { elapsed_ms: 20000, left_ms: 20000, late: false } });
+  assert.equal(v.ticking().length, 1);
+  // The poll does not re-arm itself after a failed read, so a countdown left
+  // running would promise an answer nobody is asking for.
+  await v.run.poll("j1");
+  assert.equal(v.ticking().length, 0);
+  assert.equal(v.bar().left, "", "no clock without an answer");
+  assert.equal(v.bar().width, "50%", "it keeps its place");
+  assert.equal(v.el("bkMsg").textContent, "offline");
+
+  // index.html calls stop() when a single report takes the page.
+  const w = mountRunView();
+  w.run.showRun({ job: liveJob(), items: oneRow, progress: { elapsed_ms: 20000, left_ms: 20000, late: false } });
+  w.run.stop();
+  assert.equal(w.ticking().length, 0);
+});
+
+test("the time said before the button is the time the bar opens on", () => {
+  const BULK = require("../bulk.js");
+  const js = MOD.BULK_JS;
+  const at = js.indexOf("function runSpan(n){");
+  assert.ok(at > -1, "the cost line no longer reads the server's pace");
+  const src = js.slice(at, js.indexOf("\n}", at) + 2);
+  const v = mountRunView();
+  const pace = { typical_ms: 47000, concurrency: 3 };
+  const runSpan = (n, p) => vm.runInNewContext(src + "\nrunSpan(" + n + ")", { PACE: p, BULKRUN: v.run, Math, Number });
+  for (const n of [1, 2, 3, 4, 17, 50]) {
+    const items = Array.from({ length: n }, (_, i) => ({ id: "i" + i, status: "queued" }));
+    const opening = BULK.runProgress({ now: 5, startedAt: 5, items, typicalMs: pace.typical_ms, concurrency: pace.concurrency });
+    assert.equal(runSpan(n, pace), v.run.span(opening.left_ms), n + " addresses");
+  }
+  assert.equal(runSpan(1, pace), "50 seconds");
+  assert.equal(runSpan(50, pace), "13 minutes");
+  // Until the server has said, the old wording stands rather than a guess.
+  assert.equal(runSpan(1, null), "");
+  assert.ok(js.includes('"About "+(took||"a minute")+"; the comp report opens when it finishes.'));
+  assert.ok(js.includes("if(d.pace)PACE=d.pace;"), "the page never picks the pace up");
+});
+
+test("a run started on the page brings its bar into view, by the least scroll", () => {
+  // The form is most of a screen, so on a laptop the bar starts below the
+  // fold and a member who pressed the button would be looking at nothing.
+  const js = MOD.BULK_JS;
+  const runAt = js.indexOf("function run(){");
+  const run = js.slice(runAt, js.indexOf("function runAgain", runAt));
+  assert.match(run, /BULKRUN\.showRun\(d\);BULKRUN\.poll\(d\.job\.id\);\s*showBar\(\);/,
+    "run() no longer shows the bar once the run view is drawn");
+  const at = js.indexOf("function showBar(){");
+  const src = js.slice(at, js.indexOf("\n}", at) + 2);
+  const calls = [];
+  // Copied into this realm: the object is made inside the vm context.
+  const bar = { scrollIntoView: (o) => calls.push({ ...o }) };
+  const go = (reduced, el) => vm.runInNewContext(src + "\nshowBar()", {
+    $: () => el, window: { matchMedia: () => ({ matches: reduced }) },
+  });
+  go(false, bar);
+  go(true, bar);
+  assert.deepEqual(calls, [
+    { block: "nearest", behavior: "smooth" },   // already on screen: no scroll at all
+    { block: "nearest", behavior: "auto" },     // and no glide for a reader who asked for none
+  ]);
+  assert.doesNotThrow(() => go(false, null), "a page without the bar must not throw");
+  assert.match(MOD.BULK_RUN_CSS, /\.bk-run \.prog\{[^}]*scroll-margin:96px 0/, "kept off the viewport's edge");
 });

@@ -437,3 +437,103 @@ test("the no-header branch is unchanged — it splits the text itself", () => {
   const out = BULK.parseAddressList("1 Main St Boise ID\n\n2 Oak Ave Boise ID\n", { max: 50 });
   assert.deepEqual(out.rows.map((r) => r.line), [1, 3]);
 });
+
+// ---------------------------------------------------------------------------
+// How long a run has left (2026-11-10)
+// ---------------------------------------------------------------------------
+
+test("the pace is measured, leans long, and never trusts one search", () => {
+  const first = BULK.TYPICAL_SEARCH_MS + BULK.ROW_OVERHEAD_MS;
+  assert.equal(BULK.typicalSearchMs([]), first, "with nothing timed, the default");
+  assert.equal(BULK.typicalSearchMs(null), first);
+  assert.equal(BULK.typicalSearchMs(["x", -4, 0, NaN]), first, "junk is not a measurement");
+  // One quick search does not rewrite the estimate: until five are in, the
+  // default still counts as one of them.
+  const one = BULK.typicalSearchMs([10000]);
+  assert.ok(one > 10000 + BULK.ROW_OVERHEAD_MS && one < first, "one sample moves it part of the way: " + one);
+  // Enough of them and the default is gone. The 75th percentile, so most runs
+  // finish inside the bar rather than half of them overrunning it.
+  const many = BULK.typicalSearchMs([10000, 11000, 12000, 9000, 30000, 10500]);
+  assert.ok(many >= 11000 + BULK.ROW_OVERHEAD_MS && many < 20000, "p75 of the samples, plus the row's own overhead: " + many);
+  const sorted = [9000, 10000, 10500, 11000, 12000, 30000];
+  assert.ok(many > sorted[2] + BULK.ROW_OVERHEAD_MS, "above the median");
+  // Only the most recent ones count, so a provider change shows up.
+  const old = Array.from({ length: 40 }, () => 60000);
+  const recent = Array.from({ length: BULK.PACE_SAMPLES }, () => 12000);
+  assert.equal(BULK.typicalSearchMs([...old, ...recent]), 12000 + BULK.ROW_OVERHEAD_MS);
+  // Bounded both ways: an outage afternoon is not a four-hour promise, and a
+  // run of instant corpus answers is not "a few seconds" for a cold address.
+  assert.equal(BULK.typicalSearchMs(Array.from({ length: 10 }, () => 3600000)), 240000 + BULK.ROW_OVERHEAD_MS);
+  assert.equal(BULK.typicalSearchMs(Array.from({ length: 10 }, () => 200)), 8000 + BULK.ROW_OVERHEAD_MS);
+});
+
+test("a run's time left is the worker's own arithmetic", () => {
+  const T = 40000;
+  const q = (id) => ({ id, status: "queued" });
+  const r = (id) => ({ id, status: "running" });
+  const d = (id) => ({ id, status: "done" });
+  const base = { now: 1000000, startedAt: 1000000, typicalMs: T, concurrency: 3 };
+
+  // Fifty queued addresses, three at a time: seventeen rounds. This is the
+  // sum the page's cost line does before the button (ceil(n / lanes) x the
+  // usual time), so the two cannot open on different numbers.
+  const fifty = BULK.runProgress({ ...base, items: Array.from({ length: 50 }, (_, i) => q("i" + i)) });
+  assert.deepEqual(fifty, { elapsed_ms: 0, left_ms: Math.ceil(50 / 3) * T, late: false });
+
+  // One address, ten seconds in.
+  const one = BULK.runProgress({ ...base, now: 1010000, items: [r("a")], runningSince: { a: 1000000 } });
+  assert.deepEqual(one, { elapsed_ms: 10000, left_ms: 30000, late: false });
+
+  // Two in flight at different points and one waiting: the waiting row goes
+  // to the lane that frees first, and the answer is when the LAST lane ends.
+  const mixed = BULK.runProgress({
+    ...base, now: 1030000, items: [d("x"), r("a"), r("b"), q("c")],
+    runningSince: { a: 1000000, b: 1020000 },
+  });
+  // a has 10s left, b has 30s, the third lane is idle and takes c for 40s.
+  assert.equal(mixed.left_ms, 40000);
+  assert.equal(mixed.elapsed_ms, 30000);
+
+  // Fewer rows than lanes never invents lanes.
+  assert.equal(BULK.runProgress({ ...base, items: [q("a"), q("b")] }).left_ms, T);
+
+  // A row with no recorded start is assumed to have just begun, which errs long.
+  assert.equal(BULK.runProgress({ ...base, now: 1030000, items: [r("a")] }).left_ms, T);
+
+  // Finished rows cost nothing, so a cache hit only ever moves the bar on.
+  assert.equal(BULK.runProgress({ ...base, items: [d("a"), d("b")] }).left_ms, 0);
+});
+
+test("a search past its time is called late, not promised again", () => {
+  const T = 40000;
+  const base = { startedAt: 1000000, typicalMs: T, concurrency: 3 };
+  const late = BULK.runProgress({
+    ...base, now: 1000000 + 90000,
+    items: [{ id: "a", status: "running" }], runningSince: { a: 1000000 },
+  });
+  assert.equal(late.late, true);
+  assert.ok(late.left_ms > 0 && late.left_ms <= T * 0.15, "a short stretch more, never zero: " + late.left_ms);
+  // With rows still waiting there IS a figure worth quoting, so not late.
+  const more = BULK.runProgress({
+    ...base, now: 1000000 + 90000,
+    items: [{ id: "a", status: "running" }, { id: "b", status: "queued" }],
+    runningSince: { a: 1000000 },
+  });
+  assert.equal(more.late, false);
+  assert.equal(more.left_ms, T, "the waiting row on the idle lane decides it");
+});
+
+test("a cancelled run counts only what is in flight, and an unknown clock is no answer", () => {
+  const T = 40000;
+  const items = [{ id: "a", status: "running" }, ...Array.from({ length: 20 }, (_, i) => ({ id: "q" + i, status: "queued" }))];
+  const c = BULK.runProgress({
+    now: 1005000, startedAt: 1000000, typicalMs: T, concurrency: 3,
+    items, runningSince: { a: 1000000 }, cancelled: true,
+  });
+  assert.equal(c.left_ms, 35000, "the queued rows will never start");
+  // No worker clock: a job this process is not working. The page shows its
+  // count and claims no time.
+  assert.equal(BULK.runProgress({ now: 1005000, items, typicalMs: T, concurrency: 3 }), null);
+  assert.equal(BULK.runProgress({ now: 1005000, startedAt: null, items }), null);
+  assert.equal(BULK.runProgress(null), null);
+});

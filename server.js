@@ -10637,9 +10637,12 @@ async function runCompSearch({
   } else {
     console.log(`Archive-assisted report not cached (vault-subsidized budget): ${addressOk} — ${typeOk}`);
   }
+  const billedMs = Date.now() - billedT0;
   logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false,
     source: corpusIsStrong(corpus) ? "corpus" : corpus.archiveStrong ? "archive" : undefined, plan,
-    duration_ms: Date.now() - billedT0, searches: callStats.searches, out_tokens: callStats.out_tokens, rescue: callStats.rescue });
+    duration_ms: billedMs, searches: callStats.searches, out_tokens: callStats.out_tokens, rescue: callStats.rescue });
+  // The same figure, kept in memory for the comp report's time-left bar.
+  noteSearchPace(billedMs);
   maybePublishMarketSnapshot(typeOk, addressOk, result);
   harvestComps(typeOk, addressOk, result);
   return { report: result, kind: "fresh", callStats };
@@ -10691,7 +10694,94 @@ const BULK_JOB_LIST_LIMIT = 25;
 // answers "is THIS process working on it", which is the only thing an
 // in-process worker can honestly know. Whether a job is running at all is
 // answered by the database's status plus the heartbeat.
-const bulkRunning = new Map(); // job id -> { cancelled: boolean }
+const bulkRunning = new Map(); // job id -> { cancelled, startedAt, since: Map(item id -> ms) }
+
+// ---------------------------------------------------------------------------
+// How long a search takes HERE, lately — what the comp report's time-left bar
+// counts down from (2026-11-10; the rules are bulk.js's typicalSearchMs and
+// runProgress).
+//
+// MEASURED, never a constant. A search is ~10 seconds on Gemini at
+// THINKING_LEVEL=low, ~35 at medium and 40-70 on Anthropic, so any number
+// written here would be wrong the day a provider setting changes, and wrong
+// by enough to make the bar a lie.
+//
+// Fed from ONE seam: runCompSearch's billed leg, which every fresh search
+// passes through (a report run by hand, a bulk row, a retry). Seeded once per
+// process from the same figure in analytics_events, because Render restarts
+// this process on every deploy and an estimate that forgot everything several
+// times a day would mostly be the default. Without a database it is the
+// default until this process has timed searches of its own.
+//
+// NEVER THROWS AND NEVER HOLDS A PAGE. The seed is one small read, raced
+// against a short deadline; a failure, a slow database or an empty table all
+// resolve to "what we have", and bulk.js fills the rest with its default.
+// ---------------------------------------------------------------------------
+const SEARCH_PACE = { samples: [], seed: null };
+const SEARCH_PACE_SEED_DAYS = 14;
+const SEARCH_PACE_SEED_WAIT_MS = 1500;
+
+function noteSearchPace(ms) {
+  if (!Number.isFinite(ms) || !(ms > 0)) return;
+  SEARCH_PACE.samples.push(Math.round(ms));
+  if (SEARCH_PACE.samples.length > BULK.PACE_SAMPLES) SEARCH_PACE.samples.shift();
+}
+
+function seedSearchPace() {
+  if (SEARCH_PACE.seed) return SEARCH_PACE.seed;
+  SEARCH_PACE.seed = (async () => {
+    if (!DB_CONFIGURED) return;
+    const cutoff = new Date(Date.now() - SEARCH_PACE_SEED_DAYS * 24 * 3600 * 1000).toISOString();
+    const rows = await sbRequest("GET",
+      `analytics_events?select=duration_ms&kind=eq.search&cached=is.false` +
+      `&duration_ms=not.is.null&ts=gte.${encodeURIComponent(cutoff)}` +
+      `&order=ts.desc&limit=${BULK.PACE_SAMPLES}`);
+    // Newest first off the wire; the stored ones are OLDER than anything this
+    // process has timed itself, so they go in front and the newest win the cap.
+    const stored = (Array.isArray(rows) ? rows : [])
+      .map((r) => Number(r && r.duration_ms)).filter((n) => Number.isFinite(n) && n > 0).reverse();
+    SEARCH_PACE.samples = [...stored, ...SEARCH_PACE.samples].slice(-BULK.PACE_SAMPLES);
+  })().catch((err) => {
+    console.error("search pace read failed (the time-left bar uses its default):", err.message);
+  });
+  return SEARCH_PACE.seed;
+}
+
+async function typicalSearchMs() {
+  let timer = null;
+  await Promise.race([
+    seedSearchPace(),
+    new Promise((resolve) => { timer = setTimeout(resolve, SEARCH_PACE_SEED_WAIT_MS); }),
+  ]);
+  clearTimeout(timer);
+  return BULK.typicalSearchMs(SEARCH_PACE.samples);
+}
+
+// A running job's progress for the page's bar, or null: a job that is not
+// running, or one this process is not working (a restart mid-run, read during
+// the stall window), has no clock to count from and the page then shows its
+// count alone. `items` are bulkItemRow()s.
+//
+// It must never fail the answer it rides on: the POST that carries it has
+// already started a billed run, and "Could not start that run" over a job
+// that is running would be the worst sentence this feature could cause.
+async function bulkProgressFor(job, items) {
+  try {
+    if (!job || job.status !== "running") return null;
+    const control = bulkRunning.get(String(job.id));
+    if (!control) return null;
+    return BULK.runProgress({
+      now: Date.now(), items, concurrency: BULK_CONCURRENCY,
+      typicalMs: await typicalSearchMs(),
+      startedAt: control.startedAt,
+      runningSince: Object.fromEntries(control.since),
+      cancelled: control.cancelled,
+    });
+  } catch (err) {
+    console.error("bulk progress failed (the bar shows its count alone):", err.message);
+    return null;
+  }
+}
 
 function bulkJobRow(job) {
   if (!job) return null;
@@ -10880,6 +10970,9 @@ async function bulkListPayload(user, ent) {
     leftToday,
     dailyLimit: BULK_DAILY_ADDRESSES,
     types: VAULT.PROPERTY_TYPES,
+    // What one address takes here lately and how many run at once, so the
+    // time said BEFORE the button is the time the bar counts down after it.
+    pace: { typical_ms: await typicalSearchMs(), concurrency: BULK_CONCURRENCY },
   };
 }
 
@@ -10924,10 +11017,13 @@ async function runBulkItem(item, ctx) {
   // start, which is the honest reading of a job somebody committed to twenty
   // minutes ago — and the alternative, re-resolving per row, would leave a
   // portfolio half-valued with nothing on screen explaining why.
-  const { user, ent, job, shared, priv } = ctx;
+  const { user, ent, job, shared, priv, control } = ctx;
   const address = String(item.address || "");
   const market = marketOf(address);
   const started = Date.now();
+  // When this row started, for the page's time-left bar (bulkProgressFor).
+  // In memory with the worker that owns it, and gone the moment the row ends.
+  if (control && control.since) control.since.set(String(item.id), started);
 
   try {
     await patchBulkItem(user.id, item.id, { status: "running" });
@@ -11043,6 +11139,8 @@ async function runBulkItem(item, ctx) {
       // an Anthropic billing message can never surface here either.
       error: String(clientErrorMessage(err) || "That search did not complete.").slice(0, 300),
     }).catch(() => {});
+  } finally {
+    if (control && control.since) control.since.delete(String(item.id));
   }
 }
 
@@ -11121,9 +11219,12 @@ async function saveBulkValuationToRecents(user, job, item, report, valued) {
  * and must therefore never reject.
  */
 async function runBulkJob(job, items, user, ent, opts) {
-  const control = { cancelled: false };
-  bulkRunning.set(String(job.id), control);
   const t0 = Date.now();
+  // `startedAt` and `since` are the time-left bar's clock (bulkProgressFor):
+  // when THIS pass began (a retry is a pass of its own) and when each row in
+  // flight started.
+  const control = { cancelled: false, startedAt: t0, since: new Map() };
+  bulkRunning.set(String(job.id), control);
   // `opts.doneBefore` (2026-09-04): a per-row RETRY re-runs one item of a job
   // that already finished, so `done` has to start where the job stood rather
   // than at zero — otherwise the retry's own heartbeat and final patch would
@@ -11174,7 +11275,7 @@ async function runBulkJob(job, items, user, ent, opts) {
       if (!item) return;
       try {
         const priv = await compsForMarket(marketOf(String(item.address || "")));
-        await runBulkItem(item, { user, ent, job, shared, priv });
+        await runBulkItem(item, { user, ent, job, shared, priv, control });
       } catch (err) {
         // runBulkItem writes its own failures; this catches a failure to
         // WRITE one. One bad row never stops the rest of the list — the same
@@ -24420,9 +24521,13 @@ const server = http.createServer((req, res) =>
           runBulkJob(job, ordered, user, ent)
             .catch((err) => console.error("bulk job crashed:", err.message));
 
+          const startedItems = ordered.map(bulkItemRow);
           return sendJson(res, 200, {
             job: bulkJobRow(job),
-            items: ordered.map(bulkItemRow),
+            items: startedItems,
+            // So the bar opens with its estimate instead of waiting four
+            // seconds for the first poll to bring one.
+            progress: await bulkProgressFor(job, startedItems),
             skipped: parsed.skipped, warnings: parsed.warnings,
             duplicates: parsed.duplicates, truncated: parsed.truncated,
           });
@@ -24839,6 +24944,9 @@ const server = http.createServer((req, res) =>
           const items = (await listBulkItems(user.id, id)).map(bulkItemRow);
           return sendJson(res, 200, {
             job: bulkJobRow(job), items, summary: BULK.summarize(items),
+            // The bar's clock: { elapsed_ms, left_ms, late }, or null when
+            // the job is not running here (see bulkProgressFor).
+            progress: await bulkProgressFor(job, items),
           });
         }
         return sendJson(res, 200, await bulkListPayload(user, ent));

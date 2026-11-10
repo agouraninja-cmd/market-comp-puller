@@ -413,13 +413,44 @@ The recurring components, and what they are made of. The server-page class
 name comes first; the app (`index.html`) usually has its own copy with an
 `rd-` prefix.
 
-**Button** — `.btn`. Red fill (`--red-fill`), white text, weight 600, 14.5px,
-11px 26px padding, 4px radius. Hover darkens to `--red-fill-hover`. White text
-stays white on hover. `.btn.sm` is the header size: 7px 14px, 13px.
+**The button and the tabs are defined once, in `components.js`**
+(2026-11-10). That file holds a small table for each: what the component IS
+(the canon), and the page families that were written before it existed, each
+listing only where it still differs. The stylesheet is generated from the
+table and reaches every page: `server.js` puts it inside `MARKET_CSS` for the
+server-rendered pages and into `index.html` at its `COMPONENT_CSS` marker for
+the app. No page writes its own button or tab rules any more (a test fails
+the build if one does).
+
+**Button** — two sizes and two looks.
+
+| | Padding | Text | Corner | Use |
+|---|---|---|---|---|
+| **Action** (`.btn`) | 11px 26px | 14.5px, 600 | 4px | A page's main call to action |
+| **Compact** (`.btn.sm`, and every page family) | 7px 12px | 13px, 600 | 6px | A control inside a working page |
+
+| Look | Class | Made of |
+|---|---|---|
+| **Primary** | `.btn` | `--red-fill`, white text; hover `--red-fill-hover`. White stays white on hover |
+| **Secondary** | `.btn.ghost` | `--card`, `--ink` text, 1px `--edge` border; hover turns the border `--ink-3` |
+
+A compact button carries a 1px border in both looks, so a red one and an
+outlined one side by side are the same size. Disabled is 60% opacity.
+
+For **new work, use `.btn`, `.btn.sm` and `.btn.ghost`** and nothing else.
+The page families (`.hm-btn` on Home and Sites, `.mc-btn` on the member card,
+`.pw-btn` on Permits, `.msg-btn` in Messages, `.bd-btn` on The Board,
+`.bs-btn` on the building sheet) are the same button under older names; each
+still differs from the canon in a few small ways, listed in `components.js`
+as its `differs` and counted in §9.
+
 *On the slab* (the dark call-to-action bands on the home page and
-`/brokers-firms`) the button is larger — 15px, about 13px 26px, 6px radius —
-and its colours are literal (`#DC2626`, hover `#B91C1C`), see §7. Several
-pages restyle `.btn` locally; §9 counts them.
+`/brokers-firms`) the action button is larger — 15px, about 13px 26px, 6px
+radius — and its colours are literal (`#DC2626`, hover `#B91C1C`), see §7.
+Nine page rules restyle `.btn` for one spot like that; a test lists them and
+refuses a tenth. The Comps and Pipeline pages restate the button whole at
+their own size (9px 16px, 13.5px, 6px corners), on purpose: `vault-page.js`
+keeps a complete design system of its own.
 
 **Card** — `.card`. White (`--card`) on a 1px `--edge` border, 6px radius,
 22px padding, 18px vertical margin, `--lift` shadow. Heading is Georgia 500 at
@@ -486,12 +517,27 @@ separated by a 1px line at 14% white. The red "Run a report" button is hidden
 there. Below 900px the same markup is the ordinary wrapping top bar — there is
 no drawer. Because it sits on the slab, its colours are literal white (§7).
 
-**Section tabs** — `.cs-tabs` in `MARKET_CSS`, over `/comps` and `/bulk`. A
-segmented pill: 1px `--line` border, 999px radius, 13.5px, `--ink-mute`
-links; the current tab is `--ink` with `--paper` text, weight 600. It is a pill
-rather than underlined tabs because `/comps` has a row of underlined tabs
-under its title, and two rows of the same tab style read as one. Other pages
-have their own tab styles (§9).
+**Tabs** — two kinds, both in `components.js`.
+
+*Underlined tabs* (`.tabs` holding `.tab`s; the current one is
+`aria-selected="true"`, or `aria-current="page"` on a link). A row of words
+on a 1px `--line` hairline, 2px apart: 14px `--ink-2` text, 10px 14px
+padding, `--ink` on hover. The current tab is `--ink`, weight 600, with a 2px
+`--red` line under it sitting on the hairline. A count beside a label is a
+`<b>` in `--ink-3`. The families: `.hm-tabs` (Home), `.vt-tabs` (Comps and
+Pipeline) and `.pt-tabs` (Permits, whose line is still ink rather than red).
+
+*Segmented control* (`.seg`). A few choices in a bordered pill: 1px `--line`
+border, 999px radius, 13.5px, `--ink-mute` items with 6px 14px padding; the
+current one is filled `--ink` with `--paper` text, weight 600. The families:
+`.cs-tabs` (the Comps section's two tabs over `/comps` and `/bulk`, which is
+the canon exactly) and `.msg-views` (Messages' Chats / Reports switch, which
+is not a pill yet). The Comps section uses a pill rather than underlined tabs
+because `/comps` has a row of underlined tabs under its title, and two rows
+of the same tab style read as one.
+
+The rankings page's type chips (`.rk-tab`) are filter chips, not tabs, and
+are not part of either.
 
 ---
 
@@ -513,6 +559,7 @@ have their own tab styles (§9).
 | App styles | `<style>` block in `index.html` (starts about line 130) |
 | Comps and Pipeline pages | `vault-page.js` |
 | Hub page | `hub-page.js` |
+| **The button and the tabs** | `components.js` (the canon and each family's `differs`) |
 | Logos | `CN_LOGO` / `CN_LOGO_LIGHT` in `server.js` |
 | Tailwind red ramp | `tailwind.config.js` |
 | Generated Tailwind CSS | `tailwind.css` — **generated, never hand-edit** |
@@ -563,6 +610,12 @@ the stylesheets from §7.
 
 **A font** — change `--serif`, `--sans` or `--mono` in `theme.js` and in
 `index.html`'s copy. The few stacks still written out are listed in §3.
+
+**The button or the tabs** — change the canon in `components.js` (`BUTTON`,
+`TABS`, `SEGMENTED`) and every page moves; restart the server to see it, since
+that file is loaded once at startup. To bring one page's buttons into line,
+delete an entry from that family's `differs`. To add a button to a page, use
+`.btn`, `.btn.sm` or `.btn.ghost`; never a new class of your own.
 
 **The logo** — both SVGs in `server.js`, plus regenerating the eight image
 files in §2.
@@ -645,12 +698,19 @@ new one-off value — they are the reason to stop.
    is a design pass: each fold is a one-line change in `theme.js`, but it
    moves every page that uses it. Spacing in the customer pages is still 42
    literal values, and there are 12 breakpoint widths.
-3. **Components are copied, not shared.** `.btn` is restyled in 8 files (19
-   rules), in at least three sizes. There are five separate tab styles:
-   `.cs-tabs` (Comps section), `.vt-tab` (`vault-page.js`), `.pt-tab`
-   (`permits-page.js`), `.rk-tab` (`market-rank-page.js`) and `.hm-tabs`
-   (Home, `index.html`). Menus, popups, toasts and empty states have no
-   documented pattern at all.
+3. **The button and the tabs are defined once, but the page families still
+   differ from the canon in 44 small ways.** Since 2026-11-10 they live in
+   `components.js` (§6), and each family lists its remaining differences as
+   `differs`: a corner of 8px where the canon is 6px (Home, the member card,
+   the building sheet), a weight of 500 or none where it is 600 (the member
+   card, Messages, Permits), a pixel of padding here and there, Permits'
+   ink underline, Messages' switch not being a pill. Deleting a `differs`
+   entry makes that family the canon; it is a visible change, so it wants
+   before-and-after pictures (`screenshots/components-*--today-vs-unified.png`
+   shows all of them at once). Also still outside it: the app's Tailwind
+   buttons (about 40 class strings on `bg-brand-600`, tied to gap 1's red),
+   the Comps page's own `.btn`, the admin pages and the deal-room hub. Menus,
+   popups, toasts, chips and empty states have no shared pattern yet.
 4. **The Public record badge has no token.** `.rd-badge.p` is literal
    `#46536A` on `#EAEEF4`, with a separate hand-written dark rule. It needs a
    `--pr-text` / `--pr-bg` pair like Estimate and Your comp have.

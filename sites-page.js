@@ -49,10 +49,6 @@ function renderSitesBody(boot) {
 .sp-wall p{margin:0 0 8px;font-size:var(--text-compact);color:var(--ink-body)}
 .sp-wall p:last-child{margin-bottom:0}
 .sp-wall a{color:var(--red);text-decoration:underline}
-.sp-page .hm-btn{flex:none;display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border:1px solid var(--edge);border-radius:var(--r-lg);background:var(--card);font:inherit;font-size:var(--text-small);font-weight:600;color:var(--ink);white-space:nowrap;cursor:pointer;text-decoration:none}
-.sp-page .hm-btn:hover{border-color:var(--ink-3)}
-.sp-page .hm-btn.red{background:var(--red-fill);border-color:var(--red-fill);color:#fff}
-.sp-page .hm-btn.red:hover{background:var(--red-fill-hover)}
 .sp-page .dk-msg{font-size:var(--text-small);color:var(--ink-2);margin-top:8px}
 .sp-page .dk-msg.bad{color:var(--red)}
 .sp-msg{margin:12px 0 0;font-size:var(--text-ui);color:var(--ink-2)}

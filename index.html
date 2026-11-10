@@ -94,6 +94,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        After adding NEW utility classes to this file, regenerate it or they
        won't style — see tailwind.config.js for the one-line command. -->
   <link rel="stylesheet" href="/tailwind.css" />
+  <!-- The button and the tabs (.hm-btn, .mc-btn, .hm-tabs, and the canonical
+       .btn / .tabs / .seg) are components.js: one definition for every page.
+       server.js writes that stylesheet in place of the marker below at serve
+       time, so this file holds no copy of it. After tailwind.css and before
+       this page's own stylesheet, on purpose: a rule there still out-ranks a
+       utility of the same weight, and this page's own rules still out-rank it. -->
+  <!--COMPONENT_CSS-->
   <script src="/valuation.js"></script>
   <!-- Development returns (C6). Served max-age 0 like /valuation.js and for
        the same reason: it must never be cached stale against the HTML. -->
@@ -1552,10 +1559,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .mc-link { border: 0; background: none; padding: 0; font: inherit; color: var(--red); cursor: pointer; text-decoration: none; }
     .mc-link:hover { text-decoration: underline; }
     .mc-actions { position: relative; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .mc-btn { font: inherit; font-size: var(--text-small); font-weight: 500; padding: 7px 13px; border-radius: var(--r-lg); border: 1px solid var(--edge); background: var(--card); color: var(--ink); cursor: pointer; white-space: nowrap; }
-    .mc-btn.pri { background: var(--red-fill); border-color: var(--red-fill); color: #fff; }
     .mc-btn.more { padding: 7px 10px; letter-spacing: .1em; }
-    .mc-btn[disabled] { opacity: .6; cursor: default; }
     .mc-menu { position: absolute; top: calc(100% + 6px); right: 0; min-width: 190px; padding: 5px; background: var(--card); border: 1px solid var(--edge); border-radius: var(--r-xl); box-shadow: 0 14px 32px -14px rgba(15,23,42,.4); z-index: 2; }
     .mc-menu.hidden { display: none; }
     .mc-menu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: var(--r-md); font: inherit; font-size: var(--text-small); color: var(--ink); cursor: pointer; }
@@ -1801,18 +1805,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-fr b { font-size: var(--text-compact); font-weight: 600; }
     .hm-fr small { font-size: var(--text-note); color: var(--ink-3); }
     .hm-find-res .hm-empty a { color: var(--red); font-weight: 600; }
-    .hm-tabs { display: flex; gap: 2px; margin-top: 16px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
-    .hm-tabs::-webkit-scrollbar { display: none; }
-    .hm-tabs button { flex: none; padding: 10px 10px 12px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; font: inherit; font-size: var(--text-compact); font-weight: 500; color: var(--ink-3); white-space: nowrap; cursor: pointer; }
-    .hm-tabs button b { margin-left: 2px; font-weight: 600; color: var(--ink-3); }
-    .hm-tabs button[aria-selected="true"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--red-fill); }
-    .hm-tabs button:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
     .hm-ph { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 10px 8px; }
     .hm-what { margin: 0; max-width: 36ch; font-size: var(--text-small); line-height: 1.45; color: var(--ink-3); }
-    .hm-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--edge); border-radius: var(--r-lg); background: var(--card); font: inherit; font-size: var(--text-small); font-weight: 600; color: var(--ink); white-space: nowrap; cursor: pointer; text-decoration: none; }
-    .hm-btn:hover { border-color: var(--ink-3); }
-    .hm-btn.red { background: var(--red-fill); border-color: var(--red-fill); color: #fff; }
-    .hm-btn.red:hover { background: var(--red-fill-hover); }
     .hm-choice { display: grid; gap: 8px; margin: 2px 10px 12px; }
     .hm-choice.hidden { display: none; }
     .hm-ch { display: block; width: 100%; padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--card); font: inherit; text-align: left; color: inherit; cursor: pointer; text-decoration: none; }

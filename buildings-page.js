@@ -294,9 +294,6 @@ function renderBuildingSheetBody(boot) {
 .bs-notes form{display:flex;flex-direction:column;gap:8px;margin:10px 0 14px}
 .bs-notes textarea{font:inherit;font-size:var(--text-ui);padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r-lg);
   background:var(--card);color:var(--ink);min-height:64px;resize:vertical}
-.bs-btn{appearance:none;align-self:flex-start;border:0;border-radius:var(--r-lg);padding:7px 12px;font:inherit;font-size:var(--text-small);font-weight:600;
-  color:#fff;background:var(--red-fill);cursor:pointer}
-.bs-btn:hover{background:var(--red-fill-hover)}
 .bs-msg{font-size:var(--text-small);color:var(--ink-2);margin:8px 0 0}
 .bs-msg.bad{color:var(--err-text)}
 .bs-wall{border:1px solid var(--edge);border-radius:var(--r-lg);background:var(--card);padding:18px 20px;margin:18px 0}

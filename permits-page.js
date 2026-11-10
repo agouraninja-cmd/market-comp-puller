@@ -91,11 +91,6 @@ function renderPermitsBody(boot) {
 .pt-rm:hover{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
 .pt-rm:focus-visible,.pt-tab:focus-visible,.pt-fgh:focus-visible{outline:2px solid var(--red);outline-offset:2px}
 /* The three tabs. The underline is an inset shadow, so the row can scroll on a phone without clipping it. */
-.pt-tabs{display:flex;gap:28px;margin-top:20px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
-.pt-tab{appearance:none;border:0;background:none;font:inherit;padding:10px 0 11px;font-size:var(--text-body);color:var(--ink-2);cursor:pointer;display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
-.pt-tab:hover{color:var(--ink)}
-.pt-tab[aria-selected="true"]{color:var(--ink);font-weight:600;box-shadow:inset 0 -2px 0 var(--ink)}
-.pt-tab .n{font-size:var(--text-note);font-weight:400;color:var(--ink-3);font-variant-numeric:tabular-nums}
 .pt-badge{align-self:center;font-size:11.5px;font-weight:600;color:#fff;background:var(--red-fill);border-radius:var(--r-sm);padding:2px 6px}
 .pt-protag{align-self:center;font-size:var(--text-tiny);font-weight:500;color:var(--ink-3);border:1px solid var(--line);border-radius:var(--r-sm);padding:1px 5px}
 .pt-panel{padding-top:22px}
@@ -149,11 +144,6 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
 .pw-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:0 0 8px}
 .pw-sub{flex:1 1 320px;margin:0;font-size:var(--text-ui);color:var(--ink-2)}
 .pw-btns{display:flex;gap:8px}
-.pw-btn{appearance:none;font:inherit;font-size:var(--text-small);line-height:1.2;padding:7px 12px;border-radius:var(--r-md);border:1px solid var(--edge);background:var(--card);color:var(--ink);cursor:pointer;white-space:nowrap;display:inline-block}
-.pw-btn:hover{border-color:var(--ink-3)}
-.pw-btn.pri{background:var(--red-fill);border-color:var(--red-fill);color:#fff}
-.pw-btn.pri:hover{background:var(--red-fill-hover);border-color:var(--red-fill-hover);color:#fff}
-.pw-btn[disabled]{opacity:.6;cursor:default}
 .pw-pro{max-width:560px;padding:4px 0 16px}
 .pw-pro h2{margin:0;font-family:var(--serif);font-weight:400;font-size:var(--text-subhead);color:var(--ink)}
 .pw-pro p{margin:6px 0 14px;font-size:var(--text-compact);color:var(--ink-2)}

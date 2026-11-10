@@ -100,13 +100,6 @@ function renderMessagesBody(boot) {
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .msg-head .sub{font-size:var(--text-label);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;max-width:none}
 .msg-grow{flex:1;min-width:0}
-.msg-btn{appearance:none;border:1px solid var(--edge);background:var(--card);color:var(--ink);
-  border-radius:var(--r-md);padding:6px 11px;font-size:var(--text-small);font-weight:500;cursor:pointer;line-height:1.4}
-.msg-btn:hover{background:var(--wash)}
-.msg-btn.primary{background:var(--red-fill);border-color:var(--red-fill);color:#fff}
-.msg-btn.primary:hover{background:var(--red-fill-hover);border-color:var(--red-fill-hover)}
-.msg-btn:disabled{opacity:.5;cursor:default}
-.msg-btn.sm{padding:4px 9px;font-size:var(--text-label)}
 
 /* --- the thread list --------------------------------------------------- */
 /* Internal / External group labels. Labels, not tabs: both groups are always
@@ -352,12 +345,6 @@ function renderMessagesBody(boot) {
 /* Two lists in one column. data-view on the page says which shows; the chat
    code rewrites the page's className whole (on-thread), so the view can never
    live there. */
-.msg-views{display:flex;gap:2px;min-width:0}
-.msg-views button{appearance:none;display:inline-flex;align-items:center;gap:6px;border:0;background:none;
-  padding:6px 10px;border-radius:var(--r-md);font:inherit;font-size:var(--text-body);font-weight:600;color:var(--ink-3);cursor:pointer;white-space:nowrap}
-.msg-views button:hover{color:var(--ink);background:var(--wash)}
-.msg-views button[aria-selected="true"]{color:var(--ink);background:var(--wash-2)}
-.msg-views button:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
 .msg-vn{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red-fill);color:#fff;
   font-size:var(--text-tiny);font-weight:600;display:inline-flex;align-items:center;justify-content:center}
 .msg-vn:empty{display:none}

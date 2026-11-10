@@ -163,8 +163,17 @@ test("no MARKET_CSS declaration leaks into a vault component", () => {
   //
   // Computed rather than listed, so a property ADDED to a MARKET_CSS rule
   // years from now fails here instead of quietly restyling a broker's book.
+  //
+  // Since 2026-11-10 the button and the tabs are components.js, which
+  // MARKET_CSS interpolates, so that stylesheet is expanded here: the vault
+  // still restates .btn whole (its own size), and a declaration ADDED to the
+  // shared button must be restated on the vault's or it fails here. The one
+  // exemption is the vault's own tab family (.vt-tabs, .vt-tab): the component
+  // draws those FOR this page, so sharing them is the point.
   const marketAt = SERVER_JS.indexOf("const MARKET_CSS = `");
-  const marketCss = SERVER_JS.slice(marketAt, SERVER_JS.indexOf("`;", marketAt));
+  const marketLiteral = SERVER_JS.slice(marketAt, SERVER_JS.indexOf("`;", marketAt));
+  assert.ok(marketLiteral.includes("${COMPONENT_CSS}"), "MARKET_CSS no longer carries the shared components");
+  const marketCss = marketLiteral.replace("${COMPONENT_CSS}", () => "\n" + require("../components.js").componentCss() + "\n");
   const vaultCss = VAULT_JS.slice(VAULT_JS.indexOf("<style>"), VAULT_JS.indexOf("</style>"));
 
   // Single-selector rules only, class or element, keyed by their whole text so
@@ -192,6 +201,7 @@ test("no MARKET_CSS declaration leaks into a vault component", () => {
   const leaks = [];
   for (const sel of Object.keys(V)) {
     if (!M[sel]) continue;
+    if (/^\.vt-tabs?\b/.test(sel)) continue;
     const leaked = [...M[sel]].filter((p) => !V[sel].has(p));
     if (leaked.length) leaks.push(sel + " -> " + leaked.join(", "));
   }

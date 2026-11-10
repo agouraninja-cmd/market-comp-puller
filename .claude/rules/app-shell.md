@@ -1,7 +1,9 @@
 ---
 paths:
   - "theme.js"
+  - "components.js"
   - "instant-nav.js"
+  - "test/components.test.js"
   - "test/nav-*.test.js"
   - "test/theme.test.js"
   - "test/instant-nav.test.js"
@@ -295,6 +297,48 @@ paths:
   index.html (its auth chrome, account menu and pricing button are SPA
   behavior owned by `refreshBillingUI()`); what is single-sourced is the
   markup every header shares.
+
+## The shared button and tabs (2026-11-10)
+
+`components.js` defines the button and the tabs once (step 4 of the design
+system work; `docs/DESIGN-SYSTEM.md` §6 has the values). Pure like theme.js.
+Read its header before touching it; the rules a future editor will trip on:
+
+- **A table, not a stylesheet.** Each component is its canon (`BUTTON`,
+  `TABS`, `SEGMENTED`) plus the page families that predate it
+  (`.hm-btn`, `.mc-btn`, `.pw-btn`, `.msg-btn`, `.bd-btn`, `.bs-btn`;
+  `.vt-tabs`, `.pt-tabs`, `.hm-tabs`; `.cs-tabs`, `.msg-views`), each listing
+  only where it still `differs`. `componentCss()` generates one rule set per
+  family UNDER THE FAMILY'S OWN CLASS NAMES, so no markup, script or test
+  changed and nothing moved on screen the day it shipped.
+- **New work uses `.btn`, `.btn.sm`, `.btn.ghost`, `.tabs` / `.tab`, `.seg`.**
+  Never a new family. `test/components.test.js` refuses a new family, a new
+  `differs`, a page rule the component already draws, and a tenth page-level
+  restyle of `.btn`. All four lists may only shrink.
+- **Two deliveries, one string.** `MARKET_CSS` interpolates `COMPONENT_CSS`
+  (every marketShell page), and the `/` handler writes it into index.html at
+  `<!--COMPONENT_CSS-->` (the NAV_LINKS rule: a marker, never a hand-copy).
+  The marker sits AFTER the tailwind.css link and BEFORE the page's own
+  `<style>`, and nothing above it may contain the text `<style>`
+  (theme.test.js slices the page's stylesheet from the first one).
+- **Order is the risk, not the values.** A family's base rule used to sit in
+  its page's stylesheet; it now sits earlier, in the head. A page rule of
+  EQUAL specificity now wins where the base used to. The one case that bit:
+  on `/sites` the copy was `.sp-page .hm-btn` (0,2,0), which out-ranked
+  MARKET_CSS's `a:hover` colour; as `.hm-btn` (0,1,0) it did not, and a link
+  button's label turned red on hover. Hence the canon's secondary hover
+  restates `color`. Any change here wants the before/after sweep, hover
+  included, not a read of the diff.
+- **Deleting a `differs` entry is a visible change** on that family's pages:
+  before and after pictures. `componentCss({ unified: true })` emits the CSS
+  with every `differs` ignored, for a preview and for the tests; nothing
+  serves it.
+- **Not on it, on purpose:** `vault-page.js` restates `.btn` whole at its own
+  size (vault.md's complete-design-system rule; `test/vault-shell.test.js`
+  now expands `COMPONENT_CSS` on the MARKET side and exempts only the
+  vault's own `.vt-tab` family); the admin pages and `hub-page.js` draw
+  their own documents and never receive it; the app's Tailwind-string
+  buttons (`bg-brand-600 ...`) wait on the red they should be.
 
 ## Instant tab switching (2026-09-26)
 

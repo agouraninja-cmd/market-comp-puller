@@ -11389,6 +11389,11 @@ const THEME_CSS = THEME.rootCss();
 // The size scale alone, for the admin pages that draw their own document and
 // colours and so never get THEME_CSS.
 const SCALE_CSS = THEME.scaleCss();
+// The button and the tabs, each defined once (components.js). Interpolated
+// into MARKET_CSS for every server-rendered page, and into index.html at its
+// COMPONENT_CSS marker for the app.
+const COMPONENTS = require("./components.js");
+const COMPONENT_CSS = COMPONENTS.componentCss();
 
 // Sets data-theme before the first frame. Render-blocking and inline on
 // purpose: anything deferred or async paints the light theme first, and a
@@ -11474,6 +11479,10 @@ const INAPP_BOOT =
   `if(shell)document.documentElement.setAttribute("data-inapp-shell","1");` +
   `}catch(e){}})();</script>\n`;
 const INAPP_BOOT_MARKER = "<!--INAPP_BOOT-->";
+// The app's copy of the shared components (components.js). index.html carries
+// this marker and never a hand-copy of the rules: the nav list's one-source
+// rule, for the same reason.
+const COMPONENT_CSS_MARKER = "<!--COMPONENT_CSS-->";
 
 // Instant tab switching (2026-09-26): prerender the tab a member points at,
 // and keep the one they most likely want next warm, so the click swaps in a
@@ -12383,12 +12392,8 @@ ${THEME_CSS}
 /* The Comps section's two tabs (compsSectionTabs, 2026-10-13): Your comps
    and Run a comp report, over /comps and /bulk. A segmented pill rather
    than a row of underlined tabs, because /comps has that row under its
-   title (Comps, Contributions), and two rows of the same tabs read as one. */
-.cs-tabs{display:inline-flex;gap:2px;padding:3px;margin:0 0 24px;max-width:100%;
-  border:1px solid var(--line);border-radius:var(--r-pill);background:var(--card);font-size:var(--text-ui);line-height:1.4}
-.cs-tabs a{padding:6px 14px;border-radius:var(--r-pill);color:var(--ink-mute);font-weight:500;white-space:nowrap}
-.cs-tabs a:hover{color:var(--ink)}
-.cs-tabs a[aria-current="page"]{background:var(--ink);color:var(--paper);font-weight:600}
+   title (Comps, Contributions), and two rows of the same tabs read as one.
+   Its rules (.cs-tabs) are components.js's segmented control, further down. */
 /* Broker directory list on a market page. Plain list, no cards: this is a
    directory, not a ranking, and boxes imply a hierarchy the data cannot back. */
 .brokers{list-style:none;padding:0;margin:12px 0 0}
@@ -12715,9 +12720,9 @@ td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-
 .cta p{color:var(--ink-2);font-size:var(--text-compact);margin:8px auto 20px;max-width:52ch}
 .cta .alt{display:inline-block;margin-top:14px;font-size:var(--text-ui);color:var(--ink-mute);text-decoration:underline;text-decoration-color:var(--edge)}
 .cta .alt:hover{color:var(--ink)}
-.btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:var(--r-sm);font-size:var(--text-body)}
-.btn:hover{background:var(--red-fill-hover);color:#fff}
-button.btn{border:0;cursor:pointer;font-family:inherit}
+/* The button and the tabs (.btn, .btn.sm, .btn.ghost, the page families,
+   .tabs, .seg) are components.js: one definition for every page. */
+${COMPONENT_CSS}
 /* "Value a property here" mini-form in the market-page CTA — the door back
    into a pre-filled search on /. 16px input, or iOS Safari zooms on focus and
    stays zoomed (the .mfilter rule, restated because the two are unrelated
@@ -12746,7 +12751,6 @@ table.stmt th[aria-sort="ascending"]::after{content:" ▲";font-size:.8em}
    (HOW_CSS was deleted 2026-09-02; MARKET_CSS is the only header now). The nav
    rule below it exists because .hdr nav a would otherwise grey the button out.
    No backticks in here: this whole block is a template literal. */
-.btn.sm{padding:7px 14px;font-size:var(--text-small)}
 .hdr nav a.btn{color:#fff}.hdr nav a.btn:hover{color:#fff}
 .related{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .related a{background:var(--card);border:1px solid var(--edge);border-radius:var(--r-sm);padding:6px 14px;font-size:var(--text-small);color:var(--ink-body)}
@@ -15679,8 +15683,6 @@ const BOARD_CSS = `
 .bd-comps th,.bd-comps td{padding:6px 8px;border-bottom:1px solid var(--hair);text-align:left;background:none}
 .bd-comps th.n,.bd-comps td.n{text-align:right}
 .bd-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
-.bd-btn{display:inline-block;font:inherit;font-size:var(--text-small);font-weight:600;color:var(--ink);background:var(--card);border:1px solid var(--edge);border-radius:var(--r-md);padding:6px 12px;cursor:pointer;text-decoration:none}
-.bd-btn:hover{border-color:var(--ink-3);color:var(--ink)}
 .bd-btn[disabled]{opacity:.6;cursor:default}
 .bd-rm{margin-left:auto;font:inherit;font-size:var(--text-small);background:none;border:0;color:var(--ink-3);cursor:pointer}
 .bd-rm:hover{color:var(--red);text-decoration:underline}
@@ -31375,6 +31377,9 @@ const server = http.createServer((req, res) =>
         // never a hand-copy of the in-app detection (THEME_BOOT is the
         // cautionary tale — a copy that has to be kept in step by comment).
         .replace(INAPP_BOOT_MARKER, INAPP_BOOT)
+        // The button and the tabs, from the same stylesheet every
+        // server-rendered page gets inside MARKET_CSS.
+        .replace(COMPONENT_CSS_MARKER, () => `<style>${COMPONENT_CSS}</style>`)
         // The tester badge, from the same constant /vault and /bulk emit --
         // markup, its plain CSS and its handlers. index.html reveals it from
         // refreshBillingUI(), which already knows the entitlements.

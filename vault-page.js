@@ -597,16 +597,8 @@ a.btn.ghost:hover{color:var(--ink)}
    (the leak test in test/vault-shell.test.js computes that set), and any that
    can carry .hide restates it under its own display rule. */
 .vt-wrap{position:relative;margin-top:var(--s6)}
-.vt-tabs{display:flex;align-items:flex-end;gap:2px;border-bottom:1px solid var(--edge);padding-right:200px}
-.vt-tab{font:inherit;font-size:var(--text-compact);color:var(--ink-2);background:none;border:0;border-bottom:2px solid transparent;
-  margin-bottom:-1px;padding:10px 14px;cursor:pointer;white-space:nowrap}
-.vt-tab b{font-weight:600;color:var(--ink-3);margin-left:3px}
-.vt-tab b.hot{color:var(--red)}
-.vt-tab:hover{color:var(--ink)}
-.vt-tab.on{color:var(--ink);font-weight:600;border-bottom-color:var(--red)}
-.vt-tab.on b{color:var(--ink)}
-.vt-tab.on b.hot{color:var(--red)}
-.vt-tab:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
+/* The tabs themselves (.vt-tabs, .vt-tab, the counts, the current one) are
+   components.js's underlined tabs; only what is this page's stays here. */
 .vt-tab.vt-off{display:none}
 .vt-panel{display:none}
 .vt-panel.on{display:block}

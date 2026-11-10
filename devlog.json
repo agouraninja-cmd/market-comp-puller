@@ -4903,5 +4903,11 @@
     "type": "fix",
     "title": "Development costs no longer ride along on a shared report",
     "details": "The Development Returns card says its costs stay in your browser and your own portfolio, “never on shared links”, and two comments in the code said the share route strips them. It did not: a report shared after typing land, hard and soft costs carried all three to anyone with the link, where they could be read from the page's data. The share route now removes them with the loan terms, the rent roll and the gross income, and a test proves all of those are gone from a shared report (nothing tested that before). Links shared before today are covered too: the same figures are now removed every time a shared report is read, whatever the stored copy holds."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "improvement",
+    "title": "A line under the value opens the Collateral Check",
+    "details": "The Collateral Check sits in the report's Analysis tab, and without an NOI that tab used to hold one line of text, so nobody had a reason to open it. Under the estimate's disclaimer the value card now says “Lending or borrowing against it? Check a loan against this estimate”. One click opens the tab, brings the card to the top of the screen and puts the cursor in the loan box. It shows for signed-in members on any report with a dollar value, and stays off printed and downloaded copies."
   }
 ]

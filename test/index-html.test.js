@@ -2356,6 +2356,74 @@ test("only a box somebody typed in is read, so a stale box never overwrites the 
   assert.equal(assumptions.debt.ltvLimitPct, 75);
 });
 
+test("the hero's door to the collateral card shows only when the card does, and never prints", () => {
+  // The card sits in the Analysis tab, which held one line of text without
+  // an NOI until the card shipped, so a lender reading the value had no
+  // reason to open it. The door is a line under the estimate's disclaimer.
+  const door = html.match(/<p id="collDoor" class="([^"]*)">[\s\S]*?<\/p>/);
+  assert.ok(door, "the door to the Collateral Check is gone from the hero");
+  for (const cls of ["hidden", "no-print", "no-capture"]) {
+    // #ownerHero is printed and photographed, and the door is navigation. It
+    // ships hidden because a signed-out visitor has no card to open.
+    assert.ok(door[1].split(/\s+/).includes(cls), `#collDoor must carry ${cls}`);
+  }
+  assert.match(door[0], /<button id="collDoorBtn" type="button"/);
+  // The copy rule: the door offers a check against an ESTIMATE.
+  assert.match(door[0], /Check a loan against this estimate/);
+
+  // One writer, keyed on the card itself, so the two cannot disagree.
+  const cluster = html.match(/function renderAnalysisCluster\(parsed, meta, resetAssumptions\) \{[\s\S]*?\n  \}/);
+  assert.ok(cluster, "could not bound renderAnalysisCluster");
+  assert.match(cluster[0],
+    /getElementById\("collDoor"\)\.classList\.toggle\("hidden",\s*document\.getElementById\("collCard"\)\.classList\.contains\("hidden"\)\)/);
+  assert.equal((html.match(/getElementById\("collDoor"\)/g) || []).length, 1,
+    "a second writer of #collDoor can leave the door up with no card behind it");
+
+  // A new search hides it with the rest of the previous report's hero.
+  const asm = html.match(/\[("widenSearchWrap"[^\]]*)\]\.forEach\(\(id\) =>\s*document\.getElementById\(id\)\.classList\.add\("asm-hidden"\)\)/);
+  assert.ok(asm, "could not find beginAssembly's hero hide list");
+  assert.ok(asm[1].includes('"collDoor"'), "the last report's door would hang under the next report's placeholder");
+
+  // The click: open the tab, bring the card up, cursor in the loan box.
+  const click = html.match(/getElementById\("collDoorBtn"\)\.addEventListener\("click", \(\) => \{[\s\S]*?\n  \}\);/);
+  assert.ok(click, "the door has no click handler");
+  assert.match(click[0], /setReportTab\("analysis"\)/);
+  assert.match(click[0], /scrollToReportCard\(card\)/);
+  assert.match(click[0], /getElementById\("collLoan"\)\.focus\(\{ preventScroll: true \}\)/,
+    "a plain focus() scrolls a second time and fights the scroll just asked for");
+});
+
+test("a report card is scrolled to by its layout position, clear of the sticky bar", () => {
+  // The jump bar and the door share this. It must not measure with
+  // scrollIntoView or getBoundingClientRect: a card in a tab that was just
+  // shown is mid entrance animation, drawn lower than where it comes to
+  // rest, and the first build of the door stopped 12px low, after which the
+  // card rose under the bar. Transforms do not move offsetTop.
+  const fn = html.match(/function scrollToReportCard\(el\) \{[\s\S]*?\n  \}/);
+  assert.ok(fn, "could not bound scrollToReportCard");
+  assert.ok(!/scrollIntoView|getBoundingClientRect/.test(fn[0]),
+    "scrollToReportCard measures where the card is drawn, which is wrong while it animates in");
+  let asked = null;
+  const run = (navHeight, reduced) => {
+    const ctx = vm.createContext({
+      document: { getElementById: (id) => (id === "reportNav" ? { offsetHeight: navHeight } : null) },
+      window: {
+        scrollTo: (o) => { asked = o; },
+        matchMedia: () => ({ matches: reduced }),
+      },
+    });
+    new vm.Script(fn[0] + "\n;this.go = scrollToReportCard;", { filename: "index.html" }).runInContext(ctx);
+    // A card 300px into a panel that itself starts 2,000px down the page.
+    ctx.go({ offsetTop: 300, offsetParent: { offsetTop: 2000, offsetParent: null } });
+  };
+  run(40, false);
+  assert.deepEqual({ ...asked }, { top: 2300 - 40 - 8, behavior: "smooth" });
+  run(0, true);       // no bar on a short report; reduced motion jumps
+  assert.deepEqual({ ...asked }, { top: 2300 - 8, behavior: "auto" });
+  // And the jump bar goes through it, rather than keeping a copy.
+  assert.match(html, /b\.addEventListener\("click", \(\) => scrollToReportCard\(sec\.el\)\)/);
+});
+
 test("the debt card's loan box follows the loan it shares with the collateral card", () => {
   const debt = html.match(/function renderDebtCard\(parsed, meta, resetAssumptions\) \{[\s\S]*?\n  \}/);
   assert.ok(debt, "could not bound renderDebtCard");

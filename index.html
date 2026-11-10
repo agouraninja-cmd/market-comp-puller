@@ -4298,6 +4298,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                disclaimed as an estimate from comparable SALES describes a
                different report. -->
           <p id="ownerEstimateNote" class="text-xs text-[#68707E] mt-4">Automated estimate from recent comparable sales. Not an appraisal and not a broker opinion of value.</p>
+          <!-- The door to the Collateral Check card (2026-11-10, the owner's
+               OK). That card lives in the Analysis tab, and without an NOI the
+               tab held one line of text until the card shipped, so nobody had
+               a reason to open it; a lender reading the value would never
+               find the one tool built for them. Shown exactly when the card
+               is (renderAnalysisCluster is the one writer), hidden while a
+               new report assembles. no-print/no-capture: it is navigation,
+               and #ownerHero is printed and photographed. -->
+          <p id="collDoor" class="hidden no-print no-capture text-xs text-[#5A6473] mt-2">Lending or borrowing against it?
+            <button id="collDoorBtn" type="button" class="disclose text-xs font-medium text-[#5A6473] underline decoration-[#D8D4C9] hover:text-[#1A2433]">Check a loan against this estimate</button></p>
           <div id="bovCtaWrap" class="no-print mt-4 pt-4 border-t border-[#ECEAE3]">
             <button id="bovCtaBtn" type="button"
               class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
@@ -6301,7 +6311,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ["ownerLow", "ownerMid", "ownerHigh"].forEach((id) => { document.getElementById(id).textContent = "-"; });
     ["ownerLowPpsf", "ownerMidPpsf", "ownerHighPpsf"].forEach((id) => { document.getElementById(id).textContent = ""; });
     document.getElementById("ownerBasis").textContent = "Valuation computes when all comps are in";
-    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerYearBuilt", "ownerImproved", "ownerTrust", "ownerTrustHowWrap", "bovCtaWrap"].forEach((id) =>
+    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerYearBuilt", "ownerImproved", "ownerTrust", "ownerTrustHowWrap", "collDoor", "bovCtaWrap"].forEach((id) =>
       document.getElementById(id).classList.add("asm-hidden"));
     document.getElementById("ownerHero").classList.remove("hidden");
     // A repeat search must not show the previous report's prose or rows.
@@ -9598,20 +9608,34 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       b.className = "rn-link";
       b.textContent = sec.label;
       b.dataset.target = sec.id;
-      b.addEventListener("click", () => {
-        // scrollIntoView rather than an anchor href: the ids are report cards,
-        // not link targets, and a hash would land in the URL and then in a
-        // shared link. The sticky bar covers the top of whatever it scrolls
-        // to, so scroll-margin-top is set on the element itself.
-        sec.el.style.scrollMarginTop = (document.getElementById("reportNav").offsetHeight + 8) + "px";
-        sec.el.scrollIntoView({
-          block: "start",
-          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-        });
-      });
+      b.addEventListener("click", () => scrollToReportCard(sec.el));
       inner.appendChild(b);
     });
     markReportNavPosition();
+  }
+
+  // Bring one report card to the top of the screen. Shared by the jump bar
+  // and the hero's door to the Collateral Check.
+  //
+  // A scroll rather than an anchor href: the ids are report cards, not link
+  // targets, and a hash would land in the URL and then in a shared link. The
+  // sticky bar covers the top of whatever is scrolled to, so the card stops
+  // its height (plus a little air) short of the top; the bar measures 0 while
+  // it is hidden, which is right for a report too short to have one.
+  //
+  // Measured from LAYOUT offsets, never scrollIntoView or
+  // getBoundingClientRect. A card in a tab that was just shown is at the
+  // start of its entrance animation (.fade-in and the report cascade begin
+  // it translated down), and both of those measure where it is drawn, not
+  // where it comes to rest: the door's first build stopped 12px low and the
+  // card then rose under the sticky bar. Transforms do not move offsetTop.
+  function scrollToReportCard(el) {
+    let top = 0;
+    for (let n = el; n; n = n.offsetParent) top += n.offsetTop;
+    window.scrollTo({
+      top: Math.max(0, top - document.getElementById("reportNav").offsetHeight - 8),
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
   }
 
   // Scrollspy. Deliberately a scroll read rather than an IntersectionObserver:
@@ -9666,6 +9690,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
   document.getElementById("tabBtnReport").addEventListener("click", () => setReportTab("report"));
   document.getElementById("tabBtnAnalysis").addEventListener("click", () => setReportTab("analysis"));
+  // The hero's door to the Collateral Check: open the Analysis tab, bring the
+  // card to the top, and put the cursor in the one box it needs.
+  document.getElementById("collDoorBtn").addEventListener("click", () => {
+    setReportTab("analysis");
+    const card = document.getElementById("collCard");
+    if (card.classList.contains("hidden")) return;
+    scrollToReportCard(card);
+    // preventScroll: a plain focus() scrolls a second time, to wherever the
+    // browser thinks the box belongs, and fights the scroll just asked for.
+    document.getElementById("collLoan").focus({ preventScroll: true });
+  });
   // Arrow keys complete the tabs pattern (with only two tabs, every arrow is
   // "the other one"); the switch also moves focus, per the APG pattern.
   document.getElementById("reportTabs").addEventListener("keydown", (e) => {
@@ -9701,6 +9736,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // hidden tab would still reach paper, under no appendix heading.
       document.getElementById("collCard").classList.add("hidden");
     }
+    // The hero's door to that card shows exactly when the card is there to
+    // open: signed in, a dollar value on the report, the tab not hidden.
+    document.getElementById("collDoor").classList.toggle("hidden",
+      document.getElementById("collCard").classList.contains("hidden"));
     document.getElementById("tabBtnAnalysis").classList.toggle("hidden", hideResiToolkit);
     document.getElementById("reportTabs").classList.toggle("hidden", hideResiToolkit);
     document.getElementById("analysisLockCard").classList.toggle("hidden", Boolean(currentUser) || !hasNoi);

@@ -78,6 +78,22 @@ paths:
   - **Residential with no NOI** still hides the whole Analysis tab
     (`hideResiToolkit`), and the card with it, since print forces both tab
     panels open.
+  - **The door (`#collDoor`, the owner's OK the same day).** Without an NOI
+    the Analysis tab held one line of text until this card, so nobody had a
+    reason to open it. A line under the hero's estimate disclaimer,
+    "Lending or borrowing against it? Check a loan against this estimate",
+    opens the tab, brings the card to the top and puts the cursor in the
+    loan box (`focus({ preventScroll: true })`). `renderAnalysisCluster` is
+    its ONE writer and keys it on the card's own visibility; it is
+    `no-print no-capture` (the hero is printed and photographed) and in
+    `beginAssembly`'s hide list.
+  - **`scrollToReportCard(el)`** is the jump bar's scroll, pulled out so the
+    door shares it. It measures by LAYOUT offsets (`offsetTop` up the
+    `offsetParent` chain), never `scrollIntoView` or
+    `getBoundingClientRect`: a card in a tab that was just shown is at the
+    start of its entrance animation, drawn 12px lower than where it rests,
+    and the door's first build stopped short and let the card rise under
+    the sticky bar. Test-pinned and executed.
   - **Found while building it:** `/api/share` never stripped
     `assumptions.devCost`, though the Development Returns card, a code comment
     and a test all said it did. It does now, on write AND on read (sharing.md,

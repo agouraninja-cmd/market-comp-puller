@@ -2436,8 +2436,34 @@ test("the debt card's loan box follows the shared loan, except where its own con
   assert.match(debt[0],
     /if \(document\.activeElement !== inLoan && !debtDirty\.has\("debtLoan"\) && !debtLoanUnread\) \{\s*inLoan\.value = d\.loanAmount > 0/,
     "the debt card's loan box no longer follows the shared loan, or redraws over an edit in flight");
-  assert.match(debt[0], /if \(resetAssumptions\) \{ debtDirty\.clear\(\); debtLoanUnread = false; \}/,
-    "a new report must not inherit the last report's uncommitted edits");
+  // A new report starts clean WHETHER OR NOT the card shows for it. The
+  // reset sat below the no-NOI return for one commit (Cursor Bugbot, PR
+  // #416), so a report with no NOI kept the last report's unreadable "1.6M",
+  // its typed-box flags and its pending debounce. Executed: a new report
+  // with no NOI, arriving while all three are set.
+  const boxes = { debtLoan: { value: "1.6M" }, debtRate: { value: "6.75" }, debtAmort: { value: "25" } };
+  const card = { hidden: false, classList: { add(c) { if (c === "hidden") card.hidden = true; } } };
+  let cleared = null;
+  const ctx = vm.createContext({
+    document: { getElementById: (id) => (id === "debtCard" ? card : boxes[id]) },
+    currentUser: { id: "u1" }, debtDirty: new Set(["debtLoan", "debtRate"]), debtEditTimer: 41,
+    clearTimeout: (t) => { cleared = t; },
+  });
+  new vm.Script("var debtLoanUnread = true;\n" + debt[0] +
+    "\n;this.render = renderDebtCard; this.unread = () => debtLoanUnread;", { filename: "index.html" }).runInContext(ctx);
+  ctx.render({}, { subject: { noi: null } }, true);
+  assert.equal(card.hidden, true, "the card shows on a report with no NOI");
+  assert.equal(ctx.debtDirty.size, 0, "the last report's typed boxes would be committed into this report's loan");
+  assert.equal(ctx.unread(), false, "the last report's unreadable loan is still being complained about");
+  assert.equal(cleared, 41, "a debounce pending from the last report can still fire into this one");
+  assert.deepEqual([boxes.debtLoan.value, boxes.debtRate.value, boxes.debtAmort.value], ["", "", ""],
+    "the boxes still hold the last report's figures, which the fill for an NOI typed later would never replace");
+  // The collateral card clears its own before it can return early, too.
+  const coll = html.match(/function renderCollateralCard\(parsed, meta, resetAssumptions\) \{[\s\S]*?\n  \}/);
+  assert.ok(coll, "could not bound renderCollateralCard");
+  assert.ok(coll[0].indexOf("collDirty.clear(); collUnread.clear(); clearTimeout(collEditTimer);") <
+    coll[0].indexOf("card.classList.add(\"hidden\"); return false;"),
+  "the collateral card's reset must come before its early return");
   assert.match(debt[0], /debtLoanUnread \? "type the balance in full, like 2,000,000"/,
     "a balance that could not be read is refused in silence");
   // The collateral card's boxes carry the same guard.

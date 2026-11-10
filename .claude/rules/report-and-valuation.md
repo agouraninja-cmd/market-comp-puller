@@ -78,6 +78,12 @@ paths:
     "1.6M" there used to become a $1.60 loan, which this card then read as
     0.0% LTV and "Covered". It is refused now, the box keeps what was typed,
     and the LTV tile says to type the balance in full (`debtLoanUnread`).
+    **Both cards reset before anything that can return early.** A new
+    report clears each card's flags, drops its pending debounce and (the
+    debt card) empties its boxes whether or not the card shows for that
+    report. The debt card's reset sat below its no-NOI return for one
+    commit, so a report with no NOI kept the last report's "1.6M", rate and
+    flags, and showed them the moment an NOI was typed.
   - **Private, by living in `debt`.** The price (`purchasePrice`) and limit
     (`ltvLimitPct`) sit in `meta.assumptions.debt` beside the loan, so
     `/api/share`'s `delete safeMeta.assumptions.debt` covers them, they ride

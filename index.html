@@ -8817,14 +8817,28 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   function renderDebtCard(parsed, meta, resetAssumptions) {
     const card = document.getElementById("debtCard");
+    const inLoan = document.getElementById("debtLoan");
+    const inRate = document.getElementById("debtRate");
+    const inAmort = document.getElementById("debtAmort");
+    // A new report starts clean WHETHER OR NOT this card shows for it. This
+    // sat below the no-NOI return for one commit (Cursor Bugbot, PR #416): a
+    // report with no NOI never reached it, so the last report's unreadable
+    // "1.6M" and its typed-box flags outlived that report, and surfaced in
+    // this one the moment an NOI was typed. The boxes are emptied here too,
+    // for the same reason: left holding the last report's rate, the fill
+    // below (which only fills EMPTY boxes) would never replace it. And a
+    // debounce still pending from the last report is dropped, so it cannot
+    // commit that report's boxes into this one's loan.
+    if (resetAssumptions) {
+      debtDirty.clear();
+      debtLoanUnread = false;
+      clearTimeout(debtEditTimer);
+      inLoan.value = ""; inRate.value = ""; inAmort.value = "";
+    }
     const noi = meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
     if (!noi || !currentUser) { card.classList.add("hidden"); return; }
     const a = ensureAssumptions(meta, parsed);
     const d = a.debt;
-    const inLoan = document.getElementById("debtLoan");
-    const inRate = document.getElementById("debtRate");
-    const inAmort = document.getElementById("debtAmort");
-    if (resetAssumptions) { debtDirty.clear(); debtLoanUnread = false; }
     if (resetAssumptions || (!inLoan.value && !inRate.value)) {
       inLoan.value = d.loanAmount > 0 ? Math.round(d.loanAmount).toLocaleString() : "";
       inRate.value = d.ratePct > 0 ? d.ratePct : "";
@@ -9018,7 +9032,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function renderCollateralCard(parsed, meta, resetAssumptions) {
     const card = document.getElementById("collCard");
     if (!card) return false;
-    if (resetAssumptions) { collDirty.clear(); collUnread.clear(); }
+    // Before anything that can return early, so a report this card does not
+    // show for still clears the last report's flags and pending debounce.
+    if (resetAssumptions) { collDirty.clear(); collUnread.clear(); clearTimeout(collEditTimer); }
     const r = currentUser ? collateralSummary(parsed, meta) : null;
     if (!r || !r.likely) { card.classList.add("hidden"); return false; }
 

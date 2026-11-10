@@ -4839,6 +4839,41 @@ function rememberSubjectSize(address, payload) {
 // ---------------------------------------------------------------------------
 const sharedReportsMem = new Map();
 
+// What a shared report may never carry: the owner's private finances, which
+// the browser keeps in meta.assumptions under these keys (plus the NOI on
+// meta.subject). ONE list, read by both ends. `debt` is the whole loan: its
+// amount, rate and amortization, and since the Collateral Check card also the
+// purchase price and the lender's own LTV limit, which live in that object so
+// that this one key covers them.
+const SHARE_PRIVATE_ASSUMPTIONS = ["debt", "rentRoll", "opex", "devCost"];
+
+// POST /api/share strips those when a share is WRITTEN; this strips them
+// again when one is READ, because a stored row is only as clean as the code
+// that wrote it. Development costs were not on the writer's list until
+// 2026-11-10 (index.html and its test had said they were since the card
+// shipped), so every share made before then by somebody who had typed a
+// budget still holds it. Fixing the writer alone would have left those links
+// exactly as they were.
+//
+// Returns the payload itself when there is nothing to remove and a COPY
+// otherwise, never a mutation: sharedReportsMem holds that object for the
+// life of the process.
+function sharedPayloadForReader(payload) {
+  const meta = payload && payload.meta;
+  if (!meta || typeof meta !== "object") return payload;
+  const a = meta.assumptions && typeof meta.assumptions === "object" ? meta.assumptions : null;
+  const hasFinance = Boolean(a) && SHARE_PRIVATE_ASSUMPTIONS.some((k) => k in a);
+  const hasNoi = Boolean(meta.subject) && typeof meta.subject === "object" && meta.subject.noi != null;
+  if (!hasFinance && !hasNoi) return payload;
+  const safe = { ...meta };
+  if (hasFinance) {
+    safe.assumptions = { ...a };
+    for (const k of SHARE_PRIVATE_ASSUMPTIONS) delete safe.assumptions[k];
+  }
+  if (hasNoi) safe.subject = { ...meta.subject, noi: null };
+  return { ...payload, meta: safe };
+}
+
 function newShareId() {
   // 8 random bytes -> 11 url-safe chars. Ample against collision at this scale.
   return crypto.randomBytes(8).toString("base64url");
@@ -27454,9 +27489,9 @@ const server = http.createServer((req, res) =>
         }
         if (safeMeta.assumptions && typeof safeMeta.assumptions === "object") {
           safeMeta.assumptions = { ...safeMeta.assumptions };
-          delete safeMeta.assumptions.debt;
-          delete safeMeta.assumptions.rentRoll;
-          delete safeMeta.assumptions.opex;
+          // The list and its history are beside sharedPayloadForReader, which
+          // applies the same one when a share is read.
+          for (const k of SHARE_PRIVATE_ASSUMPTIONS) delete safeMeta.assumptions[k];
         }
         delete safeMeta.sample;
         delete safeMeta.fromHistory;
@@ -27707,6 +27742,10 @@ const server = http.createServer((req, res) =>
       }
       if (decision.reason === "invited") stampShareView(id, SHAREACCESS.normalizeEmail(user.email));
 
+      // Whatever the stored row holds, no reader is handed the owner's
+      // private finances. A copy when it had to change anything.
+      const payload = sharedPayloadForReader(rec.payload);
+
       // Tell a firm reader that this is a FIRM link, and who sent it.
       //
       // Without it a firm share is indistinguishable from a public one on
@@ -27730,9 +27769,9 @@ const server = http.createServer((req, res) =>
         const who = rec.share.user_id ? people.get(String(rec.share.user_id)) : null;
         const firmRow = firms.get(String(rec.share.org_id));
         return sendJson(res, 200, {
-          ...rec.payload,
+          ...payload,
           meta: {
-            ...(rec.payload && rec.payload.meta),
+            ...(payload && payload.meta),
             firmShare: {
               firm: (firmRow && firmRow.name) || "your firm",
               sharedBy: (who && (who.name || who.email)) || "a colleague",
@@ -27742,7 +27781,7 @@ const server = http.createServer((req, res) =>
           },
         });
       }
-      return sendJson(res, 200, rec.payload);
+      return sendJson(res, 200, payload);
     })().catch((err) => {
       console.error("Shared report lookup failed:", err.message);
       // Fails CLOSED: an error resolving the audience refuses the read. The
@@ -31445,6 +31484,9 @@ const server = http.createServer((req, res) =>
     // index.html's inline script calls DEVRETURNS, so a copy cached stale
     // against the HTML would throw where the card renders.
     "/dev-returns.js": { file: "dev-returns.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // The Collateral Check card's math. Same rule, same reason: index.html's
+    // inline script calls COLLATERAL.
+    "/collateral-check.js": { file: "collateral-check.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // Same maxAge: 0 rule as /valuation.js, same reason: /vault's inline
     // script calls the global GUTCHECK, so this file must never be stale
     // relative to the page that depends on it.

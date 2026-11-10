@@ -25,8 +25,22 @@ paths:
 - `POST /api/share` — publishes the current report (`{ data, meta }`) under a
   short random id so the visitor can share the link; returns
   `{ id, url, visibility, invited }`. Strips `meta.subject.noi` and
-  `meta.assumptions` `debt`/`rentRoll`/`opex` (private finances) before
-  storing. Stored in the Supabase `shared_reports` table
+  `meta.assumptions` `debt`/`rentRoll`/`opex`/`devCost` (private finances)
+  before storing. **Private finances are stripped at both ends
+  (2026-11-10).** `SHARE_PRIVATE_ASSUMPTIONS` in server.js is the ONE list:
+  the writer deletes those keys, and `GET /api/shared` runs every payload
+  through `sharedPayloadForReader()` on its way out, because a stored row is
+  only as clean as the code that wrote it. `devCost` was missing from the
+  writer until that day (the Development Returns card, a comment and a test
+  all said it was stripped), so shares made before it still hold a budget in
+  the row; the read strips it, returning a COPY and never mutating the
+  payload `sharedReportsMem` holds. `debt` also carries the Collateral
+  Check card's purchase price and LTV limit, which is why they are private
+  with no list change. A new private figure in `meta.assumptions` goes under
+  one of these keys or adds its key to the list. Tests:
+  `test/routes.test.js` ("a share never carries the owner's private
+  finances", "a share stored before the fix is stripped when it is read").
+  Stored in the Supabase `shared_reports` table
   (id/payload/created_at, plus the four columns migration 018 adds — see
   below), in-memory Map + `shared-reports.json` file fallback (the file
   fallback only ever holds the original three columns' worth of data — see

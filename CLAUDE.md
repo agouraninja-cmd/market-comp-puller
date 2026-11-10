@@ -115,9 +115,11 @@ session that never reads it.
    the ACL (visibility, `revoked_at`, viewers) is re-read on every call and
    never cached with the payload; a public share never carries a private comp.
    [sharing.md]
-6. **Private finances stay in the browser.** NOI, debt terms, the rent roll
-   and op-ex gross income never reach the model, `/api/comps` (so never the
-   cache key) or any public surface, and `/api/share` strips them. The
+6. **Private finances stay in the browser.** NOI, debt terms (the loan, and
+   the Collateral Check's purchase price and LTV limit), the rent roll, op-ex
+   gross income and development costs never reach the model, `/api/comps` (so
+   never the cache key) or any public surface, and `/api/share` strips them,
+   as does every read of a shared report (`SHARE_PRIVATE_ASSUMPTIONS`). The
    signed-in portfolio is the one place they are stored, so any future
    share-from-portfolio must strip them too. [report-and-valuation.md]
 7. **A private comp's address reaches a third party only through our own
@@ -433,7 +435,7 @@ gone. Document a new feature in its area's file, not here.
 |---|---|---|
 | `search-pipeline.md` | `POST /api/comps`, prompt, cache, live progress (SSE), providers, `MODEL`, `THINKING_LEVEL`, measuring a model change (`run-eval.js`), upstream health, the source-link check, flows 1 and 5 (parsing, currency) | `search-provider-*.js`, `report-parse.js`, `link-check.js`, `run-eval.js`, `eval-*` |
 | `corpus.md` | the comp corpus and its health alarm, corpus-first retrieval, radius blend, archive-first, metro matching, on-market listings, `/api/corpus-comps`, the accuracy backtest | `corpus-*.js`, `blend-corpus.js`, `backtest.js`, `market.js`, `deal-date.js` |
-| `report-and-valuation.md` | the report front end: search form, valuation math and hero, flows 2–4 and 3a–3f, private comps on screen and in exports, PowerPoint export | `index.html`, `valuation.js`, `comp-gate.js`, `market-snapshot.js` |
+| `report-and-valuation.md` | the report front end: search form, valuation math and hero, flows 2–4 and 3a–3f, private comps on screen and in exports, PowerPoint export, the Collateral Check card | `index.html`, `valuation.js`, `comp-gate.js`, `market-snapshot.js`, `collateral-check.js` |
 | `billing.md` | Pro tier, trial, prices, free allowance, passkeys, admin access, branding, trial emails, `/api/config`, `/pricing` | `entitlements.js`, `stripe.js`, `branding.js`, `trial-notices.js`, `pricing-page.js` |
 | `vault.md` | the broker vault (import, mapper, editing, publishing, dashboard, gut check, BOV, building facts), comp submissions, the lead inbox | `vault-*.js`, `broker-*.js`, `building-facts.js`, `gut-check.js`, `bov-log.js`, `blend-comps.js`, `xlsx.js` |
 | `firms.md` | firms: membership, shelf, buildings, sheets, leases, contacts, messaging doors, Messages' Reports view, auto-share, the shared vault, seats, shop kinds | `org-*.js`, `buildings-page.js`, `messaging.js`, `messages-page.js`, `report-inbox.js` |

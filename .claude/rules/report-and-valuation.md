@@ -5,6 +5,8 @@ paths:
   - "comp-gate.js"
   - "market-snapshot.js"
   - "report-id.js"
+  - "collateral-check.js"
+  - "test/collateral-check.test.js"
   - "test/index-html.test.js"
   - "test/valuation.test.js"
   - "test/comp-gate.test.js"
@@ -19,6 +21,68 @@ paths:
 > Add new notes for this area here, not there.
 
 ## Architecture
+
+- **The Collateral Check card (2026-11-10; the owner's ask was to cater to an
+  SBA lender, Live Oak Bank).** The Analysis tab's Debt & Refi card hides
+  until an NOI is typed, and an owner-occupied building has none: the
+  business repays the loan and the building is collateral. `#collCard` is the
+  one card in that tab that needs no NOI. It takes a loan, an optional
+  purchase price and the lender's own LTV limit, and reads the loan against
+  the hero's Low / Likely / High: three LTV tiles (green inside the limit, red
+  past it), "Value this loan needs" (loan over limit, the figure a lender
+  carries into the appraisal), and one read sentence keyed on the verdict
+  (`covered` / `depends` / `stretch` / `short`). Rules:
+  - **The math is `collateral-check.js`** (pure, dual-exported, browser
+    global `COLLATERAL`, `maxAge: 0`, tested in
+    `test/collateral-check.test.js`). A missing number is null, never zero;
+    shorthand ("1.6M") is refused, and the card says the figure could not be
+    read (`collUnread`) instead of emptying the box.
+  - **Lesser of price and value.** With a purchase price the basis of each
+    scenario is whichever is lower, so a tile's line says "on the $X price"
+    when that is what it was measured on. `priceBinds` is the price alone
+    breaking the limit: no appraisal fixes that, and both the read and the
+    "Value this loan needs" line say so rather than "the appraisal decides".
+  - **It quotes the hero's own figures, never a fourth.**
+    `collateralValueRange` reads `lastValuation`; with none (an income-led
+    hero) it ⚠ mirrors `renderOwnerHero`'s income branch through `heroRound`.
+    It first read `sellTodayEstimate` alone there and said "one value, not a
+    range" under a hero showing three. A report with one figure (the owner's
+    own cap rate) gets a verdict on that figure and no invented spread; a
+    report with no dollar value (leases only, no size) hides the card.
+  - **One loan per report.** The card's loan IS
+    `meta.assumptions.debt.loanAmount`, the debt card's figure, so the two
+    cards cannot quote two LTVs. Each writes the other's box unless it is the
+    focused one (`collBox`; the matching line in `renderDebtCard`). Because a
+    focused box can lag the assumptions, `commitCollateral` reads ONLY the
+    boxes typed in since the last commit (`collDirty`), and leaving a box
+    commits at once. Reading every box wrote a stale, empty loan box back
+    over the debt card's loan; the test executes that case.
+  - **Private, by living in `debt`.** The price (`purchasePrice`) and limit
+    (`ltvLimitPct`) sit in `meta.assumptions.debt` beside the loan, so
+    `/api/share`'s `delete safeMeta.assumptions.debt` covers them, they ride
+    the portfolio like the other loan terms, and they never reach
+    `/api/comps`. A test fails if `commitCollateral` writes anywhere else.
+  - **Print and exports.** With no loan and no price the card is
+    `no-print no-capture` (its boxes are no-print, so it would be an empty
+    shell). `renderCollateralCard` returns whether it prints, and the
+    print-only `#analysisSeam` heading shows on `hasNoi || collPrints`. The
+    Excel Assumptions sheet gets a "Collateral check" block from the same
+    `collateralSummary()` the card draws from. The jump bar lists it as
+    "Collateral".
+  - **Copy.** It is "a pre-screen against an automated estimate, not an
+    appraisal and not a bank evaluation" (test-pinned). "Evaluation" is a
+    regulatory term for a bank, and the Terms say estimates must not be relied
+    on for lending, so the card is worded as deciding whether to ORDER an
+    appraisal and never as standing in for one. 80% is only where the limit
+    box starts; nothing here states or implies a lending limit.
+  - **Residential with no NOI** still hides the whole Analysis tab
+    (`hideResiToolkit`), and the card with it, since print forces both tab
+    panels open.
+  - **Found while building it:** `/api/share` never stripped
+    `assumptions.devCost`, though the Development Returns card, a code comment
+    and a test all said it did. It does now, on write AND on read (sharing.md,
+    "Private finances are stripped at both ends"), and `test/routes.test.js`
+    holds the first tests of any of that stripping.
 
 - **A land report reads per acre throughout (2026-10-21).** `ALT_BASIS.Land`
   has led the hero since it was written, but only once the acreage was

@@ -4930,6 +4930,12 @@
   },
   {
     "date": "2026-11-10",
+    "type": "fix",
+    "title": "Typing an NOI on the sample report no longer changes its value",
+    "details": "On the sample report, typing a net operating income to try the analysis tools made the headline switch from the comp-based value ($8,325,000 at $112/SF) to an income-approach figure ($8,600,000), and the asking-price comparison disappeared. The sample was losing its 74,000 SF and its asking price on the first keystroke. Now the comp-based value stays, the income approach is added under it as a cross-check, and the analysis cards unlock, the same as on a real report. Typing your own size or asking price on the sample still revalues it, and emptying the box puts the sample’s figure back."
+  },
+  {
+    "date": "2026-11-10",
     "type": "feature",
     "title": "Collateral Check: read a loan against the report's value range, no NOI needed",
     "details": "The Analysis tab's Debt & Refi card only opens once an NOI is typed, and an owner-occupied building has none: the business repays the loan and the building is collateral. So a lender pre-screening that kind of deal (a vet clinic, a machine shop, a self-storage operator buying its site) got no loan math at all. The new Collateral Check card asks for one thing, the loan, and reads it against all three of the report's figures: loan-to-value at the Low, Likely and High values, the value the loan needs to sit inside your own LTV limit (80% to start, yours to change), and a plain sentence on where that leaves it: covered across the range, the appraisal decides, a stretch, or over the limit throughout. Add a purchase price and it counts the lesser of price and value the way a lender does, says where the price sits against the range, shows the borrower's equity, and tells you when the price itself is what breaks the limit, so no appraisal can fix it. The loan is the Debt card's own loan (one figure, the two boxes stay in step), everything rides into the Excel export and the printed appendix, and none of it leaves your browser and your own portfolio. It is a pre-screen against an automated estimate, not an appraisal and not a bank evaluation, and the card says so."

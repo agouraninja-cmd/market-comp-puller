@@ -605,6 +605,11 @@ const PRICING = {
   annual: 490,
   firmSeat: 39,
   minSeats: ORG.MIN_SEATS,
+  // The monthly search allowance every paid plan carries (2026-11-10): the
+  // rate card's other two figures, read from the rule so a page can never
+  // quote a number the gate does not enforce.
+  includedSearches: ENT.PRO_SEARCHES_PER_MONTH,
+  overageCents: ENT.SEARCH_OVERAGE_CENTS,
   // Not a price, but the rate card's other figure: how many reports a free
   // account runs a month (null = no cap). /pricing and the FAQ state it.
   freeReports: FREE_REPORTS_CAP,
@@ -1332,25 +1337,14 @@ const SEARCH_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 // (cache hits are free and don't count). Override via env for more headroom.
 const DAILY_SEARCH_CAP = Number(process.env.DAILY_SEARCH_CAP) > 0 ? Number(process.env.DAILY_SEARCH_CAP) : 150;
 
-// The same backstop for bulk valuation, and it is a SEPARATE number for a
-// reason: DAILY_SEARCH_CAP above is site-wide and Pro deliberately bypasses
-// it (`countsDailyCap: !ent.pro`), so a paying subscriber is never told the
-// site is out of searches. That exemption was written for somebody typing
-// one address at a time. Bulk multiplies it by fifty per click: one run is
-// ~17 minutes and ~$18, and with one-job-at-a-time as the only bound a
-// member could start another the moment it finishes — roughly $63/hour,
-// indefinitely. This is PER MEMBER, so one person's ceiling never denies
-// anyone else a search (charging bulk to DAILY_SEARCH_CAP instead would let
-// one 50-address run eat a third of the site's daily allowance and lock out
-// the free visitors it exists to protect).
-//
-// 200 is about four full runs a day, which is far more than the workflow
-// this was built for (a broker valuing one portfolio) and far less than an
-// unbounded afternoon. Env-overridable because the moment it bites is the
-// moment a real customer is blocked mid-workday, and that must not need a
-// deploy. A smoke alarm, not accounting.
-const BULK_DAILY_ADDRESSES = Number(process.env.BULK_DAILY_ADDRESSES) > 0
-  ? Number(process.env.BULK_DAILY_ADDRESSES) : 200;
+// Bulk valuation had its own per-member daily ceiling here
+// (BULK_DAILY_ADDRESSES, 200) until 2026-11-10. It went with the 50-per-run
+// cap (owner's call): the one limit on a Pro account's searches is now the
+// MONTHLY allowance — ENT.PRO_SEARCHES_PER_MONTH included, then
+// ENT.SEARCH_OVERAGE_CENTS a search for a subscription Stripe is billing, and
+// a hard stop for an account with nothing to bill (a trial, a comped tester).
+// See searchAllowanceFor below and entitlements.js for the rule. A host that
+// still sets BULK_DAILY_ADDRESSES is told at boot that it does nothing.
 
 // Rough per-search API cost, used ONLY for the /admin spend estimate — nothing
 // here reads a real invoice, so treat the tiles as a sanity check, not
@@ -3238,6 +3232,138 @@ async function recordReportRun(userId, reportKey, now) {
     console.error("Report usage write failed (report still served):", e.message);
     return false;
   }
+}
+
+// --- The monthly search allowance (2026-11-10) ------------------------------
+//
+// One row per BILLED search in export_usage, under the period key
+// ENT.searchUsagePeriod ("searches-YYYY-MM") — the report allowance's trick,
+// for its reason: no migration, and a key space the other two tallies can
+// never read. The report_key is unique per search (there is nothing to
+// dedupe: a second billed search of one address is a second charge to us), so
+// the tally is the row count.
+//
+// The count is read in pages because one read is capped at 1,000 rows and a
+// subscriber running past the allowance can pass that in a month. `upTo`
+// stops the read as soon as the answer is known: the gate only asks "at or
+// past the allowance?", so it reads allowance+1 rows and no more.
+const SEARCH_COUNT_PAGE = 1000;
+const SEARCH_COUNT_MAX = 100000;
+async function countSearchesInPeriod(userId, period, upTo = SEARCH_COUNT_MAX) {
+  let total = 0;
+  while (total < upTo) {
+    const want = Math.min(SEARCH_COUNT_PAGE, upTo - total);
+    const rows = await sbRequest("GET",
+      `export_usage?user_id=eq.${encodeURIComponent(userId)}` +
+      `&period=eq.${encodeURIComponent(period)}&select=report_key` +
+      `&order=report_key.asc&limit=${want}&offset=${total}`);
+    const got = Array.isArray(rows) ? rows.length : 0;
+    total += got;
+    if (got < want) break;
+  }
+  return total;
+}
+
+// Records one billed search. Never throws: a failed write costs us one
+// uncounted search, never the member their report.
+async function recordSearchRun(userId, now) {
+  if (!userId || !DB_CONFIGURED) return false;
+  try {
+    const key = `${Number(now).toString(36)}-${crypto.randomBytes(6).toString("hex")}`;
+    await sbRequest("POST", "export_usage",
+      [{ user_id: userId, period: ENT.searchUsagePeriod(now), report_key: key }],
+      { prefer: "return=minimal" });
+    return true;
+  } catch (e) {
+    console.error("Search usage write failed (search still served):", e.message);
+    return false;
+  }
+}
+
+// Where this member stands against the month's allowance, or null when their
+// plan is not metered (free, anonymous, a dark deployment, the comped team —
+// ENT.searchAllowance decides, never this function).
+//
+// `exact` asks for the real count, for a screen that prints it. Without it
+// the read stops at allowance+1, which is all a gate needs.
+//
+// Fails OPEN, like the other usage reads and for their reason: a failed count
+// must not lock a member out of a tool they pay for. It reports a clean month.
+async function searchAllowanceFor(user, ent, { exact = false } = {}) {
+  const probe = ENT.searchAllowance(ent, 0);
+  if (!probe || !user || !user.id || !DB_CONFIGURED) return null;
+  let used = 0;
+  try {
+    used = await countSearchesInPeriod(user.id, ENT.searchUsagePeriod(Date.now()),
+      exact ? SEARCH_COUNT_MAX : probe.included + 1);
+  } catch (e) {
+    console.error("Search usage lookup failed (allowing):", e.message);
+  }
+  return ENT.searchAllowance(ent, used);
+}
+
+// "December 1": when the month's allowance starts again, for a refusal that
+// says when to come back.
+function searchAllowanceResetsOn(now = Date.now()) {
+  const d = new Date(now);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))
+    .toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
+}
+
+// "$0.10": the overage price as a member reads it.
+function searchOveragePrice(cents) {
+  return cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
+}
+
+// The sentence a member reads when the allowance stops them. One builder so
+// the report form, a list run and a row retry cannot word it three ways.
+// `count` is how many new searches were asked for (1 for a single report).
+function searchLimitMessage(allowance, count, ent) {
+  const resets = searchAllowanceResetsOn();
+  // Only a trial can fix this by subscribing; a comped tester or a card in
+  // its grace window is not helped by being told to buy.
+  const upsell = ent && ent.trial === true
+    ? ` On a paid plan, searches past ${allowance.included} keep going at ${searchOveragePrice(allowance.overageCents)} each.`
+    : "";
+  if (allowance.left === 0) {
+    return `You have used the ${allowance.included} searches included this month. They start again on ${resets}.` +
+      ` Reports you have already run still open from cache.${upsell}`;
+  }
+  return `That list is ${count} addresses and you have ${allowance.left} of this month's ${allowance.included} searches left.` +
+    ` An address searched before comes from cache and uses none, but a new one uses a search.` +
+    ` Trim the list, or run the rest after ${resets}.${upsell}`;
+}
+
+// The gate runCompSearch calls at the last moment before a search is billed
+// (so a cache hit is never refused and never counted). Built per request by
+// the two callers that bill a member's search: /api/comps and the bulk worker.
+function searchGateFor(user, ent) {
+  if (!user || !ENT.searchAllowance(ent, 0)) return null;
+  return async () => {
+    const allowance = await searchAllowanceFor(user, ent);
+    if (allowance && allowance.blocked) {
+      const refused = new Error(searchLimitMessage(allowance, 1, ent));
+      refused.code = "search_limit";
+      refused.allowance = allowance;
+      throw refused;
+    }
+  };
+}
+
+// What a screen needs to state the allowance: the counts, and the price as
+// text. Presentation only; every gate re-reads.
+function searchAllowancePayload(allowance) {
+  if (!allowance) return null;
+  return {
+    included: allowance.included,
+    used: allowance.used,
+    left: allowance.left,
+    over: allowance.over,
+    canExceed: allowance.canExceed,
+    overageCents: allowance.overageCents,
+    overagePrice: searchOveragePrice(allowance.overageCents),
+    resetsOn: searchAllowanceResetsOn(),
+  };
 }
 
 // reportKeyOf() and reportIdFor() live in report-id.js (required at the top),
@@ -10442,6 +10568,12 @@ async function runCompSearch({
   maxComps: maxCompsOk, txFocus: txFocusOk = "both", subjectSizeSqft: sizeOk = null,
   subjectDetails: detailsOk = {}, skipCache = false, plan = null,
   countsDailyCap = true, onBilledStart = null, onProgress = null,
+  // The member's monthly search allowance (2026-11-10), as a function the
+  // caller builds (searchGateFor) and this calls at the one moment it applies:
+  // after both cache paths have missed and before anything is billed. It
+  // throws code "search_limit" to refuse. null for an anonymous, free or
+  // internal caller, which restores the old behaviour byte for byte.
+  searchGate = null,
   // The caller's OWN vault comps for this market + type — the same user-scoped
   // rows finishReportForViewer will blend at serialization, passed in rather
   // than re-read (both callers already hold them). They move the SEARCH BUDGET
@@ -10496,6 +10628,10 @@ async function runCompSearch({
     harvestComps(typeOk, addressOk, dw.parent);
     return { report: dw.derived, kind: "derived", callStats };
   }
+
+  // The member's own monthly allowance comes first: a refusal here must not
+  // also spend one of the site's daily searches.
+  if (searchGate) await searchGate();
 
   // Thrown rather than returned so no caller can mistake a refusal for a
   // report. Who is exempt is the caller's call (see countsDailyCap);
@@ -10762,34 +10898,12 @@ async function patchBulkItem(userId, id, patch) {
     `bulk_job_items?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}`, patch);
 }
 
-// How many addresses this member has actually put through a search today.
-//
-// Counts rows that were ATTEMPTED (anything past `queued`), not rows that were
-// created, so cancelling a fifty-address run after two rows costs two and not
-// fifty — otherwise the honest act of stopping a run would be punished harder
-// than letting it finish.
-//
-// Windowed on `created_at` rather than `finished_at`: a job that straddles UTC
-// midnight therefore counts wholly against the day it started, which is the
-// approximation this is happy to make. It is a spend backstop, not accounting
-// — the same stance DAILY_SEARCH_CAP takes about being in-memory.
-//
-// Capped at cap+1 rows so the query cost cannot grow with a heavy user: the
-// only question is whether the number is at or over the ceiling.
-async function bulkAddressesUsedToday(userId, cap) {
-  const since = todayUTC() + "T00:00:00Z";
-  const rows = await sbRequest("GET",
-    `bulk_job_items?user_id=eq.${encodeURIComponent(userId)}` +
-    `&created_at=gte.${encodeURIComponent(since)}` +
-    `&status=neq.queued&select=id&limit=${Math.max(1, cap) + 1}`);
-  return Array.isArray(rows) ? rows.length : 0;
-}
-
 // What the workspace needs before it can draw a form: the member's runs, the
-// two caps, and the property types. ONE builder, used by both the /bulk page's
-// boot payload and the GET route the page polls — they were two copies for
-// about an hour and the page shipped without the daily allowance, which is a
-// number the form is supposed to show BEFORE somebody pastes fifty addresses.
+// row ceiling, the month's search allowance, and the property types. ONE
+// builder, used by both the /bulk page's boot payload and the GET route the
+// page polls — they were two copies for about an hour and the page shipped
+// without the allowance, which is a number the form is supposed to show
+// BEFORE somebody pastes a list.
 async function bulkListPayload(user, ent) {
   const jobs = [];
   for (const j of await listBulkJobs(user.id)) {
@@ -10809,11 +10923,21 @@ async function bulkListPayload(user, ent) {
   if (jobs.length) {
     try {
       const ids = jobs.map((j) => j.id);
-      const rows = await sbRequest("GET",
-        `bulk_job_items?user_id=eq.${encodeURIComponent(user.id)}` +
-        `&job_id=in.(${pgInList(ids)})&status=eq.done` +
-        `&select=job_id,status,value_low,value_likely,value_high` +
-        `&limit=${BULK_JOB_LIST_LIMIT * BULK.MAX_ADDRESSES}`);
+      // Paged (2026-11-10): one read is capped at 1,000 rows, and a run can
+      // now hold that many on its own, so a single read would quietly drop
+      // rows and the ledger would print a short total as if it were whole.
+      const rows = [];
+      const cap = BULK_JOB_LIST_LIMIT * BULK.MAX_ADDRESSES;
+      while (rows.length < cap) {
+        const page = await sbRequest("GET",
+          `bulk_job_items?user_id=eq.${encodeURIComponent(user.id)}` +
+          `&job_id=in.(${pgInList(ids)})&status=eq.done` +
+          `&select=job_id,status,value_low,value_likely,value_high` +
+          `&order=id.asc&limit=1000&offset=${rows.length}`);
+        const got = Array.isArray(page) ? page : [];
+        rows.push(...got);
+        if (got.length < 1000) break;
+      }
       const byJob = new Map();
       for (const r of Array.isArray(rows) ? rows : []) {
         if (!byJob.has(r.job_id)) byJob.set(r.job_id, []);
@@ -10827,20 +10951,16 @@ async function bulkListPayload(user, ent) {
       console.error("bulk list totals failed (ledger shows no figure):", err.message);
     }
   }
-  // Best-effort: a failed count reports the full ceiling, matching the route's
-  // own fail-open, so the page can never be more pessimistic than the gate.
-  let leftToday = BULK_DAILY_ADDRESSES;
-  try {
-    leftToday = Math.max(0, BULK_DAILY_ADDRESSES -
-      await bulkAddressesUsedToday(user.id, BULK_DAILY_ADDRESSES));
-  } catch (err) {
-    console.error("bulk daily count failed (reporting the full ceiling):", err.message);
-  }
+  // The month's search allowance, exact, so the form can say what is left and
+  // what a longer list would cost BEFORE the button. null for a plan that is
+  // not metered (the comped team). searchAllowanceFor fails open to a clean
+  // month, matching the route's own gate, so the page can never be more
+  // pessimistic than the gate.
+  const allowance = await searchAllowanceFor(user, ent, { exact: true });
   return {
     jobs,
     maxAddresses: Math.min(BULK.MAX_ADDRESSES, Number(ent.bulkMaxAddresses) || 0),
-    leftToday,
-    dailyLimit: BULK_DAILY_ADDRESSES,
+    searches: searchAllowancePayload(allowance),
     types: VAULT.PROPERTY_TYPES,
   };
 }
@@ -10917,11 +11037,21 @@ async function runBulkItem(item, ctx) {
       // searches cost or find.
       vaultRows: priv.vault,
       plan: ent.plan,
-      // Pro, so the daily cap does not apply — it is a scraper backstop, and
-      // /api/bulk has its own, tighter ceilings (one job at a time, capped
-      // addresses) which is what actually bounds the spend here.
+      // Pro, so the site-wide daily cap does not apply — it is a scraper
+      // backstop. What bounds the spend here is the member's own monthly
+      // search allowance (searchGate, below) and one job at a time.
       countsDailyCap: false,
+      // The same gate /api/comps passes: a row whose address misses the cache
+      // is refused once the month's included searches are spent and nothing
+      // can be charged for more. The route already refuses a list that would
+      // not fit, so this fires only when the allowance moved under a running
+      // job (a second tab, a colleague's retry); the row fails with the
+      // member-facing sentence and the rest of the run carries on.
+      searchGate: searchGateFor(user, ent),
     });
+    // Counted when it comes back, exactly as /api/comps counts it. A row
+    // served from cache is "cache"/"derived" and costs the member nothing.
+    if (searched.kind === "fresh") await recordSearchRun(user.id, Date.now());
 
     // The same serialization funnel /api/comps uses, fed the same private
     // comps: a broker's own vault deals count toward their own portfolio
@@ -20607,7 +20737,7 @@ const server = http.createServer((req, res) =>
           const resets = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 1));
           const resetsOn = resets.toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
           return sendJson(res, 403, {
-            error: `You've run your ${FREE_REPORTS_CAP} free reports this month. Pro runs unlimited reports; your free ones start again on ${resetsOn}.`,
+            error: `You've run your ${FREE_REPORTS_CAP} free reports this month. Pro includes ${ENT.PRO_SEARCHES_PER_MONTH} searches a month; your free ones start again on ${resetsOn}.`,
             code: "report_limit",
             upgrade: true,
             resetsOn: resets.toISOString(),
@@ -20618,6 +20748,12 @@ const server = http.createServer((req, res) =>
         if (!internal && CORPUS_RADIUS) {
           corpusRadiusRows = await corpusRowsForType(typeOk, 2000);
         }
+
+        // The monthly search allowance (2026-11-10): the member a billed search
+        // is counted against, or null when this caller's plan is not metered
+        // (free, anonymous, internal, the comped team). ENT.searchAllowance is
+        // the rule; this only decides whether the account row is worth reading.
+        const meteredUser = (!internal && ENT.searchAllowance(ent, 0)) ? await getSessionUser(req) : null;
 
         // One search pipeline, shared with the bulk worker: cache, derivable
         // window, daily cap, size memo, corpus retrieval, the billed call and
@@ -20640,6 +20776,10 @@ const server = http.createServer((req, res) =>
             // for a trial per burst and walk straight past the one backstop
             // this cap exists to be.
             countsDailyCap: (!ent.pro || ent.trial === true) && !internal,
+            // Refuses, in plain JSON and before anything is billed, when the
+            // month's included searches are spent and nothing can be charged
+            // for more. A cache hit never reaches it.
+            searchGate: searchGateFor(meteredUser, ent),
             // The stream opens HERE and nowhere earlier. Everything the
             // pipeline answers before this point — the cache hit that matters
             // most, at 43ms — is plain JSON with a real status code, and the
@@ -20664,7 +20804,26 @@ const server = http.createServer((req, res) =>
               error: "This site has reached its daily search limit. Please try again after midnight UTC.",
             });
           }
+          if (err && err.code === "search_limit") {
+            logEvent("search_limit", { prop_type: typeOk, market: marketOf(addressOk) });
+            // 403 with a code, the report allowance's shape, so the page opens
+            // the pricing window with this sentence instead of an error card.
+            return sendJson(res, 403, {
+              error: err.message,
+              code: "search_limit",
+              upgrade: ent.trial === true,
+              searches: searchAllowancePayload(err.allowance),
+            });
+          }
           throw err;
+        }
+        // A billed search is counted the moment it comes back, served or not:
+        // unlike the free report allowance (spent only once a report is
+        // served), this tally is what the search cost us, and that is already
+        // true. A cache hit or a derived window is `kind` "cache"/"derived"
+        // and is never counted.
+        if (searched.kind === "fresh" && meteredUser) {
+          await recordSearchRun(meteredUser.id, Date.now());
         }
         // SERIALIZE FIRST, CONSUME SECOND. The rule stated where guestGate is
         // built is that the free search is spent only when a report is actually
@@ -24169,9 +24328,10 @@ const server = http.createServer((req, res) =>
     if (req.method === "POST" && path === "/api/bulk") {
       let body = "";
       let tooBig = false;
-      // A list of 50 addresses is a few KB; 256KB leaves room for somebody
-      // pasting a whole spreadsheet we are about to refuse most of anyway.
-      req.on("data", (c) => { body += c; if (body.length > 2.6e5 && !tooBig) { tooBig = true; req.destroy(); } });
+      // A run holds up to BULK.MAX_ADDRESSES rows (1,000 since 2026-11-10),
+      // and a row with every column filled runs to a few hundred bytes, so
+      // the ceiling is 512KB (it was 256KB while a run held 50).
+      req.on("data", (c) => { body += c; if (body.length > 5.2e5 && !tooBig) { tooBig = true; req.destroy(); } });
       req.on("end", async () => {
         try {
           if (tooBig) return;
@@ -24239,31 +24399,32 @@ const server = http.createServer((req, res) =>
             });
           }
 
-          // The per-member daily ceiling. Checked BEFORE the job is created,
-          // so a refusal costs nothing and leaves nothing to clean up — and
-          // refusing the whole list rather than quietly running the part that
-          // fits, because a list silently shortened reads as a list fully
-          // valued. It says how many are left and when it resets, which is
-          // what makes it actionable rather than merely a wall.
+          // The month's search allowance (2026-11-10; it replaced the daily
+          // ceiling and the 50-per-run cap). Checked BEFORE the job is
+          // created, so a refusal costs nothing and leaves nothing to clean
+          // up — and refusing the whole list rather than quietly running the
+          // part that fits, because a list silently shortened reads as a list
+          // fully valued. It says how many are left and when they start
+          // again, which is what makes it actionable rather than merely a
+          // wall.
           //
-          // Fails OPEN on a read error: a member must not be locked out of a
-          // tool they pay for because one count query failed, and
-          // one-job-at-a-time plus the 50-address cap still bound the damage.
-          let usedToday = 0;
-          try {
-            usedToday = await bulkAddressesUsedToday(user.id, BULK_DAILY_ADDRESSES);
-          } catch (err) {
-            console.error("bulk daily count failed (allowing the run):", err.message);
-          }
-          const leftToday = Math.max(0, BULK_DAILY_ADDRESSES - usedToday);
-          if (parsed.rows.length > leftToday) {
+          // Only an account that cannot be charged is ever refused: a
+          // subscription Stripe is billing runs the whole list, and what
+          // falls past the allowance is recorded as overage (the page states
+          // the figure before the button). The comparison is against the
+          // list's LENGTH, which is the most it can cost: rows served from
+          // cache use nothing, but that is not knowable before they run.
+          //
+          // Fails OPEN on a read error (searchAllowanceFor reports a clean
+          // month): a member must not be locked out of a tool they pay for
+          // because one count query failed, and one job at a time still
+          // bounds the damage.
+          const allowance = await searchAllowanceFor(user, ent, { exact: true });
+          if (allowance && !allowance.canExceed && parsed.rows.length > allowance.left) {
             return sendJson(res, 429, {
-              error: leftToday === 0
-                ? `You have valued ${BULK_DAILY_ADDRESSES} addresses today, which is the daily limit. It resets at midnight UTC.`
-                : `That list is ${parsed.rows.length} addresses and you have ${leftToday} left today (the daily limit is ${BULK_DAILY_ADDRESSES}). Trim the list, or come back after midnight UTC.`,
-              code: "daily_limit",
-              left_today: leftToday,
-              daily_limit: BULK_DAILY_ADDRESSES,
+              error: searchLimitMessage(allowance, parsed.rows.length, ent),
+              code: "search_limit",
+              searches: searchAllowancePayload(allowance),
             });
           }
 
@@ -24324,6 +24485,9 @@ const server = http.createServer((req, res) =>
             items: ordered.map(bulkItemRow),
             skipped: parsed.skipped, warnings: parsed.warnings,
             duplicates: parsed.duplicates, truncated: parsed.truncated,
+            // Where the month stood when the run started, so the page's cost
+            // line stays honest without another read.
+            searches: searchAllowancePayload(allowance),
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -24402,9 +24566,9 @@ const server = http.createServer((req, res) =>
     //
     // Every guard runs BEFORE anything is written, so a refusal leaves the
     // job exactly as it was. Then the row goes back to `queued` with its
-    // created_at bumped to now — which is what makes the retry count as one
-    // of today's attempted addresses (bulkAddressesUsedToday windows on
-    // created_at) with no schema change — and the job back to `running` with
+    // created_at bumped to now (it was what made a retry count against the
+    // daily ceiling until 2026-11-10; the month's search allowance counts the
+    // billed search itself now) and the job back to `running` with
     // done_count one lower, the baseline runBulkJob starts from. Ordinary
     // cache, not `fresh`: a failed row wrote no cache entry, so it is a real
     // search anyway, and cache makes an accidental double retry free.
@@ -24441,16 +24605,14 @@ const server = http.createServer((req, res) =>
               code: "job_running", job: bulkJobRow(live),
             });
           }
-          let usedToday = 0;
-          try {
-            usedToday = await bulkAddressesUsedToday(user.id, BULK_DAILY_ADDRESSES);
-          } catch (err) {
-            console.error("bulk daily count failed (allowing the retry):", err.message);
-          }
-          if (usedToday >= BULK_DAILY_ADDRESSES) {
+          // One more search, so the month's allowance must leave one (or the
+          // account must be one that can be charged past it).
+          const allowance = await searchAllowanceFor(user, ent);
+          if (allowance && allowance.blocked) {
             return sendJson(res, 429, {
-              error: `You have valued ${BULK_DAILY_ADDRESSES} addresses today, which is the daily limit. It resets at midnight UTC.`,
-              code: "daily_limit", left_today: 0, daily_limit: BULK_DAILY_ADDRESSES,
+              error: searchLimitMessage(allowance, 1, ent),
+              code: "search_limit",
+              searches: searchAllowancePayload(allowance),
             });
           }
           if (!providerApiKey()) {
@@ -27212,6 +27374,12 @@ const server = http.createServer((req, res) =>
           // response reveals a nav link and a paste box that answers 403.
           canBulkValue: ent.canBulkValue === true,
           bulkMaxAddresses: ent.bulkMaxAddresses,
+          // The monthly search allowance (2026-11-10): the two figures only,
+          // no count — /api/config runs on every page and must not grow a
+          // usage read. null for a plan that is not metered. Presentation
+          // only: /api/comps and /api/bulk re-check.
+          searchesIncluded: ENT.searchAllowance(ent, 0) ? ENT.PRO_SEARCHES_PER_MONTH : null,
+          searchOverageCents: ENT.searchAllowance(ent, 0) ? ENT.SEARCH_OVERAGE_CENTS : null,
           // Presentation only, like canUseVault: the POST /api/portfolio
           // route re-resolves entitlements, so editing this response
           // relabels the desk and unlocks nothing.
@@ -32171,6 +32339,68 @@ const server = http.createServer((req, res) =>
   // memoized, and it fails SAFE with a 200, because /admin is the page the
   // owner opens when something else is already wrong and this panel must never
   // be what breaks it. `?refresh=1` busts the memo.
+  // --- The search-allowance ledger (2026-11-10) ------------------------------
+  //
+  // Who ran how many billed searches in a month, and what the ones past the
+  // allowance come to. It exists because the overage is RECORDED here and not
+  // yet charged anywhere: until a collection step is built, this is how the
+  // owner sees what is owed. Admin-gated like /api/accuracy (the header, the
+  // cookie, or ?key= for a machine caller). `?period=YYYY-MM` picks a month;
+  // the default is the current one.
+  //
+  // `owed_cents` is the plain arithmetic — searches past the allowance times
+  // the overage price — for every member, including ones a gate would have
+  // stopped (a trial never gets past the allowance, so theirs is 0 by
+  // construction). It reads no plan, on purpose: a ledger of what was run
+  // must not change when somebody's subscription later lapses.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/admin/search-usage") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    const params = new URL(req.url, "http://localhost").searchParams;
+    if (!isAdminRequest(req) && !secretMatches(params.get("key"), ADMIN_KEY)) {
+      return sendJson(res, 401, { error: "Unauthorized." });
+    }
+    if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Search usage needs the database." });
+    const asked = String(params.get("period") || "");
+    const month = /^\d{4}-\d{2}$/.test(asked) ? asked : ENT.usagePeriod(Date.now());
+    (async () => {
+      const period = "searches-" + month;
+      const byUser = new Map();
+      let offset = 0;
+      for (;;) {
+        const page = await sbRequest("GET",
+          `export_usage?period=eq.${encodeURIComponent(period)}&select=user_id` +
+          `&order=user_id.asc,report_key.asc&limit=1000&offset=${offset}`) || [];
+        for (const r of page) byUser.set(r.user_id, (byUser.get(r.user_id) || 0) + 1);
+        offset += page.length;
+        if (page.length < 1000 || offset >= 500000) break;
+      }
+      const ids = [...byUser.keys()];
+      const emails = new Map();
+      for (let i = 0; i < ids.length; i += 100) {
+        const chunk = ids.slice(i, i + 100);
+        const users = await sbRequest("GET",
+          `users?id=in.(${pgInList(chunk)})&select=id,email`) || [];
+        for (const u of users) emails.set(u.id, u.email);
+      }
+      const included = ENT.PRO_SEARCHES_PER_MONTH, cents = ENT.SEARCH_OVERAGE_CENTS;
+      const members = ids.map((id) => {
+        const used = byUser.get(id);
+        const over = Math.max(0, used - included);
+        return { user_id: id, email: emails.get(id) || null, used, over, owed_cents: over * cents };
+      }).sort((a, b) => b.used - a.used);
+      return sendJson(res, 200, {
+        period: month, included, overage_cents: cents,
+        members,
+        total_searches: members.reduce((n, m) => n + m.used, 0),
+        total_owed_cents: members.reduce((n, m) => n + m.owed_cents, 0),
+      });
+    })().catch((err) => {
+      console.error("search-usage ledger failed:", err.message);
+      sendJson(res, 500, { error: "Could not read search usage." });
+    });
+    return;
+  }
+
   if (req.method === "GET" && req.url.split("?")[0] === "/api/accuracy") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
     const params = new URL(req.url, "http://localhost").searchParams;
@@ -32883,6 +33113,11 @@ server.listen(PORT, () => {
     : "📈 Analytics logging on; the /admin dashboard needs ADMIN_KEY set to view it.");
   console.log(`🗄  Search cache: ${DB_CONFIGURED ? "Supabase" : path.basename(SEARCH_CACHE_FILE) + " (EPHEMERAL on most hosts)"}, ${SEARCH_CACHE_TTL_MS / 3600000}h TTL.`);
   console.log(`💵 Daily search cap: ${DAILY_SEARCH_CAP} billed searches/day (set DAILY_SEARCH_CAP to change).`);
+  console.log(`🔎 Search allowance: ${ENT.PRO_SEARCHES_PER_MONTH} billed searches a member a month on a Pro plan, then ` +
+    `${searchOveragePrice(ENT.SEARCH_OVERAGE_CENTS)} each for a paid subscription (recorded, see /api/admin/search-usage) and a stop for a trial.`);
+  if (process.env.BULK_DAILY_ADDRESSES) {
+    console.log("ℹ️  BULK_DAILY_ADDRESSES is set but the daily bulk ceiling went on 2026-11-10 — it does nothing now. Remove it from the host's environment.");
+  }
   console.log(ACCOUNT_WALL
     ? "🔐 Account wall ON — anonymous visitors get the landing page at / (200, not a redirect; /desk redirects home), and GUEST_SEARCH_LIMIT is forced to 0. Set ACCOUNT_WALL=off to reverse."
     : "🔓 Account wall off (ACCOUNT_WALL=off) — the app is open to anonymous visitors.");

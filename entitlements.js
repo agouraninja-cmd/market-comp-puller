@@ -106,14 +106,31 @@ const PRO_PORTFOLIO_MAX_ITEMS = 500;
 
 // Bulk valuation — how many addresses one job may hold.
 //
-// Zero is the default answer everywhere it is not granted, and the reason is
-// spend rather than product tiering: every address that misses the cache is
-// its own billed search, so a bulk job is the one control in this app where a
-// single click can commit ~$18 of somebody else's API credit. bulk.js carries
-// the same number as a hard ceiling; this is the per-visitor half of it, so
-// the two must move together (bulk.js clamps to its own MAX_ADDRESSES, so a
-// larger number here can never widen a job).
-const PRO_BULK_MAX_ADDRESSES = 50;
+// Zero is the default answer everywhere it is not granted: every address that
+// misses the cache is its own billed search, so a list run is a spend surface
+// and must never be handed out by default.
+//
+// Where it IS granted, this is a TECHNICAL ceiling and no longer a product
+// limit (owner's call, 2026-11-10: "we're not going to have a 200 per day
+// limit or per run limit"). The product limit is the monthly search allowance
+// below. The number that remains is the most rows one job can hold and still
+// be read back whole: the job's items come back in ONE database read, and
+// that read is capped at 1,000 rows. bulk.js carries the same number as its
+// hard ceiling, so the two must move together (bulk.js clamps to its own
+// MAX_ADDRESSES, so a larger number here can never widen a job).
+const PRO_BULK_MAX_ADDRESSES = 1000;
+
+// The monthly search allowance (owner's call, 2026-11-10: "400 searches per
+// month then 10 cents a search after"). It replaced bulk's 50-per-run and
+// 200-per-day caps, and it is the first limit a Pro account's SINGLE searches
+// have ever had.
+//
+// A "search" is a BILLED search: one that missed the cache and went to the
+// provider. A cached report costs nothing and counts as nothing, on either
+// form. The tally is per member per UTC month, in export_usage under its own
+// period key (searchUsagePeriod), one row per billed search.
+const PRO_SEARCHES_PER_MONTH = 400;
+const SEARCH_OVERAGE_CENTS = 10;
 
 // A failed payment keeps Pro alive for 7 days before the downgrade, so a
 // dead card on a Friday does not strip a broker's branding mid-pitch.
@@ -761,6 +778,57 @@ function canRunReport(ent) {
 function reportUsagePeriod(now) {
   return "reports-" + usagePeriod(now);
 }
+// The search allowance's period key: a third key space in the same table, for
+// the same reason. One row per BILLED search, so the tally is the row count.
+function searchUsagePeriod(now) {
+  return "searches-" + usagePeriod(now);
+}
+// What this member's plan says about billed searches this month, given how
+// many they have already run. Pure, like everything here: server.js owns the
+// count, this owns the rule.
+//
+// null means "not metered by this rule":
+//   - no entitlements, or not Pro — a free account is governed by the report
+//     allowance (canRunReport) and an anonymous visitor by the guest gate;
+//   - PRO_ENABLED off — `pro` is false on that branch, so a dark deployment
+//     behaves exactly as it did before the tier existed;
+//   - the comped team (`admin`) — nobody is billing the owner.
+//
+// Otherwise every Pro-shaped plan gets the same included number. What differs
+// is what happens past it:
+//   - `canExceed` is true ONLY for a subscription Stripe is billing (a paid
+//     plan in "active" or "cancelling"). Those searches go through and are
+//     recorded as overage at SEARCH_OVERAGE_CENTS each.
+//   - a trial, a comped tester and a subscription in its payment-failed grace
+//     window have no card that can be charged, so for them the allowance is a
+//     hard stop (`blocked`). That is also what bounds a throwaway trial
+//     account now that the daily cap is gone: an account costs nothing to
+//     make, and 400 is all one can spend.
+function searchAllowance(ent, used) {
+  if (!ent || ent.pro !== true || ent.admin === true) return null;
+  const n = Number(used);
+  const ran = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  const included = PRO_SEARCHES_PER_MONTH;
+  const canExceed = PAID_PLANS.includes(String(ent.plan))
+    && (ent.status === "active" || ent.status === "cancelling");
+  return {
+    included,
+    used: ran,
+    left: Math.max(0, included - ran),
+    over: Math.max(0, ran - included),
+    overageCents: SEARCH_OVERAGE_CENTS,
+    canExceed,
+    blocked: !canExceed && ran >= included,
+  };
+}
+// How many of `count` new billed searches would fall past the allowance, and
+// what they would cost. Used to say the figure BEFORE a list is run.
+function searchOverageFor(allowance, count) {
+  const c = Number.isFinite(Number(count)) && Number(count) > 0 ? Math.floor(Number(count)) : 0;
+  if (!allowance) return { over: 0, cents: 0 };
+  const over = Math.max(0, c - allowance.left);
+  return { over, cents: over * allowance.overageCents };
+}
 function canExport(ent) {
   return !ent || ent.exportsRemaining === "unlimited" || Number(ent.exportsRemaining) > 0;
 }
@@ -782,6 +850,11 @@ module.exports = {
   canRunReport,
   usagePeriod,
   reportUsagePeriod,
+  searchUsagePeriod,
+  searchAllowance,
+  searchOverageFor,
+  PRO_SEARCHES_PER_MONTH,
+  SEARCH_OVERAGE_CENTS,
   FREE_MAX_COMPS,
   FREE_MAX_LOOKBACK_MONTHS,
   FREE_EXPORTS_PER_MONTH,

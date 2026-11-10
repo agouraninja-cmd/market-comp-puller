@@ -396,7 +396,7 @@ so they are trusted config and are never set in production.
 | `VAULT_PASSKEY` | unset | shared code that grants the broker vault only (`users.vault_beta`); a second secret, never the same string | billing.md |
 | `RESEND_API_KEY`, `LEAD_NOTIFY_EMAIL`, `EMAIL_FROM` | unset / owner's inbox / unset | owner notifications; `EMAIL_FROM` is the single gate for mail to leads and brokers | watchlist-and-mail.md |
 | `DAILY_SEARCH_CAP` | 150 | site-wide ceiling on billed searches per UTC day (cache hits are free; Pro is exempt, a trial is not) | search-pipeline.md |
-| `BULK_DAILY_ADDRESSES` | 200 | per-member daily ceiling on bulk-valuation addresses | bulk.md |
+| `BULK_DAILY_ADDRESSES` | unset | **retired 2026-11-10**: does nothing, and the boot log says to remove it. The limit is the monthly search allowance (400 billed searches a member, then $0.10 each for a paid subscription and a stop for a trial), which is a rule in `entitlements.js`, not an env var | bulk.md |
 | `ACCOUNT_WALL` | on | account-only app; anonymous `/` gets the home page and `GUEST_SEARCH_LIMIT` is forced to 0; `off` is the rollback | accounts.md |
 | `GUEST_SEARCH_LIMIT` | 1 (0 under the wall) | free searches per anonymous visitor before sign-in | accounts.md |
 | `GOOGLE_MAPS_API_KEY` | set on Render | Street View photos in map popups and on Home's and The Board's cards (`/api/streetview`, `/api/building-photo`); also the key photo tokens are sealed under | maps.md |

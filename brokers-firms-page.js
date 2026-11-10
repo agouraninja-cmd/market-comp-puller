@@ -433,7 +433,7 @@ function renderBrokersFirmsPageBody({
     `<div class="bfin bfprice">` +
     `<div class="bfplan"><div class="k">Individual Pro</div>` +
     `<div class="f">$${pricing.monthly}<span> / month</span></div>` +
-    `<p>Unlimited reports, ten years back, a private place for your own comps, Address Explorer, exports and your ` +
+    `<p>${pricing.includedSearches ? `${pricing.includedSearches} searches a month` : "Reports"}, ten years back, a private place for your own comps, Address Explorer, exports and your ` +
     `branding on them.</p></div>` +
     `<div class="bfplan firm"><div class="k">Firm &middot; every seat gets Pro</div>` +
     `<div class="f">$${pricing.firmSeat}<span> / seat, min. ${minSeats}</span></div>` +

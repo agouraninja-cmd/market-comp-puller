@@ -290,6 +290,13 @@ test("the pricing window states the free report allowance entitlements.js enforc
   const n = ENT.FREE_REPORTS_PER_MONTH;
   assert.ok(INDEX_HTML.includes(`<p class="pr-sum">${n} reports a month, every comparable itemized`),
     "the Free tile states the monthly report allowance");
-  assert.ok(INDEX_HTML.includes(`<td>Reports you can run</td><td class="c">${n} a month</td><td class="c">Unlimited</td>`),
-    "the compare table's first row states it too");
+  // Pro's cell was "Unlimited" until 2026-11-10; it states the monthly search
+  // allowance now, pinned to the same module for the same reason.
+  const inc = ENT.PRO_SEARCHES_PER_MONTH;
+  const each = "$" + (ENT.SEARCH_OVERAGE_CENTS / 100).toFixed(2);
+  assert.ok(INDEX_HTML.includes(`<td>Reports you can run</td><td class="c">${n} a month</td><td class="c">${inc} a month, then ${each} each</td>`),
+    "the compare table's first row states both plans' figures");
+  assert.ok(INDEX_HTML.includes(`Pro includes ${inc} searches a month`),
+    "the form's allowance hint names Pro's figure, not 'unlimited'");
+  assert.ok(!/Pro is unlimited/.test(INDEX_HTML), "the old claim is gone from the report page");
 });

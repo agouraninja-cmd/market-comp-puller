@@ -141,7 +141,14 @@ const PRICING_CSS = `
  * @returns {string} HTML for marketShell's <main class="wrap">.
  */
 function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = true, annualLive = false, trialDays = 0 } = {}) {
-  const { monthly = 0, annual = 0, firmSeat = 0, minSeats = 2, freeReports = null } = pricing;
+  const { monthly = 0, annual = 0, firmSeat = 0, minSeats = 2, freeReports = null,
+    includedSearches = null, overageCents = null } = pricing;
+  // The monthly search allowance (2026-11-10), from PRICING like every other
+  // figure here, so the page cannot quote a number the gate does not enforce.
+  // Absent figures (an older caller) say nothing rather than guess.
+  const allowanceLine = Number.isInteger(includedSearches) && includedSearches > 0 && Number.isInteger(overageCents)
+    ? ` ${includedSearches} searches a month are included; past that, a search is $${(overageCents / 100).toFixed(2)}.`
+    : "";
   // The free report allowance (2026-09-25), in words like the tile's other
   // figures. null means the deployment runs no cap (FREE_REPORTS_PER_MONTH=off),
   // and then the page says nothing about one rather than invent a number.
@@ -205,7 +212,7 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     per: "per month &middot; cancel any time" +
       (trialDays > 0 ? ` &middot; ${trialDays}-day free trial` : ""),
     mid: true,
-    sum: "Everything free, plus the ten-year window, unlimited exports, a private place for your own comps, comp reports on a whole list of addresses, the Address Explorer, and your own branding on every report.",
+    sum: "Everything free, plus the ten-year window, unlimited exports, a private place for your own comps, comp reports on a whole list of addresses, the Address Explorer, and your own branding on every report." + allowanceLine,
     cta: billingLive
       ? `<p style="margin:0"><a class="btn sm" href="${buyHref}">${buyLabel} &rarr;</a></p>`
       : "",

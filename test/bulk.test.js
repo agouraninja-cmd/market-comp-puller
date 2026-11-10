@@ -92,9 +92,12 @@ test("the cap truncates and SAYS SO rather than silently dropping", () => {
 });
 
 test("the entitlement cap can never widen past bulk.js's own ceiling", () => {
-  const many = Array.from({ length: 60 }, (_, i) => `${i + 1} A St, Boise ID`).join("\n");
-  const r = BULK.parseAddressList(many, { max: 5000 });
+  // Ten past the ceiling, whatever the ceiling is: it was 50 until 2026-11-10
+  // and is a technical 1,000 since (the most rows one job reads back whole).
+  const many = Array.from({ length: BULK.MAX_ADDRESSES + 10 }, (_, i) => `${i + 1} A St, Boise ID`).join("\n");
+  const r = BULK.parseAddressList(many, { max: BULK.MAX_ADDRESSES * 5 });
   assert.equal(r.rows.length, BULK.MAX_ADDRESSES);
+  assert.equal(r.truncated, 10, "and it says how many it left out");
 });
 
 test("an unparseable size is warned about, never silently ignored", () => {

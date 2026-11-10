@@ -123,7 +123,10 @@ test("bulk, end to end", async (t) => {
     assert.equal(r.status, 200);
     const body = await r.json();
     assert.deepEqual(body.jobs, []);
-    assert.equal(body.maxAddresses, 50);
+    assert.equal(body.maxAddresses, require("../bulk").MAX_ADDRESSES,
+      "the technical ceiling (1,000 since 2026-11-10), not a product limit");
+    assert.equal(body.searches.included, 400, "and the month's search allowance, which IS the limit");
+    assert.equal(body.searches.used, 0);
     assert.ok(body.types.includes("Industrial"));
   });
 
@@ -200,95 +203,146 @@ function seedJob(overrides, items) {
   };
 }
 
-test("the per-member daily ceiling", async (t) => {
-  // The spend backstop. DAILY_SEARCH_CAP is site-wide and Pro deliberately
-  // bypasses it, which was written for somebody typing one address at a time;
-  // bulk multiplies that by fifty per click, so it needs a bound of its own.
-  // Per MEMBER, so one person's ceiling never denies anyone else a search.
-  const attempted = (n, status) => Array.from({ length: n }, (_, i) => ({
-    id: `aaaaaaaa-0000-4000-8000-${String(i).padStart(12, "0")}`,
-    job_id: JOB_ID, user_id: PAT.id, position: i, address: `${i} A St, Boise ID`,
-    status, created_at: new Date().toISOString(),
+test("the monthly search allowance", async (t) => {
+  // The spend rule since 2026-11-10 (owner's call: no per-run limit, no daily
+  // limit; 400 searches a month, then 10 cents a search). It replaced the
+  // per-member daily ceiling this suite used to pin. Two kinds of Pro account
+  // meet it differently, and both are run here:
+  //   - PAT pays (an active subscription), so nothing stops a list; searches
+  //     past the allowance are recorded as overage.
+  //   - TESS is comped (users.pro_tester) with no card to charge, so for her
+  //     the allowance is a hard stop.
+  // Per MEMBER, so one person's month never denies anyone else a search.
+  const TESS = { id: "77777777-7777-4777-8777-777777777777", email: "tess@tester.com", name: "Tess" };
+  const PERIOD = "searches-" + new Date().toISOString().slice(0, 7);
+  const searched = (n, user, period = PERIOD) => Array.from({ length: n }, (_, i) => ({
+    user_id: user.id, period, report_key: `seed-${String(i).padStart(5, "0")}`,
+    created_at: new Date().toISOString(),
+  }));
+  const withTess = (extra) => {
+    const tables = seedTables({ bulk_jobs: [], bulk_job_items: [], ...extra });
+    tables.users.push({ ...TESS, pro_tester: true, vault_beta: false });
+    tables.sessions.push({ token_hash: sha256("tok-" + TESS.id), user_id: TESS.id, expires_at: YEAR_OUT });
+    return tables;
+  };
+  const list = (n) => Array.from({ length: n }, (_, i) => `${i + 1}00 B St, Boise ID`).join("\n");
+  const start = (ctx, who, n) => fetch(ctx.srv.base + "/api/bulk", as(who, {
+    method: "POST",
+    body: JSON.stringify({ text: list(n), type: "Industrial", months: 24 }),
   }));
 
-  await t.test("a list that would cross it is refused, with the number left", async () => {
-    const ctx = await bootWithDb(seedTables({
-      bulk_jobs: [], bulk_job_items: attempted(8, "done"),
-    }), { BULK_DAILY_ADDRESSES: "10" });
+  await t.test("a list that would cross it is refused for an account that cannot be charged", async () => {
+    const ctx = await bootWithDb(withTess({ export_usage: searched(398, TESS) }));
     try {
-      const r = await fetch(ctx.srv.base + "/api/bulk", as(PAT, {
-        method: "POST",
-        body: JSON.stringify({
-          text: Array.from({ length: 5 }, (_, i) => `${i + 1}00 B St, Boise ID`).join("\n"),
-          type: "Industrial", months: 24,
-        }),
-      }));
+      const r = await start(ctx, TESS, 5);
       assert.equal(r.status, 429);
       const body = await r.json();
-      assert.equal(body.code, "daily_limit");
-      assert.equal(body.left_today, 2, "8 of 10 attempted today");
-      assert.match(body.error, /2 left today/, "actionable, not just a wall");
-      assert.match(body.error, /midnight UTC/, "and it says when it resets");
+      assert.equal(body.code, "search_limit");
+      assert.equal(body.searches.left, 2, "398 of 400 used this month");
+      assert.equal(body.searches.included, 400);
+      assert.equal(body.searches.canExceed, false);
+      assert.match(body.error, /5 addresses/, "it names the list");
+      assert.match(body.error, /2 of this month's 400 searches left/, "actionable, not just a wall");
+      assert.match(body.error, /cache/, "and it says a searched address costs nothing");
       assert.equal(ctx.tables.bulk_jobs.length, 0, "refused before anything is created");
     } finally { await ctx.stop(); }
   });
 
-  await t.test("a queued row that never ran does not count against it", async () => {
-    // Cancelling a fifty-address run after two rows must cost two, not fifty
-    // — otherwise stopping a run is punished harder than letting it finish.
-    const ctx = await bootWithDb(seedTables({
-      bulk_jobs: [], bulk_job_items: attempted(40, "queued"),
-    }), { BULK_DAILY_ADDRESSES: "10" });
+  await t.test("a list that fits is not refused", async () => {
+    const ctx = await bootWithDb(withTess({ export_usage: searched(398, TESS) }));
     try {
-      const r = await fetch(ctx.srv.base + "/api/bulk", as(PAT, {
-        method: "POST",
-        body: JSON.stringify({ text: "1 A St, Boise ID", type: "Industrial", months: 24 }),
-      }));
+      const r = await start(ctx, TESS, 2);
       // 503 (no provider key), NOT 429 — the point is which refusal it is.
       assert.equal(r.status, 503);
     } finally { await ctx.stop(); }
   });
 
-  await t.test("yesterday's addresses do not count against today", async () => {
-    const old = attempted(40, "done").map((it) => ({
-      ...it, created_at: "2020-01-01T00:00:00.000Z",
-    }));
-    const ctx = await bootWithDb(seedTables({ bulk_jobs: [], bulk_job_items: old }),
-      { BULK_DAILY_ADDRESSES: "10" });
+  await t.test("a spent allowance says when it starts again, and does not sell to a comped account", async () => {
+    const ctx = await bootWithDb(withTess({ export_usage: searched(400, TESS) }));
     try {
-      const r = await fetch(ctx.srv.base + "/api/bulk", as(PAT, {
-        method: "POST",
-        body: JSON.stringify({ text: "1 A St, Boise ID", type: "Industrial", months: 24 }),
-      }));
-      assert.equal(r.status, 503, "not 429 — the window really is today only");
+      const r = await start(ctx, TESS, 1);
+      assert.equal(r.status, 429);
+      const body = await r.json();
+      assert.equal(body.searches.left, 0);
+      assert.match(body.error, /used the 400 searches included this month/);
+      assert.match(body.error, /start again on [A-Z][a-z]+ 1\b/, "the first of next month, by name");
+      assert.doesNotMatch(body.error, /paid plan/, "a tester is not helped by being told to buy");
     } finally { await ctx.stop(); }
   });
 
-  await t.test("another member's addresses do not count against yours", async () => {
-    // The whole reason this is per-member rather than charged to
-    // DAILY_SEARCH_CAP: one person's heavy day must never lock anybody else out.
-    const theirs = attempted(40, "done").map((it) => ({ ...it, user_id: SAM.id }));
-    const ctx = await bootWithDb(seedTables({ bulk_jobs: [], bulk_job_items: theirs }),
-      { BULK_DAILY_ADDRESSES: "10" });
+  await t.test("a paying subscriber is never refused, however far past it they are", async () => {
+    const ctx = await bootWithDb(seedTables({
+      bulk_jobs: [], bulk_job_items: [], export_usage: searched(1250, PAT),
+    }));
     try {
-      const r = await fetch(ctx.srv.base + "/api/bulk", as(PAT, {
-        method: "POST",
-        body: JSON.stringify({ text: "1 A St, Boise ID", type: "Industrial", months: 24 }),
-      }));
+      const r = await start(ctx, PAT, 40);
+      assert.equal(r.status, 503, "not 429: the only thing missing here is the provider key");
+      const body = await (await fetch(ctx.srv.base + "/api/bulk", as(PAT))).json();
+      assert.equal(body.searches.canExceed, true);
+      assert.equal(body.searches.used, 1250, "counted past one database page (1,000 rows)");
+      assert.equal(body.searches.over, 850);
+      assert.equal(body.searches.left, 0);
+      assert.equal(body.searches.overagePrice, "$0.10");
+    } finally { await ctx.stop(); }
+  });
+
+  await t.test("last month's searches do not count against this month", async () => {
+    const ctx = await bootWithDb(withTess({ export_usage: searched(400, TESS, "searches-2020-01") }));
+    try {
+      const r = await start(ctx, TESS, 3);
+      assert.equal(r.status, 503, "not 429 — the window really is this month only");
+    } finally { await ctx.stop(); }
+  });
+
+  await t.test("another member's searches do not count against yours", async () => {
+    // Per member on purpose: one person's heavy month must never lock anybody
+    // else out. PAT's rows, TESS's run.
+    const ctx = await bootWithDb(withTess({ export_usage: searched(400, PAT) }));
+    try {
+      const r = await start(ctx, TESS, 3);
       assert.equal(r.status, 503, "not 429");
     } finally { await ctx.stop(); }
   });
 
-  await t.test("the page is told the allowance up front, not only at the refusal", async () => {
-    const ctx = await bootWithDb(seedTables({
-      bulk_jobs: [], bulk_job_items: attempted(8, "done"),
-    }), { BULK_DAILY_ADDRESSES: "10" });
+  await t.test("report and download tallies in the same table are not searches", async () => {
+    const month = new Date().toISOString().slice(0, 7);
+    const others = [
+      ...searched(300, TESS, month),              // downloads
+      ...searched(300, TESS, "reports-" + month), // the free report allowance
+    ].map((r, i) => ({ ...r, report_key: `other-${i}` }));
+    const ctx = await bootWithDb(withTess({ export_usage: others }));
     try {
-      const body = await (await fetch(ctx.srv.base + "/api/bulk", as(PAT))).json();
-      assert.equal(body.leftToday, 2);
-      assert.equal(body.dailyLimit, 10);
-      const html = await (await fetch(ctx.srv.base + "/bulk", as(PAT))).text();
-      assert.match(html, /"leftToday":2/, "the boot payload carries it, so nothing pops in");
+      const body = await (await fetch(ctx.srv.base + "/api/bulk", as(TESS))).json();
+      assert.equal(body.searches.used, 0, "a different key space, never counted together");
+      assert.equal(body.searches.left, 400);
+    } finally { await ctx.stop(); }
+  });
+
+  await t.test("the page is told the allowance up front, not only at the refusal", async () => {
+    const ctx = await bootWithDb(withTess({ export_usage: searched(398, TESS) }));
+    try {
+      const body = await (await fetch(ctx.srv.base + "/api/bulk", as(TESS))).json();
+      assert.equal(body.searches.left, 2);
+      assert.equal(body.searches.included, 400);
+      assert.equal(body.leftToday, undefined, "the daily ceiling is gone, not renamed");
+      assert.equal(body.dailyLimit, undefined);
+      const html = await (await fetch(ctx.srv.base + "/bulk", as(TESS))).text();
+      assert.match(html, /"searches":\{"included":400,"used":398,"left":2/,
+        "the boot payload carries it, so nothing pops in");
+    } finally { await ctx.stop(); }
+  });
+
+  await t.test("BULK_DAILY_ADDRESSES is retired: setting it changes nothing", async () => {
+    const attempted = Array.from({ length: 40 }, (_, i) => ({
+      id: `aaaaaaaa-0000-4000-8000-${String(i).padStart(12, "0")}`,
+      job_id: JOB_ID, user_id: PAT.id, position: i, address: `${i} A St, Boise ID`,
+      status: "done", created_at: new Date().toISOString(),
+    }));
+    const ctx = await bootWithDb(seedTables({ bulk_jobs: [], bulk_job_items: attempted }),
+      { BULK_DAILY_ADDRESSES: "10" });
+    try {
+      const r = await start(ctx, PAT, 5);
+      assert.equal(r.status, 503, "40 addresses today against an old ceiling of 10 is no longer a refusal");
     } finally { await ctx.stop(); }
   });
 });

@@ -28,6 +28,7 @@ const {
   FREE_PORTFOLIO_MAX_ITEMS,
   PRO_PORTFOLIO_MAX_ITEMS,
 } = require("../entitlements");
+const ENT = require("../entitlements");
 
 // Fixed clock so nothing here depends on when it runs.
 const NOW = Date.parse("2026-08-01T12:00:00Z");
@@ -1076,7 +1077,9 @@ test("bulk valuation is Pro, and nothing below it", () => {
   };
   const pro = computeEntitlements({ user: { id: "u" }, subscription: paid, now, enabled: true });
   assert.equal(pro.canBulkValue, true);
-  assert.equal(pro.bulkMaxAddresses, 50);
+  assert.equal(pro.bulkMaxAddresses, ENT.PRO_BULK_MAX_ADDRESSES);
+  assert.equal(ENT.PRO_BULK_MAX_ADDRESSES, require("../bulk").MAX_ADDRESSES,
+    "the entitlement's ceiling and bulk.js's own must move together");
 
   for (const [label, ent] of [
     ["anonymous", computeEntitlements({ now, enabled: true })],
@@ -1101,20 +1104,118 @@ test("a dark deployment grants no bulk valuation, unlike every other capability"
 
 test("a beta tester gets bulk valuation, at Pro's own per-job cap", () => {
   // Reversed 2026-09-01 (owner's call). The fan-out worry was real and is
-  // still bounded — just not here: BULK_DAILY_ADDRESSES in server.js caps
-  // every member per UTC day, tester or paid, and that env-level backstop was
-  // always the one doing the work. This branch hands out Pro's per-job cap,
-  // never a wider one, so entitlements can still never widen a job.
+  // still bounded — just not here: since 2026-11-10 the monthly search
+  // allowance (searchAllowance, below) is a hard stop for an account with no
+  // card to charge, which a tester is. This branch hands out Pro's per-job
+  // ceiling, never a wider one, so entitlements can still never widen a job.
   const ent = computeEntitlements({ user: { id: "u" }, tester: true, now: Date.now(), enabled: true });
   assert.equal(ent.pro, true, "a tester really does get Pro's report features");
   assert.equal(ent.canBulkValue, true);
-  assert.equal(ent.bulkMaxAddresses, 50, "Pro's cap, not a tester-specific one");
+  assert.equal(ent.bulkMaxAddresses, ENT.PRO_BULK_MAX_ADDRESSES, "Pro's cap, not a tester-specific one");
 });
 
 test("an admin gets bulk valuation, because the team renders every surface", () => {
   const ent = computeEntitlements({ user: { id: "u" }, admin: true, now: Date.now(), enabled: true });
   assert.equal(ent.canBulkValue, true);
-  assert.equal(ent.bulkMaxAddresses, 50);
+  assert.equal(ent.bulkMaxAddresses, ENT.PRO_BULK_MAX_ADDRESSES);
+});
+
+// --- The monthly search allowance (2026-11-10) ------------------------------
+//
+// "400 searches per month then 10 cents a search after" (the owner). It
+// replaced bulk's 50-per-run and 200-per-day caps, so these are the spend
+// decisions now.
+
+const paidSub = (now, extra = {}) => ({
+  plan: "pro_monthly", status: "active",
+  current_period_end: new Date(now + 30 * 24 * 3600e3).toISOString(), ...extra,
+});
+
+test("the search allowance: 400 included, and its tally has a period of its own", () => {
+  assert.equal(ENT.PRO_SEARCHES_PER_MONTH, 400);
+  assert.equal(ENT.SEARCH_OVERAGE_CENTS, 10);
+  const now = Date.UTC(2026, 10, 10);
+  assert.equal(ENT.searchUsagePeriod(now), "searches-2026-11");
+  assert.notEqual(ENT.searchUsagePeriod(now), ENT.reportUsagePeriod(now));
+  assert.notEqual(ENT.searchUsagePeriod(now), usagePeriod(now));
+});
+
+test("the search allowance does not apply to free, anonymous, dark or the comped team", () => {
+  const now = Date.now();
+  for (const [label, ent] of [
+    ["no entitlements", null],
+    ["anonymous", computeEntitlements({ now, enabled: true })],
+    ["free", computeEntitlements({ user: { id: "u" }, now, enabled: true })],
+    ["a dark deployment", computeEntitlements({ user: { id: "u" }, now, enabled: false })],
+    ["admin", computeEntitlements({ user: { id: "u" }, admin: true, now, enabled: true })],
+  ]) {
+    assert.equal(ENT.searchAllowance(ent, 999), null, label);
+  }
+});
+
+test("a paying subscriber runs past the allowance, and the overage is counted", () => {
+  const now = Date.now();
+  const ent = computeEntitlements({ user: { id: "u" }, subscription: paidSub(now), now, enabled: true });
+  const under = ENT.searchAllowance(ent, 120);
+  assert.deepEqual(
+    { included: under.included, used: under.used, left: under.left, over: under.over, canExceed: under.canExceed, blocked: under.blocked },
+    { included: 400, used: 120, left: 280, over: 0, canExceed: true, blocked: false });
+  const past = ENT.searchAllowance(ent, 437);
+  assert.equal(past.left, 0);
+  assert.equal(past.over, 37);
+  assert.equal(past.blocked, false, "never stopped: Stripe is billing this account");
+  assert.equal(past.over * past.overageCents, 370, "37 searches at 10 cents");
+});
+
+test("a cancelled-but-paid-up subscriber can still run past the allowance", () => {
+  const now = Date.now();
+  const ent = computeEntitlements({
+    user: { id: "u" }, subscription: paidSub(now, { cancel_at_period_end: true }), now, enabled: true,
+  });
+  assert.equal(ent.status, "cancelling");
+  assert.equal(ENT.searchAllowance(ent, 400).canExceed, true);
+});
+
+test("an account with nothing to charge stops at the allowance", () => {
+  const now = Date.now();
+  const trial = computeEntitlements({
+    user: { id: "u" }, now, enabled: true, trialUntil: new Date(now + 5 * 24 * 3600e3).toISOString(),
+  });
+  const tester = computeEntitlements({ user: { id: "u" }, tester: true, now, enabled: true });
+  const grace = computeEntitlements({
+    user: { id: "u" }, now, enabled: true,
+    subscription: paidSub(now, { status: "past_due", grace_until: new Date(now + 3 * 24 * 3600e3).toISOString() }),
+  });
+  assert.equal(trial.trial, true);
+  assert.equal(grace.status, "grace", "a card that is failing must not run up more charges");
+  for (const [label, ent] of [["trial", trial], ["tester", tester], ["grace", grace]]) {
+    const at399 = ENT.searchAllowance(ent, 399);
+    assert.equal(at399.canExceed, false, label);
+    assert.equal(at399.blocked, false, label + ": one left");
+    assert.equal(at399.left, 1, label);
+    const at400 = ENT.searchAllowance(ent, 400);
+    assert.equal(at400.blocked, true, label + ": the allowance is a hard stop");
+    assert.equal(at400.left, 0, label);
+  }
+});
+
+test("a garbage count reads as a clean month, never as a refusal", () => {
+  const now = Date.now();
+  const tester = computeEntitlements({ user: { id: "u" }, tester: true, now, enabled: true });
+  for (const used of [undefined, null, NaN, -5, "abc"]) {
+    const a = ENT.searchAllowance(tester, used);
+    assert.equal(a.used, 0, String(used));
+    assert.equal(a.blocked, false, String(used));
+  }
+});
+
+test("the overage for a list is what falls past what is left", () => {
+  const now = Date.now();
+  const ent = computeEntitlements({ user: { id: "u" }, subscription: paidSub(now), now, enabled: true });
+  const a = ENT.searchAllowance(ent, 380);
+  assert.deepEqual(ENT.searchOverageFor(a, 15), { over: 0, cents: 0 });
+  assert.deepEqual(ENT.searchOverageFor(a, 50), { over: 30, cents: 300 });
+  assert.deepEqual(ENT.searchOverageFor(null, 50), { over: 0, cents: 0 }, "an unmetered plan owes nothing");
 });
 
 test("a single-report unlock does not reach bulk valuation", () => {

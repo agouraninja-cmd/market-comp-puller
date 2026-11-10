@@ -122,7 +122,7 @@ test("a free account runs three reports a month, then is asked to upgrade", asyn
   assert.equal(cfg2.pro.reportsRemaining, 0);
 });
 
-test("Pro has no report allowance and leaves no tally", async (t) => {
+test("Pro has no report allowance and leaves no report tally", async (t) => {
   const env = await bootAll();
   t.after(() => env.stop());
   for (const addr of ["1 A St, Boise, ID", "2 A St, Boise, ID", "3 A St, Boise, ID", "4 A St, Boise, ID"]) {
@@ -130,7 +130,12 @@ test("Pro has no report allowance and leaves no tally", async (t) => {
     assert.equal(r.status, 200);
     assert.equal((await r.json()).reports_remaining, undefined, "a paying account is never told a count");
   }
-  assert.equal(env.tables.export_usage.filter((r) => r.user_id === PRO.id).length, 0);
+  const rows = env.tables.export_usage.filter((r) => r.user_id === PRO.id);
+  assert.equal(rows.filter((r) => /^reports-/.test(r.period)).length, 0, "no report-allowance rows for a paying account");
+  // What it does leave, since 2026-11-10, is the search allowance's own tally:
+  // one row per billed search, in a third key space (search-allowance-run.test.js).
+  assert.equal(rows.length, 4);
+  assert.ok(rows.every((r) => /^searches-\d{4}-\d{2}$/.test(r.period)));
 });
 
 test("FREE_REPORTS_PER_MONTH=off lifts the cap", async (t) => {

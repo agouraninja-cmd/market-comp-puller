@@ -62,6 +62,31 @@ paths:
 >   `test/pro-trial-run.test.js` (the 30-day default),
 >   `test/entitlements.test.js`.
 
+> **Pro has a monthly search allowance (2026-11-10, the owner: "400 searches
+> per month then 10 cents a search after").** Read this before the notes
+> below, which it amends wherever they say Pro's reports are unlimited or
+> that bulk is bounded by `BULK_DAILY_ADDRESSES`.
+> - Every Pro-shaped plan (paid, firm seat, trial, tester) includes
+>   `ENT.PRO_SEARCHES_PER_MONTH` (400) BILLED searches a member a UTC month,
+>   single reports and list rows together; cache hits count as nothing. The
+>   comped team (`admin`) is not metered, and a free account keeps its report
+>   allowance instead.
+> - Past the allowance, only a subscription Stripe is billing keeps going
+>   (`canExceed`: a paid plan in `active` or `cancelling`), at
+>   `ENT.SEARCH_OVERAGE_CENTS` (10) a search. A trial, a tester and a
+>   subscription in grace are stopped: 403 `code: "search_limit"` on
+>   `/api/comps`, 429 on `/api/bulk`.
+> - **The overage is recorded and not yet charged.** Nothing here talks to
+>   Stripe about it; `GET /api/admin/search-usage` is the owner's ledger.
+>   Building the charge (invoice items or a metered price) is a decision
+>   still to make, and it must not ship as a silent default.
+> - The rule is `ENT.searchAllowance` (never test a plan anywhere else); the
+>   tally, the gate and the copy are in bulk.md's Configuration section.
+> - Stated on `/pricing`, `/faq`, `/brokers-firms` and the pricing window from
+>   `PRICING.includedSearches` / `PRICING.overageCents`; the window's compare
+>   row and the form's hint are typed and pinned in
+>   `test/pricing-page.test.js`.
+
 - `TESTER_PASSKEY` — **RETIRED 2026-10-17, see the box above; history
   below.** Optional shared passkey that comps Pro to a **signed-in**
   account (the beta-tester door). Unset = `POST /api/redeem-passkey` 404s and

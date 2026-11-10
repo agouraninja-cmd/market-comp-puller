@@ -171,7 +171,11 @@ function faqEntries(pricing = {}) {
        ? `A free account runs ${pricing.freeReports} full report${pricing.freeReports === 1 ? "" : "s"} a month on any commercial address, three years back, with no card. `
        : "A free account runs a full report on any commercial address, three years back, with no card. ") +
      `Individual Pro is $${monthly} a month${pricing.annual ? ` (or $${pricing.annual} a year)` : ""} and adds a private place for your own comps, Address Explorer, a ten-year ` +
-     `lookback, unlimited exports and your branding. Firms are $${seat} a seat with a ${minSeats}-seat ` +
+     `lookback, unlimited exports and your branding. ` +
+     (Number.isInteger(pricing.includedSearches) && Number.isInteger(pricing.overageCents)
+       ? `Pro includes ${pricing.includedSearches} searches a month; past that, a search is $${(pricing.overageCents / 100).toFixed(2)}. `
+       : "") +
+     `Firms are $${seat} a seat with a ${minSeats}-seat ` +
      "minimum, and every seat is a Pro seat."],
   ];
 }

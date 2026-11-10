@@ -2331,9 +2331,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <!-- Leads the table because it is the row a reader was inventing an
                  answer to. With only a metered EXPORT row on screen, the export
                  counter in the report toolbar got read as a cap on running
-                 reports (owner feedback 2026-08-10). Saying the unlimited thing
-                 out loud costs one row and removes the guess. -->
-            <tr><td>Reports you can run</td><td class="c">3 a month</td><td class="c">Unlimited</td></tr>
+                 reports (owner feedback 2026-08-10). Saying the figure out
+                 loud costs one row and removes the guess. Pro's side was
+                 "Unlimited" until 2026-11-10, when the monthly search
+                 allowance arrived; test/pricing-page.test.js pins both cells
+                 to the numbers in entitlements.js. -->
+            <tr><td>Reports you can run</td><td class="c">3 a month</td><td class="c">400 a month, then $0.10 each</td></tr>
             <tr><td>Value range from the full comp set</td><td class="c">&#10003;</td><td class="c">&#10003;</td></tr>
             <tr><td>Comps itemized, with sources</td><td class="c">All found</td><td class="c">All found</td></tr>
             <tr><td>Sales history window</td><td class="c">3 yrs</td><td class="c">10 yrs</td></tr>
@@ -22082,8 +22085,8 @@ async function renderMyDesk() {
     el.classList.toggle("hidden", !show);
     if (!show) return;
     el.textContent = reportsLeft > 0
-      ? `${reportsLeft} of ${reportsCap} free report${reportsCap === 1 ? "" : "s"} left this month. Pro is unlimited.`
-      : `You've used this month's ${reportsCap} free reports. Pro is unlimited, and yours start again next month.`;
+      ? `${reportsLeft} of ${reportsCap} free report${reportsCap === 1 ? "" : "s"} left this month. Pro includes 400 searches a month.`
+      : `You've used this month's ${reportsCap} free reports. Pro includes 400 searches a month, and yours start again next month.`;
   }
 
   function updateExportAllowance() {
@@ -23141,6 +23144,17 @@ async function renderMyDesk() {
           pendingPortfolioRefresh = null;
           reportsLeft = 0;
           updateReportAllowanceHint();
+          openPricingFor(payload.error);
+          return;
+        }
+        // The monthly search allowance (2026-11-10). A trial that has used
+        // its included searches is an ask, like the report allowance above:
+        // the plans that keep going, with the server's sentence. Anyone else
+        // (a comped account) falls through to the error card below, which
+        // prints the same sentence and does not try to sell them anything.
+        if (payload && payload.code === "search_limit" && payload.upgrade) {
+          hideLoadingCard();
+          pendingPortfolioRefresh = null;
           openPricingFor(payload.error);
           return;
         }

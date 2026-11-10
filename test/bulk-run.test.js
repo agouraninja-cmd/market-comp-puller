@@ -114,6 +114,9 @@ async function bootAll() {
     bulk_jobs: [], bulk_job_items: [], portfolio_items: [], recent_searches: [],
     comp_corpus: [], search_cache: [], analytics_events: [],
     comp_submissions: [], subject_sizes: [], market_pages: [],
+    // The monthly search allowance's tally (2026-11-10): one row per billed
+    // search, written by the worker exactly as /api/comps writes it.
+    export_usage: [],
   };
   const db = await fake.start({ tables });
   const stub = await startStubProvider();
@@ -295,6 +298,13 @@ test("a bulk job runs end to end and lands on the desk", async (t) => {
     assert.equal(stub.calls.length, 2);
   });
 
+  await t.test("and each one is counted against the month's search allowance", () => {
+    // The worker counts a billed row the way /api/comps counts a billed
+    // report, so a list and a single search spend from one allowance.
+    const rows = tables.export_usage.filter((r) => r.user_id === PAT.id && /^searches-\d{4}-\d{2}$/.test(r.period));
+    assert.equal(rows.length, 2, "one row per billed search");
+  });
+
   await t.test("re-running the same list is free and says so", async () => {
     // Re-running IS the resume (there is deliberately no resume button), and
     // that is only true if the second run costs nothing.
@@ -310,6 +320,8 @@ test("a bulk job runs end to end and lands on the desk", async (t) => {
     const second = await waitForJob(srv.base, (await again.json()).job.id);
     assert.equal(second.job.status, "done");
     assert.equal(stub.calls.length, before, "a cached address must not buy a search");
+    assert.equal(tables.export_usage.filter((r) => /^searches-/.test(r.period)).length, 2,
+      "nor spend one of the month's included searches");
     for (const it of second.items) {
       assert.equal(it.cached, true, "and the row says it came from cache");
       assert.ok(it.value_likely > 0);

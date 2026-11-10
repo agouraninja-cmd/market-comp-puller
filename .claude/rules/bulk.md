@@ -13,25 +13,79 @@ paths:
 
 ## Configuration
 
-- `BULK_DAILY_ADDRESSES` — optional (default 200). Per-MEMBER ceiling on
-  addresses bulk valuation may put through a search in one UTC day. A
-  SEPARATE number from `DAILY_SEARCH_CAP` on purpose: that one is site-wide
-  and Pro deliberately bypasses it (`countsDailyCap: !ent.pro`), an exemption
-  written for somebody typing one address at a time. Bulk multiplies it by
-  fifty per click — one run is ~17 minutes and ~$18, and with
-  one-job-at-a-time as the only other bound a member could start another the
-  moment it finishes, roughly $63/hour indefinitely. Charging bulk to
-  `DAILY_SEARCH_CAP` instead was rejected: one 50-address run would eat a
-  third of the site's daily allowance and lock out the free visitors that cap
-  exists to protect. Counts rows that were ATTEMPTED (anything past `queued`),
-  so cancelling a run costs what actually ran rather than what was queued;
-  windowed on `created_at`, so a job straddling midnight counts wholly against
-  the day it started. Fails OPEN on a read error — a paying member must not be
-  locked out by one failed count, and the 50-address cap still bounds the
-  damage. The remaining allowance rides on `GET /api/bulk` and the `/bulk`
-  boot payload (`leftToday`/`dailyLimit`) so the form says it BEFORE a list is
-  pasted, not only at the moment of refusal. Env-overridable because the
-  moment it bites is the moment a real customer is blocked mid-workday.
+- **The monthly search allowance is the limit (2026-11-10, the owner: "we're
+  not going to have a 200 per day limit or per run limit, we're just having
+  400 searches per month then 10 cents a search after").** No env var: the
+  two figures are `ENT.PRO_SEARCHES_PER_MONTH` (400) and
+  `ENT.SEARCH_OVERAGE_CENTS` (10) in `entitlements.js`, and `PRICING` reads
+  them for the rate card. Read this before the Architecture notes below,
+  which it amends wherever they say 50 per run or a daily ceiling.
+  - **A search is a BILLED search.** A row served from cache (or a derivable
+    window) costs nothing and counts as nothing; so does a re-run of a list.
+    The same allowance covers a single report on `/api/comps` and a row of a
+    list, per MEMBER per UTC month (a firm's seats each have their own).
+  - **The rule is `ENT.searchAllowance(ent, used)`**, pure and tested. It
+    applies to every Pro-shaped plan except the comped team (`admin`), and
+    not at all to a free account (the report allowance governs those) or a
+    dark deployment. `canExceed` is true ONLY for a paid plan whose status is
+    `active` or `cancelling`: those searches go through and are recorded as
+    overage. A trial, a comped tester and a subscription in its payment-failed
+    grace window have no card that can be charged, so for them the allowance
+    is a hard stop (`blocked`). That is also what bounds a throwaway trial
+    account now that the daily ceiling is gone.
+  - **The tally is rows in `export_usage`** under the period key
+    `searches-YYYY-MM` (`ENT.searchUsagePeriod`), one row per billed search
+    with a unique `report_key`. The report allowance's trick, so no migration,
+    and a key space the download and report tallies never read.
+    `recordSearchRun` writes it when `runCompSearch` comes back `kind:
+    "fresh"`, in `/api/comps` and in the bulk worker. `countSearchesInPeriod`
+    reads it in pages of 1,000 (one read is capped there, and a subscriber
+    past the allowance can pass it in a month); a gate stops reading at
+    allowance+1.
+  - **The gate is `searchGateFor(user, ent)`**, handed to `runCompSearch` as
+    `searchGate` and called after both cache paths miss and before the daily
+    cap and the billed call. It throws `code: "search_limit"`. `/api/comps`
+    answers 403 with that code (and `upgrade: true` for a trial, so the page
+    opens the pricing window); a bulk row fails with the sentence as its
+    error.
+  - **`POST /api/bulk` refuses a list longer than what is left** (429,
+    `code: "search_limit"`, `searches: {...}`) only for an account that
+    cannot be charged, before a job exists. The comparison is against the
+    list's LENGTH, the most it can cost; rows that turn out to be cached use
+    nothing, which is not knowable beforehand. The retry route refuses a
+    blocked account the same way. Both fail OPEN on a failed count.
+  - **The page says it before the button.** `GET /api/bulk`, the `/bulk` boot
+    payload, a started run and a refusal all carry `searches: { included,
+    used, left, over, canExceed, overageCents, overagePrice, resetsOn }`
+    (`searchAllowancePayload`; null for the comped team). bulk-page.js's cost
+    line states what is left, and for an account that can be charged, how
+    many of the list fall past the allowance and what that comes to.
+    `leftToday` / `dailyLimit` are gone.
+  - **Overage is RECORDED, not yet charged.** Nothing sends it to Stripe.
+    `GET /api/admin/search-usage[?period=YYYY-MM]` (ADMIN_KEY: header, cookie
+    or `?key=`) lists each member's searches for a month, how many were past
+    the allowance and `owed_cents`. A collection step (invoice items, or a
+    metered price) is the piece still to build; decide how before building.
+  - **The per-run number is a technical ceiling now.** `BULK.MAX_ADDRESSES`
+    and `ENT.PRO_BULK_MAX_ADDRESSES` are 1,000: a job's items come back in ONE
+    database read and that read is capped at 1,000 rows. Raise it only with
+    paging that read. The Earlier-runs totals read IS paged (it could already
+    pass 1,000 rows across 25 runs), and the POST body ceiling is 512KB.
+  - **`BULK_DAILY_ADDRESSES` is retired.** Setting it does nothing and the
+    boot log says to remove it.
+  - **A billed search costs about a cent, not $0.36.** The figures further
+    down (`~$0.36`, `~$18` a run, `$63/hour`, 40-70s) were measured on the old
+    provider. On gemini-3.7-flash at `THINKING_LEVEL=low` it is $0.009-0.010
+    and about ten seconds (`docs/evals/2026-08-22-thinking-level-decision.md`).
+    Two things that figure leaves out: Google's token prices double on
+    2027-01-01 (the introductory rate ends), and search grounding is billed
+    apart at $14 per 1,000 queries after 5,000 free a month
+    (`search-provider-gemini.js`'s header).
+  - Tests: `test/entitlements.test.js` (the rule),
+    `test/bulk-routes.test.js` ("the monthly search allowance"),
+    `test/search-allowance-run.test.js` (the single-report path and the
+    ledger), `test/bulk-run.test.js` (the worker counts a billed row and not
+    a cached one).
 - `SEARCH_API_URL` — **test-only**, unset in production, where the provider's
   own endpoint is the live value. `RESEND_API_URL`'s precedent for
   `RESEND_API_URL`'s reason: bulk valuation's whole point is fifty searches

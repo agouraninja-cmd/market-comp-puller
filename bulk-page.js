@@ -416,7 +416,7 @@ const BULK_RUN_JS = `
 var BULKRUN=(function(){
 "use strict";
 var $=function(i){return document.getElementById(i);};
-var MAX=50,job=null,items=[],timer=null,allJobs=[],summary=null;
+var MAX=1000,job=null,items=[],timer=null,allJobs=[],summary=null;
 var onState=null,onList=null,onRunAgain=null;
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
@@ -818,8 +818,11 @@ const BULK_JS = `
 var BULKPAGE=(function(){
 "use strict";
 var $=function(i){return document.getElementById(i);};
-var MAX=50,TYPES=[],parsedCount=0;
-var LEFT=null,DAILY=null;
+var MAX=1000,TYPES=[],parsedCount=0;
+// The month's search allowance as the server last stated it (GET /api/bulk,
+// the boot payload, a refusal): {included,used,left,over,canExceed,
+// overagePrice,overageCents,resetsOn}, or null for a plan that is not metered.
+var SEARCHES=null;
 // The id of a ONE-address run started from this page load, or null. When it
 // finishes with a report, the page opens that report instead of leaving a
 // one-row table on screen (owner's, 2026-09-04: this page is the comp-report
@@ -964,25 +967,41 @@ function refreshCount(){
   // will actually happen, since a single run opens its report when it lands.
   $("run").textContent=parsedCount===1?"Run the report"
     :parsedCount?"Run "+parsedCount+" valuations":"Run valuations";
-  // Said BEFORE the button, not after: a run is up to fifty billed searches
-  // and half an hour, and the moment to know that is while deciding.
-  // The daily ceiling is said BEFORE the list is too long, not only when the
-  // run is refused: somebody with 12 left should find that out while pasting,
-  // not after deciding which forty addresses mattered.
-  var overCap=LEFT!==null&&parsedCount>LEFT;
+  // Said BEFORE the button, not after: every address that misses the cache
+  // is a billed search against the month's allowance, and the moment to know
+  // that is while deciding.
+  // The allowance is said BEFORE the list is too long, not only when the run
+  // is refused: somebody with 12 left should find that out while pasting,
+  // not after deciding which forty addresses mattered. An account that can
+  // be charged past the allowance is never stopped here; it is told what the
+  // extra searches come to instead.
+  var S=SEARCHES;
+  var overCap=Boolean(S)&&!S.canExceed&&parsedCount>S.left;
+  var extra=S&&S.canExceed?Math.max(0,parsedCount-S.left):0;
+  var money=function(c){return "$"+(c/100).toFixed(2);};
+  var tail=!S?""
+    : extra>0
+    ? " "+extra+" of "+(parsedCount===1?"this is":"these are")+" past this month\\u2019s "+S.included+
+      " included searches: up to "+money(extra*S.overageCents)+" at "+S.overagePrice+" each."
+    : S.left>0
+    ? " "+S.left+" of this month\\u2019s "+S.included+" searches left."
+    : S.canExceed
+    ? " This month\\u2019s "+S.included+" included searches are used; each new search is "+S.overagePrice+"."
+    : "";
   if(overCap)$("run").disabled=true;
   $("cost").textContent=busy
     ? "A run is going below. Wait for it to finish, or cancel it first."
     : overCap
-    ? (LEFT===0
-        ? "You have valued "+DAILY+" addresses today — the daily limit. It resets at midnight UTC."
-        : "Only "+LEFT+" left today (the daily limit is "+DAILY+"). Trim the list, or come back after midnight UTC.")
+    ? (S.left===0
+        ? "You have used the "+S.included+" searches included this month. They start again on "+S.resetsOn+"."
+        : "Only "+S.left+" of this month\\u2019s "+S.included+" searches left. Trim the list, or run the rest after "+
+          S.resetsOn+". An address searched before uses none.")
     : parsedCount===1
-    ? "About a minute; the comp report opens when it finishes. An address searched before is served from cache and opens at once."
+    ? "About a minute; the comp report opens when it finishes. An address searched before is served from cache and opens at once."+tail
     : parsedCount
     ? "Roughly "+Math.max(1,Math.round(parsedCount*0.9))+"\\u2013"+Math.ceil(parsedCount*1.1)+
-      " min. Addresses searched before come from cache and finish at once. Each address is its own billed search."
-    : "Each address is its own billed search; nothing runs until you press the button.";
+      " min. Addresses searched before come from cache and finish at once. Each address is its own billed search."+tail
+    : "Each address is its own billed search; nothing runs until you press the button."+tail;
 }
 
 // BULKRUN's onState hook: the cap copy above, plus the single-address rule.
@@ -1029,7 +1048,7 @@ function fillExamples(){
 function loadList(){
   return BULKRUN.api("GET","/api/bulk").then(function(d){
     if(d.maxAddresses){MAX=d.maxAddresses;BULKRUN.setMax(MAX);}
-    if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
+    if(d.searches!==undefined)SEARCHES=d.searches;
     if(d.types&&d.types.length&&!TYPES.length){TYPES=d.types;fillTypes();}
     BULKRUN.setJobs(d.jobs||[]);
     refreshCount();
@@ -1075,10 +1094,9 @@ function run(){
     BULKRUN.showRun(d);BULKRUN.poll(d.job.id);
   }).catch(function(e){
     BULKRUN.msg(e.message,true);
-    // A refusal carries the fresh number, so the cost line corrects itself
+    // A refusal carries the fresh numbers, so the cost line corrects itself
     // rather than going on allowing a run the server just denied.
-    if(e.data&&typeof e.data.left_today==="number"){
-      LEFT=e.data.left_today;DAILY=e.data.daily_limit;}
+    if(e.data&&e.data.searches)SEARCHES=e.data.searches;
     if(e.data)BULKRUN.showNotes(e.data);
     if(e.data&&e.data.job)BULKRUN.poll(e.data.job.id);
   }).then(function(){refreshCount();});
@@ -1087,8 +1105,8 @@ function run(){
 // Run again (2026-09-04): refill the form from an earlier run — its
 // addresses, type, lookback, focus and market note — and scroll to it. It
 // does NOT start the run: re-running is the documented resume (finished rows
-// come from cache for free), but a run is still up to fifty billed searches
-// and the button is where that decision is made. The label is left blank so
+// come from cache for free), but every new address is a billed search and
+// the button is where that decision is made. The label is left blank so
 // the new run is not filed under the old name.
 function runAgain(j,its){
   var text=(its||[]).slice().sort(function(a,b){return a.position-b.position;})
@@ -1133,7 +1151,7 @@ function start(boot){
   $("gate").hidden=true;$("app").hidden=false;
   var d=boot.j||{};
   if(d.maxAddresses)MAX=d.maxAddresses;
-  if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
+  if(d.searches!==undefined)SEARCHES=d.searches;
   TYPES=d.types||[];fillTypes();
   BULKRUN.init({max:MAX,onState:onRunState,onList:loadList,onRunAgain:runAgain});
   BULKRUN.setJobs(d.jobs||[]);

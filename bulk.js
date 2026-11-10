@@ -32,14 +32,19 @@
 const VALUATION = require("./valuation");
 const VAULT = require("./broker-vault");
 
-// The hard ceiling, regardless of what an entitlement says. It is a SPEND
-// limit before it is a product limit: every address that misses the cache is
-// a billed search of its own (~$0.36 and 40-70 seconds, measured — see the
-// live-progress note in CLAUDE.md), so a job is a real invoice, not a click.
-// 50 addresses is up to ~30 minutes and ~$18 on a cold list, which is a
-// number a person can be shown before they commit to it. Higher belongs
-// behind a conversation, not behind a paste box.
-const MAX_ADDRESSES = 50;
+// The hard ceiling, regardless of what an entitlement says.
+//
+// A TECHNICAL ceiling since 2026-11-10, no longer a spend limit (owner's call:
+// no per-run limit and no daily limit; the product limit is the monthly search
+// allowance in entitlements.js, which is what bounds spend now). It was 50
+// while every address cost ~$0.36 on the old provider; a billed search on the
+// current one is about a cent (docs/evals/2026-08-22-thinking-level-decision.md).
+//
+// What is left is the most rows one job can hold and still be read back
+// whole: a job's items come back in ONE database read (limit = this number),
+// and that read is capped at 1,000 rows. Raise it only together with paging
+// that read, or a long job's table, totals and CSV would silently lose rows.
+const MAX_ADDRESSES = 1000;
 
 // Job and row vocabulary. Validated on write, so a typo cannot invent a state
 // the page has no rendering for.

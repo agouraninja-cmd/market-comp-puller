@@ -687,3 +687,96 @@ test("the pace is seeded from the searches already on record", async (t) => {
   const list = await (await fetch(ctx.srv.base + "/api/bulk", as())).json();
   assert.equal(list.pace.typical_ms, 12000 + BULK.ROW_OVERHEAD_MS);
 });
+
+// ---------------------------------------------------------------------------
+// The single report's loading card counts down too (2026-11-10). Its clock is
+// the first event of /api/comps' progress stream: the same measured pace the
+// bulk bar uses, sent the moment the billed search starts.
+// ---------------------------------------------------------------------------
+test("the single report's stream opens with the pace, and a plain answer carries none", async (t) => {
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const ago = (days) => new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+  const ctx = await bootAll({
+    wait: () => held,
+    // Six timed searches of 20 seconds, so the pace is a measured one and the
+    // test proves the seed read lands before the stream opens.
+    tables: { analytics_events: Array.from({ length: 6 }, () => ({
+      kind: "search", cached: false, duration_ms: 20000, ts: ago(1),
+    })) },
+  });
+  t.after(() => { release(); return ctx.stop(); });
+  const typical = 20000 + BULK.ROW_OVERHEAD_MS;
+
+  // Read frames as they arrive: the pace must come while the search is still
+  // being held, not in one burst at the end.
+  const res = await fetch(ctx.srv.base + "/api/comps", as({
+    method: "POST",
+    body: JSON.stringify({ address: "77 Countdown Ct, Boise, ID 83702", type: "Industrial", months: 24, stream: true }),
+  }));
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type") || "", /text\/event-stream/);
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  const frames = [];
+  const take = () => {
+    let sep;
+    while ((sep = buf.indexOf("\n\n")) !== -1) {
+      const frame = buf.slice(0, sep);
+      buf = buf.slice(sep + 2);
+      let event = "message", data = "";
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) data += line.slice(5).trim();
+      }
+      if (data) frames.push({ event, data: JSON.parse(data) });
+    }
+  };
+  while (!frames.length) {
+    const { value, done } = await reader.read();
+    assert.equal(done, false, "the stream ended before any event");
+    buf += dec.decode(value, { stream: true });
+    take();
+  }
+
+  await t.test("the first event is the pace, sent before the search answers", async () => {
+    // It is sent as the billed search STARTS, so it can beat the request to
+    // the provider. Wait for that request, then check nothing has answered:
+    // the provider is still holding, so the pace cannot have ridden the result.
+    await until(() => ctx.stub.calls.length === 1, "the search never reached the provider");
+    assert.equal(frames.some((f) => f.event === "result"), false, "the report arrived before the provider was released");
+    assert.equal(frames[0].event, "progress");
+    assert.deepEqual(frames[0].data, {
+      phase: "pace", typical_ms: typical,
+      late_after_ms: Math.round(typical - BULK.lateLeftMs(typical)),
+    });
+  });
+
+  release();
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    take();
+  }
+
+  await t.test("the report still arrives, and the pace is said once", () => {
+    const last = frames[frames.length - 1];
+    assert.equal(last.event, "result");
+    assert.ok(Array.isArray(last.data.comps) && last.data.comps.length, "no report at the end of the stream");
+    assert.equal(frames.filter((f) => f.data && f.data.phase === "pace").length, 1);
+  });
+
+  await t.test("an answer from cache is plain JSON with no clock in it", async () => {
+    const again = await fetch(ctx.srv.base + "/api/comps", as({
+      method: "POST",
+      body: JSON.stringify({ address: "77 Countdown Ct, Boise, ID 83702", type: "Industrial", months: 24, stream: true }),
+    }));
+    assert.match(again.headers.get("content-type") || "", /application\/json/);
+    const body = await again.json();
+    assert.ok(Array.isArray(body.comps) && body.comps.length);
+    assert.equal(body.typical_ms, undefined);
+    assert.equal(ctx.stub.calls.length, 1, "and it bought no second search");
+  });
+});

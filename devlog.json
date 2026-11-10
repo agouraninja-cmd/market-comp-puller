@@ -4987,5 +4987,11 @@
     "type": "fix",
     "title": "The Market Explorer is back at the top of Markets: search any city and property type",
     "details": "The Markets page now opens with a Market Explorer box: type a city and state, pick Industrial, Office, Retail or Multifamily, and press Search. If we already have that market, its page opens. If we don’t, we build it from recent sales while you watch, which takes about a minute, and then open it. Building a new market never stopped working, but the only way in was a box labelled “Filter” halfway down the page, and the offer to build only appeared once you had typed a type, a city and a two-letter state in one line, so it looked like the feature was gone. The box reads “Tulsa, OK”, “tulsa oklahoma” and “warehouse Tulsa OK” the same way, and asks again instead of guessing when the state is missing or you typed a zip code or a street address. A city we can’t find is refused before any search runs. Land and Residential still don’t have market pages. Signed-in members only, as before."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "improvement",
+    "title": "The report’s loading card now says how long is left",
+    "details": "When you re-run a search or refresh a property’s value, the loading card now counts down under its bar (“About 35 seconds left”), the same way the comp report page does. The time comes from how long recent searches actually took. If a search runs past its usual time the card says so, and if a result needs rechecking the count starts over. The bar itself is unchanged."
   }
 ]

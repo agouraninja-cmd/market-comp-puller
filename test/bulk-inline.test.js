@@ -476,6 +476,16 @@ test("the bar counts down between polls, in round words", () => {
   assert.equal(span(70000), "a minute");
   assert.equal(span(100000), "2 minutes");
   assert.equal(span(799000), "13 minutes");
+
+  // The sentence, shared with index.html's loading card.
+  const say = v.run.leftWords;
+  assert.equal(say(35000), "About 35 seconds left");
+  assert.equal(say(70000), "About a minute left");
+  assert.equal(say(4000), "A few seconds left", "never 'About a few seconds left'");
+  assert.equal(say(35000, true), "Taking a little longer than usual");
+  v.run.showRun({ job: liveJob(), items: oneRow, progress: { elapsed_ms: 40000, left_ms: 8000, late: false } });
+  assert.equal(v.bar().left, "A few seconds left");
+  assert.equal(v.el("bkProgTrack").attrs["aria-valuetext"], "Searching for comps, a few seconds left");
 });
 
 test("the bar never slides back, never finishes by itself, and never invents a time", () => {

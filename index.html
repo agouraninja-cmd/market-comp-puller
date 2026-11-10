@@ -3468,12 +3468,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
          workspace and made Bulk valuation the comp-report tool. The section
          still exists because it is the REAL #compForm, read by targetRange(),
          the footprint estimate, every report restore and the confirm dialog.
-         A search door (rerunHistory, a property's Refresh value) still goes
-         through leaveDesk() -> showHomeView(), which is where this form shows
-         for a member now. A SAVED report opened from Home does not
-         (2026-11-10): openPortfolioItem and openHistoryReport leave through
-         leaveDeskForReport(), which keeps this section hidden behind the
-         report's "Edit property details" button. -->
+         rerunHistory (a Recent searches row's Re-run) still goes through
+         leaveDesk() -> showHomeView(), which is where this form shows for a
+         member now. A report opened or refreshed from Home does not
+         (2026-11-10): openPortfolioItem, openHistoryReport and a property's
+         Refresh value leave through leaveDeskForReport(), which keeps this
+         section hidden behind the report's "Edit property details" button. -->
     <div id="searchSection" class="relative z-10 mt-4 no-print enter enter-2">
       <div class="rd-form rd-desk">
       <form id="compForm" class="rd-desk-build">
@@ -14374,7 +14374,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // matching report lands. This is a fresh re-search, so — same as
     // assumptions — any prior curation (exclusions/additions/read) is
     // intentionally discarded rather than carried onto the new report.
-    leaveDesk();
+    //
+    // Home stays up while the confirm dialog asks (2026-11-10). This used to
+    // leaveDesk() first, which put the pitch and the "Value a building"
+    // chamber on screen behind the dialog and over the report that followed.
+    // The form is filled and submitted where it sits, hidden; the submit
+    // handler leaves Home for the report (leaveDeskForReport) only once the
+    // search really starts, so a cancelled dialog leaves Home as it was.
     const meta = item.payload.meta;
     document.getElementById("address").value = meta.address || "";
     const typeSel = document.getElementById("propertyType");
@@ -14550,10 +14556,10 @@ async function renderMyDesk() {
     // to be the comp-report tool, which the rail links to. The form is not
     // gone — it is the REAL #compForm, read by
     // targetRange(), the footprint estimate, every report restore and the
-    // confirm dialog — it shows on the home view, which the search doors
-    // (rerunHistory, refreshPortfolioItem) enter through leaveDesk(). A saved
-    // report opened from here leaves through leaveDeskForReport() instead and
-    // keeps it hidden (2026-11-10). applySearchLock() below governs both.
+    // confirm dialog — it shows on the home view, which rerunHistory enters
+    // through leaveDesk(). A report opened or refreshed from here leaves
+    // through leaveDeskForReport() instead and keeps it hidden (2026-11-10).
+    // applySearchLock() below governs both.
     document.getElementById("searchSection").classList.add("hidden");
     document.getElementById("historyDeck").classList.add("hidden");
     document.getElementById("results").classList.add("hidden");
@@ -14628,9 +14634,10 @@ async function renderMyDesk() {
   // /bulk, weeks after the comp search left Home. Here the desk hides and the
   // report stands alone; the form stays hidden behind the report's "Edit
   // property details" door, since the size, asking price and NOI boxes in it
-  // still drive the value. Not on the desk (a row of Recent searches on the
-  // search view itself): nothing changes, and the form that row sits under
-  // stays where it is.
+  // still drive the value. The compForm submit handler calls it too, so a
+  // search confirmed from Home (Refresh value) lands the same way. Not on the
+  // desk (a row of Recent searches on the search view itself, or a search run
+  // from that view): nothing changes, and the form stays where it is.
   function leaveDeskForReport() {
     if (!onDesk()) return;
     if (location.pathname === "/desk") history.pushState({}, "", "/");
@@ -23138,8 +23145,19 @@ async function renderMyDesk() {
     dialogResolvedType = "";
   }
 
-  function cancelConfirmModal() {
+  function cancelConfirmModal(e) {
     closeConfirmModal();
+    // Asked over Home (a property's Refresh value, 2026-11-10). Escape or a
+    // click outside means "never mind": Home stays as it was, and the refresh
+    // that was waiting is dropped so no later report is written onto that
+    // property. "No, edit address" is a request for the form by name, so it
+    // alone brings the form up, without the pitch around it.
+    if (onDesk()) {
+      const wantsForm = Boolean(e && e.currentTarget && e.currentTarget.id === "confirmEditBtn");
+      if (!wantsForm) { pendingPortfolioRefresh = null; return; }
+      leaveDeskForReport();
+      setReportOnly(false);
+    }
     const addrEl = document.getElementById("address");
     addrEl.focus();
     addrEl.select();
@@ -23178,6 +23196,7 @@ async function renderMyDesk() {
     }
   });
   document.getElementById("confirmEditBtn").addEventListener("click", cancelConfirmModal);
+  // Called bare, never with the event: only the Edit button may ask for the form.
   confirmModal.addEventListener("click", (e) => { if (e.target === confirmModal) cancelConfirmModal(); });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !confirmModal.classList.contains("hidden")) cancelConfirmModal();
@@ -23549,6 +23568,10 @@ async function renderMyDesk() {
     if (searchInFlight) return; // re-check: the geocode await above can interleave a second submit
     searchInFlight = true;
 
+    // A search confirmed from Home (a property's Refresh value) yields Home
+    // to its report here, with no search chamber over it. A no-op on the
+    // search view, where the form this was submitted from stays put.
+    leaveDeskForReport();
     document.getElementById("results").classList.add("hidden");
     hideStatus();
     hideBulkRun();
@@ -23603,6 +23626,10 @@ async function renderMyDesk() {
           pendingPortfolioRefresh = null;
           reportsLeft = 0;
           updateReportAllowanceHint();
+          // Asked from Home, with nothing to show under the plans: back Home.
+          // Only when the plans window will open (openPricingFor's own
+          // test): its fallback is a status line, which Home would hide.
+          if (reportOnly && billingLive()) enterDesk();
           openPricingFor(payload.error);
           return;
         }

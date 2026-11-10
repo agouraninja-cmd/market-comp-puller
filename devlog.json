@@ -2,6 +2,12 @@
   {
     "date": "2026-11-10",
     "type": "fix",
+    "title": "Refresh value on a property runs without the comp search form",
+    "details": "Clicking Refresh value on a property used to open the old search page: the sales pitch, the “Value a building” form and the market search box, with the “Is this the property?” check on top, and the form stayed above the new report. Now the check opens over Home, and once you confirm you see only the progress card and then the report. Pressing Escape on the check leaves you on Home. “No, edit address” is the one thing that brings the form up."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
     "title": "Opening a property’s report no longer puts the comp search above it",
     "details": "Clicking Open report on a property (Home or The Board), or landing on a report a comp run just finished, showed the old “Value a building” search form and the market search box above the report. The report now opens on its own. The size, asking price and NOI boxes that lived in that form are behind a new “Edit property details” button on the report, and changing them still updates the value without a new search. Pressing Escape on such a report goes back to Home, and Escape on Home no longer drops you onto that search page."
   },
@@ -4969,6 +4975,12 @@
     "type": "fix",
     "title": "The Debt & Refi card no longer reads “1.6M” as a $1.60 loan",
     "details": "Typing a loan balance as shorthand, like 1.6M, in the Debt & Refi card was read as one dollar and sixty cents, so the card showed an LTV of 0% and a debt service of a few cents with nothing to say why. It is now refused the way the Collateral Check refuses it: the box keeps what you typed and the LTV tile says to type the balance in full, like 2,000,000. Editing the rate or the amortization also no longer re-reads the loan box, so a loan you changed in the Collateral Check can't be put back to its old figure by a later edit here."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "feature",
+    "title": "Running a comp report shows a loading bar with the time left",
+    "details": "When you run a comp report, the page now shows a bar that fills as the search goes and says about how long is left (“About 35 seconds left”), counting down while you watch. A list shows it for the whole run. The time comes from how long recent searches actually took, three addresses at a time, so it stays right when searches get faster or slower. If a search runs past its usual time the bar says so instead of promising a few more seconds again. The time shown before you press the button now comes from the same estimate, so the two agree."
   },
   {
     "date": "2026-11-10",

@@ -106,6 +106,19 @@ const BULK_RUN_CSS = `
 .bk-run input.szin:focus{border-color:var(--red,#B91C1C);background:var(--paper,#FBFBF9);outline:none}
 .bk-run input.szin::placeholder{color:var(--red,#B91C1C);opacity:1}
 .bk-run input.szin[disabled]{color:var(--ink,#1A2433)}
+/* The time-left bar (2026-11-10). What it is doing on the left, how long is
+   left on the right, the bar under both. Full ink like the rest of the run
+   view, and no display on .prog itself, so .hide above still hides it. The
+   fill moves for a second at a time because drawProgress() sets a new width
+   every second; without motion it steps instead. */
+.bk-run .prog{margin:0 0 18px;scroll-margin:96px 0}
+.bk-run .prog-top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  margin:0 0 8px;font-size:var(--text-small,13px);line-height:1.4;color:var(--ink,#1A2433)}
+.bk-run .prog-what{font-weight:600}
+.bk-run .prog-left{font-variant-numeric:tabular-nums}
+.bk-run .prog-track{height:8px;border-radius:99px;background:var(--line,#E4E2DA);overflow:hidden}
+.bk-run .prog-fill{height:100%;width:0;border-radius:99px;background:var(--red,#B91C1C);transition:width 1s linear}
+@media (prefers-reduced-motion:reduce){.bk-run .prog-fill{transition:none}}
 `;
 
 // The /bulk form's own styles — the paste box, the settings row, the gate.
@@ -201,6 +214,11 @@ function renderBulkRunMarkup(opts) {
     <div class="deckrule">
       <h2 id="bkJobTitle">This run</h2>
       <span class="sub" id="bkJobMeta"></span>
+    </div>
+    <div class="prog hide" id="bkProg">
+      <div class="prog-top"><span class="prog-what" id="bkProgWhat"></span><span class="prog-left" id="bkProgLeft"></span></div>
+      <div class="prog-track" id="bkProgTrack" role="progressbar" aria-label="How far along this run is"
+        aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="prog-fill" id="bkProgBar"></div></div>
     </div>
     <div class="strip" id="bkTotals"></div>
     <p class="acts">
@@ -418,6 +436,10 @@ var BULKRUN=(function(){
 var $=function(i){return document.getElementById(i);};
 var MAX=50,job=null,items=[],timer=null,allJobs=[],summary=null;
 var onState=null,onList=null,onRunAgain=null;
+// The time-left bar's state (2026-11-10). prog is the server's last answer
+// ({elapsed_ms,left_ms,late}, or null when it could not say) and progAt when
+// it arrived; the rest is the bar's own bookkeeping.
+var prog=null,progAt=0,progTick=null,progShown=0,progFor=null,progHide=null;
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
@@ -557,7 +579,78 @@ function bindRetryLinks(){
   });
 }
 
+// A length of time in the words the bar and the page's cost line both use, so
+// the time said before the button and the time counted down after it read as
+// one estimate. Coarse on purpose: a figure that changes every second claims
+// a precision the estimate does not have.
+function span(ms){
+  var s=Math.max(0,Number(ms)||0)/1000;
+  if(s<10)return "a few seconds";
+  if(s<=55)return (Math.ceil(s/5)*5)+" seconds";
+  if(s<90)return "a minute";
+  return Math.round(s/60)+" minutes";
+}
+
+function setProgress(p){
+  prog=(p&&typeof p.left_ms==="number"&&typeof p.elapsed_ms==="number")?p:null;
+  progAt=Date.now();
+}
+function stopProgressTick(){if(progTick){clearInterval(progTick);progTick=null;}}
+
+// The time-left bar (owner's ask, 2026-11-10). The server says how long the
+// run has been going and how long it has left (bulk.js runProgress) with every
+// poll; this counts down in between, once a second, so the bar moves for the
+// four seconds no answer arrives. Three rules:
+//   - It never slides backwards. An estimate can grow (a slow search); a bar
+//     that retreats reads as a crash, so the time is honest and the bar holds.
+//   - It never reaches the end by itself. Only a finished job fills it.
+//   - It never quotes a time it does not have. With no answer from the server
+//     (a job this process is not working) it shows the count and no clock, and
+//     past its estimate it says so instead of promising seconds again.
+function drawProgress(){
+  var box=$("bkProg");if(!box)return;
+  var live=Boolean(job&&job.status==="running");
+  if(!live){
+    stopProgressTick();
+    // A run that just finished under the reader's eyes fills the bar for a
+    // moment before it goes; an old run opened from the list never shows one.
+    if(job&&job.status==="done"&&progFor===job.id){
+      paintProgress(box,100,"Done","");
+      if(progHide)clearTimeout(progHide);
+      progHide=setTimeout(function(){progHide=null;box.className="prog hide";},1500);
+    }else if(!progHide){
+      box.className="prog hide";
+    }
+    progFor=null;progShown=0;
+    return;
+  }
+  if(progHide){clearTimeout(progHide);progHide=null;}
+  if(progFor!==job.id){progFor=job.id;progShown=0;}
+  if(!progTick)progTick=setInterval(drawProgress,1000);
+  var total=Number(job.total)||0,done=Number(job.done_count)||0;
+  var pct=total?done/total*100:0,left="";
+  if(prog){
+    var dt=Math.max(0,Date.now()-progAt);
+    var spent=prog.elapsed_ms+dt,rest=Math.max(prog.left_ms-dt,1000);
+    pct=spent/(spent+rest)*100;
+    left=(prog.late||prog.left_ms-dt<=0)?"Taking a little longer than usual":"About "+span(rest)+" left";
+  }
+  progShown=Math.max(progShown,Math.min(99,pct));
+  paintProgress(box,progShown,
+    total===1?"Searching for comps":"Valuing "+total+" addresses \\u00b7 "+done+" done",left);
+}
+function paintProgress(box,pct,what,left){
+  box.className="prog";
+  $("bkProgWhat").textContent=what;
+  $("bkProgLeft").textContent=left;
+  $("bkProgBar").style.width=(Math.round(pct*10)/10)+"%";
+  var tr=$("bkProgTrack");
+  tr.setAttribute("aria-valuenow",String(Math.round(pct)));
+  tr.setAttribute("aria-valuetext",left?what+", "+left.charAt(0).toLowerCase()+left.slice(1):what);
+}
+
 function renderJob(){
+  drawProgress();
   if(!job){$("bkJobDeck").className="deck hide";return;}
   $("bkJobDeck").className="deck";
   $("bkJobTitle").textContent=job.label||"This run";
@@ -756,17 +849,24 @@ function poll(id,force){
   if(timer){clearTimeout(timer);timer=null;}
   return api("GET","/api/bulk?id="+encodeURIComponent(id)).then(function(d){
     job=d.job;items=d.items||[];summary=d.summary;
+    setProgress(d.progress);
     renderJob();
     if(force&&onList)onList();
     if(job&&job.status==="running")timer=setTimeout(function(){poll(id);},4000);
     else if(onList)onList();
-  }).catch(function(e){msg(e.message,true);});
+  }).catch(function(e){
+    msg(e.message,true);
+    // The poll does not re-arm after a failed read, so the bar must not go on
+    // counting down toward an answer nobody is asking for: it keeps its
+    // place, drops its clock, and the message above says what happened.
+    setProgress(null);drawProgress();stopProgressTick();
+  });
 }
 
 // Stop polling without clearing what is drawn. index.html calls this when a
 // single-address report takes the viewport, so a hidden run view does not go
 // on requesting every four seconds for the life of the tab.
-function stop(){if(timer){clearTimeout(timer);timer=null;}}
+function stop(){if(timer){clearTimeout(timer);timer=null;}stopProgressTick();}
 
 function showNotes(d){
   var el=$("bkNotes");if(!el)return;
@@ -785,6 +885,7 @@ function showNotes(d){
 // Paint a run from a POST answer, without waiting for the first poll.
 function showRun(d){
   job=d.job;items=d.items||[];summary=null;
+  setProgress(d.progress);
   renderJob();
 }
 
@@ -807,7 +908,7 @@ function init(opts){
 }
 
 return {init:init,showRun:showRun,poll:poll,stop:stop,setJobs:setJobs,
-  countLines:countLines,firstAddress:firstAddress,showNotes:showNotes,msg:msg,api:api,
+  countLines:countLines,firstAddress:firstAddress,showNotes:showNotes,msg:msg,api:api,span:span,
   setMax:function(n){MAX=n;},state:function(){return {job:job,items:items};}};
 })();
 `;
@@ -820,6 +921,10 @@ var BULKPAGE=(function(){
 var $=function(i){return document.getElementById(i);};
 var MAX=50,TYPES=[],parsedCount=0;
 var LEFT=null,DAILY=null;
+// What one address takes here lately and how many run at once (the list
+// read's pace), or null until the server has said. The cost line reads it so
+// the time promised before the button is the time the bar counts down after.
+var PACE=null;
 // The id of a ONE-address run started from this page load, or null. When it
 // finishes with a report, the page opens that report instead of leaving a
 // one-row table on screen (owner's, 2026-09-04: this page is the comp-report
@@ -942,6 +1047,15 @@ function refreshPerAddress(){
   refreshMore();
 }
 
+// How long a run of n addresses should take, in BULKRUN's words, or "" when
+// the server has not said how fast searches are running. The same sum the bar
+// opens on: the addresses dealt across the lanes, each taking the usual time.
+function runSpan(n){
+  if(!PACE||!(Number(PACE.typical_ms)>0))return "";
+  var lanes=Math.max(1,Number(PACE.concurrency)||1);
+  return BULKRUN.span(Math.ceil(n/lanes)*Number(PACE.typical_ms));
+}
+
 function refreshCount(){
   parsedCount=Math.min(BULKRUN.countLines($("bulkText").value),MAX);
   $("count").textContent=parsedCount?parsedCount+" address"+(parsedCount===1?"":"es")+" ready":"";
@@ -971,6 +1085,7 @@ function refreshCount(){
   // not after deciding which forty addresses mattered.
   var overCap=LEFT!==null&&parsedCount>LEFT;
   if(overCap)$("run").disabled=true;
+  var took=parsedCount?runSpan(parsedCount):"";
   $("cost").textContent=busy
     ? "A run is going below. Wait for it to finish, or cancel it first."
     : overCap
@@ -978,10 +1093,10 @@ function refreshCount(){
         ? "You have valued "+DAILY+" addresses today — the daily limit. It resets at midnight UTC."
         : "Only "+LEFT+" left today (the daily limit is "+DAILY+"). Trim the list, or come back after midnight UTC.")
     : parsedCount===1
-    ? "About a minute; the comp report opens when it finishes. An address searched before is served from cache and opens at once."
+    ? "About "+(took||"a minute")+"; the comp report opens when it finishes. An address searched before is served from cache and opens at once."
     : parsedCount
-    ? "Roughly "+Math.max(1,Math.round(parsedCount*0.9))+"\\u2013"+Math.ceil(parsedCount*1.1)+
-      " min. Addresses searched before come from cache and finish at once. Each address is its own billed search."
+    ? "Roughly "+(took||Math.max(1,Math.round(parsedCount*0.9))+"\\u2013"+Math.ceil(parsedCount*1.1)+" min")+
+      ". Addresses searched before come from cache and finish at once. Each address is its own billed search."
     : "Each address is its own billed search; nothing runs until you press the button.";
 }
 
@@ -1030,6 +1145,7 @@ function loadList(){
   return BULKRUN.api("GET","/api/bulk").then(function(d){
     if(d.maxAddresses){MAX=d.maxAddresses;BULKRUN.setMax(MAX);}
     if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
+    if(d.pace)PACE=d.pace;
     if(d.types&&d.types.length&&!TYPES.length){TYPES=d.types;fillTypes();}
     BULKRUN.setJobs(d.jobs||[]);
     refreshCount();
@@ -1043,6 +1159,18 @@ function loadList(){
     }
     return d;
   });
+}
+
+// The bar is the answer to "how long", and on a laptop it starts below the
+// fold: the form above it is most of a screen. So a run started here brings
+// it into view by the least scroll that shows it, and not at all when it is
+// already on screen (block "nearest"; the bar's own scroll-margin keeps it off
+// the edge).
+function showBar(){
+  var p=$("bkProg");
+  if(!p||!p.scrollIntoView)return;
+  var calm=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  try{p.scrollIntoView({block:"nearest",behavior:calm?"auto":"smooth"});}catch(e){}
 }
 
 function run(){
@@ -1073,6 +1201,7 @@ function run(){
       : "Running. You can close this tab \\u2014 the valuations keep going and land on Home.",false);
     BULKRUN.showNotes(d);
     BULKRUN.showRun(d);BULKRUN.poll(d.job.id);
+    showBar();
   }).catch(function(e){
     BULKRUN.msg(e.message,true);
     // A refusal carries the fresh number, so the cost line corrects itself
@@ -1134,6 +1263,7 @@ function start(boot){
   var d=boot.j||{};
   if(d.maxAddresses)MAX=d.maxAddresses;
   if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
+  if(d.pace)PACE=d.pace;
   TYPES=d.types||[];fillTypes();
   BULKRUN.init({max:MAX,onState:onRunState,onList:loadList,onRunAgain:runAgain});
   BULKRUN.setJobs(d.jobs||[]);

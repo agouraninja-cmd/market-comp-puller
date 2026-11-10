@@ -75,18 +75,23 @@ function reportFor(address) {
 // why the suite sets STREAM_ANTHROPIC=off. It counts calls, because "how many
 // searches did this job actually buy" is the question the cache exists to
 // answer and the one nobody could ask before.
-async function startStubProvider() {
+// `opts.wait` (a function returning a promise) holds every answer until it
+// resolves: the only way to look at a job WHILE it is running, which is what
+// the time-left bar's suite needs.
+async function startStubProvider(opts) {
+  const wait = opts && opts.wait;
   const calls = [];
   const server = http.createServer((req, res) => {
     let body = "";
     req.on("data", (c) => { body += c; });
-    req.on("end", () => {
+    req.on("end", async () => {
       let asked = "";
       try {
         const sent = JSON.parse(body || "{}");
         asked = JSON.stringify(sent).slice(0, 4000);
       } catch (_) { /* the count is what matters */ }
       calls.push({ asked });
+      if (wait) await wait();
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({
         stop_reason: "end_turn",
@@ -103,7 +108,7 @@ async function startStubProvider() {
   };
 }
 
-async function bootAll() {
+async function bootAll(opts) {
   const tables = {
     users: [{ ...PAT, pro_tester: false, vault_beta: false }],
     sessions: [{ token_hash: sha256("tok-" + PAT.id), user_id: PAT.id, expires_at: YEAR_OUT }],
@@ -114,9 +119,10 @@ async function bootAll() {
     bulk_jobs: [], bulk_job_items: [], portfolio_items: [], recent_searches: [],
     comp_corpus: [], search_cache: [], analytics_events: [],
     comp_submissions: [], subject_sizes: [], market_pages: [],
+    ...((opts && opts.tables) || {}),
   };
   const db = await fake.start({ tables });
-  const stub = await startStubProvider();
+  const stub = await startStubProvider(opts);
   const srv = await shared.boot({
     ACCOUNT_WALL: "off",
     PRO_ENABLED: "on",
@@ -592,4 +598,92 @@ test("a row with no size can be valued by typing one, for free", async (t) => {
     });
     assert.equal(r.status, 401, "anonymous is refused before anything is read");
   });
+});
+
+// ---------------------------------------------------------------------------
+// The time-left bar (2026-11-10). bulk.js owns the arithmetic and
+// bulk-inline.test.js the drawing; this proves the server actually hands the
+// page a clock, from a real worker, and takes it away when the run ends.
+// ---------------------------------------------------------------------------
+test("a running job says how long it has left, and a finished one does not", async (t) => {
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const ctx = await bootAll({ wait: () => held });
+  t.after(() => { release(); return ctx.stop(); });
+  const { srv } = ctx;
+  const first = BULK.TYPICAL_SEARCH_MS + BULK.ROW_OVERHEAD_MS;
+
+  // Before the button: the list read carries the pace the cost line quotes.
+  const before = await (await fetch(srv.base + "/api/bulk", as())).json();
+  assert.deepEqual(before.pace, { typical_ms: first, concurrency: 3 },
+    "with no search timed yet, the default pace and the worker's own lane count");
+
+  const started = await fetch(srv.base + "/api/bulk", as({
+    method: "POST",
+    body: JSON.stringify({ text: "1201 W Idaho St, Boise, ID 83702", type: "Industrial", months: 24 }),
+  }));
+  const body = await started.json();
+  assert.equal(started.status, 200, JSON.stringify(body));
+
+  await t.test("the POST answer opens the bar on the whole estimate", () => {
+    assert.ok(body.progress, "no clock rode the POST, so the bar would sit empty until the first poll");
+    assert.equal(body.progress.late, false);
+    assert.ok(body.progress.left_ms > first - 2000 && body.progress.left_ms <= first,
+      "one queued address is one search's worth: " + JSON.stringify(body.progress));
+    assert.ok(body.progress.elapsed_ms >= 0 && body.progress.elapsed_ms < 2000);
+  });
+
+  await t.test("a poll mid-search counts from when the row started", async () => {
+    let seen = null;
+    const deadline = Date.now() + 15000;
+    for (;;) {
+      const r = await fetch(`${srv.base}/api/bulk?id=${encodeURIComponent(body.job.id)}`, as());
+      seen = await r.json();
+      if (seen.items[0].status === "running" && ctx.stub.calls.length === 1) break;
+      if (Date.now() > deadline) throw new Error("the row never started: " + JSON.stringify(seen.items[0]));
+      await new Promise((r2) => setTimeout(r2, 50));
+    }
+    assert.equal(seen.job.status, "running");
+    assert.ok(seen.progress, "a job this process is working must carry its clock");
+    assert.equal(seen.progress.late, false);
+    assert.ok(seen.progress.left_ms > 0 && seen.progress.left_ms <= first);
+    // Read again a moment later: time has passed, so more is spent and less is left.
+    await new Promise((r2) => setTimeout(r2, 300));
+    const again = await (await fetch(`${srv.base}/api/bulk?id=${encodeURIComponent(body.job.id)}`, as())).json();
+    assert.ok(again.progress.elapsed_ms > seen.progress.elapsed_ms);
+    assert.ok(again.progress.left_ms < seen.progress.left_ms);
+  });
+
+  release();
+  const finished = await waitForJob(srv.base, body.job.id);
+
+  await t.test("a finished job has no clock", () => {
+    assert.equal(finished.job.status, "done");
+    assert.equal(finished.progress, null);
+  });
+
+  await t.test("the search it just ran now counts toward the pace", async () => {
+    // One quick search against the default: the estimate comes down, part of
+    // the way. A provider that got faster is believed, but not on one sample.
+    const after = await (await fetch(srv.base + "/api/bulk", as())).json();
+    assert.ok(after.pace.typical_ms < first, "this process's own search never reached the pace");
+    assert.ok(after.pace.typical_ms > first / 2, "one sample must not rewrite it: " + after.pace.typical_ms);
+  });
+});
+
+test("the pace is seeded from the searches already on record", async (t) => {
+  // Render restarts this process on every deploy, so an estimate that only
+  // remembered what THIS process had timed would mostly be the default.
+  const ago = (days) => new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+  const search = (over) => ({ kind: "search", cached: false, duration_ms: 12000, ts: ago(1), ...over });
+  const ctx = await bootAll({ tables: { analytics_events: [
+    search(), search(), search(), search(), search(), search(),
+    // None of these is a timed fresh search from the last fortnight:
+    search({ cached: true, duration_ms: null }),          // a cache hit
+    search({ duration_ms: 200000, ts: ago(40) }),          // too old to describe today
+    { kind: "bulk_finish", cached: false, duration_ms: 900000, ts: ago(1) },   // a whole job, not a search
+  ] } });
+  t.after(() => ctx.stop());
+  const list = await (await fetch(ctx.srv.base + "/api/bulk", as())).json();
+  assert.equal(list.pace.typical_ms, 12000 + BULK.ROW_OVERHEAD_MS);
 });

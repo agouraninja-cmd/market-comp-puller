@@ -18,9 +18,37 @@ paths:
   SEPARATE number from `DAILY_SEARCH_CAP` on purpose: that one is site-wide
   and Pro deliberately bypasses it (`countsDailyCap: !ent.pro`), an exemption
   written for somebody typing one address at a time. Bulk multiplies it by
-  fifty per click — one run is ~17 minutes and ~$18, and with
-  one-job-at-a-time as the only other bound a member could start another the
-  moment it finishes, roughly $63/hour indefinitely. Charging bulk to
+  fifty per click, and with one-job-at-a-time as the only other bound a
+  member could start another run the moment one finishes.
+  **What that costs on the current provider** (restated 2026-11-10;
+  gemini-3.7-flash at `THINKING_LEVEL=low`, which is what production runs —
+  `GET /healthz` reports `provider`, `model` and `thinking_level`, so ask the
+  deployment): a cold search measured **$0.0090-0.0102 and about 9-12s**
+  (`docs/evals/2026-08-22-thinking-level-decision.md`). By arithmetic from
+  that, a cold 50-address run is about **$0.50** and, three at a time
+  (`BULK_CONCURRENCY`), about **3 minutes**; looped with no daily bound it
+  would be roughly **$10/hour**; and the default 200 holds one member to
+  about **$2 a day**. With `THINKING_LEVEL` unset the same record measured
+  $0.0296 and about 30-34s a search, roughly three times all of those. This
+  bullet said "~17 minutes and ~$18" a run and "$63/hour" before: those were the
+  Anthropic baseline, $0.36 a report on Sonnet 4.6
+  (`docs/evals/2026-08-10-gemini-pipeline-validation.md`), roughly 35-40x
+  today's figure, and they are what a rollback to `SEARCH_PROVIDER=anthropic`
+  brings back. Two caveats on the new numbers, both from
+  `search-provider-gemini.js`'s header. Token prices are Google's
+  INTRODUCTORY rate through 2026-12-31 and double on 2027-01-01, so every
+  figure here doubles that day. And the measured cost deliberately excludes
+  Google Search grounding, $14 per 1,000 queries past 5,000 free a month:
+  one query past the allowance ($0.014) costs more than the whole measured
+  report, and a single member running the full 200 cold every day is about
+  6,000 searches a month, each at least one query, enough to pass the
+  allowance alone. So the daily bound is no longer guarding a $72 day
+  (200 x $0.36), but it is what keeps bulk from being the thing that turns
+  grounding from free into the larger part of a report's cost.
+  The limits (50 a run, 200 a day) were sized against the old cost and are
+  unchanged; open question for the owner: at about a cent a search they could
+  be raised, but that should wait on real grounding-query volume and the
+  2027 price, not happen by drift. Charging bulk to
   `DAILY_SEARCH_CAP` instead was rejected: one 50-address run would eat a
   third of the site's daily allowance and lock out the free visitors that cap
   exists to protect. Counts rows that were ATTEMPTED (anything past `queued`),
@@ -175,13 +203,17 @@ paths:
     names an address column; then the vault's own `parseCsv` handles the BOM,
     the quotes and the `#` note lines.
   - **A job is an invoice.** Every address that misses the cache is its own
-    billed search (~$0.36, 40-70s). Hence `BULK.MAX_ADDRESSES` = 50 as a hard
-    ceiling, `bulkMaxAddresses` as the per-visitor half (the parser clamps the
+    billed search (about $0.01 and 9-12s on the current provider at
+    `THINKING_LEVEL=low`, before grounding fees; it was ~$0.36 and 40-70s on
+    Anthropic when these limits were set — the `BULK_DAILY_ADDRESSES` env
+    bullet has the eval records and the two pricing caveats). Cheaper, but
+    still money that leaves on a paste, fifty at a time. Hence
+    `BULK.MAX_ADDRESSES` = 50 as a hard ceiling, `bulkMaxAddresses` as the per-visitor half (the parser clamps the
     entitlement to its own ceiling, so entitlements can never widen a job),
     ONE live job per member read from the DATABASE, **`BULK_DAILY_ADDRESSES`
     as the per-member daily bound** (see its env bullet — one job at a time
-    bounds concurrency, not spend, and without it a member could run ~$63/hour
-    indefinitely), and the count and wall clock said BEFORE the button. There
+    bounds concurrency, not spend, and without it a member could run roughly
+    $10/hour indefinitely at today's cost, ~$63/hour on Anthropic), and the count and wall clock said BEFORE the button. There
     is deliberately **no header-only bypass** like `/api/comps`' `internal`: a
     bypass a browser was never meant to have must not grow one on a spend
     amplifier. The two caps split cleanly and should stay split: the per-job

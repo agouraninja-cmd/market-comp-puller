@@ -27,6 +27,19 @@ unit of work that outlives its request.
 
 ### A job is an invoice
 
+> **Correction, 2026-11-10.** The cost and duration figures in this section
+> and in §7 ($0.36 and 40–70 seconds a search, ~$18 and ~17–30 minutes a run,
+> ~$63/hour) were the Anthropic baseline, already out of date when this spec
+> was written: the default provider had moved to Gemini on 2026-08-10. On
+> gemini-3.7-flash at `THINKING_LEVEL=low` (production) a cold search
+> measured $0.0090–0.0102 and about 9–12 seconds
+> (`docs/evals/2026-08-22-thinking-level-decision.md`), so a cold 50-address
+> run is about $0.50 and about 3 minutes. Those token prices are Google's
+> introductory rate through 2026-12-31 and double on 2027-01-01, and they
+> exclude Search grounding ($14 per 1,000 queries past 5,000 free a month).
+> The text below is left as written, as the record of what the limits were
+> sized against; `.claude/rules/bulk.md` carries the current numbers.
+
 Measured (see CLAUDE.md's live-progress note): a cold search is 40–70 seconds
 of model writing and roughly $0.36. Fifty of them is half an hour and ~$18. So
 the design is a spend design first:

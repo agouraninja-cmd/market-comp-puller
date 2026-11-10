@@ -26,8 +26,8 @@ paths:
 > click on a property it will have the comp search with the value a building
 > card and stuff above it which I thought we removed").** Read this before
 > the notes below, which it amends: where they say every report door enters
-> through `leaveDesk()` → `showHomeView()`, that is now true of the SEARCH
-> doors only (`rerunHistory`, `refreshPortfolioItem`).
+> through `leaveDesk()` → `showHomeView()`, that is now true of
+> `rerunHistory` alone (a Recent searches row's Re-run, on the search view).
 > - **`leaveDeskForReport()`** is how `openPortfolioItem` and
 >   `openHistoryReport` leave Home (a property's "Open report" on Home or
 >   The Board, `?property=`, `?recent=`, a /bulk run landing): the desk
@@ -50,9 +50,17 @@ paths:
 >   and Escape on a signed-in member's Home does nothing: it used to
 >   `leaveDesk()` onto the pitch and the chamber. The signed-out `/desk`
 >   card still closes to the search view.
-> - **Not changed:** "Refresh value" (`?property=&refresh=1`) still opens
->   the search view, since it submits that form and its confirm dialog and
->   Run state live there.
+> - **"Refresh value"** (`?property=&refresh=1`) runs without the form too
+>   (the owner, the same day: "Yes, hide it there"). `refreshPortfolioItem`
+>   no longer leaves the desk: it fills and submits the hidden form, so the
+>   confirm dialog opens over Home. The submit handler calls
+>   `leaveDeskForReport()` at the moment the search starts (a no-op on the
+>   search view), so Home yields to the progress card and then the report.
+>   `cancelConfirmModal` over Home: Escape or a click outside leaves Home
+>   as it was and drops `pendingPortfolioRefresh`; "No, edit address" alone
+>   brings the form up (no pitch). Out of free reports, the pricing dialog
+>   opens over Home (`enterDesk`), not a bare page. A failed search shows
+>   its error and Try again with no form; the rail is the way back.
 > - Tests: `test/report-from-home.test.js` executes the view functions
 >   against a stand-in document.
 

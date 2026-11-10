@@ -2,6 +2,12 @@
   {
     "date": "2026-11-10",
     "type": "fix",
+    "title": "Refresh value on a property runs without the comp search form",
+    "details": "Clicking Refresh value on a property used to open the old search page: the sales pitch, the “Value a building” form and the market search box, with the “Is this the property?” check on top, and the form stayed above the new report. Now the check opens over Home, and once you confirm you see only the progress card and then the report. Pressing Escape on the check leaves you on Home. “No, edit address” is the one thing that brings the form up."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
     "title": "Opening a property’s report no longer puts the comp search above it",
     "details": "Clicking Open report on a property (Home or The Board), or landing on a report a comp run just finished, showed the old “Value a building” search form and the market search box above the report. The report now opens on its own. The size, asking price and NOI boxes that lived in that form are behind a new “Edit property details” button on the report, and changing them still updates the value without a new search. Pressing Escape on such a report goes back to Home, and Escape on Home no longer drops you onto that search page."
   },

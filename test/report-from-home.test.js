@@ -161,3 +161,74 @@ test("Escape closes a report opened from Home back to Home, and Home is not esca
   assert.ok(deskEsc.indexOf("if (looksSignedIn()) return;") > -1, "a member's Home does not close to the search view");
   assert.ok(deskEsc.indexOf("if (looksSignedIn()) return;") < deskEsc.indexOf("leaveDesk();"));
 });
+
+// ----------------------------------------------------------------------------
+// Refresh value runs without the form too (2026-11-10, the owner: "Yes, hide
+// it there"). It used to leaveDesk() before submitting, so the pitch and the
+// chamber sat behind the confirm dialog and over the report that followed.
+// ----------------------------------------------------------------------------
+test("Refresh value asks over Home: it fills and submits the hidden form without leaving", () => {
+  const body = fnSource("  function refreshPortfolioItem(item) {")
+    .split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n");
+  assert.ok(!/leaveDesk\w*\(\)/.test(body), "Home stays up until the search is confirmed");
+  assert.ok(body.includes('getElementById("compForm").requestSubmit();'), "it still goes through the real form");
+  assert.ok(body.includes("pendingPortfolioRefresh = { id: item.id"), "and still writes the result back onto the property");
+});
+
+test("a confirmed search leaves Home for its report at the moment it starts", () => {
+  const at = html.indexOf('document.getElementById("compForm").addEventListener("submit"');
+  const submit = html.slice(at);
+  const flight = submit.indexOf("searchInFlight = true;");
+  const leave = submit.indexOf("leaveDeskForReport();");
+  const hide = submit.indexOf('document.getElementById("results").classList.add("hidden");');
+  const confirm = submit.indexOf("openConfirmModal({ typed: address, key: confirmKey, geo });");
+  assert.ok(flight > 0 && leave > flight && hide > leave, "after the in-flight guard, before the loading card");
+  assert.ok(confirm > 0 && confirm < leave, "and never before the confirm dialog has been answered");
+});
+
+// cancelConfirmModal, executed. onDesk is the page's own question.
+function cancelFn({ onDesk }) {
+  const log = [];
+  const addr = { focus: () => log.push("focus"), select: () => log.push("select") };
+  const src = "let pendingPortfolioRefresh = { id: 'p1' };\n" + fnSource("  function cancelConfirmModal(e) {")
+    + "\nreturn { cancel: cancelConfirmModal, pending: () => pendingPortfolioRefresh };";
+  const api = new Function("document", "closeConfirmModal", "onDesk", "leaveDeskForReport", "setReportOnly", src)(
+    { getElementById: () => addr },
+    () => log.push("close"), () => onDesk,
+    () => log.push("leave"), (on) => log.push("reportOnly:" + on),
+  );
+  return { ...api, log };
+}
+
+test("Escape or a click outside the dialog over Home leaves Home alone and drops the refresh", () => {
+  const c = cancelFn({ onDesk: true });
+  c.cancel();   // Escape and the backdrop both call it bare
+  assert.deepEqual(c.log, ["close"], "no view swap, and no focus sent into a hidden form");
+  assert.equal(c.pending(), null, "no later report may be written onto that property");
+});
+
+test("No, edit address over Home brings up the form alone, and keeps the refresh waiting", () => {
+  const c = cancelFn({ onDesk: true });
+  c.cancel({ currentTarget: { id: "confirmEditBtn" } });
+  assert.deepEqual(c.log, ["close", "leave", "reportOnly:false", "focus", "select"]);
+  assert.deepEqual(c.pending(), { id: "p1" }, "the same address run from the form still refreshes the property");
+  assert.match(html, /getElementById\("confirmEditBtn"\)\.addEventListener\("click", cancelConfirmModal\);/,
+    "the button hands over its event; the backdrop and Escape call it bare");
+  assert.match(html, /if \(e\.target === confirmModal\) cancelConfirmModal\(\);/);
+  assert.match(html, /!confirmModal\.classList\.contains\("hidden"\)\) cancelConfirmModal\(\);/);
+});
+
+test("on the search view the dialog cancels as it always did", () => {
+  const c = cancelFn({ onDesk: false });
+  c.cancel();
+  assert.deepEqual(c.log, ["close", "focus", "select"]);
+  assert.deepEqual(c.pending(), { id: "p1" });
+});
+
+test("out of free reports on a refresh: the plans open over Home, not a bare page", () => {
+  const at = html.indexOf('if (payload && payload.code === "report_limit") {');
+  const branch = html.slice(at, html.indexOf("return;", at));
+  const back = branch.indexOf("if (reportOnly && billingLive()) enterDesk();");
+  assert.ok(back > 0, "Home comes back only when the plans window will open; its fallback is a status line Home would hide");
+  assert.ok(back < branch.indexOf("openPricingFor(payload.error);"));
+});

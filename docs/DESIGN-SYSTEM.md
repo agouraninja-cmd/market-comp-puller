@@ -469,8 +469,11 @@ height and border.
 **Form fields on a phone** — on a narrow window or a touch screen, every text
 field, select and textarea is **16px** (`--text-input`), from one rule in
 `components.js`. An iPhone zooms the page in when you tap a field with smaller
-text, and does not zoom back out. Do not set a field's size with `!important`
-on a phone; that one rule is the only place that does.
+text, and does not zoom back out. It is a floor, not a ceiling: the report's
+main address box (`.rd-in-lg`, 17px) is left out of the rule by name, and any
+other field meant to be larger than 16px on a phone needs the same exemption
+there. Do not set a field's size with `!important` on a phone; that one rule
+is the only place that does.
 
 **Card** — `.card`. White (`--card`) on a 1px `--edge` border, 6px radius,
 22px padding, 18px vertical margin, `--lift` shadow. Heading is Georgia 500 at

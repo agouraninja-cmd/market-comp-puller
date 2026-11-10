@@ -341,6 +341,11 @@ Read its header before touching it; the rules a future editor will trip on:
   from the line it starts on), its selector chains `:not()`s rather than
   listing them (the tests split selectors on commas), and `hub-page.js`,
   which takes nothing else from this file, is handed it as `FIELD_CSS`.
+  **It is a floor, never a ceiling:** `.rd-in-lg` (the report's main address
+  box, 17px) is excluded by name, because the first version shrank it to 16px
+  on every phone and the under-16px sweep could not see that. A field meant
+  to be larger than 16px needs the same `:not()`; check with a sweep for
+  fields OVER 16px before and after, not only under.
 - **Two deliveries, one string.** `MARKET_CSS` interpolates `COMPONENT_CSS`
   (every marketShell page), and the `/` handler writes it into index.html at
   `<!--COMPONENT_CSS-->` (the NAV_LINKS rule: a marker, never a hand-copy).

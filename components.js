@@ -329,10 +329,13 @@ function tabsCss(opts) {
 // every text field, select and textarea is 16px. !important because it has to
 // beat each page's own field rule, wherever that sits and whatever it weighs;
 // it is the one !important in this file. Checkboxes, radios and the button
-// kinds of <input> are left alone. One line, on purpose: test/vault-shell
-// reads rules by the line they start on, and this one is not a component.
+// kinds of <input> are left alone, and so is a field that is LARGER than 16px
+// on purpose: .rd-in-lg, the report's main address box, is 17px, and this
+// rule would shrink it. Any other field meant to be bigger than 16px on a
+// phone needs the same :not(). One line, on purpose: test/vault-shell reads
+// rules by the line they start on, and this one is not a component.
 const FIELD_PHONE = "@media (max-width:640px),(pointer:coarse){" +
-  "input" + ["checkbox", "radio", "range", "button", "submit", "reset", "file", "color", "image", "hidden"].map((t) => ":not([type=" + t + "])").join("") + ",select,textarea" +
+  "input" + ["checkbox", "radio", "range", "button", "submit", "reset", "file", "color", "image", "hidden"].map((t) => ":not([type=" + t + "])").join("") + ":not(.rd-in-lg),select,textarea" +
   "{font-size:var(--text-input)!important}}";
 
 function fieldCss() {

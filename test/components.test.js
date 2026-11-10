@@ -222,6 +222,11 @@ test("on a phone every form field is 16px, so an iPhone does not zoom in on a ta
   assert.ok(sels.includes("select") && sels.includes("textarea"));
   // The kinds of <input> that are not text keep their own size.
   for (const t of ["checkbox", "radio", "range", "button", "submit", "file", "hidden"]) assert.ok(sel.includes(`[type=${t}]`), `input[type=${t}] must be left alone`);
+  // A floor, never a ceiling: the report's main address box is 17px
+  // (.rd-in-lg), and an !important 16px would shrink it. It is the only field
+  // in the app set larger than 16px; one that joins it needs the same :not().
+  assert.ok(sel.includes(":not(.rd-in-lg)"), "the 17px address box must be left out, or the rule makes it smaller");
+  assert.match(root("index.html"), /\.rd-in-lg\s*\{[^}]*font-size:\s*17px/, ".rd-in-lg is no longer 17px: revisit the exemption");
   // One line: test/vault-shell.test.js reads a rule from the line it starts
   // on, and would otherwise hold the vault's own select and textarea to it.
   assert.equal(css.includes("\n"), false);

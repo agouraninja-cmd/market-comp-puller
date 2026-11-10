@@ -225,3 +225,56 @@ paths:
   Deliberately not built (see the spec's §5): mixed types in one job,
   per-address lookback/details, an automatic resume (re-running IS the resume,
   free from cache), a shareable portfolio, and any scheduling.
+
+- **The time-left bar (2026-11-10, the owner: "a loading bar for the Comp
+  Report so they can see how much longer it is going to be searching for").**
+  A run used to show a "running" chip and nothing that moved. The run view
+  now has `#bkProg` between the heading and the totals: what it is doing, the
+  time left ("About 35 seconds left"), and a bar. It is part of the ONE run
+  view (`renderBulkRunMarkup`, `BULK_RUN_CSS`, `BULK_RUN_JS`), so index.html's
+  inline list run has it too. Rules:
+  - **The time is the server's, the countdown is the page's.** `GET
+    /api/bulk?id=` and the `POST` answer carry `progress: { elapsed_ms,
+    left_ms, late }` from `bulkProgressFor` → `BULK.runProgress` (pure,
+    tested): the worker's own model, `BULK_CONCURRENCY` lanes each taking the
+    next queued row, every row costing the usual time, a running row credited
+    with what it has already spent. `drawProgress` counts down once a second
+    between the 4-second polls. Nothing is stored and there is no migration:
+    the clock (`control.startedAt`, `control.since`) lives in `bulkRunning`
+    with the worker that owns the job.
+  - **`progress` is null when this process is not working the job** (a
+    restart mid-run, read during the stall window). The bar then shows the
+    count (`done_count / total`) and no time. It never quotes a time it was
+    not given.
+  - **The usual time is MEASURED, never a constant** (`SEARCH_PACE` in
+    server.js, `BULK.typicalSearchMs`). A search is ~10s on Gemini at
+    `THINKING_LEVEL=low`, ~35s at medium and 40-70s on Anthropic, so a
+    constant would be wrong the day a setting changes. It is the 75th
+    percentile of the last 20 billed searches (so most runs finish inside the
+    bar), fed from ONE seam, `runCompSearch`'s billed leg, and seeded once
+    per process from `analytics_events.duration_ms` (the last 14 days),
+    because Render restarts the process on every deploy. The seed read is
+    raced against 1.5s and never throws; with nothing timed the default is 45s
+    and it still counts as one sample until five real ones are in.
+  - **The bar never slides back and never fills by itself.** An estimate can
+    grow; the time says so and the bar holds. Only a finished job reaches
+    100% ("Done", then the bar goes after 1.5s). An old run opened from the
+    ledger never shows one.
+  - **Past its time it says so.** `late` is true when every row in flight has
+    outrun the usual time and nothing is queued; the bar reads "Taking a
+    little longer than usual" rather than promising seconds again.
+  - **A failed poll drops the clock.** The poll does not re-arm after a
+    failed read, so the countdown stops with it; `BULKRUN.stop()` (index.html,
+    when a single report takes the page) stops the ticker too.
+  - **The time said BEFORE the button is the same estimate.** The list read
+    and the boot payload carry `pace: { typical_ms, concurrency }`, and the
+    cost line's `runSpan(n)` is `ceil(n / lanes) × typical` in
+    `BULKRUN.span`'s words, which is what `runProgress` opens on for n queued
+    rows (`test/bulk-inline.test.js` holds the two together). It replaced
+    "About a minute" and "Roughly 0.9-1.1 min per address", which ignored the
+    three lanes and promised 45-55 minutes for a run that takes about 15.
+  Tests: `test/bulk.test.js` (the arithmetic), `test/bulk-inline.test.js`
+  (the bar executed against a stand-in page), `test/bulk-run.test.js` (a real
+  job held mid-search; the pace seeded from stored searches). Not built:
+  the same countdown on index.html's single-search loading card, which has
+  its own bar driven by the live search events.

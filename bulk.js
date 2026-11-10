@@ -495,11 +495,121 @@ function exportCsv(job, items, opts) {
   return lines.join("\n") + "\n";
 }
 
+// ---------------------------------------------------------------------------
+// How long a run has left (2026-11-10, the owner: "a loading bar ... so they
+// can see how much longer it is going to be searching for")
+// ---------------------------------------------------------------------------
+// Until this, a run showed a "running" chip and nothing that moved, for a
+// minute on one address and a quarter of an hour on fifty. The page now draws
+// a bar with the time left, and these two functions are where that time comes
+// from: server.js hands them what it knows (how long recent searches took,
+// when each row started) and sends the answer with every poll; the page only
+// counts down between polls.
+//
+// Nothing here is stored. An estimate is an opinion about the next minute,
+// recomputed on every read, so a wrong one corrects itself in four seconds
+// and never needs a migration.
+
+// What one fresh search is assumed to take before this deployment has timed
+// any. Deliberately long: a run that ends early is a pleasant surprise, and
+// one that overruns its own bar is the complaint the bar exists to answer.
+const TYPICAL_SEARCH_MS = 45 * 1000;
+// How many recent searches the pace is read from, and how many it takes
+// before the guess above stops counting as one of them.
+const PACE_SAMPLES = 20;
+const PACE_TRUSTED_AT = 5;
+// What a row costs around its search: the cache lookups before it, the
+// valuation and the filing after.
+const ROW_OVERHEAD_MS = 2000;
+// One slow afternoon upstream must not promise a four-hour run, and one
+// corpus-assisted blink must not promise "a few seconds" for a cold address.
+const PACE_MIN_MS = 8 * 1000;
+const PACE_MAX_MS = 4 * 60 * 1000;
+
+/**
+ * What one address is expected to take, start to finish, from the durations
+ * (ms) of this deployment's recent billed searches, oldest first.
+ *
+ * The 75th percentile, not the median: at the median half of all runs overrun
+ * the bar, and "taking longer than usual" should be the unusual case its
+ * words say it is.
+ */
+function typicalSearchMs(samples) {
+  const xs = (Array.isArray(samples) ? samples : [])
+    .map(Number).filter((n) => Number.isFinite(n) && n > 0).slice(-PACE_SAMPLES);
+  if (xs.length < PACE_TRUSTED_AT) xs.push(TYPICAL_SEARCH_MS);
+  xs.sort((a, b) => a - b);
+  const at = (xs.length - 1) * 0.75;
+  const lo = Math.floor(at), hi = Math.ceil(at);
+  const p75 = xs[lo] + (xs[hi] - xs[lo]) * (at - lo);
+  return Math.round(Math.min(PACE_MAX_MS, Math.max(PACE_MIN_MS, p75))) + ROW_OVERHEAD_MS;
+}
+
+/**
+ * Where a running job stands: how long this pass has been going and how long
+ * it has left, in ms. Null when that cannot be known — the worker's own clock
+ * (`startedAt`) is missing, which is a job this process is not working — so
+ * the page draws its count and claims no time.
+ *
+ * The model is the worker's own: `concurrency` lanes, each taking the next
+ * queued row the moment it is free, every row costing `typicalMs`. A row
+ * already running has used some of that (`runningSince[id]`, ms epoch); the
+ * queued rows are dealt to whichever lane frees first; the answer is when the
+ * last lane goes quiet. Cache hits are not modelled, because nothing knows
+ * which rows they are until they land; they only ever make the bar jump
+ * forward.
+ *
+ * A row past its time is given a short stretch more rather than zero, and
+ * `late` says so when that is ALL that is left: the page then stops quoting a
+ * number it has already been wrong about.
+ */
+function runProgress(o) {
+  const now = Number(o && o.now);
+  const startedAt = Number(o && o.startedAt);
+  if (!Number.isFinite(now) || !Number.isFinite(startedAt) || !(startedAt > 0)) return null;
+  const typical = Number(o.typicalMs) > 0 ? Number(o.typicalMs) : TYPICAL_SEARCH_MS + ROW_OVERHEAD_MS;
+  const lanesMax = Math.max(1, Math.floor(Number(o.concurrency)) || 1);
+  const since = (o.runningSince && typeof o.runningSince === "object") ? o.runningSince : {};
+  const items = Array.isArray(o.items) ? o.items : [];
+  const lateLeft = Math.max(3000, typical * 0.15);
+  const lanes = [];
+  let running = 0, late = 0, queued = 0;
+  for (const it of items) {
+    if (!it) continue;
+    if (it.status === "running") {
+      running++;
+      const t0 = Number(since[it.id]);
+      const spent = Number.isFinite(t0) && t0 > 0 ? Math.max(0, now - t0) : 0;
+      if (typical - spent < lateLeft) { late++; lanes.push(lateLeft); }
+      else lanes.push(typical - spent);
+    } else if (it.status === "queued" && !o.cancelled) {
+      // A cancelled run finishes what is in flight and starts nothing more.
+      queued++;
+    }
+  }
+  while (lanes.length < Math.min(lanesMax, running + queued)) lanes.push(0);
+  for (let i = 0; i < queued; i++) {
+    let k = 0;
+    for (let j = 1; j < lanes.length; j++) if (lanes[j] < lanes[k]) k = j;
+    lanes[k] += typical;
+  }
+  return {
+    elapsed_ms: Math.max(0, Math.round(now - startedAt)),
+    left_ms: Math.round(lanes.length ? Math.max(...lanes) : 0),
+    late: running > 0 && late === running && queued === 0,
+  };
+}
+
 module.exports = {
   MAX_ADDRESSES,
   JOB_STATUSES,
   ITEM_STATUSES,
   STALL_MS,
+  TYPICAL_SEARCH_MS,
+  PACE_SAMPLES,
+  ROW_OVERHEAD_MS,
+  typicalSearchMs,
+  runProgress,
   TX_FOCUSES,
   normalizeTxFocus,
   normalizeSubject,

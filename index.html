@@ -5025,7 +5025,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // /admin runs the same math this page does. Aliased into the original names
   // so every call site below reads exactly as it did when these were local.
   const { numericValue, salePsfOf, heroRound,
-          compAgeYears, yearOf, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf, askFit,
+          compAgeYears, yearOf, compWeight, trendFactor, compAdjustment, valueFromComps, subjectSizeFit, outlierOf, askFit,
           conditionSpread, unexplainedGain, conditionFit,
           parseRadiusMiles, defaultFreePassMiles } = VALUATION;
 
@@ -6863,24 +6863,51 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     return { label: tier.label, cls: tier.cls, weight: w, reasons };
   }
 
-  // Disclosure for that time adjustment. The table deliberately shows each
-  // comp's RAW reported $/SF so the audit trail never moves, but the valuation
-  // uses the indexed figure — which means the number on screen and the number
-  // in the math can differ with nothing saying so. Where they do, the cell
-  // wears an "adj" mark carrying both figures. Sales only: leases are never
-  // indexed.
+  // Disclosure for the adjustments. The table deliberately shows each comp's
+  // RAW reported $/SF so the audit trail never moves, but the valuation uses
+  // an adjusted figure — which means the number on screen and the number in
+  // the math can differ with nothing saying so. Where they do, the cell wears
+  // an "adj" mark carrying both figures and every step between them. Sales
+  // only: leases are never adjusted.
+  //
+  // Three adjustments, all owned by VALUATION.compAdjustment, which is the
+  // same call valueFromComps makes — so the figure this says a comp "counts
+  // as" is the figure the range was computed from, by construction: time (the
+  // market's annual trend), and since 2026-11-10 size and building age (the
+  // comp restated at the subject's own size and year built; Industrial,
+  // Office, Retail and Multifamily only). The name is kept from when time was
+  // the only one; its three call sites read it as "is there an adj mark".
   function indexedPsfNote(comp, meta, parsed) {
     if (String(comp.transaction || "").toLowerCase().startsWith("lease")) return "";
     const raw = salePsfOf(comp);
     if (!(raw > 0)) return "";
-    const f = trendFactor(comp, asOfOf(meta), trendPctOf(parsed));
+    const a = compAdjustment(comp, {
+      asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
+      subjectSF: subjectSizeForMatch(parsed), subjectYear: subjectYearForMatch(parsed),
+      propertyType: meta && meta.type,
+    });
     // Under half a percent rounds to the same displayed figure; a marker for a
     // difference nobody can see is noise, not disclosure.
-    if (!isFinite(f) || Math.abs(f - 1) < 0.005) return "";
+    if (!isFinite(a.total) || Math.abs(a.total - 1) < 0.005) return "";
     const pct = Number(parsed && parsed.annual_price_trend_pct);
     const psf = (v) => formatUsd(v, { maximumFractionDigits: 0 }) + "/SF";
-    return `Counts as ${psf(raw * f)} in the valuation: indexed from ${psf(raw)} to the report date `
-      + `at the market's ${pct > 0 ? "+" : ""}${pct}%/yr trend.`;
+    const signed = (f) => (f >= 1 ? "+" : "−") + Math.abs(Math.round((f - 1) * 100)) + "%";
+    const noun = assetNoun(meta && meta.type);
+    const steps = [];
+    if (Math.abs(a.trend - 1) >= 0.005) {
+      steps.push(`${signed(a.trend)} to the report date at the market's ${pct > 0 ? "+" : ""}${pct}%/yr trend`);
+    }
+    if (Math.abs(a.size - 1) >= 0.005) {
+      steps.push(`${signed(a.size)} for size (it is ${a.size > 1 ? "larger" : "smaller"} than your ${noun}, `
+        + `and ${a.size > 1 ? "larger" : "smaller"} ${assetNounPlural(meta && meta.type)} sell for ${a.size > 1 ? "less" : "more"} per SF)`);
+    }
+    if (Math.abs(a.vintage - 1) >= 0.005) {
+      steps.push(`${signed(a.vintage)} for age (it is ${a.vintage > 1 ? "older" : "newer"} than your ${noun})`);
+    }
+    // Every step rounded to nothing while the product did not: say the total.
+    if (!steps.length) steps.push(`${signed(a.total)} for time, size and age together`);
+    return `Counts as ${psf(raw * a.total)} in the valuation: ${psf(raw)} as reported, adjusted `
+      + steps.join(", ") + ".";
   }
 
   // Word mark on a Size or $/SF cell. † ‡ § read as gray glitches (and §
@@ -7331,10 +7358,31 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const mechanics = [];
     // One quiet sentence disclosing the math, shared by both sales bases.
     const trendPct = parsed ? parsed.annual_price_trend_pct : null;
+    // The second half names the adjustments that actually ran on THIS report:
+    // the trend index only when the report carries a trend, and the size and
+    // age restatement only for the types compAdjustment covers and only when
+    // some comp really moved (a subject with no size and no year built
+    // adjusts nothing, and a sentence about math that did not run is the
+    // lease-range mistake below over again).
+    const adjOpts = {
+      asOf: asOfOf(meta), trendPct: trendPctOf(parsed), subjectSF: subjSFMid,
+      subjectYear: subjectYearForMatch(parsed), propertyType: meta.type,
+    };
+    const adjOf = saleComps.map((x) => compAdjustment(x.comp, adjOpts));
+    // Only with a subject size: without one no $/SF figure heads the hero (a
+    // per-unit headline reads its own value, which compAdjustment leaves
+    // alone), so the clause would describe a figure that is not on screen.
+    const fitAdjusted = subjSFMid > 0 && adjOf.some((a) => Math.abs(a.size * a.vintage - 1) >= 0.005);
+    const adjParts = [];
+    if (Number.isFinite(trendPct)) {
+      adjParts.push(`indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend`);
+    }
+    if (fitAdjusted) {
+      adjParts.push(`adjusted to this ${noun}'s size and age (larger and older ${assetNounPlural(meta.type)} sell for less per SF)`);
+    }
     const weighNote = "Recent, similar-size, similar-vintage, nearby, same-price-tier, well-sourced comps count more"
-      + (Number.isFinite(trendPct)
-        ? `; prices are indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend `
-          + `(adj in the table shows each indexed figure).`
+      + (adjParts.length
+        ? `; each comp's price is ${adjParts.join(" and ")} (adj in the table shows each adjusted figure).`
         : ".");
     // Honest-uncertainty notes. Name the comps of a wholly different size
     // class (down-weighted, never hidden), and say plainly when only 2-3
@@ -19934,7 +19982,7 @@ async function renderMyDesk() {
       present.push(["size", "different size class than your " + noun + ", counts less"]);
     }
     if (comps.some((c) => indexedPsfNote(c, currentMeta, currentParsed))) {
-      present.push(["adj", "time-adjusted figure the valuation uses"]);
+      present.push(["adj", "adjusted for time, size or age in the valuation (hover for the figure it counts as)"]);
     }
     el.innerHTML = "";
     el.classList.toggle("hidden", present.length === 0);

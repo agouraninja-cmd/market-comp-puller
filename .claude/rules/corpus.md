@@ -11,6 +11,8 @@ paths:
   - "test/market.test.js"
   - "test/deal-date.test.js"
   - "test/archive-first.test.js"
+  - "scripts/accuracy-bench.js"
+  - "test/accuracy-bench.test.js"
 ---
 # The comp corpus and retrieval
 
@@ -196,3 +198,37 @@ paths:
   a live search used), and the card says both of those things next to the
   numbers. Not a public accuracy claim — nothing from this ships to a
   marketing surface.
+  **It scores what a report computes, including building age (2026-11-10).**
+  The read now selects `year_built` (a base column since migration 001,
+  already named by `corpusRowsForMarket`, so no migration) and the harness
+  hands the held-out row's own year to `valueFromComps` as the subject's.
+  Until then it dropped the year, so the card graded a valuation with no
+  vintage weight while every customer's report used one. It also picks up
+  the size and age ADJUSTMENT (`compAdjustment`; report-and-valuation.md,
+  flow 3g) by construction, since it calls the same function. Expect the
+  card's number to move on the deploy that carries this: that is the
+  measurement catching up with the product, then the product improving.
+- **`node scripts/accuracy-bench.js`** — the same question OFFLINE, for a
+  change to `valuation.js` that is still on a branch (2026-11-10). A
+  hold-one-out over `market-seed.json`'s sale comps by default, or over a
+  corpus export with `--corpus <file>` (the CSV `GET /api/comp-corpus`
+  downloads; the larger and better sample). `--before [ref]` loads
+  `valuation.js` as it stood at a git ref (`origin/main` by default) and
+  prints the change with a 95% interval from resampling whole MARKETS, and
+  it always prints what the size and age adjustment alone is worth plus the
+  within-market regression the two coefficients came from. Zero cost: no
+  server, no search, no database, no clock. Four things to know before
+  quoting it, all in its header: it measures the math, never the
+  comp-finding (`run-eval.js` is that); the seed's comp sets are CITYWIDE,
+  gathered for a market page with no subject, so the absolute error is far
+  larger than a report's and the CHANGE is the number to read; it runs
+  untrended, like the backtest; and an interval that reaches zero means the
+  change has not been shown to do anything. It differs from `backtest.js` on
+  purpose in one way: peers are every other sale comp in the market,
+  listings and later-dated ones included, because that is what a report's
+  valuation is handed, where the backtest uses only what was known on the
+  subject's sale date. Duplicate buildings are decided by `backtest.js`'s own
+  `isSameProperty`. Pure helpers are tested in `test/accuracy-bench.test.js`,
+  which also fails the build if the adjustment ever makes the checked-in
+  seed WORSE than no adjustment (the weakest claim that still means
+  something; a regenerated seed is a fresh sample).

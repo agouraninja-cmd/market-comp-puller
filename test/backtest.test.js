@@ -159,11 +159,16 @@ test("a disqualified first copy of a building does not block a scoreable second 
 // in part from the OTHER's own price, at 0.0% error apiece. This fixture
 // fails against that old normAddress; it must pass against the fixed one.
 test("a spelling-variant duplicate of the subject cannot peer with or duplicate-score itself", () => {
+  // The peers are the subject's own 56,000 SF on purpose. This test is about
+  // WHICH rows value the subject, and valuation.js restates a comp's $/SF at
+  // the subject's size (compAdjustment), so peers of another size would move
+  // the expected figure off the hand-checkable 250 for a reason that has
+  // nothing to do with duplicates.
   const peers = [
-    row({ market: "Caldwell, ID", address: "1 Warehouse Row", deal_date: "2026-01", price_per_sqft: "100" }),
-    row({ market: "Caldwell, ID", address: "2 Warehouse Row", deal_date: "2026-01", price_per_sqft: "200" }),
-    row({ market: "Caldwell, ID", address: "3 Warehouse Row", deal_date: "2026-01", price_per_sqft: "300" }),
-    row({ market: "Caldwell, ID", address: "4 Warehouse Row", deal_date: "2026-01", price_per_sqft: "400" }),
+    row({ market: "Caldwell, ID", address: "1 Warehouse Row", deal_date: "2026-01", size_sqft: "56000", price_per_sqft: "100" }),
+    row({ market: "Caldwell, ID", address: "2 Warehouse Row", deal_date: "2026-01", size_sqft: "56000", price_per_sqft: "200" }),
+    row({ market: "Caldwell, ID", address: "3 Warehouse Row", deal_date: "2026-01", size_sqft: "56000", price_per_sqft: "300" }),
+    row({ market: "Caldwell, ID", address: "4 Warehouse Row", deal_date: "2026-01", size_sqft: "56000", price_per_sqft: "400" }),
   ];
   const variants = [
     row({

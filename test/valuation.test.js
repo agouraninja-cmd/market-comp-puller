@@ -765,3 +765,164 @@ test("conditionFit is not fooled by inherited Object properties", () => {
   // Real subject, junk comps: the comps must not count as rated.
   assert.equal(V.conditionFit("Renovated", comps), null);
 });
+
+// ---------------------------------------------------------------------------
+// Deal dates. `date` is free text, and the valuation used to hand it to a
+// bare Date.parse: "Q3 2025" read as "age unknown" (full recency weight, no
+// trend index) and a bare year as its first of January.
+// ---------------------------------------------------------------------------
+
+const iso = (ms) => {
+  const d = new Date(ms);
+  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
+};
+
+test("dealDateMs reads the shapes a comp's date actually arrives in", () => {
+  // Month-year is the 1st at local midnight, exactly what V8's Date.parse
+  // answered, so no existing report's weights moved with this reader.
+  assert.equal(V.dealDateMs("Mar 2025"), Date.parse("Mar 2025"));
+  assert.equal(iso(V.dealDateMs("March 2025")), "2025-03-01");
+  assert.equal(iso(V.dealDateMs("Sept. 2025")), "2025-09-01");
+  assert.equal(iso(V.dealDateMs("04/2026")), "2026-04-01");
+  // The middle of the period, not its first day.
+  assert.equal(iso(V.dealDateMs("Q3 2025")), "2025-08-15");
+  assert.equal(iso(V.dealDateMs("2025 Q3")), "2025-08-15");
+  assert.equal(iso(V.dealDateMs("2025")), "2025-07-01");
+  assert.equal(iso(V.dealDateMs("H2 2025")), "2025-10-01");
+  assert.equal(iso(V.dealDateMs("Late 2025")), "2025-11-01");
+  // Full dates still go to Date.parse, as before.
+  assert.equal(V.dealDateMs("2025-03-15"), Date.parse("2025-03-15"));
+  assert.equal(V.dealDateMs("Mar 12, 2025"), Date.parse("Mar 12, 2025"));
+  // A listing's post date is readable; "Active" has none.
+  assert.equal(iso(V.dealDateMs("Listed Mar 2025")), "2025-03-01");
+  assert.ok(Number.isNaN(V.dealDateMs("Active")));
+  assert.ok(Number.isNaN(V.dealDateMs("")));
+  assert.ok(Number.isNaN(V.dealDateMs(null)));
+  assert.ok(Number.isNaN(V.dealDateMs("not a date")));
+});
+
+test("a quarter-dated comp ages like the month-dated comp beside it", () => {
+  // Before dealDateMs, "Q3 2024" was age null: weight 1, outranking "Sep 2024".
+  const q = V.compAgeYears(comp({ date: "Q3 2024" }), AS_OF);
+  const m = V.compAgeYears(comp({ date: "Sep 2024" }), AS_OF);
+  assert.ok(q !== null && m !== null);
+  assert.ok(Math.abs(q - m) < 0.1, "a quarter and a month inside it are the same age to a tenth of a year");
+  assert.ok(V.compWeight(comp({ date: "Q3 2024" }), AS_OF, 10000) < 1);
+});
+
+test("isOnMarket reads the two shapes the search writes for an unsold listing", () => {
+  assert.equal(V.isOnMarket({ date: "Active" }), true);
+  assert.equal(V.isOnMarket({ date: "Listed Mar 2025" }), true);
+  assert.equal(V.isOnMarket({ date: " listed mar 2025" }), true);
+  assert.equal(V.isOnMarket({ date: "Mar 2025" }), false);
+  assert.equal(V.isOnMarket({ date: "" }), false);
+  assert.equal(V.isOnMarket({}), false);
+  assert.equal(V.isOnMarket(null), false);
+  // A word that only starts the same way is not the convention.
+  assert.equal(V.isOnMarket({ date: "Activewear 2025" }), false);
+});
+
+test("an asking price is never trend-indexed, a closed sale of the same date is", () => {
+  const sold = comp({ date: "Jul 2025" });
+  const listed = comp({ date: "Listed Jul 2025" });
+  assert.ok(V.trendFactor(sold, AS_OF, 6) > 1.05);
+  assert.equal(V.trendFactor(listed, AS_OF, 6), 1);
+  assert.equal(V.trendFactor(comp({ date: "Active" }), AS_OF, 6), 1);
+  // The recency weight still fades from the listed date: a stale ask is
+  // weaker evidence, and that half was already right.
+  assert.equal(V.compAgeYears(listed, AS_OF), V.compAgeYears(sold, AS_OF));
+});
+
+// ---------------------------------------------------------------------------
+// The adjustment grid: a comp's $/SF restated at the subject's size and age.
+// ---------------------------------------------------------------------------
+
+const close = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, (msg || "") + " expected " + b + ", got " + a);
+
+test("sizeAdjustment raises a larger comp and lowers a smaller one", () => {
+  // 40,000 SF against a 10,000 SF subject: -0.15 x ln(1/4) = +0.2079.
+  close(V.sizeAdjustment(comp({ size_sqft: "40000" }), 10000, "Industrial"), Math.exp(0.15 * Math.log(4)));
+  close(V.sizeAdjustment(comp({ size_sqft: "2500" }), 10000, "Industrial"), Math.exp(-0.15 * Math.log(4)));
+  assert.equal(V.sizeAdjustment(comp({ size_sqft: "10000" }), 10000, "Industrial"), 1);
+});
+
+test("vintageAdjustment raises an older comp and lowers a newer one, a percent a year", () => {
+  close(V.vintageAdjustment(comp({ year_built: "2000" }), 2010, "Office"), Math.exp(0.10));
+  close(V.vintageAdjustment(comp({ year_built: "2020" }), 2010, "Office"), Math.exp(-0.10));
+  assert.equal(V.vintageAdjustment(comp({ year_built: "2010" }), "2010", "Office"), 1);
+});
+
+test("each adjustment is capped at a quarter in log terms", () => {
+  const up = Math.exp(V.ADJUSTMENT_CAP), down = Math.exp(-V.ADJUSTMENT_CAP);
+  close(V.sizeAdjustment(comp({ size_sqft: "1000000" }), 10000, "Retail"), up);
+  close(V.sizeAdjustment(comp({ size_sqft: "100" }), 10000, "Retail"), down);
+  close(V.vintageAdjustment(comp({ year_built: "1950" }), 2020, "Retail"), up);
+  close(V.vintageAdjustment(comp({ year_built: "2024" }), 1950, "Retail"), down);
+});
+
+test("only the measured types are adjusted; Residential, Land and no type are untouched", () => {
+  const c = comp({ size_sqft: "40000", year_built: "1980" });
+  ["Industrial", "Office", "Retail", "Multifamily"].forEach((t) => {
+    assert.ok(V.sizeAdjustment(c, 10000, t) > 1, t);
+    assert.ok(V.vintageAdjustment(c, 2010, t) > 1, t);
+  });
+  ["Residential", "Land", undefined, "", "toString", "constructor"].forEach((t) => {
+    assert.equal(V.sizeAdjustment(c, 10000, t), 1, String(t));
+    assert.equal(V.vintageAdjustment(c, 2010, t), 1, String(t));
+  });
+});
+
+test("missing data is neutral for an adjustment, never a guess", () => {
+  assert.equal(V.sizeAdjustment(comp({ size_sqft: "" }), 10000, "Industrial"), 1);
+  assert.equal(V.sizeAdjustment(comp({ size_sqft: "40000" }), 0, "Industrial"), 1);
+  assert.equal(V.vintageAdjustment(comp({ year_built: "" }), 2010, "Industrial"), 1);
+  assert.equal(V.vintageAdjustment(comp({ year_built: "c. 1994" }), 2010, "Industrial"), 1);
+  assert.equal(V.vintageAdjustment(comp({ year_built: "2000" }), null, "Industrial"), 1);
+});
+
+test("compAdjustment's total is the product of its parts", () => {
+  const c = comp({ date: "Jul 2025", size_sqft: "40000", year_built: "2000" });
+  const a = V.compAdjustment(c, { asOf: AS_OF, trendPct: 6, subjectSF: 10000, subjectYear: 2010, propertyType: "Industrial" });
+  assert.equal(a.trend, V.trendFactor(c, AS_OF, 6));
+  assert.equal(a.size, V.sizeAdjustment(c, 10000, "Industrial"));
+  assert.equal(a.vintage, V.vintageAdjustment(c, 2010, "Industrial"));
+  close(a.total, a.trend * a.size * a.vintage);
+  // perSF: false keeps the trend index and drops the two $/SF restatements.
+  const b = V.compAdjustment(c, { asOf: AS_OF, trendPct: 6, subjectSF: 10000, subjectYear: 2010, propertyType: "Industrial", perSF: false });
+  assert.deepEqual([b.size, b.vintage], [1, 1]);
+  assert.equal(b.total, b.trend);
+});
+
+test("valueFromComps restates comps at the subject's size and age before reconciling", () => {
+  // Four identical $100/SF warehouses, each four times the subject's size and
+  // ten years older. Unadjusted they say $100/SF; restated at the subject
+  // they say 100 x e^(0.2079 + 0.10).
+  const comps = [1, 2, 3, 4].map((i) => comp({ address: i + " A St", size_sqft: "40000", year_built: "2000" }));
+  const opts = { subjectSF: 10000, asOf: AS_OF, subjectYear: 2010 };
+  const adjusted = V.valueFromComps(comps, Object.assign({ propertyType: "Industrial" }, opts));
+  close(adjusted.psfMid, 100 * Math.exp(0.15 * Math.log(4) + 0.10));
+  // The raw view stays raw: it feeds counts and copy, never the band.
+  assert.deepEqual(adjusted.raw, [100, 100, 100, 100]);
+  // A caller that names no type, or a type with no evidence behind it, gets
+  // the pre-adjustment figure exactly.
+  assert.equal(V.valueFromComps(comps, opts).psfMid, 100);
+  assert.equal(V.valueFromComps(comps, Object.assign({ propertyType: "Residential" }, opts)).psfMid, 100);
+  assert.equal(V.valueFromComps(comps, Object.assign({ propertyType: "Land" }, opts)).psfMid, 100);
+});
+
+test("a caller that reads its own value (per unit, per acre) is not size- or age-adjusted", () => {
+  const comps = [1, 2, 3, 4].map((i) => comp({
+    address: i + " A St", size_sqft: "40000", year_built: "2000", price_per_unit: "150000",
+  }));
+  const v = V.valueFromComps(comps, {
+    subjectSF: 10000, asOf: AS_OF, subjectYear: 2010, propertyType: "Multifamily",
+    readValue: (c) => V.numericValue(c.price_per_unit),
+  });
+  assert.equal(v.psfMid, 150000);
+});
+
+test("the adjustment cannot push a comp set past a quarter per factor however far off it is", () => {
+  const comps = [1, 2, 3, 4].map((i) => comp({ address: i + " A St", size_sqft: "5000000", year_built: "1900" }));
+  const v = V.valueFromComps(comps, { subjectSF: 5000, asOf: AS_OF, subjectYear: 2025, propertyType: "Industrial" });
+  close(v.psfMid, 100 * Math.exp(2 * V.ADJUSTMENT_CAP));
+});

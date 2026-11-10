@@ -17,9 +17,13 @@
 // required for the free number to match the Pro number exactly — the whole
 // point of shipping the basis at all.)
 //
-// Pure and dependency-free, like entitlements.js, so `npm test` can prove the
-// gate holds without a database or a network.
+// Pure, like entitlements.js, so `npm test` can prove the gate holds without
+// a database or a network. Its one require is valuation.js's date reader (see
+// compAgeYears below): pure itself, and already required by backtest.js and
+// bulk.js.
 // ---------------------------------------------------------------------------
+
+const { dealDateMs } = require("./valuation");
 
 const YEAR_MS = 365.25 * 24 * 3600 * 1000;
 
@@ -63,8 +67,14 @@ function salePsf(c) {
   return NaN;
 }
 
+// The comp's date is read by valuation.js's dealDateMs, IMPORTED rather than
+// mirrored: it knows "Q3 2025", a bare year and "Listed Mar 2025", and a
+// second copy of a date parser is the kind of pair that drifts one shape at a
+// time. With a bare Date.parse here a quarter-dated sale read as "age
+// unknown" (full recency weight), so the gate could rank it above a newer
+// sale the valuation itself weighted higher.
 function compAgeYears(c, asOfMs) {
-  const d = Date.parse(c.date);
+  const d = dealDateMs(c.date);
   if (isNaN(d)) return null;
   const yrs = (asOfMs - d) / YEAR_MS;
   return yrs > 0 ? Math.min(yrs, 5) : 0;

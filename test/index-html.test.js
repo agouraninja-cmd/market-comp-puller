@@ -1500,7 +1500,7 @@ test("comp table marks are words, not gray footnote glyphs", () => {
   assert.match(html, /appendCompMark\(dd, "size"/);
   assert.match(html, /appendCompMark\(dd, "adj"/);
   assert.doesNotMatch(html, /sup\.textContent = "[†‡§]"/);
-  assert.match(html, /adj in the table shows each indexed figure/);
+  assert.match(html, /adj in the table shows each adjusted figure/);
   assert.match(html, /less \(size in the table\)/);
 });
 

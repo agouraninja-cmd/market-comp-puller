@@ -45,9 +45,11 @@
 //      street address on GET /?auth=signup.
 //   4. THE SAMPLE REPORT IS ILLUSTRATIVE AND ITS ARITHMETIC HOLDS. Low, Likely
 //      and High are what valuation.js's valueFromComps returns for these five
-//      comps at 21,600 SF, the same call the real report makes: each comp
-//      weighted by its source tier and age (compWeight), the WEIGHTED 25th,
-//      50th and 75th percentile of $/SF, then heroRound to the nearest
+//      comps at 21,600 SF, the same call the real report makes: each comp's
+//      $/SF restated at the subject's size (compAdjustment; the sample shows
+//      no year built, so size is the only adjustment in play), weighted by
+//      its source tier and age (compWeight), the WEIGHTED 25th, 50th and
+//      75th percentile of that $/SF, then heroRound to the nearest
 //      $25,000. Not the plain median and not the cheapest and dearest comp,
 //      which is what this rule claimed until 2026-10-07 while the page showed
 //      figures the product would never have produced. Dated mid-month as
@@ -76,15 +78,18 @@ const SAMPLE_COMPS = [
   ["9020 Center Ave", "May 26", "21,400", "$233", "v", "Verified &middot; via Ridgeline CRE"],
   ["11215 4th St", "Mar 26", "18,750", "$223", "p", "Public record"],
   ["8933 Utica Ave", "Feb 26", "24,100", "$218", "li", "Listing"],
-  ["10722 Arrow Route", "Dec 25", "19,900", "$214", "p", "Public record"],
+  ["10722 Arrow Route", "Dec 25", "19,900", "$215", "p", "Public record"],
   ["12190 6th St", "Nov 25", "26,300", "$204", "li", "Listing"],
 ];
 // The weighted median is $219 while the plain median of the five is $218:
-// the newer, better-sourced comps above it pull it up a dollar.
+// the newer, better-sourced comps above it pull it up a dollar. Each comp is
+// first restated at the subject's 21,600 SF (valuation.js's compAdjustment;
+// the largest move here is 12190 6th St, 26,300 SF, up 3%), which is what
+// narrowed Low and High by a dollar a side on 2026-11-10.
 const SAMPLE_RANGE = {
-  low: { value: "$4,600,000", psf: "$213" },
+  low: { value: "$4,575,000", psf: "$212" },
   mid: { value: "$4,725,000", psf: "$219" },
-  high: { value: "$4,900,000", psf: "$227" },
+  high: { value: "$4,875,000", psf: "$226" },
 };
 
 // The vault ledger under "For firms". Three rows, the first badged, because
@@ -466,8 +471,9 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<div class="hmtr med"><span class="hmmedlab">Weighted median of 5 sale comps</span>` +
     `<span>${SAMPLE_RANGE.mid.psf}</span><span class="hmarith">&times; ${SAMPLE_SIZE_SQFT} SF &asymp; ${SAMPLE_RANGE.mid.value}</span></div>` +
     `</div></div></div>` +
-    `<div class="hmfoot">Newer, better-sourced comps weigh more; Low and High bound the weighted ` +
-    `middle half. Your price and NOI never leave your browser.</div>` +
+    `<div class="hmfoot">Each comp is adjusted to this building&#39;s size, and newer, better-sourced ` +
+    `comps weigh more; Low and High bound the weighted middle half. Your price and NOI never leave ` +
+    `your browser.</div>` +
     `</div></section>` +
 
     // --- Band 3: the firm pitch --------------------------------------------

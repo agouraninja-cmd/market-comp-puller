@@ -110,10 +110,65 @@
     return TIER_WEIGHT[comp.source_type] != null ? comp.source_type : null;
   }
 
+  // An asking price that has not sold: the search writes "Active" for a live
+  // listing with no post date and "Listed Mar 2025" for one that has it (the
+  // date rule in server.js's buildPrompt), and the corpus stores the same two
+  // shapes. This is the single reader of that convention for the math.
+  function isOnMarket(c) {
+    return /^\s*(?:active|listed)\b/i.test(String((c && c.date) || ""));
+  }
+
+  // When a comp's deal happened, in ms, or NaN.
+  //
+  // This used to be a bare Date.parse(c.date), and `date` is free text the
+  // model (or a broker's spreadsheet) wrote. Three things went wrong with
+  // that, all silently:
+  //   * "Q3 2025" is a real stored value and Date.parse answers NaN for it,
+  //     so a two-year-old quarter-dated sale read as "age unknown": FULL
+  //     recency weight and no trend index, outranking a sale dated "Sep 2025"
+  //     in the same table.
+  //   * "2025" parsed as 1 January (and "Late 2025" as 1 January too, V8
+  //     skipping the word it did not know), up to a year older than the deal.
+  //   * Reading anything but the ISO form is implementation-defined in
+  //     ECMAScript. "Mar 2025" is what nearly every comp carries, so the
+  //     weights and the indexed prices depended on the browser's leniency.
+  // The shapes below are read explicitly, the same vocabulary deal-date.js
+  // reads on the server (that module is Node-only, and this one may require
+  // nothing). "Mon YYYY" stays the 1st of the month at local midnight, which
+  // is exactly what V8 answered, so no existing report moves. Only a shape
+  // not listed here falls through to Date.parse, as before.
+  var MONTH_INDEX = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+  var PART_OF_YEAR = { early: 1, mid: 6, late: 10 };
+  var MONTH_YEAR = new RegExp("^(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|"
+    + "sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\.?,?\\s+((?:19|20)\\d{2})$");
+  function dealDateMs(raw) {
+    const text = String(raw == null ? "" : raw).trim().replace(/^listed\s+/i, "");
+    const t = text.toLowerCase();
+    if (!t) return NaN;
+    let m;
+    // A bare year is the middle of it, not its first day.
+    if ((m = t.match(/^((?:19|20)\d{2})$/))) return new Date(Number(m[1]), 6, 1).getTime();
+    // "Q3 2025" / "2025 Q3": the middle of the quarter.
+    if ((m = t.match(/^q([1-4])[\s,'-]*((?:19|20)\d{2})$/))) return new Date(Number(m[2]), (Number(m[1]) - 1) * 3 + 1, 15).getTime();
+    if ((m = t.match(/^((?:19|20)\d{2})[\s,-]*q([1-4])$/))) return new Date(Number(m[1]), (Number(m[2]) - 1) * 3 + 1, 15).getTime();
+    // "H2 2025": the middle of the half.
+    if ((m = t.match(/^h([12])[\s,-]*((?:19|20)\d{2})$/))) return new Date(Number(m[2]), m[1] === "1" ? 3 : 9, 1).getTime();
+    if ((m = t.match(/^(early|mid|late)[\s-]+((?:19|20)\d{2})$/))) return new Date(Number(m[2]), PART_OF_YEAR[m[1]], 1).getTime();
+    // "Mar 2025", "March 2025", "Sept. 2025". A real month name only: a
+    // word that merely starts like one ("Marble 2025") is not a date here.
+    if ((m = t.match(MONTH_YEAR))) return new Date(Number(m[2]), MONTH_INDEX[m[1].slice(0, 3)], 1).getTime();
+    // "04/2026".
+    if ((m = t.match(/^(\d{1,2})\/((?:19|20)\d{2})$/))) {
+      const mo = Number(m[1]);
+      if (mo >= 1 && mo <= 12) return new Date(Number(m[2]), mo - 1, 1).getTime();
+    }
+    return Date.parse(text);
+  }
+
   // Age in years at `asOf`, capped at five. A future-dated comp reads as 0
   // rather than negative, and an unparseable date reads as null (neutral).
   function compAgeYears(c, asOf) {
-    const d = Date.parse(c.date);
+    const d = dealDateMs(c && c.date);
     if (isNaN(d)) return null;
     const yrs = (asOf - d) / (365.25 * 24 * 3600 * 1000);
     return yrs > 0 ? Math.min(yrs, 5) : 0;
@@ -271,12 +326,117 @@
   // out-of-window straggler is never extrapolated into fiction. `trendPct` is
   // the model's market-level figure (server-bounded to +/-30%/yr, null when
   // its searches showed no clear trend).
+  //
+  // An on-market listing is never indexed. Its price is what the seller is
+  // asking TODAY, not a price struck on the day it was posted, so compounding
+  // it forward from "Listed Mar 2025" raised an ask that has sat unsold for a
+  // year in a rising market, which is the opposite of what a year unsold
+  // says about it. Its recency weight still fades from the listed date: a
+  // stale ask is weaker evidence, and that half was already right.
   function trendFactor(c, asOf, trendPct) {
     const pct = Number(trendPct);
     if (!Number.isFinite(pct) || pct === 0 || Math.abs(pct) > 30) return 1;
+    if (isOnMarket(c)) return 1;
     const age = compAgeYears(c, asOf);
     if (!age) return 1;
     return Math.pow(1 + pct / 100, Math.min(age, 3));
+  }
+
+  // ---------------------------------------------------------------------------
+  // The adjustment grid: what a comp's $/SF would be at the SUBJECT's size and
+  // age (2026-11-10).
+  //
+  // compWeight above decides how much a comp counts. Until this existed it was
+  // the only thing size and vintage could do: a warehouse four times the
+  // subject's size counted half as much, and then voted with its own
+  // unadjusted $/SF. But big buildings trade at lower $/SF and old ones at
+  // lower $/SF than new, so a comp set that leans larger or older than the
+  // subject pulled the whole range down no matter how it was weighted, and
+  // one that leans smaller or newer pulled it up. An appraiser adjusts each
+  // comp toward the subject before reconciling; this is that step.
+  //
+  // MEASURED, not assumed (scripts/accuracy-bench.js, the hold-one-out over
+  // market-seed.json's sale comps; run it to reproduce). Within a market,
+  // $/SF fell about 0.18% for each 1% of extra building size and rose about
+  // 1.2% for each year newer, both far outside noise (t = -4.9 and 6.2 on
+  // 217 comps). Applying the two round, deliberately smaller figures below
+  // cut the benchmark's median error from 34.8% to 29.5% and its mean log
+  // error by 7.9% (95% interval 1.3% to 14.6%, resampling whole markets),
+  // and improved every one of the four types measured. Fitting the
+  // coefficients on every market except the one being scored gave the same
+  // gain when this was built, so it is not the benchmark memorising itself.
+  // Those absolute errors are a citywide comp set's, far wider than a
+  // report's; the change is the finding (the script's header says why).
+  //
+  // Four rules:
+  //   * Only the types measured. Industrial, Office, Retail and Multifamily
+  //     are the whole benchmark. Residential and Land are untouched: there is
+  //     no evidence here for either, a house's $/SF falls with size far
+  //     faster than a warehouse's, and land has no year built at all. An
+  //     omitted property type is untouched too, so a caller that names none
+  //     keeps the pre-adjustment figures exactly.
+  //   * Only the $/SF basis. A caller that reads its own value (per unit,
+  //     per acre) gets the trend index and nothing else; a size elasticity
+  //     measured on $/SF says nothing about $/unit.
+  //   * Each adjustment is capped at a quarter (0.25 in log terms, about
+  //     +28% / -22%). Past that the comp is a different product, the weight
+  //     is already fading it out, and the cap is what keeps one extreme
+  //     mismatch from being extrapolated into a confident figure.
+  //   * Missing data is neutral, as everywhere in this module: no subject
+  //     size, no comp size, no subject year or no comp year means no
+  //     adjustment for that factor, never a guess.
+  //
+  // The weights are deliberately unchanged. An adjusted far-off comp is still
+  // a worse comp than a close one (measured while this was built: with the
+  // adjustments on and the weights off the benchmark scored about 10%
+  // worse), so the two work together.
+  // ---------------------------------------------------------------------------
+  var ADJUSTED_TYPES = { Industrial: true, Office: true, Retail: true, Multifamily: true };
+  var SIZE_ELASTICITY = -0.15;        // d ln($/SF) / d ln(building SF)
+  var VINTAGE_LOG_PER_YEAR = 0.01;    // d ln($/SF) per year newer
+  var ADJUSTMENT_CAP = 0.25;          // per factor, in log terms
+
+  function clampAdjustment(a) {
+    return Math.max(-ADJUSTMENT_CAP, Math.min(ADJUSTMENT_CAP, a));
+  }
+  // Own-property lookup, for rankOf's reason below: ADJUSTED_TYPES["toString"]
+  // is a function on a plain object literal, and a function is truthy.
+  function isAdjustedType(propType) {
+    return Object.prototype.hasOwnProperty.call(ADJUSTED_TYPES, propType) && ADJUSTED_TYPES[propType] === true;
+  }
+
+  // The factor that restates a comp's $/SF at the subject's size. A comp
+  // LARGER than the subject is raised (it sold at a big-building discount the
+  // subject would not get); a smaller one is lowered.
+  function sizeAdjustment(c, subjSF, propType) {
+    if (!isAdjustedType(propType)) return 1;
+    const compSF = numericValue(c && c.size_sqft);
+    if (!(subjSF > 0) || !(compSF > 0)) return 1;
+    return Math.exp(clampAdjustment(SIZE_ELASTICITY * Math.log(subjSF / compSF)));
+  }
+
+  // The factor that restates a comp's $/SF at the subject's age. A comp OLDER
+  // than the subject is raised; a newer one is lowered.
+  function vintageAdjustment(c, subjYear, propType) {
+    if (!isAdjustedType(propType)) return 1;
+    const ySub = yearOf(subjYear), yComp = yearOf(c && c.year_built);
+    if (ySub == null || yComp == null) return 1;
+    return Math.exp(clampAdjustment(VINTAGE_LOG_PER_YEAR * (ySub - yComp)));
+  }
+
+  // Every factor the valuation multiplies a comp's reported $/SF by, in one
+  // place. valueFromComps reads `total`; index.html's "adj" mark reads the
+  // parts, so the figure a reader is told a comp "counts as" is by
+  // construction the figure the range was computed from.
+  // opts: { asOf, trendPct, subjectSF (one number), subjectYear, propertyType,
+  //         perSF (false switches size and vintage off; see the rules above) }
+  function compAdjustment(c, opts) {
+    const o = opts || {};
+    const trend = trendFactor(c, o.asOf, o.trendPct);
+    const onBasis = o.perSF !== false;
+    const size = onBasis ? sizeAdjustment(c, Number(o.subjectSF) || 0, o.propertyType) : 1;
+    const vintage = onBasis ? vintageAdjustment(c, o.subjectYear, o.propertyType) : 1;
+    return { trend: trend, size: size, vintage: vintage, total: trend * size * vintage };
   }
 
   // The whole sequence, in one place: filter to sales, read each comp's value,
@@ -298,7 +458,8 @@
     // "key absent" case, not `{ valueOf: undefined }` from a conditional
     // spread. The typeof guard treats absent, explicitly-undefined, and
     // explicitly-non-function all the same way: fall back to salePsfOf.
-    const readValue = typeof o.readValue === "function" ? o.readValue : salePsfOf;
+    const perSF = typeof o.readValue !== "function";
+    const readValue = perSF ? salePsfOf : o.readValue;
     const sf = o.subjectSF;
     const isRange = sf && typeof sf === "object";
     const sizeMin = Number(isRange ? sf.min : sf) || 0;
@@ -311,8 +472,14 @@
       .filter((x) => x.v > 0);
     if (!items.length) return null;
 
+    // Each comp is restated at the report date and (on the $/SF basis, for
+    // the types compAdjustment covers) at the subject's size and age, THEN
+    // weighted. `perSF` is false for a caller that reads its own value.
     const rr = robustPpsfRange(items.map((x) => ({
-      v: x.v * trendFactor(x.comp, o.asOf, o.trendPct),
+      v: x.v * compAdjustment(x.comp, {
+        asOf: o.asOf, trendPct: o.trendPct, subjectSF: sizeMid,
+        subjectYear: o.subjectYear, propertyType: o.propertyType, perSF: perSF,
+      }).total,
       w: compWeight(x.comp, o.asOf, sizeMid, o.subjectYear, {
         propertyType: o.propertyType,
         radiusMiles: o.radiusMiles,
@@ -604,7 +771,9 @@
 
   return {
     numericValue, salePsfOf, robustPpsfRange, heroRound,
-    TIER_WEIGHT, tierOf, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
+    TIER_WEIGHT, tierOf, isOnMarket, dealDateMs, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
+    sizeAdjustment, vintageAdjustment, compAdjustment,
+    ADJUSTED_TYPES, SIZE_ELASTICITY, VINTAGE_LOG_PER_YEAR, ADJUSTMENT_CAP,
     defaultFreePassMiles,
     parseRadiusMiles, radiusClaimContradicted, RADIUS_CLAIM_SLACK,
     priceTierFactor, PRICE_TIER_RATIO,

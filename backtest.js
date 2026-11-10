@@ -16,6 +16,12 @@
 // path, because corpus rows do not store the market trend the search ran with.
 // Both limits belong on screen next to the numbers.
 //
+// It DOES run the size and vintage adjustments and the vintage weight
+// (valuation.js's compAdjustment and compWeight): the subject's size and year
+// built are the held-out row's own, which is what a report knows about its
+// subject. scripts/accuracy-bench.js is the offline sibling of this harness,
+// over market-seed.json, for measuring a change to the math before it ships.
+//
 // See docs/superpowers/specs/2026-08-06-valuation-backtest-design.md.
 // ---------------------------------------------------------------------------
 
@@ -137,6 +143,10 @@ function compFromRow(row, dy) {
     price_per_sqft: row.price_per_sqft,
     source_type: row.source_type,
     verified: row.verified,
+    // The vintage weight and the vintage adjustment both read this. Until
+    // 2026-11-10 it was dropped here, so the harness scored a valuation that
+    // ignored building age while every customer's report used it.
+    year_built: row.year_built,
   };
 }
 
@@ -238,6 +248,9 @@ function score(rows, opts) {
         subjectSF: VALUATION.numericValue(subj.row.size_sqft),
         asOf: Date.parse(subj.comp.date),
         trendPct: null,
+        // The subject's own year built, exactly as a report passes the
+        // looked-up subject_year_built. Missing is neutral.
+        subjectYear: subj.row.year_built,
         propertyType: subj.row.property_type,
       });
       if (!v || !(v.psfMid > 0)) { thinPeers += 1; return; }

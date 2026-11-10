@@ -298,3 +298,17 @@ test("a free report and a Pro report are now the same itemized list", () => {
   assert.equal(free.comps.length, pro.comps.length);
   assert.deepEqual(free.comps.map((c) => c.address), pro.comps.map((c) => c.address));
 });
+
+// The gate ranks comps with the valuation's own date reader. With a bare
+// Date.parse a quarter-dated sale was "age unknown" and took full recency
+// weight, so it could take a free slot from a newer sale the valuation itself
+// weighted higher.
+test("a quarter-dated comp is aged by the gate exactly as the valuation ages it", () => {
+  const VAL = require("../valuation");
+  const asOf = Date.parse("2026-07-01");
+  const shape = (date) => ({ address: "1 A St", transaction: "Sale", date, size_sqft: "50000", price_per_sqft: "100", source_type: "public_record" });
+  for (const date of ["Q3 2024", "2024", "Sep 2024", "Listed Mar 2025", "Active", "not a date"]) {
+    assert.equal(compWeight(shape(date), asOf, 50000), VAL.compWeight(shape(date), asOf, 50000), date);
+  }
+  assert.ok(compWeight(shape("Q3 2024"), asOf, 50000) < 1, "a two-year-old quarter-dated sale no longer reads as undated");
+});

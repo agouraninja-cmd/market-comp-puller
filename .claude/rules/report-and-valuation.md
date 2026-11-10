@@ -428,6 +428,76 @@ and exporting each slide to PNG (a PowerShell one-liner, no dependency).
      above it would say agent above and leasing broker below — the drift that
      block's own ⚠ warns about.
 
+3g. **Comps are ADJUSTED to the subject, not only weighted** (2026-11-10;
+   `compAdjustment` in `valuation.js`). `compWeight` decides how much a comp
+   counts; until this, that was all size and vintage could do, so a warehouse
+   four times the subject's size counted half as much and then voted with its
+   own unadjusted $/SF. Larger and older buildings sell for less per SF, so a
+   comp set leaning larger or older than the subject pulled the range down
+   however it was weighted. Each sale comp's $/SF is now restated at the
+   subject's size (elasticity `SIZE_ELASTICITY` −0.15) and year built
+   (`VINTAGE_LOG_PER_YEAR` 0.01, about 1% a year), then weighted exactly as
+   before. Seven rules:
+   - **It was measured, and the measurement is one command.**
+     `node scripts/accuracy-bench.js --before` (corpus.md) is a hold-one-out
+     over `market-seed.json`'s sale comps: median error 34.8% → 29.5%, mean
+     log error −7.9% (95% interval −14.6% to −1.3%, resampling whole
+     markets), every one of the four types better, and the Low–High band 20%
+     narrower while containing the real price slightly MORE often. The
+     coefficients are round and deliberately smaller than the fitted ones
+     (−0.18 and 0.0124). Re-check them against a corpus export
+     (`--corpus`) before changing either; `test/accuracy-bench.test.js` fails
+     the build if the adjustment ever makes the checked-in seed worse.
+   - **Only Industrial, Office, Retail and Multifamily**, the types the
+     benchmark holds. Residential and Land are untouched (no evidence here; a
+     house's $/SF falls with size much faster, and land has no year built),
+     and so is a call that names no property type, which is how an old caller
+     keeps its figures exactly.
+   - **Only the $/SF basis.** A caller that passes `readValue` (the per-unit
+     cross-check, land per acre) gets the trend index and nothing else.
+   - **Each factor is capped at 0.25 in log terms** (about +28% / −22%), and
+     missing data is neutral: no subject size, comp size, subject year or comp
+     year means no adjustment for that factor.
+   - **The weights did not change**, and must not be dropped in its favour:
+     measured the same way, adjustments with the weights off scored about 10%
+     worse than both together.
+   - **The table still shows the RAW $/SF, and the `adj` mark carries the
+     rest.** `indexedPsfNote` (name kept from when time was the only
+     adjustment) reads the same `compAdjustment` the range was computed from
+     and spells out each step ("+10% for size (it is larger than your
+     building…), +4% for age"). The hero's mechanics line names the size and
+     age step only when some comp actually moved and a subject size exists.
+     The scatter ticks and the outlier chips stay on the displayed figure, as
+     before.
+   - **It moves saved reports too**, once, on their next open: the valuation
+     is recomputed in the browser from the stored comps, exactly as when the
+     vintage weight arrived. `locked_basis` already carried `size_sqft` and
+     `year_built`, so a free report and a Pro one still agree.
+   Two smaller fixes rode along, both in `valuation.js`. **`dealDateMs` reads
+   a comp's date**, replacing a bare `Date.parse`: "Q3 2025" (a real stored
+   value) was "age unknown", so a two-year-old quarter-dated sale took full
+   recency weight and no trend index; a bare year was its first of January;
+   and reading "Mar 2025" at all is implementation-defined, so the weights
+   depended on the browser's leniency. "Mon YYYY" stays the 1st at local
+   midnight (what V8 answered), so no existing report moved for that reason,
+   and `comp-gate.js` IMPORTS the reader rather than mirroring it. **An
+   on-market listing is never trend-indexed** (`isOnMarket`: "Active",
+   "Listed Mar 2025"): its price is today's ask, and compounding it forward
+   from the day it was posted raised an ask that had sat unsold for a year.
+   Its recency weight still fades from the listed date.
+   **Measured and NOT done**, so nobody repeats it: a 5% or 10% haircut on
+   asking prices, and dropping listings whenever three closed sales exist
+   (neither moved the benchmark, where a listed comp's $/SF did not differ
+   measurably from a closed one's within a market); Gaussian similarity
+   weights in place of the free-pass-then-halve ones (no better at any
+   bandwidth tried); and a geometric-mean or blended centre in place of the
+   weighted median (−2.6%, inside the noise, and "Likely is the median" is a
+   sentence a reader can check). The band is a separate finding: Low–High
+   holds the real price about 40% of the time on that benchmark, which is
+   what an interquartile range of five or six comps does, and nothing on the
+   page promises more, but it is the number to know before the range is ever
+   described as a likelihood.
+
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High
    range from sale-comp $/SF (leases are excluded even on mixed searches) ×

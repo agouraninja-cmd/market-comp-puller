@@ -4239,7 +4239,11 @@ async function readCorpusRowsForBacktest(limit) {
     try {
       dbRows = await sbRequest("GET",
         "comp_corpus?select=ts,market,property_type,address,transaction,deal_date," +
-        `size_sqft,price_or_rate,price_per_sqft,source_type,verified&order=ts.desc&limit=${limit}`) || [];
+        // year_built is a base column (migration 001, the same one
+        // corpusRowsForMarket has always selected), never a per-type one, so
+        // naming it here does not reopen the July outage the note above is
+        // about. The backtest needs it for the vintage weight and adjustment.
+        `size_sqft,price_or_rate,price_per_sqft,source_type,verified,year_built&order=ts.desc&limit=${limit}`) || [];
     } catch (e) { noteCorpusFailure("read", e); }
   }
   const fileRows = await readRowsFromFile(COMP_CORPUS_FILE);

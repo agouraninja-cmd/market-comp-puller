@@ -4891,5 +4891,11 @@
     "type": "fix",
     "title": "A report you just ran no longer says it was reopened, and the Pipeline counts each request once",
     "details": "Running one address from Comps › Run a comp report opened the finished report under “Reopened a saved report. Run a new search for fresh data.” It now opens as the new report it is; opening an older report still says it was reopened. In the Pipeline, a request you asked to be introduced to showed twice — as New with “Intro requested” and again as its Open BOV — so the strip said 4 new while the tab said 3. It now shows once, as the BOV. In the comp report, your own comps say Sale and Lease like every other row instead of sale and lease, and the market position chart reads $129/SF to $155/SF instead of $128.97 against $155."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "improvement",
+    "title": "Valuations adjust each comp to your building’s size and age",
+    "details": "A comp used to count for less when it was a very different size or age than your building, but it still voted with its own unadjusted price per square foot. Larger and older buildings sell for less per square foot, so a comp set that leaned larger or older than yours pulled the whole range down. Each sale comp is now restated at your building’s size and year built before the range is taken (Industrial, Office, Retail and Multifamily; houses and land are unchanged), and the adj mark in the comp table spells out every step. Measured on 164 real sales held out one at a time: the typical miss fell from 34.8% to 29.5%, and the Low to High range got about a fifth narrower while containing the real price slightly more often. Also fixed: a comp dated by quarter (“Q3 2025”) was treated as brand new, and an unsold listing’s asking price was being raised by the market trend as if it had sold. Saved reports pick up the new figures the next time they are opened."
   }
 ]

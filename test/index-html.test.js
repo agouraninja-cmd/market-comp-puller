@@ -913,9 +913,9 @@ test("Recent searches sits under the chamber, shows on the home view only, and i
 // header (#searchDeckHead), and a test here held that showDeskView revealed
 // it. Reversed: the workspace is the firm's record and Bulk valuation is the
 // comp-report tool. The form still exists — it is the REAL #compForm, read by
-// every report restore — and shows on the home view, which the search doors
-// enter through leaveDesk(). (A saved report opened from Home keeps it hidden
-// since 2026-11-10: test/report-from-home.test.js.) The desk header is gone WITH the chamber, not
+// every report restore — and shows on the home view, which rerunHistory
+// enters through leaveDesk(). (A report opened or refreshed from Home keeps it
+// hidden since 2026-11-10: test/report-from-home.test.js.) The desk header is gone WITH the chamber, not
 // left hidden: a heading for a section that is never on this view is a
 // stray rule waiting to leak.
 // ----------------------------------------------------------------------------

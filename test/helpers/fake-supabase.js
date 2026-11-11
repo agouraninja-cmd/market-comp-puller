@@ -174,7 +174,19 @@ function applyOrder(rows, order) {
 // 400 that names the column, whether the name is in the select, a filter, the
 // order, or a written body. 061's columns on user_sites are the first user:
 // the Sites routes probe for them and must keep working without them.
-function start({ tables = {}, resendStatus = 200, missingTables = [], missingColumns = {} } = {}) {
+//
+// `columnDefaults` ({ table: { col: value } }) is the opposite state: a column
+// that DOES exist and that an insert did not name. A real table answers
+// `return=representation`, and every later read, with that column present and
+// holding its default; this fake stores only the keys it was sent, so a row
+// inserted here came back without it. That difference is invisible until code
+// reads meaning into a key being THERE, and 062's `users.email_verified_at`
+// is the first that does: a users row with the key and a null is an account
+// that has not confirmed its address, a row with no key is a database where
+// the migration has not run (email-verify.js rule 5). Applied to inserts
+// only, under the payload, so a value the server sent always wins and seeded
+// rows stay exactly as the test wrote them.
+function start({ tables = {}, resendStatus = 200, missingTables = [], missingColumns = {}, columnDefaults = {} } = {}) {
   const missing = new Set(missingTables);
   const missingCols = (table, names) => {
     const gone = new Set((missingColumns && missingColumns[table]) || []);
@@ -319,7 +331,7 @@ function start({ tables = {}, resendStatus = 200, missingTables = [], missingCol
             // and is then 404'd by the caller's own guard on the very next
             // read, which looks like a broken feature and is only a broken
             // fake. Seeded rows keep whatever id the test gave them.
-            const row = { id: crypto.randomUUID(), ...stamp(table, r) };
+            const row = { id: crypto.randomUUID(), ...((columnDefaults && columnDefaults[table]) || {}), ...stamp(table, r) };
             tables[table].push(row);
             stored.push(row);
           }

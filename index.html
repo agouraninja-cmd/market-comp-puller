@@ -126,6 +126,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        by address through our own /api/building-photo. maxAge 0, and guarded
        with typeof: without it Home's cards keep their aerials. -->
   <script src="/building-photo.js"></script>
+  <!-- The "Confirm your email" notice (global CONFIRMNOTICE). Every use below
+       is guarded with typeof, so a failed load costs the notice and nothing
+       else. -->
+  <script src="/confirm-notice.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -6127,6 +6131,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (r.status === 403) {
         const body = await r.json().catch(() => ({}));
         showSharedNotice(body.error || "This report is private.", { offerSignIn: body.signin_required === true });
+        // A fourth outcome since 2026-11-10: signed in, but the account has
+        // not confirmed its email, and an address is how an invited report
+        // knows its readers. The card above says so; the notice is what
+        // carries "Send it again", so it is brought up here even if the
+        // reader hid it earlier. `body.email` is their own address, which
+        // the account bootstrap may not have delivered yet.
+        if (body.verify_required === true && typeof CONFIRMNOTICE !== "undefined") {
+          CONFIRMNOTICE.sync({ email: body.email || "", emailVerified: false }, { force: true });
+        }
         return;
       }
       if (!r.ok) {
@@ -13307,6 +13320,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // shape as pendingPortfolioSave, cleared by the same cancel path.
   let pendingSharedAddress = "";
   let pendingSharedReload = false;  // signin_required on /r/<id>: reload this URL once signed in
+  // A "Confirm your email" link opened by somebody who was signed out. The
+  // server confirms an address only for a caller signed in to that account
+  // (the link alone opens nothing), so the token waits here until the modal
+  // signs them in. Deliberately NOT cleared by closeAcctModal: walking away
+  // from the modal and signing in a minute later should still finish it.
+  let pendingConfirmToken = "";
   let pendingMarketExplore = null;  // {type, city, state} the guest gate refused; resumes after sign-in
   let runPendingMarketExplore = null; // assigned by the Market Explorer IIFE (explore() is private to it)
   let acctMode = "signin";          // signin | signup | forgot | reset
@@ -13512,6 +13531,73 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (remove) remove.classList.toggle("hidden", !has);
   }
 
+  // The "Confirm your email" notice (confirm-notice.js). It shows for an
+  // account whose /api/account/me says emailVerified === false and comes down
+  // for everybody else, sign-out included. `force` brings it back after the
+  // member hid it, for a page that has just refused something because of it.
+  function syncConfirmNotice(opts) {
+    if (typeof CONFIRMNOTICE === "undefined") return;
+    CONFIRMNOTICE.sync(currentUser, opts);
+  }
+
+  // A confirm link: /…#confirm=<token>. The token rides the FRAGMENT, which a
+  // browser never sends, so it is in no server log; this reads it and POSTs it
+  // with the session, because the server wants both (a link on its own
+  // confirms nothing, which is what stops a mail scanner or the inbox's real
+  // owner confirming somebody else's sign-up).
+  async function confirmEmailFromLink(token) {
+    // Out of the address bar first, so a reload or a copied URL cannot replay
+    // it. For a member the door param goes too; a signed-out arrival keeps it
+    // (it is what serves this page instead of the landing page).
+    try {
+      const keep = currentUser && location.search === "?auth=signin" ? "" : location.search;
+      history.replaceState(null, "", location.pathname + keep);
+    } catch (_) {}
+    if (!currentUser) {
+      pendingConfirmToken = token;
+      openAcctModal("signin", "Sign in to finish confirming your email.");
+      return;
+    }
+    pendingConfirmToken = "";
+    let r = null;
+    let body = {};
+    try {
+      r = await fetch("/api/account/confirm", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      body = await r.json().catch(() => ({}));
+    } catch (_) {
+      syncConfirmNotice({ force: true });
+      if (typeof CONFIRMNOTICE !== "undefined") CONFIRMNOTICE.say("Couldn't reach the server. Open the link again in a minute.", "bad");
+      return;
+    }
+    if (r.status === 401) {
+      // The session ended between the page loading and this call.
+      currentUser = null;
+      refreshAccountUI();
+      pendingConfirmToken = token;
+      openAcctModal("signin", "Sign in to finish confirming your email.");
+      return;
+    }
+    if (!r.ok) {
+      syncConfirmNotice({ force: true });
+      if (typeof CONFIRMNOTICE !== "undefined") {
+        CONFIRMNOTICE.say(body.error || "That confirm link didn't work. Use Send it again to get a new one.", "bad");
+      }
+      return;
+    }
+    // A shared report this page refused a moment ago can load now, and a
+    // reload of the same URL is how that page lands on a readable report.
+    if (/^\/r\/[A-Za-z0-9_-]{6,32}$/.test(location.pathname)) { location.reload(); return; }
+    currentUser = Object.assign({}, currentUser, { emailVerified: true });
+    // Home re-reads: a firm invitation and anything sent to this address
+    // were held back until now.
+    refreshAccountUI();
+    if (typeof CONFIRMNOTICE !== "undefined") CONFIRMNOTICE.confirmed();
+  }
+
   function refreshAccountUI() {
     // The serve-time stand-in has done its job: everything it painted with
     // !important is written properly below (and by applySearchLock), from an
@@ -13549,6 +13635,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     } else {
       applyAvatarUI(null);
     }
+    // Follows identity like everything else here: up for an account that has
+    // not confirmed its address, down on sign-out or once it has.
+    syncConfirmNotice();
     syncPortfolioButton();
     // The settings panel's signed-in rows follow the same account state, so
     // a sign-in or sign-out repaints them even while the panel is open.
@@ -14064,6 +14153,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const isUp = acctMode === "signup";
       currentUser = await acctApi("POST", `/api/account/${isUp ? "signup" : "login"}`, {
         email, password, name: document.getElementById("acctName").value.trim(),
+        // Where the "Confirm your email" link sent at sign-up should come
+        // back to. The server keeps it only when it is a shared report's own
+        // page (/r/<id>), so somebody who signed up to read one lands on it.
+        next: location.pathname,
       });
       // New identity: My Desk must fetch THIS account's branding, never reuse
       // a prior one's. brandingLoadPromise is nulled too (not just
@@ -14091,6 +14184,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // the fresh session cookie). Do this before the import-prompt branch
       // below, which would otherwise flash on screen for an instant that a
       // reload immediately discards.
+      // A confirm link opened while signed out: there is a session now, so
+      // finish it. BEFORE the reload below, so a /r/<id> that needed both a
+      // sign-in and a confirmed address reloads once, readable. It does its
+      // own reload on a shared report's page and its own redraw anywhere else.
+      if (pendingConfirmToken) {
+        const confirmToken = pendingConfirmToken;
+        // Read before closeAcctModal clears it: a confirm that fails (an
+        // expired link) must still leave a signed-in reader on a reloaded
+        // report page, which then says what is missing.
+        const reloadAfter = pendingSharedReload;
+        pendingConfirmToken = "";
+        closeAcctModal();
+        await confirmEmailFromLink(confirmToken);
+        if (reloadAfter) location.reload();
+        return;
+      }
       if (pendingSharedReload) {
         location.reload();
         return;
@@ -14262,6 +14371,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         ge.classList.remove("hidden");
       }
     }
+    // A "Confirm your email" link. AFTER the door block above, so for a
+    // signed-out arrival its own line ("Sign in to finish confirming your
+    // email.") is the one left showing in the modal that block opened. The
+    // pattern is the server's token shape (email-verify.js mintToken).
+    const cm = location.hash.match(/^#confirm=([0-9a-z]{1,12}\.[A-Za-z0-9_-]{20,})$/);
+    if (cm) confirmEmailFromLink(cm[1]);
     try {
       var pendingAddr = sessionStorage.getItem("pendingLandingAddress.v1");
       if (pendingAddr) {

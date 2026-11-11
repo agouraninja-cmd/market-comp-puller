@@ -30,7 +30,10 @@ function normalizeEmail(s) {
 /**
  * @param {object|null}  share    a shared_reports row: { user_id, visibility, revoked_at, org_id }
  * @param {Array}        viewers  report_viewers rows for that share: [{ email }]
- * @param {object|null}  user     from getSessionUser(): { id, email } or null
+ * @param {object|null}  user     from getSessionUser(): { id, email,
+ *                                email_verified } or null. `email_verified`
+ *                                must be a literal true for the viewer list or
+ *                                the firm audience to match.
  * @param {Array<string>} orgIds  org ids this user is an ACTIVE member of —
  *                                org-access.js's activeOrgIds(), which owns
  *                                what "active" means (accepted, not removed).
@@ -55,6 +58,25 @@ function canReadShare({ share, viewers, user, orgIds }) {
     return { ok: true, reason: "owner" };
   }
   if (!user) return { ok: false, reason: "signin_required" };
+
+  // Everything below recognizes the caller BY THEIR EMAIL ADDRESS: the viewer
+  // list directly, and the firm audience through a membership that is itself
+  // kept by address. Sign-up never proved the person could read that inbox,
+  // so until 2026-11-10 anybody who knew client@acme.com had been sent a
+  // report could sign up as client@acme.com first and open it. An account
+  // that has not proven its address (a Google sign-in, a completed password
+  // reset, or the confirm link; email-verify.js) is refused here, above both.
+  //
+  // BELOW ownership on purpose: a share is owned by user id, which proves
+  // itself, so an unconfirmed member still opens what they made.
+  //
+  // ABOVE the list lookup on purpose: the answer is the same whether or not
+  // this address is on the list, so the refusal tells a stranger nothing
+  // about who was invited.
+  //
+  // A literal true, never truthiness or absence: a caller that forgets the
+  // flag must fail toward LESS access, this file's governing rule.
+  if (user.email_verified !== true) return { ok: false, reason: "verify_required" };
 
   // The firm audience (migration 030, spec §6). Deliberately NOT a fourth
   // top-level branch beside public/invited: it sits INSIDE the invited path,

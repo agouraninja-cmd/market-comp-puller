@@ -166,6 +166,16 @@ session that never reads it.
     visit event goes through `logPageVisit`, never a bare `logEvent`, and a
     page's SERVER render that writes checks `INSTANTNAV.isSpeculative`.
     [app-shell.md]
+16. **An account is recognized by its email only once it has proven it.**
+    A shared report, a firm invitation or membership, a deal room and a
+    broker profile are all found by address, and sign-up proves nothing.
+    Every read that matches the caller's address against rows somebody
+    else wrote asks `EMAILVERIFY.provenEmail(user)` (a literal
+    `email_verified === true` from `getSessionUser`), never `user.email`;
+    `orgMembershipsFor` and `findBrokerProfile` take the user, not an
+    address. `POST /api/account/confirm` needs the session AND the token,
+    never the link alone. `findUserById` keeps returning whole rows.
+    [accounts.md]
 
 ## Tests and CI
 
@@ -400,6 +410,7 @@ so they are trusted config and are never set in production.
 | `DAILY_SEARCH_CAP` | 150 | site-wide ceiling on billed searches per UTC day (cache hits are free; Pro is exempt, a trial is not) | search-pipeline.md |
 | `BULK_DAILY_ADDRESSES` | 200 | per-member daily ceiling on bulk-valuation addresses | bulk.md |
 | `ACCOUNT_WALL` | on | account-only app; anonymous `/` gets the home page and `GUEST_SEARCH_LIMIT` is forced to 0; `off` is the rollback | accounts.md |
+| `EMAIL_VERIFICATION` | on | an account is recognized by its address (shared reports, firm, deal rooms, broker profile) only once it confirms it; needs migration 062; `off` is the rollback | accounts.md |
 | `GUEST_SEARCH_LIMIT` | 1 (0 under the wall) | free searches per anonymous visitor before sign-in | accounts.md |
 | `GOOGLE_MAPS_API_KEY` | set on Render | Street View photos in map popups and on Home's and The Board's cards (`/api/streetview`, `/api/building-photo`); also the key photo tokens are sealed under | maps.md |
 | `GOOGLE_OAUTH_CLIENT_ID` + `_SECRET` | unset | "Continue with Google" | accounts.md |
@@ -442,7 +453,7 @@ gone. Document a new feature in its area's file, not here.
 | `workspace.md` | the signed-in Home (`/desk`): Home as one map and its layer switch, layout history, one-paint fill, `DESK_BOOT`, `AUTH_BOOT`, `pagePath` | `index.html`, `home-map.js`, desk tests |
 | `app-shell.md` | the `NAV_SHELL` rail, the signed-in header on server-rendered pages, nav parity with `index.html`, the shared button and tabs (`components.js`), instant tab switching (prerendered tabs, `/api/visit`) | `theme.js`, `components.js`, `instant-nav.js`, nav tests |
 | `sharing.md` | `POST /api/share`, `/api/shared`, `/r/<id>`, permissioned sharing | `report-access.js` |
-| `accounts.md` | account wall, guest limit, Google sign-in, accounts and portfolio, profile photo | `google-auth.js`, `account-avatar.js`, `portfolio-*.js` |
+| `accounts.md` | account wall, guest limit, Google sign-in, confirming an email address, accounts and portfolio, profile photo | `google-auth.js`, `email-verify.js`, `confirm-notice.js`, `account-avatar.js`, `portfolio-*.js` |
 | `public-pages.md` | home, FAQ, how-it-works, brokers-firms, the lender page (`/lenders`), the brand entity, `SITE_URL`, Search Console | `home-page.js`, `faq-page.js`, `brokers-firms-page.js`, `lenders-page.js` |
 | `markets.md` | market pages, momentum map, city photos and boundaries, the Market Explorer, broker directory | `market-*.js`, `city-check.js`, `gen-market-seed.js`, `broker-directory.js` |
 | `bulk.md` | bulk valuation | `bulk.js`, `bulk-page.js` |

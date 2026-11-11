@@ -20,6 +20,14 @@ paths:
 > Home's boot no longer embeds `/api/shares`. Where the notes below say
 > "the card", "the desk" or "Home", read Messages' Reports view.
 
+> **An address must be PROVEN before it opens an invited report
+> (2026-11-10).** `canReadShare` answers a fourth refusal, `verify_required`
+> (403 + `verify_required: true`), for a signed-in account that has not
+> confirmed its email: above the viewer list and the firm branch, below
+> ownership. `GET /api/shares` lists nothing under `sharedWithMe` for one
+> (`listSharesForViewer` takes the user). Rules and history: accounts.md,
+> "Confirming an email address".
+
 ## Architecture
 
 - `POST /api/share` — publishes the current report (`{ data, meta }`) under a

@@ -8,9 +8,9 @@ const {
   canReadHub, canWriteHub, canAddItems, canSetStatus, isItemStatus, normalizeEmail, roleOf, ITEM_STATUSES,
 } = require("../hub-access.js");
 
-const BROKER = { id: "u1", email: "broker@firm.com" };
-const TENANT = { id: "u2", email: "tenant@acme.com" };
-const STRANGER = { id: "u3", email: "nobody@else.com" };
+const BROKER = { id: "u1", email: "broker@firm.com", email_verified: true };
+const TENANT = { id: "u2", email: "tenant@acme.com", email_verified: true };
+const STRANGER = { id: "u3", email: "nobody@else.com", email_verified: true };
 
 const hub = { id: "h1", owner_user_id: "u1", status: "active", closed_at: null };
 const closed = { ...hub, status: "closed", closed_at: "2026-08-13T00:00:00Z" };
@@ -120,7 +120,7 @@ test("a forwarded link plus any account is NOT a licence to post", () => {
 });
 
 test("an observer reads but never writes", () => {
-  const watcher = { id: "u4", email: "watcher@firm.com" };
+  const watcher = { id: "u4", email: "watcher@firm.com", email_verified: true };
   assert.equal(canReadHub({ hub, participant: observerRow, user: watcher, tokenValid: true }).ok, true);
   const d = canWriteHub({ hub, participant: observerRow, user: watcher, tokenValid: true });
   assert.equal(d.ok, false);
@@ -200,7 +200,7 @@ test("two participants with unnormalizable emails are not the same person", () =
   // "" === "" must never be a match, or every junk row would admit every
   // junk account. The user_id path is the only way such a row can match.
   const junk = { ...tenantRow, email: "not an email" };
-  const junkUser = { id: "u9", email: "also not an email" };
+  const junkUser = { id: "u9", email: "also not an email", email_verified: true };
   assert.equal(canReadHub({ hub, participant: junk, user: junkUser, tokenValid: false }).ok, false);
 });
 
@@ -219,7 +219,7 @@ test("setting a status still requires an account, and inherits every write refus
   assert.equal(canSetStatus({ hub, participant: tenantRow, user: null, tokenValid: true }).reason, "signin_required");
   assert.equal(canSetStatus({ hub: closed, participant: tenantRow, user: TENANT, tokenValid: true }).reason, "closed");
   assert.equal(canSetStatus({ hub, participant: removedRow, user: TENANT, tokenValid: true }).reason, "removed");
-  assert.equal(canSetStatus({ hub, participant: observerRow, user: { id: "u4", email: "watcher@firm.com" }, tokenValid: true }).reason, "read_only");
+  assert.equal(canSetStatus({ hub, participant: observerRow, user: { id: "u4", email: "watcher@firm.com", email_verified: true }, tokenValid: true }).reason, "read_only");
 });
 
 test("the owner can set a status too", () => {
@@ -310,4 +310,46 @@ test("no presentMs means no presence window, not a zero-length one", () => {
 
 test("called with nothing at all, it sends rather than throwing", () => {
   assert.equal(shouldNotifyByEmail(), true);
+});
+
+// --- An address has to be PROVEN before it is a participant (2026-11-10) ----
+//
+// A deal room recognizes a guest by the address the broker typed, and sign-up
+// never checked that the person typing that address could read its inbox.
+// email-verify.js has the rules; these hold this file's half.
+
+test("an account that has not confirmed its address is not the participant its address names", () => {
+  const squatter = { id: "u9", email: "tenant@acme.com", email_verified: false };
+  const d = canReadHub({ hub, participant: tenantRow, user: squatter, tokenValid: false });
+  assert.equal(d.ok, false);
+  assert.equal(d.reason, "not_invited");
+});
+
+test("the flag must be a literal true: a caller that forgets it fails closed", () => {
+  for (const user of [
+    { id: "u9", email: "tenant@acme.com" },
+    { id: "u9", email: "tenant@acme.com", email_verified: 1 },
+    { id: "u9", email: "tenant@acme.com", email_verified_at: "2026-11-10T00:00:00Z" },
+  ]) {
+    assert.equal(canReadHub({ hub, participant: tenantRow, user, tokenValid: false }).ok, false);
+  }
+});
+
+test("the two credentials that prove themselves still work for an unconfirmed account", () => {
+  const unproven = { id: "u2", email: "tenant@acme.com", email_verified: false };
+  // The id this server stamped on the row.
+  const stamped = { ...tenantRow, user_id: "u2" };
+  assert.equal(canReadHub({ hub, participant: stamped, user: unproven, tokenValid: false }).ok, true);
+  // The invite token, which was itself mailed to the inbox.
+  assert.equal(canReadHub({ hub, participant: tenantRow, user: unproven, tokenValid: true }).ok, true);
+  // And a room they OWN is theirs by user id.
+  const owner = { id: "u1", email: "broker@firm.com", email_verified: false };
+  assert.equal(canReadHub({ hub, participant: null, user: owner, tokenValid: false }).reason, "owner");
+});
+
+test("a token lets an unconfirmed account read, never post as the address it has not proven", () => {
+  const squatter = { id: "u9", email: "tenant@acme.com", email_verified: false };
+  const d = canWriteHub({ hub, participant: tenantRow, user: squatter, tokenValid: true });
+  assert.equal(d.ok, false);
+  assert.equal(d.reason, "not_invited");
 });

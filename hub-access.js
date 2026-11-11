@@ -75,9 +75,20 @@ function sameUser(a, b) {
 // and the email is the authoritative one (migration 018's rule: identity is
 // the email, so a tenant invited before they had an account matches the
 // moment they sign up with that address).
+//
+// The email half holds only for an account that has PROVEN it owns the
+// address (2026-11-10; email-verify.js): a Google sign-in, a completed
+// password reset, or the confirm link. Sign-up never checked, so until then
+// anybody who knew a client's address was in a deal room could sign up with
+// it and be let in as that client. A literal true, never truthiness or
+// absence: a caller that forgets the flag fails toward LESS access. The
+// user_id half needs no such proof (an id is stamped by this server onto a
+// row, never typed), and neither does a token, which was itself mailed to
+// the inbox.
 function isParticipantUser(participant, user) {
   if (!participant || !user) return false;
   if (sameUser(participant.user_id, user.id)) return true;
+  if (user.email_verified !== true) return false;
   const mine = normalizeEmail(user.email);
   return !!mine && normalizeEmail(participant.email) === mine;
 }

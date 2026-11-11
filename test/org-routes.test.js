@@ -69,7 +69,10 @@ test("firm routes on a bare server (no database)", async (t) => {
     const i = SERVER.indexOf('if (visibility === "org") {');
     assert.ok(i > 0, "POST /api/share should have a firm branch");
     const branch = SERVER.slice(i, i + 1400);
-    assert.match(branch, /orgMembershipsFor\(user\.email\)/,
+    // Handed the USER, never an address, since 2026-11-10: the read answers
+    // no memberships for an account that has not proven its email
+    // (email-verify.js), so asking it by address is no longer possible.
+    assert.match(branch, /orgMembershipsFor\(user\)/,
       "membership must be read from the caller's own rows");
     assert.match(branch, /ORG\.membershipOf/, "and decided by org-access.js");
     assert.ok(branch.indexOf("ORG.membershipOf") < branch.indexOf("orgId = asked"),

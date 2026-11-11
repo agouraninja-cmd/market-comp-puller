@@ -198,7 +198,15 @@ function seatsOf(sub) {
 }
 
 // Stripe's status vocabulary is wider than ours and fails closed on both ends:
-// anything unrecognized becomes "cancelled" rather than leaking access.
+// anything unrecognized becomes "expired" rather than leaking access.
+//
+// "expired", not "cancelled" (which it was until 2026-11-10). entitlements.js
+// reads a cancelled row with a period end still ahead as "cancelling": Pro to
+// the end of what was paid for. A subscription that was never paid
+// (incomplete, incomplete_expired) or was stopped (paused) carries Stripe's
+// period end too, a month or a year out, so stored as "cancelled" a declined
+// card bought the whole first period. subscriptionState() answers "expired"
+// for a status it does not know, which is the answer these need.
 function statusForStripe(stripeStatus) {
   switch (String(stripeStatus || "").toLowerCase()) {
     case "active":
@@ -213,7 +221,7 @@ function statusForStripe(stripeStatus) {
     // incomplete / incomplete_expired / paused: never paid, or deliberately
     // stopped. No access.
     default:
-      return "cancelled";
+      return "expired";
   }
 }
 
@@ -223,6 +231,42 @@ function periodEndIso(sub) {
   const item = sub && sub.items && sub.items.data && sub.items.data[0];
   const secs = (sub && sub.current_period_end) || (item && item.current_period_end);
   return Number.isFinite(Number(secs)) ? new Date(Number(secs) * 1000).toISOString() : null;
+}
+
+// A subscription whose FIRST payment has not gone through. Stripe makes the
+// subscription before the card clears, so `customer.subscription.created`
+// usually says "incomplete" even for a sale that succeeds a second later, and
+// events are not delivered in order. An incomplete snapshot therefore decides
+// nothing: written, it would grant on a declined card or (landing late) take
+// Pro off somebody who just paid. The handlers skip it and wait for the event
+// that says what happened.
+function neverStarted(sub) {
+  return /^incomplete/.test(String((sub && sub.status) || "").toLowerCase());
+}
+
+// Did Stripe end this subscription because the money never came? Its own word
+// for it (cancellation_details.reason), or ours: the stored row was already in
+// its grace window when the cancellation arrived.
+function endedUnpaid(sub, existingGraceUntil) {
+  const why = sub && sub.cancellation_details && sub.cancellation_details.reason;
+  return why === "payment_failed" || Boolean(existingGraceUntil);
+}
+
+// One row per user (and per firm), but Stripe can hold two subscriptions for
+// them at once: the old one still in its retry schedule, and the new one they
+// bought because the app told them Pro had lapsed. May a row built from this
+// event replace the stored one?
+//
+// The stored subscription's own events always may. Another subscription's may
+// only when they make things no worse: it is active, or the stored one is
+// already dead. Without this the old subscription's next failed retry, and
+// then its cancellation, overwrote the row of the one being paid for, and the
+// customer read as free until the new one's next renewal.
+function mayReplaceRow(stored, incoming, storedIsLive) {
+  if (!stored || !stored.stripe_subscription_id) return true;
+  if (!incoming || stored.stripe_subscription_id === incoming.stripe_subscription_id) return true;
+  if (incoming.status === "active") return true;
+  return !storedIsLive;
 }
 
 function priceIdOf(sub) {
@@ -240,13 +284,25 @@ function subscriptionRowFrom(sub, priceMap,
   const plan = planForPrice(priceIdOf(sub), priceMap);
   if (!plan) return null;
   const status = statusForStripe(sub.status);
+  // A cancellation for non-payment ends NOW, not at the period end. Stripe
+  // rolls the period forward at renewal whether or not the invoice is paid, so
+  // a year's renewal that failed, ran out its grace and was finally cancelled
+  // arrives here with eleven unpaid months still "ahead", and a cancelled row
+  // inside its period is Pro (the cancelling state). A cancellation the
+  // customer asked for keeps the period they paid for, as before.
+  let periodEnd = periodEndIso(sub);
+  if (status === "cancelled" && endedUnpaid(sub, existingGraceUntil)) {
+    const ended = Number.isFinite(Number(sub.ended_at)) && Number(sub.ended_at) > 0
+      ? Number(sub.ended_at) * 1000 : nowMs;
+    if (!periodEnd || Date.parse(periodEnd) > ended) periodEnd = new Date(ended).toISOString();
+  }
   const row = {
     ...(userId ? { user_id: userId } : {}),
     stripe_subscription_id: sub.id,
     stripe_customer_id: typeof sub.customer === "string" ? sub.customer : (sub.customer && sub.customer.id) || null,
     plan,
     status,
-    current_period_end: periodEndIso(sub),
+    current_period_end: periodEnd,
     // "Won't renew" arrives in two shapes. Older API versions set the
     // cancel_at_period_end flag; newer ones (verified live 2026-07-31 on a
     // portal cancel) leave that flag FALSE and instead set cancel_at to the
@@ -350,6 +406,9 @@ module.exports = {
   verifyWebhookSignature,
   planForPrice,
   statusForStripe,
+  neverStarted,
+  endedUnpaid,
+  mayReplaceRow,
   subscriptionRowFrom,
   seatsOf,
   periodEndIso,

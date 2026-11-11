@@ -165,7 +165,15 @@ function renderSitesBody(boot) {
   var firmSites = BOOT.firmSites === null ? null : (Array.isArray(BOOT.firmSites) ? BOOT.firmSites : []);
   var share = BOOT.share || null;
   var FIRM_FAILED = "Your team's shared deals couldn't be loaded just now. Yours are all here.", firmSaid = false;
-  var today = BOOT.today || new Date().toISOString().slice(0, 10);
+  // The member's own calendar day, Home's rule (index.html's hmLocalDay), read
+  // again at every draw. Until 2026-11-10 it was the server's UTC day (the
+  // boot's and GET /api/sites' today), so every evening in the US tomorrow's
+  // deadline read "Today" and today's read as past, while Home said otherwise.
+  function localDay(){
+    var d = new Date(), p = function(n){ return (n < 10 ? "0" : "") + n; };
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+  var today = localDay();
   var openKey = "";       // the open card: "site:<id>", or "a:<address>" until the read that names it
   var passedOpen = false;
 
@@ -214,7 +222,7 @@ function renderSitesBody(boot) {
       return r.ok ? r.json() : null;
     }).then(function(j){
       if (j && Array.isArray(j.sites)) {
-        sites = j.sites; if (j.today) today = j.today;
+        sites = j.sites;
         firmSites = j.firmSites === null ? null : (Array.isArray(j.firmSites) ? j.firmSites : []);
         share = j.share || null;
       }
@@ -269,6 +277,7 @@ function renderSitesBody(boot) {
 
   function draw(){
     resolveOpen();
+    today = localDay();
     var deals = buying(), gone = passed(), f = HOMESITES.figures(deals, today);
     $("spApp").hidden = false;
     $("spAddBtn").hidden = false;

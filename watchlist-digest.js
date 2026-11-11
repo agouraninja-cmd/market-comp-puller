@@ -35,17 +35,29 @@ function plural(n, one, many) {
   return Number(n) === 1 ? one : (many || one + "s");
 }
 
+// A figure as the feed hands it over. A comp's price and $/SF are the text the
+// corpus stores ("$7,750,000", "$209"), which Number() reads as NaN, so every
+// comp line lost both until 2026-11-10. Text is read only when it is ONE plain
+// dollar figure: a lease rate ("$14.50/SF/yr NNN") or a range is not a sale
+// price, and is left unprinted rather than half-read.
+function figure(v) {
+  if (typeof v === "number") return v;
+  const m = /^\s*\$?\s*(\d[\d,]*(?:\.\d+)?)\s*$/.exec(String(v == null ? "" : v));
+  return m ? Number(m[1].replace(/,/g, "")) : NaN;
+}
+
 function money(n) {
-  const x = Number(n);
+  const x = figure(n);
   if (!Number.isFinite(x) || x <= 0) return "";
   return "$" + Math.round(x).toLocaleString("en-US");
 }
 
 // "$84/SF". Rounded to the dollar on purpose: the cents in a median of a
 // dozen comps are noise, and a reader comparing two digests should see a
-// figure move only when it really moved.
+// figure move only when it really moved. A stored "$209/SF" is that figure;
+// "$1.08/SF/mo" names another unit and is not.
 function psf(n) {
-  const x = Number(n);
+  const x = figure(typeof n === "string" ? n.replace(/\s*\/\s*sf\s*$/i, "") : n);
   if (!Number.isFinite(x) || x <= 0) return "";
   return "$" + Math.round(x) + "/SF";
 }
@@ -94,8 +106,13 @@ function marketBlock(item) {
   const lines = [head];
 
   const parts = [item.new_count + " new " + plural(item.new_count, "comp")];
-  const med = psf(item.median_psf);
-  if (med) parts.push("median " + med + " (sales, last 6 months)" + trendPhrase(item));
+  // With a trend, the median quoted is the trend's own current figure, so the
+  // direction always matches the two numbers printed. median_psf is windowed
+  // on when a comp was FOUND and the trend on when it CLOSED, and one beside
+  // the other read "median $110/SF, up from $142/SF" until 2026-11-10.
+  const trend = trendPhrase(item);
+  const med = psf(trend ? item.median_trend.current : item.median_psf);
+  if (med) parts.push("median " + med + " (sales, last 6 months)" + trend);
   lines.push("  " + parts.join(" · "));
 
   const comps = Array.isArray(item.comps) ? item.comps.slice(0, MAX_COMPS_PER_MARKET) : [];

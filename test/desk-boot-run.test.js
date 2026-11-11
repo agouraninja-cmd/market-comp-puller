@@ -21,6 +21,10 @@ const uuid = () => crypto.randomUUID();
 // A contact name that would end the <script> early if the payload were
 // written raw — the escape rule, exercised rather than asserted from source.
 const EVIL = "Eve </script><script>alert(1)</script>";
+// Text String.prototype.replace would rewrite if the payload were handed to it
+// as a replacement STRING: $' pastes the rest of the page, $` the start of it,
+// $& the marker, and $$ collapses to one $.
+const DOLLARS = "All figures in $'000. Net of $`TI` and R$&D; about $$5 a foot.";
 
 function tables() {
   const member = (u, role) => ({ id: uuid(), org_id: ORG_ID, email: u.email, user_id: u.id, role,
@@ -40,7 +44,7 @@ function tables() {
       id: uuid(), user_id: MIKE.id, org_id: ORG_ID, visibility: "org", revoked_at: null, created_at: NOW, shared_by_name: MIKE.name,
       payload: { meta: { address: "450 W Main St, Boise, ID", type: "Office", subject: { sizeMin: 12000 } }, data: { comps: [] } },
     }],
-    org_contacts: [{ id: uuid(), org_id: ORG_ID, name: EVIL, company: "Acme", email: null, notes: null, building_id: null,
+    org_contacts: [{ id: uuid(), org_id: ORG_ID, name: EVIL, company: "Acme", email: null, notes: DOLLARS, building_id: null,
       added_by_user_id: BRAD.id, added_by_name: BRAD.name, created_at: NOW }],
     portfolio_items: [], recent_searches: [], broker_comps: [], broker_properties: [], org_comps: [],
     org_building_notes: [], org_leases: [], analytics_events: [], msg_threads: [], msg_thread_members: [], msg_messages: [],
@@ -108,6 +112,24 @@ test("a member's page carries every workspace read, each equal to the route's ow
   // Same page, same member, /: the other URL that opens the workspace.
   const root = await (await fetch(srv.base + "/", as(BRAD))).text();
   assert.ok(bootOf(root), "/ carries the payload for a member too");
+});
+
+test("a $ pattern in a member's own data is embedded verbatim, and the page stays one page", async (t) => {
+  // Until 2026-11-10 the payload was a replacement STRING, so "$'" in a note
+  // pasted the rest of index.html into the boot script: a syntax error (no
+  // window.DESK_BOOT, so no first paint), two of every id, and the markers
+  // after it unreplaced.
+  const ctx = await bootWithDb();
+  t.after(() => ctx.stop());
+  const html = await (await fetch(ctx.srv.base + "/desk", as(BRAD))).text();
+  const boot = bootOf(html);   // JSON.parse inside throws on a corrupted payload
+  assert.ok(boot, "the page carries window.DESK_BOOT");
+  const contacts = boot.payload[`/api/org/contacts?id=${encodeURIComponent(ORG_ID)}`].body.contacts;
+  assert.equal(contacts[0].notes, DOLLARS, "the browser reads the original string back");
+  assert.equal(html.split('id="compForm"').length - 1, 1, "one page, not the page pasted into itself");
+  assert.ok(!html.includes("<!--DESK_BOOT-->"), "no marker pasted back in by $&");
+  assert.ok(!html.includes("<!--INSTANT_NAV-->") && !html.includes("<!--BULK_RUN-->"),
+    "the markers after the payload are still consumed");
 });
 
 test("a member of no firm gets the base reads and none of the firm's", async (t) => {

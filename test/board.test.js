@@ -120,7 +120,22 @@ test("the add box tells a market from an address, and refuses rather than guesse
 test("prices and moves read the way the rest of the site writes them", () => {
   assert.equal(BOARD.psfLabel(165), "$165/SF");
   assert.equal(BOARD.psfLabel(9.5), "$9.50/SF");
+  // A comp's own $/SF as the corpus stores it, text with its dollar sign. Read
+  // as a bare number it was NaN, and the new-comp table's $/SF cell (which is
+  // this function) was blank on every row until 2026-11-10.
+  assert.equal(BOARD.psfLabel("$209"), "$209/SF");
+  assert.equal(BOARD.psfLabel("$14.50"), "$14.50/SF");
+  assert.equal(BOARD.psfLabel("209"), "$209/SF");
+  assert.equal(BOARD.psfLabel("$1,250"), "$1250/SF");
+  assert.equal(BOARD.psfLabel("$200-$240"), "$200/SF", "a range is its low end, not its digits run together");
+  assert.equal(BOARD.psfLabel("n/a"), "");
+  assert.equal(BOARD.psfLabel(""), "");
+  assert.equal(BOARD.psfLabel(null), "");
+  assert.match(SRC, /psfLabel\(c\.price_per_sqft\)/, "the new-comp table's $/SF cell");
   assert.equal(BOARD.short(22050000), "$22.05M");
+  assert.equal(BOARD.short(4000000), "$4M");
+  assert.equal(BOARD.short(100000000), "$100M", "not $1M: a whole number's zeros are not padding");
+  assert.equal(BOARD.short(250000000), "$250M");
   assert.deepEqual(BOARD.move(0.04), { dir: "flat", text: "0.0%" });
   assert.equal(BOARD.move(null), null);
   assert.equal(BOARD.marketOf("1550 S Federal Way, Boise, ID 83716"), "Boise, ID");

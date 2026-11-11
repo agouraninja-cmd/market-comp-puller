@@ -14,6 +14,7 @@ const crypto = require("node:crypto");
 const {
   formEncode, verifyWebhookSignature, planForPrice, statusForStripe,
   subscriptionRowFrom, periodEndIso, refundOf, WEBHOOK_TOLERANCE_MS,
+  neverStarted, mayReplaceRow,
 } = require("../stripe");
 // The whole module too, for the per-seat cases at the foot of this file.
 const stripe = require("../stripe");
@@ -183,8 +184,85 @@ test("Stripe statuses map onto ours and fail closed", () => {
   assert.equal(statusForStripe("unpaid"), "grace");
   assert.equal(statusForStripe("canceled"), "cancelled");
   for (const s of ["incomplete", "incomplete_expired", "paused", "", null, "something_new"]) {
-    assert.equal(statusForStripe(s), "cancelled", `"${s}" must not grant access`);
+    assert.equal(statusForStripe(s), "expired", `"${s}" must not grant access`);
   }
+});
+
+// "Must not grant access" is a claim about TWO modules: this one names the
+// status and entitlements.js reads it. Until 2026-11-10 each passed its own
+// test and the pair granted: these statuses were stored as "cancelled", Stripe
+// puts a period end a month or a year ahead on a subscription nobody has paid
+// for, and a cancelled row inside its period is Pro (the cancelling state). A
+// declined card at checkout bought the whole first period.
+test("a subscription that was never paid is not Pro, whatever period end Stripe gives it", () => {
+  const ENT = require("../entitlements");
+  const yearOut = Math.floor((NOW + 365 * 24 * 3600 * 1000) / 1000);
+  for (const status of ["incomplete", "incomplete_expired", "paused", "something_new"]) {
+    const row = subscriptionRowFrom(stripeSub({ status, current_period_end: yearOut }), PRICES,
+      { userId: "u_1", nowMs: NOW });
+    assert.equal(ENT.subscriptionState(row, NOW), "expired", `${status} must read as expired`);
+    assert.equal(row.grace_until, null, `${status} opens no grace window`);
+  }
+});
+
+test("neverStarted names the snapshots a handler must not write", () => {
+  assert.equal(neverStarted({ status: "incomplete" }), true);
+  assert.equal(neverStarted({ status: "incomplete_expired" }), true);
+  for (const status of ["active", "trialing", "past_due", "canceled", "paused", "", undefined]) {
+    assert.equal(neverStarted({ status }), false, String(status));
+  }
+  assert.equal(neverStarted(null), false);
+});
+
+// Stripe rolls the period forward at renewal whether or not the invoice was
+// paid. A yearly renewal that failed, ran out its seven days and was cancelled
+// three weeks later therefore arrived with eleven unpaid months "ahead", and
+// the cancelling state handed Pro back for all of them.
+test("a cancellation for non-payment ends at the cancellation, not at the unpaid period's end", () => {
+  const ENT = require("../entitlements");
+  const yearOut = Math.floor((NOW + 340 * 24 * 3600 * 1000) / 1000);
+  const endedAt = Math.floor(NOW / 1000) - 60;
+  // Stripe's own word for it.
+  const byReason = subscriptionRowFrom(stripeSub({
+    status: "canceled", current_period_end: yearOut, ended_at: endedAt,
+    cancellation_details: { reason: "payment_failed" },
+  }), PRICES, { userId: "u_1", nowMs: NOW });
+  assert.equal(byReason.status, "cancelled");
+  assert.equal(byReason.current_period_end, new Date(endedAt * 1000).toISOString());
+  assert.equal(ENT.subscriptionState(byReason, NOW + 3 * 24 * 3600 * 1000), "expired");
+  // Or ours: the stored row was already in its grace window.
+  const byGrace = subscriptionRowFrom(stripeSub({ status: "canceled", current_period_end: yearOut }),
+    PRICES, { userId: "u_1", nowMs: NOW, existingGraceUntil: new Date(NOW - 14 * 24 * 3600 * 1000).toISOString() });
+  assert.equal(byGrace.current_period_end, new Date(NOW).toISOString(), "no ended_at: it ended now");
+  assert.equal(ENT.subscriptionState(byGrace, NOW + 3 * 24 * 3600 * 1000), "expired");
+});
+
+test("a cancellation the customer asked for keeps the period they paid for", () => {
+  const ENT = require("../entitlements");
+  const monthOut = Math.floor((NOW + 20 * 24 * 3600 * 1000) / 1000);
+  const row = subscriptionRowFrom(stripeSub({
+    status: "canceled", current_period_end: monthOut, ended_at: Math.floor(NOW / 1000),
+    cancellation_details: { reason: "cancellation_requested" },
+  }), PRICES, { userId: "u_1", nowMs: NOW });
+  assert.equal(row.current_period_end, new Date(monthOut * 1000).toISOString());
+  assert.equal(ENT.subscriptionState(row, NOW + 24 * 3600 * 1000), "cancelling");
+});
+
+// One row per user, and Stripe can hold two subscriptions for them: the old
+// one still retrying a dead card, and the one they bought because the app said
+// Pro had lapsed. The old one's events must not overwrite the new one's row.
+test("another subscription's event may only replace the stored row when it makes things no worse", () => {
+  const stored = { stripe_subscription_id: "sub_B", status: "active" };
+  const from = (id, status) => ({ stripe_subscription_id: id, status });
+  assert.equal(mayReplaceRow(null, from("sub_A", "grace"), false), true, "nothing stored");
+  assert.equal(mayReplaceRow({ status: "active" }, from("sub_A", "grace"), true), true, "a stored row with no id");
+  assert.equal(mayReplaceRow(stored, from("sub_B", "grace"), true), true, "its own events always");
+  assert.equal(mayReplaceRow(stored, from("sub_B", "cancelled"), true), true);
+  assert.equal(mayReplaceRow(stored, from("sub_A", "grace"), true), false, "the old one's failed retry");
+  assert.equal(mayReplaceRow(stored, from("sub_A", "cancelled"), true), false, "the old one's cancellation");
+  assert.equal(mayReplaceRow(stored, from("sub_A", "expired"), true), false);
+  assert.equal(mayReplaceRow(stored, from("sub_A", "active"), true), true, "an active one is never worse");
+  assert.equal(mayReplaceRow(stored, from("sub_A", "grace"), false), true, "the stored one is already dead");
 });
 
 // --- subscription -> our row -----------------------------------------------

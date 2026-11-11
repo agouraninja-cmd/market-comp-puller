@@ -92,6 +92,43 @@ test("marketOf refuses to guess a comma-less city with nothing delimiting it", (
   assert.equal(M.marketOf("100 Main St Boise ZZ"), "100 Main St Boise ZZ");
 });
 
+// --- 2026-11-10: the one-comma shape, "Street, City ST ZIP" -----------------
+// The USPS one-line form puts no comma between the city and the state. The
+// segment walk only ever read a state at the START of a segment, so these
+// echoed the tail ("Boise ID 83702") and missed the corpus, or, for a city
+// that opens with a state's own name, filed the STREET LINE as the city:
+// "500 Main St, NY" has the market's shape and marketForLog let it through.
+
+test("marketOf reads a city and state that share the last comma segment", () => {
+  assert.equal(M.marketOf("1210 N 17th St, Boise ID 83702"), "Boise, ID");
+  assert.equal(M.marketOf("123 Main, Indianapolis IN 46201"), "Indianapolis, IN");
+  assert.equal(M.marketOf("6200 W Gowen Rd, Boise Idaho 83716"), "Boise, ID");
+  assert.equal(M.marketOf("1 Main St, Charleston West Virginia"), "Charleston, WV");
+});
+
+test("a city named for a state is the city, and the street line is never one", () => {
+  assert.equal(M.marketOf("500 Main St, New York NY 10001"), "New York, NY");
+  assert.equal(M.marketOf("500 Main St NW, Washington DC 20001"), "Washington, DC");
+  assert.equal(M.marketOf("500 Main St, Kansas City MO 64105"), "Kansas City, MO");
+  assert.equal(M.marketOf("500 Main St, Suite 4, Kansas City MO 64105"), "Kansas City, MO");
+});
+
+test("with no state to read, a street line still never becomes the city", () => {
+  // The miss is the trailing segment, the fallback's own rule, and it is not
+  // market-shaped, so it stays out of analytics.
+  assert.equal(M.marketOf("500 Main St, La Mesa"), "La Mesa");
+  assert.equal(M.marketOf("500 Main St, New York"), "New York");
+  assert.equal(M.marketOf("123 Main, Kansas City"), "Kansas City");
+  assert.equal(M.marketForLog(M.marketOf("500 Main St, New York")), "");
+});
+
+test("a state that opens a segment still outranks one at its tail", () => {
+  // Stays as it was: the descriptor after the state must not become the city.
+  assert.equal(M.marketOf("4521 Maple Ave, Meridian, ID - near Eagle ID"), "Meridian, ID");
+  // And a city written with a numeral keeps its key when the state stands alone.
+  assert.equal(M.marketOf("73950 Inn Ave, 29 Palms, CA 92277"), "29 Palms, CA");
+});
+
 test("marketOf caps the fallback at 60 chars", () => {
   const long = "x".repeat(200);
   assert.equal(M.marketOf(long).length, 60);

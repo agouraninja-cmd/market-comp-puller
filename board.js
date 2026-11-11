@@ -89,11 +89,24 @@
   }
   function short(n) {
     n = num(n) || 0;
-    if (n >= 1e6) return "$" + (n / 1e6).toFixed(n >= 1e8 ? 0 : 2).replace(/\.?0+$/, "") + "M";
+    // Number(), not a regex that strips trailing zeros (home-sites.js short's
+    // reason: "$100M" read "$1M" until 2026-11-10).
+    if (n >= 1e6) return "$" + Number((n / 1e6).toFixed(n >= 1e8 ? 0 : 2)) + "M";
     if (n >= 1e3) return "$" + Math.round(n / 1e3) + "K";
     return "$" + Math.round(n);
   }
-  function psfLabel(n) { n = num(n); return n == null ? "" : "$" + (n >= 100 ? Math.round(n) : n.toFixed(2).replace(/\.00$/, "")) + "/SF"; }
+  // A comp's own $/SF arrives as the corpus stores it ("$209"). As a bare
+  // number that was NaN, and the new-comp table's $/SF cell was blank until
+  // 2026-11-10. A string is read as its FIRST number, so a range ("$200-$240")
+  // is its low end and never its digits run together.
+  function psfLabel(n) {
+    if (typeof n === "string") {
+      const m = /\d[\d,]*(?:\.\d+)?/.exec(n);
+      n = m ? m[0].replace(/,/g, "") : "";
+    }
+    n = num(n);
+    return n == null ? "" : "$" + (n >= 100 ? Math.round(n) : n.toFixed(2).replace(/\.00$/, "")) + "/SF";
+  }
   // Land is quoted per acre (2026-10-21): "$637K/acre".
   // A comp's own $/acre arrives as the model wrote it ("$410,000"), so the
   // digits are read the way server.js's corpusNum reads them.

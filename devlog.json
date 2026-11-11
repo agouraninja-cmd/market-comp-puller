@@ -2,6 +2,102 @@
   {
     "date": "2026-11-10",
     "type": "fix",
+    "title": "A declined card no longer gets Pro",
+    "details": "If a card was declined at checkout (or the bank’s security check was abandoned), Stripe still creates the subscription and marks it “incomplete”. We were storing that as a cancelled plan with a month or a year still to run, which the app reads as Pro until the end of the period, and the failed first invoice opened a seven-day grace window on top. A plan that was never paid for now writes nothing at all. Accounts already stored that way before this fix are not corrected automatically."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "A renewal that fails and is cancelled no longer comes back as Pro",
+    "details": "When a yearly renewal failed, Pro correctly ended after the seven-day grace. But when Stripe gave up three weeks later and cancelled the subscription, the cancellation arrived carrying the unpaid year’s end date, and the account read as Pro again for the rest of that year. A cancellation for non-payment now ends on the day it happens. A cancellation the customer asked for still keeps the time they paid for."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "Buying again after a failed payment keeps you on Pro",
+    "details": "If a customer’s card failed and they bought a new subscription instead of fixing the old one, the old subscription’s later failed retries and its cancellation overwrote the new one’s record, and a paying customer read as free until their next renewal. An old subscription can no longer change the record of the one being paid for. Firm plans follow the same rule."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "Stripe events with accented characters are no longer refused",
+    "details": "A genuine Stripe event could be rejected as “Invalid signature” when a character like × or é happened to be split across two network chunks, because each chunk was decoded on its own. The body is now decoded as one stream before the signature is checked."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "Trial, digest and lease-renewal emails are only marked sent when they were",
+    "details": "These three mailers marked an email as sent without waiting to hear whether the mail service accepted it. A refused or timed-out send (a rate limit on a busy day is the likely cause) was recorded as delivered and never tried again: a lost trial email, a skipped digest, or a lease reminder that is only ever sent once. Each now waits for the answer, counts a refusal as failed, and leaves it for the next run."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "The digest email shows prices again, and its trend sentence agrees with itself",
+    "details": "Every comp line in The Board’s digest email had lost its price and $/SF, because the stored figures are text like “$7,750,000” and were being read as numbers. The same miss blanked the $/SF column in The Board’s new-comps table. Both read the stored text now. Separately, the digest could print “median $110/SF, up from $142/SF”: the two figures came from different sets of comps. The median quoted beside a trend is now the trend’s own."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "A “$” in your own notes can no longer break Home",
+    "details": "Home is served with your data already in the page. A dollar sign followed by certain characters in that data (a disclaimer reading “figures in $’000”, a note, a colleague’s message) was treated as an instruction to the code that inserts it: the page arrived doubled in size with a syntax error and nothing on it worked, and “$$” quietly became “$”. Your data is now inserted exactly as written."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "A conversation over 200 messages opens at the newest message",
+    "details": "Once a conversation passed 200 messages, Messages read it from the oldest end. The list kept previewing message 200 with no unread count (while the dot in the rail stayed lit), and opening the conversation showed the oldest 200 and added the rest 200 at a time every 15 seconds. The list and the first open now read the newest 200, and older messages load in above them as you sit in the conversation."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "Firm fixes: re-invited owners, lease dates, removing a building, and $100M deals",
+    "details": "Four things. Re-inviting someone who had been removed gave them back their old role, so an admin could hand a departed owner the firm; they now come back as a member like any other invitation. Critical dates dropped a lease as soon as its option-notice date passed, even though the lease itself still expired inside the year; it now shows the expiry. Remove on a building now asks first and says its leases and notes go with it (they are deleted and adding the building again does not bring them back). And a deal of $100M or more read as “$1M” on Sites, Home and The Board."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "Sites counts deadlines from your day, not the server’s",
+    "details": "The Sites page used the server’s calendar day, which is already tomorrow every evening in the US. From late afternoon, tomorrow’s deadline read “Today” and today’s had dropped off as done, while Home showed the same deal correctly. Sites now uses your own day, as Home does. The date stamped when a deal changes stage still comes from the server and can be a day ahead in the evening."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "Your comps: Undo, lease rents in reports, and removing an import",
+    "details": "Undo after deleting a comp said “Could not put that comp back” when it had worked, and lost a lease’s renewal dates on the way; it now confirms, reloads, restores the dates, and can restore an undated comp. A lease from your own comps (or a colleague’s on the firm shelf) reached a report with no rent at all, so it fed no rent range; it now carries its rate. Removing an import left any comps you had published from it in the public records with no way left to take them back; they are now retracted with the import. A size typed as “2.5 acres” is stored as 108,900 SF instead of 2.5 SF. And comps confirmed from a PDF or screenshot no longer gain a stray apostrophe on notes starting with a dash."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "Bulk valuation reads spreadsheets the way people lay them out",
+    "details": "A “$/SF” column could be read as the building size (valuing a 45,000 SF building at 68 SF). A list with an Address heading had every address cut at its first comma, so each street was searched with no city. A file whose address column was not first could not be run at all, and City and State columns were ignored. All four are fixed, and cells pasted straight from Excel are read as columns. A row’s own asking price now weights its comps the same way the report it links to does, so the two show the same value. A leases-only run no longer gets a sale value from saved sales. And deleting a finished run no longer hands back the addresses it used from the day’s limit."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "Reports: the right comps and the right dates",
+    "details": "A Sales-only or Leases-only report was being topped up with saved deals of the other kind. A comp dated by quarter (“Q3 2024”) was treated as if it had closed today: full weight and no trend adjustment. An address typed “Street, City ST ZIP” with one comma was filed under the wrong market (or under its street), so those searches missed our saved comps. A note of “.5 miles” was read as 5 miles. Saved houses lost their condition on the way into a report. And two searches that differed only by a decimal point (2.5 miles and 25 miles, a 2.4-acre and a 24-acre lot) shared one cached report."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "Report page: land and apartment values, saved dates, exports",
+    "details": "Land priced per acre and apartments priced per unit showed “No priced sale comps came back” (and offered a paid re-run) whenever the comps had no price per square foot, though the chart beside it showed them; they are now valued per acre or per unit. Editing an assumption on a saved property re-dated its report to today and shifted its value. The report’s CSV export now guards against cells that a spreadsheet would run as formulas. A rent-roll expiry typed as a date, or far in the future, was read as expiring this year. Typing “$9.5M” as your own comp’s price added a comp that silently counted for nothing; it is now refused with a message. A comp dated the first month of the window could be badged “Outside window”. And “Sell today” now equals the Likely value it is based on."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "Permits, photos and shared links",
+    "details": "The permit alert form offered Nampa and then refused to save it. One brief quota refusal from Google left every map pin asked during it on its aerial photo until the next deploy. A public share link created during a database error was handed back as working when it could never open; the sender now gets an error and tries again. And the returns card had no IRR for any build longer than about six years."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "The worktree script no longer crashes on Windows",
+    "details": "scripts/worktree.js made the worktree and then died with a stack trace at its last step, because Windows refuses a symlink without Developer Mode. It left the new folder without its .env and printed no “Ready” line. It now copies the file where a symlink is refused, and says so."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
     "title": "Refresh value on a property runs without the comp search form",
     "details": "Clicking Refresh value on a property used to open the old search page: the sales pitch, the “Value a building” form and the market search box, with the “Is this the property?” check on top, and the form stayed above the new report. Now the check opens over Home, and once you confirm you see only the progress card and then the report. Pressing Escape on the check leaves you on Home. “No, edit address” is the one thing that brings the form up."
   },

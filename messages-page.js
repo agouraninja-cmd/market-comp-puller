@@ -1625,7 +1625,9 @@ ${REPORT_INBOX_SRC}
   }
 
   // --- the stream ---------------------------------------------------------
-  function renderStream(){
+  // keep: the stream grew at the TOP (older messages laid in), so hold the
+  // reader where they are instead of dropping them to the newest message.
+  function renderStream(keep){
     if (state.tab === "comps") return;
     if (!state.openId) {
       $("msgStream").innerHTML = '<div class="msg-empty"><h3>Select a conversation</h3>' +
@@ -1683,9 +1685,11 @@ ${REPORT_INBOX_SRC}
       if (asking) html += unsendQuestion(m);
     }
     var el = $("msgStream");
+    var fromBottom = el.scrollHeight - el.scrollTop;
     el.innerHTML = html;
     var q = el.querySelector(".msg-unsendq");
     if (q) { try { q.scrollIntoView({ block: "nearest" }); } catch (e) {} }
+    else if (keep === true) el.scrollTop = el.scrollHeight - fromBottom;
     else el.scrollTop = el.scrollHeight;
     scheduleUnsendExpiry();
   }
@@ -1950,6 +1954,30 @@ ${REPORT_INBOX_SRC}
       }
       if (j.cursor) state.cursor = j.cursor;
       markRead();
+      // The first read is the RECENT end of a long conversation; the rest is
+      // fetched behind it, a page at a time, so scrolling up finds it.
+      if (first && j.earlier) readEarlier(state.openId, 10);
+    });
+  }
+
+  // Older pages of a long conversation, laid in ABOVE what is on screen
+  // (2026-11-10). The server used to hand the OLDEST 200 messages first and
+  // the page caught up 200 per poll; now it hands the newest, and this walks
+  // back from the oldest message held. Bounded, so a very old channel costs a
+  // few reads rather than all of them; it stops when the reader moves on.
+  function readEarlier(id, pagesLeft){
+    if (!pagesLeft || state.openKind !== "internal" || state.openId !== id || !state.messages.length) return;
+    var oldest = state.messages[0].createdAt;
+    if (!oldest) return;
+    api("GET", "/api/messages/thread?id=" + encodeURIComponent(id) + "&before=" + encodeURIComponent(oldest)).then(function(o){
+      if (o.s !== 200 || state.openKind !== "internal" || state.openId !== id) return;
+      var j = o.j || {}, older = j.messages || [], have = {}, add = [];
+      for (var i = 0; i < state.messages.length; i++) have[state.messages[i].id] = true;
+      for (var k = 0; k < older.length; k++) if (!have[older[k].id]) add.push(older[k]);
+      if (!add.length) return;
+      state.messages = add.concat(state.messages);
+      renderStream(true);
+      if (j.earlier) readEarlier(id, pagesLeft - 1);
     });
   }
 

@@ -481,3 +481,29 @@ test("the run log distinguishes a preview from a send", async (t) => {
     assert.equal(d.lastOutcome, "sent:1", "the card reads the count off this");
   });
 });
+
+// Never-break rule 12: a ledger is marked only after the send. Until
+// 2026-11-10 the send was not awaited and its answer not read, so a digest
+// Resend refused (a 429 on a busy run, a timeout) still advanced
+// last_digest_at and those comps were never mailed.
+test("a digest Resend refuses is not marked sent, so the next run mails it", async (t) => {
+  const tables = {
+    users: [{ id: "u1", email: "watcher@example.com", digest_optout: false }],
+    watchlist_items: [{ id: "w1", user_id: "u1", market: MARKET, property_type: "Industrial",
+      created_at: ISO(now - 30 * DAY), last_seen_at: ISO(now - 30 * DAY), last_digest_at: null }],
+    comp_corpus: [corpusRow()],
+  };
+  const db = await fake.start({ tables, resendStatus: 500 });
+  const srv = await shared.boot({
+    ACCOUNT_WALL: "off", ADMIN_KEY: "digest-key", SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key",
+    RESEND_API_KEY: "resend-key", EMAIL_FROM: "CompNinja <reports@compninja.co>", RESEND_API_URL: db.resendUrl,
+    SITE_URL: "https://compninja.co",
+  });
+  t.after(async () => { srv.stop(); await db.stop(); });
+
+  const summary = await (await runDigest(srv)).json();
+  assert.equal(summary.sent, 0, "a refused send is not reported as sent");
+  assert.equal(summary.failed, 1, "it is counted as failed");
+  assert.equal(db.sent.length, 1, "the send was attempted");
+  assert.equal(db.tables.watchlist_items[0].last_digest_at, null, "and the marker did not move");
+});

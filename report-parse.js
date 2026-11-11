@@ -513,10 +513,16 @@ function normalizeSubjectYearBuilt(parsed) {
 // the pair is kept or dropped together, never half-populated. The size is
 // normalized to "" rather than deleted, because it is a documented key of the
 // report shape that callers test for emptiness.
+//
+// The size is read as its FIRST number, the way index.html's numericValue
+// will read it (and normalizeSubjectAsking reads a price). Until 2026-11-10
+// every non-digit was stripped first, which left the periods of "sq. ft." on
+// the number ("25000..", NaN) and blanked a size the model had found.
 function normalizeSubjectSize(parsed) {
   if (!parsed || typeof parsed !== "object") return parsed;
-  const size = Number(String(parsed.subject_size_sqft == null ? "" : parsed.subject_size_sqft)
-    .replace(/[^0-9.]/g, ""));
+  const m = String(parsed.subject_size_sqft == null ? "" : parsed.subject_size_sqft)
+    .replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+  const size = m ? parseFloat(m[0]) : NaN;
   if (Number.isFinite(size) && size > 0) return parsed;
   if ("subject_size_sqft" in parsed) parsed.subject_size_sqft = "";
   delete parsed.subject_size_source;

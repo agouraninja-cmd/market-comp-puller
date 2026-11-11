@@ -70,7 +70,10 @@
   function money(n) { n = num(n); return n == null ? "" : "$" + Math.round(n).toLocaleString("en-US"); }
   function short(n) {
     n = num(n) || 0;
-    if (n >= 1e6) return "$" + (n / 1e6).toFixed(n >= 1e8 ? 0 : 2).replace(/\.?0+$/, "") + "M";
+    // Number(), not a regex that strips trailing zeros: from $100M the figure
+    // has no decimals, and the strip took the zeros of the whole number
+    // ("100" became "1", so a $100M deal read "$1M" until 2026-11-10).
+    if (n >= 1e6) return "$" + Number((n / 1e6).toFixed(n >= 1e8 ? 0 : 2)) + "M";
     if (n >= 1e3) return "$" + Math.round(n / 1e3) + "K";
     return "$" + Math.round(n);
   }

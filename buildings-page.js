@@ -93,9 +93,10 @@ function renderBuildingsBody(boot) {
   <p class="bl-sub" id="blSub">The buildings your firm works on, shared with everyone in it. Add one from <a href="/desk">Home</a>, where a property you own has its own Add to firm, or from a report on the shelf.</p>
   <div class="bl-wall hide" id="blWall"></div>
   <!-- Critical dates (slice 6): the firm's leases with a date to act on in
-       the next twelve months, soonest first, the earlier of option notice
-       and expiry. Rendered only when there is one — a strip announcing "no
-       deadlines" would be furniture. Display only; nothing here mails. -->
+       the next twelve months, soonest first: the option notice while it is
+       still ahead, the expiry once it has lapsed (org-leases.js). Rendered
+       only when there is one — a strip announcing "no deadlines" would be
+       furniture. Display only; nothing here mails. -->
   <div class="bl-crit hide" id="blCrit">
     <div class="kicker">Critical dates \u00b7 next 12 months</div>
     <div id="blCritRows"></div>
@@ -229,8 +230,11 @@ function renderBuildingsBody(boot) {
   $("blClear").addEventListener("click",function(){ $("blSearch").value=""; $("blType").value=""; render(); });
   $("blRows").addEventListener("click",function(e){
     var b=e.target&&e.target.closest?e.target.closest("button[data-rm]"):null; if(!b||!firm)return;
-    // No confirm: removing a building from the index is undone by adding it
-    // again — the Workspace's rule for the same control.
+    // Asked first, and it says what goes: the building's leases and notes
+    // are deleted with its row (047 and 048 cascade), and adding it again
+    // brings back neither. There was no confirm until 2026-11-10, a rule from
+    // when a building was only an index row and adding it again undid this.
+    if(!confirm("Remove "+b.getAttribute("data-addr")+" from your firm\\u2019s buildings? Its leases and notes go with it."))return;
     b.disabled=true;
     fetch("/api/org/buildings?id="+encodeURIComponent(firm.id)+"&building="+encodeURIComponent(b.getAttribute("data-rm")),
       {method:"DELETE",credentials:"same-origin"})

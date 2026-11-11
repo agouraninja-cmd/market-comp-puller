@@ -596,3 +596,51 @@ test("a run started on the page brings its bar into view, by the least scroll", 
   assert.doesNotThrow(() => go(false, null), "a page without the bar must not throw");
   assert.match(MOD.BULK_RUN_CSS, /\.bk-run \.prog\{[^}]*scroll-margin:96px 0/, "kept off the viewport's edge");
 });
+
+// ---------------------------------------------------------------------------
+// The count on the button is the server's count (2026-11-10).
+//
+// countLines used to guess: a heading was a first line with "address" and a
+// comma in it, and the address was whatever sat before a line's first comma.
+// A file headed Name,Address,SF therefore counted 0, and both pages refuse to
+// run a list that counts 0, over a list the server reads perfectly well. It
+// now reads the list as bulk.js parseAddressList does, restated for the
+// browser, so the two are held together here by RUNNING both.
+// ---------------------------------------------------------------------------
+const LIST_SHAPES = {
+  "a plain paste": "123 Main St, Boise, ID 83702\n456 Oak Ave, Meridian, ID\n\n# note\nDowntown\n123 Main St., Boise ID 83702\n",
+  "a label column first": 'Name,Address,SF\nGowen Flex,"6200 W Gowen Rd, Boise, ID",45000\nFranklin Park,"500 W Franklin Rd, Meridian, ID",32000\n',
+  "an id column first": 'ID,Property Address\n1,"6200 W Gowen Rd, Boise, ID"\n2,"500 W Franklin Rd, Meridian, ID"\n',
+  "one street in two cities": 'Address,Size\n"100 Main St, Boise, ID",1000\n"100 Main St, Meridian, ID",2000\n',
+  "a lone heading over unquoted lines": "Address\n6200 W Gowen Rd, Boise, ID 83705\n\n100 Main St, Boise, ID\n100 Main St, Meridian, ID\nDowntown\n",
+  "a lone heading over quoted cells": 'Property Address\r\n"6200 W Gowen Rd, Boise, ID"\r\n"500 W Franklin Rd, Meridian, ID"\r\n',
+  "city and state columns": "Address,City,State,Size\n6200 W Gowen Rd,Boise,ID,45000\n100 Main St,Boise,ID,1000\n100 Main St,Meridian,ID,2000\n5 Oak,Boise,ID,1\n",
+  "city and state repeated beside a whole address": 'Address,City,State\n"123 Main St, Boise, ID 83702",Boise,ID\n"123 Main St, Boise, ID",Boise,ID\n',
+  "a tab paste with a heading": "Address\tSize\n6200 W Gowen Rd, Boise, ID\t45000\n500 W Franklin Rd, Meridian, ID\t32,000 SF\n",
+  "a tab paste with none": "6200 W Gowen Rd Boise ID\t45000\n500 W Franklin Rd Meridian ID\t32000\n",
+  "a BOM": "﻿Address,Size\n1 A St Boise ID,5000\n",
+  "a cell holding a line break": 'Address,Notes\n"100 Main St,\nBoise, ID","two\nlines"\n"200 Oak Ave, Boise, ID",x\n',
+  "a note row under a heading": 'Address,Size\n#"1 Skip St, Boise, ID",1\n"2 Keep St, Boise, ID",2\n',
+  "a heading and nothing else": "Address\n",
+  "nothing": "",
+};
+
+test("the page counts a list the way the server reads it, wherever the address column is", () => {
+  const BULK = require("../bulk.js");
+  const run = mountRunView().run;
+  // The case that was refused outright: the label column comes first.
+  assert.equal(run.countLines(LIST_SHAPES["a label column first"]), 2);
+  assert.equal(run.firstAddress(LIST_SHAPES["a label column first"]), "6200 W Gowen Rd, Boise, ID");
+  for (const name of Object.keys(LIST_SHAPES)) {
+    const rows = BULK.parseAddressList(LIST_SHAPES[name]).rows;
+    assert.equal(run.countLines(LIST_SHAPES[name]), rows.length, name);
+    assert.equal(run.firstAddress(LIST_SHAPES[name]), rows.length ? rows[0].address : "", name);
+  }
+});
+
+test("the page's heading names are bulk.js's own", () => {
+  const BULK = require("../bulk.js");
+  // Through JSON: the lists are made inside the vm context.
+  assert.deepEqual(JSON.parse(JSON.stringify(mountRunView().run.listHeaders)),
+    { address: BULK.ADDRESS_HEADERS, city: BULK.CITY_HEADERS, state: BULK.STATE_HEADERS });
+});

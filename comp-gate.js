@@ -63,8 +63,33 @@ function salePsf(c) {
   return NaN;
 }
 
+// ⚠ MIRRORS valuation.js compDateMs, body for body (its comment says what is
+// read and why; test/comp-gate.test.js compares the two). The gate ranks by
+// the same recency the hero weights by, so a date one copy reads and the
+// other cannot would rank a comp the hero discounts as if it closed today.
+function compDateMs(text) {
+  const t = String(text == null ? "" : text).trim().toLowerCase();
+  let m;
+  if ((m = t.match(/^((?:19|20)\d{2})(?:-(\d{2})(?:-(\d{2}))?)?$/))) {
+    const mo = m[2] ? Number(m[2]) : 1, day = m[3] ? Number(m[3]) : 1;
+    const ms = Date.UTC(Number(m[1]), mo - 1, day);
+    if (mo >= 1 && mo <= 12 && day >= 1 && new Date(ms).getUTCMonth() === mo - 1) return ms;
+  }
+  if ((m = t.match(/^(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+((?:19|20)\d{2})$/))) {
+    const mo = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }[m[1].slice(0, 3)];
+    return new Date(Number(m[2]), mo, 1).getTime();
+  }
+  if ((m = t.match(/^q([1-4])\s*((?:19|20)\d{2})$/))) {
+    return new Date(Number(m[2]), Number(m[1]) * 3 - 2, 1).getTime();
+  }
+  if ((m = t.match(/^(\d{1,2})\/((?:19|20)\d{2})$/)) && Number(m[1]) >= 1 && Number(m[1]) <= 12) {
+    return new Date(Number(m[2]), Number(m[1]) - 1, 1).getTime();
+  }
+  return Date.parse(text);
+}
+
 function compAgeYears(c, asOfMs) {
-  const d = Date.parse(c.date);
+  const d = compDateMs(c.date);
   if (isNaN(d)) return null;
   const yrs = (asOfMs - d) / YEAR_MS;
   return yrs > 0 ? Math.min(yrs, 5) : 0;
@@ -228,4 +253,4 @@ function gateReport(report, ent, { asOfMs = Date.now(), subjectSqft = 0, propert
   };
 }
 
-module.exports = { gateReport, selectVisible, basisRow, compWeight, salePsf, numericValue, TIER_WEIGHT, distanceHalfLifeMiles };
+module.exports = { gateReport, selectVisible, basisRow, compWeight, compDateMs, salePsf, numericValue, TIER_WEIGHT, distanceHalfLifeMiles };

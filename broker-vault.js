@@ -682,6 +682,25 @@ function parseNumber(v) {
   return { ok: true, value: n };
 }
 
+const SQFT_PER_ACRE = 43560;
+
+/**
+ * A size in SQUARE FEET, for a cell that may state acres.
+ *
+ * parseNumber drops a trailing unit, which is right for "45,000 SF" and wrong
+ * for "2.5 acres": until 2026-11-10 that land sale was stored as a 2.5 SF
+ * building priced at $500,000 a foot, and a bulk row was valued at 3 SF. An
+ * acre is a stated unit, not a guess, so the cell is converted. Only the
+ * spelled-out word: "2.5 AC" is still refused by parseNumber, as it always
+ * was. Whole feet, because no site is surveyed to a fraction of one.
+ */
+function parseSizeSqft(v) {
+  const parsed = parseNumber(v);
+  if (!parsed.ok || parsed.value == null) return parsed;
+  if (!/\bacres?\b/i.test(String(v))) return parsed;
+  return { ok: true, value: Math.round(parsed.value * SQFT_PER_ACRE) };
+}
+
 /**
  * One half of a coordinate pair, in decimal degrees.
  *
@@ -1101,7 +1120,8 @@ function normalizeRow(raw) {
   const price = parseMoney(src.price);
   if (price.ok) row.price = price.value; else errors.push(`price: ${price.error}`);
 
-  const size = parseNumber(src.size_sqft);
+  // parseSizeSqft, not parseNumber: a land sheet's "2.5 acres" is 108,900 SF.
+  const size = parseSizeSqft(src.size_sqft);
   if (size.ok) row.size_sqft = size.value; else errors.push(`size_sqft: ${size.error}`);
 
   const cap = parsePercent(src.cap_rate);
@@ -2192,7 +2212,15 @@ function uploadPayloadToCsv({ csv, rows } = {}) {
     if (!Array.isArray(rows) || rows.length === 0) {
       return { ok: false, csv: "", error: "Nothing to import." };
     }
-    return { ok: true, csv: exportCsv(rows), error: "" };
+    // The export's COLUMNS, never the export's cells. These rows are a
+    // broker's own data on its way IN, so they are written through gridToCsv
+    // (quoteCsvCell) like a workbook or a paste. Until 2026-11-10 this called
+    // exportCsv, whose formula guard stored a note reading "- seller financed"
+    // as "'- seller financed" and turned a "-" price, which the confirm table
+    // had just shown as ready, into a refusal after Import.
+    const cols = exportColumns(rows);
+    const grid = [cols].concat(rows.map((r) => cols.map((c) => (r ? r[c] : ""))));
+    return { ok: true, csv: gridToCsv(grid), error: "" };
   }
   if (typeof csv === "string") return { ok: true, csv, error: "" };
   return { ok: false, csv: "", error: "Nothing to import." };
@@ -2306,6 +2334,8 @@ module.exports = {
   inspectCsv,
   parseMoney,
   parseNumber,
+  parseSizeSqft,
+  SQFT_PER_ACRE,
   parseCoord,
   parsePercent,
   parseDate,

@@ -374,6 +374,26 @@ test("joining a firm is something the joiner does", async (t) => {
     assert.deepEqual(mine.orgs, []);
     assert.equal(mine.invites.length, 1);
   });
+
+  await t.test("a removed admin who is invited again comes back as a member, not with the old role", async () => {
+    // An invitation always writes "member", and only an owner may change a
+    // role. Until 2026-11-10 the re-invite cleared the removal and left the
+    // old role on the row, so anybody who may invite (an admin too) could
+    // hand a departed owner or admin their old powers back.
+    const row = tables.org_members.find((m) => m.email === MIKE.email);
+    // He was an admin when he left. Set directly: the role route is not the subject.
+    Object.assign(row, { role: "admin", joined_at: new Date().toISOString(), user_id: MIKE.id });
+    await fetch(`${srv.base}/api/org/member?org=${org.id}&id=${row.id}`, as(BRAD, { method: "DELETE" }));
+    assert.ok(row.removed_at, "removed");
+
+    const r = await fetch(srv.base + "/api/org/invite", as(BRAD, {
+      method: "POST", body: JSON.stringify({ orgId: org.id, emails: [MIKE.email] }),
+    }));
+    assert.equal(r.status, 200);
+    assert.equal(row.removed_at, null, "invited again");
+    assert.equal(row.joined_at, null, "pending");
+    assert.equal(row.role, "member", "as a member, like any other invitation");
+  });
 });
 
 test("the firm's auto-share default, and the member's veto over it", async (t) => {

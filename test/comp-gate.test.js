@@ -250,6 +250,43 @@ test("weights match between a visible comp and its basis row", () => {
     "a locked comp must pull the same weight in the range as it would if shown");
 });
 
+// --- ⚠ the pair with valuation.js -------------------------------------------
+//
+// The gate carries its own copy of the recency reading (see the mirror warning
+// in comp-gate.js). Nothing compared the two until 2026-11-10, when the comp
+// date reader was added to both: these run the copies over the same dates and
+// compare their source, so a change made to one alone fails here.
+
+const PAIR_DATES = [
+  "Jan 2026", "January 2026", "Sept. 2025", "Q3 2024", "q1 2025", "03/2025", "3/2025", "2025",
+  "2025-03", "2025-03-15", "2021-01-01", "Listed Mar 2025", "March 15, 2025", "Active", "",
+  "not a date", "13/2025", "Q5 2025", undefined, null,
+];
+
+test("the gate reads a comp's date exactly as valuation.js does", () => {
+  const V = require("../valuation");
+  const G = require("../comp-gate");
+  for (const date of PAIR_DATES) {
+    assert.ok(Object.is(G.compDateMs(date), V.compDateMs(date)), `compDateMs(${JSON.stringify(date)})`);
+    // No subject year: the gate has none, and valuation.js is neutral without one.
+    assert.equal(compWeight(comp({ date }), NOW, 50000), V.compWeight(comp({ date }), NOW, 50000),
+      `compWeight for ${JSON.stringify(date)}`);
+  }
+  const text = (fn) => fn.toString().replace(/^\s+/gm, "");
+  assert.equal(text(G.compDateMs), text(V.compDateMs), "the two compDateMs bodies must stay textually identical");
+});
+
+test("a quarter-dated comp ranks by its real age, not as if it closed today", () => {
+  // "Q3 2024" was unreadable, so it read as undated and outranked every dated comp.
+  const comps = [
+    comp({ address: "OLD QUARTER", date: "Q3 2024" }),
+    comp({ address: "RECENT", date: "Jun 2026" }),
+  ];
+  const { visible } = selectVisible(comps, 1, { asOfMs: NOW, subjectSqft: 50000 });
+  assert.equal(visible[0].address, "RECENT");
+  assert.equal(compWeight(comp({ date: "Q3 2024" }), NOW, 50000), compWeight(comp({ date: "Aug 2024" }), NOW, 50000));
+});
+
 // --- degenerate input ------------------------------------------------------
 
 test("a report with no comps array passes through untouched", () => {

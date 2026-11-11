@@ -344,3 +344,23 @@ test("the renewal watch actually runs", async (t) => {
       `fake-supabase refused a filter: ${db.unparsed.join(", ")}`);
   });
 });
+
+// renewal_notified_at is "one email per lease, ever", so a notice Resend
+// refused must not be marked: until 2026-11-10 the send was not awaited and
+// its answer not read, and a refused reminder was lost for good.
+test("a renewal notice Resend refuses is not marked, so the next run sends it", async (t) => {
+  const tables = { users: [BROKER], watchlist_items: [], broker_comps: [lease()] };
+  const db = await fake.start({ tables, resendStatus: 500 });
+  const srv = await shared.boot({
+    ACCOUNT_WALL: "off", ADMIN_KEY: "renewal-key", SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key",
+    RESEND_API_KEY: "resend-key", EMAIL_FROM: "CompNinja <reports@compninja.co>", RESEND_API_URL: db.resendUrl,
+    SITE_URL: "https://compninja.co",
+  });
+  t.after(async () => { srv.stop(); await db.stop(); });
+
+  const summary = await (await runDigest(srv)).json();
+  assert.equal(summary.renewals.sent, 0, "a refused send is not reported as sent");
+  assert.equal(summary.renewals.failed, 1, "it is counted as failed");
+  assert.equal(db.sent.length, 1, "the send was attempted");
+  assert.equal(db.tables.broker_comps[0].renewal_notified_at, null, "and the lease is still owed its reminder");
+});

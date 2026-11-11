@@ -382,6 +382,89 @@ test("a comp with no address or no date is refused rather than stored unusable",
   assert.equal(BLEND.firmCompPayload(null), null);
 });
 
+// ---------------------------------------------------------------------------
+// A lease's figure is its rent (2026-11-10). A report reads a lease's rent out
+// of the price_or_rate text, and a vault lease has no price, so until this a
+// broker's own leases reached their report, and the firm shelf, with no rate.
+// The rows here are built by the vault's own normalizeRow and read back by
+// the report's own leaseRentPsfYr, so both ends are the real ones.
+// ---------------------------------------------------------------------------
+const MARKETSNAP = require("../market-snapshot.js");
+const VAULT = require("../broker-vault.js");
+
+function storedLease(over) {
+  const r = VAULT.normalizeRow(Object.assign({
+    address: "6200 W Gowen Rd, Boise, ID", property_type: "Industrial", transaction: "lease",
+    deal_date: "2026-01-01", size_sqft: "12000", rent_psf: "9.50", rent_basis: "annual", lease_type: "NNN",
+  }, over));
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  return Object.assign({ id: "c1", user_id: "u1", market: "Boise, ID" }, r.row);
+}
+
+test("a vault lease quotes its rent in the report, and the report reads the stored figure back", () => {
+  const row = storedLease();
+  const c = toReportComp(row);
+  assert.equal(c.price_or_rate, "$9.50/SF/yr NNN");
+  assert.equal(c.transaction, "Lease");
+  assert.equal(MARKETSNAP.leaseRentPsfYr(c), row.rent_psf_yr);
+  // One string, in the report's own words. The vault's columns do not travel.
+  for (const k of BLEND.LEASE_RATE_FIELDS) assert.equal(k in c, false, `${k} is not a report key`);
+  assert.equal("price_per_sqft" in c, false, "a rent is still never a sale $/SF");
+
+  // No lease type stated: the rate alone.
+  assert.equal(toReportComp(storedLease({ lease_type: "" })).price_or_rate, "$9.50/SF/yr");
+});
+
+test("a monthly-quoted lease leads with its monthly rate and still reads back annual", () => {
+  const row = storedLease({ rent_psf: "1.35", rent_basis: "monthly" });
+  assert.equal(row.rent_psf_yr, 16.2);
+  const c = toReportComp(row);
+  assert.equal(c.price_or_rate, "$1.35/SF/month NNN ($16.20/SF/yr NNN)");
+  assert.equal(MARKETSNAP.leaseRentPsfYr(c), 16.2, "never 1.35 read as an annual rent");
+  assert.equal(MARKETSNAP.leaseQuoteBasis([c]), "monthly");
+});
+
+test("a broker's own leases feed the report's rent range", () => {
+  const rows = [9.5, 10.25, 8.75, 11].map((rent, i) => storedLease({
+    address: (6200 + i * 10) + " W Gowen Rd, Boise, ID", rent_psf: String(rent),
+  }));
+  const report = blendPrivateComps({ comps: [] }, rows);
+  assert.deepEqual(report.comps.map(MARKETSNAP.leaseRentPsfYr), [9.5, 10.25, 8.75, 11]);
+  const rent = MARKETSNAP.rentFromComps(report.comps);
+  assert.equal(rent.count, 4);
+  assert.equal(rent.median, 9.88);
+  // The rows archiveCoverage counts as evidence are now evidence.
+  assert.equal(BLEND.archiveCoverage(rows), 4);
+});
+
+test("only a lease with a rent gets a rate written for it", () => {
+  // No rent entered: nothing is invented.
+  const bare = storedLease({ rent_psf: "", rent_basis: "" });
+  assert.equal("price_or_rate" in toReportComp(bare), false);
+  // A sale keeps its price, whatever else the row holds.
+  assert.equal(toReportComp(vaultRow()).price_or_rate, 4250000);
+  assert.equal(toReportComp(vaultRow({ rent_psf: 9.5, rent_basis: "annual", rent_psf_yr: null })).price_or_rate, 4250000);
+  // A figure left in a lease's price cell does not hide its rent.
+  assert.equal(toReportComp(Object.assign(storedLease(), { price: 120000 })).price_or_rate, "$9.50/SF/yr NNN");
+});
+
+test("a lease on the firm shelf carries its rent to a colleague's report", () => {
+  const row = storedLease({ rent_psf: "1.35", rent_basis: "monthly" });
+  const payload = BLEND.firmCompPayload(row);
+  for (const k of BLEND.LEASE_RATE_FIELDS) assert.equal(payload[k], row[k], `${k} is stored with the copy`);
+  for (const leak of ["id", "user_id", "dedupe_key", "address_key"]) {
+    assert.equal(leak in payload, false, `${leak} must not travel`);
+  }
+  // Through JSON, as the jsonb column hands it back.
+  const c = BLEND.toFirmReportComp({ comp: JSON.parse(JSON.stringify(payload)), firm: "Colliers Boise", shared_by_name: "Brad" });
+  assert.equal(c.price_or_rate, "$1.35/SF/month NNN ($16.20/SF/yr NNN)");
+  assert.equal(MARKETSNAP.leaseRentPsfYr(c), 16.2);
+  assert.equal(c.firm, "Colliers Boise");
+  // A copy stored before this carried none of the four and quotes no rate.
+  const old = BLEND.toFirmReportComp({ comp: { address: "1 A St", deal_date: "2026-01-01", transaction: "lease" } });
+  assert.equal("price_or_rate" in old, false);
+});
+
 test("a firm comp keeps broker_vault and private:true, and adds attribution", () => {
   // Keeping the tier is what makes every downstream rule work by construction
   // rather than by review: /api/share strips or anonymizes it, exports drop

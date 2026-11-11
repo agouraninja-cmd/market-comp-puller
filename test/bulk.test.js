@@ -115,6 +115,74 @@ test("an Excel BOM does not eat the first header", () => {
   assert.equal(r.rows[0].size_sqft, 5000);
 });
 
+// Four ways a real spreadsheet was misread until 2026-11-10. Each one ran a
+// billed search on the wrong address or valued the row on the wrong size.
+
+test("a rate column is never read as the building's size", () => {
+  // "$/SF" normalizes to bare "sf", which is a size name. A typed size wins
+  // over the looked-up one, so this row was valued as a 68 SF building.
+  const r = BULK.parseAddressList(
+    'Address,Bldg SF,Sale Price,$/SF\n"6200 W Gowen Rd, Boise, ID",45000,3065000,68.11\n');
+  assert.equal(r.rows[0].size_sqft, 45000, "the size column is the one that says Bldg SF");
+  for (const head of ["$/SF", "$ / SF", "$/SqFt", "$/Sq Ft", "$ per Square Feet", "Price per SF", "Rent/SF"]) {
+    const none = BULK.parseAddressList(`Address,${head}\n"6200 W Gowen Rd, Boise, ID",68.11\n`);
+    assert.equal(none.rows.length, 1, head);
+    assert.equal(none.rows[0].size_sqft, null, `${head} is a rate, so the size is looked up`);
+  }
+  // A plain size heading is still a size, the abbreviated ones included.
+  for (const head of ["SF", "Sq Ft", "RBA", "Total SF", "Square Footage", "Bldg SF", "Building SqFt"]) {
+    const sized = BULK.parseAddressList(`Address,${head}\n"6200 W Gowen Rd, Boise, ID",45000\n`);
+    assert.equal(sized.rows[0].size_sqft, 45000, head);
+  }
+});
+
+test("a size stated in acres is read as square feet", () => {
+  const r = BULK.parseAddressList('Address,Size\n"100 Main St, Boise, ID",2.5 acres\n');
+  assert.equal(r.rows[0].size_sqft, 108900, "2.5 acres is 108,900 SF, not 3 SF");
+  assert.equal(r.warnings.length, 0);
+});
+
+test("a lone Address heading does not cut the addresses under it at the comma", () => {
+  // One column copied out of Excel with its heading: the cells are unquoted.
+  const r = BULK.parseAddressList(
+    "Address\n6200 W Gowen Rd, Boise, ID 83705\n\n100 Main St, Boise, ID\n100 Main St, Meridian, ID\nDowntown\n");
+  assert.deepEqual(r.rows.map((x) => x.address),
+    ["6200 W Gowen Rd, Boise, ID 83705", "100 Main St, Boise, ID", "100 Main St, Meridian, ID"]);
+  assert.equal(r.duplicates, 0, "one street in two cities is two properties");
+  assert.equal(r.header, true);
+  assert.deepEqual(r.skipped.map((s) => [s.line, s.address]), [[6, "Downtown"]],
+    "the heading is not reported as a bad address, and line numbers are the file's");
+  assert.equal(r.rows[1].line, 4);
+  // A cell Excel did quote (a saved CSV, a workbook) is still read as a cell.
+  const quoted = BULK.parseAddressList('Property Address\n"6200 W Gowen Rd, Boise, ID"\n');
+  assert.deepEqual(quoted.rows.map((x) => x.address), ["6200 W Gowen Rd, Boise, ID"]);
+});
+
+test("City and State columns are joined onto the street", () => {
+  const r = BULK.parseAddressList(
+    "Address,City,State,Size\n6200 W Gowen Rd,Boise,ID,45000\n100 Main St,Boise,ID,1000\n100 Main St,Meridian,ID,2000\n");
+  assert.deepEqual(r.rows.map((x) => x.address),
+    ["6200 W Gowen Rd, Boise, ID", "100 Main St, Boise, ID", "100 Main St, Meridian, ID"]);
+  assert.deepEqual(r.rows.map((x) => x.size_sqft), [45000, 1000, 2000]);
+  assert.equal(r.duplicates, 0);
+  // An address that already names them is left exactly as typed, ZIP and all.
+  const full = BULK.parseAddressList('Address,City,State\n"123 Main St, Boise, ID 83702",Boise,ID\n');
+  assert.equal(full.rows[0].address, "123 Main St, Boise, ID 83702");
+  // Only what is missing is added.
+  const half = BULK.parseAddressList('Street Address,State\n"123 Main St, Boise",ID\n');
+  assert.equal(half.rows[0].address, "123 Main St, Boise, ID");
+});
+
+test("cells pasted from Excel are tab-separated and read as columns", () => {
+  const r = BULK.parseAddressList(
+    "Address\tSize\n6200 W Gowen Rd, Boise, ID\t45000\n500 W Franklin Rd, Meridian, ID\t32,000 SF\n");
+  assert.equal(r.header, true);
+  assert.deepEqual(r.rows.map((x) => x.address),
+    ["6200 W Gowen Rd, Boise, ID", "500 W Franklin Rd, Meridian, ID"]);
+  assert.deepEqual(r.rows.map((x) => x.size_sqft), [45000, 32000]);
+  assert.equal(r.skipped.length, 0);
+});
+
 // ---------------------------------------------------------------------------
 // Valuing one report
 // ---------------------------------------------------------------------------
@@ -536,6 +604,39 @@ test("a cancelled run counts only what is in flight, and an unknown clock is no 
   assert.equal(BULK.runProgress({ now: 1005000, items, typicalMs: T, concurrency: 3 }), null);
   assert.equal(BULK.runProgress({ now: 1005000, startedAt: null, items }), null);
   assert.equal(BULK.runProgress(null), null);
+});
+
+// The report a bulk row links to weights its comps by the asking price the
+// member put on THAT ROW (index.html askingRangeFrom: the saved subject's own
+// price first, a listing the model found second). Until 2026-11-10 the row
+// itself only ever read the model's listing, so a row with an Asking column
+// and the report under it printed different values for the same comps.
+test("a row's own asking price weights its comps, as the report it links to does", () => {
+  const month = (n) => new Date(Date.UTC(2026, 9 - n, 1)).toLocaleString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+  const comp = (psf, n) => ({
+    address: n + " Elm St, Boise, ID", transaction: "Sale", date: month(n % 6),
+    size_sqft: 2750, price_or_rate: "$" + (psf * 2750).toLocaleString("en-US"), price_per_sqft: "$" + psf,
+  });
+  // A dear pocket and a cheap one, and no listing found by the model.
+  const report = { comps: [445, 450, 455, 460].map(comp).concat([255, 260, 262, 265, 268, 270, 272, 275].map((p, i) => comp(p, i + 10))) };
+  const opts = { subjectSizeSqft: 2750, asOf: Date.UTC(2026, 9, 15), propertyType: "Residential", note: "" };
+
+  const plain = BULK.valueFromReport(report, opts);
+  const asked = BULK.valueFromReport(report, { ...opts, askingPrice: 1250000 });
+  assert.ok(plain && asked);
+  assert.ok(asked.value_likely > plain.value_likely,
+    "an asking price near the dear comps pulls the likely value toward them: " + plain.value_likely + " -> " + asked.value_likely);
+
+  // It is the same figure a listing found by the model would have given.
+  const listed = BULK.valueFromReport({ ...report, subject_asking: { price: 1250000 } }, opts);
+  assert.equal(asked.value_likely, listed.value_likely);
+  // And the row's own price wins over the model's listing, the report's order.
+  const both = BULK.valueFromReport({ ...report, subject_asking: { price: 700000 } }, { ...opts, askingPrice: 1250000 });
+  assert.equal(both.value_likely, asked.value_likely);
+  // No price, a blank or a nonsense one changes nothing.
+  for (const none of [null, undefined, "", 0, "n/a"]) {
+    assert.equal(BULK.valueFromReport(report, { ...opts, askingPrice: none }).value_likely, plain.value_likely);
+  }
 });
 
 test("how long a late search is given is one rule, shared by both countdowns", () => {

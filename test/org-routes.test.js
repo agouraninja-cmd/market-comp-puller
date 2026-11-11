@@ -228,7 +228,16 @@ test("firm routes on a bare server (no database)", async (t) => {
     const i = SERVER.indexOf("async function storeSharedReport");
     const fn = SERVER.slice(i, i + 4000);
     const guards = fn.match(/visibility !== "public"/g) || [];
-    assert.ok(guards.length >= 2,
-      "both the write-failure fallback and the no-database path must refuse a non-public share");
+    assert.ok(guards.length >= 1, "the no-database path must refuse a non-public share");
+    // The write-failure path refuses EVERY visibility since 2026-11-10 (a
+    // public share used to fall back to the file, which getShareRecord never
+    // reads once a database is configured: test/share-db-failure-run.test.js).
+    // So its catch rethrows with no condition in front of the throw, which is
+    // the stronger form of the guard this test used to count there.
+    const catchAt = fn.indexOf("} catch (err) {");
+    assert.ok(catchAt > 0, "the database write is still wrapped in a catch");
+    const catchBody = fn.slice(catchAt, fn.indexOf("\n  }\n", catchAt));
+    assert.match(catchBody, /\n\s*throw err;\n/, "a failed database write is rethrown");
+    assert.ok(!/if \([^\n]*\) throw err/.test(catchBody), "and for every visibility, not only some");
   });
 });

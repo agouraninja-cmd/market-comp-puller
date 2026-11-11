@@ -87,6 +87,29 @@ test("each account on a trial gets the one email it is due, once", async (t) => 
   assert.equal(db.sent.length, 2, "and no third email left the building");
 });
 
+test("an email Resend refuses is not marked sent, so the next run sends it", async (t) => {
+  // Never-break rule 12: a ledger is marked only after the send. Until
+  // 2026-11-10 the send was not awaited and its answer not read, so a 429 or a
+  // timeout wrote the ledger anyway and that account never got its email.
+  const db = await fake.start({ tables: tables(), resendStatus: 500 });
+  const env = {
+    ACCOUNT_WALL: "off", PRO_ENABLED: "on", PRO_TRIAL_DAYS: "14", ADMIN_KEY: "trial-key",
+    SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key",
+    RESEND_API_KEY: "resend-key", EMAIL_FROM: "CompNinja <reports@compninja.co>", RESEND_API_URL: db.resendUrl,
+    SITE_URL: "https://compninja.co",
+  };
+  const srv = await shared.boot(env);
+  t.after(async () => { srv.stop(); await db.stop(); });
+
+  const r = await runNotices(srv);
+  assert.equal(r.status, 200);
+  const summary = await r.json();
+  assert.deepEqual(summary.sent, { start: 0, ending: 0 }, "a refused send is not reported as sent");
+  assert.equal(summary.failed, 2, "it is counted as failed");
+  assert.equal(db.tables.trial_notices.length, 0, "and the ledger is left alone, so the next run tries again");
+  assert.equal(db.sent.length, 2, "both sends were attempted");
+});
+
 test("a dry run builds every email, sends none and marks nothing", async (t) => {
   const { db, srv } = await bootWithDb(t);
   const r = await runNotices(srv, { dryRun: true });

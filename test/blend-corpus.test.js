@@ -192,6 +192,69 @@ test("estimate, news, and lease rows that pass the bars are kept", () => {
   assert.equal(out.corpus_count, 3);
 });
 
+// --- 2026-11-10: the report's Sales-only / Leases-only focus ----------------
+// The blend knew the property type and the lookback but not the focus, so a
+// leases-only report gained saved SALES (and a leases-only bulk row was then
+// priced from them) and a sales-only report gained saved leases.
+
+test("a sales-only report takes no saved lease, and a leases-only one no saved sale", () => {
+  const rows = [
+    row({ address: "20 Sold St, Boise, ID" }),
+    row({ address: "21 Leased St, Boise, ID", transaction: "Lease", ll: offsetMiles(BOISE, 3) }),
+    // A blank transaction is a sale everywhere else in the app, so it is here.
+    row({ address: "22 Unsaid St, Boise, ID", transaction: "", ll: offsetMiles(BOISE, 2) }),
+  ];
+  const added = (txFocus) =>
+    blendNearbyComps(report(), rows, { ...OPTS, txFocus }).comps.slice(1).map((c) => c.address);
+  assert.deepEqual(added("sales"), ["20 Sold St, Boise, ID", "22 Unsaid St, Boise, ID"]);
+  assert.deepEqual(added("leases"), ["21 Leased St, Boise, ID"]);
+  assert.equal(blendNearbyComps(report(), rows, { ...OPTS, txFocus: "leases" }).corpus_count, 1);
+});
+
+test("with no focus, or 'both', every transaction still joins", () => {
+  const rows = [
+    row({ address: "20 Sold St, Boise, ID" }),
+    row({ address: "21 Leased St, Boise, ID", transaction: "Lease", ll: offsetMiles(BOISE, 3) }),
+  ];
+  for (const txFocus of ["both", undefined, null, "", "everything"]) {
+    assert.equal(blendNearbyComps(report(), rows, { ...OPTS, txFocus }).corpus_count, 2, String(txFocus));
+  }
+});
+
+test("a leases-only report with only saved sales nearby comes back untouched", () => {
+  const rep = report();
+  assert.equal(blendNearbyComps(rep, [row()], { ...OPTS, txFocus: "leases" }), rep);
+});
+
+// --- 2026-11-10: a saved house keeps its condition --------------------------
+// FIELD_MAP predates the Residential `condition` field by three days and was
+// never given it, so a blended house showed a blank Condition cell and
+// VALUATION.conditionFit could not count it.
+
+test("a saved house keeps its condition and beds through the blend", () => {
+  const house = row({
+    address: "12 Elm St, Boise, ID", ll: offsetMiles(BOISE, 0.4),
+    beds_baths: "3 bd / 2 ba", condition: "Renovated",
+  });
+  const out = blendNearbyComps(report(), [house], { ...OPTS, propertyType: "Residential" });
+  assert.equal(out.comps[1].condition, "Renovated");
+  assert.equal(out.comps[1].beds_baths, "3 bd / 2 ba");
+});
+
+test("every per-type comp field the corpus stores survives the blend", () => {
+  // TYPE_COMP_FIELDS lives in server.js (the prompt's source of truth), so it
+  // is read from the source rather than required. A field added there and not
+  // to FIELD_MAP is harvested, selected, and then dropped on the way out.
+  const { FIELD_MAP } = require("../blend-corpus");
+  const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "server.js"), "utf8");
+  const block = /const TYPE_COMP_FIELDS = \{([\s\S]*?)\n\};/.exec(src);
+  assert.ok(block, "TYPE_COMP_FIELDS not found in server.js");
+  const fields = [...block[1].matchAll(/fields:\s*\[([^\]]*)\]/g)]
+    .flatMap((m) => m[1].split(",").map((s) => s.trim().replace(/^"|"$/g, "")).filter(Boolean));
+  assert.ok(fields.includes("clear_height") && fields.includes("beds_baths"), "the scan read the map");
+  for (const f of fields) assert.equal(FIELD_MAP[f], f, `FIELD_MAP is missing ${f}`);
+});
+
 test("missing subject coordinates leave the report untouched", () => {
   const rep = report({ subject_lat: "", subject_lng: "" });
   const out = blendNearbyComps(rep, [row()], { ...OPTS, subject: null });
@@ -260,6 +323,40 @@ test("a market note of 2.5 miles is the house blend radius, not the 1-mile defau
     ...OPTS, propertyType: "Residential", marketNote: "2.5 miles",
   });
   assert.equal("corpus_count" in past, false);
+});
+
+// ⚠ pair: blend-corpus.js parseRadiusMiles MIRRORS valuation.js's. One reads
+// the note into the blend radius, the other into the hero's distance free
+// pass, so the two are run over the same notes here and their source compared:
+// a fix made to one copy alone must fail the build.
+const RADIUS_NOTES = [
+  ["2.5 miles", 2.5], ["within 2.5 mi", 2.5], ["2.5 mile radius", 2.5], ["0.5 miles", 0.5],
+  [".5 miles", 0.5], ["within .25 mi", 0.25], ["1/2 mile", 0.5], ["1/4 mile radius", 0.25],
+  ["1 1/2 miles", 1.5], ["within 2-3 miles", 3], ["<1 mile", 1], ["3mi", 3],
+  ["I-84 corridor, 5 miles", 5], ["10 miles", 10],
+  ["", null], [null, null], ["North Dallas submarket", null], ["5 min drive", null],
+  ["1000 miles", null], ["1/0 mile", null],
+];
+
+test("both copies of parseRadiusMiles read a market note the same way", () => {
+  const blend = require("../blend-corpus").parseRadiusMiles;
+  const hero = require("../valuation").parseRadiusMiles;
+  for (const [note, miles] of RADIUS_NOTES) {
+    assert.equal(blend(note), miles, `blend-corpus.js: ${JSON.stringify(note)}`);
+    assert.equal(hero(note), miles, `valuation.js: ${JSON.stringify(note)}`);
+  }
+  assert.equal(blend.toString().replace(/^\s+/gm, ""), hero.toString().replace(/^\s+/gm, ""),
+    "the two function bodies must stay textually identical");
+});
+
+test("a half-mile note keeps the house blend inside half a mile", () => {
+  // ".5 miles" read as 5, so this deal three miles out joined the report.
+  const three = row({ ll: offsetMiles(BOISE, 3), address: "42 Far Side Rd, Boise, ID" });
+  for (const note of [".5 miles", "1/2 mile"]) {
+    assert.equal(radiusMilesFor("Residential", note), 0.5);
+    const out = blendNearbyComps(report(), [three], { ...OPTS, propertyType: "Residential", marketNote: note });
+    assert.equal("corpus_count" in out, false, note);
+  }
 });
 
 test("a Residential report drops a deal 5 miles out that CRE would keep", () => {

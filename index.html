@@ -5852,7 +5852,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const head = s.slice(0, m.index);
     const tail = s.slice(m.index + m[0].length);
     if (/\d/.test(tail) || /[-(]/.test(head)) return s;
-    if (/^\s*(mm?\b|million|k\b|thousand|b\b|billion)/i.test(tail)) return s;
+    if (moneyShorthandTail(tail)) return s;
     const intPart = m[0].replace(/^-/, "").split(".")[0];
     if (intPart.includes(",") && !/^\d{1,3}(,\d{3})+$/.test(intPart)) return s;
     const n = parseFloat(m[0].replace(/,/g, ""));
@@ -5861,6 +5861,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     return "$" + usd.toLocaleString(undefined, usd < 100
       ? { minimumFractionDigits: 2, maximumFractionDigits: 2 }
       : { maximumFractionDigits: 0 }) + tail;
+  }
+  // A magnitude suffix straight after a figure: "M", "MM", "k", "million".
+  // One copy, for displayMoney's refusal above and isMoneyShorthand below.
+  function moneyShorthandTail(tail) {
+    return /^\s*(mm?\b|million|k\b|thousand|b\b|billion)/i.test(tail);
+  }
+  // "$4.1M", "850k", "9.5 million". numericValue reads the 4.1 and drops the
+  // M, so a form taking a typed price asks this first and refuses (the loan
+  // boxes do the same through COLLATERAL.money).
+  function isMoneyShorthand(raw) {
+    const s = String(raw ?? "");
+    const m = s.match(/[\d][\d,]*(\.\d+)?/);
+    return !!m && moneyShorthandTail(s.slice(m.index + m[0].length));
   }
 
   // FX rates come back at whatever precision the model found; 4 significant
@@ -7081,6 +7094,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     return sf > 0 ? Math.round((sf / 43560) * 100) / 100 : null;
   }
 
+  // The comps a per-unit or per-acre basis reads: every included sale that
+  // carries the metric, with or without a $/SF. Until 2026-11-10 the basis
+  // read the hero's `saleComps`, which is the $/SF list, so a comp quoted per
+  // unit with no building size, or land under $1/SF (salePsfOf refuses
+  // that), was left out: four priced per-acre comps and a typed acreage got
+  // three dashes and "No priced sale comps came back".
+  function altBasisCarriers(spec) {
+    return valuationComps()
+      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
+      .map((c) => ({ comp: c, v: numericValue(c[spec.compKey]) }))
+      .filter((x) => x.v > 0);
+  }
+
   // Shared by the cross-check line and the headline fallback so the two can
   // never quote different statistics for the same comps. Deliberately reuses
   // robustPpsfRange — the $/SF headline's outlier-resistant band — rather than
@@ -7088,14 +7114,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // ~20% while sitting directly beneath it.
   // Returns null unless the owner supplied the quantity AND enough comps carry
   // the metric; one data point is not a range.
+  // `saleComps` is the hero's $/SF list. It is not read here (see
+  // altBasisCarriers) and stays in the signature so the call sites keep
+  // one shape.
   function altBasisRange(meta, subject, saleComps, parsed) {
     const spec = ALT_BASIS[meta.type];
     if (!spec) return null;
     const qty = numericValue((subject.details || {})[spec.subjKey]);
     if (!(qty > 0)) return null;
-    const carriers = saleComps
-      .map((x) => ({ comp: x.comp, v: numericValue(x.comp[spec.compKey]) }))
-      .filter((x) => x.v > 0);
+    const carriers = altBasisCarriers(spec);
     if (carriers.length < 3) return null;
     const per = carriers.map((x) => x.v);
     // Same weighting and indexing as the $/SF headline, through the same
@@ -8127,9 +8154,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // the missing input is the count, not the square footage — pointing at SF
       // would send the owner after a number this valuation never needs.
       const altSpec = ALT_BASIS[meta.type];
-      const altCompN = altSpec
-        ? saleComps.filter((x) => numericValue(x.comp[altSpec.compKey]) > 0).length
-        : 0;
+      // The same list altBasisRange values from, not the $/SF one.
+      const altCompN = altSpec ? altBasisCarriers(altSpec).length : 0;
       // A curated shortfall (size was known and there were enough raw sale
       // comps, but exclusions dropped the usable count below 2) gets its own
       // guidance rather than the generic "not enough came back" copy, since
@@ -8393,7 +8419,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       ...weightOpts(meta, parsed),
     }) : null;
     if (val && val.n >= 2) {
-      return { value: val.psfMid * ((sizeR.min + sizeR.max) / 2), source: "comp-based likely value" };
+      // val.mid, the figure the hero prints as Likely (rounded by heroRound).
+      // Until 2026-11-10 this returned the unrounded product, so the DCF card
+      // read $6,150,426 under a hero of $6,150,000, and the Excel sheet's
+      // "only when it differs from Likely" row was always written.
+      return { value: val.mid, source: "comp-based likely value" };
     }
     const noi = meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
     const capR = parsed && parsed.market_cap_rate_range ? parsed.market_cap_rate_range : null;
@@ -8699,6 +8729,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           months: currentMeta.months, txFocus: currentMeta.txFocus, subject: currentMeta.subject || null,
           assumptions: currentMeta.assumptions || null,
           curation: currentMeta.curation || null,
+          // The report's own date rides in the payload, because this save
+          // makes the server stamp the row's updated_at with today, and
+          // openPortfolioItem read THAT as the report date until 2026-11-10:
+          // one edited assumption re-aged every comp to the day of the edit
+          // (a January report reopened "Generated November 10", its Likely
+          // up 5% and most comps "Outside window"). The same no-ts-bump rule
+          // the local history keeps a few lines up.
+          generatedAt: currentMeta.generatedAt || null,
         };
         acctApi("POST", "/api/portfolio", {
           id: currentMeta.portfolioId, payload: { meta, data: currentParsed }, snapshot: null,
@@ -9541,6 +9579,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     return row;
   }
 
+  // The year a lease ends, from what was typed under Expires: "2031",
+  // "Dec 2031", "6/30/2031", "6/30/31". Until 2026-11-10 the box was read
+  // with numericValue, so "6/30/2031" was 6 and became "no year", which the
+  // card draws as expiring this year; and a year more than 30 out (a ground
+  // lease) was dropped the same way before the "Later" row could take it.
+  // null: no year could be read, or one more than a year gone. "6/30" is
+  // not guessed at: it is June 30th as readily as June 2030.
+  function rentRollEndYear(raw, yearNow) {
+    const s = String(raw ?? "").trim();
+    const full = s.match(/(?:^|\D)((?:19|2[01])\d{2})(?!\d)/);
+    const short = full ? null : s.match(/^\d{1,2}[\/.-]\d{1,2}[\/.-](\d{2})$/);
+    const yr = full ? Number(full[1]) : short ? 2000 + Number(short[1]) : NaN;
+    return yr >= yearNow - 1 && yr <= yearNow + 99 ? yr : null;
+  }
+
   // Row DOM -> assumptions.rentRoll -> persist + recompute (rows untouched, so
   // typing never loses focus).
   function syncRentRoll() {
@@ -9549,12 +9602,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const yearNow = new Date().getFullYear();
     a.rentRoll = [...document.querySelectorAll("#rrRows .rr-row")].map((row) => {
       const num = (sel) => numericValue(row.querySelector(sel).value);
-      const yr = Math.round(num(".rr-end"));
       return {
         label: row.querySelector(".rr-label").value.trim().slice(0, 60),
         sf: num(".rr-sf") > 0 ? Math.round(num(".rr-sf")) : null,
         rent: num(".rr-rent") > 0 ? Math.round(num(".rr-rent")) : null,
-        endYear: yr >= yearNow - 1 && yr <= yearNow + 30 ? yr : null,
+        endYear: rentRollEndYear(row.querySelector(".rr-end").value, yearNow),
       };
     }).filter((l) => l.sf > 0 || l.rent > 0);
     persistAssumptions();
@@ -9761,7 +9813,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     aBtn.tabIndex = isReport ? -1 : 0;
     if (!isReport && currentParsed && currentMeta) renderAnalysisCluster(currentParsed, currentMeta, false);
     // Leaflet renders blank tiles if its container was hidden — re-measure.
-    if (isReport && mapInstance) setTimeout(() => mapInstance.invalidateSize(), 50);
+    // Re-read inside the timer: renderResults calls this and then renderMap,
+    // which drops the last report's map, and a report with no coordinates
+    // leaves it null by the time this fires.
+    if (isReport && mapInstance) setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(); }, 50);
     // The two tabs hold different cards, so the bar is rebuilt rather than
     // re-marked. Guarded because setReportTab also runs from beginAssembly,
     // before syncReportNav is meaningful.
@@ -12868,7 +12923,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       pendingPortfolioRefresh = null;
       setTimeout(() => {
         acctApi("POST", "/api/portfolio", {
-          id: refreshId, payload: { meta, data }, snapshot: lastValuation,
+          // Dated in the payload, as every portfolio save is (see
+          // persistAssumptions): a fresh search's meta carries no date.
+          id: refreshId, payload: { meta: { ...meta, generatedAt: meta.generatedAt || Date.now() }, data }, snapshot: lastValuation,
           verifiedKey: verifiedKeyForSave(meta.address),
         }).then(() => {
           markPortfolioSaved(meta.address, meta.type);
@@ -13100,7 +13157,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // lastValuation, and a wrong opening figure is worse than none — the
       // property's value history starts on its next run.
       await acctApi("POST", "/api/portfolio", {
-        payload: { meta: full.meta, data: full.data },
+        // The row's own date goes with it (see persistAssumptions), so a
+        // search from three weeks ago is not re-dated to the day it was added.
+        payload: { meta: full.ts ? { ...full.meta, generatedAt: full.ts } : full.meta, data: full.data },
         snapshot: null,
         verifiedKey: verifiedKeyForSave(full.meta.address),
       });
@@ -14358,6 +14417,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         months: currentMeta.months, txFocus: currentMeta.txFocus, subject: currentMeta.subject || null,
         assumptions: currentMeta.assumptions || null,
         curation: currentMeta.curation || null,
+        // When the report was run, not when it was saved (see
+        // persistAssumptions): a report reopened from Recent searches and
+        // saved today is still three weeks old. A fresh search has no date
+        // of its own yet, and now is it.
+        generatedAt: currentMeta.generatedAt || Date.now(),
       };
       await acctApi("POST", "/api/portfolio", {
         payload: { meta, data: currentParsed },
@@ -14419,8 +14483,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // falls back to the previous search's size, price and cap rate.
       restoreFormFromMeta(item.payload && item.payload.meta);
       showStatus(`Reopened from your portfolio (saved ${new Date(item.updated_at).toLocaleDateString()}). Refresh valuation for fresh data.`, "info");
+      // The report's date is the one its payload carries. updated_at is only
+      // the fallback, for a row saved before 2026-11-10: the server stamps it
+      // on EVERY save, an edited assumption included, so read as the report
+      // date it moved the comps' ages, the trend index and the window.
+      const savedAt = item.payload.meta && item.payload.meta.generatedAt;
+      const reportAt = typeof savedAt === "number" ? savedAt : Date.parse(savedAt);
       // portfolioId lets assumption edits PATCH back onto this exact item.
-      renderResults(item.payload.data, { ...item.payload.meta, fromHistory: true, portfolioId: item.id, generatedAt: Date.parse(item.updated_at) });
+      renderResults(item.payload.data, { ...item.payload.meta, fromHistory: true, portfolioId: item.id,
+        generatedAt: reportAt > 0 ? reportAt : Date.parse(item.updated_at) });
     } catch (ex) { showStatus(ex.message, "error"); }
   }
 
@@ -20380,10 +20451,23 @@ async function renderMyDesk() {
     wrap.appendChild(cred);
     return wrap;
   }
+  // A comp's date as a LOCAL moment, to set against the window's start, which
+  // is local midnight. Date.parse reads "2024-11-01" and "2024-11" as UTC,
+  // the evening before in every US time zone, so until 2026-11-10 a vault
+  // comp (its deal_date is ISO) dated the window's first day wore "Outside
+  // window" beside a "Nov 2024" comp that did not.
+  function compDateLocalMs(dateVal) {
+    const iso = /^\s*(\d{4})-(\d{2})(?:-(\d{2}))?\s*$/.exec(String(dateVal == null ? "" : dateVal));
+    if (iso) {
+      const mo = Number(iso[2]), day = iso[3] ? Number(iso[3]) : 1;
+      if (mo >= 1 && mo <= 12 && day >= 1 && day <= 31) return new Date(Number(iso[1]), mo - 1, day).getTime();
+    }
+    return Date.parse(dateVal);
+  }
   function outsideWindowBadge(dateVal) {
     // Flag comps the model returned from before the requested window.
     const cutoff = lookbackCutoff();
-    const d = Date.parse(dateVal);
+    const d = compDateLocalMs(dateVal);
     if (!cutoff || isNaN(d) || d >= cutoff.getTime()) return null;
     const badge = document.createElement("span");
     badge.className = "ml-1.5 align-middle rd-badge e";
@@ -20883,6 +20967,10 @@ async function renderMyDesk() {
       const v = (id) => String(document.getElementById(id).value || "").trim();
       const address = v("acAddress"), date = v("acDate"), price = v("acPrice");
       if (!address || !date || !price) return showErr("Address, date, and price are required.");
+      // "$9.5M" read as 9.5: until 2026-11-10 the comp was stored with no
+      // $/SF, listed as "Added by you" with a Match, and left out of the
+      // range without a word. Refused the way the loan boxes refuse "1.6M".
+      if (isMoneyShorthand(price)) return showErr("That price could not be read. Type it in full, like 4,100,000.");
       const sizeNum = numericValue(v("acSize"));
       const priceNum = numericValue(price);
       let ppsf = v("acPpsf");
@@ -21702,9 +21790,20 @@ async function renderMyDesk() {
     return `compninja-${slug}.${ext}`;
   }
 
+  // A cell starting with = + - or @ runs as a formula when the file opens in
+  // Excel, and these cells hold model-written notes and comps a report's
+  // owner typed (which travel in shared reports). ⚠ The rule is
+  // broker-vault.js's guardFormula, a plain number such as -1.5 left alone,
+  // inlined because this runs in the browser, as the contacts export's and
+  // the vault's copies are. This export had none until 2026-11-10: a note
+  // reading "+12% over ask" opened as #NAME?.
+  function csvFormulaGuard(s) {
+    return /^[=+\-@]/.test(s) && !/^-?[0-9.]+$/.test(s) ? "'" + s : s;
+  }
+
   function exportCsv() {
     if (!currentComps.length) return;
-    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const esc = (v) => `"${csvFormulaGuard(String(v ?? "")).replace(/"/g, '""')}"`;
     // The provenance tier is a derived column (Verified outranks source_type),
     // so it's appended here rather than living in COLUMNS.
     const header = [...COLUMNS.map((c) => esc(c.label)), esc("Source confidence")].join(",");

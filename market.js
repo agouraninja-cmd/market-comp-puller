@@ -103,13 +103,18 @@ const UNIT_WORD = new Set([
 const POST_DIRECTIONAL = new Set(["n", "s", "e", "w", "ne", "nw", "se", "sw"]);
 const TAIL_STATE_RE = new RegExp(
   `\\s+(?:([A-Za-z]{2})|(${STATE_NAME_ALT}))(?:\\s+\\d{5}(?:-\\d{4})?)?$`, "i");
-function commalessMarket(cleaned) {
-  const m = cleaned.match(TAIL_STATE_RE);
-  if (!m) return null;
-  const code = m[1]
+// The code a TAIL_STATE_RE match names, or null for a two-letter word that is
+// no state.
+function tailStateCode(m) {
+  return m[1]
     ? (US_STATES.has(m[1].toUpperCase()) || CA_PROVINCES.has(m[1].toUpperCase())
       ? m[1].toUpperCase() : null)
     : STATE_NAME_TO_CODE[m[2].toLowerCase().replace(/\s+/g, " ")];
+}
+function commalessMarket(cleaned) {
+  const m = cleaned.match(TAIL_STATE_RE);
+  if (!m) return null;
+  const code = tailStateCode(m);
   if (!code) return null;
   const words = cleaned.slice(0, m.index).split(" ").filter(Boolean);
   for (let i = words.length - 1; i >= 0; i--) {
@@ -125,6 +130,38 @@ function commalessMarket(cleaned) {
     return { city: city.join(" "), code };
   }
   return null;
+}
+
+// The one-comma shape, "1210 N 17th St, Boise ID 83702" (2026-11-10): the
+// USPS line puts no comma between city and state, so the LAST comma segment
+// is "City ST zip" whole. The comma already says where the street ends, so
+// no suffix has to delimit the city; it only has to read as one (words, at
+// most four, the comma-less rule's own bounds).
+function tailCityState(segment) {
+  const m = segment.match(TAIL_STATE_RE);
+  if (!m) return null;
+  const code = tailStateCode(m);
+  if (!code) return null;
+  const city = segment.slice(0, m.index).split(" ").filter(Boolean);
+  if (!city.length || city.length > 4) return null;
+  if (!city.every((c) => /^[A-Za-z][A-Za-z.'\-]*$/.test(c))) return null;
+  return { city: city.join(" "), code };
+}
+
+// A segment that is a state and nothing else ("ID", "Idaho 83702"), as
+// against one that only OPENS with a state word and is itself a city
+// ("La Mesa", "New York NY 10001", "Kansas City").
+const STATE_ONLY_RE = new RegExp(
+  `^(?:[A-Za-z]{2}|${STATE_NAME_ALT})\\.?(?:\\s+\\d{5}(?:-\\d{4})?)?$`, "i");
+
+// Does this segment hold a street suffix or a unit designator? Asked only of
+// a segment with a digit in it, to tell "500 Main St" and "Suite 4" from the
+// few cities written with a numeral ("29 Palms"), which carry neither.
+function hasStreetWord(segment) {
+  return segment.toLowerCase().split(" ").some((w) => {
+    const t = w.replace(/\.$/, "");
+    return STREET_SUFFIX.has(t) || UNIT_WORD.has(t) || /^#/.test(t);
+  });
 }
 
 function canonicalKey(city, code) {
@@ -147,7 +184,19 @@ function marketOf(address) {
     // dual-named submarket doesn't fragment into its own bucket.
     const city = parts[i - 1].split("/")[0].trim();
     if (!city) continue;
+    // A segment with a digit is a street or unit line, not a city, when it
+    // holds a street word or when the "state" after it is really a city that
+    // opens with one. Until 2026-11-10 "500 Main St, New York NY 10001" keyed
+    // as "500 Main St, NY": a street address, market-shaped, in a key that
+    // must never hold one.
+    if (/\d/.test(city) && (hasStreetWord(city) || !STATE_ONLY_RE.test(parts[i]))) continue;
     return canonicalKey(city, code);
+  }
+  // No segment both opens with a state and follows a city. The last one may
+  // still be "City ST zip" whole; see tailCityState.
+  if (parts.length >= 2) {
+    const hit = tailCityState(parts[parts.length - 1]);
+    if (hit) return canonicalKey(hit.city, hit.code);
   }
   // No comma carried a state. A comma-less address may still name one at
   // its tail; see commalessMarket for what it will and will not read.

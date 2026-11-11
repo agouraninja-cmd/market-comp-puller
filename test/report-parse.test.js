@@ -666,6 +666,19 @@ test("normalizeSubjectSize tolerates a formatted size", () => {
   assert.equal(p.subject_size_source, "public_record");
 });
 
+test("normalizeSubjectSize keeps a size whose unit is written with periods", () => {
+  // Until 2026-11-10 every non-digit was stripped before the parse, so the
+  // periods in "sq. ft." stayed on ("25000..") and Number() refused the lot: a
+  // real looked-up size was blanked, its source dropped, and the hero, which
+  // multiplies that size, had nothing to multiply.
+  for (const v of ["25,000 sq. ft.", "25,000 s.f.", "25000 sq.ft.", "approx. 25,000 SF"]) {
+    const p = { subject_size_sqft: v, subject_size_source: "public_record" };
+    RP.normalizeSubjectSize(p);
+    assert.equal(p.subject_size_sqft, v, "the size stays as written");
+    assert.equal(p.subject_size_source, "public_record", `source must survive for ${JSON.stringify(v)}`);
+  }
+});
+
 test("normalizeSubjectSize leaves a report that never mentioned size alone", () => {
   const p = { comps: [] };
   RP.normalizeSubjectSize(p);

@@ -110,10 +110,46 @@
     return TIER_WEIGHT[comp.source_type] != null ? comp.source_type : null;
   }
 
+  // When a comp's date text falls, as epoch ms, or NaN when it names no date.
+  //
+  // Comp dates are model-written: the prompt asks for "Mar 2025", and
+  // "Q3 2025", "2025" and "03/2025" arrive as well. Until 2026-11-10 this was
+  // a bare Date.parse, which for anything but an ISO string is the engine's
+  // own guess: V8 answers NaN for "Q3 2024", so that comp read as undated and
+  // weighed 1.0 where the same quarter written "Aug 2024" weighed 0.45, with
+  // no trend indexing, and another browser need not agree with V8 about
+  // "Mar 2025" either. So the shapes deal-date.js accepts are read here by
+  // rule, each to the instant V8 already gave the ones it could read (the 1st
+  // of the month in local time, ISO forms in UTC), which is why no existing
+  // weight moved. A quarter is its middle month. Everything else still goes
+  // to Date.parse.
+  // ⚠ MIRRORED in comp-gate.js compDateMs, body for body;
+  // test/comp-gate.test.js compares the two.
+  function compDateMs(text) {
+    const t = String(text == null ? "" : text).trim().toLowerCase();
+    let m;
+    if ((m = t.match(/^((?:19|20)\d{2})(?:-(\d{2})(?:-(\d{2}))?)?$/))) {
+      const mo = m[2] ? Number(m[2]) : 1, day = m[3] ? Number(m[3]) : 1;
+      const ms = Date.UTC(Number(m[1]), mo - 1, day);
+      if (mo >= 1 && mo <= 12 && day >= 1 && new Date(ms).getUTCMonth() === mo - 1) return ms;
+    }
+    if ((m = t.match(/^(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+((?:19|20)\d{2})$/))) {
+      const mo = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }[m[1].slice(0, 3)];
+      return new Date(Number(m[2]), mo, 1).getTime();
+    }
+    if ((m = t.match(/^q([1-4])\s*((?:19|20)\d{2})$/))) {
+      return new Date(Number(m[2]), Number(m[1]) * 3 - 2, 1).getTime();
+    }
+    if ((m = t.match(/^(\d{1,2})\/((?:19|20)\d{2})$/)) && Number(m[1]) >= 1 && Number(m[1]) <= 12) {
+      return new Date(Number(m[2]), Number(m[1]) - 1, 1).getTime();
+    }
+    return Date.parse(text);
+  }
+
   // Age in years at `asOf`, capped at five. A future-dated comp reads as 0
   // rather than negative, and an unparseable date reads as null (neutral).
   function compAgeYears(c, asOf) {
-    const d = Date.parse(c.date);
+    const d = compDateMs(c.date);
     if (isNaN(d)) return null;
     const yrs = (asOf - d) / (365.25 * 24 * 3600 * 1000);
     return yrs > 0 ? Math.min(yrs, 5) : 0;
@@ -189,11 +225,19 @@
   // "2.5 miles", "within 2.5 mi", "2.5 mile radius". Null when the note does
   // not name a distance: the type default above stands. Capped at 50 so a
   // stray "1000 miles" cannot become the blend radius.
+  // A leading-dot decimal and a fraction are read as written: until
+  // 2026-11-10 ".5 miles" was 5 and "1/2 mile" was 2, so a half-mile house
+  // search treated a comp five miles out as in the neighborhood. The number
+  // may not follow a digit, a dot or a slash, which is what stops it being
+  // the tail of one. No lookbehind: this file runs in Safari.
+  // ⚠ MIRRORED in blend-corpus.js parseRadiusMiles, body for body;
+  // test/blend-corpus.test.js compares the two.
   function parseRadiusMiles(note) {
     if (note == null || note === "") return null;
-    const m = String(note).match(/(\d+(?:\.\d+)?)\s*(?:miles?|mi)\b/i);
+    const m = String(note).match(
+      /(?:^|[^\d.\/])(?:(?:(\d+)[\s-]+)?(\d+)\s*\/\s*(\d+)|(\d+(?:\.\d+)?|\.\d+))\s*(?:miles?|mi)\b/i);
     if (!m) return null;
-    const n = Number(m[1]);
+    const n = m[4] != null ? Number(m[4]) : Number(m[1] || 0) + Number(m[2]) / Number(m[3]);
     return n > 0 && n <= 50 ? n : null;
   }
 
@@ -604,7 +648,7 @@
 
   return {
     numericValue, salePsfOf, robustPpsfRange, heroRound,
-    TIER_WEIGHT, tierOf, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
+    TIER_WEIGHT, tierOf, compDateMs, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
     defaultFreePassMiles,
     parseRadiusMiles, radiusClaimContradicted, RADIUS_CLAIM_SLACK,
     priceTierFactor, PRICE_TIER_RATIO,

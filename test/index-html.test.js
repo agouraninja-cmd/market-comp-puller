@@ -3763,3 +3763,341 @@ test("the market position chart's two ends are in one precision", () => {
   assert.ok(chart[0].includes("${axisUsd(lo)}</text>") && chart[0].includes("${axisUsd(hi)}</text>"), "both labels use it");
   assert.doesNotMatch(chart[0], /\$\{formatUsd\((lo|hi)\)\}/, "no end falls back to the default precision");
 });
+
+// ----------------------------------------------------------------------------
+// The bug hunt of 2026-11-10. Eight findings in the report front end, each
+// reproduced in a browser before its fix. Every one of them is lifted out of
+// the page and RUN here; the source pins beside them only hold a call site.
+// ----------------------------------------------------------------------------
+
+// A top-level function of the page's script, by its opening line.
+function liftFn(open) {
+  const from = html.indexOf(open);
+  assert.ok(from > 0, "could not find `" + open.trim() + "` in index.html: renamed or moved?");
+  const to = html.indexOf("\n  }\n", from);
+  assert.ok(to > from, "could not bound `" + open.trim() + "`");
+  return html.slice(from, to + 4);
+}
+
+test("a per-acre or per-unit basis counts every sale carrying the metric, with or without a $/SF", () => {
+  // The basis read the hero's `saleComps`, which is the $/SF list. Land under
+  // $1/SF has no $/SF at all (salePsfOf refuses it, and so does the server's
+  // fill), and a multifamily comp quoted per unit often has no building size,
+  // so four priced per-acre comps and a typed acreage got three dashes, "No
+  // priced sale comps came back" and an offer to run a billed wider search.
+  const V = require("../valuation.js");
+  const specs = html.match(/const ALT_BASIS = \{[\s\S]*?\n  \};/);
+  assert.ok(specs, "could not find ALT_BASIS");
+  const asOf = Date.parse("2026-11-10T18:00:00Z");
+  const page = (comps, type) => {
+    const ctx = vm.createContext({
+      numericValue: V.numericValue, valueFromComps: V.valueFromComps, String,
+      valuationComps: () => comps, asOfOf: () => asOf, trendPctOf: () => null,
+      subjectYearForMatch: () => null, weightOpts: () => ({ propertyType: type }),
+    });
+    new vm.Script(specs[0] + "\n" + liftFn("  function altBasisCarriers(spec) {") +
+      liftFn("  function altBasisRange(meta, subject, saleComps, parsed) {") +
+      "\n;this.range = altBasisRange; this.carriers = altBasisCarriers; this.ALT = ALT_BASIS;", { filename: "index.html" }).runInContext(ctx);
+    return ctx;
+  };
+
+  // Rural land: a price, a lot size, acres and $/acre on every comp.
+  const rural = [
+    { transaction: "Sale", date: "Mar 2026", size_sqft: "1,742,400", price_or_rate: "$1,200,000", price_per_sqft: "", lot_acres: "40", price_per_acre: "$30,000" },
+    { transaction: "Sale", date: "Jan 2026", size_sqft: "1,089,000", price_or_rate: "$875,000", price_per_sqft: "", lot_acres: "25", price_per_acre: "$35,000" },
+    { transaction: "Sale", date: "Nov 2025", size_sqft: "2,613,600", price_or_rate: "$1,500,000", price_per_sqft: "", lot_acres: "60", price_per_acre: "$25,000" },
+    { transaction: "Sale", date: "Oct 2025", size_sqft: "784,080", price_or_rate: "$720,000", price_per_sqft: "", lot_acres: "18", price_per_acre: "$40,000" },
+  ];
+  for (const c of rural) assert.ok(isNaN(V.salePsfOf(c)), "the fixture must be land with no usable $/SF, or this proves nothing");
+  const land = page(rural, "Land");
+  // The hero's $/SF list is EMPTY for this report, and that is what it passes.
+  const got = land.range({ type: "Land" }, { details: { lot_acres: "30" } }, [], {});
+  assert.ok(got, "four priced per-acre comps and a typed acreage produced no range");
+  assert.equal(got.per.length, 4);
+  assert.equal(got.qty, 30);
+  const want = V.valueFromComps(rural, { subjectSF: 0, asOf, trendPct: null, subjectYear: null, propertyType: "Land",
+    readValue: (c) => V.numericValue(c.price_per_acre) });
+  assert.deepEqual({ ...got.rr }, { low: want.psfLow, mid: want.psfMid, high: want.psfHigh, trimmed: want.trimmed },
+    "the same weighting and indexing as the $/SF headline, over all four");
+  assert.ok(got.rr.low >= 25000 && got.rr.high <= 40000 && got.rr.low < got.rr.high);
+
+  // Multifamily quoted per unit, with no building size on any comp.
+  const units = [200000, 175000, 210000, 185000, 190000].map((v, i) => ({
+    transaction: "Sale", date: "Jan 2026", size_sqft: "", price_per_sqft: "", units: String(24 + i * 6), price_per_unit: "$" + v.toLocaleString("en-US") }));
+  const mf = page(units, "Multifamily").range({ type: "Multifamily" }, { details: { units: "48" } }, [], {});
+  assert.ok(mf && mf.per.length === 5, "five per-unit comps with no SF are five comps");
+
+  // What has not moved: a lease is not a sale, two comps are not a range, and
+  // a type with no such basis has none.
+  const withLease = rural.slice(0, 2).concat([{ transaction: "Lease", price_per_acre: "$90,000" }]);
+  assert.equal(page(withLease, "Land").carriers(land.ALT.Land).length, 2);
+  assert.equal(page(withLease, "Land").range({ type: "Land" }, { details: { lot_acres: "30" } }, [], {}), null);
+  assert.equal(land.range({ type: "Industrial" }, { details: {} }, [], {}), null);
+  assert.equal(land.range({ type: "Land" }, { details: {} }, [], {}), null, "no acreage, no per-acre range");
+
+  // The no-estimate copy counts from the same list, so it stops saying no
+  // priced comps came back when the missing input is only the unit count.
+  const hero = html.slice(html.indexOf("  function renderOwnerHero(parsed, meta) {"), html.indexOf("  function sellTodayEstimate("));
+  assert.match(hero, /const altCompN = altSpec \? altBasisCarriers\(altSpec\)\.length : 0;/);
+  assert.doesNotMatch(liftFn("  function altBasisRange(meta, subject, saleComps, parsed) {"), /saleComps\s*\.\s*(map|filter)/,
+    "the $/SF list must not be what a per-acre basis is built from");
+});
+
+test("a saved property keeps its report's own date, whatever is saved onto it later", async () => {
+  // openPortfolioItem dated the report by the row's updated_at, and the server
+  // stamps that on EVERY save, an edited assumption included. One DCF edit
+  // on a January report reopened it "Generated November 10" with every comp
+  // ten months older: Likely up 5%, most comps "Outside window".
+  const open = (item) => {
+    const seen = {};
+    const fn = new Function("leaveDeskForReport", "acctApi", "hideLoadingCard", "restoreFormFromMeta", "showStatus", "renderResults",
+      liftFn("  async function openPortfolioItem(id) {") + "return openPortfolioItem;")(
+      () => {}, async () => item, () => {}, () => {}, (text, tone) => { if (tone === "error") seen.error = text; },
+      (data, meta) => { seen.meta = meta; });
+    return fn("11111111-2222-4333-8444-555555555555").then(() => seen);
+  };
+  const ran = Date.parse("2026-01-15T17:59:00Z");
+  const row = (generatedAt) => ({ id: "p1", updated_at: "2026-11-10T18:00:00.000Z",
+    payload: { meta: { address: "950 W Bannock St, Boise, ID", type: "Industrial", ...(generatedAt === undefined ? {} : { generatedAt }) }, data: { comps: [] } } });
+
+  const dated = await open(row(ran));
+  assert.equal(dated.error, undefined);
+  assert.equal(dated.meta.generatedAt, ran, "the payload's own date wins over the row's last save");
+  assert.equal(dated.meta.portfolioId, "p1");
+  assert.equal(dated.meta.fromHistory, true);
+  assert.equal((await open(row("2026-01-15T17:59:00.000Z"))).meta.generatedAt, ran, "a date written as text is read too");
+  // A row saved before the payload carried one: the last save is all there is.
+  for (const legacy of [undefined, null, 0, "not a date"]) {
+    assert.equal((await open(row(legacy))).meta.generatedAt, Date.parse("2026-11-10T18:00:00.000Z"), "fallback for " + String(legacy));
+  }
+
+  // The save that moved it now carries the date instead.
+  let timer = null;
+  const posts = [];
+  const meta = { address: "950 W Bannock St, Boise, ID", type: "Industrial", months: 12, txFocus: "sales", subject: null,
+    assumptions: { discountPct: 9 }, curation: null, portfolioId: "p1", fromHistory: true, generatedAt: ran };
+  new Function("setTimeout", "clearTimeout", "loadHistory", "writeHistory", "acctApi", "currentUser", "currentMeta", "currentParsed",
+    "let assumptionsSaveTimer = null;" + liftFn("  function persistAssumptions() {") + "return persistAssumptions;")(
+    (fn) => { timer = fn; return 1; }, () => {}, () => [], () => {}, (method, url, body) => { posts.push([method, url, body]); return Promise.resolve({}); },
+    { id: "u1" }, meta, { comps: [] })();
+  timer();
+  assert.equal(posts.length, 1);
+  assert.deepEqual([posts[0][0], posts[0][1], posts[0][2].id, posts[0][2].snapshot], ["POST", "/api/portfolio", "p1", null]);
+  assert.equal(posts[0][2].payload.meta.generatedAt, ran, "an assumption save must carry the report's date, or the next open is re-dated");
+
+  // The three other doors that write a report into the portfolio date it too
+  // (source pins: each sits inside a handler that needs the whole page).
+  assert.match(liftFn("  async function savePortfolioCurrent() {"), /generatedAt: currentMeta\.generatedAt \|\| Date\.now\(\),/);
+  const save = html.slice(html.indexOf("  function saveHistory(meta, data) {"), html.indexOf("  function dropLegacyHistoryKeys"));
+  assert.ok(save.includes("id: refreshId, payload: { meta: { ...meta, generatedAt: meta.generatedAt || Date.now() }, data }, snapshot: lastValuation,"),
+    "a Refresh stores the new report's date");
+  assert.ok(liftFn("  async function addRecentToPortfolio(r, btn) {").includes("payload: { meta: full.ts ? { ...full.meta, generatedAt: full.ts } : full.meta, data: full.data },"),
+    "a recent search added to the portfolio keeps the day it was run");
+});
+
+test("the report's CSV guards a formula-shaped cell the way every other CSV here does", () => {
+  // The contacts export, the vault's and bulk's all guard; this one wrote
+  // model notes and owner-added comps raw, so "+12% over ask" opened in Excel
+  // as #NAME? and =HYPERLINK(...) as a live link.
+  const guard = new Function(liftFn("  function csvFormulaGuard(s) {") + "return csvFormulaGuard;")();
+  const { guardFormula } = require("../broker-vault.js");
+  for (const s of ["=HYPERLINK(\"http://x\",\"deed\")", "+12% over the 2022 sale", "-5% vs ask", "@cap 6.1%", "-1.5", "-", "+", "1.25", "$5,400,000",
+    "100 Gowen Rd, Boise, ID", "", "- see lease", "=1+1 Main St", "-.5", "+1"]) {
+    assert.equal(guard(s), guardFormula(s), "⚠ csvFormulaGuard and broker-vault.js's guardFormula disagree about " + JSON.stringify(s));
+  }
+  assert.equal(guard("+12% over ask"), "'+12% over ask");
+  assert.equal(guard("-1.5"), "-1.5", "a plain negative number is still a number");
+
+  // And the exporter itself, run: every cell goes through it.
+  let csv = null;
+  const comps = [
+    { address: "=HYPERLINK(\"http://evil.example\",\"View deed\")", notes: "-5% vs ask", cap_rate: "-1.5" },
+    { address: "100 Gowen Rd, Boise, ID", notes: "+12% over the 2022 sale; buyer said \"as-is\"", cap_rate: "6.5%" },
+    { address: "700 Cole Rd, Boise, ID", notes: "@cap 6.1%\nsecond line", cap_rate: "" },
+  ];
+  new Function("currentComps", "COLUMNS", "exportableComps", "exportCellValue", "SOURCE_TIERS", "compTier", "curationCounts",
+    "reportCurrency", "showUsd", "fmtRate", "privateIncludedCount", "currentMeta", "metaLine", "formatUsd", "lastValuation", "activeBrand",
+    "Blob", "URL", "document", "exportFileName", "flashExportDone",
+    liftFn("  function csvFormulaGuard(s) {") + liftFn("  function exportCsv() {") + "exportCsv();")(
+    comps, [{ key: "address", label: "Address" }, { key: "notes", label: "Notes" }, { key: "cap_rate", label: "Cap Rate" }], () => comps,
+    (comp, col) => comp[col.key], {}, () => null, () => ({ total: 3, excluded: 0, added: 0, included: 3 }),
+    { code: "USD", rate: null }, false, (r) => r, () => 0, null, () => "", (n) => "$" + n, null, () => null,
+    class { constructor(parts) { csv = parts[0]; } }, { createObjectURL: () => "blob:x", revokeObjectURL() {} },
+    { createElement: () => ({ click() {} }), getElementById: () => null }, () => "x.csv", () => {});
+  assert.deepEqual(csv.split("\r\n"), [
+    '"Address","Notes","Cap Rate","Source confidence"',
+    '"\'=HYPERLINK(""http://evil.example"",""View deed"")","\'-5% vs ask","-1.5",""',
+    '"100 Gowen Rd, Boise, ID","\'+12% over the 2022 sale; buyer said ""as-is""","6.5%",""',
+    '"700 Cole Rd, Boise, ID","\'@cap 6.1%\nsecond line","",""',
+  ]);
+});
+
+test("a lease's end year is read from a typed date, and a far year reaches Later", () => {
+  // The Expires box went through numericValue: "6/30/2031" was 6, which is no
+  // year, which the card draws as expiring THIS year. A 2060 ground lease was
+  // dropped the same way by a 30-year cap. Two leases typed 2031 and 2060
+  // read "WALT 0.0 yrs" and 100% of the rent rolling this year, in red.
+  const endYear = new Function(liftFn("  function rentRollEndYear(raw, yearNow) {") + "return rentRollEndYear;")();
+  const Y = 2026;
+  for (const [typed, want] of [
+    ["2031", 2031], ["6/30/2031", 2031], ["06/2031", 2031], ["Dec 2031", 2031], ["2031-06-30", 2031], [" 2031 ", 2031],
+    ["6/30/31", 2031], ["6-30-31", 2031], ["2060", 2060], ["12/31/2099", 2099], [2031, 2031],
+    ["2025", 2025],            // last year: just lapsed, still its own year
+    ["2019", null],            // long gone: the card's "this year" clamp takes it, as before
+    ["6/30", null],            // June 30th or June 2030: not guessed
+    ["20311", null], ["", null], [null, null], ["month to month", null], ["2200", null],
+  ]) {
+    assert.equal(endYear(typed, Y), want, "Expires typed as " + JSON.stringify(typed));
+  }
+
+  // The card's own maths, on what the box now yields.
+  const stats = new Function(liftFn("  function rentRollStats(rentRoll, subjectSf) {") + "return rentRollStats;")();
+  const now = new Date().getFullYear();
+  const st = stats([
+    { sf: 30000, rent: 270000, endYear: endYear("6/30/" + (now + 5), now) },
+    { sf: 12000, rent: 130000, endYear: endYear(String(now + 34), now) },
+  ], 48000);
+  assert.deepEqual(st.buckets.map((b) => [b.year, b.count, b.sf]), [[String(now + 5), 1, 30000], ["Later", 1, 12000]]);
+  assert.ok(st.walt > 14 && st.walt < 15, "rent-weighted: 67.5% at 5 years and 32.5% at 34, got " + st.walt);
+
+  assert.match(liftFn("  function syncRentRoll() {"), /endYear: rentRollEndYear\(row\.querySelector\("\.rr-end"\)\.value, yearNow\),/,
+    "and the box is read through it");
+});
+
+test("a price typed as shorthand is refused when a comp is added, never stored unweighted", () => {
+  // "$9.5M" read as 9.5: the comp was added, listed "Added by you" with a
+  // Match of Strong, given no $/SF, and left out of the range without a word.
+  // The debt card's "1.6M" had the same hole until the same day.
+  const helpers = liftFn("  function moneyShorthandTail(tail) {") + liftFn("  function isMoneyShorthand(raw) {");
+  const short = new Function(helpers + "return isMoneyShorthand;")();
+  for (const p of ["$9.5M", "850k", "850K", "9.5 million", "$1.2MM", "4.1 M", "$2 billion", "$25k/month", "12 thousand"]) {
+    assert.equal(short(p), true, "shorthand: " + p);
+  }
+  for (const p of ["$9,500,000", "9500000", "$9.50/SF/yr", "$1.15/SF/mo NNN", "$1.08/SF/month ($12.96/SF/yr)", "$4,100,000 (about 4.1M)",
+    "Negotiable", "", null, "3 months free", "1.2 MSF"]) {
+    assert.equal(short(p), false, "a figure written out, or not a figure: " + p);
+  }
+
+  // The form itself, run. Refused before anything is stored.
+  const wire = html.slice(html.indexOf("  (function wireAddComp() {"), html.indexOf("  (function wireUserRead() {"));
+  assert.ok(wire.length > 500, "could not find the add-a-comp form's wiring");
+  const els = {};
+  const el = (id) => (els[id] = els[id] || { value: "", textContent: "", on: {},
+    classList: { hidden: true, add() { this.hidden = true; }, remove() { this.hidden = false; }, toggle() { this.hidden = !this.hidden; } },
+    addEventListener(type, fn) { this.on[type] = fn; } });
+  const V = require("../valuation.js");
+  const cur = { added: [] };
+  let applied = 0;
+  new Function("document", "numericValue", "currentParsed", "currentMeta", "reportCurrency", "compKeyOf", "ensureCuration", "applyCuration", "currentComps",
+    helpers + wire)({ getElementById: el }, V.numericValue, {}, {}, { code: "USD" }, (c) => c.address + "|" + c.date + "|" + c.price_or_rate,
+    () => cur, () => { applied++; }, []);
+  const add = (price) => {
+    el("acAddress").value = "1200 S Orchard St, Boise, ID " + price;
+    el("acDate").value = "Sep 2026"; el("acSize").value = "50,000"; el("acPrice").value = price; el("acPpsf").value = ""; el("acNotes").value = "";
+    el("acTransaction").value = "Sale";
+    el("acSubmit").on.click();
+  };
+  add("$9.5M");
+  assert.equal(cur.added.length, 0, "a shorthand price was stored as a comp");
+  assert.equal(applied, 0);
+  assert.equal(el("acError").textContent, "That price could not be read. Type it in full, like 4,100,000.");
+  assert.equal(el("acError").classList.hidden, false);
+  assert.equal(el("acPrice").value, "$9.5M", "what was typed is left in the box to be corrected");
+  add("$9,500,000");
+  assert.equal(cur.added.length, 1);
+  assert.equal(cur.added[0].price_per_sqft, "$190", "written out, the same comp is priced and counts");
+  assert.equal(applied, 1);
+  assert.equal(el("acError").classList.hidden, true);
+  add("$12.50/SF/yr");
+  assert.equal(cur.added.length, 2, "a rate is not shorthand");
+
+  // One copy of the suffix list: displayMoney refuses through the same function.
+  assert.match(liftFn("  function displayMoney(raw) {"), /if \(moneyShorthandTail\(tail\)\) return s;/);
+  const money = new Function("reportCurrency", "showUsd", liftFn("  function displayMoney(raw) {") + helpers + "return displayMoney;")({ code: "CAD", rate: 0.75 }, true);
+  assert.equal(money("8.1M CAD"), "8.1M CAD", "still refused, not converted to $6");
+  assert.equal(money("C$6,000,000"), "$4,500,000");
+});
+
+test("a comp dated in ISO on the window's first day is inside the window, in a US time zone", () => {
+  // Date.parse reads "2024-11-01" and "2024-11" as UTC, the evening of the
+  // 31st anywhere in the US, and the window opens at LOCAL midnight. A vault
+  // comp (deal_date is ISO) on the first day wore "Outside window" beside a
+  // "Nov 2024" comp that did not. Run in a child so the zone is the test's.
+  const { spawnSync } = require("node:child_process");
+  const script = "const currentMeta = { months: 24, generatedAt: Date.parse('2026-11-10T18:00:00Z') };\n" +
+    "const document = { createElement: () => ({}) };\n" +
+    liftFn("  function lookbackCutoff() {") + liftFn("  function compDateLocalMs(dateVal) {") + liftFn("  function outsideWindowBadge(dateVal) {") +
+    "console.log(JSON.stringify({ offset: new Date(2024, 10, 1).getTimezoneOffset(), local: compDateLocalMs('2024-11-01') === new Date(2024, 10, 1).getTime()," +
+    " month: compDateLocalMs('2024-11') === new Date(2024, 10, 1).getTime(), stamp: compDateLocalMs('2024-11-01T12:00:00Z') === Date.parse('2024-11-01T12:00:00Z')," +
+    " badges: ['Nov 2024', '2024-11-01', '2024-11', '2024-11-02', '2024-10-31', 'Oct 2024', 'Active', '', '2024-13-01'].map((d) => !!outsideWindowBadge(d)) }));\n";
+  const offsets = {};
+  for (const tz of ["America/Los_Angeles", "America/New_York", "UTC"]) {
+    const r = spawnSync(process.execPath, ["-"], { input: script, env: { ...process.env, TZ: tz }, encoding: "utf8" });
+    assert.equal(r.status, 0, tz + ": " + r.stderr);
+    const out = JSON.parse(r.stdout);
+    offsets[tz] = out.offset;
+    assert.deepEqual(out.badges, [false, false, false, false, true, true, false, false, false], tz + ": which dates are badged Outside window");
+    assert.ok(out.local && out.month, tz + ": an ISO date with no time is that day, locally");
+    assert.ok(out.stamp, tz + ": a full timestamp is still an instant");
+  }
+  // The test means nothing if the child ignored TZ and ran all three in one zone.
+  assert.ok(offsets["America/Los_Angeles"] > offsets["America/New_York"] && offsets.UTC === 0, "the child did not take its time zone: " + JSON.stringify(offsets));
+});
+
+test("Sell today is the hero's Likely when the comps set it", () => {
+  // It returned the unrounded $/SF x size, so the DCF card read $6,150,426
+  // under a hero of $6,150,000, and the Excel sheet's "Sell today" row, meant
+  // only for when it DIFFERS from Likely, was written on every export.
+  const V = require("../valuation.js");
+  const asOf = Date.parse("2026-11-10T18:00:00Z");
+  const comps = [
+    { transaction: "Sale", date: "Mar 2025", size_sqft: "45,000", price_per_sqft: "$120", source_type: "public_record" },
+    { transaction: "Sale", date: "Nov 2024", size_sqft: "61,000", price_per_sqft: "$130", source_type: "public_record" },
+    { transaction: "Sale", date: "Jan 2026", size_sqft: "47,500", price_per_sqft: "$110", source_type: "public_record" },
+    { transaction: "Sale", date: "Aug 2025", size_sqft: "49,000", price_per_sqft: "$125", source_type: "listing" },
+  ];
+  const sellWith = (list, cap) => new Function("subjectRangeFromMeta", "numericValue", "valueFromComps", "valuationComps", "asOfOf", "trendPctOf",
+    "subjectYearForMatch", "weightOpts", "subjectCapRate",
+    liftFn("  function sellTodayEstimate(parsed, meta) {") + "return sellTodayEstimate;")(
+    () => ({ min: 48000, max: 48000 }), V.numericValue, V.valueFromComps, () => list, () => asOf, () => 3.5,
+    () => null, () => ({ propertyType: "Industrial" }), () => cap);
+  const hero = V.valueFromComps(comps, { subjectSF: { min: 48000, max: 48000 }, asOf, trendPct: 3.5, subjectYear: null, propertyType: "Industrial" });
+  assert.notEqual(hero.mid, hero.psfMid * 48000, "the fixture must be one where the rounding shows, or this proves nothing");
+  const sell = sellWith(comps, null)({}, { subject: {} });
+  assert.deepEqual(sell, { value: hero.mid, source: "comp-based likely value" });
+  // exportXlsx's own test for writing the extra row, on these figures.
+  assert.equal(Math.round(sell.value) !== Math.round(hero.mid), false, "the sheet would list a second likely value");
+
+  // The income fallbacks are untouched: no comps, an NOI and a cap range.
+  const income = sellWith([], null)({ market_cap_rate_range: { low: "6", high: "8" } }, { subject: { noi: 480000 } });
+  assert.equal(income.source, "income-approach midpoint");
+  assert.equal(Math.round(income.value), Math.round(Math.sqrt((480000 / 0.08) * (480000 / 0.06))));
+  assert.deepEqual(sellWith([], 6)({}, { subject: { noi: 480000 } }), { value: 8000000, source: "income approach at your cap rate" });
+  assert.equal(sellWith([], null)({}, { subject: {} }), null);
+});
+
+test("the report tab's map re-measure survives the map being dropped under it", () => {
+  // renderResults calls setReportTab("report") and THEN renderMap, which
+  // removes the last report's map; a report with no coordinates leaves it
+  // null, and the 50ms timer threw "Cannot read properties of null".
+  const el = () => ({ classList: { toggle() {} }, setAttribute() {}, className: "", tabIndex: 0 });
+  let timer = null;
+  const page = new Function("document", "setTimeout", "renderAnalysisCluster", "syncReportNav", "currentParsed", "currentMeta",
+    "let mapInstance = null, measured = 0;" + liftFn("  function setReportTab(which) {") +
+    "return { tab: setReportTab, map: (on) => { mapInstance = on ? { invalidateSize() { measured++; } } : null; }, measured: () => measured };")(
+    { getElementById: el }, (fn) => { timer = fn; }, () => {}, () => {}, null, null);
+  page.map(true);
+  page.tab("report");
+  assert.ok(timer, "a report tab with a map on screen schedules the re-measure");
+  page.map(false);
+  assert.doesNotThrow(timer);
+  assert.equal(page.measured(), 0);
+  timer = null;
+  page.map(true);
+  page.tab("report");
+  timer();
+  assert.equal(page.measured(), 1, "a map that is still there is re-measured");
+  timer = null;
+  page.tab("analysis");
+  assert.equal(timer, null, "the analysis tab has no map to measure");
+});

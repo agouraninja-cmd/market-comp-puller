@@ -203,6 +203,14 @@ function toLease(row, viewerId) {
 // soonest first. `deadlineOf` and `daysUntil` are renewal-watch.js's, passed
 // in — never required — so this file does not decide what a deadline is.
 // Vacated and expired leases are skipped: nothing is left to act on.
+//
+// A LAPSED OPTION NOTICE HANDS OVER TO THE EXPIRY. deadlineOf names the notice
+// whenever a lease has one, and until 2026-11-10 a notice already behind us
+// dropped the whole lease from the list, though the lease itself still ended
+// inside the window. renewal-watch's silence after a passed deadline is its
+// rule for EMAILS (a reminder nobody can act on); this is a list of dates
+// still ahead, and the expiry is one. deadlineOf is asked again without the
+// notice, so it still decides what an expiry is.
 function criticalDates(leases, now, deadlineOf, daysUntil, buildings) {
   if (typeof deadlineOf !== "function" || typeof daysUntil !== "function") return [];
   const byBuilding = new Map((Array.isArray(buildings) ? buildings : []).map((b) => [String(b.id), b]));
@@ -211,9 +219,14 @@ function criticalDates(leases, now, deadlineOf, daysUntil, buildings) {
     if (!l) continue;
     const status = str(l.status).toLowerCase();
     if (status === "vacated" || status === "expired") continue;
-    const deadline = deadlineOf(l);
+    let deadline = deadlineOf(l);
     if (!deadline) continue;
-    const days = daysUntil(deadline.date, now);
+    let days = daysUntil(deadline.date, now);
+    if (deadline.kind === "notice" && Number.isFinite(days) && days < 0) {
+      deadline = deadlineOf({ lease_expiry: l.lease_expiry });
+      if (!deadline) continue;
+      days = daysUntil(deadline.date, now);
+    }
     if (!Number.isFinite(days) || days < 0 || days > WINDOW_DAYS) continue;
     const b = byBuilding.get(String(l.building_id));
     out.push({

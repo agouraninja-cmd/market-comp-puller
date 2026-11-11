@@ -66,9 +66,23 @@ const STALL_MS = 15 * 60 * 1000;
 // "size_sqft", not "sizesqft". Getting that wrong silently costs the column
 // rather than failing, which is why there is a test asserting a real
 // spreadsheet header lands on each of these.
+// ⚠ ADDRESS_HEADERS, CITY_HEADERS and STATE_HEADERS are MIRRORED in
+// bulk-page.js's BULK_RUN_JS (LIST_HEADERS), which counts a list in the
+// browser the way parseAddressList reads it here. test/bulk-inline.test.js
+// compares the lists and runs both readers over the same text. Change them
+// together.
 const ADDRESS_HEADERS = ["address", "property_address", "site_address", "street_address", "property", "location"];
-const SIZE_HEADERS = ["size_sqft", "size", "sqft", "sq_ft", "square_feet", "building_size", "building_sf", "rsf", "gla", "sf"];
+// The abbreviated ones ("Bldg SF", "RBA", "Total SF") are what brokerage
+// exports say, the vault's own alias list (2026-11-10). A RATE header is
+// never a size whatever it normalizes to: see sizeCol in parseAddressList.
+const SIZE_HEADERS = ["size_sqft", "size", "sqft", "sq_ft", "square_feet", "square_footage",
+  "building_size", "building_sf", "building_sqft", "bldg_sf", "bldg_sqft", "bldg_size",
+  "gross_sf", "total_sf", "rba", "rsf", "gla", "sf"];
 const LABEL_HEADERS = ["label", "name", "property_name", "id", "reference", "ref"];
+// A sheet that keeps Address, City and State in three columns (2026-11-10).
+// The parts are joined onto the street; they are never fields of their own.
+const CITY_HEADERS = ["city", "town"];
+const STATE_HEADERS = ["state", "st"];
 // The single-property form's per-property inputs, as upload columns
 // (2026-09-04): bulk is the comp-report tool, so a list can bring the facts
 // the form asks for one address at a time. Same normalizeHeader spellings as
@@ -123,11 +137,27 @@ function normalizeSubject(raw, detailKeys) {
   return Object.keys(out).length ? out : null;
 }
 
-function headerIndex(headers, names) {
+// `skip(i)` lets a caller pass over a column whose name matches but must not
+// be taken (the size column's rate-header guard).
+function headerIndex(headers, names, skip) {
   for (let i = 0; i < headers.length; i++) {
-    if (names.includes(headers[i])) return i;
+    if (names.includes(headers[i]) && !(skip && skip(i))) return i;
   }
   return -1;
+}
+
+// A street with the sheet's own City and State columns joined on, by
+// VAULT.composeAddress's append-only rule. WHAT is missing is decided with a
+// trailing ZIP set aside: that rule compares whole comma segments, so
+// "…, Boise, ID 83702" beside a State of "ID" would otherwise gain a second
+// ", ID" and file under a market called "ID 83702". What is missing is then
+// appended to the address AS TYPED, and one that names both comes back
+// untouched.
+function withCityState(address, city, state) {
+  const street = address.replace(/\s+\d{5}(?:-\d{4})?\s*$/, "");
+  const base = VAULT.composeAddress(street, "", "");
+  const joined = VAULT.composeAddress(street, city, state);
+  return joined === base ? address : address + joined.slice(base.length);
 }
 
 // A key for "is this the same building", used ONLY to drop repeats within one
@@ -174,6 +204,10 @@ function looksLikeAddress(text) {
  *   and quietly attach "83702" as a square footage. A pasted list is the
  *   common case and it must never need quoting.
  *
+ *   A heading row that names ONE column ("Address" over a column copied out
+ *   of Excel) is the second shape with its heading skipped, not the first:
+ *   there are no other columns to read, and the lines under it are unquoted.
+ *
  * @returns {{rows: Array, skipped: Array, warnings: Array, duplicates: number, truncated: number}}
  */
 function parseAddressList(text, opts) {
@@ -181,12 +215,30 @@ function parseAddressList(text, opts) {
   const max = Number.isFinite(Number(o.max)) ? Math.max(0, Math.min(MAX_ADDRESSES, Number(o.max))) : MAX_ADDRESSES;
   const src = String(text == null ? "" : text);
 
-  const grid = VAULT.parseCsv(src);
-  const headers = grid.length ? grid[0].map((h) => VAULT.normalizeHeader(h)) : [];
+  // Cells copied out of Excel arrive tab-separated, and read as comma CSV the
+  // header was one cell called "Address<tab>Size": no header at all, so every
+  // line ran whole with its size glued on. The vault's own tell (2026-11-10).
+  const tabbed = VAULT.delimiterOf(src) === "\t";
+  const grid = VAULT.parseCsv(src, { delimiter: tabbed ? "\t" : "," });
+  const rawHeaders = grid.length ? grid[0] : [];
+  const headers = rawHeaders.map((h) => VAULT.normalizeHeader(h));
   const addrCol = headerIndex(headers, ADDRESS_HEADERS);
-  const hasHeader = addrCol >= 0 && grid.length > 1;
-  const sizeCol = hasHeader ? headerIndex(headers, SIZE_HEADERS) : -1;
+  const headed = addrCol >= 0 && grid.length > 1;
+  // A header row holding ONE name is one column of addresses copied with its
+  // heading, and Excel does not quote what it copies. Read by column, every
+  // "6200 W Gowen Rd, Boise, ID" under "Address" was cut at its first comma
+  // and searched as a street in no city (until 2026-11-10). So the heading is
+  // skipped and each line below it is one whole address, like any paste.
+  const lone = headed && headers.filter(Boolean).length === 1;
+  const hasHeader = headed && !lone;
+  // "$/SF" normalizes to bare "sf", "$/sqft" to "sqft": a rate, read as the
+  // building's size, valued a 45,000 SF building at 68 SF. Tested on the RAW
+  // header, the vault mapper's rule (isRateHeader).
+  const sizeCol = hasHeader
+    ? headerIndex(headers, SIZE_HEADERS, (i) => VAULT.isRateHeader(rawHeaders[i])) : -1;
   const labelCol = hasHeader ? headerIndex(headers, LABEL_HEADERS) : -1;
+  const cityCol = hasHeader ? headerIndex(headers, CITY_HEADERS) : -1;
+  const stateCol = hasHeader ? headerIndex(headers, STATE_HEADERS) : -1;
   // The form's other inputs, per row (2026-09-04). Only a header can carry
   // them — a pasted list is addresses and nothing else.
   const askCol = hasHeader ? headerIndex(headers, ASKING_HEADERS) : -1;
@@ -205,11 +257,25 @@ function parseAddressList(text, opts) {
   // sat. The `i + 2` fallback is the old arithmetic, kept for a grid that
   // carries no stamp. The no-header branch splits `src` directly and was always
   // right, which is why it is untouched.
+  //
+  // Under a lone heading the same split is used, minus the heading's own
+  // line. A line is the whole address unless Excel QUOTED the cell (a saved
+  // CSV, a workbook read through gridToCsv), which is still read as a cell;
+  // in a tab paste anything past the first tab is a column nobody named.
+  const headLine = lone ? (Number.isFinite(grid[0].line) ? grid[0].line : 1) : 0;
+  const loneCell = (raw) => {
+    const first = tabbed ? raw.split("\t")[0] : raw;
+    if (!/^\s*"/.test(first)) return first;
+    const row = VAULT.parseCsv(first)[0];
+    return row && row.length ? row[0] : first;
+  };
   const lines = hasHeader
     ? grid.slice(1).map((cells, i) => ({
         cells, line: Number.isFinite(cells.line) ? cells.line : i + 2,
       }))
-    : src.split(/\r\n|\r|\n/).map((raw, i) => ({ cells: [raw], line: i + 1 }));
+    : src.split(/\r\n|\r|\n/)
+        .map((raw, i) => ({ cells: [lone ? loneCell(raw) : raw], line: i + 1 }))
+        .filter((l) => l.line !== headLine);
 
   const rows = [];
   const skipped = [];
@@ -219,9 +285,15 @@ function parseAddressList(text, opts) {
   let truncated = 0;
 
   for (const { cells, line } of lines) {
-    const rawAddress = String((hasHeader ? cells[addrCol] : cells[0]) || "").trim();
+    let rawAddress = String((hasHeader ? cells[addrCol] : cells[0]) || "").trim();
     if (!rawAddress) continue;                       // blank lines cost nothing and are not errors
     if (VAULT.isCommentRow([rawAddress])) continue;  // the vault template's `#` convention, same reading
+    // A sheet with City and State columns of its own means the address column
+    // is a street, and a street alone is searched in no particular city.
+    if (cityCol >= 0 || stateCol >= 0) {
+      rawAddress = withCityState(rawAddress,
+        cityCol >= 0 ? cells[cityCol] : "", stateCol >= 0 ? cells[stateCol] : "");
+    }
 
     if (!looksLikeAddress(rawAddress)) {
       skipped.push({ line, address: rawAddress.slice(0, 300), reason: "That doesn't look like a street address." });
@@ -233,15 +305,17 @@ function parseAddressList(text, opts) {
 
     if (rows.length >= max) { truncated++; continue; }
 
-    // parseNumber returns {ok, value} and accepts "12,500 SF" — the shape a
-    // broker's export actually holds. A cell it REFUSES is reported rather
-    // than dropped: the row still runs (we look the size up instead), but a
-    // size somebody typed and we ignored, with nothing on screen saying so,
-    // is the silent-drop failure the vault's column mapper exists to prevent.
+    // parseSizeSqft returns {ok, value} and accepts "12,500 SF" — the shape a
+    // broker's export actually holds — and reads a land list's "2.5 acres" as
+    // the 108,900 SF it states, never as 3 SF. A cell it REFUSES is reported
+    // rather than dropped: the row still runs (we look the size up instead),
+    // but a size somebody typed and we ignored, with nothing on screen saying
+    // so, is the silent-drop failure the vault's column mapper exists to
+    // prevent.
     let size = null;
     if (hasHeader && sizeCol >= 0) {
       const raw = String(cells[sizeCol] || "").trim();
-      const parsed = VAULT.parseNumber(raw);
+      const parsed = VAULT.parseSizeSqft(raw);
       if (!parsed.ok) {
         warnings.push({ line, address: rawAddress.slice(0, 300), reason: `Size "${raw.slice(0, 40)}" isn't a number — we'll look it up instead.` });
       } else if (parsed.value > 0) {
@@ -299,7 +373,8 @@ function parseAddressList(text, opts) {
     });
   }
 
-  return { rows, skipped, warnings, duplicates, truncated, header: hasHeader };
+  // `header` says the list HAD a heading row, a lone one included.
+  return { rows, skipped, warnings, duplicates, truncated, header: headed };
 }
 
 // ---------------------------------------------------------------------------
@@ -314,8 +389,15 @@ function num(v) { return VALUATION.numericValue(v); }
 // links to weight their comps identically — if this drifts, a portfolio total
 // stops reconciling with the reports underneath it and there is no way to see
 // that from either screen.
-function subjectPsfOf(report, sizeSqft) {
-  const ask = num(report && report.subject_asking && report.subject_asking.price);
+//
+// `askingPrice` is the price the member gave for THIS row (their Asking
+// column), and it wins over a listing the model found: askingRangeFrom's
+// order in index.html. Until 2026-11-10 only the listing was read here, so a
+// row with its own asking price and the report it links to weighted the same
+// comps differently and printed two values.
+function subjectPsfOf(report, sizeSqft, askingPrice) {
+  const own = num(askingPrice);
+  const ask = own > 0 ? own : num(report && report.subject_asking && report.subject_asking.price);
   if (!(ask > 0) || !(sizeSqft > 0)) return 0;
   const psf = ask / sizeSqft;
   return psf >= 1 && psf <= 100000 ? psf : 0;
@@ -357,7 +439,7 @@ function valueFromReport(report, opts) {
     subjectYear: VALUATION.yearOf(rep.subject_year_built),
     propertyType: o.propertyType,
     radiusMiles: VALUATION.parseRadiusMiles(o.note),
-    subjectPsf: subjectPsfOf(rep, sizeSqft),
+    subjectPsf: subjectPsfOf(rep, sizeSqft, o.askingPrice),
   });
   if (!val) return null;
 
@@ -623,6 +705,10 @@ module.exports = {
   normalizeTxFocus,
   normalizeSubject,
   parseAddressList,
+  ADDRESS_HEADERS,
+  CITY_HEADERS,
+  STATE_HEADERS,
+  SIZE_HEADERS,
   looksLikeAddress,
   dedupeKey,
   valueFromReport,

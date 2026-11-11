@@ -59,7 +59,21 @@ class El {
   byClass(c) { return this.all().filter((e) => e.className.split(/\s+/).includes(c)); }
 }
 
-function run(boot, { scripts = true, fetchJson = null } = {}) {
+// The page's clock. `local` is the member's calendar day and `utc` the day
+// the server (and toISOString) call that same moment: the two differ every
+// evening in the US. A Date built from an argument is the real thing.
+function clock(local, utc) {
+  const [y, m, d] = local.split("-").map(Number);
+  return class extends Date {
+    constructor(...a) {
+      if (a.length) { super(...a); return; }
+      super((utc || local) + "T01:30:00Z");
+      this.getFullYear = () => y; this.getMonth = () => m - 1; this.getDate = () => d;
+    }
+  };
+}
+
+function run(boot, { scripts = true, fetchJson = null, Date: Clock = clock(TODAY) } = {}) {
   const html = renderSitesBody(boot);
   const doc = { activeElement: null };
   doc.createElement = (t) => new El(t, doc);
@@ -72,7 +86,7 @@ function run(boot, { scripts = true, fetchJson = null } = {}) {
   }
   doc.getElementById = (id) => ids[id] || null;
   const fetched = [];
-  const ctx = { document: doc, console, Promise, JSON, Date, Object, Array, String, Number, Math, Set,
+  const ctx = { document: doc, console, Promise, JSON, Date: Clock, Object, Array, String, Number, Math, Set,
     fetch: (url, opts) => { fetched.push([url, opts]); return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(fetchJson || {}) }); },
     window: { confirm: () => true } };
   ctx.self = ctx;
@@ -183,6 +197,34 @@ test("after a write the page reads /api/sites again and draws what came back", a
   assert.deepEqual(fetched.map((f) => f[0]), ["/api/sites/update", "/api/sites"]);
   assert.equal(ids.spBoard.children[2].byClass("sp-card").length, 1, "the deal is drawn where the read put it");
   assert.equal(ids.spOpen.hidden, false, "the moved deal stays open");
+});
+
+test("deadlines count from the member's own day, not the server's (2026-11-10)", async () => {
+  // 6:30 pm in Boise on Oct 12 is already Oct 13 in UTC, which is the day the
+  // boot and GET /api/sites both carry as `today`. Until this the page took
+  // theirs, so tonight's deadline read as past and tomorrow's read "Today",
+  // while Home (index.html's hmLocalDay) said otherwise about the same deal.
+  const sites = [deal({ id: "a", stage: "contract",
+    dates: [{ on: "2026-10-12", label: "Due diligence ends" }, { on: "2026-10-13", label: "Closing" }] })];
+  const { ids, fetched } = run({ s: 200, sites, today: "2026-10-13", firm: DEV },
+    { Date: clock("2026-10-12", "2026-10-13"), fetchJson: { sites, today: "2026-10-13" } });
+  const card = () => ids.spBoard.byClass("sp-card")[0];
+  const tonight = (when) => {
+    assert.match(card().textContent, /Due diligence ends · Oct 12/, when);
+    assert.deepEqual(card().byClass("hs-chip").map((c) => c.textContent), ["Today"], when);
+  };
+  tonight("as booted");
+  assert.match(ids.spFigs.textContent, /Oct 12next: Due diligence ends/);
+  // The open deal's pane is handed the same day.
+  card().fire("click");
+  const dates = ids.spOpen.byClass("hs-dates")[0];
+  assert.deepEqual(dates.byClass("hs-chip").map((c) => c.textContent), ["Today", "Tomorrow"]);
+  assert.doesNotMatch(dates.textContent, /Done/, "today's deadline is not behind us yet");
+  // And a read after a write does not put the server's day back.
+  ids.spOpen.all().find((e) => e.tagName === "BUTTON" && /^Move to Entitlements/.test(e.textContent)).fire("click");
+  for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+  assert.deepEqual(fetched.map((f) => f[0]), ["/api/sites/update", "/api/sites"]);
+  tonight("after the reload");
 });
 
 // ---- rules held against the source -----------------------------------------------

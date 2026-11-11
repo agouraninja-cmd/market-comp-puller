@@ -1054,3 +1054,63 @@ test("your own name for a chat, and deleting a deal room, are yours alone", asyn
       "the room came back without what was said before it was deleted");
   });
 });
+
+// A page is 200 messages (MSG.PAGE_SIZE). Until 2026-11-10 every read of a
+// thread took the OLDEST 200: past that, the list previewed message 200 for
+// good with an unread count of zero (the nav dot still lit, so the rail showed
+// a dot the list could not explain), and the conversation opened on its oldest
+// 200 and trickled the rest in, one page per 15-second poll.
+test("a conversation past one page reads from its recent end, and pages back", async (t) => {
+  const tables = seedTables();
+  const ctx = await bootWithDb(tables);
+  t.after(() => ctx.stop());
+  const { srv } = ctx;
+
+  const opened = await fetch(srv.base + "/api/messages/thread", as(BRAD, { method: "POST", body: JSON.stringify({ memberIds: [MIKE.id] }) }));
+  assert.equal(opened.status, 201);
+  const threadId = (await opened.json()).thread.id;
+
+  // 205 messages from Brad, a second apart, written straight to the table.
+  const base = Date.now() + 1000;
+  const at = (n) => new Date(base + n * 1000).toISOString();
+  for (let n = 1; n <= 205; n++) {
+    tables.msg_messages.push({
+      id: "m-" + String(n).padStart(3, "0"), thread_id: threadId, org_id: OURS, user_id: BRAD.id,
+      author_email: BRAD.email, body: "message #" + n, comp_count: 0,
+      created_at: at(n), edited_at: null, deleted_at: null,
+    });
+  }
+  tables.msg_threads.find((x) => String(x.id) === threadId).last_message_at = at(205);
+
+  // The list: the preview is the LAST message, and the unread count is not zero.
+  const list = await (await fetch(srv.base + "/api/messages", as(MIKE))).json();
+  const row = list.threads.find((x) => x.id === threadId);
+  assert.equal(row.preview, "message #205", "the list previews the newest message");
+  assert.equal(row.unread, 200, "and counts the unread ones in the page it read");
+
+  // Opening it: the newest 200, oldest first, and a flag that more lie behind.
+  const first = await (await fetch(srv.base + "/api/messages/thread?id=" + encodeURIComponent(threadId), as(MIKE))).json();
+  assert.equal(first.messages.length, 200);
+  assert.equal(first.messages[0].body, "message #6");
+  assert.equal(first.messages[199].body, "message #205");
+  assert.equal(first.earlier, true);
+  assert.equal(first.cursor, at(205), "the poll resumes from the newest message");
+
+  // Paging back from the oldest one held: the five before it, and no more.
+  const older = await (await fetch(srv.base + "/api/messages/thread?id=" + encodeURIComponent(threadId) +
+    "&before=" + encodeURIComponent(first.messages[0].createdAt), as(MIKE))).json();
+  assert.deepEqual(older.messages.map((m) => m.body),
+    ["message #1", "message #2", "message #3", "message #4", "message #5"]);
+  assert.equal(older.earlier, false);
+  assert.equal(older.cursor, "", "a page of older messages moves no cursor");
+
+  // A poll still reads FORWARD from its cursor, and only what is new.
+  tables.msg_messages.push({
+    id: "m-206", thread_id: threadId, org_id: OURS, user_id: BRAD.id, author_email: BRAD.email,
+    body: "message #206", comp_count: 0, created_at: at(206), edited_at: null, deleted_at: null,
+  });
+  const poll = await (await fetch(srv.base + "/api/messages/thread?id=" + encodeURIComponent(threadId) +
+    "&since=" + encodeURIComponent(first.cursor), as(MIKE))).json();
+  assert.deepEqual(poll.messages.map((m) => m.body), ["message #206"]);
+  assert.equal(poll.earlier, false, "a poll never claims older pages");
+});

@@ -458,6 +458,27 @@ trial subscription lapses keeps their book.
   seconds later — without slack a paying subscriber flickers to free), and a
   60s subscription cache that serves its last known answer if a DB read
   fails.
+  **What the webhook may write (2026-11-10; `stripe.js`, proven end to end
+  in `test/stripe-webhook-run.test.js`).** Failing closed has to hold for the
+  PAIR of modules, not each alone: a stored `cancelled` row with a period end
+  still ahead is the *cancelling* state, which is Pro, and Stripe puts a
+  period end a month or a year ahead on subscriptions nobody has paid for.
+  Three rules follow. (1) A subscription whose first payment has not gone
+  through (`incomplete`, `incomplete_expired`: `neverStarted`) writes
+  nothing, in every branch, including the first invoice's
+  `invoice.payment_failed`, which would otherwise open a grace window on a
+  plan that never started; any other status we do not know is stored as
+  `expired`, not `cancelled`. (2) A cancellation for non-payment
+  (`cancellation_details.reason` of `payment_failed`, or the stored row
+  already in grace) ends at the cancellation, not at the unpaid period's
+  end; a cancellation the customer asked for keeps the period they paid for.
+  (3) One row per user and per firm, so another subscription's event may
+  replace the stored row only when it is active or the stored one is already
+  dead (`mayReplaceRow`): an old subscription still in Stripe's retry
+  schedule must not take the row of the one the customer bought to replace
+  it. Rows written before this are not rewritten: a never-paid subscription
+  stored as `cancelled` keeps reading as Pro until its period end unless it
+  is corrected by hand.
   **Comp gating** lives in **`comp-gate.js`** (also pure, also tested).
   `gateReport()` is applied at **serialization time only** — `/api/comps`
   gates at all three exits (cache hit, SSE `result`, plain JSON) while the

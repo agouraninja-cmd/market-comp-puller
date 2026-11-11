@@ -5797,12 +5797,25 @@ ${tabButtons}
   // endpoint is what keeps the restore honest: it goes through normalizeRow
   // like every other written comp, so an undo cannot put back something the
   // vault would refuse to be told today.
+  //
+  // Three things a restore lost until 2026-11-10, each because this read the
+  // add FORM's field list off a row that holds more than the form asks for:
+  //   - The renewal watch's two dates (038) are not on that form, so a lease
+  //     came back without them and its reminder was never sent.
+  //   - A stored null date IS the undated sentinel (042). Left out, the route
+  //     refused the restore for having no date; the word is what it accepts.
+  //   - A cell inherited from the building (050) holds nothing on this deal.
+  //     Posted, the reading became a stated value. It is left out, and the
+  //     comp inherits it again once it is back.
+  var RESTORE_FIELDS=BASE_FIELDS.concat(["lease_expiry","option_notice_date"]);
   function restorePayload(c){
-    var out={},fields=BASE_FIELDS.concat(TYPE_FIELDS[c.property_type]||[]);
+    var out={},fields=RESTORE_FIELDS.concat(TYPE_FIELDS[c.property_type]||[]);
     fields.forEach(function(f){
+      if(isInherited(c,f))return;
       var v=c[f];
       if(v!=null&&String(v).trim()!=="")out[f]=String(v);
     });
+    if(c.deal_date==null)out.deal_date="undated";
     return out;
   }
 
@@ -5854,7 +5867,10 @@ ${tabButtons}
       headers:{"content-type":"application/json"},body:JSON.stringify(d.payload)})
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
-        if(o.s!==200)return compMsg(o.j.error||"Could not put that comp back.",true);
+        // 201: the add route answers Created. This tested for 200 alone until
+        // 2026-11-10, so every restore that worked said it had failed, and
+        // the book was not reloaded to show the comp was back.
+        if(o.s!==200&&o.s!==201)return compMsg(o.j.error||"Could not put that comp back.",true);
         load();
         // Said plainly rather than left to be discovered. The restore is a new
         // entry: it belongs to no import, so deleting that import will not

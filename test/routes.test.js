@@ -2248,29 +2248,28 @@ test("market explorer with the guest gate disabled", async (t) => {
   });
 });
 
-// --- The tester passkey, retired --------------------------------------------
+// --- The tester passkey ------------------------------------------------------
 //
-// A shared code that comped Pro to a SIGNED-IN account. Retired 2026-10-17
-// (owner's call: "instead of having a test environment just give new users a
-// month free trial with everything included"): the redeem route compares only
-// VAULT_PASSKEY now, and /api/config no longer reports a tester door. Accounts
-// that already hold users.pro_tester keep comped Pro (entitlements.js proves
-// that branch); this proves no new one can be made.
+// A shared code that comps Pro to a SIGNED-IN account by setting
+// users.pro_tester. It was retired on 2026-10-17 for the month-long trial and
+// switched back on 2026-11-10 (the owner: "turn the code back on"), so these
+// prove the door is wired again: the route exists on TESTER_PASSKEY alone,
+// /api/config reports the door, and a redeemed code reaches the entitlements.
 //
 // No Supabase in this environment, so accounts live in the git-ignored
 // account-store.json fallback — which is exactly why this can run for free
 // with no database.
 
-test("tester passkey (retired)", async (t) => {
-  await t.test("the route does not exist when no vault passkey is set, tester code or not", async (t) => {
-    const srv = await boot({ PRO_ENABLED: "on", TESTER_PASSKEY: "let-me-in-please" });
+test("tester passkey", async (t) => {
+  await t.test("the route does not exist when neither passkey is set", async (t) => {
+    const srv = await boot({ PRO_ENABLED: "on" });
     t.after(() => srv.stop());
     const r = await fetch(srv.base + "/api/redeem-passkey", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ passkey: "let-me-in-please" }),
     });
-    assert.equal(r.status, 404, "a leftover TESTER_PASSKEY must not keep the route alive");
+    assert.equal(r.status, 404);
 
     // /api/config must say so too, so Settings hides the code row rather
     // than show a control that can only ever fail. A plain /api/config
@@ -2278,12 +2277,60 @@ test("tester passkey (retired)", async (t) => {
     // per-IP limiter.
     const cfg = await (await fetch(srv.base + "/api/config")).json();
     assert.equal(cfg.pro.vaultPasskey, false);
-    assert.ok(!("testerPasskey" in cfg.pro), "the tester door's flag went with the door");
+    assert.equal(cfg.pro.testerPasskey, false);
   });
 
-  await t.test("with the vault door open, a tester code is just a wrong code", async (t) => {
+  await t.test("TESTER_PASSKEY alone opens the route, and a redeemed code comps Pro", async (t) => {
     const TESTER = "let-me-in-please";
-    const srv = await boot({ PRO_ENABLED: "on", TESTER_PASSKEY: TESTER, VAULT_PASSKEY: "vault-code" });
+    const srv = await boot({ PRO_ENABLED: "on", TESTER_PASSKEY: TESTER });
+    t.after(() => srv.stop());
+    const redeem = (passkey, cookie) => fetch(srv.base + "/api/redeem-passkey", {
+      method: "POST",
+      headers: Object.assign({ "content-type": "application/json" }, cookie ? { cookie } : {}),
+      body: JSON.stringify({ passkey }),
+    });
+
+    // Signed out: refused before the code is compared at all.
+    assert.equal((await redeem(TESTER)).status, 401);
+
+    const signup = await fetch(srv.base + "/api/account/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: `tester-${Date.now()}@example.com`, password: "correct-horse-battery" }),
+    });
+    assert.equal(signup.status, 200, "signup should succeed against the file store");
+    const cookie = String(signup.headers.get("set-cookie") || "").split(";")[0];
+    assert.ok(cookie.startsWith("cn_session="), "expected a session cookie, got " + cookie);
+
+    const before = await (await fetch(srv.base + "/api/config", { headers: { cookie } })).json();
+    assert.equal(before.pro.testerPasskey, true, "a configured deployment must say the door exists");
+    assert.equal(before.pro.isPro, false);
+
+    assert.equal((await redeem("not-the-code", cookie)).status, 401, "a wrong code is refused");
+
+    const ok = await redeem(TESTER, cookie);
+    assert.equal(ok.status, 200);
+    assert.deepEqual((await ok.json()).granted, ["tester"], "the response must name which door opened");
+
+    // The column has to reach the entitlements the UI reads, not merely be
+    // written.
+    const after = await (await fetch(srv.base + "/api/config", { headers: { cookie } })).json();
+    assert.equal(after.pro.tester, true);
+    assert.equal(after.pro.isPro, true);
+    assert.equal(after.pro.status, "tester", "never 'active': there is no Stripe customer to manage");
+
+    // Idempotent, and a rotated or mistyped code never locks a tester out.
+    const again = await redeem(TESTER, cookie);
+    assert.equal(again.status, 200);
+    assert.equal((await again.json()).already, true);
+    const wrongAfter = await redeem("not-the-code", cookie);
+    assert.equal(wrongAfter.status, 200);
+    assert.equal((await wrongAfter.json()).already, true);
+  });
+
+  await t.test("with only the vault door open, a tester code is just a wrong code", async (t) => {
+    const TESTER = "let-me-in-please";
+    const srv = await boot({ PRO_ENABLED: "on", VAULT_PASSKEY: "vault-code" });
     t.after(() => srv.stop());
 
     const signup = await fetch(srv.base + "/api/account/signup", {
@@ -2300,11 +2347,11 @@ test("tester passkey (retired)", async (t) => {
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ passkey: TESTER }),
     });
-    assert.equal(r.status, 401, "the tester code is compared against nothing now");
+    assert.equal(r.status, 401, "an unset TESTER_PASSKEY matches nothing");
 
     const after = await (await fetch(srv.base + "/api/config", { headers: { cookie } })).json();
     assert.equal(after.pro.tester, false);
-    assert.equal(after.pro.isPro, false, "no comped Pro from a retired code");
+    assert.equal(after.pro.isPro, false, "no comped Pro without the code being set");
   });
 });
 
@@ -2491,7 +2538,7 @@ test("portfolio upsert and cap", async (t) => {
 // /api/config's canUseVault (it did not for the first day of vault_beta's
 // life — the grant was set and the vault still refused, because
 // getSessionUser's narrowed user object never carried the flag), and that
-// a tester code can no longer ride along.
+// the tester code beside it opens its own door and not this one.
 //
 // Each case boots its own server, which is also what keeps them inside the
 // route's 5-per-15-minute per-IP limiter: the limiter is in-memory, so a
@@ -2550,20 +2597,21 @@ test("vault passkey", async (t) => {
     assert.equal((await again.json()).already, true);
   });
 
-  await t.test("a leftover tester code opens nothing beside it", async (t) => {
+  await t.test("with both codes set, each opens its own door", async (t) => {
     const TESTER = "try-pro-please";
     const VAULT = "vault-please";
     const srv = await boot({ PRO_ENABLED: "on", TESTER_PASSKEY: TESTER, VAULT_PASSKEY: VAULT });
     t.after(() => srv.stop());
     const redeem = redeemer(srv);
 
-    // The tester code is retired: on a deployment that still sets it, it is a
-    // wrong code like any other, and grants neither Pro nor the vault.
+    // The tester code comps Pro, and the response names that door only.
     const testerCookie = await signUp(srv, "tester-only");
-    assert.equal((await redeem(TESTER, testerCookie)).status, 401);
+    const tr = await redeem(TESTER, testerCookie);
+    assert.equal(tr.status, 200);
+    assert.deepEqual((await tr.json()).granted, ["tester"]);
     const t1 = await (await fetch(srv.base + "/api/config", { headers: { cookie: testerCookie } })).json();
-    assert.equal(t1.pro.isPro, false);
-    assert.equal(t1.pro.canUseVault, false);
+    assert.equal(t1.pro.isPro, true);
+    assert.equal(t1.pro.tester, true);
 
     // The vault code still works, and still does not comp Pro.
     const vaultCookie = await signUp(srv, "vault-only");

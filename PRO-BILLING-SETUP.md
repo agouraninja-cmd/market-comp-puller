@@ -674,6 +674,11 @@ whose 14 days already ran out but whose 30 have not is back on Pro until day
 30. Accounts that already redeemed a tester code keep comped Pro; to comp
 someone by hand now, `update users set pro_tester = true where email = …`.
 
+**The tester code is back on since 2026-11-10** (owner's call). The trial is
+unchanged. `TESTER_PASSKEY` redeems comped Pro again from Settings' "Have a
+code?" row, so it has to be **set on Render** for the code to work: if it was
+removed as the paragraph above asked, put it back.
+
 **Since the price check shipped (same day) a wrong order can no longer
 mischarge anybody.** At boot the server asks Stripe what each sold price
 charges and pauses checkout for any plan whose price disagrees with the page

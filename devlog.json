@@ -2,6 +2,12 @@
   {
     "date": "2026-11-10",
     "type": "fix",
+    "title": "Tester codes work again",
+    "details": "The tester code was switched off on 2026-10-17, when every new account started getting a month of everything free, so a tester whose month had ended was told “That code isn’t right” whatever they typed. The code is back: signed in, open Settings, type it under “Have a code?”, and the account gets the paid features for good. The month-long trial for new accounts is unchanged."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
     "title": "A declined card no longer gets Pro",
     "details": "If a card was declined at checkout (or the bank’s security check was abandoned), Stripe still creates the subscription and marks it “incomplete”. We were storing that as a cancelled plan with a month or a year still to run, which the app reads as Pro until the end of the period, and the failed first invoice opened a seven-day grace window on top. A plan that was never paid for now writes nothing at all. Accounts already stored that way before this fix are not corrected automatically."
   },

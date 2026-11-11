@@ -2558,8 +2558,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
            It was the "Tester code" row until 2026-10-17, when the tester code
            was retired for a month-long trial every new account gets (owner's
-           call). The one code left is VAULT_PASSKEY, the broker's door to
-           their comps and pipeline, so the row is worded for any code.
+           call). The tester code came back on 2026-11-10; the row keeps its
+           any-code wording because VAULT_PASSKEY, the broker's door to their
+           comps and pipeline, redeems through this same input.
 
            It is a row, not a disclosure: every other row in this panel shows
            its control, and hiding an input behind a toggle inside a panel that
@@ -19963,19 +19964,22 @@ async function renderMyDesk() {
     // there is still something this account could redeem. Deliberately NOT
     // gated on billingLive() — a code is exactly what someone uses on a
     // deployment with no Stripe keys, the same exception the vault link makes.
-    // The vaultPasskey check exists because /api/config's `canUseVault` only
-    // reports what THIS user already holds, not whether a door exists at all —
-    // without it, a deployment that never set the passkey still showed a row
-    // that could only ever fail on submit.
+    // The testerPasskey/vaultPasskey checks exist because /api/config's
+    // `tester` and `canUseVault` flags only report what THIS user already
+    // holds, not whether a door exists at all — without them, a deployment
+    // that never set either passkey still showed a row that could only ever
+    // fail on submit.
     //
-    // One door since 2026-10-17: the tester code (and its testerPasskey
-    // flag) was retired for the month-long trial, so the vault code is the
-    // only thing this row can redeem, and someone who can already open their
-    // comps (Pro, a trial, a firm seat, the grant itself) has nothing to type.
+    // Two doors again since 2026-11-10 (the tester code was off from
+    // 2026-10-17 until then), so the test is per door. Both codes go to the
+    // same input; the server decides which grant a code opens.
+    // A trial is not the tester grant: someone handed a tester code mid-trial
+    // must still be able to redeem it, or their Pro ends with the trial.
+    const canRedeemTester = Boolean(proConfig && proConfig.testerPasskey) && (!pro || isTrialPro());
     const canRedeemVault = Boolean(proConfig && proConfig.vaultPasskey)
       && !Boolean(proConfig && proConfig.canUseVault);
     document.getElementById("passkeyRow")
-      .classList.toggle("hidden", !currentUser || !canRedeemVault);
+      .classList.toggle("hidden", !currentUser || !(canRedeemTester || canRedeemVault));
 
     // The feedback badge: where members send recommendations, ideas and
     // problems to the team. Every signed-in member since 2026-10-17 (the

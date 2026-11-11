@@ -3276,6 +3276,19 @@ const deleteFirst = async (doc) => {
   await tick();
 };
 
+// /api/vault/comp as server.js answers it: a DELETE is 200, and the add route
+// Undo re-posts through is 201 Created. These stubs said 200 for both until
+// 2026-11-10, which is how an Undo that treated every real restore as a
+// failure passed its tests.
+const compRoute = (onPost, unpublished) => (init) => {
+  if (init && init.method === "POST") {
+    if (onPost) onPost(JSON.parse(init.body));
+    return Promise.resolve(jsonResponse(201, { ok: true, comp: {} }));
+  }
+  return Promise.resolve(jsonResponse(200, { ok: true, unpublished: !!unpublished }));
+};
+const reloads = (calls) => calls.filter((c) => c.url.indexOf("/api/vault?") === 0).length;
+
 test("a delete offers a way back", async () => {
   const realConfirm = global.confirm;
   global.confirm = () => true;
@@ -3293,16 +3306,12 @@ test("Undo re-posts the comp through the ordinary add route", async () => {
   global.confirm = () => true;
   let posted = null;
   try {
-    const { doc } = await runPage([comp({
+    const { doc, calls } = await runPage([comp({
       id: "c1", address: "100 Main St", property_type: "Industrial",
       transaction: "sale", deal_date: "2026-03-14", price: 1000000, size_sqft: 10000,
-    })], null, {
-      comp: (init) => {
-        if (init && init.method === "POST") posted = JSON.parse(init.body);
-        return Promise.resolve(jsonResponse(200, { ok: true, unpublished: false }));
-      },
-    });
+    })], null, { comp: compRoute((body) => { posted = body; }) });
     await deleteFirst(doc);
+    const before = reloads(calls);
     doc.getElementById("compMsg").fire("click", { target: { id: "undoDel" } });
     await tick();
 
@@ -3312,6 +3321,8 @@ test("Undo re-posts the comp through the ordinary add route", async () => {
     assert.equal(posted.size_sqft, "10000");
     assert.equal(posted.deal_date, "2026-03-14");
     assert.match(doc.getElementById("compMsg").textContent, /Put back/);
+    assert.equal(doc.getElementById("compMsg").className, "msg ok", "a restore that worked is not an error");
+    assert.equal(reloads(calls), before + 1, "the book is read again, so the comp is back on screen");
   } finally { global.confirm = realConfirm; }
 });
 
@@ -3322,7 +3333,7 @@ test("putting back a published comp does not republish it, and says so", async (
   global.confirm = () => true;
   try {
     const { doc } = await runPage([comp({ id: "c1", address: "100 Main St", published: true })], null, {
-      comp: () => Promise.resolve(jsonResponse(200, { ok: true, unpublished: true })),
+      comp: compRoute(null, true),
     });
     await deleteFirst(doc);
     assert.match(doc.getElementById("compMsg").innerHTML, /withdrawn from the public/);
@@ -3338,10 +3349,7 @@ test("Undo is offered once — a second click cannot double-restore", async () =
   let posts = 0;
   try {
     const { doc } = await runPage([comp({ id: "c1", address: "100 Main St" })], null, {
-      comp: (init) => {
-        if (init && init.method === "POST") posts += 1;
-        return Promise.resolve(jsonResponse(200, { ok: true, unpublished: false }));
-      },
+      comp: compRoute(() => { posts += 1; }),
     });
     await deleteFirst(doc);
     doc.getElementById("compMsg").fire("click", { target: { id: "undoDel" } });
@@ -3365,6 +3373,68 @@ test("a refused restore says so instead of claiming success", async () => {
     doc.getElementById("compMsg").fire("click", { target: { id: "undoDel" } });
     await tick();
     assert.match(doc.getElementById("compMsg").textContent, /already have this comp/);
+  } finally { global.confirm = realConfirm; }
+});
+
+// What Undo posts is read off the row the page holds, and three kinds of row
+// came back wrong or not at all until 2026-11-10. Each body below is checked
+// against the server's own normalizeRow, since that is what the route runs.
+const undoBody = async (row) => {
+  let posted = null;
+  const { doc } = await runPage([comp(row)], null, { comp: compRoute((body) => { posted = body; }) });
+  await deleteFirst(doc);
+  doc.getElementById("compMsg").fire("click", { target: { id: "undoDel" } });
+  await tick();
+  return posted;
+};
+
+test("Undo puts a lease back with its renewal dates", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const posted = await undoBody({
+      id: "c1", address: "100 Main St, Boise, ID", property_type: "Office", transaction: "lease",
+      deal_date: "2025-06-01", price: null, size_sqft: 12500, price_per_sqft: null,
+      rent_psf: 28.5, rent_basis: "annual", lease_type: "NNN", rent_psf_yr: 28.5,
+      lease_expiry: "2030-05-31", option_notice_date: "2029-11-30",
+    });
+    assert.equal(posted.lease_expiry, "2030-05-31");
+    assert.equal(posted.option_notice_date, "2029-11-30");
+    const back = VAULT.normalizeRow(posted);
+    assert.equal(back.ok, true, JSON.stringify(back.errors));
+    assert.equal(back.row.lease_expiry, "2030-05-31", "the renewal watch still has its deadline");
+    assert.equal(back.row.rent_psf_yr, 28.5);
+  } finally { global.confirm = realConfirm; }
+});
+
+test("Undo can put an undated comp back", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const posted = await undoBody({
+      id: "c1", address: "100 Main St, Boise, ID", deal_date: null, price: 1000000, size_sqft: 10000,
+    });
+    assert.equal(posted.deal_date, "undated",
+      "a stored null date is the undated sentinel, and the word is what the route accepts");
+    const back = VAULT.normalizeRow(posted);
+    assert.equal(back.ok, true, JSON.stringify(back.errors));
+    assert.equal(back.row.deal_date, null);
+  } finally { global.confirm = realConfirm; }
+});
+
+test("Undo does not state a value the comp only inherited from its building", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const posted = await undoBody({
+      id: "c1", address: "100 Main St, Boise, ID", deal_date: "2025-01-02", price: 1000000,
+      size_sqft: 10000, price_per_sqft: 100, year_built: "1998",
+      inherited: ["size_sqft", "price_per_sqft"],
+      facts: { values: { size_sqft: 10000 }, conflicts: {}, prior: {} },
+    });
+    assert.equal("size_sqft" in posted, false, "the size is the building's, stated on another deal");
+    assert.equal(posted.year_built, "1998", "what this deal states itself still travels");
+    assert.equal(posted.price, "1000000");
   } finally { global.confirm = realConfirm; }
 });
 

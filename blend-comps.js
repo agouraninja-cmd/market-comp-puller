@@ -109,6 +109,41 @@ const FIELD_MAP = {
   geo_source: "geo_source",
 };
 
+// A lease's figure is its RENT (migration 029), and a report reads a lease's
+// rent out of the price_or_rate TEXT (market-snapshot.js's leaseRentPsfYr).
+// FIELD_MAP predates 029, so until 2026-11-10 a broker's own lease reached
+// their report, and a colleague's the firm shelf, with no rate at all: a row
+// that fed no rent range, while archiveCoverage below counted it as evidence.
+//
+// These four are what toReportComp needs to write that text. They are NOT in
+// FIELD_MAP and are never report keys: the report gets one string, in the
+// words its own lease comps use ("$12.96/SF/yr NNN").
+const LEASE_RATE_FIELDS = ["rent_psf", "rent_basis", "rent_psf_yr", "lease_type"];
+
+// Two decimals, the way a rent is quoted, unless the stored figure has more.
+function rentText(n) {
+  const fixed = n.toFixed(2);
+  return Number(fixed) === n ? fixed : String(n);
+}
+
+// The rate a lease row quotes, or "". The ANNUAL figure is always in it:
+// that is the one leaseRentPsfYr reads, and the vault's canonical one. A
+// monthly-quoted lease leads with its monthly rate, the way its own market
+// says it, because leaseQuoteBasis picks the display basis off the leading
+// quote.
+function leaseRateText(row) {
+  if (!String(row.transaction || "").toLowerCase().startsWith("lease")) return "";
+  const yr = Number(row.rent_psf_yr);
+  if (!Number.isFinite(yr) || !(yr > 0)) return "";
+  const kind = row.lease_type ? " " + String(row.lease_type).trim() : "";
+  const annual = "$" + rentText(yr) + "/SF/yr" + kind;
+  const mo = Number(row.rent_psf);
+  if (String(row.rent_basis || "").toLowerCase() === "monthly" && Number.isFinite(mo) && mo > 0) {
+    return "$" + rentText(mo) + "/SF/month" + kind + " (" + annual + ")";
+  }
+  return annual;
+}
+
 // A vault row, shaped as a report comp. Empty values are dropped rather than
 // carried as "" so the comp matches what the model produces for a sparse comp.
 function toReportComp(row) {
@@ -119,6 +154,11 @@ function toReportComp(row) {
     if (v === null || v === undefined || v === "") continue;
     out[key] = v;
   }
+  // A lease's rate is its rent, even over a figure left in its price cell:
+  // the vault never reads that cell on a lease either (its ledger shows
+  // rent_psf_yr), and a bare total there reads as no rent at all.
+  const rate = leaseRateText(row);
+  if (rate) out.price_or_rate = rate;
   // The book stores "sale" / "lease" (broker-vault.js's parseTransaction); the
   // report's own comps say "Sale" / "Lease", and a table mixing the two read
   // as two kinds of deal. Every reader compares case-blind, so this changes
@@ -165,10 +205,15 @@ function isPrivateComp(c) {
 // `address_key`, `upload_id`, `property_id` and the `published` flags are the
 // vault's own plumbing; none of them is in FIELD_MAP, so none of them can
 // reach another account's database row by being forgotten here.
+//
+// Plus LEASE_RATE_FIELDS, the four a lease's rate is written from: the stored
+// copy goes back through toReportComp, which needs them to quote the rent. A
+// copy shared before 2026-11-10 holds none and quotes no rate until its owner
+// edits or re-shares it.
 function firmCompPayload(row) {
   if (!row || typeof row !== "object" || Array.isArray(row)) return null;
   const out = {};
-  for (const col of Object.keys(FIELD_MAP)) {
+  for (const col of Object.keys(FIELD_MAP).concat(LEASE_RATE_FIELDS)) {
     const v = row[col];
     if (v === null || v === undefined || v === "") continue;
     out[col] = v;
@@ -382,4 +427,5 @@ module.exports = {
   propertyCoordsById,
   PRIVATE_SOURCE_TYPE,
   FIELD_MAP,
+  LEASE_RATE_FIELDS,
 };

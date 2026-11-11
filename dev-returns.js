@@ -144,6 +144,11 @@
     // that is not a project, and the upper bound keeps the loop finite.
     let lo = -0.9999, hi = 100;
     let nLo = npv(lo);
+    // On a long build (1 + lo)^t underflows to 0, so NPV at the low end is
+    // Infinity or NaN and read as "no answer": a build of about 76 months or
+    // more had no IRR until 2026-11-10. Halve toward zero until it is finite;
+    // a shorter build never enters this, so its answer is untouched.
+    while (!Number.isFinite(nLo) && lo < -0.01) { lo /= 2; nLo = npv(lo); }
     const nHi = npv(hi);
     if (!Number.isFinite(nLo) || !Number.isFinite(nHi)) return null;
     if (nLo * nHi > 0) return null;                    // no root in range

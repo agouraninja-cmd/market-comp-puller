@@ -1172,6 +1172,10 @@ const STREETVIEW_RATE_MAX = 120;
 // obeys them, which is the half that bills.
 const STREETVIEW_API_URL = (process.env.STREETVIEW_API_URL ||
   "https://maps.googleapis.com/maps/api/streetview").trim().replace(/\/+$/, "");
+// The metadata statuses that mean Google refused US (quota, a key problem, its
+// own hiccup) rather than answered about the place. Neither street-photo
+// cache may remember one of these as "no photo".
+const STREETVIEW_REFUSED_US = /^(OVER_QUERY_LIMIT|REQUEST_DENIED|UNKNOWN_ERROR)$/;
 // Is there a good street photo of this (normalized) address? Google's free
 // metadata call, judged by SVAIM.judgeAddressPano and remembered per address.
 // `near` is the caller's own geocode, or null. A failed call is not
@@ -1186,7 +1190,7 @@ async function judgeAddressPhoto(address, near) {
   const mj = await mr.json();
   // Google refusing US (quota, a key problem) says nothing about the address:
   // thrown, so it is neither remembered here nor told to the page as "no photo".
-  if (!mj || /^(OVER_QUERY_LIMIT|REQUEST_DENIED|UNKNOWN_ERROR)$/.test(String(mj.status))) {
+  if (!mj || STREETVIEW_REFUSED_US.test(String(mj.status))) {
     throw new Error("Street View metadata: " + String(mj && mj.status));
   }
   const judged = SVAIM.judgeAddressPano(mj, Date.now(), near) || false;
@@ -4016,6 +4020,12 @@ async function handleStripeEvent(evt) {
 
       if (obj.mode !== "subscription" || !obj.subscription) return;
       const sub = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "GET", `subscriptions/${obj.subscription}`);
+      // A session can complete before the money does (a bank debit). The
+      // subscription is "incomplete" until then and grants nothing;
+      // async_payment_succeeded lands here again once it is paid.
+      if (STRIPE.neverStarted(sub)) {
+        return console.log(`Checkout ${obj.id} completed but subscription ${sub.id} is ${sub.status} — nothing granted yet.`);
+      }
       // A FIRM checkout (migration 033). Checked before the user path and
       // returned from, because the two write different tables and a firm
       // session must never land a row in `subscriptions` keyed on whoever
@@ -4049,6 +4059,14 @@ async function handleStripeEvent(evt) {
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
+      // A subscription whose first payment has not gone through decides
+      // nothing (stripe.js neverStarted). Until 2026-11-10 it was written as
+      // "cancelled" with Stripe's period end a month or a year ahead, which
+      // entitlements reads as Pro to the end of the period: a declined card at
+      // checkout bought the plan.
+      if (STRIPE.neverStarted(obj)) {
+        return console.log(`Subscription ${obj.id} is ${obj.status} (never paid) — nothing written.`);
+      }
       // The firm path first, by metadata and then by customer — the second
       // matters because a portal cancellation of an old subscription can
       // arrive with metadata Stripe never had.
@@ -4079,6 +4097,9 @@ async function handleStripeEvent(evt) {
         existingGraceUntil: priorGrace && priorGrace.grace_until,
       });
       if (!row) return;
+      if (!STRIPE.mayReplaceRow(priorGrace, row, subscriptionRowIsLive(priorGrace))) {
+        return console.log(`Subscription ${obj.id} (${row.status}) is not the one user ${userId} is on — their row is left alone.`);
+      }
       await upsertSubscription(row);
       console.log(`Subscription ${evt.type.split(".").pop()}: ${row.plan} -> ${row.status} (user ${userId})`);
       return;
@@ -4113,6 +4134,13 @@ async function handleStripeEvent(evt) {
         && obj.parent.subscription_details.subscription);
       if (!subId) return;
       const sub = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "GET", `subscriptions/${subId}`);
+      // The FIRST invoice failing is a sale that did not happen, not a lapse:
+      // there is no paid period for a grace window to extend. This branch
+      // forces past_due over whatever the subscription says, so without this
+      // a declined card at checkout bought seven days of Pro.
+      if (STRIPE.neverStarted(sub)) {
+        return console.log(`First payment failed on subscription ${sub.id} (${sub.status}) — no grace for a plan that never started.`);
+      }
       const failedOrgId = (sub.metadata && sub.metadata.org_id) || await orgIdForStripeCustomer(sub.customer);
       if (failedOrgId) {
         const orgRow = await applyOrgSubscription(sub, {
@@ -4139,6 +4167,9 @@ async function handleStripeEvent(evt) {
       const row = STRIPE.subscriptionRowFrom({ ...sub, status: "past_due" }, STRIPE_PRICE_IDS,
         { userId, graceDays: ENT.GRACE_DAYS, existingGraceUntil: existing && existing.grace_until });
       if (!row) return;
+      if (!STRIPE.mayReplaceRow(existing, row, subscriptionRowIsLive(existing))) {
+        return console.log(`Payment failed on subscription ${sub.id}, which is not the one user ${userId} is on — their row is left alone.`);
+      }
       await upsertSubscription(row);
       console.log(`⚠ Payment failed — grace until ${row.grace_until} (user ${userId})`);
       // Owner-facing only (sendEmail, not sendOutboundEmail): dunning mail to
@@ -4269,7 +4300,19 @@ function noteCorpusFailure(kind, err) {
   }
 }
 
-function corpusNum(v) { const n = Number(String(v || "").replace(/[^0-9.]/g, "")); return Number.isFinite(n) && n > 0 ? n : null; }
+// The first number written in a stored value, commas dropped. NOT "every digit
+// in it", which is what corpusNum and the size memo did until 2026-11-10:
+// stripping the non-digits joins whatever numbers the text holds, so
+// "$7.00-$12.00/SF/yr NNN" became "7.0012.00" (not a number: the row read as
+// unpriced here while the blend and the audit called it priced), "$115-$130"
+// became 115130, "$28.00/SF/yr FSG, 3% bumps" 28.003, and "25,000 sq. ft."
+// "25000.." (so the size was never remembered). blend-corpus.js moneyNumber
+// reads the same way.
+function firstNumber(v) {
+  const m = /\d[\d,]*(?:\.\d+)?|\.\d+/.exec(String(v == null ? "" : v));
+  return m ? Number(m[0].replace(/,/g, "")) : NaN;
+}
+function corpusNum(v) { const n = firstNumber(v); return Number.isFinite(n) && n > 0 ? n : null; }
 // Corpus rows for one watched market: DB rows (when configured) + any rows
 // that fell back to the file, newest first.
 async function corpusRowsForMarkets(markets, property_type, limit) {
@@ -4643,6 +4686,19 @@ function cacheKeyFor({ address, type, note, months, maxComps, txFocus, subjectSi
     .replace(/\s*,\s*/g, ", ")
     .replace(/\s+/g, " ")
     .trim();
+  // The note and the subject details are FIGURES as often as words, and a
+  // period inside a number is not punctuation. `norm` on them made "2.5 miles"
+  // and "25 miles" one key, and a 2.4-acre and a 24-acre lot one building, so a
+  // corrected search inside the cache window was served the report built for
+  // the figure it replaced (until 2026-11-10). The address keeps `norm`, so no
+  // existing key for an undecimalled search moves.
+  const normText = (s) => String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\.(?!\d)/g, "")
+    .replace(/\s*,\s*/g, ", ")
+    .replace(/\s+/g, " ")
+    .trim();
   const verifiedSig = (verifiedComps || [])
     .map((c) => `${c.address}|${c.deal_date}|${c.price_or_rate}`)
     .sort()
@@ -4650,10 +4706,10 @@ function cacheKeyFor({ address, type, note, months, maxComps, txFocus, subjectSi
   // Two different buildings can share an address, type, and size — a 48-unit
   // and a 6-unit would otherwise collide and be served each other's comps.
   const detailsSig = Object.entries(subjectDetails || {})
-    .map(([k, v]) => `${k}=${norm(v)}`)
+    .map(([k, v]) => `${k}=${normText(v)}`)
     .sort()
     .join(",");
-  const raw = [norm(address), type, norm(note), months, maxComps, txFocus, subjectSizeSqft || "", verifiedSig].join("::");
+  const raw = [norm(address), type, normText(note), months, maxComps, txFocus, subjectSizeSqft || "", verifiedSig].join("::");
   // Appended only when present, so every existing cache entry keeps its key
   // instead of the whole 7-day cache invalidating on deploy.
   return crypto.createHash("sha256").update(detailsSig ? `${raw}::${detailsSig}` : raw).digest("hex");
@@ -4947,7 +5003,7 @@ async function findKnownSubjectSize(address) {
 function rememberSubjectSize(address, payload) {
   (async () => {
     const key = subjectSizeKey(address);
-    const size = Math.round(Number(String((payload && payload.subject_size_sqft) || "").replace(/[^0-9.]/g, "")));
+    const size = Math.round(firstNumber(payload && payload.subject_size_sqft));
     if (!key || !Number.isFinite(size) || size <= 0 || size > 20_000_000) return;
     const source = String((payload && payload.subject_size_source) || "").trim();
     // An estimated size is an answer for THIS report, not a fact about the
@@ -5128,24 +5184,28 @@ async function storeSharedReport(id, payload, opts = {}) {
       sharedReportsMem.set(id, payload);
       return;
     } catch (err) {
-      // The two visibilities need OPPOSITE failure behaviour, which is why
-      // this catch exists rather than a bare await.
+      // With a database configured, a failed write REFUSES, for every
+      // visibility.
       //
-      // A PUBLIC share keeps the fallback it has always had: the file store
-      // holds the body, the link works, and a database blip costs nothing.
-      // Removing that would turn a working feature into a 500.
-      //
-      // An INVITED share must NOT fall back. The file store has nowhere to
+      // An INVITED share could never fall back: the file store has nowhere to
       // put a viewer list, so a fallback would write a report that
       // getShareRecord later reads back as PUBLIC — publishing the exact
-      // thing the member asked to restrict. Fail loudly instead.
-      if (visibility !== "public") throw err;
-      console.error(`Shared report DB write failed (${err.message}) — falling back to file.`);
+      // thing the member asked to restrict.
+      //
+      // A PUBLIC share fell back to the file until 2026-11-10, "so the link
+      // works through a database blip". It did not: getShareRecord reads ONLY
+      // the database when one is configured (it must, for the ACL), so the
+      // sender was answered 200 with a link that 404'd from its first click.
+      // And on Render the file is gone at the next deploy either way (rule 4:
+      // where a local file would be the loss, refuse). The route turns this
+      // into "Could not create the share link. Please try again."
+      console.error(`Shared report DB write failed (${err.message}) — refused, nothing stored.`);
+      throw err;
     }
   }
   // File fallback, PUBLIC shares only. This function enforces that itself —
   // do not rely on Task 5's route-level check alone. The `if (DB_CONFIGURED)`
-  // block above only asymmetry-guards a database WRITE FAILURE; when there is
+  // block above only refuses on a database WRITE FAILURE; when there is
   // no database at all, execution skips that block entirely and would
   // otherwise land here with an invited share's payload and no visibility
   // check. The file store has no column for visibility, user_id or viewers,
@@ -5475,7 +5535,11 @@ async function inviteOrgMembers(orgId, emails, invitedBy) {
   await sbRequest("PATCH",
     `org_members?org_id=eq.${encodeURIComponent(orgId)}` +
     `&email=in.(${pgInList(emails)})&removed_at=not.is.null`,
-    { removed_at: null, joined_at: null, invited_at: new Date().toISOString() },
+    // role too: the insert above is ignored for a row that already exists, so
+    // without it a removed owner or admin came back holding their old role
+    // (until 2026-11-10), and an admin, who may invite but not promote, could
+    // hand a firm to a departed owner. An invitation is always a member.
+    { removed_at: null, joined_at: null, invited_at: new Date().toISOString(), role: "member" },
     { prefer: "return=minimal" });
 }
 
@@ -5586,6 +5650,12 @@ async function setOrgSeats(orgId, seats) {
 // One firm subscription event, applied. Mirrors the individual path's shape
 // including its grace rule: a second failed payment inside the window must not
 // buy another seven days.
+// Is this stored subscription row still granting anything? entitlements.js
+// decides; this only names the three states that mean yes.
+function subscriptionRowIsLive(row) {
+  return ["active", "cancelling", "grace"].includes(ENT.subscriptionState(row, Date.now()));
+}
+
 async function applyOrgSubscription(sub, { orgId, statusOverride, label }) {
   const source = statusOverride ? { ...sub, status: statusOverride } : sub;
   const priorFirm = await findOrgSubscription(orgId);
@@ -5595,6 +5665,12 @@ async function applyOrgSubscription(sub, { orgId, statusOverride, label }) {
   });
   if (!row) {
     console.error(`Firm subscription ${sub && sub.id} carries a price we do not sell — ignored.`);
+    return null;
+  }
+  // The same rule as the user path (stripe.js mayReplaceRow): a subscription
+  // the firm is no longer on may not take the row of the one it is paying for.
+  if (!STRIPE.mayReplaceRow(priorFirm, row, subscriptionRowIsLive(priorFirm))) {
+    console.log(`Firm subscription ${sub && sub.id} (${row.status}) is not the one firm ${orgId} is on — its row is left alone.`);
     return null;
   }
   row.org_id = orgId;
@@ -5970,14 +6046,28 @@ async function msgThreadRowsByIds(ids, orgId) {
 // An absent or unparseable cursor reads the WHOLE thread rather than nothing,
 // which is the hub's decision too: a bad cursor should cost a big read, not an
 // empty screen that looks like the conversation was deleted.
-async function msgMessageRows(threadId, since) {
+//
+// WHICH END of a long thread a read gets (2026-11-10). A poll reads FORWARD
+// from its cursor, oldest first, so a browser that fell behind catches up in
+// order. Every other read wants the RECENT end: `tail` is the list's read (its
+// preview and unread count live in the last messages) and the first read of
+// an open conversation; `before` is a page of older messages for a reader
+// scrolling back. Until then all three read oldest-first with the same limit,
+// so past PAGE_SIZE messages the list previewed message 200 forever with no
+// unread count, and the conversation opened on its oldest 200 and trickled
+// the rest in a page per poll. Always returned oldest first.
+async function msgMessageRows(threadId, since, { tail = false, before = "" } = {}) {
   if (!DB_CONFIGURED || !threadId) return [];
   const at = Date.parse(String(since || ""));
   const cursor = Number.isFinite(at) ? `&created_at=gt.${encodeURIComponent(new Date(at).toISOString())}` : "";
-  return (await sbRequest("GET",
-    `msg_messages?thread_id=eq.${encodeURIComponent(threadId)}${cursor}` +
+  const end = Date.parse(String(before || ""));
+  const upper = Number.isFinite(end) ? `&created_at=lt.${encodeURIComponent(new Date(end).toISOString())}` : "";
+  const newestFirst = Boolean(tail || upper);
+  const rows = (await sbRequest("GET",
+    `msg_messages?thread_id=eq.${encodeURIComponent(threadId)}${cursor}${upper}` +
     `&select=id,thread_id,user_id,author_email,body,comp_count,created_at,edited_at,deleted_at` +
-    `&order=created_at.asc&limit=${MSG.PAGE_SIZE}`)) || [];
+    `&order=created_at.${newestFirst ? "desc" : "asc"}&limit=${MSG.PAGE_SIZE}`)) || [];
+  return newestFirst ? rows.reverse() : rows;
 }
 
 // The messages in a thread UNSENT after `since` (the poll cursor). The poll
@@ -10522,6 +10612,10 @@ async function finishReportForViewer(rep, ctx) {
   const {
     ent, internal, addressOk, typeOk, noteOk, monthsOk, sizeOk,
     corpusRadiusRows = [], vaultRows = [], firmCompRows = [], callStats,
+    // The search's Sales-only / Leases-only focus. The radius blend reads it
+    // (blend-corpus.js): until 2026-11-10 it did not, so saved SALES were
+    // appended to a leases-only report, and saved leases to a sales-only one.
+    txFocusOk = "both",
   } = ctx || {};
   // An internal caller (x-admin-key, i.e. the seed generator and the eval
   // harness) gets the whole report, ungated. It also gets what the search
@@ -10572,6 +10666,7 @@ async function finishReportForViewer(rep, ctx) {
       propertyType: typeOk,
       marketNote: noteOk,
       subjectSize: sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0,
+      txFocus: txFocusOk,
     });
     if (merged && merged.corpus_count) {
       const radiusMi = RADIUSBLEND.radiusMilesFor(typeOk, noteOk);
@@ -11103,13 +11198,34 @@ async function patchBulkItem(userId, id, patch) {
 //
 // Capped at cap+1 rows so the query cost cannot grow with a heavy user: the
 // only question is whether the number is at or over the ceiling.
+//
+// Plus what today's DELETED runs spent (bulkSpentInDeletedRuns below): the
+// rows this counts are gone once their run is.
 async function bulkAddressesUsedToday(userId, cap) {
   const since = todayUTC() + "T00:00:00Z";
   const rows = await sbRequest("GET",
     `bulk_job_items?user_id=eq.${encodeURIComponent(userId)}` +
     `&created_at=gte.${encodeURIComponent(since)}` +
     `&status=neq.queued&select=id&limit=${Math.max(1, cap) + 1}`);
-  return Array.isArray(rows) ? rows.length : 0;
+  return (Array.isArray(rows) ? rows.length : 0) + bulkSpentInDeletedRuns(userId);
+}
+
+// Addresses a member ran today in runs they have since deleted. Deleting a run
+// cascades its bulk_job_items away (036), and those rows ARE the day's count,
+// so until 2026-11-10 a member at the limit could delete their finished runs
+// and have the whole allowance back, as often as they liked. Remembered here
+// instead: in memory, like DAILY_SEARCH_CAP and for its reason (a spend
+// backstop, not accounting), so a restart forgives it and no migration is
+// needed. user_id -> { day, n }.
+const bulkDeletedSpend = new Map();
+function bulkSpentInDeletedRuns(userId) {
+  const e = bulkDeletedSpend.get(String(userId));
+  return e && e.day === todayUTC() ? e.n : 0;
+}
+function rememberDeletedBulkSpend(userId, n) {
+  if (!(n > 0)) return;
+  bulkDeletedSpend.set(String(userId), { day: todayUTC(), n: bulkSpentInDeletedRuns(userId) + n });
+  if (bulkDeletedSpend.size > 5000) bulkDeletedSpend.clear();   // crude cap, subCache's
 }
 
 // What the workspace needs before it can draw a form: the member's runs, the
@@ -11263,16 +11379,23 @@ async function runBulkItem(item, ctx) {
       ent, internal: false,
       addressOk: address, typeOk: job.property_type, noteOk: job.note || "",
       monthsOk: job.months, sizeOk: size,
+      txFocusOk: ["sales", "leases"].includes(job.tx_focus) ? job.tx_focus : "both",
       corpusRadiusRows: shared.corpusRadiusRows,
       vaultRows: (priv && priv.vault) || [],
       firmCompRows: (priv && priv.firm) || [],
     });
 
-    const valued = BULK.valueFromReport(report, {
+    // A leases-only run asked for no sale value, so it gets none, whatever
+    // sales a blend laid in (the member's own vault and their firm's are
+    // blended without regard to the focus). Its answer is the rent range in
+    // the report, which the row's own message below says.
+    const valued = job.tx_focus === "leases" ? null : BULK.valueFromReport(report, {
       subjectSizeSqft: size,
       asOf: Date.now(),
       note: job.note || "",
       propertyType: job.property_type,
+      // The row's own asking price, which the linked report weights by too.
+      askingPrice: item.subject && item.subject.asking,
     });
 
     if (!valued) {
@@ -20936,7 +21059,9 @@ const server = http.createServer((req, res) =>
         // session; they must keep receiving whole reports or market pages
         // would publish four comps. ADMIN_KEY is the existing internal
         // credential (same one the leads/corpus CSV downloads use).
-        const internal = ADMIN_KEY && req.headers["x-admin-key"] === ADMIN_KEY;
+        // secretMatches, like every other secret in this file: this is the
+        // widest bypass there is and was the one compared with ===.
+        const internal = Boolean(ADMIN_KEY) && secretMatches(req.headers["x-admin-key"], ADMIN_KEY);
         // The eval harness needs a genuinely fresh search: a cached report
         // would score the model that WROTE it, silently reporting "no
         // difference" between two models. Internal callers only, and it
@@ -21012,7 +21137,7 @@ const server = http.createServer((req, res) =>
         // after the guest gate, and `searched` carries the call's real spend,
         // which only exists once the search has run.
         const gate = (rep) => finishReportForViewer(rep, {
-          ent, internal, addressOk, typeOk, noteOk, monthsOk, sizeOk,
+          ent, internal, addressOk, typeOk, noteOk, monthsOk, sizeOk, txFocusOk,
           corpusRadiusRows, vaultRows, firmCompRows,
           callStats: searched ? searched.callStats : null,
         });
@@ -22678,7 +22803,15 @@ const server = http.createServer((req, res) =>
               summary.previews.push({ to: account.email, kind, subject: mail.subject, text: mail.text });
               continue;
             }
-            sendOutboundEmail(account.email, mail.subject, mail.text);
+            // AWAITED, and its answer read. sendOutboundEmail never rejects: a
+            // refused or timed-out send resolves false. Until 2026-11-10 the
+            // ledger was written anyway (and the run reported it sent), so one
+            // Resend 429 on a busy day cost that account its email for good.
+            if (!(await sendOutboundEmail(account.email, mail.subject, mail.text))) {
+              console.error(`Trial email not accepted for ${account.id}; left unmarked for the next run.`);
+              summary.failed += 1;
+              continue;
+            }
             await markTrialNoticeSent(account.id, kind);
             summary.sent[kind] += 1;
           } catch (err) {
@@ -22757,8 +22890,15 @@ const server = http.createServer((req, res) =>
               summary.previews.push({ to: account.email, subject: mail.subject, text: mail.text });
               continue;
             }
-            sendOutboundEmail(account.email, mail.subject, mail.text);
-            // Marked AFTER the send is handed off, and only for the markets
+            // AWAITED, and its answer read (the trial emails' rule and reason):
+            // a send Resend refused must leave last_digest_at where it was, or
+            // these comps are never mailed.
+            if (!(await sendOutboundEmail(account.email, mail.subject, mail.text))) {
+              console.error(`Digest not accepted for ${account.id}; left unmarked for the next run.`);
+              summary.failed += 1;
+              continue;
+            }
+            // Marked AFTER the send succeeded, and only for the markets
             // that actually carried news. If this write fails the reader gets
             // one duplicate next run, which is the right way round: marking
             // first would lose the digest outright on a failed send, and a
@@ -22837,8 +22977,15 @@ const server = http.createServer((req, res) =>
                 summary.previews.push({ to: account.email, subject: mail.subject, text: mail.text });
                 continue;
               }
-              sendOutboundEmail(account.email, mail.subject, mail.text);
-              // Marked AFTER the send is handed off, and only the leases that
+              // AWAITED, and its answer read: renewal_notified_at is "one
+              // email per lease, ever", so marking a send Resend refused
+              // loses that reminder for good.
+              if (!(await sendOutboundEmail(account.email, mail.subject, mail.text))) {
+                console.error(`Renewal notice not accepted for ${account.id}; left unmarked for the next run.`);
+                summary.renewals.failed += 1;
+                continue;
+              }
+              // Marked AFTER the send succeeded, and only the leases that
               // were actually in it — markWatchlistDigested's rule and its
               // reason. A failed mark costs one duplicate next run; marking
               // first would lose the reminder outright, and a lost reminder is
@@ -23201,7 +23348,11 @@ const server = http.createServer((req, res) =>
         if (!user) return;
         if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Permit alerts are unavailable right now." });
         const uid = encodeURIComponent(user.id);
-        const opts = { cities: PERMIT_WATCH_CITIES, cityOf: permitCityOf, now: Date.now() };
+        // Every city the SWEEP reads, which is the menu the form draws
+        // (permitAlertsPayload), not PERMIT_WATCH_CITIES: that is the narrower
+        // list of portals that can look up ONE permit, and borrowing it here
+        // refused Nampa, which the form offers (until 2026-11-10).
+        const opts = { cities: PERMIT_SWEPT.map((c) => c.key), cityOf: permitCityOf, now: Date.now() };
         const proRequired = () => sendJson(res, 403, { error: "Permit alerts are part of CompNinja Pro.", code: "pro_required" });
         if (req.method === "POST") {
           const ent = await getEntitlements(user, undefined, isAdminRequest(req));
@@ -25133,7 +25284,9 @@ const server = http.createServer((req, res) =>
           // "12500 SF" — and refuses what is not a number rather than storing
           // a best effort, which is broker-vault.js's rule and the reason a
           // wrong size is the most expensive figure in the report.
-          const parsed = VAULT.parseNumber(size_sqft);
+          // parseSizeSqft, so "2.5 acres" typed here is 108,900 SF and not
+          // 3 SF (the list's own reader, bulk.js, since 2026-11-10).
+          const parsed = VAULT.parseSizeSqft(size_sqft);
           if (!parsed.ok || !(parsed.value > 0)) {
             return sendJson(res, 400, { error: `"${String(size_sqft).slice(0, 40)}" is not a building size.` });
           }
@@ -25175,6 +25328,7 @@ const server = http.createServer((req, res) =>
             asOf: Date.parse(saved.updated_at || saved.created_at || "") || Date.now(),
             note: job.note || "",
             propertyType: job.property_type,
+            askingPrice: item.subject && item.subject.asking,
           });
           if (!valued) {
             return sendJson(res, 409, { error: "That report has no priced sale comps to value against." });
@@ -25348,10 +25502,24 @@ const server = http.createServer((req, res) =>
         if (!isUuidish(id)) return sendJson(res, 200, { ok: true }); // same no-op as deleting a nonexistent scoped row
         const control = bulkRunning.get(id);
         if (control) control.cancelled = true;
+        // What this run spent of TODAY's allowance, read before its rows go
+        // (rememberDeletedBulkSpend). Its own try: a failed count must not
+        // stop a member deleting their own run.
+        let spentToday = 0;
+        try {
+          const spent = await sbRequest("GET",
+            `bulk_job_items?user_id=eq.${encodeURIComponent(user.id)}&job_id=eq.${encodeURIComponent(id)}` +
+            `&created_at=gte.${encodeURIComponent(todayUTC() + "T00:00:00Z")}` +
+            `&status=neq.queued&select=id&limit=${BULK_DAILY_ADDRESSES + 1}`);
+          spentToday = Array.isArray(spent) ? spent.length : 0;
+        } catch (err) {
+          console.error("bulk DELETE: could not count the run's spend:", err.message);
+        }
         // Scoped by user_id, like every other delete in this app: without it,
         // knowing another member's job id would be enough to delete it.
         await sbRequest("DELETE",
           `bulk_jobs?user_id=eq.${encodeURIComponent(user.id)}&id=eq.${encodeURIComponent(id)}`);
+        rememberDeletedBulkSpend(user.id, spentToday);
         return sendJson(res, 200, { ok: true });
       })().catch((err) => {
         console.error("bulk DELETE error:", err.message);
@@ -26718,11 +26886,30 @@ const server = http.createServer((req, res) =>
         // firm, bulk) and, as there, treats a malformed id and someone else's id
         // as the same "not in your vault" rather than confirming which ids exist.
         if (!VAULT.isUuid(id)) return sendJson(res, 404, { error: "That import isn't one of yours." });
+        // The import's PUBLISHED comps first. Deleting the upload cascades its
+        // comps away, and with them the only record of which comp_submissions
+        // rows are theirs. Until 2026-11-10 this route skipped the retraction
+        // the one-comp delete has always done, so those public copies stayed
+        // approved and "Verified · via <firm>" in every matching report, with
+        // nothing left in the vault that could take them back. Read with
+        // user_id in the filter, so only the caller's own comps name what goes.
+        // A failure here stops the removal (the catch below): better an import
+        // still there than public copies nobody can reach.
+        const published = (await sbRequest("GET",
+          `broker_comps?upload_id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}` +
+          `&published=is.true&select=id,published_submission_id&limit=5000`)) || [];
+        const publicIds = published.map((c) => c.published_submission_id).filter((v) => v != null);
+        for (let i = 0; i < publicIds.length; i += 100) {
+          await sbRequest("DELETE",
+            `comp_submissions?id=in.(${pgInList(publicIds.slice(i, i + 100))})`,
+            undefined, { prefer: "return=minimal" });
+        }
         // user_id in the filter, not just the id: without it, knowing another
         // broker's upload id would be enough to delete their data.
         await sbRequest("DELETE",
           `broker_uploads?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
           undefined, { prefer: "return=minimal" });
+        if (publicIds.length) console.log(`Vault import ${id}: ${publicIds.length} published comp(s) retracted with it.`);
         console.log(`Vault import ${id} removed by user ${user.id}`);
         return sendJson(res, 200, { ok: true });
       })().catch((err) => {
@@ -27025,6 +27212,13 @@ const server = http.createServer((req, res) =>
             { signal: AbortSignal.timeout(6000) }
           );
           const mj = await mr.json();
+          // judgeAddressPhoto's rule, which this path lacked until 2026-11-10:
+          // Google refusing US says nothing about the building. Remembered as
+          // a miss, one quota blip left every pin asked during it on its
+          // aerial until the next deploy. Thrown, so it 404s unremembered.
+          if (!mj || STREETVIEW_REFUSED_US.test(String(mj.status))) {
+            throw new Error("Street View metadata: " + String(mj && mj.status));
+          }
           aim = SVAIM.judgePano({ lat, lng }, mj, Date.now()) || false;
           if (STREETVIEW_META_CACHE.size >= 500) {
             STREETVIEW_META_CACHE.delete(STREETVIEW_META_CACHE.keys().next().value);
@@ -27694,6 +27888,11 @@ const server = http.createServer((req, res) =>
   // matching, which is the classic way this check gets silently disabled.
   if (req.method === "POST" && req.url === "/api/stripe/webhook") {
     let raw = "";
+    // Decoded as ONE stream. Without this each chunk is decoded on its own,
+    // a multi-byte character cut across two of them ("1 × Pro" on an invoice
+    // line, an accented name) becomes U+FFFD twice, and the HMAC below no
+    // longer matches bytes Stripe really signed (until 2026-11-10).
+    req.setEncoding("utf8");
     req.on("data", (c) => { raw += c; if (raw.length > 1e6) req.destroy(); });
     req.on("end", async () => {
       const verdict = STRIPE.verifyWebhookSignature(raw, req.headers["stripe-signature"], STRIPE_WEBHOOK_SECRET);
@@ -30295,7 +30494,7 @@ const server = http.createServer((req, res) =>
         // they deleted previews, counts and lists only what was said after
         // (messaging.js, "Deleting a conversation").
         const recents = await Promise.all(readable.map(({ t, mineRow }) =>
-          msgMessageRows(t.id, MSG.historyStart(t, mineRow))));
+          msgMessageRows(t.id, MSG.historyStart(t, mineRow), { tail: true })));
         const out = readable.map(({ t, rows, mineRow }, i) => {
           const recent = recents[i];
           // Deleted, and nobody has written since: off this reader's list,
@@ -30489,7 +30688,14 @@ const server = http.createServer((req, res) =>
         // the browser sent: a conversation they deleted reads from the moment
         // they deleted it, on the first read and on every poll.
         const since = MSG.readCursor(q.get("since") || "", MSG.historyStart(thread, mineRow));
-        const messages = await msgMessageRows(id, since);
+        // Three reads share this route (msgMessageRows): a poll (`since`),
+        // the first read (neither), and a page of older messages (`before`,
+        // which a poll never carries). The history start above bounds all
+        // three, so paging back stops where the reader's copy starts.
+        const beforeRaw = q.get("since") ? "" : (q.get("before") || "");
+        const before = Number.isFinite(Date.parse(beforeRaw)) ? beforeRaw : "";
+        const firstRead = !q.get("since") && !before;
+        const messages = await msgMessageRows(id, since, { tail: firstRead, before });
         // An unsent message's comps are not drawn in the conversation (they
         // stay on the Comps tab), so they are not read for it either.
         const comps = await msgCompRowsForMessages(
@@ -30528,7 +30734,7 @@ const server = http.createServer((req, res) =>
           // The reader's own name for it on the FIRST read only: the page heads
           // the conversation from that read, and a poll never re-heads it.
           thread: threadPayload(thread, rows, String(g.user.id), null, 0, names,
-            q.get("since") ? "" : await msgNicknameFor(id, g.user.id)),
+            firstRead ? await msgNicknameFor(id, g.user.id) : ""),
           messages: messages.map((m) => {
             const mine = String(m.user_id || "") === String(g.user.id);
             const base = {
@@ -30559,7 +30765,11 @@ const server = http.createServer((req, res) =>
           // SERVER-ISSUED, never a browser clock — the hub's rule. Echoes the
           // cursor it was given when nothing new arrived, so a quiet poll does
           // not rewind the conversation.
-          cursor: messages.length ? messages[messages.length - 1].created_at : (since || ""),
+          // A page of older messages moves no cursor: the poll's place is the
+          // newest message the browser holds, and this page ends before that.
+          cursor: before ? "" : (messages.length ? messages[messages.length - 1].created_at : (since || "")),
+          // A full page of the recent end means there may be more behind it.
+          earlier: (firstRead || Boolean(before)) && messages.length >= MSG.PAGE_SIZE,
         });
       })().catch((err) => {
         console.error("Message thread read failed:", err.message);
@@ -32110,11 +32320,17 @@ const server = http.createServer((req, res) =>
         // signed-out app that corrects itself a beat later. Cookie presence
         // only — see authBoot above for why that is safe and why index.html
         // being no-store is what makes it safe.
-        .replace(AUTH_BOOT_MARKER, authBoot(Boolean(parseCookies(req)[SESSION_COOKIE])))
+        .replace(AUTH_BOOT_MARKER, () => authBoot(Boolean(parseCookies(req)[SESSION_COOKIE])))
         // The workspace's own data, right after the auth hint and for the
         // same reason: a member's first frame should be their desk, not a
         // page that fetches one. Empty for everybody else.
-        .replace(DESK_BOOT_MARKER, deskBootScript(deskBoot))
+        // A FUNCTION replacer, and it must stay one: a replacement STRING is
+        // read for $ patterns ($', $`, $&, $$), and this one is the member's
+        // own data. Until 2026-11-10 a disclaimer reading "figures in $'000"
+        // pasted the rest of the page into the boot script (a syntax error, so
+        // no first paint, and the markers after it left unreplaced), and "$$"
+        // reached the browser as "$".
+        .replace(DESK_BOOT_MARKER, () => deskBootScript(deskBoot))
         // Instant tab switching, for a member only (cookie presence, the rail's
         // own rule). Before any of the page's own scripts, because it wraps
         // fetch: a prerendered copy of this page must not write until seen.
@@ -32128,7 +32344,7 @@ const server = http.createServer((req, res) =>
       // leaves index.html's own example standing — see nextMarketExample.
       const example = nextMarketExample();
       if (example) {
-        html = html.replace(MARKET_EXAMPLE_MARKER, `placeholder="${escHtml(example)}"`);
+        html = html.replace(MARKET_EXAMPLE_MARKER, () => `placeholder="${escHtml(example)}"`);
       }
       if (SITE_URL !== DEFAULT_SITE_URL) html = html.split(DEFAULT_SITE_URL).join(SITE_URL);
       res.end(html);

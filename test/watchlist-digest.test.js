@@ -70,16 +70,21 @@ test("subject lines", async (t) => {
   });
 });
 
+// The line a comp is itemized on, found by its address.
+const lineFor = (out, address) => out.text.split("\n").find((l) => l.includes(address)) || "";
+
 test("what a market block claims", async (t) => {
+  // Prices in the shape the corpus stores them and the feed passes on: the
+  // text the report wrote, dollar sign and commas included.
   const withComps = item({
     new_count: 5,
     median_psf: 84.42,
     median_trend: { current: 84.42, prior: 79.1 },
     comps: [
-      { address: "1234 Freight Way", transaction: "Sale", deal_date: "2026-07-14", price_or_rate: 2400000, price_per_sqft: 88 },
-      { address: "88 Warehouse Rd", transaction: "Lease", deal_date: "2026-07-02", price_per_sqft: 11 },
-      { address: "5 Depot St", transaction: "Sale", deal_date: "2026-06-30", price_or_rate: 990000 },
-      { address: "9 Rail Ave", transaction: "Sale", deal_date: "2026-06-01", price_or_rate: 1200000 },
+      { address: "1234 Freight Way", transaction: "Sale", deal_date: "2026-07-14", price_or_rate: "$2,400,000", price_per_sqft: "$88" },
+      { address: "88 Warehouse Rd", transaction: "Lease", deal_date: "2026-07-02", price_or_rate: "$14.50/SF/yr NNN", price_per_sqft: "$11" },
+      { address: "5 Depot St", transaction: "Sale", deal_date: "2026-06-30", price_or_rate: "$990,000" },
+      { address: "9 Rail Ave", transaction: "Sale", deal_date: "2026-06-01", price_or_rate: "$1,200,000" },
     ],
   });
 
@@ -105,6 +110,53 @@ test("what a market block claims", async (t) => {
   await t.test("no trend where the feed withheld one", () => {
     const out = build([item({ new_count: 2, median_psf: 80 })]);
     assert.equal(/up from|down from|flat against/.test(out.text), false);
+    assert.match(out.text, /median \$80\/SF/, "with no trend the median is the feed's own");
+  });
+
+  await t.test("with a trend, the median quoted is the trend's own, so the direction matches the two numbers", () => {
+    // median_psf is windowed on when a comp was FOUND, the trend on when it
+    // CLOSED, so the two can sit either side of the prior figure. This read
+    // "median $110/SF, up from $142/SF" until 2026-11-10.
+    const up = build([item({ new_count: 4, median_psf: 110, median_trend: { current: 155, prior: 142 } })]);
+    assert.match(up.text, /median \$155\/SF \(sales, last 6 months\), up from \$142\/SF the 6 months before/);
+    assert.equal(/\$110\/SF/.test(up.text), false);
+    const down = build([item({ new_count: 4, median_psf: 160, median_trend: { current: 140, prior: 150 } })]);
+    assert.match(down.text, /median \$140\/SF \(sales, last 6 months\), down from \$150\/SF the 6 months before/);
+    assert.equal(/\$160\/SF/.test(down.text), false);
+    const flat = build([item({ new_count: 4, median_psf: 95, median_trend: { current: 80.2, prior: 79.8 } })]);
+    assert.match(flat.text, /median \$80\/SF \(sales, last 6 months\), flat against the 6 months before/);
+  });
+
+  await t.test("a comp's price and $/SF are read from the text the corpus stores", () => {
+    // "$2,400,000" and "$88" are not numbers to Number(), so every comp line
+    // lost both until 2026-11-10.
+    const line = lineFor(build([withComps]), "1234 Freight Way");
+    assert.match(line, /\$2,400,000/);
+    assert.match(line, /\$88\/SF/);
+    assert.match(lineFor(build([withComps]), "5 Depot St"), /\$990,000/);
+  });
+
+  await t.test("a lease's quoted rate is never printed as a sale price", () => {
+    const line = lineFor(build([withComps]), "88 Warehouse Rd");
+    assert.match(line, /\$11\/SF/, "its $/SF still rides");
+    assert.equal(/14\.50|\$14\b|\$15\b|\/yr/.test(line), false, line);
+    // Nor is a figure half-read out of a range or a rate with its unit.
+    const odd = build([item({ new_count: 2, comps: [
+      { address: "7 Range Rd", transaction: "Sale", price_or_rate: "$1,000,000 - $1,200,000", price_per_sqft: "$100-$120" },
+      { address: "8 Month Ct", transaction: "Lease", price_per_sqft: "$1.08/SF/mo" },
+    ] })]);
+    assert.equal(/\$/.test(lineFor(odd, "7 Range Rd")), false, lineFor(odd, "7 Range Rd"));
+    assert.equal(/\$/.test(lineFor(odd, "8 Month Ct")), false, lineFor(odd, "8 Month Ct"));
+  });
+
+  await t.test("a bare number reads the same as the stored text", () => {
+    // The other shape: a figure that arrives as a number, or as its digits.
+    const out = build([item({ new_count: 2, comps: [
+      { address: "1 Number Way", transaction: "Sale", deal_date: "2026-07-14", price_or_rate: 2400000, price_per_sqft: 88 },
+      { address: "2 Digits Way", transaction: "Sale", deal_date: "2026-07-14", price_or_rate: "2400000", price_per_sqft: "88" },
+    ] })]);
+    assert.match(lineFor(out, "1 Number Way"), /\$2,400,000, \$88\/SF/);
+    assert.match(lineFor(out, "2 Digits Way"), /\$2,400,000, \$88\/SF/);
   });
 
   await t.test("comps are itemized but capped, and the count above stays true", () => {

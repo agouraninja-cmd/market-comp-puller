@@ -226,7 +226,10 @@ whatever this folder is sitting on. Git then refuses to check out one branch in
 two worktrees, which is the guardrail the shared folder never had. It also
 symlinks `.env`, which is gitignored and therefore absent from a fresh worktree
 — without it the server boots keyless and every Supabase script fails
-confusingly rather than obviously. The other gitignored files
+confusingly rather than obviously. Where the machine refuses a symlink
+(Windows without Developer Mode, which is the owner's), it copies the file
+instead and says so; a copy does not follow a rotated key, so copy it again
+after one. The other gitignored files
 (`account-store.json`, `analytics.jsonl`, `shared-reports.json`,
 `search-cache.json`) are local fallback DATA and are deliberately not linked.
 

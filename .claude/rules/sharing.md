@@ -116,10 +116,15 @@ paths:
     rule the broker vault's 503 already carries (see "Broker vault" below):
     everywhere else in this app a Supabase failure falls back to a local
     file so nothing is lost, but here the file WOULD be the loss, so the
-    write refuses instead. A **public** share keeps the fallback it has
-    always had — the file store still holds its body and the link still
-    works through a database blip, exactly as before this feature shipped;
-    the asymmetry between the two visibilities is the point. `POST
+    write refuses instead. A **public** share refuses too since 2026-11-10,
+    whenever a database is configured. It used to keep the file fallback
+    ("the link still works through a database blip"), but `getShareRecord`
+    reads only the database once one is configured (it has to, for the
+    ACL), so the sender was answered 200 with a link that 404'd from its
+    first click, and on Render the file is erased by the next deploy
+    anyway. The sender now gets the route's 500 "Could not create the share
+    link" and tries again (`test/share-db-failure-run.test.js`). The file
+    store is for a deployment with no database at all. `POST
     /api/share` also refuses this case at the route level (503, before
     storage is ever reached), but that check protects one caller — this one
     protects every future caller of `storeSharedReport`, which is why it

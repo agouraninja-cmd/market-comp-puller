@@ -21,6 +21,13 @@ test("money, short figures, acres and the price per acre", () => {
   assert.equal(HS.money(null), "");
   assert.equal(HS.short(22050000), "$22.05M");
   assert.equal(HS.short(4000000), "$4M");
+  assert.equal(HS.short(3400000), "$3.4M");
+  // From $100M the figure has no decimals, and its own zeros are not padding:
+  // "$100M" read "$1M" and "$110M" read "$11M" until 2026-11-10.
+  assert.equal(HS.short(100000000), "$100M");
+  assert.equal(HS.short(110000000), "$110M");
+  assert.equal(HS.short(149600000), "$150M");
+  assert.equal(HS.short(200000000), "$200M");
   assert.equal(HS.short(187500), "$188K");
   assert.equal(HS.acres(133.33), "133.3");
   assert.equal(HS.acres(""), "");

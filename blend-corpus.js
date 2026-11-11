@@ -57,15 +57,17 @@ function radiusMilesFor(type, note) {
   return type === "Residential" ? RESIDENTIAL_RADIUS_MILES : RADIUS_MILES;
 }
 
-// ⚠ MIRROR valuation.js parseRadiusMiles. The blend radius and the
-// distance free-pass must read the same market note the same way, or a
-// "2.5 miles" search would auto-include a different circle than the one
-// the hero treats as in-market.
+// ⚠ MIRROR valuation.js parseRadiusMiles, body for body (its comment says
+// what the pattern reads; test/blend-corpus.test.js compares the two). The
+// blend radius and the distance free-pass must read the same market note the
+// same way, or a "2.5 miles" search would auto-include a different circle
+// than the one the hero treats as in-market.
 function parseRadiusMiles(note) {
   if (note == null || note === "") return null;
-  const m = String(note).match(/(\d+(?:\.\d+)?)\s*(?:miles?|mi)\b/i);
+  const m = String(note).match(
+    /(?:^|[^\d.\/])(?:(?:(\d+)[\s-]+)?(\d+)\s*\/\s*(\d+)|(\d+(?:\.\d+)?|\.\d+))\s*(?:miles?|mi)\b/i);
   if (!m) return null;
-  const n = Number(m[1]);
+  const n = m[4] != null ? Number(m[4]) : Number(m[1] || 0) + Number(m[2]) / Number(m[3]);
   return n > 0 && n <= 50 ? n : null;
 }
 
@@ -95,6 +97,11 @@ const FIELD_MAP = {
   price_per_acre: "price_per_acre",
   zoning: "zoning",
   beds_baths: "beds_baths",
+  // Added 2026-11-10: this map predates the field by three days, so a saved
+  // house lost its condition on the way into a report. Every key of
+  // server.js's TYPE_COMP_FIELDS belongs here; test/blend-corpus.test.js
+  // reads that map and fails on the next one left out.
+  condition: "condition",
   lat: "lat",
   lng: "lng",
 };
@@ -222,6 +229,17 @@ function defaultKeyOf(c) {
   return [norm(c && c.address), norm(c && (c.date || c.deal_date)), norm(c && c.price_or_rate)].join("|");
 }
 
+// The app's one sale test, turned around: anything not written as a lease is
+// a sale, a blank transaction included (valuation.js, comp-gate.js).
+function isLeaseRow(row) {
+  return String((row && row.transaction) || "").toLowerCase().startsWith("lease");
+}
+
+// `opts.txFocus` is the search's own focus, "sales" or "leases" (2026-11-10).
+// The blend used to add every saved deal of the type whatever was asked for:
+// a leases-only report gained sales, whose $/SF then sat under its "$/SF/yr"
+// column and gave a leases-only bulk row a sale value, and a sales-only
+// report gained leases. "both", absent or anything else filters nothing.
 function blendNearbyComps(report, rows, opts) {
   if (!report || typeof report !== "object" || Array.isArray(report)) return report;
   const o = opts && typeof opts === "object" ? opts : {};
@@ -237,6 +255,7 @@ function blendNearbyComps(report, rows, opts) {
     ? Number(o.radiusMiles)
     : radiusMilesFor(o.propertyType, o.marketNote);
   const subjectPsf = o.propertyType === "Residential" ? impliedSubjectPsf(report, o) : 0;
+  const txFocus = o.txFocus === "sales" || o.txFocus === "leases" ? o.txFocus : null;
 
   const comps = Array.isArray(report.comps) ? report.comps : [];
   const seen = new Set(comps.map((c) => keyOf(c)));
@@ -244,6 +263,7 @@ function blendNearbyComps(report, rows, opts) {
 
   for (const row of Array.isArray(rows) ? rows : []) {
     if (!row || typeof row !== "object") continue;
+    if (txFocus && isLeaseRow(row) !== (txFocus === "leases")) continue;
     if (!priced(row)) continue;
     if (aggregateOf(row.address)) continue;
     const d = parseDealDate(row.deal_date || row.date);

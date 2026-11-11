@@ -454,41 +454,140 @@ function msg(text,bad){
 }
 
 // The count in the button is the count the SERVER will accept, so nobody is
-// told "42 addresses" and then handed 40 rows. It is the same rule the parser
-// enforces, restated cheaply: blank lines and '#' notes do not count, and a
-// line with no digit in it is not an address.
+// told "42 addresses" and then handed 40 rows.
 //
-// Shared with index.html's paste detector on purpose: two copies of this
-// heuristic would let the homepage and /bulk disagree about what a list is.
-function countLines(text){
-  var lines=String(text||"").split(/\\r\\n|\\r|\\n/),seen={},n=0;
-  var first=lines.length?lines[0].toLowerCase():"";
-  var header=first.indexOf("address")>=0&&first.indexOf(",")>=0;
-  for(var i=header?1:0;i<lines.length;i++){
-    var raw=lines[i].trim();
-    if(!raw||raw.charAt(0)==="#")continue;
-    var addr=header?raw.split(",")[0].trim():raw;
-    if(addr.length<6||!/\\d/.test(addr))continue;
-    var k=addr.toLowerCase().replace(/[^a-z0-9]+/g,"");
-    if(seen[k])continue;
-    seen[k]=1;n++;
+// It reads the list the way bulk.js parseAddressList does, restated here
+// because this runs in the browser. Until 2026-11-10 it guessed instead: a
+// heading was a first line holding the word "address" and a comma, and the
+// address was whatever came before a line's first comma. So a file headed
+// Name,Address,SF counted 0 and the button answered "paste an address first"
+// over a list the server reads perfectly well, and one street in two cities
+// counted once.
+//
+// ⚠ MIRROR of bulk.js: LIST_HEADERS is its ADDRESS_HEADERS, CITY_HEADERS
+// and STATE_HEADERS, and listAddresses is parseAddressList down to the
+// address. test/bulk-inline.test.js compares the lists and runs both readers
+// over the same text. Change them together.
+var LIST_HEADERS={
+  address:["address","property_address","site_address","street_address","property","location"],
+  city:["city","town"],
+  state:["state","st"]
+};
+// broker-vault.js normalizeHeader.
+function normHeader(h){
+  return String(h==null?"":h).trim().toLowerCase()
+    .replace(/[\\s\\-]+/g,"_").replace(/[^a-z0-9_]/g,"")
+    .replace(/_+/g,"_").replace(/^_+|_+$/g,"");
+}
+// broker-vault.js parseCsv: quoted cells, doubled quotes, a BOM, CRLF, blank
+// rows dropped, and each row stamped with the line of the file it began on.
+function csvGrid(text,delim){
+  var src=String(text==null?"":text),rows=[],row=[],cell="",quoted=false,i=0,fileLine=1,rowLine=1;
+  if(src.charCodeAt(0)===0xfeff)i=1;
+  function endRow(){row.push(cell);cell="";row.line=rowLine;rows.push(row);row=[];}
+  while(i<src.length){
+    var c=src.charAt(i);
+    if(quoted){
+      if(c==='"'){
+        if(src.charAt(i+1)==='"'){cell+='"';i+=2;continue;}
+        quoted=false;i++;continue;
+      }
+      if(c==="\\n")fileLine++;
+      cell+=c;i++;continue;
+    }
+    if(c==='"'&&cell===""){quoted=true;i++;continue;}
+    if(c===delim){row.push(cell);cell="";i++;continue;}
+    if(c==="\\r"){i++;continue;}
+    if(c==="\\n"){endRow();fileLine++;rowLine=fileLine;i++;continue;}
+    cell+=c;i++;
   }
+  if(cell!==""||row.length)endRow();
+  return rows.filter(function(r){return r.some(function(x){return String(x).trim()!=="";});});
+}
+// broker-vault.js delimiterOf: cells copied out of Excel are tab-separated.
+function listDelim(text){
+  var lines=String(text==null?"":text).replace(/^\\ufeff/,"").split(/\\r?\\n/),first="";
+  for(var i=0;i<lines.length;i++){if(lines[i].trim()!==""){first=lines[i];break;}}
+  var tabs=first.split("\\t").length-1,commas=first.split(",").length-1;
+  return tabs>0&&tabs>=commas?"\\t":",";
+}
+// bulk.js withCityState over broker-vault.js composeAddress: a sheet's own
+// City and State columns joined onto the street, only where missing.
+function tidy(v,max){return String(v==null?"":v).trim().replace(/\\s+/g," ").slice(0,max);}
+function joinParts(street,city,state){
+  var parts=[tidy(street,200)];
+  [city,state].forEach(function(raw){
+    var v=tidy(raw,60);if(!v)return;
+    var hay=","+parts.join(", ").toLowerCase().replace(/\\s*,\\s*/g,",")+",";
+    if(hay.indexOf(","+v.toLowerCase().replace(/\\s*,\\s*/g,",")+",")<0)parts.push(v);
+  });
+  return parts.filter(function(p){return p;}).join(", ");
+}
+function withCityState(address,city,state){
+  var street=address.replace(/\\s+\\d{5}(?:-\\d{4})?\\s*$/,"");
+  var base=joinParts(street,"",""),joined=joinParts(street,city,state);
+  return joined===base?address:address+joined.slice(base.length);
+}
+// Every address the server will read out of a list, in the file's order,
+// before it drops the ones that are not addresses and the repeats.
+function listAddresses(text){
+  var src=String(text==null?"":text),tab=listDelim(src)==="\\t";
+  var grid=csvGrid(src,tab?"\\t":",");
+  var heads=(grid[0]||[]).map(normHeader);
+  var col=function(names){
+    for(var i=0;i<heads.length;i++){if(names.indexOf(heads[i])>=0)return i;}
+    return -1;
+  };
+  var a=col(LIST_HEADERS.address),headed=a>=0&&grid.length>1;
+  // One heading and nothing else is one column copied with its heading: the
+  // lines under it are whole addresses, read like any paste.
+  var lone=headed&&heads.filter(function(h){return h;}).length===1;
+  var out=[];
+  var take=function(v){
+    var addr=String(v||"").trim();
+    if(addr&&addr.charAt(0)!=="#")out.push(addr);
+  };
+  if(headed&&!lone){
+    var ci=col(LIST_HEADERS.city),si=col(LIST_HEADERS.state);
+    grid.slice(1).forEach(function(cells){
+      var addr=String(cells[a]||"").trim();
+      if(!addr||addr.charAt(0)==="#")return;
+      if(ci>=0||si>=0)addr=withCityState(addr,ci>=0?cells[ci]:"",si>=0?cells[si]:"");
+      out.push(addr);
+    });
+    return out;
+  }
+  var headLine=lone?(grid[0].line||1):0;
+  src.split(/\\r\\n|\\r|\\n/).forEach(function(raw,i){
+    if(i+1===headLine)return;
+    if(!lone)return take(raw);
+    var cell=tab?raw.split("\\t")[0]:raw;
+    if(/^\\s*"/.test(cell)){var row=csvGrid(cell,",")[0];if(row&&row.length)cell=row[0];}
+    take(cell);
+  });
+  return out;
+}
+// bulk.js looksLikeAddress; the key in countLines is its dedupeKey.
+function looksLikeAddress(s){return s.length>=6&&/\\d/.test(s);}
+
+// Shared with index.html's paste detector on purpose: two copies of this
+// would let the homepage and /bulk disagree about what a list is.
+function countLines(text){
+  var seen={},n=0;
+  listAddresses(text).forEach(function(addr){
+    if(!looksLikeAddress(addr))return;
+    var k=addr.toLowerCase().replace(/[^a-z0-9]+/g,"");
+    if(seen[k])return;
+    seen[k]=1;n++;
+  });
   return n;
 }
 
 // The first address a paste holds, for the branch that cannot run a list and
 // falls back to a single search rather than throwing the paste away.
 function firstAddress(text){
-  var lines=String(text||"").split(/\\r\\n|\\r|\\n/);
-  var first=lines.length?lines[0].toLowerCase():"";
-  var header=first.indexOf("address")>=0&&first.indexOf(",")>=0;
-  for(var i=header?1:0;i<lines.length;i++){
-    var raw=lines[i].trim();
-    if(!raw||raw.charAt(0)==="#")continue;
-    var addr=header?raw.split(",")[0].trim():raw;
-    if(addr.length<6||!/\\d/.test(addr))continue;
-    return addr;
-  }
+  var list=listAddresses(text);
+  for(var i=0;i<list.length;i++){if(looksLikeAddress(list[i]))return list[i];}
   return "";
 }
 
@@ -919,7 +1018,8 @@ function init(opts){
 }
 
 return {init:init,showRun:showRun,poll:poll,stop:stop,setJobs:setJobs,
-  countLines:countLines,firstAddress:firstAddress,showNotes:showNotes,msg:msg,api:api,span:span,leftWords:leftWords,
+  countLines:countLines,firstAddress:firstAddress,listHeaders:LIST_HEADERS,
+  showNotes:showNotes,msg:msg,api:api,span:span,leftWords:leftWords,
   setMax:function(n){MAX=n;},state:function(){return {job:job,items:items};}};
 })();
 `;

@@ -94,6 +94,21 @@ test("the neighbor's camera 404s, and the refusal is remembered (one metadata ca
   assert.equal(google.hits.filter((h) => h.path.endsWith("/metadata")).length, 1);
 });
 
+test("Google refusing US (quota) is not remembered as 'no photo' for the building", async (t) => {
+  // Until 2026-11-10 this path cached the miss: one quota blip and every pin
+  // asked during it showed its aerial until the next deploy, though Google had
+  // a perfectly good photo. The by-address path already knew better
+  // (judgeAddressPhoto throws on these); the report map's pins did not.
+  for (const status of ["OVER_QUERY_LIMIT", "REQUEST_DENIED", "UNKNOWN_ERROR"]) {
+    let asks = 0;
+    const { google, srv } = await bootWith(t, () => (++asks === 1 ? { status } : goodMeta()));
+    assert.equal((await fetch(photoUrl(srv.base))).status, 404, `${status}: no photo while Google refuses`);
+    assert.equal(google.images().length, 0, `${status}: and nothing billed`);
+    assert.equal((await fetch(photoUrl(srv.base))).status, 200, `${status}: the photo once Google answers again`);
+    assert.equal(google.images().length, 1);
+  }
+});
+
 test("one visitor may load 120 photos a window; the 121st is refused", async (t) => {
   // 120 since 2026-10-13 (the owner's call; it was 60). The page reads a 429
   // as "no photo" for a week, so the ceiling must sit above a long list.

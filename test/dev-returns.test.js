@@ -105,6 +105,42 @@ test("a break-even project returns ~0%, not null", () => {
   near(r, 0, 1e-6);
 });
 
+// A long build. months() takes up to 240, and (1 - 0.9999)^t underflows to 0
+// from about month 76, so NPV at the low bracket was Infinity or NaN and every
+// build of 76 months or more had no IRR until 2026-11-10.
+const LONG = { land: 2000000, hard: 12000000, soft: 2000000, contingencyPct: 5 };
+const longFlows = (n, exit = 24000000) => D.cashflows(D.totalCost(LONG), n, exit);
+
+test("IRR answers for a build of 75, 76, 84 and 240 months, and the rate closes the NPV", () => {
+  const total = D.totalCost(LONG).total;
+  for (const n of [75, 76, 84, 240]) {
+    const flows = longFlows(n);
+    const r = D.irr(flows);
+    assert.ok(r != null && r > 0, `${n} months: a profitable build has an IRR, got ${r}`);
+    const npv = flows.reduce((a, cf, t) => a + cf / Math.pow(1 + r, t), 0);
+    assert.ok(Math.abs(npv) / total < 1e-6, `${n} months: NPV ${npv} does not close`);
+  }
+  // Same profit over a longer build is a lower return, and one more month
+  // moves it a little: the answer does not jump where the bracket moves.
+  const r75 = D.irr(longFlows(75)), r76 = D.irr(longFlows(76));
+  assert.ok(r76 < r75 && r76 > r75 * 0.97, `75 months ${r75}, 76 months ${r76}`);
+  assert.ok(D.irr(longFlows(240)) < D.irr(longFlows(84)));
+  // A long build that loses money still answers, with a loss.
+  assert.ok(D.irr(longFlows(120, 12000000)) < 0);
+  // And the scorecard carries it.
+  const s = D.summarize({ cost: { ...LONG, buildMonths: 84 }, stabilizedValue: 24000000 });
+  assert.ok(s.irrPct > 0, `84 months on the scorecard: ${s.irrPct}`);
+});
+
+test("IRR under 76 months is the answer it always was", () => {
+  // The monthly rates the module returned before the bracket moved. Under 76
+  // months NPV at -99.99% is finite, so nothing about these builds changed.
+  const before = { 12: 0.055780632793281285, 24: 0.026700170945947344, 36: 0.017549620559482018,
+    60: 0.010412377121610215, 75: 0.00830210982466454 };
+  for (const n of Object.keys(before)) near(D.irr(longFlows(Number(n))), before[n], 1e-9);
+  near(D.irr(longFlows(60, 12000000)), -0.010525737656476096, 1e-9);
+});
+
 // --- the scorecard ----------------------------------------------------------
 
 const DEAL = {

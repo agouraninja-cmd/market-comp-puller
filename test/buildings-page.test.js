@@ -43,9 +43,9 @@ function makeDom() {
   const document = { getElementById(id) { if (!els.has(id)) els.set(id, el()); return els.get(id); } };
   return { document, el: (id) => document.getElementById(id), hidden: (id) => /\bhide\b/.test(document.getElementById(id).className) };
 }
-function run(boot) {
+function run(boot, globals) {
   const dom = makeDom();
-  const ctx = vm.createContext({ document: dom.document, console, fetch: () => Promise.reject(new Error("no fetch in this test")) });
+  const ctx = vm.createContext(Object.assign({ document: dom.document, console, fetch: () => Promise.reject(new Error("no fetch in this test")) }, globals));
   new vm.Script(scriptOf(renderBuildingsBody(boot)), { filename: "buildings-page.js" }).runInContext(ctx);
   return dom;
 }
@@ -138,6 +138,31 @@ test("each row is attributed, and your own row reads 'you'", () => {
   assert.match(rows, /added by you/);
   assert.doesNotMatch(rows, /added by Brad/);
   assert.match(rows, /data-rm="b1"/, "a Remove per row");
+});
+
+test("Remove asks first and names what goes with the building (2026-11-10)", () => {
+  // The building's leases and notes are deleted with its row (047 and 048
+  // cascade) and adding it again brings back neither, so one click on a
+  // small link must not be the whole act. It was, until this.
+  const asked = [], sent = [];
+  let answer = false;
+  const dom = run(OK([BLDG({})]), {
+    confirm: (q) => { asked.push(q); return answer; },
+    fetch: (url, opts) => { sent.push([url, opts && opts.method]); return new Promise(() => {}); },
+  });
+  const btn = { disabled: false, getAttribute: (k) => ({ "data-rm": "b1", "data-addr": "500 Warehouse Way, Boise, ID" })[k] };
+  const click = () => dom.el("blRows").fire("click", { target: { closest: () => btn } });
+
+  click();
+  assert.deepEqual(asked, ["Remove 500 Warehouse Way, Boise, ID from your firm’s buildings? Its leases and notes go with it."]);
+  assert.deepEqual(sent, [], "declined: nothing is sent");
+  assert.equal(btn.disabled, false, "and the control is as it was");
+
+  answer = true;
+  click();
+  assert.equal(asked.length, 2);
+  assert.deepEqual(sent, [["/api/org/buildings?id=o1&building=b1", "DELETE"]], "agreed: the same route as before");
+  assert.equal(btn.disabled, true);
 });
 
 test("a truncated list says so, and an empty one is an invitation", () => {

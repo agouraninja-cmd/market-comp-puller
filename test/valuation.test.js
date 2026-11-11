@@ -88,6 +88,76 @@ test("compAgeYears is zero for a same-day comp and capped at five years", () => 
   assert.equal(V.compAgeYears(comp({ date: "not a date" }), AS_OF), null);
 });
 
+// --- 2026-11-10: comp dates are read by rule, not by the engine's guess -----
+// compAgeYears was a bare Date.parse of model-written text. V8 answers NaN for
+// "Q3 2024", so that comp counted as brand new: full recency weight where the
+// same quarter written "Aug 2024" got 0.45, and no trend indexing at all.
+
+// Local time, like the month-year dates it is measured against.
+const READ_AS_OF = new Date(2026, 10, 10).getTime();
+
+test("compAgeYears reads a quarter as its middle month and MM/YYYY as that month", () => {
+  const age = (date) => V.compAgeYears(comp({ date }), READ_AS_OF);
+  assert.equal(age("Q3 2024"), age("Aug 2024"));
+  assert.equal(age("Q1 2025"), age("Feb 2025"));
+  assert.equal(age("q4 2025"), age("Nov 2025"));
+  assert.equal(age("03/2025"), age("Mar 2025"));
+  assert.equal(age("3/2025"), age("March 2025"));
+  assert.ok(age("Q3 2024") > 2.2 && age("Q3 2024") < 2.3, "about two and a quarter years, got " + age("Q3 2024"));
+});
+
+test("a quarter-dated comp is weighted and trend-indexed like the month it names", () => {
+  const q = comp({ date: "Q3 2024" }), mon = comp({ date: "Aug 2024" });
+  assert.equal(V.compWeight(q, READ_AS_OF, 10000), V.compWeight(mon, READ_AS_OF, 10000));
+  assert.ok(V.compWeight(q, READ_AS_OF, 10000) < 0.5, "it was 1, the weight of a comp dated today");
+  assert.equal(V.trendFactor(q, READ_AS_OF, 8), V.trendFactor(mon, READ_AS_OF, 8));
+  assert.ok(V.trendFactor(q, READ_AS_OF, 8) > 1.18, "it was 1: an old price never indexed forward");
+});
+
+test("text that names no date is still undated, which is neutral", () => {
+  for (const date of ["Active", "", "Under contract", "13/2025", "0/2025", "Q5 2025", "2025-13"]) {
+    assert.equal(V.compAgeYears(comp({ date }), READ_AS_OF), null, JSON.stringify(date));
+    assert.equal(V.compWeight(comp({ date }), READ_AS_OF, 10000), 1, JSON.stringify(date));
+  }
+});
+
+test("compDateMs moves no date V8 could already read, to the millisecond", () => {
+  // The rule that makes this change safe: every weight pinned in this file,
+  // in comp-gate's and in the backtest was computed from Date.parse's answer,
+  // so the reader must give the same instant wherever there was one. Only
+  // text Date.parse refused may gain a date.
+  const names = ["jan", "january", "feb", "february", "mar", "march", "apr", "april", "may",
+    "jun", "june", "jul", "july", "aug", "august", "sep", "sept", "september", "oct", "october",
+    "nov", "november", "dec", "december"];
+  const texts = ["Active", "Listed Mar 2025", "March 15, 2025", "Mar 15, 2025", "3/15/2025", "2025-3",
+    "Mar '25", "Early 2025", "March, 2025", "Mar-2025", "2026-07-01T12:00:00Z", "2025-02-30",
+    "Marble 2025", " Mar 2025 ", "not a date", ""];
+  for (const y of [1999, 2024, 2025, 2026]) {
+    texts.push(String(y));
+    for (const n of names) {
+      for (const cased of [n, n[0].toUpperCase() + n.slice(1), n.toUpperCase()]) {
+        texts.push(`${cased} ${y}`, `${cased}. ${y}`);
+      }
+    }
+    for (let mo = 1; mo <= 12; mo++) {
+      const mm = String(mo).padStart(2, "0");
+      texts.push(`${y}-${mm}`);
+      for (let d = 1; d <= 31; d++) texts.push(`${y}-${mm}-${String(d).padStart(2, "0")}`);
+    }
+  }
+  let read = 0;
+  for (const text of texts) {
+    const was = Date.parse(text);
+    if (Number.isNaN(was)) continue;
+    read += 1;
+    assert.equal(V.compDateMs(text), was, JSON.stringify(text));
+  }
+  assert.ok(read > 2000, "the sweep covered the shapes, read " + read);
+  // And the fallback is still Date.parse itself, NaN included.
+  assert.ok(Number.isNaN(V.compDateMs("not a date")));
+  assert.ok(Number.isNaN(V.compDateMs(null)));
+});
+
 test("compWeight is 1 for a same-day, same-size, public-record comp", () => {
   assert.equal(V.compWeight(comp(), AS_OF, 10000), 1);
 });
@@ -214,6 +284,23 @@ test("parseRadiusMiles reads a market note and refuses junk", () => {
   assert.equal(V.parseRadiusMiles(""), null);
   assert.equal(V.parseRadiusMiles("North Dallas submarket"), null);
   assert.equal(V.parseRadiusMiles("1000 miles"), null);
+});
+
+test("parseRadiusMiles reads a leading-dot decimal and a fraction as written", () => {
+  // Until 2026-11-10 ".5 miles" read as 5 and "1/2 mile" as 2: the digits
+  // were matched without their dot, or as the fraction's denominator. A house
+  // search noted "within .5 miles" then blended saved deals five miles out.
+  assert.equal(V.parseRadiusMiles(".5 miles"), 0.5);
+  assert.equal(V.parseRadiusMiles("within .25 mi"), 0.25);
+  assert.equal(V.parseRadiusMiles("1/2 mile"), 0.5);
+  assert.equal(V.parseRadiusMiles("1/4 mile radius"), 0.25);
+  assert.equal(V.parseRadiusMiles("1 1/2 miles"), 1.5);
+  // Unchanged readings: the first mileage named, a range's far end, the cap.
+  assert.equal(V.parseRadiusMiles("0.5 miles"), 0.5);
+  assert.equal(V.parseRadiusMiles("within 2-3 miles"), 3);
+  assert.equal(V.parseRadiusMiles("<1 mile"), 1);
+  assert.equal(V.parseRadiusMiles("5 min drive"), null);
+  assert.equal(V.parseRadiusMiles("1/0 mile"), null);
 });
 
 test("radiusClaimContradicted keeps an approximate claim and drops a false one", () => {

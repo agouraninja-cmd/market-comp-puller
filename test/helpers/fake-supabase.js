@@ -88,6 +88,11 @@ function matches(row, key, expr) {
   // params into an object would keep only the last and silently widen the
   // window to everything before the horizon.
   if (expr.startsWith("lte.")) return String(val) <= decodeValue(expr.slice(4));
+  // `lt.` is the mirror of `gt.`, taught for the same reason and with the
+  // same caveat (a STRING comparison, right only for ISO timestamps): the
+  // message thread read pages BACK with created_at=lt.<the oldest message
+  // held>, and strictly is the point, or every page would repeat that message.
+  if (expr.startsWith("lt.")) return String(val) < decodeValue(expr.slice(3));
   if (expr === "is.null") return val === null || val === undefined;
   if (expr === "not.is.null") return !(val === null || val === undefined);
   // `is.true` / `is.false` are taught deliberately, like `neq.` and `gte.`

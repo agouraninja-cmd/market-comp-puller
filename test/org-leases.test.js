@@ -96,6 +96,31 @@ test("criticalDates: the next twelve months, soonest first, with renewal-watch's
   assert.equal(out[1].buildingId, "b1");
 });
 
+test("criticalDates: a lapsed option notice falls back to the lease's expiry (2026-11-10)", () => {
+  // Until then the whole lease left the strip the day after its notice date,
+  // though the lease itself ended inside the window: deadlineOf names the
+  // notice whenever one exists, and a passed deadline was skipped outright.
+  const now = Date.UTC(2026, 10, 10); // 2026-11-10
+  const leases = [
+    { id: "l1", building_id: "b1", tenant: "Acme", status: "active", lease_expiry: "2027-03-31", option_notice_date: "2026-09-30" },
+    { id: "l2", building_id: "b1", tenant: "Gamma", status: "active", lease_expiry: "2026-12-10", option_notice_date: "2026-11-09" },
+    { id: "l3", building_id: "b1", tenant: "Ahead", status: "active", lease_expiry: "2027-06-30", option_notice_date: "2026-11-10" },
+    // Notice and expiry both behind: nothing is left to act on.
+    { id: "l4", building_id: "b1", tenant: "Over", status: "active", lease_expiry: "2026-11-01", option_notice_date: "2026-08-01" },
+    // A lapsed notice on a lease ending past the window stays out.
+    { id: "l5", building_id: "b1", tenant: "Far", status: "active", lease_expiry: "2028-06-30", option_notice_date: "2026-10-01" },
+  ];
+  const out = L.criticalDates(leases, now, RENEWAL.deadlineOf, RENEWAL.daysUntil, [{ id: "b1", address: "1 A St" }]);
+  assert.deepEqual(out.map((c) => [c.tenant, c.kind, c.date, c.days]), [
+    ["Ahead", "notice", "2026-11-10", 0],
+    ["Gamma", "expiry", "2026-12-10", 30],
+    ["Acme", "expiry", "2027-03-31", 141],
+  ], "a notice due today is still the notice; a lapsed one hands over to the expiry");
+  assert.equal(out[2].optionNoticeDate, "2026-09-30", "the row still carries the notice date it had");
+  // renewal-watch's own rule is untouched: its email stays silent after a passed deadline.
+  assert.equal(RENEWAL.isDue(leases[1], now), false);
+});
+
 test("criticalDates without the injected arithmetic answers nothing rather than inventing a deadline", () => {
   assert.deepEqual(L.criticalDates([{ id: "l1", tenant: "A", lease_expiry: "2026-10-01" }], Date.now()), []);
 });

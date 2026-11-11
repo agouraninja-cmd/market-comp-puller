@@ -12,7 +12,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 
 const {
-  parseCsv, normalizeHeader, parseMoney, parseNumber, parsePercent, parseDate,
+  parseCsv, normalizeHeader, parseMoney, parseNumber, parseSizeSqft, parsePercent, parseDate,
   parseTransaction, parsePropertyType, addressKey, normalizeRow, parseUpload,
   templateCsv, TEMPLATE_COLUMNS, OPTIONAL_SPEC_COLUMNS, PROPERTY_TYPES,
   isCommentRow, MAX_ROWS_PER_UPLOAD,
@@ -126,6 +126,29 @@ test("size accepts a trailing unit and drops it", () => {
   assert.equal(parseNumber("45,000 SF").value, 45000);
   assert.equal(parseNumber("45000 sq ft").value, 45000);
   assert.equal(parseNumber("2.4 acres").value, 2.4);
+});
+
+// parseNumber above reads a number and drops its unit. A SIZE column is in
+// square feet, so a cell that says acres is converted, never read as feet
+// (2026-11-10): "2.5 acres" used to be stored as a 2.5 SF building.
+test("a size stated in acres is stored in square feet", () => {
+  assert.equal(parseSizeSqft("2.5 acres").value, 108900);
+  assert.equal(parseSizeSqft("1 Acre").value, 43560);
+  assert.equal(parseSizeSqft("2.4 acres").value, 104544, "whole feet, no float tail");
+  assert.equal(parseSizeSqft("45,000 SF").value, 45000, "feet are untouched");
+  assert.equal(parseSizeSqft("45000").value, 45000);
+  assert.equal(parseSizeSqft("").value, null);
+  assert.equal(parseSizeSqft("N/A").value, null);
+  assert.equal(parseSizeSqft("2.5 AC").ok, false, "an abbreviation is still refused, not guessed");
+  assert.equal(parseSizeSqft("big").ok, false);
+
+  const land = normalizeRow({
+    address: "500 W Franklin Rd, Meridian, ID", property_type: "Land", transaction: "sale",
+    deal_date: "2025-03-14", price: "$1,250,000", size_sqft: "2.5 acres",
+  });
+  assert.equal(land.ok, true);
+  assert.equal(land.row.size_sqft, 108900);
+  assert.equal(land.row.price_per_sqft, 11.48, "the sale is $11.48 a foot, not $500,000");
 });
 
 test("cap rate accepts a percent sign and rejects impossible values", () => {
@@ -1732,6 +1755,39 @@ test("uploadPayloadToCsv turns confirm rows into a parseUpload-clean CSV", () =>
   assert.equal(parsed.ok, true);
   assert.equal(parsed.rows.length, 1);
   assert.equal(parsed.rows[0].price, 4250000);
+});
+
+// The rows door is inbound data, so it must not wear the export's formula
+// guard (2026-11-10). The guard put an apostrophe in front of any cell that
+// starts with - + = or @: a note was stored with one, and a "-" price, which
+// reads as an empty cell and showed as ready on the confirm table, came back
+// as a refusal after Import.
+test("confirm rows are imported as typed, with no formula guard on the way in", () => {
+  const rows = [
+    { address: "123 Main St, Boise, ID", property_type: "Industrial", transaction: "sale",
+      deal_date: "2025-01-02", price: "-", size_sqft: "10000", notes: "- seller financed" },
+    { address: "125 Main St, Boise, ID", property_type: "Land", transaction: "sale",
+      deal_date: "2025-01-02", price: "1000000", notes: "+/- 2 acres excess land", zoning: "@M-1" },
+    { address: "127 Main St, Boise, ID", property_type: "Industrial", transaction: "lease",
+      deal_date: "2025-01-02", rent_psf: "9.50", rent_basis: "annual", notes: "=NNN",
+      lat: "43.61", lng: "-116.20" },
+  ];
+  // What the confirm table was told: every row is ready.
+  assert.deepEqual(classifyExtractRows(rows).map((r) => r.error), [null, null, null]);
+  const parsed = parseUpload(uploadPayloadToCsv({ rows }).csv);
+  assert.deepEqual(parsed.errors, [], "a row shown as ready must not be refused at import");
+  assert.equal(parsed.rows.length, 3);
+  assert.equal(parsed.rows[0].price, null, "a dash is an empty price, as it was on the confirm table");
+  assert.equal(parsed.rows[0].notes, "- seller financed");
+  assert.equal(parsed.rows[1].notes, "+/- 2 acres excess land");
+  assert.equal(parsed.rows[1].zoning, "@M-1");
+  assert.equal(parsed.rows[2].notes, "=NNN");
+  assert.equal(parsed.rows[2]._lng, -116.2);
+});
+
+// The book export still guards: that file is opened in a spreadsheet.
+test("the book export keeps its formula guard", () => {
+  assert.match(exportCsv([{ address: "1 Main St", notes: "=HYPERLINK(1)" }]), /'=HYPERLINK\(1\)/);
 });
 
 test("uploadPayloadToCsv refuses csv and rows together, and an empty rows array", () => {

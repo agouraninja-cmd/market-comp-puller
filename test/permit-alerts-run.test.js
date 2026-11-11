@@ -71,9 +71,12 @@ test("permit alerts: the routes, the page and the weekday email", async (t) => {
     const free = await api(srv, "POST", "/api/permits/alerts", FREE, { jurisdiction: "boise" });
     assert.equal(free.status, 403);
     assert.equal((await free.json()).code, "pro_required");
-    const nampa = await api(srv, "POST", "/api/permits/alerts", PRO, { jurisdiction: "nampa" });
-    assert.equal(nampa.status, 400);
-    assert.match((await nampa.json()).error, /city we read/);
+    // A city the sweep does not read. (This asserted Nampa until 2026-11-10:
+    // written the morning Nampa was not yet swept, and kept passing by accident
+    // once it was. See the test at the foot of this file.)
+    const unread = await api(srv, "POST", "/api/permits/alerts", PRO, { jurisdiction: "spokane" });
+    assert.equal(unread.status, 400);
+    assert.match((await unread.json()).error, /city we read/);
     assert.equal(db.tables.permit_alerts.length, 0);
   });
 
@@ -179,4 +182,25 @@ test("with outbound mail off the alert email waits and nothing is marked", async
   assert.equal(s.alerts.emailed, 0);
   assert.equal(db.tables.permit_alerts[0].notified_through, mark, "the next run sends them");
   assert.equal(db.sent.length, 0);
+});
+
+// The alert form's city menu is every city the SWEEP reads (permitAlertsPayload).
+// The route validated against the cities whose portal can look up ONE permit,
+// the tracked permits' list, which is narrower: Nampa is read from its
+// published reports, so until 2026-11-10 the form offered Nampa and saving it
+// answered "Pick a city we read permits in."
+test("an alert can be saved for every city the alert form offers", async (t) => {
+  const ctx = await bootWith({});
+  t.after(() => ctx.stop());
+  const { srv } = ctx;
+  // The menu as the page itself carries it: the alerts payload rides /permits.
+  const html = await (await api(srv, "GET", "/permits", PRO)).text();
+  const m = /"max":\d+,"cities":(\[[^\]]*\])/.exec(html);
+  assert.ok(m, "the /permits page carries the alert form's cities");
+  const offered = JSON.parse(m[1]).map((c) => c.key);
+  assert.ok(offered.includes("nampa"), "the form offers Nampa: " + offered.join(", "));
+  for (const key of offered) {
+    const r = await api(srv, "POST", "/api/permits/alerts", PRO, { jurisdiction: key });
+    assert.equal(r.status, 200, key + ": " + JSON.stringify(await r.json()));
+  }
 });

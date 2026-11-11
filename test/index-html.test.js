@@ -3398,8 +3398,8 @@ test("clearing recent searches clears the server copy too", () => {
 
 // --- The code box, in Settings ----------------------------------------------
 //
-// VAULT_PASSKEY (and TESTER_PASSKEY, which shared the input until it was
-// retired on 2026-10-17) is redeemed from ONE box, and on 2026-08-31 that box
+// VAULT_PASSKEY (and TESTER_PASSKEY, which shares the input; it was off from
+// 2026-10-17 to 2026-11-10) is redeemed from ONE box, and on 2026-08-31 that box
 // moved out of the pricing modal's "Have a code?" disclosure into the
 // Settings panel — the codes went to friends, family and testers, so the
 // place to type one is the panel you open to look at your own account. These pin the move, because the two ways to undo it are

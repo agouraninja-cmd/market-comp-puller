@@ -29,6 +29,19 @@ paths:
 
 ## Configuration
 
+> **The tester code is back on (2026-11-10, the owner: "turn the code back
+> on but keep the code the same").** A tester whose month ran out had no way
+> back in short of a SQL update. `POST /api/redeem-passkey` compares
+> `TESTER_PASSKEY` and `VAULT_PASSKEY` again and 404s only when neither is
+> set, `/api/config` carries `testerPasskey` again, `setUserTester` is back,
+> and Settings' "Have a code?" row (the wording stayed) shows for either
+> door: the tester door when the account is not Pro or is only on a trial.
+> Nothing else in the 2026-10-17 box below was undone: the trial is still 30
+> days and the ninja is still every member's. Where that box says the code
+> opens nothing, this box wins; the `TESTER_PASSKEY` bullet's rules apply
+> again as written. Pinned in `test/routes.test.js` ("tester passkey", and
+> "with both codes set, each opens its own door").
+>
 > **The tester code is retired and the trial is a month (2026-10-17, the
 > owner: "instead of having a test environment just give new users a month
 > free trial with everything included. but keep the ninja test in a good
@@ -62,8 +75,8 @@ paths:
 >   `test/pro-trial-run.test.js` (the 30-day default),
 >   `test/entitlements.test.js`.
 
-- `TESTER_PASSKEY` — **RETIRED 2026-10-17, see the box above; history
-  below.** Optional shared passkey that comps Pro to a **signed-in**
+- `TESTER_PASSKEY` — **retired 2026-10-17 and back on 2026-11-10, see the
+  boxes above.** Optional shared passkey that comps Pro to a **signed-in**
   account (the beta-tester door). Unset = `POST /api/redeem-passkey` 404s and
   the pricing modal's "Have a code?" row never renders, so this is inert on any
   deployment that never configured it. **It is not `ADMIN_KEY`**: that key also

@@ -456,10 +456,9 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
   // --- Comped Pro for a beta tester -----------------------------------------
   //
   // A persistent flag on the user row (users.pro_tester), set by redeeming
-  // TESTER_PASSKEY until 2026-10-17, when the code was retired in favour of a
-  // month-long trial for everyone. Accounts that already hold the flag keep
-  // it (only a one-row UPDATE takes it away), and that UPDATE is now the only
-  // way to set it. Deliberately NOT an early short-circuit like the admin
+  // TESTER_PASSKEY (off from 2026-10-17, when the month-long trial arrived,
+  // until 2026-11-10; accounts holding the flag kept it throughout, and only
+  // a one-row UPDATE takes it away). Deliberately NOT an early short-circuit like the admin
   // branch above, and the difference is the whole design:
   //
   //   Admin is possession of a KEY — a staff signal, and staff are not

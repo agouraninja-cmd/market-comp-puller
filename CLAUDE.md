@@ -407,7 +407,7 @@ so they are trusted config and are never set in production.
 
 | Variable | Default | What it does | Details |
 |---|---|---|---|
-| `TESTER_PASSKEY` | unset | **retired 2026-10-17** (the month-long trial replaced it): opens nothing, and the boot log says to remove it; accounts holding `users.pro_tester` keep comped Pro | billing.md |
+| `TESTER_PASSKEY` | unset | shared code that comps all of Pro to a signed-in account (`users.pro_tester`); off from 2026-10-17 to 2026-11-10, on again since | billing.md |
 | `VAULT_PASSKEY` | unset | shared code that grants the broker vault only (`users.vault_beta`); a second secret, never the same string | billing.md |
 | `RESEND_API_KEY`, `LEAD_NOTIFY_EMAIL`, `EMAIL_FROM` | unset / owner's inbox / unset | owner notifications; `EMAIL_FROM` is the single gate for mail to leads and brokers | watchlist-and-mail.md |
 | `DAILY_SEARCH_CAP` | 150 | site-wide ceiling on billed searches per UTC day (cache hits are free; Pro is exempt, a trial is not) | search-pipeline.md |

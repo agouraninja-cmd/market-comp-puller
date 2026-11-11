@@ -175,9 +175,10 @@ test("feedback", async (t) => {
     assert.equal(h.db.sent.length, 3);
   });
 
-  await t.test("the tester code is retired, and a leftover one opens nothing", async (t) => {
-    // The route that redeemed it 404s when only TESTER_PASSKEY is set: the
-    // vault code is the only one it compares now.
+  await t.test("the tester code is its own door: redeeming it changes the plan, not the badge", async (t) => {
+    // Back on since 2026-11-10 (it was off from 2026-10-17). The route's own
+    // rules are proved in routes.test.js; this is only that the code and the
+    // feedback route do not depend on each other.
     const h = await bootFeedback({ TESTER_PASSKEY: "beta-please" });
     t.after(() => h.stop());
     const cookie = await signUp(h.srv, uniqueEmail("late"));
@@ -186,11 +187,10 @@ test("feedback", async (t) => {
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ passkey: "beta-please" }),
     });
-    assert.equal(r.status, 404, "with no vault code set, the redeem route does not exist");
+    assert.equal(r.status, 200);
     const cfg = await (await fetch(h.srv.base + "/api/config", { headers: { cookie } })).json();
-    assert.equal(cfg.pro.tester, false, "nothing was granted");
-    assert.equal(cfg.pro.isPro, false);
-    assert.ok(!("testerPasskey" in cfg.pro), "the door's flag went with the door");
+    assert.equal(cfg.pro.tester, true);
+    assert.equal(cfg.pro.testerPasskey, true);
   });
 });
 

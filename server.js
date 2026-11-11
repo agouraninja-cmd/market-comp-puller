@@ -482,19 +482,22 @@ function proEnabledFor(user) {
   return PRO_ENABLED && ENT.inAudience(user, PRO_AUDIENCE);
 }
 
-// The tester code — RETIRED 2026-10-17 (owner's call: "instead of having a
-// test environment just give new users a month free trial with everything
-// included"). It was a shared passkey that comped Pro to a signed-in account
-// by setting users.pro_tester. Every new account now gets the whole product
-// for a month (PRO_TRIAL_DAYS), so a code that does the same thing forever is
-// no longer handed out, and POST /api/redeem-passkey no longer compares it.
+// The tester code: an optional shared passkey that comps Pro to a signed-in
+// account. Deliberately NOT ADMIN_KEY: that key also unlocks /admin, /dev and
+// /contacts, so handing it to testers would hand out the analytics, the lead
+// list and the dev tools along with it. Unset = it simply never matches.
 //
-// Read here only so the boot banner can say a leftover value on the host does
-// nothing. Accounts that already hold users.pro_tester keep their comped Pro
-// (the tester branch in entitlements.js is unchanged), exactly as the retired
-// single-report unlock is still honored for the people who bought one; a
-// one-row `update users set pro_tester = … where email = …` is the only way
-// to set or clear it now.
+// Redeeming sets users.pro_tester, so the grant follows the ACCOUNT across
+// devices and survives a passkey rotation — and revoking one tester is a
+// one-row UPDATE, without changing the passkey for everyone else. See the
+// comped-tester branch in entitlements.js for what it grants and what it
+// cannot override (PRO_ENABLED, and a real paid subscription).
+//
+// History: retired 2026-10-17 for the month-long trial every new account
+// gets, and switched back on 2026-11-10 (the owner: "turn the code back on")
+// because a tester whose trial has ended needs a way back in that is not a
+// SQL update. The trial stays; the code is the door for people the owner
+// hands it to.
 const TESTER_PASSKEY = (process.env.TESTER_PASSKEY || "").trim();
 
 // The vault's own shared passkey — the broker-onboarding door, and the reason
@@ -504,9 +507,9 @@ const TESTER_PASSKEY = (process.env.TESTER_PASSKEY || "").trim();
 // "hand three brokers a vault at a meeting" a note-to-self instead of
 // something that happens in the room. This is that same grant, self-serve.
 //
-// It redeemed through the SAME route and the SAME input as TESTER_PASSKEY
-// until that code was retired (2026-10-17), and is now the only code the
-// route compares. It was always a SEPARATE secret: the vault is a
+// It redeems through the SAME route and the SAME input as TESTER_PASSKEY;
+// the route decides which grant a code opens by which secret it matches, and
+// either can be set alone. It is a SEPARATE secret: the vault is a
 // private-data workspace with an upload endpoint, and the two audiences had
 // to stay separately revocable.
 //
@@ -2028,7 +2031,6 @@ async function updateUserPassword(id, password_hash) {
 // fire-and-forget writes elsewhere in this file: the caller answers the
 // visitor with "you're in", and a swallowed failure there means someone is
 // told they have a grant they do not have and cannot get by trying again.
-// (setUserTester, the retired tester code's twin, went on 2026-10-17.)
 async function setUserVaultBeta(id) {
   if (DB_CONFIGURED) {
     await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { vault_beta: true });
@@ -2036,6 +2038,16 @@ async function setUserVaultBeta(id) {
   }
   const u = (await accountStore()).users.find((x) => x.id === id);
   if (u) { u.vault_beta = true; await saveAccountStore(); }
+}
+// Grants comped Pro to one account (the redeemed tester passkey). Throws for
+// the same reason setUserVaultBeta does.
+async function setUserTester(id) {
+  if (DB_CONFIGURED) {
+    await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { pro_tester: true });
+    return;
+  }
+  const u = (await accountStore()).users.find((x) => x.id === id);
+  if (u) { u.pro_tester = true; await saveAccountStore(); }
 }
 // The public account payload — email, name, and whether a photo exists.
 // Never password_hash, never the photo bytes. Login, signup, /me and the
@@ -22254,28 +22266,28 @@ const server = http.createServer((req, res) =>
     return;
   }
 
-  // --- Redeem a passkey: the broker vault ----------------------------------
+  // --- Redeem a passkey: comped Pro, or the broker vault --------------------
   //
-  // ONE code since 2026-10-17: VAULT_PASSKEY grants the vault (never Pro).
-  // The route also compared TESTER_PASSKEY, which comped Pro, until that code
-  // was retired for a month-long trial everyone gets (see TESTER_PASSKEY's
-  // comment); a tester code typed here now answers like any wrong code. The
-  // response keeps its `granted` array, so the browser's handling is the
-  // same shape it always was.
+  // ONE route and ONE input for two different codes, because the person
+  // typing has been handed a code and should not also have to know which
+  // kind it is. TESTER_PASSKEY comps Pro; VAULT_PASSKEY grants the vault
+  // (never Pro). The route decides which by which secret the code matches,
+  // so the two audiences stay separately revocable. (The tester code was off
+  // from 2026-10-17 to 2026-11-10; see TESTER_PASSKEY's comment.)
   //
   // Refusal order mirrors the vault's openVault() and requireBroker(): the
   // feature not existing, then the caller, then the secret.
   //
   // Deliberately NOT ADMIN_KEY. That key also unlocks /admin, /dev and
-  // /contacts, so it can never be the thing handed to a broker; this grant
-  // touches neither the dashboards nor the header-only `internal` bypass in
-  // /api/comps.
+  // /contacts, so it can never be the thing handed to a tester or a broker;
+  // these grants touch neither the dashboards nor the header-only `internal`
+  // bypass in /api/comps.
   if (req.method === "POST" && req.url === "/api/redeem-passkey") {
-    // Not configured = the feature does not exist on this deployment. 404
+    // Neither configured = the feature does not exist on this deployment. 404
     // rather than 403, matching how the ADMIN_KEY-gated routes go dark when
     // unconfigured: a probe cannot tell a wrong code from a deployment that
-    // has no code.
-    if (!VAULT_PASSKEY) {
+    // has no code. Either one alone is enough to open the route.
+    if (!TESTER_PASSKEY && !VAULT_PASSKEY) {
       res.writeHead(404, { "content-type": "text/plain" });
       return res.end("Not found");
     }
@@ -22289,31 +22301,49 @@ const server = http.createServer((req, res) =>
           return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
         }
         const user = await getSessionUser(req);
-        // The grant is stored on an account, so there is nothing to store it
-        // on for an anonymous caller. Checked BEFORE the secret compare so a
-        // signed-out prober cannot use this route to test codes at all.
+        // Both grants are stored on an account, so there is nothing to store
+        // them on for an anonymous caller. Checked BEFORE the secret compare
+        // so a signed-out prober cannot use this route to test codes at all.
         if (!user) return sendJson(res, 401, { error: "Sign in first, then redeem your code." });
         const passkey = String(JSON.parse(body || "{}").passkey || "").trim();
 
-        if (!secretMatches(passkey, VAULT_PASSKEY)) {
-          // Someone who already holds the grant is told "already", never
-          // "incorrect code" — otherwise a rotated or mistyped passkey would
-          // deny an account that is already inside.
-          if (user.vault_beta) return sendJson(res, 200, { ok: true, already: true });
+        // Which doors this code opens. BOTH secrets are compared on every
+        // redemption rather than stopping at the first hit: the answer is a
+        // list, so a deployment that (by mistake) sets the same string for
+        // both grants what the code plainly says it does, instead of
+        // silently preferring whichever comparison happened to run first.
+        const opens = [];
+        if (TESTER_PASSKEY && secretMatches(passkey, TESTER_PASSKEY)) opens.push("tester");
+        if (VAULT_PASSKEY && secretMatches(passkey, VAULT_PASSKEY)) opens.push("vault");
+
+        if (!opens.length) {
+          // Someone who already has everything this deployment can give is
+          // told "already", never "incorrect code" — otherwise a rotated or
+          // mistyped passkey would deny an account that is already inside.
+          const nothingLeft = (!TESTER_PASSKEY || user.pro_tester) && (!VAULT_PASSKEY || user.vault_beta);
+          if (nothingLeft) return sendJson(res, 200, { ok: true, already: true });
           return sendJson(res, 401, { error: "That code isn't right." });
         }
 
         // Idempotent: re-redeeming a code you already hold is a no-op, not an
         // error. Skipping the write also keeps a re-redemption off the
         // database entirely.
-        if (user.vault_beta) return sendJson(res, 200, { ok: true, already: true });
-        await setUserVaultBeta(user.id);
-        console.log(`Passkey redeemed by ${user.email}: vault`);
-        return sendJson(res, 200, { ok: true, granted: ["vault"] });
+        const granted = [];
+        if (opens.includes("tester") && !user.pro_tester) {
+          await setUserTester(user.id);
+          granted.push("tester");
+        }
+        if (opens.includes("vault") && !user.vault_beta) {
+          await setUserVaultBeta(user.id);
+          granted.push("vault");
+        }
+        if (!granted.length) return sendJson(res, 200, { ok: true, already: true });
+        console.log(`Passkey redeemed by ${user.email}: ${granted.join(", ")}`);
+        return sendJson(res, 200, { ok: true, granted });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
-        // setUserVaultBeta throws on a failed write — never report success
-        // for a grant that did not land.
+        // setUserTester/setUserVaultBeta throw on a failed write — never
+        // report success for a grant that did not land.
         console.error("redeem-passkey error:", err);
         return sendJson(res, 500, { error: "Could not redeem that code. Please try again." });
       }
@@ -28038,11 +28068,12 @@ const server = http.createServer((req, res) =>
           // Stripe portal for a customer record they do not have, so it 400s.
           // Presentation only, like every field in this block.
           viaFirm: ent.viaFirm || null,
-          // Whether this deployment has a vault passkey at all, so the
-          // Settings panel can hide a redeem row that could only ever fail.
-          // NOT a secret and not an entitlement: it says a door exists, never
-          // what opens it. (Its twin `testerPasskey` went with the tester
-          // code on 2026-10-17.)
+          // Whether this deployment has each passkey at all, so the Settings
+          // panel can hide a redeem row that could only ever fail. NOT
+          // secrets and not entitlements: each says a door exists, never
+          // what opens it. Reported separately because the two codes unlock
+          // different things and a deployment can run either alone.
+          testerPasskey: Boolean(TESTER_PASSKEY),
           vaultPasskey: Boolean(VAULT_PASSKEY),
           maxComps: ent.maxComps,
           maxLookbackMonths: ent.maxLookbackMonths,
@@ -33881,16 +33912,20 @@ server.listen(PORT, () => {
   if (STRIPE_CONFIGURED && !STRIPE_PRICES.annual) {
     console.log("🗓  No STRIPE_PRICE_PRO_ANNUAL set — the yearly plan is hidden and its checkout answers 503.");
   }
-  // The tester code is retired (2026-10-17): say so if the host still sets
-  // one, so nobody hands it out believing it works.
-  if (TESTER_PASSKEY) {
-    console.log("🔑 TESTER_PASSKEY is set but the tester code is retired — it opens nothing now " +
-      "(every new account gets the Pro trial instead). Remove it from the host's environment.");
-  }
   // Loud on purpose, same reason as the PRO_AUDIENCE line above: a passkey set
-  // with migration 023 not yet run looks like a working deployment until a
-  // real broker's redemption 500s.
+  // with its migration not yet run looks like a working deployment until a
+  // real redemption 500s.
+  console.log(TESTER_PASSKEY
+    ? "🔑 Tester passkey ENABLED — signed-in redemption at POST /api/redeem-passkey requires the users.pro_tester column (migrations/022-tester-passkey.sql)."
+    : "🔑 Tester passkey not set (set TESTER_PASSKEY to let signed-in testers redeem comped Pro).");
   console.log(VAULT_PASSKEY
     ? "🔑 Vault passkey ENABLED — signed-in redemption at POST /api/redeem-passkey requires the users.vault_beta column (migrations/023-vault-beta.sql)."
     : "🔑 Vault passkey not set (set VAULT_PASSKEY to hand brokers a vault without a SQL update).");
+  // Same string for both codes is a configuration mistake, not a feature.
+  // Loud rather than fatal — refusing to boot over it would take the site
+  // down for a misconfiguration that a rotation closes.
+  if (TESTER_PASSKEY && VAULT_PASSKEY && TESTER_PASSKEY === VAULT_PASSKEY) {
+    console.error("⛔ TESTER_PASSKEY and VAULT_PASSKEY are the SAME string, so every tester code " +
+      "also opens the broker vault. Set them to different values.");
+  }
 });

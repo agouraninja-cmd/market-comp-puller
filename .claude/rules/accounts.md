@@ -7,6 +7,10 @@ paths:
   - "test/account-*.test.js"
   - "test/google-auth*.test.js"
   - "test/portfolio-*.test.js"
+  - "email-verify.js"
+  - "confirm-notice.js"
+  - "test/email-verify*.test.js"
+  - "test/confirm-notice.test.js"
 ---
 # Accounts, the wall and sign-in
 
@@ -192,3 +196,125 @@ paths:
   knows to fetch `GET /api/account/avatar`. File fallback stores both on
   the user object in `account-store.json`. PUT/DELETE `/api/account/avatar`;
   empty body is how Remove works. Not Pro-gated.
+
+## Confirming an email address (2026-11-10; migration 062)
+
+Identity here is the EMAIL (018's rule, repeated above). A report shared with
+an address, a firm invitation, a deal room and a broker profile are all
+handed to whichever account carries that address, and sign-up never checked
+that the person typing it could read its inbox. So anybody who knew
+`client@acme.com` had been sent something could sign up as `client@acme.com`
+first and read it: `GET /api/shares` even LISTED what was sent, ids and links,
+so the link was not needed. Found by a code review, not an incident. The
+Google door's old comment said "the stranger never reads anything sent to
+it"; that was untrue.
+
+The rules are the pure, tested **`email-verify.js`** (its header is the
+contract); server.js owns the column, the mail and two routes. The owner's
+two decisions, both 2026-11-10: an unconfirmed account **works for everything
+of its own** and is held back only from what was sent to its address; and
+**every account that existed when 062 ran counts as confirmed** (nobody was
+asked anything; an account already parked on somebody else's address keeps
+it, and there was no sign of one).
+
+- **Three things prove an address**, each of which puts the inbox's owner in
+  the chair: a Google sign-in (stamped in the callback), a completed password
+  reset (stamped after the password change and the session purge), and the
+  confirm link mailed at sign-up. `markEmailVerified` is the one writer of
+  `users.email_verified_at`.
+- **The link needs a session too.** `POST /api/account/confirm { token }`
+  checks the token (an HMAC over the SESSION's own id and address, keyed on
+  `SUPABASE_SERVICE_KEY` like `digestMac`, 7 days) against whoever is signed
+  in. Never loosen it into "the link is enough": a mail scanner follows every
+  URL in a message, and the inbox's real owner may click a link they never
+  asked for, and either would confirm a stranger's sign-up. The stranger has
+  the session and never sees the link; the owner has the link and no session.
+  The token rides the URL **fragment** (`/?auth=signin#confirm=…`, or
+  `/r/<id>#confirm=…` when they signed up standing on a shared report;
+  `safeNext` allows nothing else), so it is in no log, and index.html POSTs it.
+  Opened signed out, the modal asks them to sign in and the handler finishes
+  it (`pendingConfirmToken`).
+- **`POST /api/account/confirm/send`** mails the link again: signed in only,
+  to the account's own address only (nothing in the body names a recipient),
+  limited per account as well as per IP. It answers `sent: false` when mail
+  is off or the provider refused, so the page never says "sent" untruthfully.
+- **Where it is enforced: `EMAILVERIFY.provenEmail(user)`**, which answers
+  `""` unless the session user carries a literal `email_verified === true`
+  (set in `getSessionUser`, the object's comment says why). Every read that
+  RECOGNIZES somebody by address asks through it:
+  `orgMembershipsFor(user)` and `findBrokerProfile(user)` (both take the user
+  now, never an address, so there is no by-address entry point left),
+  `listSharesForViewer(user)`, `acceptOrgInvite`, the deal-room guest lookups
+  (`resolveHubCaller`, `externalThreadsFor`, `hasExternalRooms`,
+  `externalUnreadCount`, `GET /api/hubs`), `GET /api/broker/me` and the lead
+  inbox's coverage seeding. Two pure modules make the same refusal
+  themselves: `report-access.js` (`verify_required`, above the viewer list
+  and the firm branch, below ownership) and `hub-access.js`
+  (`isParticipantUser`'s email half). A NEW email-keyed read goes through
+  `provenEmail` too; grep for it before adding one.
+- **The gate is on every membership read, not only on Accept**, because a
+  member row outlives the account that accepted it: a deleted member's
+  address, signed up again by somebody else, has nothing to accept. Its cost:
+  an unconfirmed account cannot START a firm either (`POST /api/org` answers
+  403 `verify_required`), since the creator's own row is kept by address and
+  they would make a firm they could not then see. The same refusal is on
+  `POST /api/broker/profile` and `POST /api/vault/identity` (the name a
+  published comp is credited to).
+- **What still works unconfirmed**, on purpose: everything keyed on the user
+  id (their own reports, portfolio, The Board, shares THEY made, deal rooms
+  they own) and both credentials that prove themselves in a deal room (the
+  `user_id` this server stamped on a participant row, and the invite token,
+  which was itself mailed to the inbox).
+- **The refusals say the same thing whether or not anything is waiting.**
+  `canReadShare` decides before it looks at the list; the accept route
+  refuses before it looks for an invitation; the notice is the same for
+  everybody. Nothing tells an unconfirmed account that its address was sent
+  something.
+- **THE TAKE-BACK (the Google callback).** On a sign-in to an existing row
+  that `EMAILVERIFY.needsProof` (the column exists and is empty), the
+  password is replaced with a random one, every session on the account is
+  deleted, and only then is the address stamped. Without it the real owner
+  landed on a stranger's row while the stranger's password and 90-day
+  sessions kept working. It costs an honest member who signed up with a
+  password, never confirmed and later used Google their old password, once.
+  `EMAIL_VERIFICATION=off` does not switch this half off.
+- **Stored rows carry the proof too.** The digest, the trial emails, permit
+  notices and the profile card's seat line read accounts with no session
+  (`findUsersByIds`, `trialNoticeCandidates`) and ask `getEntitlements`,
+  whose firm seat is found by address. `usersReadWithProof` puts
+  `email_verified` on those rows; without it a firm member is mailed about a
+  trial they are not on, with nothing failing.
+- **Deploy order is soft, by one deliberate fail-open** (`verifiedOf`, rule 5
+  in the module): a users row with NO `email_verified_at` key comes from a
+  database without the column, and there the check is not on. That only
+  works because `findUserById` returns whole rows, so **do not narrow its
+  select** (a narrowed read asks for the column by name through
+  `usersReadWithProof` instead, which remembers a missing column for five
+  minutes). The file store works the same way: a row from before this has no
+  key and is grandfathered, a new one is written with a null.
+- **Mail off does not mean check off.** With `EMAIL_FROM` or `RESEND_API_KEY`
+  unset the link is written to the log (as a reset link is), a new password
+  account stays unconfirmed, and the boot banner says so. Google sign-ins are
+  unaffected. Tying the check to mail would reopen the hole on any deploy
+  where mail broke.
+- **The page.** `/api/account/me` (and login, signup) carry `emailVerified`.
+  **`confirm-notice.js`** (browser global `CONFIRMNOTICE`, dual-exported,
+  `maxAge: 0`) draws one small card, bottom right, on a literal `false`:
+  index.html loads it and follows identity with it in `refreshAccountUI`;
+  `ACCOUNT_NAV_JS` fetches it on a server-rendered page only for an account
+  that needs it. A shared report refused with `verify_required` brings it up
+  even if it was hidden. Copy says "confirm", never "verified" (rule 8).
+- **`EMAIL_VERIFICATION=off`** is the rollback: everybody reads as
+  confirmed, no mail, no notice.
+- **Not done, on purpose:** mail CompNinja itself sends an unconfirmed
+  address (the trial emails, a permit notice) still goes out.
+- Tests: `test/email-verify.test.js` (the rules),
+  `test/email-verify-run.test.js` (a real server: an unconfirmed sign-up
+  cannot list or open an invited report, see or accept a firm invitation,
+  enter a deal room or claim a broker page; the link alone confirms nothing;
+  a confirmed account can do all of it; reset; mail off; the rollback; before
+  062; the deleted-member row; the trial run; the take-back),
+  `test/confirm-notice.test.js`, and the new cases at the foot of
+  `test/report-access.test.js` and `test/hub-access.test.js`. The stand-in
+  database gained `columnDefaults` for this (a real table returns a column
+  an insert did not name; the fake stored only what it was sent).

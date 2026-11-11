@@ -85,6 +85,13 @@ paths:
     it may never grant one, which is why `orgs` has no domain column.
     `broker_profiles.company` is free text a broker typed about themselves —
     two people typing "Colliers" are not verified colleagues.
+  - **A firm recognizes an address only once its account has proven it
+    (2026-11-10).** `orgMembershipsFor` takes the session USER and answers
+    no memberships and no invitations for an account that has not confirmed
+    its email, so every firm read inherits it; `POST /api/org/accept` and
+    `POST /api/org` (create) answer 403 `verify_required`. Rules, and why
+    it is on every read and not only on Accept: accounts.md, "Confirming
+    an email address".
   - **An invite is not a membership.** `joined_at` is null until the invited
     person accepts. Identity is the EMAIL (018's decision, adopted by 024 and
     again here), so anyone can type anyone's address into their own firm;

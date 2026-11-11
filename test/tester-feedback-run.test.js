@@ -35,6 +35,14 @@ async function bootFeedback(extra) {
     EMAIL_FROM: "CompNinja <reports@compninja.co>",
     RESEND_API_URL: db.resendUrl,
     TESTER_FEEDBACK_EMAIL: TO,
+    // Email confirmation OFF here (2026-11-10). This suite signs up through
+    // the real door with mail configured, and since that day a sign-up mails
+    // its own "Confirm your email" link, fire-and-forget. Every assertion
+    // below counts the messages that reached the provider, so that link
+    // would be a fourth message arriving at no particular moment. Off keeps
+    // this suite about feedback mail (boot.js's PRO_TRIAL_DAYS precedent);
+    // test/email-verify-run.test.js is where the confirm mail is asserted.
+    EMAIL_VERIFICATION: "off",
     ...extra,
   });
   return { db, srv, stop: async () => { srv.stop(); await db.stop(); } };

@@ -5089,5 +5089,11 @@
     "type": "improvement",
     "title": "The report’s loading card now says how long is left",
     "details": "When you re-run a search or refresh a property’s value, the loading card now counts down under its bar (“About 35 seconds left”), the same way the comp report page does. The time comes from how long recent searches actually took. If a search runs past its usual time the card says so, and if a result needs rechecking the count starts over. The bar itself is unchanged."
+  },
+  {
+    "date": "2026-11-10",
+    "type": "fix",
+    "title": "An email address has to be confirmed before it opens what was sent to it",
+    "details": "CompNinja finds a shared report, a firm invitation, a deal room and a broker profile by email address, and signing up never checked that you could read that address’s inbox. Someone who knew a report had been sent to client@acme.com could have signed up as client@acme.com first and opened it. Now a new account made with a password gets a “Confirm your email” link, and until it is clicked the account works for everything of its own but is not shown anything sent to its address. Signing in with Google, or finishing a password reset, counts as confirming. The link only works for someone signed in to that account, so a mail scanner or a curious click can’t confirm a stranger’s sign-up. If the real owner of an address arrives through Google and finds an unconfirmed account on it, the old password stops working and every other device is signed out. Everyone who already had an account counts as confirmed, so nobody was asked to do anything. There was no sign anyone had used this; it was found by reading the code."
   }
 ]

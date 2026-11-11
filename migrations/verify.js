@@ -297,6 +297,10 @@ const COLUMNS = [
   ["user_sites",        ["stage", "stage_dates", "dates", "portfolio_item_id", "asking_price",
                          "earnest_money", "seller", "acres", "zoning", "market", "updated_at"], "060-user-sites.sql"],
   ["user_sites",        ["org_id", "estimate", "lat", "lng", "geo_source"],  "061-user-sites-firm.sql"],
+  // Whether an account has proven it owns its address. Missing, the code
+  // treats the check as not on (email-verify.js rule 5): nothing fails and
+  // nothing is protected, so this row is the only thing that says so.
+  ["users",             ["email_verified_at"],                  "062-email-verified.sql"],
 ];
 
 // What this tool deliberately CANNOT see: 037-org-shop-kind-tenant-rep.sql

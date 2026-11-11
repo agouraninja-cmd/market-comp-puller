@@ -249,6 +249,11 @@ const CITYCHECK = require("./city-check");
 // what a token must prove). Pure and tested; server.js owns the state
 // cookie, the code exchange, and the two /auth/google* routes.
 const GAUTH = require("./google-auth");
+// Whether an account has proven it owns its address (2026-11-10; migration
+// 062). Pure and tested: its header states the rules. server.js owns the
+// column, the mail and the two /api/account/confirm routes, and every read
+// that RECOGNIZES somebody by their email asks through provenEmail().
+const EMAILVERIFY = require("./email-verify");
 const MARKETHERO = require("./market-hero");
 // Which single momentum claim a city's carved map area may make when one
 // city shape holds several markets — see market-area.js's header.
@@ -1641,6 +1646,21 @@ const GUEST_COOKIE_MAX_AGE_SEC = 2 * 365 * 24 * 60 * 60;
 // GUEST_SEARCH_LIMIT's own configured value.
 // Spec: docs/superpowers/specs/2026-08-05-account-wall-and-how-it-works-landing-design.md
 const ACCOUNT_WALL = String(process.env.ACCOUNT_WALL ?? "on").trim().toLowerCase() !== "off";
+// Email confirmation — EMAIL_VERIFICATION=on (the default). An account is
+// RECOGNIZED by its address (a report shared with it, a firm invitation, a
+// deal room, a broker profile) only once it has proven it owns that address;
+// email-verify.js states the rules and accounts.md has the history. "off" is
+// the rollback lever (an env edit, no deploy): every account reads as
+// confirmed again, no confirm mail is sent and no notice shows. It does NOT
+// switch off the Google door retiring an unconfirmed account's password: that
+// half is about who owns the account, not about the check, and it is safe on
+// its own.
+//
+// NOT gated on outbound mail, deliberately. With EMAIL_FROM or RESEND_API_KEY
+// unset no link can be sent, so a new password account stays unconfirmed and
+// its link is written to the log, as a reset link is. Switching the check off
+// whenever mail is off would reopen the hole on any deploy where mail broke.
+const EMAIL_VERIFICATION = !/^(0|off|false|no)$/i.test(String(process.env.EMAIL_VERIFICATION || "").trim());
 // GUEST_SEARCH_LIMIT: unset/1 = one free search per visitor; any integer N =
 // N free; 0 = sign-in required before any search; "off" = gate disabled
 // entirely, the app behaves exactly as it did before the gate existed. "off"
@@ -1924,9 +1944,75 @@ async function createUser({ email, password_hash, name }) {
     return rows[0];
   }
   row.id = crypto.randomUUID();
+  // The file store has no schema, so the key is written here: a row with the
+  // key and no date is unconfirmed, and a row from before this shipped has no
+  // key and is grandfathered (email-verify.js rule 5). The DATABASE insert
+  // above deliberately does not name the column: PostgREST 400s an INSERT
+  // naming one that migration 062 has not created yet, which would take
+  // sign-up down, and the column's own default (null) says the same thing.
+  row.email_verified_at = null;
   (await accountStore()).users.push(row);
   await saveAccountStore();
   return row;
+}
+
+// --- email confirmation (migration 062; rules in email-verify.js) ----------
+// The key confirm links are signed under. SUPABASE_SERVICE_KEY where there is
+// a database, digestMac's choice and for its reason (present wherever an
+// account could exist, domain-separated in the MAC, and rotating it takes the
+// database connection with it anyway). With no database it is a secret made
+// at boot: local accounts live in a file, and a link that dies on restart
+// costs a developer one click on "Send it again".
+const EMAIL_CONFIRM_SECRET = SUPABASE_SERVICE_KEY || crypto.randomBytes(32).toString("hex");
+
+// Stamp the address as proven. Called from exactly three places, each of
+// which has put the inbox's owner in the chair: the Google callback, a
+// completed password reset, and POST /api/account/confirm.
+//
+// Resolves to whether the stamp was written, and never throws for a column
+// that does not exist yet: before 062 there is nothing to stamp and nothing
+// is being checked, so a sign-in must not fail on it. Any other failure
+// THROWS, because the confirm route tells somebody "confirmed" on the
+// strength of this.
+async function markEmailVerified(userId) {
+  const at = new Date().toISOString();
+  if (DB_CONFIGURED) {
+    try {
+      await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(userId)}`,
+        { email_verified_at: at }, { prefer: "return=minimal" });
+      // "In no firm" was the cached answer while this account was not
+      // recognized by its address; a seat may be waiting for it now.
+      dropSeatCache(userId);
+      return true;
+    } catch (err) {
+      if (isMissingColumn(err)) return false;
+      throw err;
+    }
+  }
+  const u = (await accountStore()).users.find((x) => x.id === userId);
+  if (!u) return false;
+  u.email_verified_at = at;
+  await saveAccountStore();
+  return true;
+}
+
+// Mail (or, with outbound mail off, log) the confirm link. Resolves to
+// whether Resend accepted it, so the resend route can tell the truth; the
+// sign-up door ignores the promise and stays fire-and-forget.
+async function sendEmailConfirmation(user, next) {
+  const token = EMAILVERIFY.mintToken({
+    userId: user.id, email: user.email, secret: EMAIL_CONFIRM_SECRET, now: Date.now(),
+  });
+  if (!token) return false;
+  const link = EMAILVERIFY.confirmUrl({ siteUrl: SITE_URL, token, next });
+  // Gate on BOTH vars, the reset link's rule: sendOutboundEmail silently
+  // no-ops without a RESEND_API_KEY, which would swallow the link entirely.
+  if (!(EMAIL_FROM && RESEND_API_KEY)) {
+    console.log(`Email confirm link for ${user.email} (outbound email not configured, not emailed): ${link}`);
+    return false;
+  }
+  const mail = EMAILVERIFY.confirmMail(link);
+  return sendOutboundEmail(user.email, mail.subject, mail.text);
 }
 async function updateUserPassword(id, password_hash) {
   if (DB_CONFIGURED) {
@@ -1964,6 +2050,13 @@ function publicAccount(user) {
     // (file store, deploy-then-migrate) coerces to false — emails on — which
     // matches what the digest run itself assumes about such rows.
     digestOptout: Boolean(user.digestOptout || user.digest_optout),
+    // Whether this account has proven it owns its address. The page shows its
+    // "Confirm your email" notice on a literal false and on nothing else.
+    // Both shapes arrive here, like avatarRev above: the session user carries
+    // the answer (`email_verified`), a stored row carries the column.
+    emailVerified: typeof user.email_verified === "boolean"
+      ? user.email_verified
+      : EMAILVERIFY.verifiedOf(user, EMAIL_VERIFICATION),
   };
 }
 
@@ -2113,6 +2206,18 @@ async function getSessionUser(req) {
       // trialEndsAt() sees no created_at, fails closed, and every account
       // reads as off-trial with nothing anywhere failing.
       created_at: user.created_at || null,
+      // Has this account proven it owns its address (migration 062)? The
+      // warning at the top of this object applies in REVERSE here, which is
+      // the safe way round: every email-keyed read asks
+      // EMAILVERIFY.provenEmail(user), which needs a literal true, so drop
+      // this line and every account stops being recognized by its address
+      // (no shared reports, no firm) rather than every stranger starting to
+      // be. It reads the whole stored row on purpose: verifiedOf tells a
+      // database without the column from an account that has not confirmed
+      // by whether the KEY is there, so findUserById must keep returning
+      // every column (a narrowed select would switch the check off for
+      // everybody, and test/email-verify-run.test.js is what would say so).
+      email_verified: EMAILVERIFY.verifiedOf(user, EMAIL_VERIFICATION),
     } : null;
   } catch (e) { console.error("User lookup failed:", e.message); return null; }
 }
@@ -2227,7 +2332,7 @@ async function sitesV2Ready() {
 // guessed as a broker shop.
 async function sitesFirmOf(user) {
   if (!DB_CONFIGURED || !user || !user.email) return null;
-  const membership = ORG.membershipOf(await orgMembershipsFor(user.email), user.email);
+  const membership = ORG.membershipOf(await orgMembershipsFor(user), user.email);
   if (!membership) return null;
   const orgId = String(membership.org_id);
   const org = (await orgsByIds([orgId])).get(orgId);
@@ -3034,10 +3139,13 @@ async function trialNoticeCandidates(now) {
   const since = new Date(now - windowMs).toISOString();
   const out = [];
   for (let offset = 0; offset < 50000; offset += 500) {
-    const rows = await sbRequest("GET",
+    // With each account's email proof (usersReadWithProof says why): a firm
+    // seat is found by address, and "a firm seat must not be mailed about a
+    // trial they are not on" only holds if the seat is found.
+    const rows = await usersReadWithProof(
       "users?select=id,email,name,created_at,digest_optout,pro_tester,vault_beta" +
       (everyone ? "" : `&created_at=gte.${encodeURIComponent(since)}`) +
-      `&order=created_at.asc&limit=500&offset=${offset}`) || [];
+      `&order=created_at.asc&limit=500&offset=${offset}`);
     out.push(...rows);
     if (rows.length < 500) break;
   }
@@ -3067,13 +3175,50 @@ async function markTrialNoticeSent(userId, kind) {
     { prefer: "resolution=ignore-duplicates,return=minimal" });
 }
 
+// A NARROWED users read whose rows go on to getEntitlements (the digest, the
+// trial emails, permit notices, the profile card's seat line). Those runs have
+// no session, and the firm seat behind getEntitlements is found by ADDRESS,
+// which since 2026-11-10 needs an account that has proven its address
+// (email-verify.js; orgMembershipsFor). So each row comes back carrying
+// `email_verified`, the flag getSessionUser puts on a session user. Without
+// it a stored row reads as unproven, its firm seat is not found, and a firm
+// member is mailed about a trial they are not on or dropped from a permit
+// notice, with nothing failing.
+//
+// The column is asked for BY NAME (the select is narrowed, so unlike
+// findUserById its absence cannot be read off the row), and PostgREST 400s a
+// select naming a column migration 062 has not created. So a missing column
+// is remembered for a few minutes and the read goes out without it, every
+// row then reading as proven: no column, no check (email-verify.js rule 5).
+// `q` must carry a `select=`.
+const USERS_PROOF_RECHECK_MS = 5 * 60 * 1000;
+let usersProofColumnMissingAt = 0;
+async function usersReadWithProof(q) {
+  let rows = null;
+  let hasColumn = Date.now() - usersProofColumnMissingAt >= USERS_PROOF_RECHECK_MS;
+  if (hasColumn) {
+    try {
+      rows = await sbRequest("GET", q.replace("select=", "select=email_verified_at,"));
+    } catch (err) {
+      if (!isMissingColumn(err)) throw err;
+      hasColumn = false;
+      usersProofColumnMissingAt = Date.now();
+    }
+  }
+  if (!hasColumn) rows = await sbRequest("GET", q);
+  return (rows || []).map((r) => ({
+    ...r,
+    email_verified: hasColumn ? EMAILVERIFY.verifiedOf(r, EMAIL_VERIFICATION) : true,
+  }));
+}
+
 async function findUsersByIds(ids) {
   const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
   if (!DB_CONFIGURED || !list.length) return [];
   const out = [];
   for (let i = 0; i < list.length; i += 200) {
     const slice = list.slice(i, i + 200);
-    const rows = await sbRequest("GET",
+    const rows = await usersReadWithProof(
       `users?id=in.(${pgInList(slice)})` +
       `&select=id,email,digest_optout,pro_tester,vault_beta,created_at&limit=${slice.length}`);
     for (const r of rows || []) out.push(r);
@@ -3300,7 +3445,7 @@ async function findBrandingProfile(userId) {
 // two can never disagree about which firm is "the member's firm".
 async function activeMembershipsFor(user) {
   if (!user || !user.email || !DB_CONFIGURED) return [];
-  return (await orgMembershipsFor(user.email))
+  return (await orgMembershipsFor(user))
     .filter((r) => ORG.isActive(r))
     .sort((a, b) => String(a.joined_at || "").localeCompare(String(b.joined_at || "")));
 }
@@ -3328,7 +3473,7 @@ async function suggestedBrandFor(user) {
   if (!user) return null;
   try {
     const [profile, firm] = await Promise.all([
-      DB_CONFIGURED ? findBrokerProfile(user.email, user.id) : null,
+      DB_CONFIGURED ? findBrokerProfile(user) : null,
       DB_CONFIGURED ? oldestActiveFirmFor(user) : null,
     ]);
     return BRANDING.suggestBrand({ user, brokerProfile: profile, firm });
@@ -3612,7 +3757,7 @@ async function firmSeatSubscriptionFor(user) {
   if (cached && Date.now() - cached.at < SEAT_CACHE_TTL_MS) return null;
   try {
     if (!DB_CONFIGURED || !user || !user.email) return null;
-    const memberships = await orgMembershipsFor(user.email);
+    const memberships = await orgMembershipsFor(user);
     const mine = memberships.filter(ORG.isActive);
     // Cached too — "in no firm" is the common answer and the one worth not
     // paying for on every page load.
@@ -5135,7 +5280,14 @@ async function listSharesForOwner(userId) {
     `&order=created_at.desc&limit=200`)) || [];
 }
 
-async function listSharesForViewer(email) {
+// Takes the session USER, not an address (2026-11-10): what was shared with
+// an address is listed only for an account that has proven it owns that
+// address. This list hands out ids and links, so before that an unconfirmed
+// sign-up as client@acme.com was shown everything sent to client@acme.com
+// without needing a single link. [] for anybody unproven, with no read.
+async function listSharesForViewer(user) {
+  const email = SHAREACCESS.normalizeEmail(EMAILVERIFY.provenEmail(user));
+  if (!email) return [];
   return (await sbRequest("GET",
     `report_viewers?email=eq.${encodeURIComponent(email)}` +
     // first_viewed_at is this viewer's own row (has THEY opened it), and the
@@ -5170,8 +5322,22 @@ async function listSharesForViewer(email) {
 // included, because /desk renders both and org-access.js is what tells them
 // apart. Keyed on the EMAIL, never the user id: migration 018's decision,
 // which is what lets a colleague be invited before they have an account.
-async function orgMembershipsFor(email) {
-  const mine = ORG.normalizeEmail(email);
+//
+// Takes the session USER, not an address (2026-11-10), and that is the gate:
+// an account that has not proven it owns its address has NO memberships and
+// NO pending invitations, here and so everywhere, because every firm read in
+// this file starts from this one. Before that, signing up with an invited
+// colleague's address was enough to see the invitation and accept a paid
+// seat, the firm's shelf, its buildings, its contacts and its messages. And
+// it had to be here rather than only at the accept step: a member row
+// outlives the account that accepted it (the row is the record), so a
+// deleted member's address, signed up again by somebody else, would have
+// walked straight back into the firm with nothing to accept.
+//
+// A caller that hands in an address (a string) gets [], on purpose: there is
+// no way to ask this by address any more.
+async function orgMembershipsFor(user) {
+  const mine = ORG.normalizeEmail(EMAILVERIFY.provenEmail(user));
   if (!DB_CONFIGURED || !mine) return [];
   return (await sbRequest("GET",
     `org_members?email=eq.${encodeURIComponent(mine)}` +
@@ -5273,7 +5439,7 @@ async function setMemberAutoShare(orgId, email, value) {
 // than a wrong answer either way.
 async function activeOrgIdsFor(user) {
   if (!user || !user.email) return [];
-  const rows = await orgMembershipsFor(user.email);
+  const rows = await orgMembershipsFor(user);
   return ORG.activeOrgIds(rows, user.email);
 }
 
@@ -5381,11 +5547,19 @@ async function inviteOrgMembers(orgId, emails, invitedBy) {
 // caller's own email in the query, not checked after the fact — knowing an org
 // id must never be enough to join it. `joined_at=is.null` keeps it idempotent
 // and stops a second click rewriting the date somebody actually joined.
+//
+// And only for an address the account has PROVEN is its own (2026-11-10;
+// email-verify.js). Enforced HERE as well as at the route, storeSharedReport's
+// rule: the route's refusal protects one caller, this protects every future
+// one. An unproven account matches no invitation, so it answers [] exactly as
+// "no open invitation" does and writes nothing.
 async function acceptOrgInvite(orgId, user) {
+  const mine = ORG.normalizeEmail(EMAILVERIFY.provenEmail(user));
+  if (!mine) return [];
   dropSeatCache(user && user.id);
   return sbRequest("PATCH",
     `org_members?org_id=eq.${encodeURIComponent(orgId)}` +
-    `&email=eq.${encodeURIComponent(ORG.normalizeEmail(user.email))}` +
+    `&email=eq.${encodeURIComponent(mine)}` +
     `&removed_at=is.null&joined_at=is.null`,
     { joined_at: new Date().toISOString(), user_id: user.id },
     { prefer: "return=representation" });
@@ -5794,7 +5968,7 @@ async function buildingSheetPayload(user, orgId, buildingId) {
 async function messagingFirmOf(user) {
   if (!DB_CONFIGURED || !user || !user.email) return null;
   try {
-    const rows = await orgMembershipsFor(user.email);
+    const rows = await orgMembershipsFor(user);
     const membership = ORG.membershipOf(rows, user.email);
     if (!membership) return null;
     return { orgId: String(membership.org_id), membership };
@@ -6000,6 +6174,11 @@ function touchMsgThread(threadId, when) {
 async function externalThreadsFor(user) {
   if (!DB_CONFIGURED || !user || !user.id) return [];
   const me = MSG.normalizeEmail(user.email);
+  // The rooms somebody ELSE put this address in are found only for an
+  // account that has proven the address is its own (email-verify.js). `me`
+  // stays the account's own address for its own read marks on the rooms it
+  // owns; `guest` is what may be looked up in other people's guest lists.
+  const guest = MSG.normalizeEmail(EMAILVERIFY.provenEmail(user));
 
   // A row read, then the hubs it names — deliberately NOT
   // listHubsForParticipant's embedded select, which is the same question
@@ -6010,7 +6189,7 @@ async function externalThreadsFor(user) {
   // here than saving a request on a page-load path that already fans out.
   const ownedQ = `hubs?owner_user_id=eq.${encodeURIComponent(user.id)}` +
     `&select=id,owner_user_id,title,market,property_type,status,closed_at,created_at,updated_at&order=updated_at.desc&limit=50`;
-  const guestQ = `hub_participants?email=eq.${encodeURIComponent(me)}` +
+  const guestQ = `hub_participants?email=eq.${encodeURIComponent(guest)}` +
     `&removed_at=is.null&select=hub_id,invited_at&order=invited_at.desc&limit=200`;
 
   // One side failing must not take the other down with it: a broker's own
@@ -6021,7 +6200,7 @@ async function externalThreadsFor(user) {
       console.error("External owned read failed (rooms shared with them still list):", err.message);
       return [];
     }),
-    me
+    guest
       ? sbRequest("GET", guestQ).catch((err) => {
         console.error("External invitation read failed (their own rooms still list):", err.message);
         return [];
@@ -6220,7 +6399,8 @@ async function externalThreadsFor(user) {
 // what corrects it.
 async function hasExternalRooms(user) {
   if (!DB_CONFIGURED || !user || !user.id) return false;
-  const me = MSG.normalizeEmail(user.email);
+  // A proven address only (email-verify.js), externalThreadsFor's rule.
+  const me = MSG.normalizeEmail(EMAILVERIFY.provenEmail(user));
   try {
     const [owned, guest] = await Promise.all([
       sbRequest("GET",
@@ -6263,6 +6443,9 @@ async function hasExternalRooms(user) {
 async function externalUnreadCount(user) {
   if (!DB_CONFIGURED || !user || !user.id) return 0;
   const me = MSG.normalizeEmail(user.email);
+  // Rooms this address was put in count only once the account has proven the
+  // address is its own (email-verify.js); `me` still reads its own marks.
+  const guest = MSG.normalizeEmail(EMAILVERIFY.provenEmail(user));
   let owned = [];
   let invited = [];
   try {
@@ -6270,9 +6453,9 @@ async function externalUnreadCount(user) {
       sbRequest("GET",
         `hubs?owner_user_id=eq.${encodeURIComponent(user.id)}` +
         `&select=id&order=updated_at.desc&limit=50`),
-      me
+      guest
         ? sbRequest("GET",
-          `hub_participants?email=eq.${encodeURIComponent(me)}` +
+          `hub_participants?email=eq.${encodeURIComponent(guest)}` +
           `&removed_at=is.null&select=hub_id&order=invited_at.desc&limit=50`)
         : Promise.resolve([]),
     ]);
@@ -6406,7 +6589,11 @@ async function resolveHubCaller(req, hubId) {
 
   let participant = null;
   if (user) {
-    const mine = HUB.normalizeEmail(user.email);
+    // By the id this server stamped, or by an address the account has PROVEN
+    // is its own (email-verify.js). An unproven account resolves to no row
+    // by address, so it is not even told a room exists; hub-access.js makes
+    // the same refusal itself for a row found any other way.
+    const mine = HUB.normalizeEmail(EMAILVERIFY.provenEmail(user));
     participant = participants.find((p) =>
       (p.user_id && String(p.user_id) === String(user.id)) ||
       (mine && HUB.normalizeEmail(p.email) === mine)) || null;
@@ -12375,6 +12562,14 @@ const ACCOUNT_NAV_JS =
   // a member, and there is no member here.
   `if(!me&&window.cnShopNav)window.cnShopNav(false);` +
   `if(!me)return;` +
+  // The "Confirm your email" notice (2026-11-10; confirm-notice.js). An
+  // account that has not proven its address is not shown what was sent to
+  // it, so Messages' Reports view and a firm's pages would just look empty
+  // with nothing to say why. The script is fetched ONLY for such an account
+  // (a literal false, never a missing field), so a public market page and
+  // every confirmed member pay nothing for it.
+  `if(me.emailVerified===false){var cfn=document.createElement("script");cfn.src="/confirm-notice.js";` +
+  `cfn.onload=function(){if(window.CONFIRMNOTICE)window.CONFIRMNOTICE.sync(me);};document.head.appendChild(cfn);}` +
   // Pricing's href, for members only — see ACCOUNT_NAV_PRICING above. It sits
   // UNDER the `if(!me)return;` guard deliberately: that one line is what makes
   // it impossible to hand a signed-out visitor the door that strands them, so
@@ -13773,9 +13968,17 @@ async function refreshBrokerProfiles() {
 // broker is choosing to put their name on a comp, which is a separate consent
 // from listing themselves in the directory. Reading the cache here would mean
 // a broker with a private profile silently gets no credit.
-async function findBrokerProfile(email, userId) {
-  const e = String(email || "").trim().toLowerCase();
-  if (!DB_CONFIGURED || !e) return null;
+//
+// Takes the session USER (2026-11-10). The row linked to this ACCOUNT
+// (user_id) is always found. The older match on the account's ADDRESS is
+// made only for an account that has proven it owns that address
+// (email-verify.js): this row is the name a published comp is credited to
+// ("Verified · via <name>"), so adopting one by a typed address would let a
+// stranger publish under a real broker's name.
+async function findBrokerProfile(user) {
+  const userId = user && user.id;
+  const e = EMAILVERIFY.provenEmail(user);
+  if (!DB_CONFIGURED || (!e && !userId)) return null;
   // Pre-migration safety: user_id stays OUT of the select (PostgREST 400s on
   // unknown SELECTed columns, which would take the email fallback down too);
   // the user_id=eq. filter read is individually caught, so it alone may
@@ -13791,6 +13994,8 @@ async function findBrokerProfile(email, userId) {
       if (rows && rows[0]) return rows[0];
     } catch (err) { console.error("Broker profile user_id read failed:", err.message); }
   }
+  // No proven address, no match by address.
+  if (!e) return null;
   try {
     const rows = await sbRequest("GET",
       `broker_profiles?email=eq.${encodeURIComponent(e)}&${SELECT}&limit=1`);
@@ -19964,13 +20169,13 @@ async function vaultReadPayload(req, params) {
     // BEFORE the broker clicks it. findBrokerProfile never throws, but it is
     // settled alongside the rest anyway: an identity read must never be able
     // to fail a vault the broker can otherwise open.
-    DB_CONFIGURED ? findBrokerProfile(user.email, user.id) : Promise.resolve(null),
+    DB_CONFIGURED ? findBrokerProfile(user) : Promise.resolve(null),
     // The firm, if any, and which of this broker's comps are already on its
     // shelf (migration 030). Settled alongside the rest for the reason the
     // profile is: neither may be able to fail a vault the broker can
     // otherwise open, and both resolve to "no firm, nothing shared" — the
     // state that offers no control rather than a broken one.
-    DB_CONFIGURED ? orgMembershipsFor(user.email) : Promise.resolve(null),
+    DB_CONFIGURED ? orgMembershipsFor(user) : Promise.resolve(null),
     DB_CONFIGURED ? sharedCompIdsFor(user.id) : Promise.resolve(null),
     // The member's saved report branding, offered to an UNSTATED credit
     // identity (2026-09-02, "one profile"). Settled like the rest: a
@@ -20289,7 +20494,7 @@ async function orgCompsForReport(ent, user, { market, type, months }) {
     if (!DB_CONFIGURED) return [];
     if (!ent || !ent.canUseVault) return [];
     if (!market || !type || !user) return [];
-    const memberships = await orgMembershipsFor(user.email);
+    const memberships = await orgMembershipsFor(user);
     const orgIds = ORG.activeOrgIds(memberships, user.email);
     if (!orgIds.length) return [];
 
@@ -21520,7 +21725,7 @@ const server = http.createServer((req, res) =>
         if (rateLimited("acct:" + clientIp(req), 10, 15 * 60 * 1000)) {
           return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
         }
-        const { email, password, name } = JSON.parse(body || "{}");
+        const { email, password, name, next } = JSON.parse(body || "{}");
         const emailOk = String(email || "").trim().toLowerCase();
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailOk)) {
           return sendJson(res, 400, { error: "A valid email is required." });
@@ -21540,6 +21745,17 @@ const server = http.createServer((req, res) =>
           setSessionCookie(res, req, token, Math.floor(SESSION_TTL_MS / 1000));
           logEvent("signup", {});
           console.log(`Account created: ${emailOk}`);
+          // The account works at once; what waits is being RECOGNIZED by this
+          // address, since nothing here proved the person typing it can read
+          // its inbox (email-verify.js). Fire and forget, like every other
+          // send: a mail provider's bad minute must not fail a sign-up, and
+          // the notice on the page offers to send the link again. `next` is
+          // the shared report they were standing on, if any (safeNext
+          // refuses anything else), so the link takes them back to it.
+          if (!EMAILVERIFY.verifiedOf(user, EMAIL_VERIFICATION)) {
+            sendEmailConfirmation(user, next)
+              .catch((err) => console.error("Confirm email send failed:", err.message));
+          }
           return sendJson(res, 200, publicAccount(user));
         }
         // login — identical 401 for unknown email and wrong password.
@@ -21585,11 +21801,17 @@ const server = http.createServer((req, res) =>
   // POST /api/account/login answers it "Incorrect email or password" like any
   // wrong guess, and the existing forgot-password flow is how such an account
   // gains a password later — the reset email goes to the address Google
-  // verified, so the inbox's owner is always senior. That is also the honest
-  // answer to the classic pre-hijack worry (signup does not verify email, so
-  // a stranger could park a password account on someone else's address before
-  // they first arrive via Google): the true owner can always take the account
-  // over through reset, and the stranger never reads anything sent to it.
+  // verified, so the inbox's owner is always senior.
+  //
+  // The classic pre-hijack worry (sign-up does not prove the inbox, so a
+  // stranger could park a password account on someone else's address before
+  // they first arrive via Google) was answered here until 2026-11-10 with
+  // "the stranger never reads anything sent to it". That was untrue: shares,
+  // firm invitations and deal rooms were all handed to the account by its
+  // address. Two things answer it now. An unconfirmed account is not
+  // recognized by its address at all (email-verify.js), and THE TAKE-BACK
+  // below retires a parked account's password and sessions the first time
+  // the real owner arrives through this door.
   //
   // Every failure exits to /?auth=signin&gerr=1 — the account modal opens
   // with a one-line explanation and the password door is right there. No
@@ -21672,7 +21894,32 @@ const server = http.createServer((req, res) =>
         // is a real analytics column and records which door it was.
         logEvent("signup", { source: "google" });
         console.log("Account created via Google: " + checked.email);
+        // Google verified this address (validateGoogleClaims requires
+        // email_verified === true), so the account is born confirmed. A
+        // separate stamp rather than a column in the insert: see createUser.
+        await markEmailVerified(user.id);
       } else {
+        // THE TAKE-BACK. This row was made by somebody who never proved they
+        // own the address, and the person arriving now just did. So before
+        // they are let in, everything the first person could still use is
+        // retired: the password becomes a random one nobody knows (the same
+        // shape a Google-made account is born with) and every session on the
+        // account is deleted. Without this the real owner would land on a
+        // stranger's row while the stranger's password and 90-day sessions
+        // kept working, reading whatever the owner was then sent.
+        //
+        // In that order, and all three awaited, so a failure anywhere exits
+        // through fail() with the row still unconfirmed and the next attempt
+        // runs it again. It costs an honest member who signed up with a
+        // password, never confirmed and later used Google their old password
+        // (Forgot password sets a new one); that is the price of not being
+        // able to tell them from a squatter, and it is paid once.
+        if (EMAILVERIFY.needsProof(user)) {
+          await updateUserPassword(user.id, await hashPassword(crypto.randomBytes(32).toString("base64url")));
+          await deleteSessionsForUser(user.id);
+          await markEmailVerified(user.id);
+          console.log("Unconfirmed account taken back through Google: " + checked.email);
+        }
         logEvent("login", { source: "google" });
       }
       const token = await createSession(user.id);
@@ -21899,11 +22146,109 @@ const server = http.createServer((req, res) =>
         if (!userId) return sendJson(res, 400, { error: "That reset link is invalid or has expired; request a new one." });
         await updateUserPassword(userId, await hashPassword(password));
         await deleteSessionsForUser(userId); // every device must sign in again
+        // A completed reset proves the inbox: the link was mailed to the
+        // address and whoever held it just chose the password. AFTER the two
+        // lines above, so the address is never marked proven while an older
+        // password or session could still be somebody else's. Best effort: a
+        // failed stamp must not turn a password that WAS changed into an
+        // error, and the confirm link is still there for an unstamped row.
+        await markEmailVerified(userId)
+          .catch((err) => console.error("Email confirm stamp after reset failed:", err.message));
         return sendJson(res, 200, { ok: true });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("reset error:", err);
         return sendJson(res, 500, { error: "Could not reset the password." });
+      }
+    });
+    return;
+  }
+
+  // --- Confirm the account's email address (2026-11-10; migration 062) -----
+  //
+  // POST /api/account/confirm { token } proves the address. It needs a
+  // SESSION as well as the token, and the token is checked against the
+  // session's own id and address (email-verify.js rule 3). That pairing is
+  // the point of the route and must not be loosened into "the link is
+  // enough": a link that confirmed on its own would be opened by a mail
+  // scanner following every URL in a message, or by the inbox's real owner
+  // wondering what it was, and either would confirm a stranger's sign-up.
+  // The stranger holds the session and never sees the link; the owner holds
+  // the link and has no session; only the account's own person has both.
+  //
+  // A POST the page makes itself (index.html reads the token from the URL
+  // FRAGMENT, which a browser never sends), so the token is in no access
+  // log, no Referer and no prefetch.
+  if (req.method === "POST" && req.url === "/api/account/confirm") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (rateLimited("acctc:" + clientIp(req), 20, 15 * 60 * 1000)) {
+          return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
+        }
+        const user = await getSessionUser(req);
+        if (!user) {
+          return sendJson(res, 401, {
+            error: "Sign in to finish confirming your email.", signin_required: true,
+          });
+        }
+        // Idempotent: a second click, or a link opened after a Google
+        // sign-in already proved the address, is a success and not an error.
+        if (user.email_verified) return sendJson(res, 200, { ...publicAccount(user), already: true });
+        const token = String(JSON.parse(body || "{}").token || "");
+        const ok = EMAILVERIFY.checkToken(token, {
+          userId: user.id, email: user.email, secret: EMAIL_CONFIRM_SECRET, now: Date.now(),
+        });
+        if (!ok) {
+          return sendJson(res, 400, {
+            error: "That confirm link is for a different account, or it has expired. Use Send it again to get a new one.",
+          });
+        }
+        if (!(await markEmailVerified(user.id))) {
+          return sendJson(res, 503, { error: "Couldn't confirm your email just now. Please try again in a minute." });
+        }
+        logEvent("email_confirmed", {});
+        console.log(`Email confirmed: ${user.email}`);
+        return sendJson(res, 200, publicAccount({ ...user, email_verified: true }));
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Email confirm failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't confirm your email just now. Please try again in a minute." });
+      }
+    });
+    return;
+  }
+
+  // POST /api/account/confirm/send { next? } mails the link again. Signed in
+  // only, and only ever to the account's OWN address: nothing in the body
+  // names a recipient, so this cannot be turned into a way to mail anybody.
+  // Limited per ACCOUNT as well as per IP, because the cost of abuse here is
+  // somebody else's inbox filling with mail they did not ask for.
+  if (req.method === "POST" && req.url === "/api/account/confirm/send") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        if (user.email_verified) return sendJson(res, 200, { ok: true, already: true });
+        if (rateLimited("acctcs:" + user.id, 5, 15 * 60 * 1000) ||
+            rateLimited("acctcsip:" + clientIp(req), 10, 15 * 60 * 1000)) {
+          return sendJson(res, 429, {
+            error: "We just sent that. Check your inbox and your spam folder, or try again in a few minutes.",
+          });
+        }
+        const next = JSON.parse(body || "{}").next;
+        // Awaited, unlike the sign-up send: this caller asked a question
+        // ("did you send it?") and `sent` is the true answer. False covers
+        // both "mail is not configured here" and "the provider refused".
+        const sent = await sendEmailConfirmation(user, next);
+        return sendJson(res, 200, { ok: true, sent: Boolean(sent) });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Confirm email resend failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't send the email just now. Please try again in a minute." });
       }
     });
     return;
@@ -23533,7 +23878,16 @@ const server = http.createServer((req, res) =>
     (async () => {
       const user = await requireUser(req, res);
       if (!user) return;
-      const subs = await fetchSubmissionsForEmail(user.email);
+      // "Linkage is by email match" is exactly what an unproven address must
+      // not get (2026-11-10; email-verify.js): the comps a broker submitted
+      // were filed under an address they TYPED into a public form, so until
+      // this, signing up with that address showed their submissions and let
+      // the profile below be adopted onto a stranger's account. Answered as
+      // "not a broker", the same shape as an account with no submissions,
+      // plus a flag the page may use to say why.
+      const provenEmail = EMAILVERIFY.provenEmail(user);
+      if (!provenEmail) return sendJson(res, 200, { isBroker: false, verifyRequired: true });
+      const subs = await fetchSubmissionsForEmail(provenEmail);
       if (!subs.length) return sendJson(res, 200, { isBroker: false });
       const approved = subs.filter((s) => s.status === "approved");
       let profile = null;
@@ -23600,6 +23954,16 @@ const server = http.createServer((req, res) =>
         if (!user) return;
         const wantPublic = Boolean(JSON.parse(body || "{}").public);
         if (!DB_CONFIGURED) return sendJson(res, 400, { error: "Public profiles require the database." });
+        // The same rule as GET /api/broker/me above, on the write: a public
+        // broker page is built from the submissions filed under this address
+        // and carries the name on them, so only an account that has proven
+        // the address may claim it.
+        if (!user.email_verified) {
+          return sendJson(res, 403, {
+            error: "Confirm your email first. Your broker page is built from the comps submitted under this address.",
+            verify_required: true,
+          });
+        }
         const subs = await fetchSubmissionsForEmail(user.email);
         const approved = subs.filter((s) => s.status === "approved");
         if (wantPublic && !approved.length) {
@@ -23811,7 +24175,12 @@ const server = http.createServer((req, res) =>
             "comp_submissions?status=eq.approved&order=ts.desc&limit=500" +
             "&select=status,broker_email,address,property_type")) || [];
           if (subs0.length === 500) console.warn("broker coverage seeding: hit the 500-row approved-submissions cap — early contributors may seed no coverage");
-          const subs = subs0.filter((s) => String(s.broker_email || "").trim().toLowerCase() === String(user.email).toLowerCase());
+          // Matched on an address the account has PROVEN is its own
+          // (email-verify.js). `mineEmail &&` matters: an unproven account's
+          // is "", which would otherwise match every submission with no
+          // address on it.
+          const mineEmail = EMAILVERIFY.provenEmail(user);
+          const subs = subs0.filter((s) => mineEmail && String(s.broker_email || "").trim().toLowerCase() === mineEmail);
           const seeds = LEADSVC.seedCoverageFromSubmissions(
             subs.map((s) => ({ market: marketOf(s.address), property_type: s.property_type })));
           if (seeds.length) {
@@ -25841,7 +26210,7 @@ const server = http.createServer((req, res) =>
           // Credit is the compensation (Ecosystem Plan §4), so a comp with no
           // name to credit is not worth publishing — refuse rather than post it
           // anonymously and let the broker discover later that they got nothing.
-          const profile = await findBrokerProfile(user.email, user.id);
+          const profile = await findBrokerProfile(user);
           // Profile only — never user.name. See creditName's comment: the
           // account-name fallback credited a vault-first broker's comps to
           // their signup name and copied it into broker_company, which is
@@ -25930,7 +26299,7 @@ const server = http.createServer((req, res) =>
           // Asked ONCE for the whole batch, before anything is written: fifty
           // comps published under no credit is fifty rows given away, and the
           // page turns this exact code into the form that fixes it.
-          const profile = await findBrokerProfile(user.email, user.id);
+          const profile = await findBrokerProfile(user);
           const gateBy = VAULT.canPublishAs(profile);
           if (!gateBy.ok) {
             return sendJson(res, 400, { error: gateBy.error, code: gateBy.code });
@@ -26059,7 +26428,7 @@ const server = http.createServer((req, res) =>
           const batch = ids.slice(0, VAULT_FIRM_BATCH);
           const remaining = ids.length - batch.length;
 
-          const memberships = await orgMembershipsFor(user.email);
+          const memberships = await orgMembershipsFor(user);
           const orgId = String(parsed.orgId || "").trim();
           const membership = ORG.membershipOf(
             memberships.filter((r) => String(r.org_id) === orgId), user.email);
@@ -26068,7 +26437,7 @@ const server = http.createServer((req, res) =>
           }
           // The same name the single share puts on the badge, decided the
           // same way, so one broker is named one way across the product.
-          const profile = await findBrokerProfile(user.email, user.id);
+          const profile = await findBrokerProfile(user);
           const sharedByName = VAULT.creditName(profile) || user.name || "";
           const r = await shareVaultCompsToOrg(user, orgId, batch, sharedByName);
           const org = (await orgsByIds([orgId])).get(String(orgId));
@@ -26116,11 +26485,24 @@ const server = http.createServer((req, res) =>
           if (rateLimited("vaultid:" + clientIp(req), 30)) {
             return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
           }
+          // The credit identity is filed under the account's ADDRESS and is
+          // the name a published comp carries, so it is stated only by an
+          // account that has proven the address is theirs (email-verify.js).
+          // Refused before the body is read as an identity: an unproven
+          // account finds no row by address (findBrokerProfile), so without
+          // this it would try to INSERT a second row for an address that may
+          // already have one.
+          if (!user.email_verified) {
+            return sendJson(res, 403, {
+              error: "Confirm your email first. A published comp is credited to you by name, so we need to know this address is yours.",
+              verify_required: true,
+            });
+          }
           const parsed = VAULT.validateIdentity(JSON.parse(body || "{}"));
           if (!parsed.ok) return sendJson(res, 400, { error: parsed.error });
           const { display_name, company, license_number } = parsed.identity;
 
-          const existing = await findBrokerProfile(user.email, user.id);
+          const existing = await findBrokerProfile(user);
           if (existing) {
             // Filter on the FOUND ROW's email, not the account's.
             // findBrokerProfile matches by user_id first and email second, so
@@ -26375,7 +26757,7 @@ const server = http.createServer((req, res) =>
             return sendJson(res, 200, { ok: true, shared: false });
           }
 
-          const memberships = await orgMembershipsFor(user.email);
+          const memberships = await orgMembershipsFor(user);
           const orgId = String(parsed.orgId || "").trim();
           const membership = ORG.membershipOf(
             memberships.filter((r) => String(r.org_id) === orgId), user.email);
@@ -26388,7 +26770,7 @@ const server = http.createServer((req, res) =>
           // account name. Deliberately never their email: a firm roster
           // already carries that, and a comp badge is not the place to
           // restate it.
-          const profile = await findBrokerProfile(user.email, user.id);
+          const profile = await findBrokerProfile(user);
           const sharedByName = VAULT.creditName(profile) || user.name || "";
           const r = await shareVaultCompsToOrg(user, orgId, ids, sharedByName);
           // Nothing landed and the reason is knowable: refuse by name. The
@@ -27333,7 +27715,7 @@ const server = http.createServer((req, res) =>
         let firmSeats = 0;
         let firmCustomer = null;
         if (chosen.firm) {
-          const memberships = await orgMembershipsFor(user.email);
+          const memberships = await orgMembershipsFor(user);
           const membership = ORG.membershipOf(
             memberships.filter((r) => String(r.org_id) === String(orgId || "")), user.email);
           if (!membership) return sendJson(res, 403, { error: "You are not a member of that firm." });
@@ -27472,7 +27854,7 @@ const server = http.createServer((req, res) =>
 
         let sub;
         if (orgId) {
-          const memberships = await orgMembershipsFor(user.email);
+          const memberships = await orgMembershipsFor(user);
           const membership = ORG.membershipOf(
             memberships.filter((r) => String(r.org_id) === orgId), user.email);
           if (!membership) return sendJson(res, 403, { error: "You are not a member of that firm." });
@@ -28033,7 +28415,7 @@ const server = http.createServer((req, res) =>
             return sendJson(res, 503, { error: "Firm sharing is unavailable right now. Please try again in a minute." });
           }
           const asked = String(parsed.orgId || "").trim();
-          const rows = await orgMembershipsFor(user.email);
+          const rows = await orgMembershipsFor(user);
           const membership = ORG.membershipOf(
             rows.filter((r) => String(r.org_id) === asked), user.email);
           if (!membership || !ORG.canPublishToOrg(membership)) {
@@ -28165,6 +28547,19 @@ const server = http.createServer((req, res) =>
             signin_required: true,
           });
         }
+        // Signed in, but the account has not proven it owns its address, and
+        // an address is how this report knows its readers. Said the same way
+        // whether or not this address is on the list (report-access.js
+        // decides before it looks), so it gives nothing away. The page turns
+        // the flag into a card with "Send it again"; `email` is the caller's
+        // own address, read back to them.
+        if (decision.reason === "verify_required") {
+          return sendJson(res, 403, {
+            error: "Confirm your email to open reports shared with you. We sent a link to " + user.email + ".",
+            verify_required: true,
+            email: user.email,
+          });
+        }
         // A firm share tells the reader WHICH kind of audience they missed,
         // because the fix is different: an invited share needs the sender to
         // add them, a firm share needs them to be in the firm (and they may
@@ -28243,7 +28638,7 @@ const server = http.createServer((req, res) =>
       // when they have actually shared something with a firm.
       const [owned, invited] = await Promise.all([
         listSharesForOwner(user.id),
-        listSharesForViewer(SHAREACCESS.normalizeEmail(user.email)),
+        listSharesForViewer(user),
       ]);
       // Who sent each report shared WITH this member (2026-10-06, the Sharing
       // card): the row used to read "With you · Oct 2" because nothing here
@@ -28458,7 +28853,7 @@ const server = http.createServer((req, res) =>
     // null (and answers 403) when they are not an active member — the whole
     // point being that the org id came from the browser and proves nothing.
     const memberOf = async (user, orgId) => {
-      const rows = await orgMembershipsFor(user.email);
+      const rows = await orgMembershipsFor(user);
       const mine = rows.filter((r) => String(r.org_id) === String(orgId));
       const membership = ORG.membershipOf(mine, user.email);
       if (!membership) {
@@ -28503,7 +28898,7 @@ const server = http.createServer((req, res) =>
         // round trip here is ~100ms on the live deployment. Measured from a
         // member's browser: this route answered in 560-1090ms, and it heads
         // the workspace's longest chain.
-        const [rows, ent] = await Promise.all([orgMembershipsFor(user.email), entitlementsFor(req)]);
+        const [rows, ent] = await Promise.all([orgMembershipsFor(user), entitlementsFor(req)]);
         const mine = rows.filter((r) => ORG.isActive(r));
         const pending = rows.filter((r) => ORG.isPending(r));
         const [firms, logos] = await Promise.all([
@@ -28577,6 +28972,18 @@ const server = http.createServer((req, res) =>
         if (!ent.canUseOrg) {
           return sendJson(res, 403, { error: "Firm accounts are part of Pro.", upgrade: true });
         }
+        // A firm keeps its members by EMAIL, the creator included, and an
+        // account that has not proven its address has no memberships at all
+        // (orgMembershipsFor). So an unconfirmed creator would make a firm
+        // their own account could not then see. Refused with the way out,
+        // rather than left to create an orphan; it is also the moment they
+        // start inviting other people by address.
+        if (!user.email_verified) {
+          return sendJson(res, 403, {
+            error: "Confirm your email first, then start your firm. A firm keeps its members by email address, so we need to know this one is yours.",
+            verify_required: true,
+          });
+        }
         const body = await readOrgBody();
         const check = ORG.validateOrgName(body && body.name);
         if (!check.ok) return sendJson(res, 400, { error: check.error });
@@ -28590,7 +28997,7 @@ const server = http.createServer((req, res) =>
         // many-to-many and activeOrgIds already returns a set — but a member of
         // two firms raises "which firm did I just share that with", and slice 1
         // has no answer worth shipping. Lifting it is a UI question first.
-        const existing = await orgMembershipsFor(user.email);
+        const existing = await orgMembershipsFor(user);
         if (existing.some((r) => ORG.isActive(r))) {
           return sendJson(res, 409, { error: "You are already part of a firm." });
         }
@@ -29543,7 +29950,7 @@ const server = http.createServer((req, res) =>
         // Answer with the state that now APPLIES, re-read rather than
         // predicted: the two switches interact, so a browser that computed the
         // result itself would be a second copy of autoShareFor.
-        const rows = await orgMembershipsFor(user.email);
+        const rows = await orgMembershipsFor(user);
         const mine = ORG.membershipOf(
           rows.filter((r) => String(r.org_id) === orgId), user.email);
         const org = (await orgsByIds([orgId])).get(String(orgId)) || null;
@@ -29694,6 +30101,16 @@ const server = http.createServer((req, res) =>
         const body = await readOrgBody();
         const orgId = String((body && body.orgId) || "").trim();
         if (!orgId) return sendJson(res, 400, { error: "Which firm?" });
+        // An invitation is addressed to an EMAIL, and this account has not
+        // shown that the address is its own (email-verify.js). Said the same
+        // way whether or not an invitation exists for it, so the refusal
+        // tells a stranger nothing about who a firm invited.
+        if (!user.email_verified) {
+          return sendJson(res, 403, {
+            error: "Confirm your email first. A firm invitation is sent to an address, so we need to know this one is yours.",
+            verify_required: true,
+          });
+        }
         // The invite is matched on the caller's OWN email inside the PATCH,
         // so an org id alone can never join anybody to anything.
         const rows = await acceptOrgInvite(orgId, user);
@@ -30933,6 +31350,24 @@ const server = http.createServer((req, res) =>
           : d.reason === "signin_required" ? 401
           : d.reason === "closed" || d.reason === "ownerless" ? 409
           : 403;
+        // A signed-in account that has not confirmed its email is not
+        // recognized by its address (email-verify.js), so "not shared with
+        // your account" would be the wrong thing to tell a client who signed
+        // up a minute ago to post here: the fix is in their inbox, and they
+        // would otherwise go back to the broker. Said to EVERY unconfirmed
+        // account refused this way, on the guest list or not, so it gives
+        // nothing away. The code stays `not_invited` (the page branches on
+        // it and must not open a sign-in card for somebody already signed
+        // in); the flag is extra.
+        if (d.reason === "not_invited" && ctx.user && !ctx.user.email_verified) {
+          sendJson(res, status, {
+            error: "This account hasn't confirmed its email yet, so we can't tell whether this hub was shared with it. " +
+              "Open the link we sent to " + ctx.user.email + ", then try again.",
+            code: d.reason,
+            verify_required: true,
+          });
+          return null;
+        }
         sendJson(res, status, { error: hubRefusalCopy(d.reason), code: d.reason });
         return null;
       }
@@ -31070,7 +31505,9 @@ const server = http.createServer((req, res) =>
         try {
           const user = await requireUser(req, res);
           if (!user) return;
-          const email = HUB.normalizeEmail(user.email);
+          // The rooms this address was invited into are listed only for an
+          // account that has proven the address is its own (email-verify.js).
+          const email = HUB.normalizeEmail(EMAILVERIFY.provenEmail(user));
           const [mine, theirs] = await Promise.all([
             listHubsForOwner(user.id),
             email ? listHubsForParticipant(email) : Promise.resolve([]),
@@ -31982,6 +32419,11 @@ const server = http.createServer((req, res) =>
     // through the global BLDGPHOTO, for Home's cards (index.html). Same
     // maxAge: 0 rule as the others.
     "/building-photo.js": { file: "building-photo.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // The "Confirm your email" notice (2026-11-10), through the global
+    // CONFIRMNOTICE: index.html loads it, and ACCOUNT_NAV_JS loads it on a
+    // server-rendered page only for an account that has not confirmed. Same
+    // maxAge: 0 rule as the others.
+    "/confirm-notice.js": { file: "confirm-notice.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // The desktop/mobile install identity (PWA). Users "download" the app
     // from the site itself — Chrome/Edge offer Install once this manifest is
     // reachable — so there is no installer to host or code-sign anywhere.
@@ -33393,6 +33835,11 @@ server.listen(PORT, () => {
   console.log(ACCOUNT_WALL
     ? "🔐 Account wall ON — anonymous visitors get the landing page at / (200, not a redirect; /desk redirects home), and GUEST_SEARCH_LIMIT is forced to 0. Set ACCOUNT_WALL=off to reverse."
     : "🔓 Account wall off (ACCOUNT_WALL=off) — the app is open to anonymous visitors.");
+  console.log(!EMAIL_VERIFICATION
+    ? "✉️  Email confirmation off (EMAIL_VERIFICATION=off) — every account is recognized by its address without proving it."
+    : (EMAIL_FROM && RESEND_API_KEY)
+      ? "✉️  Email confirmation ON — reports, firm invitations and deal rooms sent to an address open once its account confirms it (needs migration 062; set EMAIL_VERIFICATION=off to reverse)."
+      : "⚠  Email confirmation is ON but outbound mail is not configured (EMAIL_FROM + RESEND_API_KEY): confirm links are written to this log, and a new password account stays unconfirmed until one is opened. Google sign-ins are unaffected.");
   console.log(CORPUS_RADIUS
     ? "📍 Corpus radius blend ON — saved deals within 10 miles join CRE reports, 1 mile for houses (set CORPUS_RADIUS=off to disable)."
     : "📍 Corpus radius blend off (CORPUS_RADIUS=off) — reports are search-only.");

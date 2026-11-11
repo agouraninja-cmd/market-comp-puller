@@ -3898,7 +3898,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- Detail line: carries the specific, fast-changing fact (the actual
              search query, the result count) while the headline stays calm.
              Model-written text goes in here via textContent, never innerHTML. -->
-        <p id="loadingDetail" class="text-sm text-ink-faint mt-1 max-w-xs truncate" style="white-space:nowrap">This usually takes 20-60 seconds.</p>
+        <p id="loadingDetail" class="text-sm text-ink-faint mt-1 max-w-xs truncate" style="white-space:nowrap;min-height:1.25rem">This usually takes 20-60 seconds.</p>
         <div class="loading-track w-full max-w-xs mt-5 relative">
           <!-- Side-on runner: shared torso/scarf, two-frame legs. The scarf
                sits above the bar so the brand red stays visible. -->
@@ -3926,6 +3926,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div id="loadingBar" class="h-full rounded-full bg-red-fill" style="width:0%; transition:width .35s ease-out;"></div>
           </div>
         </div>
+        <!-- The time left (2026-11-10): counted down from the pace the server
+             sends as the stream opens (startLoadingCountdown). Empty until
+             then, and for good when no stream arrives, because it never
+             quotes a time it was not given. Its height is held so the card
+             does not jump when it fills (the detail line above holds its own
+             for the same reason). aria-live is off: the card around it is a
+             live region, and a countdown read aloud every few seconds is
+             noise. -->
+        <p id="loadingLeft" class="text-sm font-medium text-ink mt-3 tabular-nums" style="min-height:1.25rem" aria-live="off"></p>
       </div>
       <!-- The bulk run view, injected by server.js at serve time from
            bulk-page.js — the same bytes /bulk renders, never a hand-copy
@@ -6283,6 +6292,59 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
 
   // -------------------------------------------------------------------------
+  // The time left (2026-11-10, the owner's ask: the countdown the comp report
+  // page shows, on this card too). The stream's first event is the server's
+  // own measure of how long a search takes lately ({ phase: "pace",
+  // typical_ms, late_after_ms }; search-pipeline.md), and this counts down
+  // from the moment it arrives, which is the moment the billed search starts.
+  // Four rules, all executed in test/loading-countdown.test.js:
+  //   - No pace, no clock. A buffered or absent stream leaves the line empty
+  //     and the stock sentence in place; nothing here guesses a time.
+  //   - The sentence is BULKRUN.leftWords', the comp report page's own, read
+  //     from the run view server.js injects into this page, so the two
+  //     surfaces cannot word one wait two ways.
+  //   - Past its time it says so rather than promising seconds again. The
+  //     server names that moment (late_after_ms), so the rule has one home.
+  //   - A recheck is another search: the count starts over.
+  // It is separate from the bar on purpose. The bar is driven by what the
+  // search has actually done (applyProgress); this is only the clock.
+  const LOADING_STOCK_DETAIL = "This usually takes 20-60 seconds.";
+  let loadingPace = null;        // { typicalMs, lateAfterMs, startedAt } once the server has said
+  let loadingLeftTimer = null;
+  function startLoadingCountdown(pace) {
+    // A report opened from Home mid-search hides the card while the stream
+    // behind it is still talking; a hidden card starts no clock.
+    if (document.getElementById("loadingCard").classList.contains("hidden")) return;
+    const typicalMs = Number(pace && pace.typical_ms);
+    if (!(typicalMs > 0)) return;
+    const lateAfterMs = Number(pace.late_after_ms) > 0 ? Number(pace.late_after_ms) : typicalMs;
+    loadingPace = { typicalMs, lateAfterMs, startedAt: Date.now() };
+    clearInterval(loadingLeftTimer);
+    loadingLeftTimer = setInterval(drawLoadingLeft, 1000);
+    // The stock sentence quotes a range; the line under the bar now says it
+    // properly, and two figures for one wait is one too many.
+    const detail = document.getElementById("loadingDetail");
+    if (detail && detail.textContent === LOADING_STOCK_DETAIL) detail.textContent = "";
+    drawLoadingLeft();
+  }
+  function drawLoadingLeft() {
+    const el = document.getElementById("loadingLeft");
+    if (!el) return;
+    const words = window.BULKRUN && window.BULKRUN.leftWords;
+    let text = "";
+    if (loadingPace && words) {
+      const spent = Date.now() - loadingPace.startedAt;
+      text = words(loadingPace.typicalMs - spent, spent >= loadingPace.lateAfterMs);
+    }
+    if (el.textContent !== text) el.textContent = text;
+  }
+  function stopLoadingCountdown() {
+    clearInterval(loadingLeftTimer); loadingLeftTimer = null;
+    loadingPace = null;
+    drawLoadingLeft();
+  }
+
+  // -------------------------------------------------------------------------
   // Assembling report: from the first streamed event, the REAL report
   // surfaces (#ownerHero, #summaryCard, #compsCard) fill in live while the
   // model writes; everything else in #results is hidden by an allowlist walk.
@@ -6466,7 +6528,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const headline = document.getElementById("loadingHeadline");
     headline.style.opacity = "1";
     headline.textContent = loadingSteps(address, type)[0].text;
-    setLoadingDetail("This usually takes 20-60 seconds.");
+    stopLoadingCountdown();   // the last search's clock is not this one's
+    setLoadingDetail(LOADING_STOCK_DETAIL);
     resetAssembly();
     document.getElementById("loadingNinja").classList.remove("done");
     document.getElementById("loadingCard").classList.remove("hidden");
@@ -6518,7 +6581,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function applyProgress(evt, ctx) {
     const headline = document.getElementById("loadingHeadline");
     if (!evt || !evt.phase) return;
-    if (evt.phase === "corpus") {
+    if (evt.phase === "pace") {
+      startLoadingCountdown(evt);
+    } else if (evt.phase === "corpus") {
       swapHeadline(headline, `Using ${evt.coverage} comps CompNinja already has for ${evt.market}…`);
       setLoadingDetail("This one should be quick.");
       aimLoadingBar(18);
@@ -6550,10 +6615,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       swapHeadline(headline, "The results came back oddly, rechecking…");
       setLoadingDetail("");
       resetAssembly();   // attempt 2 finds its own comps
+      // ...and takes its own time: a recheck is a second search.
+      if (loadingPace) startLoadingCountdown({ typical_ms: loadingPace.typicalMs, late_after_ms: loadingPace.lateAfterMs });
     }
     // "comp" and "field" events interleave with "drafting" — none may claim
     // lastPhase, or the drafting branch would re-swap the headline every second.
-    if ((evt.phase !== "drafting" || evt.writing) && evt.phase !== "comp" && evt.phase !== "field") ctx.lastPhase = evt.phase;
+    // "pace" is the clock, not a stage of the search, so it claims nothing either.
+    if ((evt.phase !== "drafting" || evt.writing) && evt.phase !== "comp" && evt.phase !== "field" && evt.phase !== "pace") ctx.lastPhase = evt.phase;
   }
 
   // Snap to a satisfying 100% finish, then resolve so the results can render.
@@ -6564,6 +6632,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     headline.style.opacity = "1";      // in case a cross-fade was mid-flight
     headline.textContent = "Report ready!";
     setLoadingDetail("");
+    stopLoadingCountdown();
     document.getElementById("loadingNinja").classList.add("done");
     setLoadingProgress(100);
     return new Promise((resolve) => setTimeout(resolve, 550));
@@ -6574,6 +6643,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     clearInterval(loadingProgressTimer); loadingProgressTimer = null;
     loadingTarget = 8;
     setLoadingDetail("");
+    stopLoadingCountdown();
     resetAssembly();
     document.getElementById("loadingNinja").classList.remove("done");
     document.getElementById("loadingCard").classList.add("hidden");
@@ -6611,8 +6681,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         let payload;
         try { payload = JSON.parse(data); } catch (_) { continue; }
         if (event === "progress") {
-          if (!ctx.sawProgress) { ctx.sawProgress = true; stopFakeProgress(); }
-          ctx.lastAt = Date.now();
+          // The pace is the countdown's clock, not a sign that the search is
+          // moving. It arrives first, before the provider has said anything,
+          // and a provider that then sends nothing (a non-streaming one) used
+          // to leave the wall-clock simulation running; counting the pace as
+          // progress would stop it and park the bar at 8% for the whole wait.
+          // So it neither ends the simulation nor resets the silence watchdog.
+          if (payload.phase !== "pace") {
+            if (!ctx.sawProgress) { ctx.sawProgress = true; stopFakeProgress(); }
+            ctx.lastAt = Date.now();
+          }
           onProgress(payload, ctx);
         } else if (event === "result") {
           result = payload;

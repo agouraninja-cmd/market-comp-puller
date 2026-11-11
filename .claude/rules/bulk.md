@@ -262,7 +262,13 @@ paths:
     ledger never shows one.
   - **Past its time it says so.** `late` is true when every row in flight has
     outrun the usual time and nothing is queued; the bar reads "Taking a
-    little longer than usual" rather than promising seconds again.
+    little longer than usual" rather than promising seconds again. A row is
+    past its time once less than `BULK.lateLeftMs(typical)` of it is left
+    (15%, never under 3 seconds).
+  - **`BULKRUN.leftWords(ms, late)` is the one sentence a countdown says**
+    ("About 35 seconds left", "A few seconds left", the late line). The
+    single report's loading card reads it off this run view too, so do not
+    inline the words on either side.
   - **A failed poll drops the clock.** The poll does not re-arm after a
     failed read, so the countdown stops with it; `BULKRUN.stop()` (index.html,
     when a single report takes the page) stops the ticker too.
@@ -275,6 +281,7 @@ paths:
     three lanes and promised 45-55 minutes for a run that takes about 15.
   Tests: `test/bulk.test.js` (the arithmetic), `test/bulk-inline.test.js`
   (the bar executed against a stand-in page), `test/bulk-run.test.js` (a real
-  job held mid-search; the pace seeded from stored searches). Not built:
-  the same countdown on index.html's single-search loading card, which has
-  its own bar driven by the live search events.
+  job held mid-search; the pace seeded from stored searches). **The single
+  report's loading card counts down from the same pace** (the same day): it
+  is the first event of `/api/comps`' progress stream, and its rules are in
+  search-pipeline.md under "Live search progress".

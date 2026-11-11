@@ -645,6 +645,14 @@ function typicalSearchMs(samples) {
  * `late` says so when that is ALL that is left: the page then stops quoting a
  * number it has already been wrong about.
  */
+// How much longer a search already past its usual time is assumed to need:
+// a short stretch, never zero. One rule for both surfaces that count down —
+// a bulk row in runProgress below, and the single report's loading card,
+// which server.js tells the moment this runs out (searchPaceNow).
+function lateLeftMs(typicalMs) {
+  return Math.max(3000, Number(typicalMs) * 0.15);
+}
+
 function runProgress(o) {
   const now = Number(o && o.now);
   const startedAt = Number(o && o.startedAt);
@@ -653,7 +661,7 @@ function runProgress(o) {
   const lanesMax = Math.max(1, Math.floor(Number(o.concurrency)) || 1);
   const since = (o.runningSince && typeof o.runningSince === "object") ? o.runningSince : {};
   const items = Array.isArray(o.items) ? o.items : [];
-  const lateLeft = Math.max(3000, typical * 0.15);
+  const lateLeft = lateLeftMs(typical);
   const lanes = [];
   let running = 0, late = 0, queued = 0;
   for (const it of items) {
@@ -691,6 +699,7 @@ module.exports = {
   PACE_SAMPLES,
   ROW_OVERHEAD_MS,
   typicalSearchMs,
+  lateLeftMs,
   runProgress,
   TX_FOCUSES,
   normalizeTxFocus,

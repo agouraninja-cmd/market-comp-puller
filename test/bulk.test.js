@@ -638,3 +638,22 @@ test("a row's own asking price weights its comps, as the report it links to does
     assert.equal(BULK.valueFromReport(report, { ...opts, askingPrice: none }).value_likely, plain.value_likely);
   }
 });
+
+test("how long a late search is given is one rule, shared by both countdowns", () => {
+  // A short stretch more, never zero, and never less than three seconds.
+  assert.equal(BULK.lateLeftMs(40000), 6000);
+  assert.equal(BULK.lateLeftMs(10000), 3000);
+  // runProgress judges a bulk row by it, and server.js tells the single
+  // report's loading card the moment it runs out (typical - lateLeftMs), so
+  // the two surfaces turn "late" at the same instant for the same search.
+  for (const T of [10000, 22000, 47000, 242000]) {
+    const turn = T - BULK.lateLeftMs(T);
+    const row = (spent) => BULK.runProgress({
+      now: 5000000 + spent, startedAt: 5000000, typicalMs: T, concurrency: 3,
+      items: [{ id: "a", status: "running" }], runningSince: { a: 5000000 },
+    });
+    assert.equal(row(turn - 500).late, false, T + "ms: on time just before");
+    assert.equal(row(turn + 500).late, true, T + "ms: late just after");
+    assert.equal(row(turn + 500).left_ms, Math.round(BULK.lateLeftMs(T)));
+  }
+});

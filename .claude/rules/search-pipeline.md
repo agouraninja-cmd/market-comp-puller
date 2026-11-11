@@ -80,6 +80,44 @@ paths:
   `res.json()`; and an 8-second silence watchdog restarts the simulation,
   which is what saves the card if Render's edge buffers the stream despite
   `x-accel-buffering: no`.
+  **The time left on the loading card (2026-11-10, the owner's ask after the
+  comp report page got its bar; bulk.md has the pace itself).** `/api/comps`'
+  stream now OPENS with `{ phase: "pace", typical_ms, late_after_ms }`
+  (`searchPaceNow` in server.js): the measured usual length of a search here
+  (`SEARCH_PACE`, `BULK.typicalSearchMs`) and how far in a search stops being
+  on time (`typical - BULK.lateLeftMs(typical)`, the same rule a bulk row is
+  judged by). It is the server's own event, sent before the `corpus` one and
+  not through `guardComp`. The card's `#loadingLeft` line, under the bar,
+  counts down from the moment it arrives (`startLoadingCountdown` /
+  `drawLoadingLeft` / `stopLoadingCountdown` in index.html). Rules, executed
+  in `test/loading-countdown.test.js` and `test/bulk-run.test.js`:
+  - **The pace is a clock, not progress.** `readProgressStream` must not let
+    it set `ctx.sawProgress`, stop the wall-clock simulation or reset the
+    watchdog's `lastAt`, and `applyProgress` must not let it claim
+    `lastPhase`. It arrives before the provider has said anything; counted as
+    progress, a provider that then sends no events (a non-streaming one)
+    parks the bar at 8% for the whole search. Found by photographing exactly
+    that, minutes after writing it.
+  - **No pace, no clock.** A buffered or absent stream leaves the line empty
+    and the stock "This usually takes 20-60 seconds." in place. The pace is
+    read synchronously inside `onBilledStart` (which is not awaited);
+    `/api/comps` starts the one seed read unawaited when the request arrives,
+    several round trips earlier, and falls back to bulk.js's long default.
+  - **One wording.** The sentence is `BULKRUN.leftWords(ms, late)`, read off
+    the run view injected at `<!--BULK_RUN-->`, so the card and the comp
+    report page cannot word one wait two ways ("About 35 seconds left", "A
+    few seconds left", "Taking a little longer than usual"). No run view, no
+    line.
+  - **A recheck starts the count over** (`retry` is a second search), and
+    every way the card begins or ends (`showLoadingCard`,
+    `completeLoadingCard`, `hideLoadingCard`) stops the last one. A card
+    hidden mid-search (a report opened from Home) starts no clock.
+  - **`#loadingLeft` is `aria-live="off"`** inside the card's live region, so
+    a screen reader is not read a countdown, and both it and `#loadingDetail`
+    hold their height so the card does not jump. The countdown clears the
+    detail line only while it still holds the stock sentence.
+  The bar is unchanged and stays event-driven; `/api/explore-market` sends no
+  pace (its row in the Markets dropdown has no room for a clock).
   **What the measurement showed** (worth knowing before optimizing anything
   here): the web searches finish in the first ~5 seconds; the model then spends
   **40-70 seconds writing the report**. Wall clock is roughly

@@ -690,6 +690,17 @@ function span(ms){
   return Math.round(s/60)+" minutes";
 }
 
+// The one sentence a countdown says, for this bar and for index.html's
+// loading card (which reads it off BULKRUN, so the two cannot word one wait
+// two ways): "About 35 seconds left", "A few seconds left" at the end
+// ("About a few seconds" is not a thing anyone says), and, once the search
+// has outrun its usual time, that fact instead of another promise.
+function leftWords(ms,late){
+  if(late)return "Taking a little longer than usual";
+  var w=span(ms);
+  return w==="a few seconds"?"A few seconds left":"About "+w+" left";
+}
+
 function setProgress(p){
   prog=(p&&typeof p.left_ms==="number"&&typeof p.elapsed_ms==="number")?p:null;
   progAt=Date.now();
@@ -732,7 +743,7 @@ function drawProgress(){
     var dt=Math.max(0,Date.now()-progAt);
     var spent=prog.elapsed_ms+dt,rest=Math.max(prog.left_ms-dt,1000);
     pct=spent/(spent+rest)*100;
-    left=(prog.late||prog.left_ms-dt<=0)?"Taking a little longer than usual":"About "+span(rest)+" left";
+    left=leftWords(rest,prog.late||prog.left_ms-dt<=0);
   }
   progShown=Math.max(progShown,Math.min(99,pct));
   paintProgress(box,progShown,
@@ -1008,7 +1019,7 @@ function init(opts){
 
 return {init:init,showRun:showRun,poll:poll,stop:stop,setJobs:setJobs,
   countLines:countLines,firstAddress:firstAddress,listHeaders:LIST_HEADERS,
-  showNotes:showNotes,msg:msg,api:api,span:span,
+  showNotes:showNotes,msg:msg,api:api,span:span,leftWords:leftWords,
   setMax:function(n){MAX=n;},state:function(){return {job:job,items:items};}};
 })();
 `;

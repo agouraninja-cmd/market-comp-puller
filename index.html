@@ -1932,28 +1932,33 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-num.msg { display: flex; align-items: center; justify-content: center; border: 0; background: var(--slab); color: #fff; }
     .hm-rt { min-width: 0; }
     .hm-rt b { display: block; font-size: var(--text-compact); font-weight: 600; line-height: 1.3; color: var(--ink); }
-    .hm-rt b i { font-style: normal; font-weight: 500; color: var(--ink-3); }
+    .hm-rt b i { font-style: normal; font-weight: 400; color: var(--ink-3); }
     .hm-rt small { display: block; margin-top: 2px; font-size: var(--text-small); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .hm-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
     .hm-when { text-align: right; white-space: nowrap; }
     .hm-when b { display: block; font-size: var(--text-compact); font-weight: 600; color: var(--ink); }
     .hm-when small { font-size: var(--text-label); color: var(--ink-3); }
     .hm-when.hot b, .hm-when.hot small { color: var(--red); }
-    .hm-scope { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 6px; border-radius: var(--r-pill); font-size: var(--text-tiny); font-weight: 600; line-height: 1.2; white-space: nowrap; }
+    .hm-scope { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px 2px 6px; border-radius: var(--r-pill); font-size: var(--text-label); font-weight: 500; line-height: 1.3334; white-space: nowrap; }
     .hm-scope svg { width: 12px; height: 12px; }
     .hm-scope.you { background: var(--wash-2); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); }
     .hm-scope.firm { background: var(--bv-bg); color: var(--bv-text); }
-    .hm-chip { display: inline-flex; align-items: center; padding: 3px 7px; border-radius: var(--r-md); font-size: var(--text-tiny); font-weight: 600; line-height: 1.2; white-space: nowrap; }
+    .hm-chip { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: var(--r-md); font-size: var(--text-label); font-weight: 500; line-height: 1.3334; white-space: nowrap; }
     .hm-chip.prospect, .hm-chip.loi { background: var(--wash-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
     .hm-chip.contract { background: var(--warn-bg); color: var(--warn-text); }
     .hm-chip.entitle { background: var(--bv-bg); color: var(--bv-text); }
     .hm-chip.owned { background: var(--ok-bg); color: var(--ok-text); }
     .hm-chip.tracking { background: var(--wash-2); color: var(--ink-2); }
     .hm-chip.firm { background: var(--slab); color: #fff; }
-    .hm-gh { display: flex; align-items: baseline; gap: 8px; padding: 16px 10px 4px; }
-    .hm-gh b { font-family: var(--serif); font-size: 17px; font-weight: 400; color: var(--ink); }
-    .hm-gh span { font-size: var(--text-label); font-weight: 600; color: var(--ink-3); }
-    .hm-gh small { font-size: var(--text-label); color: var(--ink-3); }
+    /* A group's head: its name and count on one line, its note whole on the
+       line under them. The note stood beside a 17px Georgia name and broke
+       in two there ("your numbers stay / private" hanging under the count);
+       the name is the list's one section label now (see "The list's type"
+       at the foot of this sheet). A rule parts one group from the next. */
+    .hm-gh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; margin: 0 10px; padding: 14px 0 6px; }
+    .hm-rows > .hm-gh:not(:first-child) { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 16px; }
+    .hm-gh span { font-size: var(--text-small); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+    .hm-gh small { flex: 0 0 100%; margin-top: 2px; font-size: var(--text-label); line-height: 1.5; color: var(--ink-3); }
     .hm-gh small button { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--red); cursor: pointer; white-space: nowrap; }
     .hm-gh small button:hover { text-decoration: underline; }
     .hm-row.p { grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; padding: 10px; }
@@ -1978,9 +1983,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     #hmPanePeople #deskContacts { margin: 0 10px; }
     #hmPanePeople #deskContacts { margin-top: 18px; }
     .hm-team { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: center; padding: 9px 10px; }
-    .hm-av { width: 36px; height: 36px; border-radius: 99px; background: var(--slab); color: #fff; font-family: var(--serif); font-size: var(--text-compact); line-height: 36px; text-align: center; }
+    .hm-av { width: 36px; height: 36px; border-radius: 99px; background: var(--slab); color: #fff; font-size: var(--text-small); font-weight: 600; line-height: 36px; text-align: center; }
     .hm-team b { display: block; font-size: var(--text-compact); font-weight: 600; color: var(--ink); }
-    .hm-team b i { margin-left: 4px; font-style: normal; font-size: var(--text-tiny); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+    .hm-team b i { margin-left: 6px; font-style: normal; font-size: var(--text-label); font-weight: 400; color: var(--ink-3); }
     .hm-team small { display: block; font-size: var(--text-small); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .hm-start { display: flex; flex-direction: column; gap: 10px; padding: 14px 10px 0; }
     .hm-start.hidden { display: none; }
@@ -1988,7 +1993,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-st.hidden { display: none; }
     .hm-st:hover { border-color: var(--ink-3); }
     .hm-sti { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: var(--r-xl); background: var(--wash-2); color: var(--ink); }
-    .hm-st b { display: block; font-size: var(--text-lead); font-weight: 600; color: var(--ink); }
+    .hm-st b { display: block; font-size: var(--text-compact); font-weight: 600; color: var(--ink); }
     .hm-st small { display: block; margin: 2px 0 10px; font-size: var(--text-small); line-height: 1.45; color: var(--ink-3); }
     .hm-legend { position: absolute; left: 14px; bottom: 24px; z-index: 500; display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--card); font-size: var(--text-small); color: var(--ink-2); box-shadow: 0 4px 16px -8px rgba(15, 23, 42, .35); }
     .hm-legend.hidden { display: none; }
@@ -2093,11 +2098,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       html.nav-rail.hm-page .hm-first-key { top: auto; left: auto; right: 16px; bottom: 24px; padding: 8px 12px; font-size: var(--text-small); }
     }
     /* Next (2026-10-18, Draft C): an early account's next steps on Today. */
-    .hm-next { margin: 14px 10px 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-2xl); background: var(--card); }
+    .hm-next { margin: 0 10px; padding: 14px 0 0; }
     .hm-next.hidden { display: none; }
-    .hm-next-k { font-size: var(--text-tiny); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
-    .hm-next-r { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 11px 0; border: 0; border-top: 1px solid var(--hair); background: none; font: inherit; text-align: left; color: inherit; text-decoration: none; cursor: pointer; }
-    #hmNextRows > .hm-next-r:first-child { border-top: 0; }
+    .hm-brief:not(.hidden) ~ .hm-next { border-top: 1px solid var(--line); }
+    .hm-next-r { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 9px 0; border: 0; background: none; font: inherit; text-align: left; color: inherit; text-decoration: none; cursor: pointer; }
+    #hmNextRows > .hm-next-r:first-child { margin-top: 4px; }
     .hm-next-r:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
     .hm-next-r > span:first-child svg { display: block; width: 20px; height: 20px; color: var(--ink-2); }
     .hm-next-r b { display: block; font-size: var(--text-compact); font-weight: 600; color: var(--ink); }
@@ -2106,27 +2111,31 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* A quiet day (2026-11-13): what the member holds at a glance, the dates
        still further out and the values that moved, where Today used to say
        "Nothing needs you right now." a second time over an empty column.
-       Each is a card in Next's own shell, so a quiet Today is one short
-       stack. hmDrawBrief() writes it; home-map.js decides what goes in.
-       .hm-brief sets a display, so it has its own .hidden. Tokens only. */
-    .hm-brief { display: grid; gap: 14px; margin: 14px 10px 0; }
+       Each is a section of the list, on the list's own line, with a rule
+       between one and the next: they were cards until 2026-11-13, which put
+       their words 16px inside the line everything else on the panel starts
+       on, and made Today the one tab drawn in boxes. hmDrawBrief() writes
+       it; home-map.js decides what goes in. .hm-brief sets a display, so it
+       has its own .hidden. Tokens only. */
+    .hm-brief { display: grid; margin: 0 10px; }
     .hm-brief.hidden { display: none; }
-    .hm-bc { min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-2xl); background: var(--card); }
-    .hm-bk { margin: 0; font-size: var(--text-tiny); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
-    .hm-bk span { margin-left: 4px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+    .hm-bc { min-width: 0; padding: 14px 0 16px; }
+    .hm-bc:not(.hidden) ~ .hm-bc { border-top: 1px solid var(--line); }
+    .hm-bk { margin: 0; }
+    .hm-bk span { margin-left: 4px; font-size: var(--text-label); font-weight: 400; color: var(--ink-3); }
     .hm-figs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 10px 0 0; }
     .hm-fig { min-width: 0; padding: 0 14px; border-left: 1px solid var(--hair); }
     .hm-fig:first-child { padding-left: 0; border-left: 0; }
     .hm-fig:last-child { padding-right: 0; }
-    .hm-fig b { display: block; font-family: var(--serif); font-weight: 400; font-size: var(--text-heading); line-height: 1.2; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .hm-fig b { display: block; font-weight: 600; font-size: var(--text-subhead); line-height: 1.2; letter-spacing: -.01em; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
     .hm-fig small { display: block; margin-top: 2px; font-size: var(--text-label); line-height: 1.4; color: var(--ink-3); text-wrap: balance; }
     .hm-fig .hm-scope { margin-top: 7px; }
-    /* Three figures across a phone: a step smaller, so "$46.28M" keeps its cell. */
-    @media (max-width: 520px) { .hm-fig { padding: 0 10px; } .hm-fig b { font-size: var(--text-subhead); } }
-    /* A row of a quiet day's card: a later date, or a value that moved. Both
+    /* Three figures across a phone: closer together, so "$46.28M" keeps its cell. */
+    @media (max-width: 520px) { .hm-fig { padding: 0 10px; } }
+    /* A row of a quiet day's section: a later date, or a value that moved. Both
        open the property's card on the map, so both are buttons. */
-    .hm-lr, .hm-mv { display: grid; gap: 12px; width: 100%; padding: 11px 0; border: 0; border-top: 1px solid var(--hair); background: none; font: inherit; text-align: left; color: inherit; cursor: pointer; }
-    #hmLaterRows > :first-child, #hmMovedRows > :first-child { border-top: 0; }
+    .hm-lr, .hm-mv { display: grid; gap: 12px; width: 100%; padding: 8px 0; border: 0; background: none; font: inherit; text-align: left; color: inherit; cursor: pointer; }
+    #hmLaterRows > :first-child, #hmMovedRows > :first-child { margin-top: 4px; }
     #hmLaterRows > :last-child, #hmMovedRows > :last-child { padding-bottom: 0; }
     .hm-lr:focus-visible, .hm-mv:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
     .hm-lr:hover .hm-rt b, .hm-mv:hover b { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--ink-4); }
@@ -2134,8 +2143,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* The day as a calendar leaf. A later date has no number: a number is a
        pin on the map, and a pin is a date that needs the member. */
     .hm-cal { display: block; padding: 4px 0 5px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--paper); text-align: center; }
-    .hm-cal small { display: block; font-size: var(--text-tiny); font-weight: 600; line-height: 1.2; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
-    .hm-cal b { display: block; font-family: var(--serif); font-weight: 400; font-size: var(--text-title); line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .hm-cal small { display: block; font-size: var(--text-label); line-height: 1.25; color: var(--ink-3); }
+    .hm-cal b { display: block; font-weight: 600; font-size: var(--text-compact); line-height: 1.2; color: var(--ink); font-variant-numeric: tabular-nums; }
     .hm-lr-s { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; white-space: nowrap; }
     .hm-lr-s > small { font-size: var(--text-label); color: var(--ink-3); }
     .hm-mv { grid-template-columns: 64px minmax(0, 1fr) auto; align-items: baseline; }
@@ -2143,9 +2152,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-mv .chg.up { color: var(--green); }
     .hm-mv .chg.dn { color: var(--red); }
     .hm-mv b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-compact); font-weight: 600; color: var(--ink); }
-    .hm-mv b i { font-style: normal; font-weight: 500; color: var(--ink-3); }
+    .hm-mv b i { font-style: normal; font-weight: 400; color: var(--ink-3); }
     .hm-mv em { font-style: normal; font-size: var(--text-compact); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
-    /* What lands on Today, as the fine print under a quiet day's cards. */
+    /* What lands on Today, as the fine print under a quiet day's sections. */
     .hm-empty.hm-note { margin-top: 16px; font-size: var(--text-small); }
     .hm-mk { background: none !important; border: 0 !important; }
     .hm-pip { display: block; width: 14px; height: 14px; border: 2.5px solid var(--card); border-radius: 99px; box-shadow: 0 1px 4px rgba(15, 23, 42, .4); }
@@ -2207,8 +2216,54 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     #hmPaneProps #hmPropMsg { margin: 0 10px 10px; }
     .hm-row.p[aria-expanded="true"] { border-radius: 12px 12px 0 0; background: var(--card); box-shadow: inset 1px 0 0 var(--edge), inset -1px 0 0 var(--edge), inset 0 1px 0 var(--edge); }
     .hm-fold { margin-top: 10px; }
-    .hm-fold > summary { padding: 10px; cursor: pointer; font-size: var(--text-small); font-weight: 600; color: var(--ink-2); }
-    .hm-fold > summary span { margin-left: 4px; font-weight: 600; color: var(--ink-3); }
+    .hm-fold > summary { padding: 10px; cursor: pointer; }
+    .hm-fold > summary span { margin-left: 6px; font-weight: 400; color: var(--ink-3); }
+    /* The list's type (2026-11-13; the owner, of the panel beside the map:
+       "there are too many different types of fonts and font sizes and the
+       layout is weird"). Measured on his kind of account, the panel set two
+       typefaces in nine sizes: Georgia at 30 (the greeting), 24 (a figure),
+       19 (a date), 17 (a group's name), 15.5 and 14, and Inter at 15, 14, 13,
+       12 and 11, with three ways to write a section's name (capitals with
+       wide spacing, a Georgia word, capitals over a black rule). Now:
+       - GEORGIA IS THE GREETING AND NOTHING ELSE. It is this page's title,
+         as every member page's title is Georgia. Everything under it is
+         Inter.
+       - FOUR SIZES UNDER THE GREETING: 14 (--text-compact: a row's name, a
+         value, a sentence), 13 (--text-small: a row's second line, a helper
+         line, a button, a section's name), 12 (--text-label: a caption, a
+         tag, a count, the fine print) and 20 (--text-subhead: a figure).
+         Nothing in the list is 11px, and nothing is in capitals.
+       - ONE SECTION LABEL, the rule below, for every part of every tab: At a
+         glance, Coming up, What moved, Next, Buying, Owned, Firm buildings,
+         Passed, Contacts.
+       - ONE LEFT EDGE. Every section, row and line starts on the head's line
+         (test/home-head.test.js adds it up); no card stands inside it.
+       test/home-list-type.test.js holds the sheet to all four. The pane that
+       opens under a property (home-sites.css, shared with /sites, which has
+       its own type) and the contacts (the desk's .dk- rules, used by other
+       panels) are brought onto the scale here, from the panel's side, so
+       neither file changes for anybody else. */
+    .hm-bk, .hm-next-k, .hm-gh b, .hm-fold > summary, #hmPanePeople #deskContacts > .dk-rule .rd-lab { font-family: inherit; font-size: var(--text-small); font-weight: 600; line-height: 1.3847; letter-spacing: 0; text-transform: none; color: var(--ink-2); }
+    /* People's contacts: the desk's section, on the list's scale. Its head
+       is a section label over the list's rule, not capitals over a black
+       one, and a contact's name is a row's name. */
+    #hmPanePeople #deskContacts > .dk-rule { align-items: baseline; padding: 16px 0 0; border-bottom: 0; border-top: 1px solid var(--line); }
+    #hmPanePeople #deskContacts .dk-note { font-size: var(--text-label); }
+    #hmPanePeople #deskContacts .dk-toggle { font-size: var(--text-small); font-weight: 500; color: var(--ink-2); }
+    #hmPanePeople #deskContacts .dk-toggle:hover { color: var(--ink); }
+    #hmPanePeople #deskContacts .dk-copy { margin-top: 4px; font-size: var(--text-small); line-height: 1.45; }
+    #hmPanePeople #deskContacts .dk-row { padding: 9px 0; border-bottom: 0; }
+    #hmPanePeople #deskContacts .dk-row-name { font-weight: 600; }
+    #hmPanePeople #deskContacts .dk-row-meta { font-size: var(--text-small); }
+    #hmPanePeople #deskContacts .dk-row-act { font-size: var(--text-small); }
+    #hmPanePeople #deskContacts .dk-gt { font-family: inherit; font-size: var(--text-compact); font-weight: 600; }
+    /* The pane under a property (home-sites.css): its value is the list's
+       figure, its small heads are captions in sentence case, and nothing in
+       it is 11px. */
+    .hm-panel .hs-vb { font-family: inherit; font-size: var(--text-subhead); font-weight: 600; line-height: 1.2; letter-spacing: -.01em; }
+    .hm-panel .hs-vl, .hm-panel .hs-blk h4, .hm-panel .hs-form label:not(.hs-share) { font-size: var(--text-label); font-weight: 600; letter-spacing: 0; text-transform: none; }
+    .hm-panel .hs-vc { font-size: var(--text-compact); }
+    .hm-panel .hs-sd, .hm-panel .hs-chip, .hm-panel .hs-chart text { font-size: var(--text-label); }
   </style>
 </head>
 <body class="bg-paper text-ink min-h-screen">
@@ -15979,7 +16034,7 @@ async function renderMyDesk() {
     todayEmpty.classList.toggle("hm-note", hmRows.length > 0);
     const next = hmDrawNext(firm);
     // Next alone still stands in for the words, as Draft C drew a first
-    // property's Today; under a quiet day's cards they are its fine print.
+    // property's Today; under a quiet day's sections they are its fine print.
     todayEmpty.classList.toggle("hidden", hmItems.length > 0 || nothing || !todayEmpty.textContent || (next && !brief));
     // The firm's two lists, and the member's own Pipeline when they have one.
     // A list is linked only once it has something in it (2026-10-18): on a

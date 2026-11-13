@@ -366,7 +366,9 @@ test("pins that would land on each other are drawn once, with their count, and a
   // The click zooms until its properties stand apart; where zooming cannot
   // (one point, or the closest zoom) it opens the first one's card, as before.
   assert.match(stack, /if \(one \|\| hmMap\.getZoom\(\) >= hmMap\.getMaxZoom\(\)\) \{ hmSelect\(rows\[0\]\.key, \{ from: "map" \}\); return; \}/);
-  assert.match(stack, /hmMap\.fitBounds\(lls, \{ \.\.\.hmFitOpts\(\), maxZoom: hmMap\.getMaxZoom\(\) \}\);/);
+  assert.match(stack, /if \(to > zoomNow\) hmMap\.fitBounds\(lls, \{ \.\.\.fit, maxZoom: hmMap\.getMaxZoom\(\) \}\);/);
+  // In a narrow map the fit can land on the present zoom: one level in instead, so no click is a dead one.
+  assert.match(stack, /else hmMap\.setView\(at, Math\.min\(hmMap\.getMaxZoom\(\), zoomNow \+ 1\)\);/);
   // On Today a dated row is its numbered pin: its dot is not drawn or counted beside it.
   assert.match(pins, /const dated = new Set\(hmTab === "today" \? hmItems\.filter\(\(x\) => x\.num != null\)\.map\(\(x\) => HOMEMAP\.addressKey\(x\.address\)\) : \[\]\);/);
   // A stack is the zoom's, so the pins are drawn again when the zoom settles:

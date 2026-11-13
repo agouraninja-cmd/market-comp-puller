@@ -9,7 +9,7 @@
     "date": "2026-11-13",
     "type": "improvement",
     "title": "Buildings in the same city no longer hide behind one map pin",
-    "details": "From across the country, several buildings in one city sat on the same few pixels of Home’s map: one dot, with nothing saying it was six buildings, and on Properties one value tag covering the other five. Pins that would land on each other are now drawn once, as a pill with a count (and on Properties what those buildings are likely worth together). Click it and the map zooms in until each building stands on its own."
+    "details": "From across the country, several buildings in one city sat on the same few pixels of Home’s map: one dot, with nothing saying it was six buildings, and on Properties one value tag covering the other five. Pins that would land on each other are now drawn once, as a pill with a count (and on Properties what those buildings are likely worth together). Click it and the map zooms in until each building stands on its own. In a narrow window a click always zooms at least one step, so it can never do nothing."
   },
   {
     "date": "2026-11-13",

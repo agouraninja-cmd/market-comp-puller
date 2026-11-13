@@ -16515,7 +16515,12 @@ async function renderMyDesk() {
         const one = lls.every((p) => Math.abs(p[0] - lls[0][0]) < 1e-5 && Math.abs(p[1] - lls[0][1]) < 1e-5);
         if (one || hmMap.getZoom() >= hmMap.getMaxZoom()) { hmSelect(rows[0].key, { from: "map" }); return; }
         hmMap.closePopup();
-        hmMap.fitBounds(lls, { ...hmFitOpts(), maxZoom: hmMap.getMaxZoom() });
+        // Every click makes progress: in a narrow map the fit can land on
+        // the zoom it is already at, and then the stack would never part.
+        const fit = hmFitOpts(), zoomNow = hmMap.getZoom();
+        const to = hmMap.getBoundsZoom(L.latLngBounds(lls), false, L.point(fit.paddingTopLeft).add(L.point(fit.paddingBottomRight)));
+        if (to > zoomNow) hmMap.fitBounds(lls, { ...fit, maxZoom: hmMap.getMaxZoom() });
+        else hmMap.setView(at, Math.min(hmMap.getMaxZoom(), zoomNow + 1));
       }, on ? 900 : 200, null, HOMEMAP.stackTitle(rows));
     });
   }

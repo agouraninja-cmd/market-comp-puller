@@ -207,9 +207,9 @@ second. Use the **name**, never the hex — `var(--ink-3)` in a stylesheet,
 |---|---|---|---|
 | `--paper` | `#FBFBF9` | `#121826` | The page itself |
 | `--card` | `#ffffff` | `#1A2433` | A card sitting on the page |
-| `--wash` | `#F5F4EF` | `#243044` | Lifted panel, table headers |
+| `--wash` | `#F5F4EF` | `#243044` | Lifted panel, table headers, the signed-in rail |
 | `--wash-2` | `#F5F4EF` | `#334155` | Hover, or a tile inside a card |
-| `--slab` | `#1A2433` | `#243044` | Surfaces that are dark in *both* themes (the footer, the signed-in rail) |
+| `--slab` | `#1A2433` | `#243044` | Surfaces that are dark in *both* themes (the footer, the dark bands) |
 
 `--wash` and `--wash-2` share a light value on purpose: in light mode a hover
 *darkens*, in dark mode it *lightens*. One token cannot say both.
@@ -537,13 +537,21 @@ note, on `--card` with a 1px `--line` border, 6px radius, 16px 18px padding.
 The three-part unit that most numbers on the site are presented in.
 
 **Rail** — `RAIL_CSS` in `server.js`, with twin rules in `index.html`. At
-900px and up, every signed-in page gets an 84px strip down the left on
-`--slab`: the mark at 30px on top, then each place as a 22px icon over an
-11px word. Rows are white at 68% opacity with a 10px radius; hover adds an
-8% white wash, and the current page gets 13% and weight 600. Groups are
-separated by a 1px line at 14% white. The red "Run a report" button is hidden
-there. Below 900px the same markup is the ordinary wrapping top bar — there is
-no drawer. Because it sits on the slab, its colours are literal white (§7).
+900px and up, every signed-in page gets an 84px strip down the left. Since
+2026-11-12 it is one of the page's own surfaces, `--wash` with a `--line`
+hairline, so it follows the theme like everything else (it was a dark strip
+on `--slab` with literal white ink before). The mark sits at 30px in a 60px
+head, then each place is a 24px icon over an 11px word in `--ink-2`, a row
+68 by 56 with a 10px radius, 4px apart. Pointing at a row draws a 1px
+`--ink-4` outline and nothing else. The current page is a `--card` tile
+ringed in `--edge`, its word at 600, with a 3px `--red` tick inside its left
+edge. Keyboard focus is a 2px `--ink` ring inside the row, not the red one
+used elsewhere, because red here already means where you are. Groups are
+separated by a 40px `--edge` rule. Feedback and the 32px account circle make
+the 60px foot. The red "Run a report" button is hidden there. Under 560px of
+height the column closes up to 44px rows so the account circle stays on
+screen. Below 900px the same markup is the ordinary wrapping top bar — there
+is no drawer.
 
 **Tabs** — two kinds, both in `components.js`.
 
@@ -610,7 +618,7 @@ both, or the header shifts as you move between pages —
 colour must *not* follow the theme:
 1. **Anything on the slab.** `--slab` is dark in both themes, so the ink ramp
    runs backwards on it. The footer logo and wordmark, the footer's text
-   (`FOOTER_DARK_CSS`), the signed-in rail, and the dark call-to-action bands
+   (`FOOTER_DARK_CSS`), and the dark call-to-action bands
    on the home page, `/brokers-firms` and `/pricing` write their colours
    literally: white (or white at an opacity), and `theme.js`'s own dark values
    — `#B6C1CF` for text, `#F87171` for red accents, `#DC2626` / `#B91C1C` for

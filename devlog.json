@@ -1,5 +1,17 @@
 [
   {
+    "date": "2026-11-12",
+    "type": "improvement",
+    "title": "The left sidebar is redrawn",
+    "details": "The sidebar was a dark strip with a grey block for the page you were on and icons that looked slightly out of focus on an ordinary monitor. Beside a browser that keeps its own tabs in a dark strip, it made two dark bands side by side. It now sits on the same pale surface as the page, and still goes dark in dark mode. The page you are on is a white tile with a small red tick, and pointing at another row only outlines it. Every icon was redrawn larger and sharper: Sites is a map pin, Comps is a bar chart, Permits is a signed-off sheet. The unread count sits beside the icon instead of across it, and Feedback and your account circle are one group at the foot."
+  },
+  {
+    "date": "2026-11-12",
+    "type": "fix",
+    "title": "The sidebar fits a short window",
+    "details": "In a window 620 pixels tall, the Permits row ran into the Feedback button for anyone on the free plan reading Markets or another tool page. In a shorter window, which is what a small laptop gives you once the page is zoomed in, the account circle was pushed off the bottom of the screen, and Settings and Sign out went with it. The rows now close up in a short window, so everything stays on screen. With Windows high-contrast colours on, the account circle also shows where the keyboard is again."
+  },
+  {
     "date": "2026-11-13",
     "type": "improvement",
     "title": "Home has something to show on a quiet day",

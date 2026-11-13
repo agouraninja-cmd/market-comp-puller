@@ -350,8 +350,9 @@ test("no in-scope stylesheet references an undefined variable", () => {
   const blocks = {
     MARKET_CSS: cssBlock("MARKET_CSS"),
     ACCOUNT_NAV_CSS: cssBlock("ACCOUNT_NAV_CSS"),
-    // The rail, a strip on --slab since 2026-10-07: its white is the footer's
-    // literal, already allowed below.
+    // The rail. It was a strip on --slab from 2026-10-07 to 2026-11-12, with
+    // the footer's literal white for ink; it is a page surface in theme
+    // tokens now, and every var() it names is still checked here.
     RAIL_CSS: cssBlock("RAIL_CSS"),
     "index.html": root("index.html").split("</style>")[0],
     "vault-page.js": VAULT_JS,
@@ -1410,9 +1411,10 @@ test("no raw colour literal remains in in-scope server.js generated markup", () 
   // with a colour baked into it. Carving it out here would leave it unchecked,
   // so it has a test of its own directly below.
   // RAIL_CSS joined on 2026-10-07 for FOOTER_LINKS_CSS's reason: the rail
-  // became a dark strip on --slab (Draft C of the Home and Data drafts), so it
-  // carries deliberate white, and it is a stylesheet the stylesheet test above
-  // now checks, not markup.
+  // became a dark strip on --slab (Draft C of the Home and Data drafts) and
+  // carried deliberate white. It lost both on 2026-11-12 and stays in this
+  // list for the other half of the reason: it is a stylesheet, which the
+  // stylesheet test above checks, not markup.
   for (const name of ["MARKET_CSS", "ACCOUNT_NAV_CSS", "FOOTER_LINKS_CSS", "TESTER_BADGE_CSS", "RAIL_CSS"]) {
     const block = cssBlock(name);
     assert.ok(inScope.includes(block), `${name} missing from the in-scope slice`);

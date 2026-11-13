@@ -2,6 +2,12 @@
   {
     "date": "2026-11-13",
     "type": "fix",
+    "title": "Home’s list stays lined up when the page is zoomed out",
+    "details": "The fix that lined Home’s list up with the find box beside a Windows scrollbar went wrong when the browser was zoomed out (90% or less): a browser does not shrink its scrollbar with the page, so the scrollbar no longer fitted in the room made for it, and the list ended a few pixels short of the find box again, even a list that did not scroll. The list now uses the browser’s thin scrollbar when the full one does not fit, and lines up from 67% zoom to 175%."
+  },
+  {
+    "date": "2026-11-13",
+    "type": "fix",
     "title": "On Windows, Home’s list lines up with the find box when it scrolls",
     "details": "Where a browser’s scrollbar takes room (Chrome and Edge on Windows), a list on Home that was long enough to scroll lost 15 pixels to its own scrollbar: every card, row and “+ Add a property” ended that far short of the find box and “Firm settings” above them, and a heading that just fit broke onto two lines. The scrollbar now stands in the list’s own margin, so the list is the same width whether it scrolls or not, and nothing shifts when you change tabs. Three smaller things on the firm row: a logo file that is refused (not a PNG or JPEG, or too large) is said in red, where it was the same small grey as “Saved.”; the keyboard’s focus ring on “Add a logo” no longer cuts through the letters of the firm’s name above it; and the firm’s initials stay inside their tile when the browser’s minimum font size is raised."
   },

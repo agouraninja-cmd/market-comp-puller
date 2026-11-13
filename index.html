@@ -16435,20 +16435,37 @@ async function renderMyDesk() {
   // scrolls (scrollbar-gutter), so nothing in the list moves when a list
   // starts or stops scrolling, and nothing has to watch for that. And that
   // room comes out of the list's own right padding, so the list is as wide
-  // as the head with a bar and without one. A bar wider than that padding
-  // (17px in older Windows browsers, against 16) takes all of it, and the
-  // list is the difference narrower: a pixel, where it was seventeen. Where
-  // bars float over the page (a phone, a Mac trackpad), and away from the
-  // rail, where the page scrolls and not the list, the bar measures 0 and
-  // nothing is written.
+  // as the head with a bar and without one.
+  //
+  // A bar WIDER than that padding does not fit in it. That is a 17px bar in
+  // older Windows browsers, and any bar once the page is zoomed OUT: zoom
+  // does not shrink the bar, so in the page's own pixels a 15px bar is 18.75
+  // at 80% and 30 at 50%. Kept at that width, the list ended short of the
+  // head again, and a list that does not scroll was short too, which it
+  // never was before (found the day this shipped, by a reviewer who zoomed a
+  // real browser). So a bar wider than the padding is asked to be the thin
+  // one, which fits at every zoom down to 67%; what is still left over comes
+  // off the list.
+  //
+  // Where bars float over the page (a phone, a Mac trackpad) the bar
+  // measures 0 and nothing is left written. Away from the rail the page
+  // scrolls and not the list: nothing is measured there at all.
   function hmFitListBar(body) {
     if (!body || !body.offsetWidth) return; // not laid out: asked again when it is
-    body.style.scrollbarGutter = "stable";
-    const bar = body.offsetWidth - body.clientWidth;
+    const style = body.style, computed = getComputedStyle(body);
+    if (computed.overflowY === "visible") {
+      if (style.paddingRight || style.scrollbarGutter || style.scrollbarWidth) style.paddingRight = style.scrollbarGutter = style.scrollbarWidth = "";
+      return;
+    }
+    style.scrollbarWidth = "";
+    style.scrollbarGutter = "stable";
     // The list's two sides are one padding (test/home-head.test.js holds the
     // rules to that), so what the bar leaves of the right is read off the left.
-    body.style.paddingRight = bar > 0 ? Math.max(0, parseFloat(getComputedStyle(body).paddingLeft) - bar) + "px" : "";
-    if (!(bar > 0)) body.style.scrollbarGutter = "";
+    const pad = parseFloat(computed.paddingLeft);
+    let bar = body.offsetWidth - body.clientWidth;
+    if (bar > pad) { style.scrollbarWidth = "thin"; bar = body.offsetWidth - body.clientWidth; }
+    style.paddingRight = bar > 0 ? Math.max(0, pad - bar) + "px" : "";
+    if (!(bar > 0)) style.scrollbarGutter = style.scrollbarWidth = "";
   }
   {
     // Asked whenever the list's box changes: when Home is first laid out, when

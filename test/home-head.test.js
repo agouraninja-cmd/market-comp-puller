@@ -362,7 +362,7 @@ function loadSaveLogo({ firm, read, answers }) {
     console, encodeURIComponent, JSON, Object, Date, String, Boolean, Promise,
     myFirm: () => firm,
     readLogoFile: read,
-    fetch: async (url, opts) => { calls.fetch.push([url, opts && opts.method]); const a = answers.shift(); return { ok: a.ok, json: async () => a.body }; },
+    fetch: async (url, opts) => { calls.fetch.push([url, opts && opts.method, opts && opts.body]); const a = answers.shift(); return { ok: a.ok, json: async () => a.body }; },
     drawFirmHead: (f) => calls.drawn.push({ ...f }),
   });
   new vm.Script([
@@ -408,7 +408,13 @@ test("a logo that is refused is told apart from one that is saved: the desk's ow
   assert.ok(!works.msg.classList.contains("bad") && !works.msg.classList.contains("hidden"));
   assert.equal(works.calls.drawn.length, 1);
   assert.ok(works.calls.drawn[0].logoAt, "the row was drawn again without the logo it just saved");
-  assert.deepEqual(works.calls.fetch.map((c) => c[1]), [undefined, "PUT"], "the firm's branding is read, then sent back whole with the logo");
+  assert.deepEqual(works.calls.fetch.map((c) => c[1]), [undefined, "PUT"]);
+  // The firm's branding is ONE profile and the save replaces it whole: it is
+  // read for this firm, then sent back with the logo added. Sent without the
+  // rest, a logo saved from Home blanked the firm's letterhead (a reviewer's
+  // breakage: the test compared the two methods and nothing that was sent).
+  assert.equal(works.calls.fetch[0][0], "/api/org/branding?id=org-1");
+  assert.deepEqual(JSON.parse(works.calls.fetch[1][2]), { name: "Avery", logo: "data:image/png;base64,AA==", orgId: "org-1" });
 
   // A refusal, then a second try that works: the red does not outlive it.
   const again = loadSaveLogo({ firm: firm(), read: async (f) => { if (f.name === "notes.txt") throw new Error("Please choose a PNG or JPEG image."); return "data:image/png;base64,AA=="; }, answers: [{ ok: true, body: {} }, { ok: true, body: {} }] });
@@ -427,8 +433,13 @@ test("a logo that is refused is told apart from one that is saved: the desk's ow
   // refusal's red (a class on .dk-msg) loses to it.
   assert.equal(MARKUP_CLASSES.get("hmFirmMsg"), "hidden dk-msg hm-fh-msg");
   const own = rule(".hm-fh-msg");
-  assert.equal(decl(own, "color"), null, ".hm-fh-msg sets an ink of its own: .dk-msg.bad no longer shows");
-  assert.equal(decl(own, "font-size"), null);
+  // .dk-msg.bad is two classes: the rail's rule (three and an element) is
+  // the one that out-ranks it, and it is the layout the owner uses.
+  for (const body of [own, rule("html.nav-rail.hm-page .hm-fh-msg", RAIL), rule(".hm-fh-msg", NARROW)]) {
+    assert.equal(decl(body, "color"), null, "a rule for the message sets an ink of its own: a refusal's red can lose to it");
+    assert.equal(decl(body, "font-size"), null);
+  }
+  assert.equal(decl(own, "margin"), "0", "the desk's 8px margin is back over the message: the date drops 8px");
   const desk = html.match(/\n    \.dk-msg \{([^}]*)\}/), bad = html.match(/\n    \.dk-msg\.bad \{([^}]*)\}/);
   assert.ok(desk && bad, "the desk's message rules moved");
   assert.equal(decl(desk[1], "font-size"), "var(--text-small)");
@@ -443,25 +454,34 @@ test("a logo that is refused is told apart from one that is saved: the desk's ow
 // ---------------------------------------------------------------------------
 // The list's scrollbar: hmFitListBar, run against a stand-in list.
 // ---------------------------------------------------------------------------
-// `bar` is the width a scrollbar takes in this browser (0 where bars float
-// over the page: a phone, a Mac trackpad). A browser keeps that room while the
-// list scrolls, or whenever the list's gutter is told to stay.
-function listBody({ bar, scrolls, pad = 16, width = 467, inline }) {
-  const style = { paddingRight: "", scrollbarGutter: "", ...(inline || {}) };
+// `bar` is the width a scrollbar takes in this browser, in the page's own
+// pixels (0 where bars float over the page: a phone, a Mac trackpad), and
+// `thin` the width of the thin one. A browser keeps that room while the list
+// scrolls, or whenever the list's gutter is told to stay. `rail: false` is
+// the layout where the page scrolls and the list is no scroller at all.
+function listBody({ bar, thin = 10, scrolls, pad = 16, width = 467, rail = true, inline }) {
+  const style = { paddingRight: "", scrollbarGutter: "", scrollbarWidth: "", ...(inline || {}) };
   const body = {
-    style, computed: { paddingLeft: pad + "px" }, offsetWidth: width, scrolls,
+    style, computed: { paddingLeft: pad + "px", overflowY: rail ? "auto" : "visible" }, offsetWidth: width, scrolls, reads: 0,
     // (An element with no box measures 0 both ways, as in a browser.)
-    get clientWidth() { return width ? width - (bar && (body.scrolls || style.scrollbarGutter === "stable") ? bar : 0) : 0; },
+    get clientWidth() {
+      body.reads++;
+      if (!width) return 0;
+      const kept = rail && bar && (body.scrolls || style.scrollbarGutter === "stable");
+      return width - (kept ? (style.scrollbarWidth === "thin" ? Math.min(bar, thin) : bar) : 0);
+    },
     // What the cards and rows get: the list between its two paddings.
     get room() { return body.clientWidth - pad - (style.paddingRight === "" ? pad : parseFloat(style.paddingRight)); },
   };
   return body;
 }
+const FIT_SOURCE = slice(/  function hmFitListBar\(body\) \{[\s\S]*?\n  \}/);
 const fitListBar = (() => {
   const ctx = vm.createContext({ getComputedStyle: (el) => el.computed, parseFloat, Math });
-  new vm.Script(slice(/  function hmFitListBar\(body\) \{[\s\S]*?\n  \}/) + "\nthis.fit = hmFitListBar;", { filename: "index.html" }).runInContext(ctx);
+  new vm.Script(FIT_SOURCE + "\nthis.fit = hmFitListBar;", { filename: "index.html" }).runInContext(ctx);
   return ctx.fit;
 })();
+const NOTHING = { paddingRight: "", scrollbarGutter: "", scrollbarWidth: "" };
 
 test("the list is as wide as the head with a scrollbar and without one: the bar stands in the list's own padding", () => {
   // Where a scrollbar takes room (Chrome and Edge on Windows, the owner's),
@@ -471,14 +491,14 @@ test("the list is as wide as the head with a scrollbar and without one: the bar 
   // two. No picture showed it: a headless browser draws no scrollbars.
   const floating = listBody({ bar: 0, scrolls: true });
   fitListBar(floating);
-  assert.deepEqual(floating.style, { paddingRight: "", scrollbarGutter: "" }, "where bars float over the page nothing is written");
+  assert.deepEqual(floating.style, NOTHING, "where bars float over the page nothing is left written");
   const want = floating.room;
 
   // The owner's Today: a bar that takes room, a list that fits. The bar's room
   // is kept anyway, out of the padding, so the list is the width it was.
   const fits = listBody({ bar: 15, scrolls: false });
   fitListBar(fits);
-  assert.deepEqual(fits.style, { paddingRight: "1px", scrollbarGutter: "stable" });
+  assert.deepEqual(fits.style, { paddingRight: "1px", scrollbarGutter: "stable", scrollbarWidth: "" });
   assert.equal(fits.room, want, "a list that fits is narrower than the head on Windows");
   // His Properties: nine rows, taller than the panel. The same width, so
   // nothing moves when a list starts or stops scrolling.
@@ -486,43 +506,102 @@ test("the list is as wide as the head with a scrollbar and without one: the bar 
   assert.equal(fits.room, want, "the list narrows when it starts to scroll");
   const scrolling = listBody({ bar: 15, scrolls: true });
   fitListBar(scrolling);
-  assert.deepEqual(scrolling.style, { paddingRight: "1px", scrollbarGutter: "stable" });
+  assert.deepEqual(scrolling.style, { paddingRight: "1px", scrollbarGutter: "stable", scrollbarWidth: "" });
   assert.equal(scrolling.room, want, "a scrolling list ends short of the find box and Firm settings");
-  // Asked again (a resize, a zoom), the answer is the same: it reads the
-  // list's LEFT padding, which it never writes.
+  // Asked again, the answer is the same: it reads the list's LEFT padding,
+  // which it never writes.
   fitListBar(scrolling);
-  assert.deepEqual(scrolling.style, { paddingRight: "1px", scrollbarGutter: "stable" });
+  assert.deepEqual(scrolling.style, { paddingRight: "1px", scrollbarGutter: "stable", scrollbarWidth: "" });
 
-  // A bar wider than the padding takes all of it and no more.
-  const wide = listBody({ bar: 17, scrolls: true });
-  fitListBar(wide);
-  assert.equal(wide.style.paddingRight, "0px");
+  // A bar WIDER than the padding does not fit in it: 17px in older Windows
+  // browsers, and any bar once the page is zoomed out (zoom does not shrink
+  // the bar: 15px is 18.75 of the page's pixels at 80%, 22.4 at 67%). Kept at
+  // that width the list ended short again, and a list that does not scroll
+  // was short too, which it never was before. So the thin bar is asked for,
+  // which fits, and the list is the head's width once more.
+  for (const [bar, thin, why] of [[17, 10, "an older Windows browser"], [18.75, 12.5, "80% zoom"], [22.4, 14.9, "67% zoom"]]) {
+    for (const scrolls of [false, true]) {
+      const wide = listBody({ bar, thin, scrolls });
+      fitListBar(wide);
+      assert.equal(wide.style.scrollbarWidth, "thin", `${why}: a bar wider than the padding was kept at its width`);
+      assert.equal(wide.style.scrollbarGutter, "stable");
+      assert.ok(Math.abs(wide.room - want) < 0.001, `${why}, ${scrolls ? "a scrolling list" : "a list that fits"}: the list is ${want - wide.room}px short of the head`);
+    }
+  }
+  // Even the thin one too wide (50% zoom): it takes all of the padding and
+  // no more, never a negative one.
+  const huge = listBody({ bar: 30, thin: 20, scrolls: true });
+  fitListBar(huge);
+  assert.deepEqual(huge.style, { paddingRight: "0px", scrollbarGutter: "stable", scrollbarWidth: "thin" });
+  // Zoomed back in, the thin bar is given up: every fit starts from the
+  // browser's own bar.
+  const back = listBody({ bar: 15, scrolls: true, inline: { paddingRight: "6px", scrollbarGutter: "stable", scrollbarWidth: "thin" } });
+  fitListBar(back);
+  assert.deepEqual(back.style, { paddingRight: "1px", scrollbarGutter: "stable", scrollbarWidth: "" });
 
-  // Away from the rail the page scrolls and not the list: no bar to measure,
+  // Away from the rail the page scrolls and not the list: nothing is measured
+  // or written there (the observer fires on every tab change in that layout),
   // and what an earlier fit wrote beside the rail is taken back.
-  const narrowed = listBody({ bar: 0, scrolls: false, pad: 8, inline: { paddingRight: "1px", scrollbarGutter: "stable" } });
+  const phone = listBody({ bar: 15, scrolls: false, pad: 8, rail: false });
+  fitListBar(phone);
+  assert.deepEqual(phone.style, NOTHING);
+  assert.equal(phone.reads, 0, "the list is measured where it is not a scroller");
+  const narrowed = listBody({ bar: 15, scrolls: false, pad: 8, rail: false, inline: { paddingRight: "0px", scrollbarGutter: "stable", scrollbarWidth: "thin" } });
   fitListBar(narrowed);
-  assert.deepEqual(narrowed.style, { paddingRight: "", scrollbarGutter: "" }, "a fit made beside the rail outlived the rail layout");
+  assert.deepEqual(narrowed.style, NOTHING, "a fit made beside the rail outlived the rail layout");
+  // Bars that float after a fit was made (a mouse unplugged from a Mac).
+  const floated = listBody({ bar: 0, scrolls: true, inline: { paddingRight: "1px", scrollbarGutter: "stable", scrollbarWidth: "" } });
+  fitListBar(floated);
+  assert.deepEqual(floated.style, NOTHING);
 
   // Not laid out (Home is hidden): nothing to measure, so nothing is touched.
   // The observer asks again when the list gets a box.
   const hiddenList = listBody({ bar: 15, scrolls: false, width: 0, inline: { paddingRight: "1px", scrollbarGutter: "stable" } });
   fitListBar(hiddenList);
-  assert.deepEqual(hiddenList.style, { paddingRight: "1px", scrollbarGutter: "stable" });
+  assert.deepEqual(hiddenList.style, { paddingRight: "1px", scrollbarGutter: "stable", scrollbarWidth: "" });
   fitListBar(null);
-
-  // One observer asks, on the list's BORDER box: writing the padding does not
-  // change that box, so the observer cannot be woken by its own write (on the
-  // content box it would be, every time). And only where the gutter can be
-  // kept: fitted once without it, the padding is wrong the next time a list
-  // starts or stops scrolling.
-  const script = slice(/  function hmFitListBar\(body\) \{[\s\S]*?\n  \}\n  \{[\s\S]*?\n  \}/);
-  assert.match(script, /new ResizeObserver\(\(\) => hmFitListBar\(body\)\)\.observe\(body, \{ box: "border-box" \}\)/);
-  assert.match(script, /CSS\.supports\("scrollbar-gutter", "stable"\)/);
-  assert.match(script, /if \(body && steady && typeof ResizeObserver === "function"\)/);
   // It reads the list's left padding for the right's: the two sides are one
   // number in both rules (the insets test above holds them to three values).
   assert.equal(px(decl(rule("html.nav-rail.hm-page .hm-body", RAIL), "padding"))[1], 16);
+});
+
+// The block that installs the observer, RUN (it was only matched as text: a
+// selector that found nothing, or the support check turned round, switched
+// the whole fix off with every test green).
+function runFitBlock({ list = true, css = true, supports = true, observer = true } = {}) {
+  const body = listBody({ bar: 15, scrolls: true });
+  const seen = { asked: [], observed: [], queries: [] };
+  class RO { constructor(cb) { this.cb = cb; } observe(el, opts) { seen.observed.push({ el, opts, fire: this.cb }); } }
+  const sandbox = {
+    document: { querySelector: (q) => { seen.queries.push(q); return list ? body : null; } },
+    getComputedStyle: (el) => el.computed, parseFloat, Math,
+  };
+  if (css) sandbox.CSS = { supports: (prop, value) => { seen.asked.push([prop, value]); return supports; } };
+  if (observer) sandbox.ResizeObserver = RO;
+  const block = slice(/  function hmFitListBar\(body\) \{[\s\S]*?\n  \}\n  \{[\s\S]*?\n  \}/);
+  new vm.Script(block, { filename: "index.html" }).runInContext(vm.createContext(sandbox));
+  return { body, seen };
+}
+
+test("one observer asks for the fit, on the list's border box, and only where the bar's room can be kept", () => {
+  const on = runFitBlock();
+  assert.deepEqual(on.seen.queries, ["#homeMap .hm-body"]);
+  assert.deepEqual(on.seen.asked, [["scrollbar-gutter", "stable"]]);
+  assert.equal(on.seen.observed.length, 1);
+  assert.equal(on.seen.observed[0].el, on.body, "the observer was handed something other than the list");
+  // The BORDER box: writing the padding does not change it, so the observer
+  // cannot be woken by its own write (on the content box it is, every time).
+  assert.deepEqual(on.seen.observed[0].opts, { box: "border-box" });
+  assert.deepEqual(on.body.style, NOTHING, "the list was written before it had been observed");
+  on.seen.observed[0].fire();
+  assert.deepEqual(on.body.style, { paddingRight: "1px", scrollbarGutter: "stable", scrollbarWidth: "" }, "the observer's call does not fit the list");
+  // No stable gutter: left as it was. Fitted once there, the padding is
+  // wrong the next time a list starts or stops scrolling.
+  for (const [why, opts] of [["no stable gutter", { supports: false }], ["no CSS.supports", { css: false }], ["no ResizeObserver", { observer: false }], ["no list on the page", { list: false }]]) {
+    const off = runFitBlock(opts);
+    assert.equal(off.seen.observed.length, 0, `${why}: an observer was installed anyway`);
+    assert.deepEqual(off.body.style, NOTHING, `${why}: the list was written`);
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -22,6 +22,104 @@ paths:
 > read "Your properties and comps" until 2026-10-13, when there stopped
 > being a /vault page at all; see below.)
 
+> **A quiet day, and pins that land on each other (2026-11-13; the owner:
+> "Improve the UI of Compninja", with a screenshot of Home: nine properties,
+> nothing due, "Nothing needs you right now." under the greeting and again
+> as the whole of Today, an empty column, and five dots on a map of the
+> country).** Read this before the boxes below, which it amends: where they
+> say Today's empty pane is a paragraph or Next, and that every property is
+> its own pin, this is what happens now. Built straight, not from drafts
+> (the ask was to improve, not for options); the before-and-after pictures
+> are at https://claude.ai/artifact/8mNRLb3MkWod6NtT3pF8gH.
+> - **The status line's sentence is said once.** "Nothing needs you right
+>   now." is `HOMEMAP.statusLine`'s, under the greeting. Nothing in
+>   index.html writes it (a test strips the comments and looks), and
+>   `#hmTodayEmpty` says only what lands on Today: `HOMEMAP.landsHere({
+>   hasFirm, firmKind, leads })`, in the agenda's order, naming only the
+>   kinds that can reach THIS member (messages and lease dates are a
+>   firm's, deal dates a development firm's, BOV requests the Pipeline's;
+>   it used to promise "your deal dates" to a broker shop and lease dates to
+>   a member in no firm). `""` hides it. On a quiet day it is fine print
+>   (`.hm-note`) under the cards; it still gives way to Next when Next is
+>   all there is (`next && !brief`), Draft C's first-property Today.
+> - **`#hmBrief` is a quiet Today** (`hmDrawBrief()`, its one writer, called
+>   from `drawHomeMap` before `hmDrawNext`): `!hmItems.length &&
+>   hmRows.length`. Up to three cards in Next's shell (`.hm-bc`), each only
+>   when it has something to say, all from what Home already read (no fetch,
+>   textContent only):
+>   - **At a glance** (`#hmGlance`, from two properties up):
+>     `HOMEMAP.glanceCells(HOMEMAP.glance({ rows, next }))`, at most three
+>     figures. The count and where ("9 properties in 5 cities", one city is
+>     named); ONE sum (the asking prices of a development firm's deals in
+>     play, else what the member owns: "likely combined (8 of 9)", or
+>     "likely value" for one; else the floor area on the list, a broker shop
+>     that holds nothing itself); and the next date (`hmLater[0]`). The
+>     owned sum is `HOMEMAP.ownedTotal`'s by construction and is written
+>     with the formatter Properties' Owned heading uses (`HOMESITES.short`),
+>     so the two tabs never disagree; its cell carries the "Only you" pill
+>     (`scope`), every row's rule.
+>   - **Coming up** (`#hmLater`): `HOMEMAP.later()`, the dates past the
+>     "needs you" windows (a lease date further out than `LEASE_DAYS`, a
+>     development firm's deal date further out than `DEAL_DAYS`), soonest
+>     first, three at most (`HM_LATER_MAX`). They are the agenda's own rows
+>     (`leaseItem` / `dealItem`, one builder each for both lists) with NO
+>     number: a number is a pin, and a pin is a date that needs you. The day
+>     is a calendar leaf (`.hm-cal`), "in 4 months" is `HOMEMAP.inAbout`, and
+>     a row opens the card a Today row opens (`hmSelect(key, { item })`).
+>     `hmLater` is `[]` whenever something needs the member, and sits with
+>     the rest of Home's state above `resetHomeMap` (a `let` below a function
+>     the boot path calls is a temporal dead zone throw).
+>   - **What moved** (`#hmMoved`): `HOMEMAP.movers(rows)`, the member's own
+>     values furthest from where they started, three at most, never one that
+>     would print 0.0%. A row opens the building's card.
+> - **Values follow the plan here.** `hmShowValues()` reads
+>   `proConfig.portfolioValues`, the working pane's flag (billing.md: a free
+>   account's properties are an address list, Pro's carry their values).
+>   Without it the brief nulls what is owned of its value and change, so the
+>   glance is the count and nothing moved. `initGate` draws Home again
+>   (`drawHomeMap()`, which repeats no read) when `/api/config` answers
+>   after Home drew, which also fixes `hmCanLeads` missing that race.
+>   **Not changed, and worth a decision:** the Properties rows, the Owned
+>   heading, the value tags and the map card have shown a free account its
+>   values since 2026-10-07; only the pane hides them.
+> - **Next leads with a property that has no value yet**
+>   (`HOMEMAP.unvalued`, any account size, before Draft C's early-account
+>   steps): "Get a value for 1100 Broadway", which opens that property's
+>   pane (`hmOpenWork`) and runs nothing. `.hm-next`'s corner is
+>   `--r-2xl` now, the brief's.
+> - **Pins that would land on each other are one stack**
+>   (`hmDrawPropertyPins`, called by `hmDrawPins` after every located
+>   property is `put` as the tab's subject, so the fit is unchanged).
+>   `HOMEMAP.stacks(points, STACK_DOT | STACK_TAG)` groups the pins that
+>   touch at the map's present zoom (pixels from `hmMap.project`; a dot is
+>   round, Properties' value tag is wide; a point joins the first group
+>   whose FIRST point it touches, so a line of pins never chains). One
+>   property draws exactly as before. A stack is a white pill (`.hm-stk`): a
+>   dot in the legend's colour for each kind inside, the count, and on
+>   Properties `HOMEMAP.stackValue`'s sum. Its markup is class names and
+>   figures; its words (`HOMEMAP.stackTitle`, "6 properties in the Boise
+>   area. Click to zoom in.") are the marker's `title`, a DOM property,
+>   because a town is text a person typed. A click `fitBounds` to its
+>   properties up to the map's own max zoom; where zooming cannot part them
+>   (one point, or already as close as it goes) it opens the first one's
+>   card, which is what a click there did before. It never opens on hover
+>   (`hmPin`'s `still`). `hmRestack` redraws on `zoomend`, after the current
+>   task (`setTimeout 0`): `hmDrawPins`' own fit can fire `zoomend` before
+>   it returns, and a draw inside a draw opened the day's first card twice.
+>   On Today a dated row is its numbered pin, so its dot is neither drawn
+>   nor counted into a stack beside it. Permit pins are not stacked.
+> - **Three small fixes.** `#hmFind` is transparent by id (the dark bridge
+>   paints every input `--paper` with ten `:not()`s, which drew a darker
+>   rectangle inside the find box's frame). Beside the rail `.hm-body` is a
+>   column and `.hm-legal` has `margin-top: auto`, so the legal line rests
+>   at the panel's foot under a short list. Away from the rail `.hm-body`'s
+>   foot is 84px, so the last lines scroll clear of the round Feedback
+>   button. And the People tab is hidden again for a member in no firm
+>   (components.js's `hiddenRule`; app-shell.md).
+> - Tests: `test/home-map.test.js` (later, inAbout, glance, movers,
+>   unvalued, landsHere, stacks, stackPlace/Title/Value) and
+>   `test/desk-map-layers.test.js`'s last four blocks (the wiring).
+
 > **A report opened from Home stands alone (2026-11-10, the owner: "when you
 > click on a property it will have the comp search with the value a building
 > card and stuff above it which I thought we removed").** Read this before

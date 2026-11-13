@@ -1731,13 +1731,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-map.leaflet-container { background: var(--wash-2); font-family: inherit; }
     .hm-panel { min-width: 0; background: var(--paper); }
     .hm-head { padding: 22px 16px 0; }
-    .hm-body { padding: 4px 8px 28px; }
+    /* The foot is deep away from the rail (a phone, the bar shell): the round
+       Feedback button floats over the bottom right corner there, and the
+       list's last lines must be able to scroll clear of it (2026-11-13). */
+    .hm-body { padding: 4px 8px 84px; }
     @media (min-width: 900px) {
       html.nav-rail.hm-page .hm { display: grid; grid-template-columns: 468px minmax(0, 1fr); height: 100vh; min-height: 560px; }
       html.nav-rail.hm-page .hm-mapw { order: 0; height: auto; border-bottom: 0; }
       html.nav-rail.hm-page .hm-panel { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
       html.nav-rail.hm-page .hm-head { padding: 28px 28px 0; }
-      html.nav-rail.hm-page .hm-body { flex: 1; overflow-y: auto; min-height: 0; padding: 4px 16px 28px; }
+      /* A column, so the legal line rests at the foot of the panel under a
+         short list instead of floating in the middle of it (2026-11-13). */
+      html.nav-rail.hm-page .hm-body { flex: 1; display: flex; flex-direction: column; overflow-y: auto; min-height: 0; padding: 4px 16px 28px; }
+      html.nav-rail.hm-page .hm-body > * { flex: none; }
+      html.nav-rail.hm-page .hm-body > .hm-legal { margin-top: auto; padding-top: 26px; }
     }
     .hm-kick { font-size: var(--text-small); font-weight: 500; color: var(--ink-3); }
     .hm-fh { display: flex; align-items: center; gap: 11px; padding: 0 0 14px; margin: 0 0 16px; border-bottom: 1px solid var(--line); }
@@ -1771,6 +1778,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-find:focus-within { border-color: var(--ink-3); box-shadow: 0 0 0 3px var(--hair); }
     .hm-find svg { flex: none; }
     .hm-find input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; -webkit-appearance: none; appearance: none; padding: 10px 0; font: inherit; font-size: var(--text-compact); color: var(--ink); }
+    /* By id, because the dark bridge paints every input --paper and counts
+       ten :not()s doing it: without this the box showed a darker rectangle
+       inside its own frame in dark mode (2026-11-13). The frame is .hm-find. */
+    #hmFind { background-color: transparent; }
     .hm-find-res { position: absolute; left: -1px; right: -1px; top: calc(100% + 6px); z-index: 40; max-height: 360px; overflow-y: auto; padding: 6px; background: var(--card); border: 1px solid var(--edge); border-radius: var(--r-2xl); box-shadow: 0 16px 40px -18px rgba(15, 23, 42, .45); }
     .hm-fr { display: flex; flex-direction: column; width: 100%; padding: 8px 10px; border: 0; border-radius: var(--r-lg); background: none; text-align: left; font: inherit; color: var(--ink); cursor: pointer; text-decoration: none; }
     .hm-fr:hover, .hm-fr:focus-visible { background: var(--wash); outline: 0; }
@@ -1860,9 +1871,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-legend span { display: inline-flex; align-items: center; gap: 6px; }
     .hm-legend span.hidden { display: none; }
     .hm-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 99px; }
-    .hm-legend i.buy, .hm-pip.buy { background: var(--red-fill); }
-    .hm-legend i.own, .hm-pip.own { background: var(--green); }
-    .hm-legend i.firm, .hm-pip.firm { background: var(--ink); }
+    .hm-legend i.buy, .hm-pip.buy, .hm-stk i.buy { background: var(--red-fill); }
+    .hm-legend i.own, .hm-pip.own, .hm-stk i.own { background: var(--green); }
+    .hm-legend i.firm, .hm-pip.firm, .hm-stk i.firm { background: var(--ink); }
     /* Permits are squares, the only square pins on the map, in the status
        palette's amber: a filing is a document, not a building. */
     .hm-legend i.permit, .hm-pip.permit { border-radius: var(--r-xs); background: var(--warn-text); }
@@ -1956,7 +1967,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       html.nav-rail.hm-page .hm-first-key { top: auto; left: auto; right: 16px; bottom: 24px; padding: 8px 12px; font-size: var(--text-small); }
     }
     /* Next (2026-10-18, Draft C): an early account's next steps on Today. */
-    .hm-next { margin: 14px 10px 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+    .hm-next { margin: 14px 10px 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-2xl); background: var(--card); }
     .hm-next.hidden { display: none; }
     .hm-next-k { font-size: var(--text-tiny); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
     .hm-next-r { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 11px 0; border: 0; border-top: 1px solid var(--hair); background: none; font: inherit; text-align: left; color: inherit; text-decoration: none; cursor: pointer; }
@@ -1966,6 +1977,50 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-next-r b { display: block; font-size: var(--text-compact); font-weight: 600; color: var(--ink); }
     .hm-next-r small { display: block; font-size: var(--text-small); color: var(--ink-3); }
     .hm-next-r em { font-style: normal; font-size: var(--text-small); font-weight: 600; color: var(--red); }
+    /* A quiet day (2026-11-13): what the member holds at a glance, the dates
+       still further out and the values that moved, where Today used to say
+       "Nothing needs you right now." a second time over an empty column.
+       Each is a card in Next's own shell, so a quiet Today is one short
+       stack. hmDrawBrief() writes it; home-map.js decides what goes in.
+       .hm-brief sets a display, so it has its own .hidden. Tokens only. */
+    .hm-brief { display: grid; gap: 14px; margin: 14px 10px 0; }
+    .hm-brief.hidden { display: none; }
+    .hm-bc { min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-2xl); background: var(--card); }
+    .hm-bk { margin: 0; font-size: var(--text-tiny); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+    .hm-bk span { margin-left: 4px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+    .hm-figs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 10px 0 0; }
+    .hm-fig { min-width: 0; padding: 0 14px; border-left: 1px solid var(--hair); }
+    .hm-fig:first-child { padding-left: 0; border-left: 0; }
+    .hm-fig:last-child { padding-right: 0; }
+    .hm-fig b { display: block; font-family: var(--serif); font-weight: 400; font-size: var(--text-heading); line-height: 1.2; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .hm-fig small { display: block; margin-top: 2px; font-size: var(--text-label); line-height: 1.4; color: var(--ink-3); text-wrap: balance; }
+    .hm-fig .hm-scope { margin-top: 7px; }
+    /* Three figures across a phone: a step smaller, so "$46.28M" keeps its cell. */
+    @media (max-width: 520px) { .hm-fig { padding: 0 10px; } .hm-fig b { font-size: var(--text-subhead); } }
+    /* A row of a quiet day's card: a later date, or a value that moved. Both
+       open the property's card on the map, so both are buttons. */
+    .hm-lr, .hm-mv { display: grid; gap: 12px; width: 100%; padding: 11px 0; border: 0; border-top: 1px solid var(--hair); background: none; font: inherit; text-align: left; color: inherit; cursor: pointer; }
+    #hmLaterRows > :first-child, #hmMovedRows > :first-child { border-top: 0; }
+    #hmLaterRows > :last-child, #hmMovedRows > :last-child { padding-bottom: 0; }
+    .hm-lr:focus-visible, .hm-mv:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    .hm-lr:hover .hm-rt b, .hm-mv:hover b { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--ink-4); }
+    .hm-lr { grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; }
+    /* The day as a calendar leaf. A later date has no number: a number is a
+       pin on the map, and a pin is a date that needs the member. */
+    .hm-cal { display: block; padding: 4px 0 5px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--paper); text-align: center; }
+    .hm-cal small { display: block; font-size: var(--text-tiny); font-weight: 600; line-height: 1.2; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+    .hm-cal b { display: block; font-family: var(--serif); font-weight: 400; font-size: var(--text-title); line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .hm-lr-s { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; white-space: nowrap; }
+    .hm-lr-s > small { font-size: var(--text-label); color: var(--ink-3); }
+    .hm-mv { grid-template-columns: 64px minmax(0, 1fr) auto; align-items: baseline; }
+    .hm-mv .chg { font-size: var(--text-small); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .hm-mv .chg.up { color: var(--green); }
+    .hm-mv .chg.dn { color: var(--red); }
+    .hm-mv b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-compact); font-weight: 600; color: var(--ink); }
+    .hm-mv b i { font-style: normal; font-weight: 500; color: var(--ink-3); }
+    .hm-mv em { font-style: normal; font-size: var(--text-compact); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    /* What lands on Today, as the fine print under a quiet day's cards. */
+    .hm-empty.hm-note { margin-top: 16px; font-size: var(--text-small); }
     .hm-mk { background: none !important; border: 0 !important; }
     .hm-pip { display: block; width: 14px; height: 14px; border: 2.5px solid var(--card); border-radius: 99px; box-shadow: 0 1px 4px rgba(15, 23, 42, .4); }
     .hm-pip.permit { width: 11px; height: 11px; border-width: 2px; border-radius: var(--r-xs); margin: 1.5px; }
@@ -1978,6 +2033,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-tag.own { border-color: var(--ok-text); background: var(--ok-text); color: var(--paper); }
     .hm-tag.firm { border-color: var(--ink); background: var(--ink); color: var(--paper); }
     .hm-tag.on { transform: translate(-50%, -50%) scale(1.15); box-shadow: 0 0 0 3px var(--card), 0 4px 14px rgba(15, 23, 42, .45); }
+    /* A stack (2026-11-13; HOMEMAP.stacks): the properties whose pins would
+       land on each other at this zoom, drawn once. A white pill, so it is
+       never read as a dated pin (an ink or red circle holding a row's number)
+       or as one building's value tag (a pill in its kind's colour): a dot in
+       the legend's colour for each kind inside, how many, and on Properties
+       what they add up to. Centred on its marker like .hm-tag. */
+    .hm-stk { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px 4px 7px; border-radius: var(--r-pill); background: var(--card); font-size: var(--text-label); font-weight: 700; line-height: 1.2; color: var(--ink); white-space: nowrap; box-shadow: 0 0 0 1px var(--edge), 0 2px 8px rgba(15, 23, 42, .3); cursor: pointer; }
+    .hm-stk i { flex: none; width: 10px; height: 10px; border-radius: var(--r-pill); }
+    .hm-stk i + i { margin-left: -8px; box-shadow: -1.5px 0 0 var(--card); }
+    .hm-stk b { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .hm-stk em { font-style: normal; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+    .hm-stk em::before { content: "\00B7"; margin-right: 5px; color: var(--ink-3); }
+    .hm-stk.on { box-shadow: 0 0 0 3px var(--red-fill), 0 2px 8px rgba(15, 23, 42, .3); }
     .hm-pop .leaflet-popup-content-wrapper { padding: 0; overflow: hidden; border-radius: 14px; background: var(--card); color: var(--ink-body); box-shadow: 0 16px 40px -12px rgba(15, 23, 42, .45); }
     .hm-pop .leaflet-popup-content { width: 260px !important; margin: 0; font: inherit; }
     .hm-pop .leaflet-popup-tip { background: var(--card); }
@@ -3298,6 +3366,28 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
             <div id="hmPaneToday" class="hm-pane" role="tabpanel" aria-labelledby="hmTabToday">
               <div id="hmTodayRows" class="hm-rows"></div>
+              <!-- A quiet day (2026-11-13). Nothing needs the member and they
+                   hold properties: most days, for most accounts. Today used
+                   to answer with the status line's own sentence a second
+                   time over an empty column. It shows what they hold at a
+                   glance, the dates still further out and the values that
+                   moved, each only when it has something to say; a busy
+                   day's list is untouched. hmDrawBrief() is its one writer,
+                   and what goes in it is home-map.js. -->
+              <div id="hmBrief" class="hidden hm-brief">
+                <section id="hmGlance" class="hidden hm-bc" aria-labelledby="hmGlanceK">
+                  <h3 id="hmGlanceK" class="hm-bk">At a glance</h3>
+                  <div id="hmGlanceFigs" class="hm-figs"></div>
+                </section>
+                <section id="hmLater" class="hidden hm-bc" aria-labelledby="hmLaterK">
+                  <h3 id="hmLaterK" class="hm-bk">Coming up</h3>
+                  <div id="hmLaterRows"></div>
+                </section>
+                <section id="hmMoved" class="hidden hm-bc" aria-labelledby="hmMovedK">
+                  <h3 id="hmMovedK" class="hm-bk">What moved <span>since first valued</span></h3>
+                  <div id="hmMovedRows"></div>
+                </section>
+              </div>
               <!-- Next (2026-10-18, Draft C): an early account with nothing
                    due is shown its next steps, in place of a paragraph that
                    repeated the status line. hmDrawNext() is its one writer. -->
@@ -6058,6 +6148,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // been initialized by the time this line runs.
     refreshBillingUI();
     applySearchLock();
+    // Home draws two things off the plan: whether a quiet Today shows the
+    // member's values (hmShowValues) and whether BOV requests are read
+    // (hmCanLeads). With no boot payload this answer can land after Home
+    // drew, so Home is drawn again from what it already holds. Not the desk
+    // fill the next comment retired: drawHomeMap repeats no read.
+    if (typeof drawHomeMap === "function" && currentUser && hmRows.length) {
+      try { drawHomeMap(); } catch (err) { console.error("Home map draw failed:", err); }
+    }
     // This used to re-run the desk fill "once the real Pro flag is in",
     // from the days the desk drew portfolio values gated on it. Nothing the
     // desk fills reads proConfig any more (the values moved to /vault, and
@@ -14994,6 +15092,12 @@ async function renderMyDesk() {
   let hmLeadsAsked = false;
   let hmTab = "today";
   let hmRows = [], hmItems = [];
+  // A quiet day's later dates (HOMEMAP.later; [] while something needs the
+  // member), and how many of them Today lists. Declared up here with the
+  // rest of Home's state: resetHomeMap and drawHomeMap run from the boot
+  // path, ahead of anything declared further down the script.
+  let hmLater = [];
+  const HM_LATER_MAX = 3;
   let hmNothing = false;     // an account with nothing on Home yet: Today shows the start cards
   // The start screen (2026-10-18, Draft C): on while an account with nothing
   // on Home is being asked for its first building; gone once the member has
@@ -15022,6 +15126,7 @@ async function renderMyDesk() {
     chat: '<svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13v8.5h-7L5.5 16v-3h-2z"/></svg>',
     market: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15.5l4-4.5 3 2.5 4.5-6 2.5 3"/><path d="M3 3.5v13h14"/></svg>',
     bov: '<svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 11.5 5.5 4.5h9l2 7v4h-13z"/><path d="M3.5 11.5h4l1 2h3l1-2h4"/></svg>',
+    building: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg>',
   };
   const hmHas = () => typeof HOMEMAP !== "undefined" && !!document.getElementById("homeMap");
   // A moment as the member's own calendar date. HOMEMAP reads no clock and
@@ -15039,6 +15144,11 @@ async function renderMyDesk() {
   // the read is guarded for the temporal dead zone.
   const hmCanVault = () => { try { return Boolean(proConfig && proConfig.canUseVault); } catch (_) { return false; } };
   const hmCanLeads = () => hmCanVault() && !(myFirm() && myFirm().kind === "development");
+  // Whether this member's plan shows them their properties' values: the
+  // working pane's own rule (hmSitesView's showValues, "a free member's own
+  // properties are an address list, a Pro member's carry their values"),
+  // read the same guarded way. A quiet Today's value figures follow it.
+  const hmShowValues = () => { try { return Boolean(proConfig && proConfig.portfolioValues); } catch (_) { return false; } };
   const hmFirmKind = () => (myFirm() ? myFirm().kind || "" : "");
 
   // A member's own properties, worked on Properties: a development firm's
@@ -15418,7 +15528,7 @@ async function renderMyDesk() {
     { const m = document.getElementById("hmPropMsg"); if (m) { m.textContent = ""; m.classList.add("hidden"); } }
     hmLeads = null; hmLeadsAsked = false;
     hmPermits = null; hmPermitsAsked = false; hmPermitsFiled = 0; hmPermitCities = ""; hmLayerTab = "";
-    hmRows = []; hmItems = []; hmSel = ""; hmFitFor = ""; hmOpenedOnce = false; hmNothing = false;
+    hmRows = []; hmItems = []; hmLater = []; hmSel = ""; hmFitFor = ""; hmOpenedOnce = false; hmNothing = false;
     hmFirstGone = false;
     hmFirstShow(false);
     hmGeoTried.clear();
@@ -15659,16 +15769,27 @@ async function renderMyDesk() {
     const todayBox = document.getElementById("hmTodayRows");
     todayBox.textContent = "";
     hmItems.forEach((x) => todayBox.append(hmTodayRow(x)));
+    // A quiet day (2026-11-13): nothing needs the member and they hold
+    // properties. The status line above has already said so, once; Today
+    // goes on to what they hold, what is still further out and what moved
+    // (hmDrawBrief), then their next steps (hmDrawNext). The words under
+    // them say what lands here and nothing else: HOMEMAP.landsHere names
+    // only the kinds that can reach this member, and never the status line
+    // again.
+    hmLater = hmItems.length ? [] : HOMEMAP.later({ critical: firm && Array.isArray(deskCritical) ? deskCritical : [],
+      sites: deskSites || [], firmKind: hmFirmKind(), today, shareOrg: deskSitesShare ? deskSitesShare.orgId : "" });
+    const brief = hmDrawBrief();
     const todayEmpty = document.getElementById("hmTodayEmpty");
     todayEmpty.textContent = hmRows.length
-      ? (canLeads
-        ? "Nothing needs you right now. Unread messages, new BOV requests, lease dates in the next 90 days and your deal dates in the next 30 land here."
-        : "Nothing needs you right now. Lease dates in the next 90 days, your deal dates in the next 30 and unread messages land here.")
+      ? HOMEMAP.landsHere({ hasFirm: !!firm, firmKind: hmFirmKind(), leads: canLeads })
       : (canLeads
         ? "Lease dates, deal deadlines, BOV requests and messages land here, soonest first."
         : "Lease dates, deal deadlines and messages land here, soonest first.");
+    todayEmpty.classList.toggle("hm-note", hmRows.length > 0);
     const next = hmDrawNext(firm);
-    todayEmpty.classList.toggle("hidden", hmItems.length > 0 || nothing || next);
+    // Next alone still stands in for the words, as Draft C drew a first
+    // property's Today; under a quiet day's cards they are its fine print.
+    todayEmpty.classList.toggle("hidden", hmItems.length > 0 || nothing || !todayEmpty.textContent || (next && !brief));
     // The firm's two lists, and the member's own Pipeline when they have one.
     // A list is linked only once it has something in it (2026-10-18): on a
     // new firm both pages opened onto nothing.
@@ -15828,6 +15949,91 @@ async function renderMyDesk() {
         : { padding: [8, 8], animate: false });
     }
   }
+  // ---- A quiet day (2026-11-13) ------------------------------------------------
+  // Nothing needs the member and they hold properties, which is most days
+  // for most accounts (the owner's own screenshot: nine properties, "Nothing
+  // needs you right now." twice, and an empty column beside the map). Today
+  // then shows up to three cards, each only when it has something to say:
+  // what they hold at a glance (from two properties up; one is its own row,
+  // and its card is already open on the map), the dates still further out
+  // than the "needs you" windows, and the values that moved. What goes in
+  // each is home-map.js (glanceCells, later, movers), drawn from what Home
+  // has already read: nothing here asks the server anything, and every
+  // figure is one Properties shows, in the same money format. Built with
+  // textContent. Returns whether anything shows.
+  function hmDrawBrief() {
+    const quiet = !hmItems.length && hmRows.length > 0;
+    // What the member owns carries its value here only where their plan
+    // shows values (hmShowValues): without it the glance is the count, and
+    // nothing "moved". A deal's asking price is a figure they typed, not a
+    // valuation, and stays.
+    const rows = hmShowValues() ? hmRows : hmRows.map((r) => (r.group === "owned" ? { ...r, value: null, change: null } : r));
+    const figs = document.getElementById("hmGlanceFigs");
+    figs.textContent = "";
+    const cells = quiet && rows.length >= 2
+      ? HOMEMAP.glanceCells(HOMEMAP.glance({ rows, next: hmLater[0] || null }), { money: hmSitesView() ? HOMESITES.short : HOMEMAP.money })
+      : [];
+    cells.forEach((c) => {
+      const cell = hmEl("div", "hm-fig");
+      cell.append(hmEl("b", null, c.figure), hmEl("small", null, c.label));
+      // A value is the member's own number, so it says who can see it.
+      if (c.scope) cell.append(hmScope(c.scope));
+      figs.append(cell);
+    });
+    document.getElementById("hmGlance").classList.toggle("hidden", !cells.length);
+
+    const laterBox = document.getElementById("hmLaterRows");
+    laterBox.textContent = "";
+    const later = quiet ? hmLater.slice(0, HM_LATER_MAX) : [];
+    later.forEach((x) => laterBox.append(hmLaterRow(x)));
+    document.getElementById("hmLater").classList.toggle("hidden", !later.length);
+
+    const movedBox = document.getElementById("hmMovedRows");
+    movedBox.textContent = "";
+    const moved = quiet ? HOMEMAP.movers(rows) : [];
+    moved.forEach((r) => movedBox.append(hmMovedRow(r)));
+    document.getElementById("hmMoved").classList.toggle("hidden", !moved.length);
+
+    const any = cells.length > 0 || later.length > 0 || moved.length > 0;
+    document.getElementById("hmBrief").classList.toggle("hidden", !any);
+    return any;
+  }
+  // A date still further out: its day as a calendar leaf (it has no number:
+  // a number is a pin, and a pin is a date that needs the member), what it
+  // is and where, how far off, and who can see it. It opens the card a
+  // Today row opens, on the building's own pin.
+  function hmLaterRow(x) {
+    const row = hmEl("button", "hm-lr");
+    row.type = "button";
+    const [mon, day] = HOMEMAP.shortDate(x.date).split(" ");
+    const cal = hmEl("span", "hm-cal");
+    cal.append(hmEl("small", null, mon || ""), hmEl("b", null, day || ""));
+    const rt = hmEl("span", "hm-rt");
+    const b = hmEl("b", null, x.label);
+    if (x.who) b.append(" ", hmEl("i", null, "· " + x.who));
+    rt.append(b, hmEl("small", null, x.place));
+    const side = hmEl("span", "hm-lr-s");
+    side.append(hmEl("small", null, HOMEMAP.inAbout(x.n)), hmScope(x.scope));
+    row.append(cal, rt, side);
+    row.addEventListener("click", () => hmSelect(HOMEMAP.addressKey(x.address), { item: x }));
+    return row;
+  }
+  // A value that moved: how far, which building, and what it is likely
+  // worth now, in the figures its Properties row shows. It opens the
+  // building's card on the map.
+  function hmMovedRow(r) {
+    const row = hmEl("button", "hm-mv");
+    row.type = "button";
+    const up = r.change >= 0, pct = Math.abs(r.change * 100).toFixed(1);
+    const chg = hmEl("span", "chg " + (up ? "up" : "dn"), `${up ? "▲" : "▼"} ${pct}%`);
+    chg.title = `${up ? "Up" : "Down"} ${pct}% since it was first valued`;
+    const name = hmEl("b", null, HOMEMAP.street(r.address));
+    if (HOMEMAP.town(r.address)) name.append(" ", hmEl("i", null, "· " + HOMEMAP.town(r.address)));
+    row.append(chg, name, hmEl("em", null, HOMEMAP.money(r.value)));
+    row.addEventListener("click", () => hmSelect(r.key, {}));
+    return row;
+  }
+
   // Next (2026-10-18, Draft C): an early account with nothing due is shown
   // its next steps on Today, instead of a paragraph repeating the status
   // line: bring the team in while the firm is one person (or start one), and
@@ -15837,6 +16043,19 @@ async function renderMyDesk() {
     const rows = document.getElementById("hmNextRows");
     rows.textContent = "";
     const steps = [];
+    // Any account's first step on a quiet day (2026-11-13): a property it
+    // owns that has no value yet, which is every property added by its
+    // address alone. The step opens its pane, where Refresh value is; it
+    // runs nothing itself.
+    if (!hmItems.length && hmWorkHere()) {
+      const bare = HOMEMAP.unvalued(hmRows);
+      if (bare.length) {
+        const more = bare.length - 1;
+        steps.push({ icon: "building", b: `Get a value for ${HOMEMAP.street(bare[0].address)}`,
+          s: more ? `No value yet, and ${more} more ${more === 1 ? "property has" : "properties have"} none` : "No value yet. Refresh runs a search for one.",
+          act: "Open", go: () => hmOpenWork(bare[0].key) });
+      }
+    }
     if (!hmItems.length && hmRows.length && hmRows.length <= 3) {
       if (!firm) steps.push({ icon: "people", b: "Bring your team", s: "Start a firm to share buildings and reports", act: "Start", go: () => { if (typeof openFirmModal === "function") openFirmModal(); } });
       else if (firmMembers.filter((m) => !m.pending).length <= 1) {
@@ -16109,6 +16328,7 @@ async function renderMyDesk() {
     // so it is asked again whenever the view moves.
     hmMap.on("moveend", hmSyncLayerNote);
     hmMap.on("moveend", hmPhotoWarmSoon);
+    hmMap.on("zoomend", hmRestack);
     hmMap.on("movestart zoomstart", () => { hmMoving = true; });
     hmMap.on("moveend zoomend", () => { hmMoving = false; hmMovedAt = performance.now(); });
     if (typeof ResizeObserver === "function") new ResizeObserver(() => hmMap && hmMap.invalidateSize()).observe(el);
@@ -16141,11 +16361,18 @@ async function renderMyDesk() {
   // card's own pan never opens whatever pin lands under a resting pointer.
   const HM_HOVER_MS = 120, HM_HOVER_SETTLE_MS = 300;
   const hmCanHover = () => window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-  function hmPin(ll, html, size, onClick, z, photoOf) {
+  function hmPin(ll, html, size, onClick, z, photoOf, still) {
+    // `still` is a stack's title (2026-11-13). It is set as the marker's own
+    // title, a DOM property, never written into the pin's HTML: a town's
+    // name is text a person typed.
     const m = L.marker([ll.lat, ll.lng], { icon: L.divIcon({ className: "hm-mk", html, iconSize: size, iconAnchor: [size[0] / 2, size[1] / 2] }),
-      zIndexOffset: z || 0, keyboard: false });
+      zIndexOffset: z || 0, keyboard: false, ...(still ? { title: still, alt: still } : {}) });
     if (onClick) m.on("click", onClick);
     if (photoOf) m.on("mouseover", () => hmPhotoHover(photoOf, ll));
+    // A stack is several properties, not one: a click zooms into it, and
+    // resting on it opens nothing (a hover that moved the map would be worse
+    // than one that opened a card).
+    if (still) return m.addTo(hmPinLayer);
     if (onClick && hmCanHover()) {
       let t = null;
       m.on("mouseover", (e) => {
@@ -16243,6 +16470,67 @@ async function renderMyDesk() {
     box.classList.toggle("hidden", !notes.length);
   }
 
+  // The properties' pins, one per property, or one per STACK where several
+  // would land on each other at this zoom (2026-11-13; HOMEMAP.stacks). From
+  // across the country six buildings in one city were a single dot, the top
+  // pin hiding the rest, and on Properties one value tag covered five. A
+  // stack is a white pill: a dot in the legend's colour for each kind inside
+  // it, how many, and on Properties what the valued ones add up to. A click
+  // zooms until its properties stand apart; hmRestack redraws on every zoom,
+  // because a stack is the zoom's.
+  //
+  // On Today a dated row is drawn as its numbered pin at the same spot, so
+  // the dot that used to sit hidden under it is neither drawn nor counted
+  // into a stack beside it.
+  function hmDrawPropertyPins(located) {
+    const tags = hmTab === "properties";
+    const dated = new Set(hmTab === "today" ? hmItems.filter((x) => x.num != null).map((x) => HOMEMAP.addressKey(x.address)) : []);
+    const zoom = hmMap.getZoom();
+    const pts = located.filter(({ r }) => !dated.has(r.key)).map(({ r, ll }) => {
+      const p = hmMap.project([ll.lat, ll.lng], zoom);
+      return { x: p.x, y: p.y, r, ll };
+    });
+    HOMEMAP.stacks(pts, tags ? HOMEMAP.STACK_TAG : HOMEMAP.STACK_DOT).forEach(({ items }) => {
+      if (items.length === 1) {
+        const { r, ll } = items[0], on = r.key === hmSel;
+        if (tags && r.value) {
+          hmPin(ll, `<span class="hm-tag ${hmPipClass(r)}${on ? " on" : ""}">${HOMEMAP.money(r.value)}</span>`, [76, 28], () => hmSelect(r.key, { from: "map" }), on ? 900 : 100, r.address);
+        } else {
+          hmPin(ll, `<span class="hm-pip ${hmPipClass(r)}${on ? " on" : ""}"></span>`, [14, 14], () => hmSelect(r.key, { from: "map" }), on ? 900 : 0, r.address);
+        }
+        return;
+      }
+      const rows = items.map((p) => p.r);
+      const lls = items.map((p) => [p.ll.lat, p.ll.lng]);
+      const on = rows.some((r) => r.key === hmSel);
+      // Class names and figures only: nothing a person typed goes into this markup.
+      const dots = ["buy", "own", "firm"].filter((k) => rows.some((r) => hmPipClass(r) === k)).map((k) => `<i class="${k}"></i>`).join("");
+      const sum = tags ? HOMEMAP.stackValue(rows).total : 0;
+      const html = `<span class="hm-stk${on ? " on" : ""}">${dots}<b>${rows.length}</b>${sum ? `<em>${HOMEMAP.money(sum)}</em>` : ""}</span>`;
+      const at = { lat: lls.reduce((t, p) => t + p[0], 0) / lls.length, lng: lls.reduce((t, p) => t + p[1], 0) / lls.length };
+      hmPin(at, html, [44, 26], () => {
+        // Buildings at one point, or a map already as close as it goes,
+        // cannot be pulled apart by zooming: the first one's card, which is
+        // what a click there opened before.
+        const one = lls.every((p) => Math.abs(p[0] - lls[0][0]) < 1e-5 && Math.abs(p[1] - lls[0][1]) < 1e-5);
+        if (one || hmMap.getZoom() >= hmMap.getMaxZoom()) { hmSelect(rows[0].key, { from: "map" }); return; }
+        hmMap.closePopup();
+        hmMap.fitBounds(lls, { ...hmFitOpts(), maxZoom: hmMap.getMaxZoom() });
+      }, on ? 900 : 200, null, HOMEMAP.stackTitle(rows));
+    });
+  }
+  // A stack is the zoom's: pins that touched at one level stand apart at the
+  // next, so the pins are drawn again whenever the zoom settles. hmDrawPins
+  // fits only when the tab's subject changed, so this never moves the map.
+  // After the current task, never inside it: hmDrawPins' own fit can change
+  // the zoom without an animation, which fires zoomend before that call has
+  // returned, and a draw inside a draw would open the day's first card twice.
+  let hmRestackTimer = 0;
+  function hmRestack() {
+    clearTimeout(hmRestackTimer);
+    hmRestackTimer = setTimeout(() => { if (hmPinLayer) hmDrawPins(); }, 0);
+  }
+
   function hmDrawPins() {
     if (!hmEnsureMap()) return;
     hmPinLayer.clearLayers();
@@ -16257,13 +16545,8 @@ async function renderMyDesk() {
     const located = hmRows.map((r) => ({ r, ll: hmLL(r) })).filter((x) => x.ll);
     if (showProps) located.forEach(({ r, ll }) => {
       put(ll, true);
-      const on = r.key === hmSel;
-      if (hmTab === "properties" && r.value) {
-        hmPin(ll, `<span class="hm-tag ${hmPipClass(r)}${on ? " on" : ""}">${HOMEMAP.money(r.value)}</span>`, [76, 28], () => hmSelect(r.key, { from: "map" }), on ? 900 : 100, r.address);
-      } else {
-        hmPin(ll, `<span class="hm-pip ${hmPipClass(r)}${on ? " on" : ""}"></span>`, [14, 14], () => hmSelect(r.key, { from: "map" }), on ? 900 : 0, r.address);
-      }
     });
+    if (showProps) hmDrawPropertyPins(located);
     // Today's numbered pins are its rows, so they are drawn whatever the
     // switch says, the way a row is always on its list.
     if (hmTab === "today") {

@@ -1,9 +1,27 @@
 [
   {
     "date": "2026-11-13",
+    "type": "improvement",
+    "title": "Home has something to show on a quiet day",
+    "details": "When nothing needed you, Today said “Nothing needs you right now.” under the greeting and then again as the whole tab, beside an empty column. That is most days for anyone who owns a few buildings. Today now shows what you hold at a glance (how many properties and where, what they are likely worth together, the next date on the calendar), the dates still further out than the ones that need you, and which of your values moved the most since they were first valued. A property with no value yet leads your next steps. A busy day’s list is exactly as it was, and the sentence is said once."
+  },
+  {
+    "date": "2026-11-13",
+    "type": "improvement",
+    "title": "Buildings in the same city no longer hide behind one map pin",
+    "details": "From across the country, several buildings in one city sat on the same few pixels of Home’s map: one dot, with nothing saying it was six buildings, and on Properties one value tag covering the other five. Pins that would land on each other are now drawn once, as a pill with a count (and on Properties what those buildings are likely worth together). Click it and the map zooms in until each building stands on its own."
+  },
+  {
+    "date": "2026-11-13",
     "type": "fix",
     "title": "A hidden tab or button is hidden again",
     "details": "Since the buttons and tabs were tidied into one shared style on November 10, a tab or button the page meant to hide stayed on screen. An account in no firm saw a People tab on Home that did nothing when pressed. On Sites, “+ Add a site” showed above the message saying Sites is for development firms, and a development firm with no deals yet got a row of dashes and four empty columns around its “No sites yet” card. All three are fixed, and a test now checks the whole family of buttons and tabs."
+  },
+  {
+    "date": "2026-11-13",
+    "type": "fix",
+    "title": "Three small things on Home",
+    "details": "In dark mode the Find box showed a darker rectangle inside its own frame. Under a short list the legal line floated in the middle of the panel; it now rests at the foot. On a phone the round Feedback button sat over the last lines of the list with no way to scroll them clear. Today’s note about what lands there also stopped promising deal dates to broker shops and lease dates to accounts in no firm: it names only what can reach you."
   },
   {
     "date": "2026-11-10",

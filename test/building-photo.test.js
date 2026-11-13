@@ -358,10 +358,17 @@ test("Home warms the pin under the pointer, asking about it first when it must",
 });
 
 test("every pin carries the address of the card it opens, for the warm on hover", () => {
-  const block = html.slice(html.indexOf("function hmDrawPins()"), html.indexOf("function hmFitOpts") > 0 ? html.indexOf("function hmFitOpts") : html.indexOf("const hmFitOpts"));
+  // The property pins are drawn by hmDrawPropertyPins since 2026-11-13 (pins
+  // that would land on each other are one stack), just above hmDrawPins.
+  const from = html.indexOf("function hmDrawPropertyPins(located)");
+  assert.ok(from > 0 && from < html.indexOf("function hmDrawPins()"), "the property pins moved again");
+  const block = html.slice(from, html.indexOf("function hmFitOpts") > 0 ? html.indexOf("function hmFitOpts") : html.indexOf("const hmFitOpts"));
   const pins = block.match(/hmPin\(/g) || [];
-  assert.equal(pins.length, 4);
+  assert.equal(pins.length, 5, "two property pins, a stack, Today's and a permit's");
   assert.equal((block.match(/, r\.address\);/g) || []).length, 2, "both property pins");
+  // A stack is several properties and opens no card of its own, so it warms
+  // no photo: its last two arguments are no address and its title.
+  assert.match(block, /\}, on \? 900 : 200, null, HOMEMAP\.stackTitle\(rows\)\);/, "a stack asks for one building's photo");
   assert.match(block, /\(hmRowByKey\(key\) \|\| x\)\.address\);/, "Today's pins: the same address hmSelect's card uses");
   assert.match(block, /\[p\.street, p\.city\]\.filter\(Boolean\)\.join\(", "\)\);/, "a permit's pin: its card's address");
   assert.match(html, /if \(photoOf\) m\.on\("mouseover", \(\) => hmPhotoHover\(photoOf, ll\)\);/);

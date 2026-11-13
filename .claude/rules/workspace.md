@@ -94,10 +94,13 @@ paths:
 >   is the shop and ONE more thing: **while the logo's door is offered it
 >   takes the head count's place** (three facts do not fit beside the
 >   button, and the count is on People), and the count is back once a logo
->   is saved. A fact is never cut in half: each is `nowrap` and the line
->   wraps whole facts, which it only does when a reader's own text spacing
->   or font makes them wider than the page ships them (WCAG 1.4.12; the old
->   row wrapped too). The name is `--text-compact`/600 with the whole of it
+>   is saved. A fact is never cut off: the line wraps whole facts first,
+>   which it only does when a reader's own text spacing or font makes them
+>   wider than the page ships them (WCAG 1.4.12; the old row wrapped too),
+>   and a LONE fact wider than its column (very large text on a phone)
+>   shrinks to the column and breaks between its words (`flex: 0 1 auto;
+>   min-width: 0`). While it could do neither it ran on under "Firm
+>   settings". Never an ellipsis. The name is `--text-compact`/600 with the whole of it
 >   in `title` (a long one is cut with an ellipsis, never wrapped into the
 >   button); the facts are `--ink-3`. Nothing in the row is red or indigo
 >   but the focus ring.
@@ -105,7 +108,9 @@ paths:
 >   "Add a logo", a `<button class="hm-fh-logo">` at the end of the facts
 >   line, a step darker than the facts (`--ink-2`, 500) and underlined in
 >   its own ink (a paler underline measured 1.5:1). Its press area reaches
->   down and sideways only: above it is the firm's name. So does its box
+>   down and sideways only: above it is the firm's name. To the left it
+>   stops at the dot before it (4px): at 7px a click on the dot opened the
+>   file picker. So does its box
 >   (3px each side and 4px down, the same margins taken back so nothing
 >   moves), and **the focus ring is drawn inside that box**
 >   (`outline-offset: -2px`): a ring outside it put its top stroke in the

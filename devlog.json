@@ -2,6 +2,12 @@
   {
     "date": "2026-11-13",
     "type": "fix",
+    "title": "Two small fixes to the firm row on Home",
+    "details": "Clicking the small dot before “Add a logo” opened the logo picker; it no longer does. And with the browser set to very large text on a phone, the line under the firm’s name could run on underneath the “Firm settings” button; it now wraps onto a second line beside it. Nothing changes at ordinary text sizes."
+  },
+  {
+    "date": "2026-11-13",
+    "type": "fix",
     "title": "The firm’s initials stay centred in their tile with very large browser text",
     "details": "With the browser’s minimum font size set to 20px or more, the initials beside the firm’s name on Home sat low in their tile, and at 24px on a phone they rested on its bottom edge. They are centred again. Nothing changes at ordinary text sizes."
   },

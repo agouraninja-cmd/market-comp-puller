@@ -99,12 +99,17 @@ paths:
 > breakages were run against copies of the files and a test fails on each.
 > A new rail rule goes in BOTH files and, if its selector is new, in that
 > table.
-> **Left alone, and worth knowing.** `/markets` and `/bulk` do not load
+> **Left alone, and worth knowing.** `/markets` and `/bulk` did not load
 > Inter (measured 2026-11-12: Home, Messages, Sites, Permits and Comps do,
 > through `INTER_FONT_HEAD`), so on those two pages the rail's words, like
-> the rest of the page, are in the system font, and the strip changes
-> typeface as a member moves through them. Under 419px of height the
-> column is still cut off.
+> the rest of the page, were in the system font, and the strip changed
+> typeface as a member moved through them. **Fixed 2026-11-13** for those
+> two (markets.md, "Inter on /markets"): every page a rail row opens now
+> loads it, and the rail's labels measure the same on each (Home 31.5px,
+> Messages 54.7, Sites 26.5, Markets 43.4, Comps 37.8, Permits 40.7; the
+> row you are on is bolder and a fraction wider). Still in the system font
+> for a member: `/market/<slug>`, `/rankings` and the public pages. Under
+> 419px of height the column is still cut off.
 
 > **Hidden means hidden (2026-11-13).** The browser's own rule for the
 > `hidden` attribute loses to ANY rule that sets a `display`, and since the

@@ -12252,15 +12252,25 @@ function deskBootScript(payload) {
   return `<script>window.DESK_BOOT=${json};</script>`;
 }
 
-// Inter, for the one marketShell page that has always loaded it. MARKET_CSS
-// names the family in body{} and NO server-rendered page fetches it — they all
-// fall back to system-ui, which is what they were designed against. /vault was
-// built as its own document and did load it, so folding it onto the shell
-// (Task 9) would have silently changed the typeface on the page brokers use
-// daily. Passed through marketShell's `head`, which is emitted BEFORE
-// MARKET_CSS: right for a font, which wants fetching early and competes with
-// nothing. Give this to another page only if that page really should look
-// different from its neighbours.
+// Inter, for the pages a member works in. MARKET_CSS names the family in
+// body{} and marketShell itself fetches nothing, so a page that does not pass
+// this falls back to system-ui (Segoe UI on Windows), rail and all. Passed
+// through marketShell's `head`, which is emitted BEFORE MARKET_CSS: right for
+// a font, which wants fetching early and competes with nothing.
+//
+// Who passes it (measured 2026-11-13 with document.fonts on a seeded server):
+// /comps and /pipeline (the first: /vault was its own document and had always
+// loaded it), /messages, /buildings, /building/<id>, /sites, /permits,
+// /permits/compare, and since 2026-11-13 /bulk and a MEMBER's /markets. The
+// rail is one strip on every page, so on a page without this its words change
+// typeface under the member as they move.
+//
+// Who does not, on purpose or not yet: the PUBLIC pages (a signed-out
+// /markets, /market/<slug>, /rankings, /pricing, /faq and the rest), which
+// were designed against the system font and are cached for strangers; a
+// render-blocking stylesheet from another host is not a free change there.
+// The same pages read by a member (/market/<slug> and /rankings above all)
+// still wear the rail in the system font: markets.md, "Inter on /markets".
 const INTER_FONT_HEAD =
   `<link rel="preconnect" href="https://fonts.googleapis.com"/>\n` +
   `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>\n` +
@@ -16662,7 +16672,12 @@ function renderMarketDirectoryHTML(signedIn) {
     // so without it the class links render as bare text and the band pills lose
     // their colour. Only when there IS a card — an unconfigured install ships
     // no unused stylesheet.
-    head: (mapUi ? LEAFLET_HEAD : "") + (RANK_ENTRY ? `<style>${RANKPAGE.RANK_CSS}</style>` : "") +
+    // Inter for a MEMBER only (2026-11-13), like The Board and the rail it
+    // sits beside: their copy is no-store and wears the rail, whose words
+    // were Segoe UI here and Inter on Home. The signed-out page is the
+    // public, cached one and stays byte for byte what it was.
+    head: (signedIn ? INTER_FONT_HEAD : "") +
+      (mapUi ? LEAFLET_HEAD : "") + (RANK_ENTRY ? `<style>${RANKPAGE.RANK_CSS}</style>` : "") +
       (signedIn ? `<style>${BOARD_CSS}${MARKET_BUILD_CSS}</style>` : ""),
     current: "/markets",
   });
@@ -33380,6 +33395,10 @@ const server = http.createServer((req, res) =>
         // marketShell page uses — the real gate is the boot payload above.
         signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
         current: "/bulk",
+        // Inter, like /comps, the other tab of this section (2026-11-13):
+        // without it the page and the rail beside it fell back to system-ui,
+        // and the Comps section changed typeface between its two tabs.
+        head: INTER_FONT_HEAD,
         // A tester filing a bug about bulk valuation should not have to go
         // back to the app to report it.
         testerBadge: true,

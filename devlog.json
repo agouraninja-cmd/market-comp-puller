@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-11-13",
+    "type": "fix",
+    "title": "Markets and the comp report page use the same typeface as the rest of the app",
+    "details": "For a signed-in member, Markets and the comp report page were drawn in the computer’s own font (Segoe UI on Windows) while Home, Messages, Sites, Permits and Your comps use Inter. The left sidebar is the same strip everywhere, so its labels visibly changed typeface when you moved between Home and either of those pages. Both now load Inter. Inter is a little wider, so on Markets the count beside the map’s filters (“196 market areas · 49 measured for industrial”) sits on a line of its own, and a few paragraphs wrap one line differently; nothing else moved. The public Markets page that signed-out visitors and search engines see is unchanged. Individual market pages and the rankings still use the computer’s font when you are signed in; that is the next step."
+  },
+  {
     "date": "2026-11-12",
     "type": "improvement",
     "title": "The left sidebar is redrawn",

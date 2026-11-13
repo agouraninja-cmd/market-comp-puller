@@ -12,8 +12,10 @@
 // the eight-page header assertions in routes.test.js green, and it is why
 // these tests check for a class and a stylesheet rather than for new elements.
 //
-// Below 900px the class does nothing and today's wrapping bar returns, so the
-// phone behaviour costs no drawer, no focus trap and no scroll lock.
+// Below 900px the rail's rules do nothing. Until 2026-11-13 the wrapping bar
+// of words returned there; since then the same class lays the same nav along
+// the bottom of the screen (RAIL_CSS's phone bar), which still costs no
+// drawer, no focus trap and no scroll lock.
 
 const test = require("node:test");
 const assert = require("node:assert");
@@ -132,9 +134,11 @@ const railBlock = () => {
 };
 
 test("the rail rules are scoped so a phone never sees them", () => {
-  // Below 900px the header is the wrapping bar it has always been. If the
-  // rules were unscoped, the fix for a phone would be a drawer — the thing
-  // this design exists to avoid building.
+  // Below 900px the rail's own rules do nothing. If they were unscoped, the
+  // fix for a phone would be a drawer — the thing this design exists to
+  // avoid building. (Since 2026-11-13 a phone has rules of its own, the phone
+  // bar: the same nav along the bottom edge, in its own max-width block,
+  // checked further down.)
   const css = railBlock();
   assert.ok(css.includes("nav-rail"), "RAIL_CSS carries the rail rules");
   assert.match(css, /@media\s*\(min-width:\s*900px\)[\s\S]*?nav-rail/,
@@ -146,6 +150,44 @@ test("the rail rules are scoped so a phone never sees them", () => {
   const guarded = css.slice(css.indexOf("@media"));
   assert.equal(css.split("nav-rail").length - 1, guarded.split("nav-rail").length - 1,
     "a nav-rail rule was added before the first @media guard");
+});
+
+test("a phone gets the nav along the bottom, on screen only, and nothing rides under it", () => {
+  // The phone bar (2026-11-13). Three things a tidy-up would undo with every
+  // other suite green.
+  const css = railBlock().replace(/\/\*[\s\S]*?\*\//g, "");
+  const blocks = css.match(/@media screen and \(max-width:899px\)\{[\s\S]*?\n\}/g) || [];
+  assert.equal(blocks.length, 1, "RAIL_CSS has exactly one phone block");
+  const phone = blocks[0];
+  // 1. screen only. A printed page is about 800px wide, which a bare
+  //    max-width query calls a phone: the bar would be fixed to the foot of
+  //    every sheet of a printed market page.
+  assert.ok(!/@media \(max-width:\s*899px\)/.test(css), "the phone bar's query lost `screen`, so it prints");
+  // 2. It meets the rail with no gap and no overlap: the rail starts at 900.
+  assert.match(css, /@media \(min-width:900px\)\{\s*html\.nav-rail body\{padding-left:84px\}/);
+  // 3. The nav is fixed to the bottom, and the body is padded by exactly the
+  //    bar's height, so a page's last line clears it: 4 + 46 + 4.
+  assert.match(phone, /html\.nav-rail \.hdr nav\{position:fixed;left:0;right:0;bottom:0;/);
+  assert.match(phone, /html\.nav-rail body\{padding-bottom:calc\(54px \+ env\(safe-area-inset-bottom,0px\)\)\}/);
+  assert.match(phone, /padding:4px 4px calc\(4px \+ env\(safe-area-inset-bottom,0px\)\)/);
+  const row = phone.match(/html\.nav-rail \.hdr nav>a\{([^}]*)\}/)[1];
+  assert.match(row, /padding:5px 2px 4px/);
+  assert.match(row, /line-height:13px/);
+  assert.match(phone, /html\.nav-rail \.hdr nav>a \.nvi\{display:block;width:24px;height:24px\}/);
+  // 5 + 24 (icon) + 13 (word) + 4 = 46, and 4 + 46 + 4 = 54.
+  // The two things that stand ON the bar say the same 54, plus 12 of air.
+  const stands = /bottom:calc\(66px \+ env\(safe-area-inset-bottom,0px\)\)/;
+  const badge = SERVER_JS.match(/const TESTER_BADGE_CSS = `[\s\S]*?\n`;/)[0];
+  assert.match(badge, /@media screen and \(max-width:899px\)\{\s*html\.nav-rail \.tninja\{bottom:calc\(66px/,
+    "the Feedback button no longer stands on the phone bar, so it covers the bar's last two places");
+  assert.match(badge, stands);
+  assert.match(VAULT_JS, /@media screen and \(max-width:899px\)\{\s*html\.nav-rail \.vd-tray\.on\{bottom:calc\(66px/,
+    "/comps' selection tray no longer stands on the phone bar, so it sticks behind it");
+  // The page you are on is a border (forced colours keep it), as in the rail.
+  assert.match(phone, /nav>a\[aria-current="page"\]::before\{[^}]*border-top:3px solid var\(--red\)/);
+  // Above a map's controls (Leaflet's are 1000) and the Feedback button,
+  // under the modals (1200).
+  assert.match(phone, /html\.nav-rail \.hdr nav\{[^}]*z-index:1050/);
 });
 
 test("both market stylesheets still take the rail, and the vault does too", () => {
@@ -294,11 +336,20 @@ test("the rail hides Explore without taking the account cluster with it", () => 
   // back to the app first. No existing test saw it, because the MARKUP stayed
   // correct — only the computed style was wrong, which is the failure mode a
   // byte-identical-markup design is most exposed to.
+  // Two since 2026-11-13: the rail's, and the phone bar's (the same nav along
+  // the bottom of a phone, in RAIL_CSS's own max-width block). Both must
+  // spare the account cluster, for the reason above: on a phone it is the
+  // bar's last place, and the only way to Settings and Sign out.
   const hides = SERVER_JS.match(/html\.nav-rail \.hdr nav>details[^{]*\{display:none\}/g) || [];
-  assert.equal(hides.length, 1,
-    "the rail is defined once (RAIL_CSS); a second copy of this rule means the duplication came back");
-  assert.ok(hides[0].includes(":not(#navAcct)"),
-    `the Explore hide must spare the account cluster, got: ${hides[0]}`);
+  assert.equal(hides.length, 2,
+    "the Explore hide is written once for the rail and once for the phone bar, both in RAIL_CSS; "
+    + "another copy means the duplication came back");
+  for (const hide of hides) {
+    assert.ok(hide.includes(":not(#navAcct)"),
+      `the Explore hide must spare the account cluster, got: ${hide}`);
+  }
+  assert.equal(railBlock().split("html.nav-rail .hdr nav>details").length - 1, 2,
+    "both Explore hides live in RAIL_CSS");
   // The rules that lay #navAcct out FOR the rail are what prove it was always
   // meant to show. If they ever go, this test would start passing for the
   // wrong reason, so it fails instead.

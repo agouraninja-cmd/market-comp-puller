@@ -12462,6 +12462,12 @@ const TESTER_BADGE_CSS = `
     @media (min-width:900px) and (min-height:680px){
       html.nav-rail .tninja::before{content:"";position:absolute;left:14px;right:14px;top:-13px;height:1px;background:var(--edge)}
     }
+    /* On a phone a member's places are a bar along the bottom (RAIL_CSS's
+       phone bar, 2026-11-13, 54px tall), so the round ninja stands 12px
+       above it instead of on top of its last two places. */
+    @media screen and (max-width:899px){
+      html.nav-rail .tninja{bottom:calc(66px + env(safe-area-inset-bottom,0px))}
+    }
     .tfm{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.7);
       display:flex;align-items:center;justify-content:center;padding:16px}
     /* .hidden is Tailwind's in the app and nobody's on a server-rendered
@@ -12812,8 +12818,10 @@ const RAIL_CSS = `
    The header, stood on its end. Not a new component: the same element, the
    same markup, re-laid-out by one class on <html> that only a SIGNED-IN
    render stamps. Everything here is inside a min-width guard, so below 900px
-   the bar above is untouched -- which is the entire mobile answer, and why
-   there is no drawer, no focus trap and no scroll lock anywhere in this file.
+   the bar above is untouched -- which was the entire mobile answer until
+   2026-11-13 (a phone now gets the same nav along the bottom edge: "The
+   phone bar", further down), and why there is no drawer, no focus trap and
+   no scroll lock anywhere in this file.
    The content never moves: .wrap keeps its margin:0 auto, so every centered
    band re-centres inside the body's new left padding by itself.
    224px is a literal on purpose. A rail-width custom property would fail
@@ -13008,6 +13016,81 @@ const RAIL_CSS = `
   html.nav-rail .hdr nav>#navAcct{padding-top:6px}
   html.nav-rail .hdr nav>#navAcct .dd{bottom:8px}
 }
+/* --- The phone bar (2026-11-13; the owner: "improve the CompNinja web
+   experience for mobile users") -------------------------------------------
+   Below 900px a member's places are a bar along the bottom of the screen,
+   an icon over a word, where a thumb already is. Until now the answer on a
+   phone was the wrapping bar of words: seven 21px-tall links in two rows at
+   the top of every page, 130px of a phone's first screen, the page you are
+   on unmarked. Same element and same markup as the rail (the nav, stood
+   along the bottom edge instead of the left one), behind the same class, so
+   a stranger's bar and NAV_SHELL=bar are untouched and there is still no
+   drawer, focus trap or scroll lock.
+   - screen only. A printed page is about 800px wide, which is "a phone" to
+     a width query, and a fixed bar prints on every sheet.
+   - The header keeps the brand and nothing else, and scrolls away with the
+     page. The nav is the bar: six places and the account circle, each an
+     equal share of the width, 46px tall. The rail's vocabulary: --wash with
+     a --line hairline (an inset shadow), the page you are on a --card tile
+     ringed in --edge with the red tick, here along its top edge and still a
+     border (forced colours keep it).
+   - Words are 10px: seven columns of a 320px screen are 44px each, and
+     "Messages" is 52px at the rail's 11. The cells share the width equally
+     (flex-basis 0) and keep their automatic min-width, so a word wider than
+     its share keeps its own width and the rest share what is left: on a
+     320px screen the page you are on, set heavier, otherwise ran out of
+     its tile into the next place.
+   - The account circle is the last place, with the word Account under it
+     (CSS content; the summary's aria-label is its name). Its menu opens
+     upward from the corner, with rows tall enough for a thumb. The bar's
+     enlarged hit area on the summary is switched off: the summary is the
+     whole cell here, and its ::after is the word.
+   - Explore, the red call to action and the Pricing row are not places and
+     are not in the bar: Explore's links are in the footer, the Comps row is
+     the door to a comp report, and Upgrade to Pro is in the account menu.
+     Seven cells is what fits.
+   - z-index 1050: over a map's controls (Leaflet's are 1000 and leak out of
+     the map) and the Feedback button, under the modals (1200). The body is
+     padded by the bar's height so a page's last line clears it; the
+     safe-area inset is 0 until a page asks for viewport-fit=cover.
+   Feedback (TESTER_BADGE_CSS) and /comps' selection tray (vault-page.js)
+   stand on the bar from these numbers: 54px tall, so 66px. index.html
+   carries the twin of every rule; test/nav-parity.test.js compares them. */
+@media screen and (max-width:899px){
+  html.nav-rail body{padding-bottom:calc(54px + env(safe-area-inset-bottom,0px))}
+  html.nav-rail .hdr .wrap{padding-top:12px;padding-bottom:12px}
+  html.nav-rail .hdr nav{position:fixed;left:0;right:0;bottom:0;z-index:1050;display:flex;flex-wrap:nowrap;
+    align-items:stretch;gap:0;padding:4px 4px calc(4px + env(safe-area-inset-bottom,0px));
+    background:var(--wash);box-shadow:inset 0 1px 0 var(--line)}
+  html.nav-rail .hdr nav>a{position:relative;flex:1 1 0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:0;padding:5px 2px 4px;border-radius:var(--r-xl);
+    font-size:10px;font-weight:500;line-height:13px;letter-spacing:0;color:var(--ink-2);
+    -webkit-tap-highlight-color:transparent}
+  html.nav-rail .hdr nav>a .nvi{display:block;width:24px;height:24px}
+  html.nav-rail .hdr nav>a::after{content:none}
+  html.nav-rail .hdr nav>a[aria-current="page"]{background:var(--card);color:var(--ink);font-weight:600;
+    box-shadow:inset 0 0 0 1px var(--edge)}
+  html.nav-rail .hdr nav>a[aria-current="page"]::before{content:"";position:absolute;top:0;left:50%;width:20px;height:0;
+    margin-left:-10px;border-top:3px solid var(--red);border-radius:2px}
+  html.nav-rail .hdr nav>a:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+  html.nav-rail .hdr nav>a.btn.sm{display:none}
+  html.nav-rail .hdr nav>#navPricing{display:none}
+  html.nav-rail .hdr nav>details:not(#navAcct){display:none}
+  html.nav-rail .hdr nav .navdot{position:absolute;top:1px;left:calc(50% + 4px);min-width:16px;height:16px;margin:0;
+    padding:0 4px;font-size:10px;line-height:16px;font-variant-numeric:tabular-nums;box-shadow:0 0 0 2px var(--wash)}
+  html.nav-rail .hdr nav>a[aria-current="page"] .navdot{box-shadow:0 0 0 2px var(--card)}
+  html.nav-rail .hdr nav>#navAcct{flex:1 1 0;display:flex;padding:0 2px}
+  html.nav-rail .hdr nav>#navAcct summary{flex:1;flex-direction:column;justify-content:center;gap:0;padding:5px 0 4px;
+    border-radius:var(--r-xl);font-size:10px;font-weight:500;line-height:13px;color:var(--ink-2);
+    -webkit-tap-highlight-color:transparent}
+  html.nav-rail .hdr nav>#navAcct summary::after{content:"Account";position:static}
+  html.nav-rail .hdr nav>#navAcct summary:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+  html.nav-rail .hdr nav>#navAcct .ini{width:24px;height:24px;line-height:24px;font-size:10px;
+    box-shadow:0 0 0 1px var(--ink-4)}
+  html.nav-rail .hdr nav>#navAcct .dd{left:auto;right:4px;top:auto;bottom:calc(100% + 8px)}
+  html.nav-rail .hdr nav>#navAcct .dd a{padding-top:12px;padding-bottom:12px}
+  html.nav-rail .hdr nav>#navAcct .dd button{padding-top:12px;padding-bottom:12px}
+}
 /* Paper has no sidebar. Without this the printed page carries a 224px empty
    column down its left edge on every server-rendered surface. */
 @media print{
@@ -13046,6 +13129,11 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
    widths deliberately. */
 .wrap{max-width:1120px;margin:0 auto;padding:0 16px;width:100%}
 main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
+/* A phone's first screen is about 700px tall and the page's own heading sat
+   a third of the way down it; the desktop's breathing room is closed up
+   there (2026-11-13). A page that sets its own main.wrap padding later in
+   the document (the home page, /comps) keeps its own. */
+@media (max-width:640px){main.wrap{padding-top:20px;padding-bottom:40px}}
 /* Header — mirrors index.html's bar so arriving from search feels continuous. */
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}

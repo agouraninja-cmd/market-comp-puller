@@ -470,6 +470,7 @@ function railSheet(css) {
 }
 const WIDE = "(min-width:900px)";                              // the rail
 const SHORT = "(min-width:900px)and(max-height:559px)";        // the rail in a short window
+const PHONE = "screenand(max-width:899px)";                    // the phone bar (2026-11-13)
 const SERVER_RAIL = () => {
   const m = SERVER_JS.match(/const RAIL_CSS = `([\s\S]*?)\n`;/);
   assert.ok(m, "could not read RAIL_CSS");
@@ -572,14 +573,15 @@ test("every rail rule is the same on both nav authors, in the rail and in a shor
   // No third place: a rail rule outside the rail, short-window and print
   // blocks would be compared with nothing here (and, unguarded, would reach a
   // phone, which nav-shell.test.js refuses on the server's side).
-  assert.deepEqual(Object.keys(server).filter((m) => railOnly(server[m]).length).sort(), [SHORT, WIDE, "print"].sort(),
+  // (PHONE is the phone bar's block, 2026-11-13, compared in the next test.)
+  assert.deepEqual(Object.keys(server).filter((m) => railOnly(server[m]).length).sort(), [PHONE, SHORT, WIDE, "print"].sort(),
     "RAIL_CSS grew rail rules in a media block this file does not compare");
-  assert.deepEqual(Object.keys(app).filter((m) => railOnly(app[m]).length).sort(), [SHORT, WIDE, "print"].sort(),
+  assert.deepEqual(Object.keys(app).filter((m) => railOnly(app[m]).length).sort(), [PHONE, SHORT, WIDE, "print"].sort(),
     "index.html grew rail rules in a media block this file does not compare");
   // Inside those blocks every rule is the rail's: one without the class would
   // be compared with nothing above, and would style the bar's rows as well.
   for (const [name, sheet] of [["RAIL_CSS", server], ["index.html", app]]) {
-    for (const media of [WIDE, SHORT, "print"]) {
+    for (const media of [WIDE, SHORT, PHONE, "print"]) {
       assert.deepEqual(Object.keys(sheet[media]).filter((k) => !k.startsWith("html.nav-rail")), [],
         `${name}: a rule in the rail's @media ${media} block does not start with html.nav-rail`);
     }
@@ -622,6 +624,106 @@ test("every rail rule is the same on both nav authors, in the rail and in a shor
   assert.deepEqual(server.print["html.nav-rail .hdr"],
     { position: "static", width: "auto", "border-right": "0", "box-shadow": "none" });
   assert.deepEqual(railOnly(server.print).sort(), ["html.nav-rail .hdr", "html.nav-rail body"]);
+});
+
+// --- The phone bar (2026-11-13) -------------------------------------------------
+//
+// Below 900px the same nav lies along the bottom of the screen: six places and
+// the account circle, an icon over a word. Like the rail it exists twice, and
+// a member crosses between the two authors with every tap of the bar, so a
+// bar that is 54px tall on Home and 58px on Messages jumps under the thumb.
+// What genuinely differs is the account slot's markup (a <summary> holding a
+// <span> there, a <div> holding a <button> here), named below.
+const PHONE_TWINS = [
+  ["html.nav-rail body", "html.nav-rail body"],
+  ["html.nav-rail .hdr .wrap", "html.nav-rail .rd-appbar"],
+  ["html.nav-rail .hdr nav", "html.nav-rail .rd-appbar>nav"],
+  ["html.nav-rail .hdr nav>a", "html.nav-rail .rd-appbar>nav>a"],
+  ["html.nav-rail .hdr nav>a .nvi", "html.nav-rail .rd-appbar>nav>a .nvi"],
+  ['html.nav-rail .hdr nav>a[aria-current="page"]', 'html.nav-rail .rd-appbar>nav>a[aria-current="page"]'],
+  ['html.nav-rail .hdr nav>a[aria-current="page"]::before', 'html.nav-rail .rd-appbar>nav>a[aria-current="page"]::before'],
+  ["html.nav-rail .hdr nav>a:focus-visible", "html.nav-rail .rd-appbar>nav>a:focus-visible"],
+  ["html.nav-rail .hdr nav .navdot", "html.nav-rail .rd-appbar .navdot"],
+  ['html.nav-rail .hdr nav>a[aria-current="page"] .navdot', 'html.nav-rail .rd-appbar>nav>a[aria-current="page"] .navdot'],
+  ["html.nav-rail .hdr nav>#navAcct .ini", "html.nav-rail #acctMenuBtn"],
+  ["html.nav-rail .hdr nav>#navAcct .dd", "html.nav-rail #acctMenu"],
+  ["html.nav-rail .hdr nav>#navAcct .dd button", "html.nav-rail #acctMenu button"],
+];
+const PHONE_SERVER_ONLY = [
+  "html.nav-rail .hdr nav>a::after",                       // the bar's enlarged hit area, which the app's links never had
+  "html.nav-rail .hdr nav>a.btn.sm",                       // the red call to action: the app's nav has none
+  "html.nav-rail .hdr nav>#navPricing",                    // the Pricing row: the app's nav has none
+  "html.nav-rail .hdr nav>details:not(#navAcct)",          // the Explore menu, hidden there by its tag
+  "html.nav-rail .hdr nav>#navAcct",                       // the cell is the <details>; its <summary> fills it,
+  "html.nav-rail .hdr nav>#navAcct summary",               // stacks the circle over the word and carries the word's type,
+  "html.nav-rail .hdr nav>#navAcct summary::after",        // and the word is its ::after
+  "html.nav-rail .hdr nav>#navAcct summary:focus-visible",
+  "html.nav-rail .hdr nav>#navAcct .dd a",                 // the menu's Settings row is a link there, a button here
+];
+const PHONE_APP_ONLY = [
+  "html.nav-rail #exploreMenuWrap",                        // the Explore menu, hidden here by its id
+  "html.nav-rail #acctMenuWrap",                           // the cell is the wrap, which stacks the circle over the word,
+  "html.nav-rail #acctMenuWrap.hidden",                    // (Tailwind's .hidden, outranked by the cell's display)
+  "html.nav-rail #acctMenuWrap::after",                    // the word is the wrap's ::after and carries its own type,
+  "html.nav-rail #acctMenuBtn::after",                     // and the button reaches over the cell to be the target
+  "html.nav-rail #acctMenuBtn:focus-visible",
+  "html.nav-rail #acctMenuPhoto",                          // the photo rounds itself once the button's overflow is visible
+];
+// The app's circle is the button itself: it lets its ::after out, and it is
+// the thing a thumb lands on.
+const PHONE_APP_EXTRA = {
+  "html.nav-rail #acctMenuBtn": { overflow: "visible", "-webkit-tap-highlight-color": "transparent" },
+};
+
+test("the phone bar is the same on both nav authors", () => {
+  const s = SERVER_RAIL()[PHONE], a = APP_RAIL()[PHONE];
+  assert.ok(s, "RAIL_CSS has no phone bar block");
+  assert.ok(a, "index.html has no phone bar block");
+  for (const [sSel, aSel] of PHONE_TWINS) {
+    assert.ok(s[sSel], `RAIL_CSS has no phone rule for ${sSel}`);
+    assert.ok(a[aSel], `index.html has no phone rule for ${aSel}, the twin of ${sSel}`);
+    const got = Object.assign({}, a[aSel]);
+    for (const prop of Object.keys(PHONE_APP_EXTRA[aSel] || {})) {
+      assert.equal(got[prop], PHONE_APP_EXTRA[aSel][prop], `${aSel} should still say ${prop}`);
+      delete got[prop];
+    }
+    assert.deepEqual(got, s[sSel], `phone bar: ${aSel} (index.html) and ${sSel} (RAIL_CSS) end up different`);
+  }
+  const sTwinned = new Set(PHONE_TWINS.map((t) => t[0])), aTwinned = new Set(PHONE_TWINS.map((t) => t[1]));
+  assert.deepEqual(railOnly(s).filter((k) => !sTwinned.has(k)).sort(), [...PHONE_SERVER_ONLY].sort(),
+    "RAIL_CSS has a phone bar rule index.html does not");
+  assert.deepEqual(railOnly(a).filter((k) => !aTwinned.has(k)).sort(), [...PHONE_APP_ONLY].sort(),
+    "index.html has a phone bar rule RAIL_CSS does not");
+
+  // The account cell, which the two write differently, comes out the same:
+  // an equal share of the bar, the circle over the word Account, in the
+  // places' own type. (The server's cell is the <details> and its padding is
+  // split between it and the <summary>; the app's is one box.)
+  const sCell = s["html.nav-rail .hdr nav>#navAcct"], sSum = s["html.nav-rail .hdr nav>#navAcct summary"];
+  const aCell = a["html.nav-rail #acctMenuWrap"], aWord = a["html.nav-rail #acctMenuWrap::after"];
+  const place = s["html.nav-rail .hdr nav>a"];
+  assert.equal(sCell.flex, place.flex);
+  assert.equal(aCell.flex, place.flex);
+  assert.deepEqual([sCell.padding, sSum.padding], ["0 2px", "5px 0 4px"]);
+  assert.equal(aCell.padding, place.padding);
+  assert.equal(place.padding, "5px 2px 4px");
+  for (const prop of ["font-size", "font-weight", "line-height", "color"]) {
+    assert.equal(sSum[prop], place[prop], `the server's Account word is not set in the places' ${prop}`);
+    assert.equal(aWord[prop], place[prop], `the app's Account word is not set in the places' ${prop}`);
+  }
+  assert.equal(s["html.nav-rail .hdr nav>#navAcct summary::after"].content, '"Account"');
+  assert.equal(aWord.content, '"Account"');
+  // The word is in the flow there: the bar's links give every <summary> an
+  // absolutely placed ::after as a hit area, and this one is the word.
+  assert.equal(s["html.nav-rail .hdr nav>#navAcct summary::after"].position, "static");
+  // No cell may be squeezed below its word: with min-width:0 the heavier
+  // word of the page you are on ran out of its tile on a 320px screen.
+  for (const [name, rule] of [["RAIL_CSS", place], ["index.html", a["html.nav-rail .rd-appbar>nav>a"]], ["RAIL_CSS's account cell", sCell], ["index.html's account cell", aCell]]) {
+    assert.ok(!("min-width" in rule), `${name} sets a min-width, which lets a word be cut by its cell`);
+  }
+  // The app's wrap carries no type of its own: its menu is its child and
+  // would inherit 10px rows.
+  assert.ok(!("font-size" in aCell), "the app's account cell sets a font size its menu inherits");
 });
 
 test("every rail icon in the app is the server's drawing", () => {

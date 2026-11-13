@@ -22,6 +22,48 @@ paths:
 > read "Your properties and comps" until 2026-10-13, when there stopped
 > being a /vault page at all; see below.)
 
+> **A free account's Home is an address list (2026-11-13, the owner's call:
+> "Follow the plan").** billing.md's rule ("Free My Desk is an address list,
+> Pro is the book of values"; `entitlements.js`'s `portfolioValues`; the
+> pricing table's Portfolio row) was only half kept: the opened pane asked
+> the plan, while the Properties rows, the Owned total, the map's value tags
+> and the map card showed a free account its estimates. The gate was lost
+> when Home became one map (2026-10-07) and the portfolio came back to it
+> (2026-10-13). Read this before the boxes below, which it amends where they
+> say the Owned group adds up or a row shows its value: that is Pro (and a
+> trial, a tester, the team, and a Pro-off deployment).
+> - **One gate, at the source.** `drawHomeMap` passes `hmRows` through
+>   `HOMEMAP.withoutOwnValues` (home-map.js, pure, tested) when
+>   `hmShowValues()` is false, on the line after `HOMEMAP.properties(...)`
+>   and before anything reads the rows. Every value surface reads `hmRows`,
+>   so the row, `ownedTotal`, `hmDrawPins`' tags and `hmSelect`'s card follow
+>   with no check of their own. Never add a plan check to one of them; a new
+>   writer of `hmRows` must go through the gate (a test counts the writers).
+> - **Only an owned row's estimate goes** (`value`, `valueNote`, `change` on
+>   `group === "owned"`). A deal's asking price is a figure the member typed.
+> - **`hmShowValues()`** sits beside `hmCanVault` and reads
+>   `proConfig.portfolioValues` inside try/catch (the temporal dead zone);
+>   it fails closed, so a free member never sees a flash of values.
+>   `hmSitesView` hands the pane the same answer. Presentation only (rule 1):
+>   `GET /api/portfolio` still returns the member's own snapshots, and a
+>   report they open still shows its value.
+> - **Said once.** The Owned head reads "Estimated values are part of Pro",
+>   the pricing window's words ("Portfolio with estimated values"; a test
+>   holds the two together), with "See plans" (`openPricingModal`) only where
+>   Pro is on sale (`hmCanBuy`, `proConfig.billing`). Rows show status and
+>   who can see them; the map shows dots.
+> - **A late or changed plan redraws Home.** `initGate` calls `drawHomeMap()`
+>   again when `/api/config` lands after Home drew (no boot payload; no read
+>   is repeated), and `refreshProConfig` already repaints the desk on a
+>   checkout return.
+> - **The quiet Today reads the same rows.** The box below (merged the same
+>   day) first nulled these values locally in `hmDrawBrief`; that copy is
+>   deleted, and the brief reads `hmRows`, already gated.
+> - Tests: `test/home-map.test.js` (the rule), `test/desk-map-layers.test.js`
+>   (the wiring). Before and after pictures were taken with a free account
+>   on the stand-in database (`cn_session` cookie; Leaflet served from a
+>   local copy, since unpkg is not reachable from a cloud session).
+
 > **A quiet day, and pins that land on each other (2026-11-13; the owner:
 > "Improve the UI of Compninja", with a screenshot of Home: nine properties,
 > nothing due, "Nothing needs you right now." under the greeting and again
@@ -75,13 +117,14 @@ paths:
 > - **Values follow the plan here.** `hmShowValues()` reads
 >   `proConfig.portfolioValues`, the working pane's flag (billing.md: a free
 >   account's properties are an address list, Pro's carry their values).
->   Without it the brief nulls what is owned of its value and change, so the
->   glance is the count and nothing moved. `initGate` draws Home again
->   (`drawHomeMap()`, which repeats no read) when `/api/config` answers
->   after Home drew, which also fixes `hmCanLeads` missing that race.
->   **Not changed, and worth a decision:** the Properties rows, the Owned
->   heading, the value tags and the map card have shown a free account its
->   values since 2026-10-07; only the pane hides them.
+>   Without it the glance is the count and nothing moved. Since the box
+>   above, the gate is `drawHomeMap`'s (`HOMEMAP.withoutOwnValues`): the
+>   brief reads `hmRows` and has no check of its own. `initGate` draws Home
+>   again (`drawHomeMap()`, which repeats no read) when `/api/config`
+>   answers after Home drew, which also fixes `hmCanLeads` missing that
+>   race. The Properties rows, the Owned heading, the value tags and the map
+>   card, which this box first recorded as "worth a decision", were decided
+>   the same day: they follow the plan too.
 > - **Next leads with a property that has no value yet**
 >   (`HOMEMAP.unvalued`, any account size, before Draft C's early-account
 >   steps): "Get a value for 1100 Broadway", which opens that property's
@@ -123,6 +166,7 @@ paths:
 > - Tests: `test/home-map.test.js` (later, inAbout, glance, movers,
 >   unvalued, landsHere, stacks, stackPlace/Title/Value) and
 >   `test/desk-map-layers.test.js`'s last four blocks (the wiring).
+
 
 > **A report opened from Home stands alone (2026-11-10, the owner: "when you
 > click on a property it will have the comp search with the value a building

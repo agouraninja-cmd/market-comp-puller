@@ -449,7 +449,15 @@ trial subscription lapses keeps their book.
   them in prose and must be edited together. The desk split belongs with
   those numbers: Free My Desk is an address list (cap 100), Pro is the book
   of values (cap 500), and the pricing compare table's Portfolio row restates
-  it.
+  it. **Home keeps it since 2026-11-13** (the owner: "Follow the plan"):
+  for about a month a free account saw its owned properties' estimates on
+  Home's rows, Owned total, map tags and map card, because only the opened
+  pane read `portfolioValues`. `drawHomeMap` now takes them off its rows in
+  one place (`HOMEMAP.withoutOwnValues`; workspace.md's 2026-11-13 box), and
+  the Owned head's "Estimated values are part of Pro" restates the pricing
+  window's "Portfolio with estimated values", so the three strings move
+  together. The flag is presentation: the member's own snapshots still ride
+  `GET /api/portfolio`, and a trial account sees values until the trial ends.
   **Bulk valuation** is Pro-only as well (`canBulkValue` / `bulkMaxAddresses`)
   — see its own section below.
   The **Address Explorer** is Pro-only too (`canExploreAddresses`) — see the

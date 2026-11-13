@@ -464,6 +464,44 @@ test("a deal its owner shared with the firm reads Firm, in the list and in Today
   }
 });
 
+test("a free account's properties are an address list: no owned row keeps its estimate (2026-11-13)", () => {
+  // The owner's call, "Follow the plan": entitlements.js's portfolioValues is
+  // false for a free account, and the pricing table sells Pro on "Portfolio
+  // with estimated values". Home passes its rows through withoutOwnValues
+  // when the plan shows no values, so nothing drawn from them can show one.
+  const snaps = (...v) => v.map((likely, i) => ({ ts: `2026-0${i + 1}-01`, likely }));
+  const rows = HM.properties({
+    portfolio: [{ id: 1, address: "1420 W Bannock St, Boise, ID", property_type: "Industrial", snapshots: snaps(3650000, 3820000) },
+      { id: 2, address: "88 Chinden Blvd, Meridian, ID", property_type: "Retail", snapshots: snaps(4320000) },
+      { id: 3, address: "9 Elm St, Nampa, ID", property_type: "Office", snapshots: [] }],
+    sites: [{ id: 7, address: "600 Overland Rd, Boise, ID", property_type: "Land", stage: "prospect", asking_price: 3450000, dates: [] }],
+    buildings: [{ id: 5, address: "1420 W Bannock St, Boise, ID", type: "Industrial" }, { id: 6, address: "450 W Main St, Boise, ID", type: "Office" }],
+    firmKind: "development", today: "2026-11-13",
+  });
+  const before = JSON.stringify(rows);
+  assert.ok(rows.filter((r) => r.group === "owned").some((r) => r.value > 0 && r.change != null), "the fixture must carry values to hide");
+  assert.ok(HM.ownedTotal(rows), "and a total");
+
+  const free = HM.withoutOwnValues(rows);
+  assert.equal(free.length, rows.length, "every property is still listed");
+  for (const r of free.filter((x) => x.group === "owned")) {
+    assert.equal(r.value, null, r.address);
+    assert.equal(r.valueNote, "", r.address);
+    assert.equal(r.change, null, r.address);
+  }
+  assert.equal(HM.ownedTotal(free), null, "so the Owned head has nothing to add up");
+  // Everything else about the row stays: it is still theirs, still on the
+  // firm's list, still opens its pane.
+  const both = free.find((r) => r.address.startsWith("1420"));
+  assert.deepEqual([both.group, both.stage, both.you, both.firm, both.portfolioId, both.buildingId], ["owned", "owned", true, true, 1, 5]);
+  // A deal's asking price is a figure the member typed, not a valuation.
+  const deal = free.find((r) => r.group === "buying");
+  assert.deepEqual([deal.value, deal.valueNote], [3450000, "asking"]);
+  // The rows handed in are untouched, and junk is an empty list.
+  assert.equal(JSON.stringify(rows), before);
+  assert.deepEqual(HM.withoutOwnValues(null), []);
+});
+
 // ---- A quiet day (2026-11-13) ------------------------------------------------
 // From the owner's screenshot of Home: nine properties, nothing due, and a
 // Today that said "Nothing needs you right now." twice over an empty column.

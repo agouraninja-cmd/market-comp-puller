@@ -266,6 +266,19 @@
     return dealsOn(firmKind) ? "home" : "";
   }
 
+  // The plan's rule for what a member owns (2026-11-13, the owner's call:
+  // "Follow the plan"): a free account's properties are an address list, and
+  // the automated value estimates are part of Pro (entitlements.js's
+  // portfolioValues; the pricing table's Portfolio row). Home passes its rows
+  // through this when the plan does not show values, BEFORE anything draws
+  // from them, so the list, the Owned total, the map's tags and the map card
+  // all follow from one place. Only an owned row's estimate goes: a deal's
+  // asking price is a figure the member typed, not a valuation. Returns new
+  // rows; the ones handed in are left as they were.
+  function withoutOwnValues(rows) {
+    return (Array.isArray(rows) ? rows : []).map((r) => (r && r.group === "owned" ? { ...r, value: null, valueNote: "", change: null } : r));
+  }
+
   // The Owned group's figure: what the member's own buildings add up to at
   // their last value (2026-10-13; the vault's Properties tab carried it as
   // "Combined likely value" until it moved here). Only once two or more have
@@ -735,5 +748,5 @@
     later, inAbout, glance, glanceCells, MOVERS_MAX, movers, unvalued, landsHere,
     STACK_DOT, STACK_TAG, stacks, stackPlace, stackTitle, stackValue,
     LAYERS, LAYER_DEFAULT, readLayers, VIEWS, layerView, layersFor, tabLayer, PERMIT_STAGES, tidyCaps, permitPin, permitStageLabel, permitAt, layerNotes,
-    WHEEL_BURST_MS, MAC_NOTCH_PX, wheelGesture, swipePan, pinchZoomBy, pinchSnap, marketCities, marketsLine };
+    WHEEL_BURST_MS, MAC_NOTCH_PX, wheelGesture, swipePan, pinchZoomBy, pinchSnap, marketCities, marketsLine, withoutOwnValues };
 });

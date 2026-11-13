@@ -2,6 +2,12 @@
   {
     "date": "2026-11-13",
     "type": "fix",
+    "title": "A free account's Home is an address list again: estimated values show on Pro",
+    "details": "The plan says a free account's properties are an address list and Pro is the portfolio with estimated values, but Home showed a free account its owned properties' estimates in four places (the Properties rows, the Owned total, the map's value tags and the map card). Only the opened pane asked the plan. The gate went missing when Home became one map (2026-10-07) and the portfolio came back to it (2026-10-13). The owner's call: follow the plan. Home now takes the estimates off its rows in one place before anything draws them, the Owned heading says once that estimated values are part of Pro (with a door to the plans where Pro is on sale), and Home redraws when the plan answer lands late or changes. A deal's asking price, which the member typed, is untouched. Trial, Pro and comped accounts see what they saw."
+  },
+  {
+    "date": "2026-11-13",
+    "type": "fix",
     "title": "Markets and the comp report page use the same typeface as the rest of the app",
     "details": "For a signed-in member, Markets and the comp report page were drawn in the computer’s own font (Segoe UI on Windows) while Home, Messages, Sites, Permits and Your comps use Inter. The left sidebar is the same strip everywhere, so its labels visibly changed typeface when you moved between Home and either of those pages. Both now load Inter. Inter is a little wider, so on Markets the count beside the map’s filters (“196 market areas · 49 measured for industrial”) sits on a line of its own, and a few paragraphs wrap one line differently; nothing else moved. The public Markets page that signed-out visitors and search engines see is unchanged. Individual market pages and the rankings still use the computer’s font when you are signed in; that is the next step."
   },

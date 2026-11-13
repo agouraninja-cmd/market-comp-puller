@@ -647,7 +647,21 @@ test("a stack says how many, where, and what a click does", () => {
   // An address with no town still counts, and names no place.
   assert.equal(HM.stackTitle([{ address: "1 A St" }, { address: "2 B St" }]), "2 properties. Click to zoom in.");
   assert.equal(HM.stackTitle([]), "");
-  // On Properties a stack adds up what its tags would have said, and says how many it counts.
-  assert.deepEqual(HM.stackValue([{ value: 3820000 }, { value: null }, { value: 7720000 }, { value: 0 }]), { total: 11540000, valued: 2 });
-  assert.deepEqual(HM.stackValue([{ value: null }]), { total: 0, valued: 0 });
+  // On Properties a stack adds up what its tags would have said, but only
+  // when the sum means one thing: every building has a figure, all of one kind.
+  const own = (v) => ({ value: v, valueNote: v ? "likely value" : "" }), ask = (v) => ({ value: v, valueNote: "asking" });
+  assert.deepEqual(HM.stackValue([own(3820000), own(7720000)]), { total: 11540000, valued: 2, whole: true });
+  assert.deepEqual(HM.stackValue([ask(1850000), ask(780000)]), { total: 2630000, valued: 2, whole: true }, "two deals' asking prices are one kind");
+  // A building with no value: a sum that left it out would read as the worth of all of them.
+  assert.deepEqual(HM.stackValue([own(3820000), own(null), own(7720000), own(0)]), { total: 0, valued: 2, whole: false });
+  // An asking price and a likely value do not add up to anything.
+  assert.deepEqual(HM.stackValue([ask(1850000), own(3060000)]), { total: 0, valued: 2, whole: false });
+  // A firm building has no figure on Home at all.
+  assert.deepEqual(HM.stackValue([own(3060000), { value: null, valueNote: "" }]), { total: 0, valued: 1, whole: false });
+  assert.deepEqual(HM.stackValue([own(null)]), { total: 0, valued: 0, whole: false });
+  assert.deepEqual(HM.stackValue([]), { total: 0, valued: 0, whole: false });
+  assert.deepEqual(HM.stackValue(null), { total: 0, valued: 0, whole: false });
+  // The rows properties() builds carry the note this reads.
+  const built = HM.properties({ today: TODAY, firmKind: DEV, sites: [SITE({})], portfolio: [HELD({ address: "9 Other St, Boise, ID" })] });
+  assert.deepEqual(built.map((r) => r.valueNote).sort(), ["asking", "likely value"]);
 });

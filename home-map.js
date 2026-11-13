@@ -513,11 +513,18 @@
     const place = stackPlace(rows);
     return `${n} ${n === 1 ? "property" : "properties"}${place ? (/ area$/.test(place) ? ` in the ${place}` : ` in ${place}`) : ""}. Click to zoom in.`;
   }
-  // What the properties in a stack are worth together, for Properties' value
-  // tags: the sum of the ones that have a figure, and how many that is.
+  // What the properties in a stack add up to, for Properties' value tags.
+  // A sum is given only when it means one thing: EVERY property in the stack
+  // has a figure, and they are all the same kind of figure. An asking price
+  // and a likely value do not add up to anything, and a sum that leaves a
+  // building out reads as the worth of all of them. Otherwise `total` is 0
+  // and the stack shows its count alone; zooming in shows each tag.
   function stackValue(rows) {
-    const valued = (Array.isArray(rows) ? rows : []).filter((r) => r && num(r.value) > 0);
-    return { total: valued.reduce((t, r) => t + num(r.value), 0), valued: valued.length };
+    const list = (Array.isArray(rows) ? rows : []).filter(Boolean);
+    const valued = list.filter((r) => num(r.value) > 0);
+    const kinds = new Set(valued.map((r) => str(r.valueNote)));
+    const whole = list.length > 0 && valued.length === list.length && kinds.size === 1;
+    return { total: whole ? valued.reduce((t, r) => t + num(r.value), 0) : 0, valued: valued.length, whole };
   }
 
   // ---- What the map shows (2026-10-08) -------------------------------------

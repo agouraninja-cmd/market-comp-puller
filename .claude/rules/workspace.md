@@ -96,7 +96,11 @@ paths:
 >   whose FIRST point it touches, so a line of pins never chains). One
 >   property draws exactly as before. A stack is a white pill (`.hm-stk`): a
 >   dot in the legend's colour for each kind inside, the count, and on
->   Properties `HOMEMAP.stackValue`'s sum. Its markup is class names and
+>   Properties `HOMEMAP.stackValue`'s sum, given only when it means one
+>   thing: every property in the stack has a figure and they are all one
+>   kind (an asking price and a likely value are never added, and a
+>   building with no value is never left out of a total). Otherwise the
+>   count alone. Its markup is class names and
 >   figures; its words (`HOMEMAP.stackTitle`, "6 properties in the Boise
 >   area. Click to zoom in.") are the marker's `title`, a DOM property,
 >   because a town is text a person typed. A click `fitBounds` to its

@@ -75,7 +75,8 @@ paths:
 >   and `contactsMsg` do. It was the facts' small grey for everything, so "Please
 >   choose a PNG or JPEG image." read exactly as "Saved." did. `.hm-fh-msg`
 >   is only its place (on the firm's text edge at every width) and an 18px
->   line; give it a colour or a size of its own and the red loses to it.
+>   line; a colour on the RAIL's rule for it (three classes and an element)
+>   out-ranks `.dk-msg.bad`, so none of its three rules may set one.
 > - **One band beside the rail.** The row starts 14px down and is 34px tall:
 >   the rows of the map's Properties / Permits switch (`.hm-layers`, top
 >   14px, 34px), centred a pixel under the rail's logo. The mark, the two
@@ -183,8 +184,8 @@ paths:
 >   out of the list whenever the list was taller than the panel: every
 >   card, row and "+ Add a property" ended 15px short of the find box and
 >   "Firm settings", and "Firm buildings … list" broke in two. On his
->   account that is the Properties tab at any height, and Today in a window
->   under about 740px tall. **No picture showed it, and none taken the usual
+>   account that is the Properties tab in any window under about 1,270px
+>   tall, and Today in one under about 740px. **No picture showed it, and none taken the usual
 >   way will**: a headless browser draws no scrollbars (`scripts/shot.js`
 >   passes `--hide-scrollbars`). To see it, launch Chromium with
 >   `ignoreDefaultArgs: ["--hide-scrollbars"]`. `hmFitListBar()` cures it
@@ -192,9 +193,17 @@ paths:
 >   room is kept whether or not the list scrolls and nothing moves when a
 >   list starts or stops scrolling; and that room taken out of the list's
 >   own right padding (16px becomes 1px beside a 15px bar), so the list is
->   the width the head is. A bar wider than the padding (17px in older
->   Windows browsers) takes all of it and leaves the list a pixel narrower,
->   where it was seventeen. Both are written together, inline, and only
+>   the width the head is. **A bar wider than the padding is asked to be
+>   the thin one** (`scrollbar-width: thin`, then measured again): that is a
+>   17px bar in older Windows browsers and ANY bar once the page is zoomed
+>   out, because zoom does not shrink the bar (15px is 18.75 of the page's
+>   pixels at 80%, 30 at 50%). The first version kept it at its width and
+>   took the padding to 0, so zoomed out the list ended short again, and a
+>   list that does NOT scroll was short too, which it never was before; a
+>   reviewer found it the day it shipped by zooming a real browser (an
+>   emulated device scale scales the bar with the page and cannot show
+>   it). Measured after: within a pixel from 67% to 175%, 4px short at 50%.
+>   Both are written together, inline, and only
 >   where a bar measures more than 0: a browser with no stable gutter is
 >   left as it was (fitted once there, the padding would be wrong the next
 >   time a list started or stopped scrolling), and where bars float over
@@ -202,8 +211,11 @@ paths:
 >   ResizeObserver asks, on the list's BORDER box (first layout, a resize
 >   or zoom, crossing 900px): writing the padding does not change that box,
 >   so the observer cannot wake itself, which on the content box it would
->   every time. Away from the rail the page scrolls and not the list, the
->   bar measures 0 and what a fit wrote is taken back. It reads the list's
+>   every time. Away from the rail the page scrolls and not the list:
+>   nothing is measured there (the observer fires on every tab change in
+>   that layout) and what a fit wrote is taken back. Not covered: the KIND
+>   of bar changing while Home is open and its box does not (a mouse
+>   plugged into a Mac); the next resize heals it. It reads the list's
 >   LEFT padding for the right's, so `.hm-body`'s two sides must stay one
 >   number (three-value paddings; a test holds both rules to that).
 > - Tests: `test/home-head.test.js` RUNS `drawFirmHead` against a stand-in

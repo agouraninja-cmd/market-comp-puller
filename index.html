@@ -1782,7 +1782,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       html.nav-rail.hm-page .hm-fh { padding: 14px 26px 0; }
       html.nav-rail.hm-page .hm-fh-msg { padding: 8px 26px 0 72px; }
       /* A column, so the legal line rests at the foot of the panel under a
-         short list instead of floating in the middle of it (2026-11-13). */
+         short list instead of floating in the middle of it (2026-11-13). Its
+         right padding is the room the list's own scrollbar stands in where
+         bars take room: hmFitListBar() writes what is left of it. */
       html.nav-rail.hm-page .hm-body { flex: 1; display: flex; flex-direction: column; overflow-y: auto; min-height: 0; padding: 4px 16px 28px; }
       html.nav-rail.hm-page .hm-body > * { flex: none; }
       html.nav-rail.hm-page .hm-body > .hm-legal { margin-top: auto; padding-top: 26px; }
@@ -1799,8 +1801,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-fh { flex: none; display: flex; align-items: center; gap: 12px; padding: 16px 18px 0; }
     .hm-fh.hidden { display: none; }
     .hm-fh-markw { flex: none; display: flex; }
-    /* The mark. One that cannot be pressed (a member's) is drawn flat. */
-    .hm-fh-mark { position: relative; flex: none; display: grid; place-items: center; box-sizing: border-box; width: 34px; height: 34px; padding: 0; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--wash-2); color: var(--ink-2); font: inherit; font-size: var(--text-small); font-weight: 600; letter-spacing: .02em; }
+    /* The mark. One that cannot be pressed (a member's) is drawn flat. The
+       tile is 34px square at the sizes the page ships and no narrower: its
+       width is a floor, so where a reader has raised the browser's minimum
+       font size the tile widens with its initials (they stood 9px outside it
+       at a 20px minimum on a phone). The widest pair, "WW", is 27.3px of
+       letters: with the 2px each side it still fits the 34. */
+    .hm-fh-mark { position: relative; flex: none; display: grid; place-items: center; box-sizing: border-box; min-width: 34px; height: 34px; padding: 0 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--wash-2); color: var(--ink-2); font: inherit; font-size: var(--text-small); font-weight: 600; letter-spacing: .02em; }
     /* One that can (an owner's or admin's: it adds or changes the logo) is
        the button at the row's other end: the same tile, edge and corner. It
        was a solid ink tile, which read as a second account picture and, in
@@ -1812,8 +1819,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     button.hm-fh-mark::after { content: ""; position: absolute; inset: -6px; }
     button.hm-fh-mark:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
     /* White in BOTH themes on purpose, like a photo: a firm logo is drawn for
-       paper, and dark lettering on a transparent PNG vanishes on the dark card. */
-    .hm-fh-mark.logo { background: rgb(255 255 255); }
+       paper, and dark lettering on a transparent PNG vanishes on the dark card.
+       A picture has no width of its own to give the tile (it fills it), so a
+       logo's tile is a fixed square. */
+    .hm-fh-mark.logo { width: 34px; padding: 0; background: rgb(255 255 255); }
     .hm-fh-mark img { width: 100%; height: 100%; object-fit: contain; padding: 2px; box-sizing: border-box; border-radius: var(--r-md); }
     .hm-fh-txt { min-width: 0; flex: 1; }
     /* 18px and 16px: the two lines are the mark's 34px. Said as ratios of
@@ -1834,11 +1843,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-fh-txt small > *:not(:last-child)::after { content: "\00B7"; margin: 0 4px; }
     /* The logo's door, in words (2026-10-18), as the last fact: a step darker
        than the facts, and underlined in its own ink to say it is a link. Its
-       press area reaches down and sideways only: above it is the firm's name. */
-    .hm-fh-logo { position: relative; margin: 0 -1px; padding: 0 1px; border: 0; border-radius: var(--r-xs); background: none; font: inherit; font-weight: 500; color: var(--ink-2); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; cursor: pointer; transition: color .12s; }
-    .hm-fh-logo::after { content: ""; position: absolute; inset: 0 -6px -12px; }
+       press area reaches down and sideways only: above it is the firm's name.
+       So does its box (3px each side and 4px down, held in place by the same
+       margins taken back), and the focus ring is drawn INSIDE that box: a
+       ring outside it put its top stroke in the last two rows of the name's
+       line, through the tail of every g, p and y. */
+    .hm-fh-logo { position: relative; margin: 0 -3px -4px; padding: 0 3px 4px; border: 0; border-radius: var(--r-sm); background: none; font: inherit; font-weight: 500; color: var(--ink-2); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; cursor: pointer; transition: color .12s; }
+    .hm-fh-logo::after { content: ""; position: absolute; inset: 0 -4px -8px; }
     .hm-fh-logo:hover { color: var(--ink); }
-    .hm-fh-logo:focus-visible { outline: 2px solid var(--red); outline-offset: 0; }
+    .hm-fh-logo:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
     /* Firm settings is the shared compact button (class="hm-btn hm-fh-set"):
        this is only its place in the row, and its height said whole (the
        button's own is 34.2px) so it and the mark share a top and a bottom.
@@ -1846,14 +1859,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-fh-set { box-sizing: border-box; height: 34px; }
     .hm-fh-set svg { flex: none; }
     .hm-fh-set.hidden { display: none; }
-    /* A logo being saved, said under the firm's two lines, on their edge. */
-    .hm-fh-msg { margin: 0; padding: 8px 18px 0 64px; font-size: var(--text-label); line-height: 1.3334; color: var(--ink-3); }
+    /* A logo being saved, said under the firm's two lines, on their edge. It
+       is the desk's own message (class="dk-msg hm-fh-msg": its size, its ink,
+       and its red when what it says is a refusal); this is only its place and
+       a whole-pixel line (18/13). In the facts' small grey, "Please choose a
+       PNG or JPEG image." read exactly as "Saved." did. */
+    .hm-fh-msg { margin: 0; padding: 8px 18px 0 64px; line-height: 1.3847; }
     .hm-fh-msg.hidden { display: none; }
     /* Narrow phones: a smaller mark and no briefcase, which is the room the
        second line needs to stay whole down to 375px. */
     @media (max-width: 449px) {
       .hm-fh { gap: 10px; }
-      .hm-fh-mark { width: 28px; height: 28px; border-radius: var(--r-md); font-size: var(--text-tiny); }
+      .hm-fh-mark { min-width: 28px; height: 28px; padding: 0 1px; border-radius: var(--r-md); font-size: var(--text-tiny); }
+      .hm-fh-mark.logo { width: 28px; }
       button.hm-fh-mark::after { inset: -9px; }
       .hm-fh-set svg { display: none; }
       .hm-fh-msg { padding-left: 56px; }
@@ -3443,7 +3461,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             </button>
             <input id="hmFirmLogoFile" type="file" accept="image/png,image/jpeg" class="hidden" />
           </div>
-          <p id="hmFirmMsg" class="hidden hm-fh-msg" role="status"></p>
+          <p id="hmFirmMsg" class="hidden dk-msg hm-fh-msg" role="status"></p>
           <div class="hm-head">
             <div class="hm-kick"><span id="hmDay"></span></div>
             <h2 id="hmTitle" class="hm-title">Home</h2>
@@ -15783,27 +15801,30 @@ async function renderMyDesk() {
   async function saveFirmLogo(file) {
     const firm = myFirm();
     const msg = document.getElementById("hmFirmMsg");
-    const say = (t) => { msg.textContent = t; msg.classList.toggle("hidden", !t); };
+    // A refusal (a file that is not a picture, a save the server turned down)
+    // is said in the desk's red (.dk-msg.bad), as the add-a-building form and
+    // Contacts say theirs (buildingMsg, contactsMsg).
+    const say = (t, bad) => { msg.textContent = t; msg.classList.toggle("hidden", !t); msg.classList.toggle("bad", Boolean(t && bad)); };
     if (!firm || !firm.canManage || !file) return;
     say("Saving your firm's logo…");
     try {
       const logo = await readLogoFile(file);
       const cur = await fetch(`/api/org/branding?id=${encodeURIComponent(firm.id)}`, { credentials: "same-origin" });
       const curBody = await cur.json().catch(() => ({}));
-      if (!cur.ok) return say(curBody.error || "Couldn't save the logo. Please try again.");
+      if (!cur.ok) return say(curBody.error || "Couldn't save the logo. Please try again.", true);
       const r = await fetch("/api/org/branding", {
         method: "PUT", credentials: "same-origin",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ ...(curBody.branding || {}), logo, orgId: firm.id }),
       });
       const body = await r.json().catch(() => ({}));
-      if (!r.ok) return say(body.error || "Couldn't save the logo. Please try again.");
+      if (!r.ok) return say(body.error || "Couldn't save the logo. Please try again.", true);
       currentFirmBranding = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
       firm.logoAt = String(Date.now());
       drawFirmHead(firm);
       say("Saved. Everyone in your firm sees it here, and it is the logo in your firm's report branding too.");
     } catch (e) {
-      say((e && e.message) || "Couldn't save the logo. Please try again.");
+      say((e && e.message) || "Couldn't save the logo. Please try again.", true);
     }
   }
 
@@ -16401,6 +16422,47 @@ async function renderMyDesk() {
     else hmOpenMineAdd("own", address);
   });
   document.getElementById("hmFirstTeam").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
+  // ---- The list's scrollbar (2026-11-13) -------------------------------------
+  // Where a scrollbar takes room (Chrome and Edge on Windows, Linux, a Mac
+  // with a mouse), the list's bar took its 15px out of the LIST: whenever a
+  // list was taller than the panel, every card, row and "+ Add a property"
+  // ended that far short of the find box and "Firm settings" above them, and
+  // a heading that just fit broke in two. No picture showed it, because a
+  // headless browser draws no scrollbars; the owner's Windows screen does, on
+  // his own Properties tab.
+  //
+  // Two things cure it. The bar's room is kept whether or not the list
+  // scrolls (scrollbar-gutter), so nothing in the list moves when a list
+  // starts or stops scrolling, and nothing has to watch for that. And that
+  // room comes out of the list's own right padding, so the list is as wide
+  // as the head with a bar and without one. A bar wider than that padding
+  // (17px in older Windows browsers, against 16) takes all of it, and the
+  // list is the difference narrower: a pixel, where it was seventeen. Where
+  // bars float over the page (a phone, a Mac trackpad), and away from the
+  // rail, where the page scrolls and not the list, the bar measures 0 and
+  // nothing is written.
+  function hmFitListBar(body) {
+    if (!body || !body.offsetWidth) return; // not laid out: asked again when it is
+    body.style.scrollbarGutter = "stable";
+    const bar = body.offsetWidth - body.clientWidth;
+    // The list's two sides are one padding (test/home-head.test.js holds the
+    // rules to that), so what the bar leaves of the right is read off the left.
+    body.style.paddingRight = bar > 0 ? Math.max(0, parseFloat(getComputedStyle(body).paddingLeft) - bar) + "px" : "";
+    if (!(bar > 0)) body.style.scrollbarGutter = "";
+  }
+  {
+    // Asked whenever the list's box changes: when Home is first laid out, when
+    // the window is resized or zoomed, and when the layout crosses 900px. The
+    // BORDER box on purpose: writing the padding does not change it, so the
+    // observer cannot be woken by its own write. A browser with no stable
+    // gutter is left as it was: fitted once there, the padding would be wrong
+    // the next time a list started or stopped scrolling.
+    const body = document.querySelector("#homeMap .hm-body");
+    const steady = typeof CSS !== "undefined" && CSS.supports && CSS.supports("scrollbar-gutter", "stable");
+    if (body && steady && typeof ResizeObserver === "function") {
+      new ResizeObserver(() => hmFitListBar(body)).observe(body, { box: "border-box" });
+    }
+  }
   document.getElementById("hmFirmGear").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
   document.getElementById("hmFirmLogoFile").addEventListener("change", (e) => {
     const file = e.target.files && e.target.files[0];

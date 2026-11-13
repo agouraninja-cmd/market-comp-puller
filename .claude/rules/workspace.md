@@ -58,7 +58,10 @@ paths:
 >   instead of the head (it wraps "Firm buildings … list" on Properties, and
 >   a test pins `.hm-body`'s padding). Four reviewers then went over the
 >   build (code, tests, pictures, accessibility and words); what they found
->   is in the rules below.
+>   is in the rules below. The last two reported after the first commit, and
+>   their findings are the same day's second commit: the list's scrollbar,
+>   the door's focus ring, the initials' tile, the saving message, and the
+>   tests that 48 deliberate breakages got past.
 > - **The firm row is the panel's first block, outside `.hm-head`.**
 >   `#hmFirmHead` and `#hmFirmMsg` are `.hm-panel`'s first two children, each
 >   with its own gutters. With no firm there is no row, and the head under
@@ -66,6 +69,13 @@ paths:
 >   negative margin kept in step with a padding). Every id kept its element
 >   and its writer. `drawFirmHead(null)` also empties and hides `#hmFirmMsg`
 >   (a "Saved." must not outlive the row it spoke for).
+> - **The saving message is the desk's own** (`class="dk-msg hm-fh-msg"`):
+>   `.dk-msg` gives it its size and ink, and `saveFirmLogo`'s
+>   `say(text, bad)` marks a refusal `bad`, the desk's red, as `buildingMsg`
+>   and `contactsMsg` do. It was the facts' small grey for everything, so "Please
+>   choose a PNG or JPEG image." read exactly as "Saved." did. `.hm-fh-msg`
+>   is only its place (on the firm's text edge at every width) and an 18px
+>   line; give it a colour or a size of its own and the red loses to it.
 > - **One band beside the rail.** The row starts 14px down and is 34px tall:
 >   the rows of the map's Properties / Permits switch (`.hm-layers`, top
 >   14px, 34px), centred a pixel under the rail's logo. The mark, the two
@@ -94,7 +104,15 @@ paths:
 >   "Add a logo", a `<button class="hm-fh-logo">` at the end of the facts
 >   line, a step darker than the facts (`--ink-2`, 500) and underlined in
 >   its own ink (a paler underline measured 1.5:1). Its press area reaches
->   down and sideways only: above it is the firm's name. The mark opens the
+>   down and sideways only: above it is the firm's name. So does its box
+>   (3px each side and 4px down, the same margins taken back so nothing
+>   moves), and **the focus ring is drawn inside that box**
+>   (`outline-offset: -2px`): a ring outside it put its top stroke in the
+>   last two rows of the name's line, through the tail of every g, p and y.
+>   Both press areas are an absolutely placed `::after`, the size of their
+>   button only while it is `position: relative`: without that one
+>   declaration a click anywhere on the panel opened the file picker, and no
+>   test said so until a reviewer deleted it. The mark opens the
 >   same file picker, and **while the door is offered the mark is out of
 >   the tab order and hidden from a screen reader** (`tabIndex = -1`,
 >   `aria-hidden`): two buttons for one job were two keyboard stops, and
@@ -112,7 +130,13 @@ paths:
 >   a span and is flat (`--wash-2`, `--line`, `--ink-2` letters). A border,
 >   not an inset shadow, so a forced-colours mode keeps it. The logo stays
 >   on white in both themes. The button's press area is 44px (an `::after`
->   that reaches past the tile), on a phone too.
+>   that reaches past the tile), on a phone too. **The initials' tile is a
+>   floor, not a size** (`min-width`, with 2px of padding each side, 1px on a
+>   narrow phone): 34px square at the sizes the page ships ("WW", the widest
+>   pair, is 27.3px of letters) and wider where a reader has raised the
+>   browser's minimum font size, where the letters stood up to 9px outside
+>   a fixed tile. A logo's tile keeps a said width: a picture fills its
+>   tile and has none of its own to give.
 > - **"Firm settings" is the shared compact button** (`class="hm-btn
 >   hm-fh-set"`), the one "+ Add a property" is, with the briefcase kept
 >   beside its words (the owner chose it over a gear). `.hm-fh-set` adds
@@ -150,11 +174,38 @@ paths:
 > - **Left alone, and worth knowing.** A wide wordmark logo is small in a
 >   square tile (it was at 40px too). On a busy day the first row's card
 >   still starts 4px under the tabs' rule and runs 10px past the line on
->   both sides: the list's, not the head's. Where scrollbars take room
->   (Chrome on Windows), a list long enough to scroll ends 15px short of
->   the head's right edge, as it did before. The map's switch is a pixel
+>   both sides: the list's, not the head's. The map's switch is a pixel
 >   under the rail logo's centre. The first-building screen (`#hmFirst`)
 >   has its own head and was not touched.
+> - **The list is as wide as the head with a scrollbar and without one.**
+>   Where a scrollbar takes room (Chrome and Edge on Windows, which is the
+>   owner's; Linux; a Mac with a mouse), the list's own bar took its 15px
+>   out of the list whenever the list was taller than the panel: every
+>   card, row and "+ Add a property" ended 15px short of the find box and
+>   "Firm settings", and "Firm buildings … list" broke in two. On his
+>   account that is the Properties tab at any height, and Today in a window
+>   under about 740px tall. **No picture showed it, and none taken the usual
+>   way will**: a headless browser draws no scrollbars (`scripts/shot.js`
+>   passes `--hide-scrollbars`). To see it, launch Chromium with
+>   `ignoreDefaultArgs: ["--hide-scrollbars"]`. `hmFitListBar()` cures it
+>   with two writes on `.hm-body`: `scrollbar-gutter: stable`, so the bar's
+>   room is kept whether or not the list scrolls and nothing moves when a
+>   list starts or stops scrolling; and that room taken out of the list's
+>   own right padding (16px becomes 1px beside a 15px bar), so the list is
+>   the width the head is. A bar wider than the padding (17px in older
+>   Windows browsers) takes all of it and leaves the list a pixel narrower,
+>   where it was seventeen. Both are written together, inline, and only
+>   where a bar measures more than 0: a browser with no stable gutter is
+>   left as it was (fitted once there, the padding would be wrong the next
+>   time a list started or stopped scrolling), and where bars float over
+>   the page (a phone, a Mac trackpad) nothing is written. One
+>   ResizeObserver asks, on the list's BORDER box (first layout, a resize
+>   or zoom, crossing 900px): writing the padding does not change that box,
+>   so the observer cannot wake itself, which on the content box it would
+>   every time. Away from the rail the page scrolls and not the list, the
+>   bar measures 0 and what a fit wrote is taken back. It reads the list's
+>   LEFT padding for the right's, so `.hm-body`'s two sides must stay one
+>   number (three-value paddings; a test holds both rules to that).
 > - Tests: `test/home-head.test.js` RUNS `drawFirmHead` against a stand-in
 >   document (no firm, an owner with and without a logo, a member with and
 >   without one, a logo that fails to load, the roster landing late, the
@@ -164,6 +215,22 @@ paths:
 >   boxes computed from the scale, no red or indigo in the row, the two
 >   marks, the button's class and name, the row's place in the markup, the
 >   narrow rules. `test/desk-map-layers.test.js` pins the door's new words.
+>   It also RUNS `saveFirmLogo` (a refused file, a refused read, a refused
+>   save, a save that works, a refusal then a success) and `hmFitListBar`
+>   (a bar that takes room with a list that fits and one that scrolls, a
+>   bar wider than the padding, floating bars, the layout leaving the rail,
+>   a list with no box). **The stylesheet half was hardened after a
+>   reviewer broke the page 155 ways, one at a time: 48 left every suite
+>   green.** What that taught, kept as rules of the file: `rule()` reads
+>   one rule in one place, so each element the tests add up is also held
+>   to the NUMBER of rules that end in it anywhere in the sheet (a second
+>   `@media` block, a comma list or a longer selector moved the head with
+>   everything green); a padding is three values said once (`[1]` of four
+>   is the right side); the hue check walks whole rules and lets off only a
+>   rule whose every selector is a focus ring; the stand-in's `focus()`
+>   takes only a button that is in the document, as a browser does; and
+>   `lineBox()` refuses a ratio rounded down instead of rounding it away.
+>   Checks written against a breakage say "(broken to find)".
 
 > **A free account's Home is an address list (2026-11-13, the owner's call:
 > "Follow the plan").** billing.md's rule ("Free My Desk is an address list,

@@ -15,6 +15,12 @@
 // tidy-up would undo without anything going red (the alignment line above
 // all: it drifted in the first place because nothing tied the head's inset to
 // the list's).
+//
+// A reviewer then broke the page 155 ways, one at a time, and 48 of them left
+// every suite green. The checks that came out of that are marked "(broken to
+// find)": each names the breakage it was written against. The same day's
+// second round is here too: the list's scrollbar, the door's focus ring, the
+// initials' tile and the saving message.
 const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("node:fs");
@@ -60,8 +66,12 @@ function makeEl(tag, doc) {
     click() { el.clicks = (el.clicks || 0) + 1; el.fire("click"); },
     // An element or anything under it, as Node.contains answers.
     contains(node) { return node === el || el.children.some((c) => c.contains && c.contains(node)); },
-    // Only a button takes the focus, as in a browser (a span is not a stop).
-    focus() { if (doc && el.tagName === "BUTTON") doc.activeElement = el; },
+    // Only a button takes the focus, as in a browser (a span is not a stop),
+    // and only one that is IN the document: focus() on a button that has not
+    // been appended yet does nothing there. Without the second half, moving
+    // the focus hand-back above the line that appends the mark passed here
+    // and dropped the focus in every browser.
+    focus() { if (doc && el.tagName === "BUTTON" && doc.holds(el)) doc.activeElement = el; },
     title: "",
     tabIndex: 0,
   };
@@ -110,6 +120,8 @@ function loadFirmHead(members) {
       return els.get(id);
     },
     createElement: (tag) => makeEl(tag, document),
+    // Whether a node hangs under one of the page's own elements.
+    holds: (node) => [...els.values()].some((root) => root.contains(node)),
   };
   const ctx = vm.createContext({ document, console, encodeURIComponent, __members: members || [] });
   new vm.Script([
@@ -156,6 +168,9 @@ test("no firm: no bar, and nothing of a firm left in it", () => {
   said.draw(null);
   assert.equal(said.el("hmFirmMsg").textContent, "");
   assert.ok(said.el("hmFirmMsg").classList.contains("hidden"), "the saving message outlived the firm row");
+  // A sign-out reaches both through that one writer (broken to find: with the
+  // call gone, the last member's row and its message outlived the session).
+  assert.match(slice(/  function resetHomeMap\(\) \{[\s\S]*?\n  \}/), /drawFirmHead\(null\)/);
 });
 
 test("the owner's own screen: a firm of one with no logo is two lines, the logo's door the last fact on the second", () => {
@@ -170,9 +185,9 @@ test("the owner's own screen: a firm of one with no logo is two lines, the logo'
   assert.deepEqual(ctx.facts(), ["Development shop", "Add a logo"]);
   const meta = ctx.el("hmFirmMeta");
   assert.deepEqual(meta.children.map((c) => c.tagName), ["EM", "BUTTON"]);
-  // Each fact is its own element, so the stylesheet draws the dot between
-  // them and one can drop out on a narrow phone without leaving a dot.
-  assert.ok(meta.children.every((c) => c.nodeType !== 3), "a bare text node in the facts line: its dot would be typed, not drawn");
+  // (Each fact is its own element, so the stylesheet draws the dot between
+  // them and one can drop out on a narrow phone without leaving a dot: the
+  // tag names above are that check. A typed dot is a text node, and has none.)
   // The door: a real button, in words, and a fact in its own right.
   const door = byClass(meta, "hm-fh-logo")[0];
   assert.ok(door, "an owner with no logo is not offered one");
@@ -208,6 +223,7 @@ test("a firm with a logo: the picture, no door, and the same two lines", () => {
   const ctx = loadFirmHead(joined(4));
   ctx.draw(HARBOR);
   assert.deepEqual(ctx.facts(), ["Development shop", "4 people"]);
+  assert.ok(ctx.el("hmFirmMeta").children.every((c) => c.tagName), "a bare text node in the facts line: its dot would be typed, not drawn");
   assert.ok(ctx.el("hmFirmMeta").children[1].classList.contains("hm-fh-n"), "the head count is not marked, so a narrow phone cannot drop it whole");
   assert.ok(!ctx.el("hmFirmMeta").classList.contains("has-door"));
   const mark = ctx.mark();
@@ -252,6 +268,17 @@ test("a member who cannot manage: initials that are not a button, the whole of a
   assert.ok(!ctx.el("hmFirmMeta").classList.contains("has-door"));
   // The bar cuts a long name with an ellipsis; the tooltip carries all of it.
   assert.equal(ctx.el("hmFirmName").title, "Kensington Whitfield Commercial Advisors");
+});
+
+test("every mark is the tile the stylesheet draws, in every state (broken to find)", () => {
+  // The line that gives the mark its class could be deleted with every suite
+  // green: the stylesheet half held `.hm-fh-mark` to a dozen values over an
+  // element that no longer had the class (26 x 24 bare letters on the page).
+  for (const firm of [JORDAN, HARBOR, { ...HARBOR, canManage: false }, KWCA]) {
+    const ctx = loadFirmHead(joined(2));
+    ctx.draw(firm);
+    assert.ok(ctx.mark().classList.contains("hm-fh-mark"), `${firm.name}: a mark with no tile`);
+  }
 });
 
 test("every draw rebuilds the row: the door stands in for the head count, and a saved logo swaps them back", () => {
@@ -324,6 +351,180 @@ test("a redraw hands the keyboard's place back: the mark and the door are rebuil
   assert.equal(member.document.activeElement, null);
 });
 
+// saveFirmLogo with everything it reads, the server and the file reader
+// answered here. `answers` is what each fetch gets back, in order.
+function loadSaveLogo({ firm, read, answers }) {
+  const msg = makeEl("p");
+  msg.className = MARKUP_CLASSES.get("hmFirmMsg") || "";
+  const calls = { fetch: [], drawn: [] };
+  const ctx = vm.createContext({
+    document: { getElementById: (id) => (id === "hmFirmMsg" ? msg : null) },
+    console, encodeURIComponent, JSON, Object, Date, String, Boolean, Promise,
+    myFirm: () => firm,
+    readLogoFile: read,
+    fetch: async (url, opts) => { calls.fetch.push([url, opts && opts.method]); const a = answers.shift(); return { ok: a.ok, json: async () => a.body }; },
+    drawFirmHead: (f) => calls.drawn.push({ ...f }),
+  });
+  new vm.Script([
+    "let currentFirmBranding = null;",
+    slice(/  async function saveFirmLogo\(file\) \{[\s\S]*?\n  \}/),
+    "this.save = saveFirmLogo;",
+  ].join("\n"), { filename: "index.html" }).runInContext(ctx);
+  return { save: ctx.save, msg, calls };
+}
+
+test("a logo that is refused is told apart from one that is saved: the desk's own message, and its red for a refusal", async () => {
+  // In the facts' small grey, "Please choose a PNG or JPEG image." read
+  // exactly as "Saved." did: the one failure the head can report looked like
+  // a success. The message is the desk's own now (.dk-msg: its size, its ink,
+  // and `bad` for a refusal, as the add-a-building form and Contacts mark theirs).
+  const firm = () => ({ ...JORDAN });
+  const shown = (m) => ({ text: m.textContent, bad: m.classList.contains("bad"), hidden: m.classList.contains("hidden") });
+
+  // A file that is not a picture: refused before anything is sent.
+  const notPicture = loadSaveLogo({ firm: firm(), read: async () => { throw new Error("Please choose a PNG or JPEG image."); }, answers: [] });
+  await notPicture.save({ name: "notes.txt" });
+  assert.deepEqual(shown(notPicture.msg), { text: "Please choose a PNG or JPEG image.", bad: true, hidden: false });
+  assert.equal(notPicture.calls.fetch.length, 0, "a refused file was sent anyway");
+
+  // The server turns the read down, then the save: its own words, as a refusal.
+  const noRead = loadSaveLogo({ firm: firm(), read: async () => "data:image/png;base64,AA==", answers: [{ ok: false, body: { error: "Only an owner or admin can change this." } }] });
+  await noRead.save({ name: "logo.png" });
+  assert.deepEqual(shown(noRead.msg), { text: "Only an owner or admin can change this.", bad: true, hidden: false });
+  const noSave = loadSaveLogo({ firm: firm(), read: async () => "data:image/png;base64,AA==", answers: [{ ok: true, body: { branding: { name: "Avery" } } }, { ok: false, body: {} }] });
+  await noSave.save({ name: "logo.png" });
+  assert.deepEqual(shown(noSave.msg), { text: "Couldn't save the logo. Please try again.", bad: true, hidden: false });
+  assert.equal(noSave.calls.drawn.length, 0, "a save that failed redrew the row as if it had a logo");
+
+  // A save that works: "Saving" while it is in hand and "Saved" after, neither
+  // one a refusal, and the row drawn again with the logo.
+  let finish;
+  const works = loadSaveLogo({ firm: firm(), read: () => new Promise((resolve) => { finish = resolve; }), answers: [{ ok: true, body: { branding: { name: "Avery" } } }, { ok: true, body: { branding: { name: "Avery", logo: "x" } } }] });
+  const saving = works.save({ name: "logo.png" });
+  assert.deepEqual(shown(works.msg), { text: "Saving your firm's logo\u2026", bad: false, hidden: false });
+  finish("data:image/png;base64,AA==");
+  await saving;
+  assert.match(works.msg.textContent, /^Saved\. /);
+  assert.ok(!works.msg.classList.contains("bad") && !works.msg.classList.contains("hidden"));
+  assert.equal(works.calls.drawn.length, 1);
+  assert.ok(works.calls.drawn[0].logoAt, "the row was drawn again without the logo it just saved");
+  assert.deepEqual(works.calls.fetch.map((c) => c[1]), [undefined, "PUT"], "the firm's branding is read, then sent back whole with the logo");
+
+  // A refusal, then a second try that works: the red does not outlive it.
+  const again = loadSaveLogo({ firm: firm(), read: async (f) => { if (f.name === "notes.txt") throw new Error("Please choose a PNG or JPEG image."); return "data:image/png;base64,AA=="; }, answers: [{ ok: true, body: {} }, { ok: true, body: {} }] });
+  await again.save({ name: "notes.txt" });
+  assert.ok(again.msg.classList.contains("bad"));
+  await again.save({ name: "logo.png" });
+  assert.ok(!again.msg.classList.contains("bad"), "\"Saved.\" is still in a refusal's red");
+
+  // A member who cannot manage is not answered at all (they have no door).
+  const member = loadSaveLogo({ firm: { ...JORDAN, canManage: false }, read: async () => "x", answers: [] });
+  await member.save({ name: "logo.png" });
+  assert.deepEqual(shown(member.msg), { text: "", bad: false, hidden: true });
+
+  // The markup carries the desk's class, and the row's own rule is only the
+  // message's place and a whole-pixel line: no size or ink of its own, or a
+  // refusal's red (a class on .dk-msg) loses to it.
+  assert.equal(MARKUP_CLASSES.get("hmFirmMsg"), "hidden dk-msg hm-fh-msg");
+  const own = rule(".hm-fh-msg");
+  assert.equal(decl(own, "color"), null, ".hm-fh-msg sets an ink of its own: .dk-msg.bad no longer shows");
+  assert.equal(decl(own, "font-size"), null);
+  const desk = html.match(/\n    \.dk-msg \{([^}]*)\}/), bad = html.match(/\n    \.dk-msg\.bad \{([^}]*)\}/);
+  assert.ok(desk && bad, "the desk's message rules moved");
+  assert.equal(decl(desk[1], "font-size"), "var(--text-small)");
+  assert.equal(decl(desk[1], "color"), "var(--ink-2)");
+  assert.equal(decl(bad[1], "color"), "var(--red)");
+  // 18px: the desk's 13px on the row's ratio, so the date under a message
+  // still lands on a whole pixel.
+  assert.match(String(decl(own, "line-height")), /^[0-9.]+$/, "the message's line-height is a length, not a ratio of its text");
+  assert.equal(wholeLine(".hm-fh-msg", parseFloat(SCALE_TOKENS["text-small"]), decl(own, "line-height")), 18);
+});
+
+// ---------------------------------------------------------------------------
+// The list's scrollbar: hmFitListBar, run against a stand-in list.
+// ---------------------------------------------------------------------------
+// `bar` is the width a scrollbar takes in this browser (0 where bars float
+// over the page: a phone, a Mac trackpad). A browser keeps that room while the
+// list scrolls, or whenever the list's gutter is told to stay.
+function listBody({ bar, scrolls, pad = 16, width = 467, inline }) {
+  const style = { paddingRight: "", scrollbarGutter: "", ...(inline || {}) };
+  const body = {
+    style, computed: { paddingLeft: pad + "px" }, offsetWidth: width, scrolls,
+    // (An element with no box measures 0 both ways, as in a browser.)
+    get clientWidth() { return width ? width - (bar && (body.scrolls || style.scrollbarGutter === "stable") ? bar : 0) : 0; },
+    // What the cards and rows get: the list between its two paddings.
+    get room() { return body.clientWidth - pad - (style.paddingRight === "" ? pad : parseFloat(style.paddingRight)); },
+  };
+  return body;
+}
+const fitListBar = (() => {
+  const ctx = vm.createContext({ getComputedStyle: (el) => el.computed, parseFloat, Math });
+  new vm.Script(slice(/  function hmFitListBar\(body\) \{[\s\S]*?\n  \}/) + "\nthis.fit = hmFitListBar;", { filename: "index.html" }).runInContext(ctx);
+  return ctx.fit;
+})();
+
+test("the list is as wide as the head with a scrollbar and without one: the bar stands in the list's own padding", () => {
+  // Where a scrollbar takes room (Chrome and Edge on Windows, the owner's),
+  // the list's bar took its 15px out of the list whenever the list was taller
+  // than the panel: every card, row and "+ Add a property" ended 15px short of
+  // the find box and "Firm settings", and a heading that just fit broke in
+  // two. No picture showed it: a headless browser draws no scrollbars.
+  const floating = listBody({ bar: 0, scrolls: true });
+  fitListBar(floating);
+  assert.deepEqual(floating.style, { paddingRight: "", scrollbarGutter: "" }, "where bars float over the page nothing is written");
+  const want = floating.room;
+
+  // The owner's Today: a bar that takes room, a list that fits. The bar's room
+  // is kept anyway, out of the padding, so the list is the width it was.
+  const fits = listBody({ bar: 15, scrolls: false });
+  fitListBar(fits);
+  assert.deepEqual(fits.style, { paddingRight: "1px", scrollbarGutter: "stable" });
+  assert.equal(fits.room, want, "a list that fits is narrower than the head on Windows");
+  // His Properties: nine rows, taller than the panel. The same width, so
+  // nothing moves when a list starts or stops scrolling.
+  fits.scrolls = true;
+  assert.equal(fits.room, want, "the list narrows when it starts to scroll");
+  const scrolling = listBody({ bar: 15, scrolls: true });
+  fitListBar(scrolling);
+  assert.deepEqual(scrolling.style, { paddingRight: "1px", scrollbarGutter: "stable" });
+  assert.equal(scrolling.room, want, "a scrolling list ends short of the find box and Firm settings");
+  // Asked again (a resize, a zoom), the answer is the same: it reads the
+  // list's LEFT padding, which it never writes.
+  fitListBar(scrolling);
+  assert.deepEqual(scrolling.style, { paddingRight: "1px", scrollbarGutter: "stable" });
+
+  // A bar wider than the padding takes all of it and no more.
+  const wide = listBody({ bar: 17, scrolls: true });
+  fitListBar(wide);
+  assert.equal(wide.style.paddingRight, "0px");
+
+  // Away from the rail the page scrolls and not the list: no bar to measure,
+  // and what an earlier fit wrote beside the rail is taken back.
+  const narrowed = listBody({ bar: 0, scrolls: false, pad: 8, inline: { paddingRight: "1px", scrollbarGutter: "stable" } });
+  fitListBar(narrowed);
+  assert.deepEqual(narrowed.style, { paddingRight: "", scrollbarGutter: "" }, "a fit made beside the rail outlived the rail layout");
+
+  // Not laid out (Home is hidden): nothing to measure, so nothing is touched.
+  // The observer asks again when the list gets a box.
+  const hiddenList = listBody({ bar: 15, scrolls: false, width: 0, inline: { paddingRight: "1px", scrollbarGutter: "stable" } });
+  fitListBar(hiddenList);
+  assert.deepEqual(hiddenList.style, { paddingRight: "1px", scrollbarGutter: "stable" });
+  fitListBar(null);
+
+  // One observer asks, on the list's BORDER box: writing the padding does not
+  // change that box, so the observer cannot be woken by its own write (on the
+  // content box it would be, every time). And only where the gutter can be
+  // kept: fitted once without it, the padding is wrong the next time a list
+  // starts or stops scrolling.
+  const script = slice(/  function hmFitListBar\(body\) \{[\s\S]*?\n  \}\n  \{[\s\S]*?\n  \}/);
+  assert.match(script, /new ResizeObserver\(\(\) => hmFitListBar\(body\)\)\.observe\(body, \{ box: "border-box" \}\)/);
+  assert.match(script, /CSS\.supports\("scrollbar-gutter", "stable"\)/);
+  assert.match(script, /if \(body && steady && typeof ResizeObserver === "function"\)/);
+  // It reads the list's left padding for the right's: the two sides are one
+  // number in both rules (the insets test above holds them to three values).
+  assert.equal(px(decl(rule("html.nav-rail.hm-page .hm-body", RAIL), "padding"))[1], 16);
+});
+
 // ---------------------------------------------------------------------------
 // The stylesheet and the markup: the decisions a tidy-up would undo.
 // ---------------------------------------------------------------------------
@@ -371,6 +572,7 @@ function rule(sel, media) {
 const decl = (body, prop) => { const m = body.match(new RegExp("(?:^|;)\\s*" + prop + "\\s*:\\s*([^;]+)")); return m ? m[1].trim() : null; };
 const px = (v) => String(v).trim().split(/\s+/).map((x) => parseFloat(x));
 const RAIL = "@media (min-width: 900px)";
+const NARROW = "@media (max-width: 449px)", TINY = "@media (max-width: 371px)";
 // A line of text's height in px: the rule's font size (a scale token, or a
 // length the size test still allows) times its line-height, which must be a
 // ratio. A length there does not grow with the text, so a reader who raises
@@ -381,7 +583,16 @@ function lineBox(sel) {
   const token = /^var\(--([a-z0-9-]+)\)$/.exec(size);
   const px = parseFloat(token ? SCALE_TOKENS[token[1]] : size);
   assert.ok(px > 0, `${sel} has no readable font size (${size})`);
-  return Math.round(px * parseFloat(lh) * 100) / 100;
+  return wholeLine(sel, px, lh);
+}
+// Each ratio is rounded UP in its last place (18/14 is written 1.2858, not
+// 1.2857). Rounded down it reads as the tidier number and is wrong: the line
+// comes out a sixty-fourth of a pixel short (17.984px), and every edge under
+// it lands between pixels. Rounding the product here would let that through.
+function wholeLine(what, px, lh) {
+  const exact = px * parseFloat(lh);
+  assert.ok(exact >= Math.round(exact), `${what}'s ratio is rounded down (${lh}): its line is a sixty-fourth of a pixel short`);
+  return Math.round(exact * 100) / 100;
 }
 
 test("one line down the panel: the head starts where the cards and rows under the tabs start", () => {
@@ -404,10 +615,49 @@ test("one line down the panel: the head starts where the cards and rows under th
   assert.equal(px(decl(rule("html.nav-rail.hm-page .hm-fh", RAIL), "padding"))[1], bodyRail + INNER, "the firm row is off the line beside the rail");
   // The stand-in shown while Home loads sits on the same line, or the page jumps.
   assert.equal(px(decl(rule("html.hm-page #deskLoading"), "padding"))[1], bodyRail + INNER);
-  // The saving message starts on the firm's text edge: the gutter, the mark, the gap.
+  // The saving message starts on the firm's text edge: the gutter, the mark,
+  // the gap. Beside the rail, away from it, and on a narrow phone, where the
+  // mark and the gap are both smaller (broken to find: only the first was
+  // added up).
   const row = rule(".hm-fh"), mark = rule(".hm-fh-mark");
-  assert.equal(px(decl(rule("html.nav-rail.hm-page .hm-fh-msg", RAIL), "padding"))[3],
-    bodyRail + INNER + parseFloat(decl(mark, "width")) + parseFloat(decl(row, "gap")));
+  const markW = parseFloat(decl(mark, "min-width")), gap = parseFloat(decl(row, "gap"));
+  assert.equal(px(decl(rule("html.nav-rail.hm-page .hm-fh-msg", RAIL), "padding"))[3], bodyRail + INNER + markW + gap);
+  assert.equal(px(decl(rule(".hm-fh-msg"), "padding"))[3], bodyPhone + INNER + markW + gap, "away from the rail the saving message is off the firm's text edge");
+  assert.equal(parseFloat(decl(rule(".hm-fh-msg", NARROW), "padding-left")),
+    bodyPhone + INNER + parseFloat(decl(rule(".hm-fh-mark", NARROW), "min-width")) + parseFloat(decl(rule(".hm-fh", NARROW), "gap")),
+    "on a narrow phone the saving message is off the firm's text edge");
+});
+
+test("the insets these tests add up are the whole cascade: one number a side, said once, in the rules read here (broken to find)", () => {
+  // px(...)[1] of a four-value padding is the RIGHT side, and the line this
+  // file is about is the left: `padding: 24px 26px 0 28px` passed. So did a
+  // padding-left after the shorthand, and a second padding in the same rule
+  // (decl reads the first, a browser the last). Three values, said once.
+  for (const [what, body] of [
+    [".hm-head", rule(".hm-head")], [".hm-fh", rule(".hm-fh")], [".hm-body", rule(".hm-body")],
+    ["the rail's .hm-head", rule("html.nav-rail.hm-page .hm-head", RAIL)], ["the rail's .hm-fh", rule("html.nav-rail.hm-page .hm-fh", RAIL)],
+    ["the rail's .hm-body", rule("html.nav-rail.hm-page .hm-body", RAIL)],
+  ]) {
+    assert.equal(px(decl(body, "padding")).length, 3, `${what}: a fourth value moves the left edge alone, and [1] reads the right`);
+    assert.doesNotMatch(body, /padding-(left|right|inline)/, `${what}: a longhand moves one side after the shorthand this file reads`);
+    assert.equal((body.match(/(?:^|;)\s*padding\s*:/g) || []).length, 1, `${what}: padding is said twice in one rule`);
+  }
+  // rule() reads one rule in one place. A browser also applies a rule in
+  // another @media block (the Home sheet has two for 900px), in a comma list,
+  // or under a longer selector: each of those moved the head, or put the date
+  // in capitals, with every suite green. So each element these tests add up
+  // is held to the NUMBER of rules that end in it, anywhere in the sheet.
+  const styledBy = (sel) => (style.match(new RegExp("(?:^|[\\s,{}])" + sel.replace(/[.#]/g, "\\$&") + "\\s*[,{]", "g")) || []).length;
+  for (const [sel, n, where] of [
+    [".hm-head", 2, "base, beside the rail"], [".hm-body", 2, "base, beside the rail"],
+    [".hm-fh", 3, "base, beside the rail, narrow phones"], [".hm-fh-mark", 2, "base, narrow phones"],
+    [".hm-fh-msg", 3, "base, beside the rail, narrow phones"], [".hm-fh-set", 1, "base"], [".hm-fh-logo", 1, "base"],
+    [".hm-kick", 1, "base"], [".hm-title", 1, "base"], [".hm-sub", 1, "base"], [".hm-find", 1, "base"],
+  ]) {
+    assert.equal(styledBy(sel), n, `${sel} is reached by ${styledBy(sel)} rules, not the ${n} read here (${where}): the cascade is no longer what this file adds up`);
+  }
+  // The row is styled by class. An id rule out-ranks every rule read here.
+  assert.doesNotMatch(style, /#hmFirm[A-Za-z]*[^{};]*\{/, "an id rule on the firm row: it wins over the class rules these tests read");
 });
 
 test("beside the rail the firm row is the map switch's own band: one height, one top", () => {
@@ -434,19 +684,37 @@ test("beside the rail the firm row is the map switch's own band: one height, one
   assert.equal(lineBox(".hm-fh-txt small"), 16);
   assert.equal(lineBox(".hm-fh-txt b") + lineBox(".hm-fh-txt small"), H);
   // No rule under the row and no fill behind it: white space sets it apart.
-  assert.equal(decl(rule(".hm-fh"), "border-bottom"), null);
-  assert.equal(decl(rule(".hm-fh"), "background"), null);
+  // Asked of both rules and by every route (broken to find: a background-color,
+  // a box-shadow, and a border on the rail's rule each passed two exact names).
+  for (const body of [rule(".hm-fh"), rule("html.nav-rail.hm-page .hm-fh", RAIL)]) {
+    assert.doesNotMatch(body, /border|background|box-shadow/, "a rule under the firm row, or a fill behind it");
+  }
+  // A long name is cut with an ellipsis, never wrapped: wrapped, the row is
+  // three lines and leaves the band (66px, the mark and the button at y=23).
+  // And its column can shrink: without the min-width a 40-character name
+  // pushed "Firm settings" 35px past the panel's edge (broken to find).
+  const name = rule(".hm-fh-txt b");
+  assert.equal(decl(name, "white-space"), "nowrap", "a long firm name wraps: the row is three lines and leaves the switch's band");
+  assert.equal(decl(name, "overflow"), "hidden");
+  assert.equal(decl(name, "text-overflow"), "ellipsis");
+  assert.equal(decl(rule(".hm-fh-txt"), "min-width"), "0", "a long name pushes Firm settings past the panel's edge");
 });
 
 test("the firm row is ink and grey: no red line, no indigo shop, and the door is told from the facts by more than colour", () => {
-  const rows = style.split("\n").filter((l) => /^\s*(button)?\.hm-fh/.test(l) || /\.hm-fh-/.test(l.split("{")[0]));
-  assert.ok(rows.length > 10, "the firm row's rules were not found");
-  for (const l of rows) {
-    // The focus ring is the product's red one; nothing else in the row is.
-    if (/:focus-visible/.test(l.split("{")[0])) continue;
-    assert.doesNotMatch(l, /var\(--red[a-z-]*\)/, "red is back in the firm row: " + l.trim().slice(0, 80));
-    assert.doesNotMatch(l, /var\(--bv-/, "the indigo of a Firm pill is back in the firm row: " + l.trim().slice(0, 80));
+  // Every rule that reaches the row, read whole (a rule, not a line of the
+  // file). The focus ring is the product's red one and nothing else in the
+  // row is: a rule is let off only when EVERY selector on it is a ring
+  // (broken to find: `.hm-fh-logo:hover, .hm-fh-logo:focus-visible` in red
+  // passed, the whole line let off for its second half).
+  let seen = 0;
+  for (const [, sels, body] of style.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!/\.hm-fh/.test(sels)) continue;
+    seen++;
+    if (sels.split(",").every((x) => /:focus-visible/.test(x))) continue;
+    assert.doesNotMatch(body, /var\(--red[a-z-]*\)/, "red is back in the firm row: " + sels.trim());
+    assert.doesNotMatch(body, /var\(--bv-/, "the indigo of a Firm pill is back in the firm row: " + sels.trim());
   }
+  assert.ok(seen > 10, "the firm row's rules were not found");
   const facts = rule(".hm-fh-txt small"), door = rule(".hm-fh-logo");
   assert.equal(decl(facts, "color"), "var(--ink-3)");
   // A step darker than the facts, a touch heavier, and underlined in its own
@@ -456,6 +724,13 @@ test("the firm row is ink and grey: no red line, no indigo shop, and the door is
   assert.equal(decl(door, "text-decoration-color"), null, "the door's underline is not the words' own colour");
   // Its press area reaches down and sideways, never up over the firm's name.
   assert.match(decl(rule(".hm-fh-logo::after"), "inset"), /^0 /);
+  // A press area is an absolutely placed ::after, the size of its button only
+  // while that button is what it is placed against. Without this one
+  // declaration it is the whole window (1452 x 912 at 1440 x 900, measured):
+  // a click on a tab or on the greeting opened the logo's file picker and the
+  // tab did not change, with every suite green (broken to find).
+  assert.equal(decl(door, "position"), "relative", "the door's press area fills the window: every click on the panel opens the file picker");
+  assert.equal(decl(rule(".hm-fh-mark"), "position"), "relative", "the mark's press area fills the window: every click on the panel opens the file picker");
   // A fact is never cut in half: each is one unbroken piece, and where a
   // reader's own text spacing makes the line too long a fact drops to the
   // next line whole (the old row wrapped too; an ellipsis here lost words).
@@ -481,6 +756,56 @@ test("a mark that cannot be pressed does not look like one that can", () => {
   assert.equal(decl(flat, "box-shadow"), null);
   // The logo stays on white in both themes (a logo is drawn for paper).
   assert.equal(decl(rule(".hm-fh-mark.logo"), "background"), "rgb(255 255 255)");
+});
+
+test("the initials' tile is a floor, not a size: it widens with its letters, and a logo's stays a square", () => {
+  // The tile was a fixed 34px (28 on a narrow phone). A reader who raises the
+  // browser's minimum font size got initials 9px wider than their tile.
+  const mark = rule(".hm-fh-mark"), small = rule(".hm-fh-mark", NARROW);
+  assert.equal(decl(mark, "min-width"), "34px");
+  assert.equal(decl(mark, "width"), null, "the tile is a fixed width again: larger letters stand outside it");
+  assert.equal(decl(small, "min-width"), "28px");
+  assert.equal(decl(small, "width"), null);
+  // A picture fills its tile and has no width of its own to give it: a
+  // logo's tile is said, the same number, with no room given to letters.
+  const logo = rule(".hm-fh-mark.logo");
+  assert.equal(decl(logo, "width"), decl(mark, "min-width"));
+  assert.equal(decl(logo, "padding"), "0");
+  assert.equal(decl(rule(".hm-fh-mark.logo", NARROW), "width"), decl(small, "min-width"));
+  // At the sizes the page ships the tile is still the square: the widest pair
+  // of initials it writes, "WW", measured 27.34px at 13px and 23.14px at 11px
+  // in Chromium, and with the tile's padding and its 1px border each side
+  // that is inside the floor. More padding and "WW" alone widens the tile.
+  const WW = { 13: 27.34, 11: 23.14 };
+  for (const [body, token] of [[mark, "text-small"], [small, "text-tiny"]]) {
+    assert.equal(decl(body, "font-size"), `var(--${token})`);
+    const size = parseFloat(SCALE_TOKENS[token]);
+    assert.ok(WW[size] + px(decl(body, "padding"))[1] * 2 + 2 <= parseFloat(decl(body, "min-width")),
+      `"WW" no longer fits the ${decl(body, "min-width")} tile at ${size}px: the tile is not square for it`);
+  }
+});
+
+test("the door's focus ring stays in the door's own line: outside it, its top stroke ran through the tails of the firm's name", () => {
+  // A ring drawn outside the door's box put its top stroke in the last two
+  // rows of the name's line, through the tail of every g, p and y. The box now
+  // reaches sideways and down (never up), the same margins taken back so
+  // nothing in the row moves, and the ring is drawn INSIDE it.
+  const door = rule(".hm-fh-logo"), ring = rule(".hm-fh-logo:focus-visible");
+  const pad = px(decl(door, "padding")), mar = px(decl(door, "margin"));
+  assert.equal(pad.length, 3);
+  assert.equal(pad[0], 0, "the door's box reaches up into the firm's name");
+  assert.deepEqual(mar, [0, -pad[1], -pad[2]], "the door's padding is not taken back by its margins: the facts line moves");
+  const width = parseFloat(decl(ring, "outline"));
+  assert.equal(decl(ring, "outline"), "2px solid var(--red)");
+  assert.equal(parseFloat(decl(ring, "outline-offset")), -width, "the ring is drawn outside the door's box again: its top stroke is in the name's line");
+  // The ring stands where it did on its other three sides: a pixel clear of
+  // the letters, and its foot two pixels under the line.
+  assert.equal(pad[1] - width, 1);
+  assert.equal(pad[2] - width, 2);
+  // And the press area reaches what it did, counted from the larger box: 7px
+  // sideways and 12px down, nothing up.
+  const press = px(decl(rule(".hm-fh-logo::after"), "inset"));
+  assert.deepEqual([press[0], pad[1] - press[1], pad[2] - press[2]], [0, 7, 12]);
 });
 
 test("Firm settings is the shared compact button, hidden when the page says so, and named by the words on it", () => {
@@ -511,22 +836,32 @@ test("the firm row stands outside the head, so a member in no firm gets no row a
   // whether it was there (or a negative margin kept in step with a padding).
   const panel = html.indexOf('<div class="hm-panel">');
   const row = html.indexOf('<div id="hmFirmHead" class="hm-fh hidden">', panel);
-  const msg = html.indexOf('<p id="hmFirmMsg" class="hidden hm-fh-msg" role="status">', panel);
+  const msg = html.indexOf('<p id="hmFirmMsg" class="hidden dk-msg hm-fh-msg" role="status">', panel);
   const head = html.indexOf('<div class="hm-head">', panel);
   assert.ok(panel > 0 && row > panel && msg > row && head > msg, "the firm row is not the panel's first block, before the head");
   assert.doesNotMatch(style, /\.hm-fh[^{]*~/, "a sibling rule that asks whether the firm row is there");
   assert.doesNotMatch(rule(".hm-fh"), /margin:\s*-/);
+  // The stylesheet half of this file holds `.hm-fh-txt b`, `.hm-fh-txt small`
+  // and `.hm-fh-mark` to a dozen values each, and nothing held the markup to
+  // those selectors: the <small> turned into a <span> left every assertion
+  // passing over rules that matched nothing (the facts in 16px ink italics,
+  // no dot). One pin of the markup (broken to find).
+  assert.match(html, /<span id="hmFirmMarkWrap" class="hm-fh-markw"><\/span>\s*<span class="hm-fh-txt"><b id="hmFirmName"><\/b><small id="hmFirmMeta"><\/small><\/span>/,
+    "the name is styled as .hm-fh-txt b and the facts as .hm-fh-txt small");
   // Narrow phones: a smaller mark and no briefcase, then one whole fact.
-  const narrow = "@media (max-width: 449px)", tiny = "@media (max-width: 371px)";
-  assert.equal(decl(rule(".hm-fh-mark", narrow), "width"), "28px");
+  const narrow = NARROW, tiny = TINY;
+  assert.equal(decl(rule(".hm-fh-mark", narrow), "min-width"), "28px");
+  assert.equal(decl(rule(".hm-fh-mark", narrow), "height"), "28px", "a 28 x 34 mark on a phone");
   assert.equal(decl(rule(".hm-fh-set svg", narrow), "display"), "none");
   assert.equal(decl(rule(".hm-fh-txt small .hm-fh-n", tiny), "display"), "none");
   assert.equal(decl(rule(".hm-fh-txt small.has-door em", tiny), "display"), "none");
   // One fact is left there, so no dot: the hidden one would leave its own.
   // The SAME selector as the rule that draws the dot, or it loses to it.
   assert.equal(decl(rule(".hm-fh-txt small > *:not(:last-child)::after", tiny), "content"), "none");
-  // The 28px mark keeps a 44px press area.
+  // The 28px mark keeps a 44px press area, as the 34px one has (the inset
+  // counts from inside the 1px border: 34 - 2 + 12, 28 - 2 + 18).
   assert.equal(decl(rule("button.hm-fh-mark::after", narrow), "inset"), "-9px");
+  assert.equal(decl(rule("button.hm-fh-mark::after"), "inset"), "-6px", "the 34px mark no longer has its 44px press area");
 });
 
 test("the day, the greeting and the find box: whole-pixel lines, a placeholder that is a token, the tabs spaced from the head's side", () => {
@@ -541,6 +876,15 @@ test("the day, the greeting and the find box: whole-pixel lines, a placeholder t
   // The find box's placeholder was Tailwind's reset grey, the one text in the
   // head that was not a token (2.5:1 on the box in light).
   assert.equal(decl(rule("#hmFind::placeholder"), "color"), "var(--ink-3)");
+  // Firefox dims a placeholder unless told otherwise: the token, undimmed.
+  assert.equal(decl(rule("#hmFind::placeholder"), "opacity"), "1");
+  // The head's tiers stand one distance apart: the firm row to the date is
+  // the head's top padding, the status to the find box is the find box's
+  // margin. 24, 24, then the tabs' 12 (broken to find: only the 12 was read).
+  const tier = parseFloat(decl(rule(".hm-find"), "margin-top"));
+  assert.equal(tier, 24);
+  assert.equal(px(decl(rule("html.nav-rail.hm-page .hm-head", RAIL), "padding"))[0], tier, "beside the rail the date and the find box no longer stand the same distance off");
+  assert.equal(px(decl(rule(".hm-head"), "padding"))[0], tier, "away from the rail the date and the find box no longer stand the same distance off");
   // The shared tabs' own rule is components.js's; the head tightens the gap
   // above them from its own side.
   assert.equal(decl(rule(".hm-head .hm-tabs"), "margin-top"), "12px");

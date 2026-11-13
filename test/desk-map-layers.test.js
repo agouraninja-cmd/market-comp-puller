@@ -420,3 +420,16 @@ test("a free account's Home is an address list: values come off the rows before 
   // A plan that changes (a checkout return) repaints the desk, which redraws Home.
   assert.match(html.slice(html.indexOf("async function refreshProConfig() {"), html.indexOf("function showCheckoutNotice(")), /renderMyDesk\(\);/);
 });
+
+test("a free account is not promised a value by the empty Properties tab, and its pane opens with no empty band", () => {
+  // Two leftovers of the 2026-11-13 plan gate. The empty list said a new
+  // building "lands on the map with its value"; the page ships the plan-free
+  // wording and drawHomeMap writes the value one only where values show.
+  const at = html.indexOf('<p id="hmPropsEmpty"');
+  assert.doesNotMatch(html.slice(at, html.indexOf("</p>", at)), /value/, "the shipped empty copy promises a value before the plan is known");
+  assert.match(fnOf("function drawHomeMap() {"), /propsEmpty\.textContent = showValues\s*\? "[^"]*with its value and its dates\."\s*: "[^"]*with its status and its dates\.";/);
+  // With no value block above it, the pane's foot drew a rule under an
+  // empty gap. As the pane's first line it draws neither.
+  const css = fs.readFileSync(path.join(__dirname, "..", "home-sites.css"), "utf8");
+  assert.match(css, /\.hs-foot:first-child \{ margin-top: 0; padding-top: 0; border-top: 0; \}/);
+});

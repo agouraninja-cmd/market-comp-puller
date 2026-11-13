@@ -11782,23 +11782,40 @@ function usd2(n) {
 // rule (every page in dark-mode scope) overrides it, and the four admin
 // dashboards, which deliberately do NOT carry that rule (own :root blocks,
 // out of dark-mode scope), keep rendering exactly as before untouched.
-// The rail's icons (2026-10-07, Draft C: the rail is a dark strip of five
-// places, an icon over a word). One string per row, used by marketBar and
+// The rail's icons (2026-10-07, Draft C: the rail is a strip of places, an
+// icon over a word; it was dark until 2026-11-12). One string per row, used by marketBar and
 // restated by hand in index.html's nav, which test/nav-parity.test.js reads
 // together with this. Outside the rail they are hidden, so the bar a phone
 // or a stranger reads is the words alone, as it was.
-const NAV_ICON = (paths) => `<svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+//
+// ONE HAND SINCE 2026-11-12, and the rule a new icon has to keep: a 24-unit
+// grid shown at 24px, so a unit is a pixel; a 1.5 stroke with round caps
+// and joins; and every straight stroke centred on a half (4.5, 19.5), so on
+// a 1x monitor it is one solid pixel with an even quarter-pixel fringe on
+// each side. Until then they were drawn on 20 units to no rule and shown at
+// 22px, so each stroke straddled two pixels and the whole strip looked soft.
+// Three drawings changed what they say as well as how. Sites is a map pin
+// (it was a flag on a baseline, which read as an E on a stick). Comps is
+// bars on an axis and Permits is the one sheet, signed off with a tick:
+// they were two near-identical sheets, one above the other, told apart only
+// by their words. Home's map switch and its first-run door draw Permits too,
+// at their own smaller size; index.html keeps the same sheet there on those
+// icons' 20-unit grid. The Feedback ninja under the rows is the brand's own
+// filled glyph and is left alone (TESTER_BADGE).
+// test/nav-parity.test.js holds every row's copy in index.html to these.
+const NAV_ICON = (paths) => `<svg class="nvi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 const NAV_ICONS = {
-  home: NAV_ICON('<path d="M3.5 9.2 10 4l6.5 5.2V16a1 1 0 0 1-1 1H12v-4.5H8V17H4.5a1 1 0 0 1-1-1z"/>'),
-  messages: NAV_ICON('<path d="M3.5 4.5h13v8.5h-7L5.5 16v-3h-2z"/><path d="M7 8.2h6M7 10.6h3.5"/>'),
-  reports: NAV_ICON('<path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/>'),
-  markets: NAV_ICON('<path d="M3 5.5l4.5-2 5 2 4.5-2v11l-4.5 2-5-2-4.5 2z"/><path d="M7.5 3.5v11M12.5 5.5v11"/>'),
-  permits: NAV_ICON('<path d="M5 2.8h10v14.4H5z"/><path d="M7.5 6h5M7.5 8.6h5"/><circle cx="10" cy="13" r="1.8"/>'),
-  // A funnel for the pipeline and a flag on a plot for a development firm's
-  // sites (2026-10-09). index.html restates both by hand.
-  pipeline: NAV_ICON('<path d="M3 4h14l-5.2 6.2V16l-3.6-1.6v-4.2z"/>'),
-  sites: NAV_ICON('<path d="M6.5 17V3.5"/><path d="M6.5 4h8l-2 2.6 2 2.6h-8"/><path d="M3 17h14"/>'),
-  pricing: NAV_ICON('<path d="M3 10.2V4h6.2l7.3 7.3-6.2 6.2z"/><circle cx="6.6" cy="7.6" r="1.1"/>'),
+  home: NAV_ICON('<path d="M4.5 10.25 12 4l7.5 6.25V19a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 19z"/><path d="M9.5 20.5v-6h5v6"/>'),
+  messages: NAV_ICON('<path d="M5.5 4.5h13a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-4 4v-4h-2a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z"/><path d="M7.5 8.5h9M7.5 12.5h5"/>'),
+  reports: NAV_ICON('<path d="M4.5 4.5V18A1.5 1.5 0 0 0 6 19.5h14.5"/><path d="M8.5 15.5v-3M12.5 15.5v-8M16.5 15.5v-5"/>'),
+  markets: NAV_ICON('<path d="M3.5 6.5l6-2 5 2 6-2v13l-6 2-5-2-6 2z"/><path d="M9.5 4.5v13M14.5 6.5v13"/>'),
+  permits: NAV_ICON('<rect x="5.5" y="3.5" width="13" height="17" rx="1.5"/><path d="M8.5 7.5h7"/><path d="M8.75 14.25 11 16.5l4.25-4.75"/>'),
+  // A funnel for the pipeline and a map pin for a development firm's sites
+  // (a flag on a plot from 2026-10-09 to 2026-11-12). index.html restates
+  // both by hand.
+  pipeline: NAV_ICON('<path d="M3.5 4.5h17l-6 7.25v7.75l-5-2.5v-5.25z"/><path d="M6.9 8.5h10.2"/>'),
+  sites: NAV_ICON('<path d="M12 20.5c-3.9-3.3-6.5-6.6-6.5-10.5a6.5 6.5 0 0 1 13 0c0 3.9-2.6 7.2-6.5 10.5z"/><circle cx="12" cy="10" r="2.5"/>'),
+  pricing: NAV_ICON('<path d="M4.5 12.5v-7a1 1 0 0 1 1-1h7l8 8-8 8z"/><circle cx="8.5" cy="8.5" r="1.25"/>'),
 };
 const CN_LOGO =
   `<svg class="cn-logo" viewBox="0 0 30 30" aria-hidden="true">` +
@@ -12405,24 +12422,35 @@ const TESTER_BADGE_CSS = `
     /* In the rail it is a row of the rail (2026-10-17, the owner: keep the
        ninja "in a good spot where people can put their recommendations"):
        the ninja over the word Feedback, laid out like Home and Messages
-       above it, standing just over the account circle's hairline. Until then
+       above it, standing on the strip's foot, over the account circle. Until then
        it floated top-right on wide windows and bottom-right on narrow ones,
        moving as the window did, and said nothing about what it was for.
        It stays position:fixed rather than a link in the rail's markup, so
        the one block still serves every surface and the two navs stay
-       byte-identical (nav-parity.test.js); the numbers are the rail's own:
-       84px wide, rows inset 8px, and the account cluster 57px tall (its 12px
-       padding, the 28px circle and the rail's 16px foot, plus the hairline).
+       byte-identical (nav-parity.test.js); the numbers are the rail's own
+       (RAIL_CSS, the look of 2026-11-12): 84px wide, rows inset 8px, and it
+       stands on the strip's 60px foot, the block that holds the account
+       circle. It is a row in everything else too: 56px tall (the ninja keeps
+       its own 22px and takes a row's 24px of room), --ink-2 on the strip's
+       own surface, an outline under the pointer, an ink ring for the
+       keyboard. The short rule above it opens the foot as the divider opens
+       the second group of rows, and waits for a window with room for it
+       to stand clear of the last row.
        A window too short to hold it under Permits keeps the floating ninja. */
     @media (min-width:900px) and (min-height:620px){
-      html.nav-rail .tninja{left:8px;right:auto;bottom:65px;width:68px;height:auto;
-        display:flex;flex-direction:column;align-items:center;gap:5px;
-        padding:10px 2px 9px;border:0;border-radius:var(--r-xl);background:transparent;
-        box-shadow:none;color:rgba(255,255,255,.68);
-        font-size:var(--text-tiny);font-weight:500;line-height:1.1}
-      html.nav-rail .tninja:hover{background:rgba(255,255,255,.08);color:#fff;transform:none}
+      html.nav-rail .tninja{left:8px;right:auto;bottom:60px;width:68px;height:auto;
+        display:flex;flex-direction:column;align-items:center;gap:0;
+        padding:9px 2px;border:0;border-radius:var(--r-xl);background:transparent;
+        box-shadow:none;color:var(--ink-2);
+        font-size:var(--text-tiny);font-weight:500;line-height:14px;letter-spacing:.01em}
+      html.nav-rail .tninja svg{width:22px;height:22px;margin:1px 0}
+      html.nav-rail .tninja:hover{background:transparent;color:var(--ink);transform:none;box-shadow:inset 0 0 0 1px var(--ink-4)}
+      html.nav-rail .tninja:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
       html.nav-rail .tninja-l{display:block}
       html.nav-rail .tninja.hidden{display:none}
+    }
+    @media (min-width:900px) and (min-height:680px){
+      html.nav-rail .tninja::before{content:"";position:absolute;left:14px;right:14px;top:-13px;height:1px;background:var(--edge)}
     }
     .tfm{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.7);
       display:flex;align-items:center;justify-content:center;padding:16px}
@@ -12845,47 +12873,136 @@ const RAIL_CSS = `
 }
 /* --- The icon rail (2026-10-07; Draft C of the Home and Data drafts, the
    owner's pick) -----------------------------------------------------------
-   The rail is a dark strip of places, an icon over a word: Home, Messages,
+   The rail is a strip of places, an icon over a word: Home, Messages,
    then Tools: Markets, Comps, Permits (2026-10-08; Reports left the
    rail for Messages that day, and Comp report was renamed Comps on
    2026-10-13). Same element and same markup as
    before, re-laid-out, and still nothing outside the 900px guard: below it
    the icons are hidden and the bar reads as words, exactly as it did. 84px
-   is a literal for the 224px's reason. The strip sits on --slab, dark in
-   both themes, so its ink is literal white at stepped opacities (the
-   footer's FOOTER_DARK_CSS reason), and the wordmark gives way to the mark.
+   is a literal for the 224px's reason. The wordmark gives way to the mark.
+   (Until 2026-11-12 the strip sat on --slab, dark in both themes, with
+   literal white ink at stepped opacities; the paragraph below is why not.)
    The red call to action is not a place, so the strip does not carry it:
    the Comps row is the door there. A label too long for the 64px
    column wraps onto a second line, centred. index.html
-   carries the twin of every rule here. */
+   carries the twin of every rule here.
+
+   THE LOOK SINCE 2026-11-12 (the owner: "the left side bar looks kind of
+   ugly"). The strip stopped being a dark slab and became one of the page's
+   own surfaces: --wash with a --line hairline down its right edge, so it
+   follows the theme (pale beside paper, and in dark mode the same #243044 it
+   already was, since --wash and --slab meet there). Three things were wrong
+   with the slab. A browser that keeps its tabs in a dark strip down the left
+   (the owner's does) put two dark bands side by side, each with its own
+   rounded grey tiles, and the app never visibly began. The row for the page
+   you are on was that grey tile and nothing of the brand. And the icons were
+   drawn on a 20-unit grid but shown at 22px, so every stroke fell between
+   pixels and looked soft on a 1x monitor. Seven designs were photographed on
+   the live page and judged, in the owner's own screenshot among other
+   places. One of the two pale ones came first with all three judges, and
+   this is that one with what they asked to be carried over from the other.
+   What each rule below is for:
+   - The page you are on is a --card tile ringed in --edge, with a red tick
+     inside its left edge: the red rule that underlines a page's own current
+     tab (--red, components.js's tab line; --red-fill is too dim in the dark
+     theme, 3.2:1 on the tile). The tick is a BORDER, never a background: a
+     forced-colours mode (Windows High Contrast) drops every background and
+     shadow in this block, and a border is what it keeps, so the page you
+     are on is still marked there, by the tick and the heavier word.
+   - Pointing at a row draws an outline and nothing else (--ink-4), so a
+     hovered row never looks like a second "you are here". It did: hover and
+     current were two tints of one grey tile.
+   - Keyboard focus is an ink ring drawn inside the row. The product's focus
+     ring is red everywhere else (components.js); here red already means
+     where you are, and the two would sit an inch apart. A focused row's
+     unread count drops its own ring, which would cut this one. The account
+     circle's ring is a shadow (it has to clear the circle), so its focus
+     also keeps a transparent OUTLINE: a forced-colours mode drops shadows
+     and paints outlines, and without it the circle had no focus mark there.
+   - A row is its own target. The bar's links carry an invisible ::after
+     that reaches 5px past each one (MARKET_CSS, for 20px-tall links); on a
+     44 to 56px row it had no job and reached into the row below.
+   - Icons are 24px, one unit to one pixel (NAV_ICON has the drawing rule).
+   - The unread count is a 16px pill at the icon's top-right shoulder, placed
+     by its LEFT edge (44px, the icon box ends at 46) so "9+" grows away from
+     the drawing instead of across it, ringed in the surface it sits on.
+   - The foot is one group: Feedback (TESTER_BADGE_CSS, placed from the
+     numbers here, with the group's rule drawn above it) and the account
+     circle at 32px. The circle is navy with a white initial, as it is on
+     every bar, and wears a 1px --ink-4 ring: on the dark theme's strip navy
+     is the strip's own colour, and the ring is all that draws the circle
+     there. (A ring, not a [data-theme] rule: index.html keeps every one of
+     those inside one @media screen block so paper is never dark, and
+     test/theme.test.js fails a second home for them.)
+   - The inset shadow is the hairline. A border would take a pixel from the
+     84px and leave every row half a pixel off centre.
+   One rhythm, and the heights add up on purpose: a 60px head (15 + the 30px
+   mark + 15), 56px rows 4 apart, 16 for the divider, a 60px foot (14 + the
+   32px circle + 14) with Feedback standing on it. Seven rows (a free
+   member's Pricing row is the seventh) end at 496, under Feedback's top edge
+   at 504 in the shortest window that keeps Feedback in the strip (620px).
+   Before this they met: Permits ran 17px into Feedback there. Change a
+   number and re-add; test/nav-parity.test.js does. */
 .nvi{display:none}
 @media (min-width:900px){
-  html.nav-rail .hdr{background:var(--slab);border-right:0;overflow:visible}
-  html.nav-rail .hdr .wrap{padding:18px 0 16px;align-items:center}
-  html.nav-rail .hleft{padding:0 0 14px}
+  html.nav-rail .hdr{background:var(--wash);border-right:0;box-shadow:inset -1px 0 0 var(--line);overflow:visible}
+  html.nav-rail .hdr .wrap{padding:15px 0 14px;align-items:center}
+  html.nav-rail .hleft{padding:0 0 15px}
   html.nav-rail .hdr .brand .wordmark{display:none}
   html.nav-rail .hdr .brand svg{width:30px;height:30px}
-  html.nav-rail .hdr .brand{color:#fff}
-  html.nav-rail .hdr .cn-logo rect{fill:currentColor}
   html.nav-rail .hdr nav{width:100%;gap:4px}
   html.nav-rail .hdr nav>a,html.nav-rail .hdr nav>button{position:relative;display:flex;flex-direction:column;align-items:center;
-    gap:5px;margin:0 8px;padding:10px 2px 9px;border-left:0;border-radius:var(--r-xl);text-align:center;
-    font-size:var(--text-tiny);font-weight:500;line-height:1.1;color:rgba(255,255,255,.68)}
-  html.nav-rail .hdr nav>a .nvi{display:block;width:22px;height:22px}
-  html.nav-rail .hdr nav>a:hover{background:rgba(255,255,255,.08);color:#fff}
-  html.nav-rail .hdr nav>a[aria-current="page"]{background:rgba(255,255,255,.13);color:#fff;font-weight:600}
-  html.nav-rail .hdr nav>.navsec{font-size:0;height:1px;margin:8px 18px;padding:0;border:0;background:rgba(255,255,255,.14)}
+    gap:0;margin:0 8px;padding:9px 2px;border-left:0;border-radius:var(--r-xl);text-align:center;
+    font-size:var(--text-tiny);font-weight:500;line-height:14px;letter-spacing:.01em;color:var(--ink-2);
+    transition:background-color .12s ease,color .12s ease,box-shadow .12s ease}
+  html.nav-rail .hdr nav>a .nvi{display:block;width:24px;height:24px}
+  html.nav-rail .hdr nav>a::after{content:none}
+  html.nav-rail .hdr nav>a:hover{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink-4)}
+  html.nav-rail .hdr nav>a[aria-current="page"]{background:var(--card);color:var(--ink);font-weight:600;
+    box-shadow:inset 0 0 0 1px var(--edge)}
+  html.nav-rail .hdr nav>a[aria-current="page"]::before{content:"";position:absolute;left:4px;top:50%;width:0;height:20px;
+    margin-top:-10px;border-left:3px solid var(--red);border-radius:2px}
+  html.nav-rail .hdr nav>a:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+  html.nav-rail .hdr nav>.navsec{font-size:0;height:1px;margin:7px 22px 8px;padding:0;border:0;background:var(--edge)}
   html.nav-rail .hdr nav>a.btn.sm{display:none}
-  html.nav-rail .hdr nav .navdot{position:absolute;top:4px;right:16px;margin:0}
-  html.nav-rail .hdr nav>#navAcct{display:flex;justify-content:center;padding:12px 0 0;border-top:1px solid rgba(255,255,255,.14)}
-  html.nav-rail .hdr nav>#navAcct .ini{background-color:rgba(255,255,255,.16)}
-  html.nav-rail .hdr nav>#navAcct .dd{left:calc(100% + 10px);right:auto;top:auto;bottom:0}
+  html.nav-rail .hdr nav .navdot{position:absolute;top:2px;left:44px;right:auto;min-width:16px;height:16px;margin:0;
+    padding:0 4px;font-size:10px;line-height:16px;font-variant-numeric:tabular-nums;box-shadow:0 0 0 2px var(--wash)}
+  html.nav-rail .hdr nav>a[aria-current="page"] .navdot{box-shadow:0 0 0 2px var(--card)}
+  html.nav-rail .hdr nav>a:focus-visible .navdot{box-shadow:none}
+  html.nav-rail .hdr nav>#navAcct{display:flex;justify-content:center;padding:14px 0 0;border-top:0}
+  html.nav-rail .hdr nav>#navAcct summary{border-radius:var(--r-pill)}
+  html.nav-rail .hdr nav>#navAcct summary:focus-visible{outline:2px solid transparent;outline-offset:2px}
+  html.nav-rail .hdr nav>#navAcct .ini{width:32px;height:32px;line-height:32px;font-size:var(--text-label);
+    box-shadow:0 0 0 1px var(--ink-4)}
+  html.nav-rail .hdr nav>#navAcct summary:hover .ini{box-shadow:0 0 0 3px var(--ink-4)}
+  html.nav-rail .hdr nav>#navAcct summary:focus-visible .ini{box-shadow:0 0 0 2px var(--wash),0 0 0 4px var(--ink)}
+  html.nav-rail .hdr nav>#navAcct .dd{left:calc(100% + 8px);right:auto;top:auto;bottom:14px}
+}
+/* A short window (2026-11-12). A small laptop zoomed to 125% or 150% is
+   about 520px or 430px tall and still 900px wide, so it gets the strip. The
+   column above needs 560px with seven rows (500 with six), and what did not
+   fit was the account circle: it is the last thing in the column, the strip
+   cannot scroll (the account menu opens outside it, which is why overflow
+   stays visible), so the circle was pushed off the bottom of the window and
+   took Settings and Sign out with it. Under 560px the column closes up
+   instead, 44px a row, which holds seven rows and the circle in 419px.
+   (Both sums count the nav's gap between the last row and the account
+   slot, which is a flex child like the rows.)
+   Feedback has already left the strip by then (620px, TESTER_BADGE_CSS). */
+@media (min-width:900px) and (max-height:559px){
+  html.nav-rail .hdr .wrap{padding:8px 0}
+  html.nav-rail .hleft{padding-bottom:6px}
+  html.nav-rail .hdr nav{gap:2px}
+  html.nav-rail .hdr nav>a,html.nav-rail .hdr nav>button{padding:3px 2px}
+  html.nav-rail .hdr nav>.navsec{margin:2px 22px}
+  html.nav-rail .hdr nav>#navAcct{padding-top:6px}
+  html.nav-rail .hdr nav>#navAcct .dd{bottom:8px}
 }
 /* Paper has no sidebar. Without this the printed page carries a 224px empty
    column down its left edge on every server-rendered surface. */
 @media print{
   html.nav-rail body{padding-left:0}
-  html.nav-rail .hdr{position:static;width:auto;border-right:0}
+  html.nav-rail .hdr{position:static;width:auto;border-right:0;box-shadow:none}
 }
 `;
 
@@ -13761,7 +13878,7 @@ const marketBar = (signedIn = false, current = "") =>
   // (Comps was "Comp report" until 2026-10-13, when it became a section:
   // the member's own comps and the comp report tool, compsSectionTabs.)
   //
-  // The rail is a dark strip of places, an icon over a word, identical here
+  // The rail is a strip of places, an icon over a word, identical here
   // and in index.html's nav so the sidebar does not reshuffle itself when a
   // member moves between the app and a server-rendered page;
   // test/routes.test.js asserts the SEQUENCE for that reason. On 2026-10-08

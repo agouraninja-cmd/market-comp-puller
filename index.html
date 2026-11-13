@@ -986,39 +986,66 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       html.nav-rail #acctMenu { right: auto; left: 16px; top: auto; bottom: calc(100% + 8px); }
     }
     /* --- The icon rail (2026-10-07; Draft C of the Home and Data drafts) ---
-       The twin of RAIL_CSS's icon-rail block in server.js: a dark strip of
-       five places, an icon over a word, on --slab (dark in both themes, so
-       literal white at stepped opacities, the footer's reason). Below 900px
-       the icons hide and the bar reads as words, as it did. The anchors'
-       Tailwind hover colour is ink, which would vanish on the slab, so the
-       hover here outranks it. */
+       The twin of RAIL_CSS's icon-rail block in server.js: a strip of places,
+       an icon over a word. Below 900px the icons hide and the bar reads as
+       words, as it did.
+       THE LOOK SINCE 2026-11-12 (the owner: "the left side bar looks kind of
+       ugly"). It was a dark slab (--slab, with literal white ink); it is now
+       one of the page's own surfaces, --wash with a --line hairline, so it
+       follows the theme. The page you are on is a --card tile with a red tick
+       inside its left edge (a border, so a forced-colours mode keeps it),
+       pointing at a row draws an outline and nothing else, keyboard focus is
+       an ink ring, the icons are 24px (a unit to a pixel), the unread count
+       sits at the icon's shoulder, and the foot is Feedback and the account
+       circle. RAIL_CSS's comment has the reason for each rule and the sum of
+       the heights; test/nav-parity.test.js holds the two files together,
+       declaration by declaration. */
     .rd-appbar .nvi { display: none; }
     @media (min-width: 900px) {
-      html.nav-rail body > header { background: var(--slab); border-right: 0; overflow: visible; }
-      html.nav-rail .rd-appbar { align-items: center; padding: 18px 0 16px; }
-      html.nav-rail .rd-appbar > a { padding: 0 0 14px; }
+      html.nav-rail body > header { background: var(--wash); border-right: 0; box-shadow: inset -1px 0 0 var(--line); overflow: visible; }
+      html.nav-rail .rd-appbar { align-items: center; padding: 15px 0 14px; }
+      html.nav-rail .rd-appbar > a { padding: 0 0 15px; }
       html.nav-rail .rd-appbar > a .rd-wordmark { display: none; }
       html.nav-rail .rd-appbar > a svg { width: 30px; height: 30px; }
-      html.nav-rail .rd-appbar > a svg { color: #fff; }
-      html.nav-rail .rd-appbar > a svg rect { fill: currentColor; }
       html.nav-rail .rd-appbar > nav { width: 100%; gap: 4px; }
       html.nav-rail .rd-appbar > nav > a, html.nav-rail .rd-appbar > nav > button {
-        position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px;
-        margin: 0 8px; padding: 10px 2px 9px; border-left: 0; border-radius: var(--r-xl); text-align: center;
-        font-size: var(--text-tiny); font-weight: 500; line-height: 1.1; color: rgba(255, 255, 255, .68);
+        position: relative; display: flex; flex-direction: column; align-items: center; gap: 0;
+        margin: 0 8px; padding: 9px 2px; border-left: 0; border-radius: var(--r-xl); text-align: center;
+        font-size: var(--text-tiny); font-weight: 500; line-height: 14px; letter-spacing: .01em; color: var(--ink-2);
+        transition: background-color .12s ease, color .12s ease, box-shadow .12s ease;
       }
       /* The rows above set display, which outranks Tailwind's .hidden: a
          signed-in member's Sign in button and an unresolved account circle
          must stay hidden in the strip too. */
       html.nav-rail .rd-appbar > nav > .hidden, html.nav-rail #acctMenuWrap.hidden { display: none; }
-      html.nav-rail .rd-appbar > nav > a .nvi { display: block; width: 22px; height: 22px; }
-      html.nav-rail .rd-appbar > nav > a:hover, html.nav-rail .rd-appbar > nav > button:hover { background: rgba(255, 255, 255, .08); color: #fff; }
-      html.nav-rail .rd-appbar > nav > a[aria-current="page"] { background: rgba(255, 255, 255, .13); color: #fff; font-weight: 600; }
-      html.nav-rail .rd-appbar > nav > .navsec { font-size: 0; height: 1px; margin: 8px 18px; padding: 0; border: 0; background: rgba(255, 255, 255, .14); }
-      html.nav-rail .rd-appbar .navdot { position: absolute; top: 4px; right: 16px; margin: 0; }
-      html.nav-rail #acctMenuWrap { display: flex; justify-content: center; padding: 12px 0 0; border-top: 1px solid rgba(255, 255, 255, .14); }
-      html.nav-rail #acctMenuBtn { background: rgba(255, 255, 255, .16); }
-      html.nav-rail #acctMenu { left: calc(100% + 10px); right: auto; top: auto; bottom: 0; }
+      html.nav-rail .rd-appbar > nav > a .nvi { display: block; width: 24px; height: 24px; }
+      /* The anchors' Tailwind hover colour is ink too; this states the rest. */
+      html.nav-rail .rd-appbar > nav > a:hover, html.nav-rail .rd-appbar > nav > button:hover { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink-4); }
+      html.nav-rail .rd-appbar > nav > a[aria-current="page"] { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: inset 0 0 0 1px var(--edge); }
+      html.nav-rail .rd-appbar > nav > a[aria-current="page"]::before { content: ""; position: absolute; left: 4px; top: 50%; width: 0; height: 20px; margin-top: -10px; border-left: 3px solid var(--red); border-radius: 2px; }
+      html.nav-rail .rd-appbar > nav > a:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+      html.nav-rail .rd-appbar > nav > .navsec { font-size: 0; height: 1px; margin: 7px 22px 8px; padding: 0; border: 0; background: var(--edge); }
+      html.nav-rail .rd-appbar .navdot { position: absolute; top: 2px; left: 44px; right: auto; min-width: 16px; height: 16px; margin: 0; padding: 0 4px; font-size: 10px; line-height: 16px; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 2px var(--wash); }
+      html.nav-rail .rd-appbar > nav > a[aria-current="page"] .navdot { box-shadow: 0 0 0 2px var(--card); }
+      html.nav-rail .rd-appbar > nav > a:focus-visible .navdot { box-shadow: none; }
+      html.nav-rail #acctMenuWrap { display: flex; justify-content: center; padding: 14px 0 0; border-top: 0; }
+      html.nav-rail #acctMenuBtn { width: 32px; height: 32px; line-height: 32px; font-size: var(--text-label); box-shadow: 0 0 0 1px var(--ink-4); }
+      html.nav-rail #acctMenuBtn:hover { box-shadow: 0 0 0 3px var(--ink-4); }
+      html.nav-rail #acctMenuBtn:focus-visible { outline: 2px solid transparent; outline-offset: 2px; box-shadow: 0 0 0 2px var(--wash), 0 0 0 4px var(--ink); }
+      html.nav-rail #acctMenu { left: calc(100% + 8px); right: auto; top: auto; bottom: 14px; }
+    }
+    /* A short window (2026-11-12): the twin of RAIL_CSS's block, which has
+       the sums. Under 560px of height the column closes up, so the account
+       circle, the last thing in it, is not pushed off the bottom of a small
+       laptop zoomed in. */
+    @media (min-width: 900px) and (max-height: 559px) {
+      html.nav-rail .rd-appbar { padding: 8px 0; }
+      html.nav-rail .rd-appbar > a { padding-bottom: 6px; }
+      html.nav-rail .rd-appbar > nav { gap: 2px; }
+      html.nav-rail .rd-appbar > nav > a, html.nav-rail .rd-appbar > nav > button { padding: 3px 2px; }
+      html.nav-rail .rd-appbar > nav > .navsec { margin: 2px 22px; }
+      html.nav-rail #acctMenuWrap { padding-top: 6px; }
+      html.nav-rail #acctMenu { bottom: 8px; }
     }
     /* Paper has no sidebar. The header is already no-print; this is the body
        padding it would otherwise leave behind as an empty left column. */
@@ -3076,7 +3103,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              invented for the markup. The handler below still swaps the view in
              place for a plain left-click, and stands aside for a modified or
              middle click, so nothing navigates that did not navigate before. -->
-        <a id="myDeskLink" href="/desk" class="hover:text-ink font-medium"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9.2 10 4l6.5 5.2V16a1 1 0 0 1-1 1H12v-4.5H8V17H4.5a1 1 0 0 1-1-1z"/></svg><span class="nvl">Home</span></a>
+        <a id="myDeskLink" href="/desk" class="hover:text-ink font-medium"><svg class="nvi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 10.25 12 4l7.5 6.25V19a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 19z"/><path d="M9.5 20.5v-6h5v6"/></svg><span class="nvl">Home</span></a>
         <!-- The vault's only entrance. It lived inside the account dropdown
              until 2026-08-29; in rail mode that buried a daily workspace two
              clicks down a menu pinned to the foot of the sidebar, so it is a
@@ -3120,7 +3147,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              view). The Reports row that sat below this one for a day only
              opened a tab of Home, so it left the rail; marketBar carries the
              same decision. -->
-        <a id="navMessagesLink" href="/messages" class="hover:text-ink font-medium"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13v8.5h-7L5.5 16v-3h-2z"/><path d="M7 8.2h6M7 10.6h3.5"/></svg><span class="nvl">Messages</span><span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>
+        <a id="navMessagesLink" href="/messages" class="hover:text-ink font-medium"><svg class="nvi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 4.5h13a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-4 4v-4h-2a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z"/><path d="M7.5 8.5h9M7.5 12.5h5"/></svg><span class="nvl">Messages</span><span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>
         <!-- Pipeline, under Messages (owner's call, 2026-10-09), and Sites in
              its place for a development firm. Both rows ship; the shop-dev
              class on <html> shows one (SHOP_NAV_CSS and SHOP_NAV_JS, which
@@ -3130,13 +3157,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              /sites, a development firm's deals by stage (sites-page.js,
              2026-10-12; it was this page's Properties tab, which made it
              Home twice), so neither is ever current here. -->
-        <a id="navPipe" href="/pipeline" class="hover:text-ink"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h14l-5.2 6.2V16l-3.6-1.6v-4.2z"/></svg><span class="nvl">Pipeline</span></a>
-        <a id="navSites" href="/sites" class="hover:text-ink"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 17V3.5"/><path d="M6.5 4h8l-2 2.6 2 2.6h-8"/><path d="M3 17h14"/></svg><span class="nvl">Sites</span></a>
+        <a id="navPipe" href="/pipeline" class="hover:text-ink"><svg class="nvi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h17l-6 7.25v7.75l-5-2.5v-5.25z"/><path d="M6.9 8.5h10.2"/></svg><span class="nvl">Pipeline</span></a>
+        <a id="navSites" href="/sites" class="hover:text-ink"><svg class="nvi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.5c-3.9-3.3-6.5-6.6-6.5-10.5a6.5 6.5 0 0 1 13 0c0 3.9-2.6 7.2-6.5 10.5z"/><circle cx="12" cy="10" r="2.5"/></svg><span class="nvl">Sites</span></a>
         <!-- The tools group's label. Rail-only, and present for every visitor
              so the two nav authors keep emitting the same shape -- see
              server.js's marketBar and RAIL_CSS for the twin. -->
         <span class="navsec">Tools</span>
-        <a href="/markets" class="hover:text-ink"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5.5l4.5-2 5 2 4.5-2v11l-4.5 2-5-2-4.5 2z"/><path d="M7.5 3.5v11M12.5 5.5v11"/></svg><span class="nvl">Markets</span></a>
+        <a href="/markets" class="hover:text-ink"><svg class="nvi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6.5l6-2 5 2 6-2v13l-6 2-5-2-6 2z"/><path d="M9.5 4.5v13M14.5 6.5v13"/></svg><span class="nvl">Markets</span></a>
         <!-- A "Run a report" row (/run-report) sat here for one day,
              2026-09-04, and the owner took it out the same evening: Bulk
              valuation is the comp-report tool (one address or fifty), and a
@@ -3161,12 +3188,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              Comps since 2026-10-13: a section, the member's own comps at
              /comps (the row's address) and the comp report tool at /bulk.
              index.html never serves either, so it never marks this row. -->
-        <a id="navComps" href="/comps" class="hover:text-ink"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/></svg><span class="nvl">Comps</span></a>
+        <a id="navComps" href="/comps" class="hover:text-ink"><svg class="nvi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 4.5V18A1.5 1.5 0 0 0 6 19.5h14.5"/><path d="M8.5 15.5v-3M12.5 15.5v-8M16.5 15.5v-5"/></svg><span class="nvl">Comps</span></a>
         <!-- The Permit tracker (2026-09-24): the THIRD Tools row, after Comp
              report (owner's order). marketBar carries the twin. Its unread dot
              (2026-09-27) is a tracked permit's step completing; filled by
              refreshPermitsDot, the Messages dot's shape. -->
-        <a href="/permits" class="hover:text-ink"><svg class="nvi" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h10v14.4H5z"/><path d="M7.5 6h5M7.5 8.6h5"/><circle cx="10" cy="13" r="1.8"/></svg><span class="nvl">Permits</span><span id="navPermitDot" class="navdot" hidden aria-label="permit updates"></span></a>
+        <a href="/permits" class="hover:text-ink"><svg class="nvi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="3.5" width="13" height="17" rx="1.5"/><path d="M8.5 7.5h7"/><path d="M8.75 14.25 11 16.5l4.25-4.75"/></svg><span class="nvl">Permits</span><span id="navPermitDot" class="navdot" hidden aria-label="permit updates"></span></a>
         <button id="signInLink" type="button" class="hover:text-ink">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
@@ -3503,7 +3530,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                Comps toggle sat here until 2026-10-09. -->
           <div id="hmLayers" class="hm-layers" role="group" aria-label="Show on the map">
             <button type="button" id="hmLayerProps" data-view="properties" aria-pressed="true"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg><span>Properties</span></button>
-            <button type="button" id="hmLayerPermits" data-view="permits" aria-pressed="false"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h10v14.4H5z"/><path d="M7.5 6h5M7.5 8.6h5"/><circle cx="10" cy="13" r="1.8"/></svg><span>Permits</span></button>
+            <button type="button" id="hmLayerPermits" data-view="permits" aria-pressed="false"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.75" y="2.75" width="10.5" height="14.5" rx="1.25"/><path d="M7.25 6.25h5.5"/><path d="M7.25 11.75l1.75 1.75 3.5-3.75"/></svg><span>Permits</span></button>
           </div>
           <!-- Said when a layer is on and has nothing to draw here: never an
                empty map that could be read as "nothing was filed". -->
@@ -3540,7 +3567,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div class="hm-first-doors">
               <button type="button" id="hmFirstTeam" class="hm-first-door"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg><b id="hmFirstTeamT">Start a firm</b><small id="hmFirstTeamS">Work as a team</small></button>
               <a class="hm-first-door" href="/markets"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15.5l4-4.5 3 2.5 4.5-6 2.5 3"/><path d="M3 3.5v13h14"/></svg><b>Follow a market</b><small>New deals by email</small></a>
-              <a class="hm-first-door" href="/permits"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h10v14.4H5z"/><path d="M7.5 6h5M7.5 8.6h5"/><circle cx="10" cy="13" r="1.8"/></svg><b>See permits</b><small>Filed this month</small></a>
+              <a class="hm-first-door" href="/permits"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.75" y="2.75" width="10.5" height="14.5" rx="1.25"/><path d="M7.25 6.25h5.5"/><path d="M7.25 11.75l1.75 1.75 3.5-3.75"/></svg><b>See permits</b><small>Filed this month</small></a>
             </div>
             <p class="hm-first-fine">Every valuation is an automated estimate, not an appraisal.</p>
           </section>

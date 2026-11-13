@@ -1806,8 +1806,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        width is a floor, so where a reader has raised the browser's minimum
        font size the tile widens with its initials (they stood 9px outside it
        at a 20px minimum on a phone). The widest pair, "WW", is 27.3px of
-       letters: with the 2px each side it still fits the 34. */
-    .hm-fh-mark { position: relative; flex: none; display: grid; place-items: center; box-sizing: border-box; min-width: 34px; height: 34px; padding: 0 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--wash-2); color: var(--ink-2); font: inherit; font-size: var(--text-small); font-weight: 600; letter-spacing: .02em; }
+       letters: with the 2px each side it still fits the 34. The tile's
+       height stays 34px, so a line of larger letters is taller than it:
+       align-content keeps that line centred, where it hung from the top with
+       the capitals on the tile's bottom edge (24px minimum, on a phone). */
+    .hm-fh-mark { position: relative; flex: none; display: grid; place-items: center; align-content: center; box-sizing: border-box; min-width: 34px; height: 34px; padding: 0 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--wash-2); color: var(--ink-2); font: inherit; font-size: var(--text-small); font-weight: 600; letter-spacing: .02em; }
     /* One that can (an owner's or admin's: it adds or changes the logo) is
        the button at the row's other end: the same tile, edge and corner. It
        was a solid ink tile, which read as a second account picture and, in

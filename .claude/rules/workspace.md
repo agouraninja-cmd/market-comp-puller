@@ -7,6 +7,7 @@ paths:
   - "test/home-sites.test.js"
   - "test/org-desk.test.js"
   - "test/desk-*.test.js"
+  - "test/home-head.test.js"
   - "test/auth-boot.test.js"
 ---
 # The signed-in workspace
@@ -21,6 +22,148 @@ paths:
 > (Since 2026-10-07 the rail no longer has a Data row, and /vault's heading
 > read "Your properties and comps" until 2026-10-13, when there stopped
 > being a /vault page at all; see below.)
+
+> **The head of Home's list: one row for the firm, one line down the panel
+> (2026-11-13; the owner, with a picture of his own Home: "The middle bar
+> where it says Jacob Adler and good morning looks off can you make it look
+> professional and clean").** Read this before the boxes below, which it
+> amends: where they describe the firm header (a manager whose firm has no
+> logo getting "+ Add your firm's logo" under the shop line, the briefcase
+> button, the mark), this is what the page does now. Built straight (the ask
+> was a fix, not options); the before-and-after pictures are at
+> https://claude.ai/artifact/L2uA5NVcYuK4UjdGcRNDP1.
+> - **What was off**, read off his screenshot. His own account is the row's
+>   hardest case: a firm named after its owner, one person, no logo, nothing
+>   due. Four text colours in 60px (an ink name, an indigo shop kind that
+>   read as a link and was not one, a grey head count, and a red third line,
+>   "+ Add your firm's logo", the loudest thing on the panel and its least
+>   urgent job). A row three lines tall with no logo and two with one, so
+>   the mark and the button floated against a different block each time. The
+>   head 28px in against the cards' 26 (16 against 18 away from the rail).
+>   "Firm settings" a one-off grey button, 29px below the map's switch beside
+>   it. An initials tile in solid ink that read as a second account picture
+>   and, in dark mode, was the brightest thing on the screen.
+> - **How it was chosen.** Seven designs were applied to the live page as
+>   prototypes (six from a panel, each told a direction, and one more) and
+>   photographed in the same four situations: the owner's own, a firm with a
+>   logo, a plain member of a firm with a long name on a busy day, and no
+>   firm; desktop, dark and phone. Three judges compared them: on craft, on
+>   the owner's eye, and on robustness and build. They picked three
+>   different designs and agreed on nearly everything in them, which is what
+>   shipped. Tried and left out, each for a reason: a tinted bar across the
+>   panel and a full-width rule under it (a second surface he did not ask
+>   for); the date in capitals; the firm in a card; the firm under the
+>   greeting; "Firm settings" and Find as text on a rule (two controls that
+>   stopped looking like the product's); and moving the LIST two pixels
+>   instead of the head (it wraps "Firm buildings … list" on Properties, and
+>   a test pins `.hm-body`'s padding). Four reviewers then went over the
+>   build (code, tests, pictures, accessibility and words); what they found
+>   is in the rules below.
+> - **The firm row is the panel's first block, outside `.hm-head`.**
+>   `#hmFirmHead` and `#hmFirmMsg` are `.hm-panel`'s first two children, each
+>   with its own gutters. With no firm there is no row, and the head under
+>   it needs no rule that asks whether one is there (no sibling selector, no
+>   negative margin kept in step with a padding). Every id kept its element
+>   and its writer. `drawFirmHead(null)` also empties and hides `#hmFirmMsg`
+>   (a "Saved." must not outlive the row it spoke for).
+> - **One band beside the rail.** The row starts 14px down and is 34px tall:
+>   the rows of the map's Properties / Permits switch (`.hm-layers`, top
+>   14px, 34px), centred a pixel under the rail's logo. The mark, the two
+>   lines (an 18px name and a 16px line of facts) and "Firm settings" are
+>   that one 34px box, so their tops and bottoms line up with the switch
+>   across the panel's edge. A measured number, not a shared one: move the
+>   switch and the test that reads both fails until the row follows. No
+>   rule under the row and no fill behind it; 24px of paper sets it apart.
+>   Away from the rail it starts 16px under the map strip.
+> - **Two lines in every state, ink and grey.** `drawFirmHead` writes the
+>   facts as ELEMENTS (`em` for the shop, then `span.hm-fh-n` for the head
+>   count or `button.hm-fh-logo` for the door), and the stylesheet draws the
+>   dot AFTER each but the last, so a fact can drop out without leaving a
+>   dot and one that wraps leaves its dot at the end of the line above. It
+>   is the shop and ONE more thing: **while the logo's door is offered it
+>   takes the head count's place** (three facts do not fit beside the
+>   button, and the count is on People), and the count is back once a logo
+>   is saved. A fact is never cut in half: each is `nowrap` and the line
+>   wraps whole facts, which it only does when a reader's own text spacing
+>   or font makes them wider than the page ships them (WCAG 1.4.12; the old
+>   row wrapped too). The name is `--text-compact`/600 with the whole of it
+>   in `title` (a long one is cut with an ellipsis, never wrapped into the
+>   button); the facts are `--ink-3`. Nothing in the row is red or indigo
+>   but the focus ring.
+> - **The logo's door is still in words** (the owner's call of 2026-10-18):
+>   "Add a logo", a `<button class="hm-fh-logo">` at the end of the facts
+>   line, a step darker than the facts (`--ink-2`, 500) and underlined in
+>   its own ink (a paler underline measured 1.5:1). Its press area reaches
+>   down and sideways only: above it is the firm's name. The mark opens the
+>   same file picker, and **while the door is offered the mark is out of
+>   the tab order and hidden from a screen reader** (`tabIndex = -1`,
+>   `aria-hidden`): two buttons for one job were two keyboard stops, and
+>   the mark's spoken name did not contain its visible "JR". With a logo
+>   saved (no door) the mark is the control again.
+> - **A redraw keeps the keyboard's place.** The mark and the door are
+>   rebuilt on every draw, and Home draws again as each read lands, so the
+>   focused one used to be thrown away with the focus. `drawFirmHead` notes
+>   which had it and hands it to the new one: to the door while it is
+>   offered, else to the mark (so saving a logo from the keyboard leaves
+>   the focus on the mark that now changes it).
+> - **The mark says whether it can be pressed.** An owner's or admin's is a
+>   button and is drawn like the button at the row's other end (`--card`,
+>   an `--edge` border that darkens on hover, the 8px corner); a member's is
+>   a span and is flat (`--wash-2`, `--line`, `--ink-2` letters). A border,
+>   not an inset shadow, so a forced-colours mode keeps it. The logo stays
+>   on white in both themes. The button's press area is 44px (an `::after`
+>   that reaches past the tile), on a phone too.
+> - **"Firm settings" is the shared compact button** (`class="hm-btn
+>   hm-fh-set"`), the one "+ Add a property" is, with the briefcase kept
+>   beside its words (the owner chose it over a gear). `.hm-fh-set` adds
+>   only a place and a whole-pixel height, and restates the hide class,
+>   because `.hm-btn` sets a display (app-shell.md's "Hidden means hidden").
+>   Its `aria-label` and `title` went: they said "Firm & branding" over a
+>   label that says "Firm settings".
+> - **One line down the panel.** The head moved to the list's line: 26px
+>   beside the rail (the body's 16px and the 10px every card and row
+>   carries) and 18px away from it (8 and 10). Never the other way round
+>   (above). `#deskLoading` follows beside the rail, so the stand-in does
+>   not jump there.
+> - **The day, the greeting, the status, the find box.** Unchanged in words
+>   and type: the date in sentence case, the greeting 30px Georgia, one
+>   status sentence (now `text-wrap: balance`, so a two-line one breaks
+>   evenly). Line boxes are whole pixels, 18 and 34 (they were 19.5 and
+>   33.6), written as RATIOS of the text and rounded up in the last place
+>   (`1.3847`, `1.1334`; the firm row's are `1.2858` and `1.3334`): a length
+>   does not grow when a reader raises the browser's minimum font size, and
+>   a ratio rounded down leaves the line a sixty-fourth of a pixel short,
+>   which puts every edge under it between pixels. 24px from the firm row
+>   to the date, 24 from the status to the find box, 12 from the find box to
+>   the tabs (`.hm-head .hm-tabs`, from the head's side: the shared tabs'
+>   own rule is components.js's). The find box's placeholder is `--ink-3`;
+>   it was Tailwind's reset grey (`#9ca3af` in tailwind.css, 2.5:1 on the
+>   box in light), the one text in the head that was not a token. On the
+>   owner's screen the tabs' rule sits 277px down where it sat at 326 (28px
+>   higher for a firm with a logo or for a member, whose row was already
+>   two lines).
+> - **Narrow phones.** Under 450px the mark is 28px and the briefcase
+>   leaves the button, which is the room the second line needs to stay
+>   whole down to 375px. Under 372px the second line is ONE fact, whole,
+>   with no dot: the door where it is offered (`small.has-door`), else the
+>   shop.
+> - **Left alone, and worth knowing.** A wide wordmark logo is small in a
+>   square tile (it was at 40px too). On a busy day the first row's card
+>   still starts 4px under the tabs' rule and runs 10px past the line on
+>   both sides: the list's, not the head's. Where scrollbars take room
+>   (Chrome on Windows), a list long enough to scroll ends 15px short of
+>   the head's right edge, as it did before. The map's switch is a pixel
+>   under the rail logo's centre. The first-building screen (`#hmFirst`)
+>   has its own head and was not touched.
+> - Tests: `test/home-head.test.js` RUNS `drawFirmHead` against a stand-in
+>   document (no firm, an owner with and without a logo, a member with and
+>   without one, a logo that fails to load, the roster landing late, the
+>   keyboard's place across a redraw; until now only its source was
+>   matched) and holds the stylesheet to the decisions above: the alignment
+>   line added up from both rules, the band read off `.hm-layers`, the line
+>   boxes computed from the scale, no red or indigo in the row, the two
+>   marks, the button's class and name, the row's place in the markup, the
+>   narrow rules. `test/desk-map-layers.test.js` pins the door's new words.
 
 > **A free account's Home is an address list (2026-11-13, the owner's call:
 > "Follow the plan").** billing.md's rule ("Free My Desk is an address list,
@@ -357,7 +500,8 @@ paths:
 > the switch reads Both. Pinned in `test/home-map.test.js` and
 > `test/desk-map-layers.test.js`.
 
-> **The firm header (2026-10-13, owner's pick of Draft C; drafts page
+> **The firm header (2026-10-13, owner's pick of Draft C; its look and its
+> place in the markup changed on 2026-11-13, see the box at the top; drafts page
 > https://claude.ai/artifact/1q1DwN7QqSSARgtkQQRJYT).** A firm member's Home
 > opens with a row naming the firm: its mark, its name, its shop
 > ("Development shop" / "Broker shop", `shopCopy(kind).label`, the words Firm

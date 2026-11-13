@@ -253,3 +253,40 @@ test("Home's fixes from the empty Home drafts: words on the firm header, links a
   assert.doesNotMatch(next.replace("ic.innerHTML = HM_ICON[st.icon]; // static markup, no data", ""), /innerHTML/);
   assert.match(draw, /todayEmpty\.classList\.toggle\("hidden", hmItems\.length > 0 \|\| nothing \|\| next\);/);
 });
+
+test("a free account's Home is an address list: values come off the rows before anything draws them (2026-11-13)", () => {
+  // The owner's call, "Follow the plan". Four places drew an owned
+  // property's estimate (the row, the Owned total, the map's tag, the map
+  // card) and only the opened pane asked the plan. All four read hmRows, so
+  // the gate is where hmRows is made. The rule itself is home-map.js's
+  // withoutOwnValues (test/home-map.test.js).
+  assert.ok(html.includes("const hmShowValues = () => { try { return Boolean(proConfig && proConfig.portfolioValues); } catch (_) { return false; } };"),
+    "the plan's flag is read guarded (proConfig is declared far below) and fails closed");
+  const draw = fnOf("function drawHomeMap() {");
+  const made = draw.indexOf("hmRows = HOMEMAP.properties(");
+  const gate = draw.indexOf("if (!showValues) hmRows = HOMEMAP.withoutOwnValues(hmRows);");
+  assert.ok(made > 0 && gate > made, "the gate is gone from drawHomeMap");
+  assert.match(draw, /const showValues = hmShowValues\(\);\s*if \(!showValues\) hmRows = HOMEMAP\.withoutOwnValues\(hmRows\);/);
+  // Nothing reads the rows between making them and gating them.
+  assert.equal((draw.slice(made, gate).match(/hmRows/g) || []).length, 1, "something reads hmRows before the plan's gate");
+  // hmRows has one writer besides its reset, so no other path can refill it
+  // with values.
+  assert.equal((html.match(/hmRows = HOMEMAP\.properties\(/g) || []).length, 1);
+  assert.equal((html.match(/\bhmRows = /g) || []).length, 4, "hmRows is written somewhere new (its declaration, its reset, properties() and the gate are the four): gate it there too");
+  // The value surfaces read the row, never the portfolio's snapshots.
+  for (const fn of ["function hmPropRow(r) {", "function hmDrawPins() {", "function hmSelect(key, { item, permit, from } = {}) {"]) {
+    assert.doesNotMatch(fnOf(fn), /deskPortfolio|lastValue|snapshots/, fn);
+  }
+  // The pane is told the same answer, from the same helper.
+  assert.ok(html.includes("firm: myFirm(), showValues: hmShowValues(),"));
+  // The member is told once, on the Owned head, in the pricing table's words,
+  // and offered the plans only where Pro can be bought.
+  assert.ok(html.includes("<span>Portfolio with estimated values</span>"), "the pricing window's wording moved; move the Owned head's with it");
+  assert.match(draw, /if \(!showValues\) \{\s*ownNote = document\.createDocumentFragment\(\);\s*ownNote\.append\("Estimated values are part of Pro"\);\s*if \(hmCanBuy\(\)\) \{/);
+  assert.equal((html.match(/Estimated values are part of Pro/g) || []).length, 1, "said once");
+  // /api/config can answer after Home drew (no boot payload): drawn again.
+  const gateFn = html.slice(html.indexOf("async function initGate() {"), html.indexOf("async function tryLogin("));
+  assert.match(gateFn, /if \(typeof drawHomeMap === "function" && currentUser && hmRows\.length\) \{\s*try \{ drawHomeMap\(\); \}/);
+  // A plan that changes (a checkout return) repaints the desk, which redraws Home.
+  assert.match(html.slice(html.indexOf("async function refreshProConfig() {"), html.indexOf("function showCheckoutNotice(")), /renderMyDesk\(\);/);
+});

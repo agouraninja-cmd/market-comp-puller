@@ -1819,6 +1819,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-gh b { font-family: var(--serif); font-size: 17px; font-weight: 400; color: var(--ink); }
     .hm-gh span { font-size: var(--text-label); font-weight: 600; color: var(--ink-3); }
     .hm-gh small { font-size: var(--text-label); color: var(--ink-3); }
+    .hm-gh small button { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--red); cursor: pointer; white-space: nowrap; }
+    .hm-gh small button:hover { text-decoration: underline; }
     .hm-row.p { grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; padding: 10px; }
     .hm-th { position: relative; width: 48px; height: 48px; overflow: hidden; border-radius: 9px; background: var(--wash-2); }
     .hm-th img, .hm-pop-ph img { position: absolute; width: 256px; height: 256px; max-width: none; }
@@ -6058,6 +6060,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // been initialized by the time this line runs.
     refreshBillingUI();
     applySearchLock();
+    // Home draws off the plan: whether the member's own properties carry
+    // their values (hmShowValues) and whether BOV requests are read
+    // (hmCanLeads). With no boot payload this answer can land after Home
+    // drew, so Home is drawn again from what it already holds. Not the desk
+    // fill the next comment retired: drawHomeMap repeats no read.
+    if (typeof drawHomeMap === "function" && currentUser && hmRows.length) {
+      try { drawHomeMap(); } catch (err) { console.error("Home map draw failed:", err); }
+    }
     // This used to re-run the desk fill "once the real Pro flag is in",
     // from the days the desk drew portfolio values gated on it. Nothing the
     // desk fills reads proConfig any more (the values moved to /vault, and
@@ -15039,6 +15049,15 @@ async function renderMyDesk() {
   // the read is guarded for the temporal dead zone.
   const hmCanVault = () => { try { return Boolean(proConfig && proConfig.canUseVault); } catch (_) { return false; } };
   const hmCanLeads = () => hmCanVault() && !(myFirm() && myFirm().kind === "development");
+  // Whether this member's plan shows them their properties' values: "a free
+  // member's own properties are an address list, a Pro member's carry their
+  // values" (entitlements.js's portfolioValues, by way of /api/config; read
+  // the same guarded way). Every value on Home follows it: drawHomeMap
+  // clears them from its rows, and the working pane is told the same.
+  // Presentation only, like every field of that block.
+  const hmShowValues = () => { try { return Boolean(proConfig && proConfig.portfolioValues); } catch (_) { return false; } };
+  // Whether Pro can be bought here, so the line that names Pro offers its door.
+  const hmCanBuy = () => { try { return Boolean(proConfig && proConfig.billing); } catch (_) { return false; } };
   const hmFirmKind = () => (myFirm() ? myFirm().kind || "" : "");
 
   // A member's own properties, worked on Properties: a development firm's
@@ -15062,7 +15081,7 @@ async function renderMyDesk() {
     hmSites = HOMESITES.mount({
       propTypes: HM_TYPES,
       data: () => ({ sites: deskSites || [], portfolio: deskPortfolio || [], buildings: myFirm() ? firmBuildings : [],
-        firm: myFirm(), showValues: (() => { try { return Boolean(proConfig && proConfig.portfolioValues); } catch (_) { return false; } })(),
+        firm: myFirm(), showValues: hmShowValues(),
         canSites: hmCanVault(), today: hmTodayIso(), share: deskSitesShare }),
       deals: () => HOMEMAP.dealsOn(hmFirmKind()),
       reload: hmReloadMine,
@@ -15605,7 +15624,8 @@ async function renderMyDesk() {
   function hmGroupHead(title, n, note) {
     const h = hmEl("div", "hm-gh");
     h.append(hmEl("b", null, title), hmEl("span", null, String(n)));
-    if (note) h.append(hmEl("small", null, note));
+    // `note` is words, or (the Owned head's plan line) words and a button.
+    if (note) { const s = hmEl("small"); s.append(note); h.append(s); }
     return h;
   }
 
@@ -15617,6 +15637,12 @@ async function renderMyDesk() {
     hmRows = HOMEMAP.properties({ buildings: firm ? firmBuildings : [], sites: deskSites || [], portfolio: deskPortfolio || [],
       critical: firm && Array.isArray(deskCritical) ? deskCritical : [], today, firmKind: hmFirmKind(),
       shareOrg: deskSitesShare ? deskSitesShare.orgId : "" });
+    // The plan (2026-11-13, the owner: "Follow the plan"): a free account's
+    // properties are an address list. The estimates come off the rows HERE,
+    // before anything below reads them, so the list, the Owned total, the
+    // map's tags and the map card cannot disagree about it.
+    const showValues = hmShowValues();
+    if (!showValues) hmRows = HOMEMAP.withoutOwnValues(hmRows);
     const canLeads = hmCanLeads();
     if (canLeads && !hmLeadsAsked && deskFilledFor) hmLoadLeads();
     hmItems = HOMEMAP.agenda({ critical: firm && Array.isArray(deskCritical) ? deskCritical : [],
@@ -15695,8 +15721,21 @@ async function renderMyDesk() {
     // rounder $12M.
     const own = HOMEMAP.ownedTotal(hmRows);
     const ownMoney = mine ? HOMESITES.short : HOMEMAP.money;
-    const ownNote = [own ? ownMoney(own.total) + " likely combined" + (own.valued < own.of ? ` (${own.valued} of ${own.of})` : "") : "",
+    // Without values on the plan the head says so, once, in the pricing
+    // table's own words ("Portfolio with estimated values"), with the door
+    // to the plans where Pro can be bought.
+    let ownNote = [own ? ownMoney(own.total) + " likely combined" + (own.valued < own.of ? ` (${own.valued} of ${own.of})` : "") : "",
       "your numbers stay private"].filter(Boolean).join(" · ");
+    if (!showValues) {
+      ownNote = document.createDocumentFragment();
+      ownNote.append("Estimated values are part of Pro");
+      if (hmCanBuy()) {
+        const plans = hmEl("button", null, "See plans");
+        plans.type = "button";
+        plans.addEventListener("click", () => openPricingModal());
+        ownNote.append(" · ", plans);
+      }
+    }
     [["buying", "Buying", buyNote], ["owned", "Owned", ownNote],
       ["firm", "Firm buildings", firm ? `on ${firm.name}'s list` : ""]].forEach(([g, title, note]) => {
       const list = hmRows.filter((r) => r.group === g);

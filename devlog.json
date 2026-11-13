@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-11-13",
+    "type": "fix",
+    "title": "A free account's Home is an address list again: estimated values show on Pro",
+    "details": "The plan says a free account's properties are an address list and Pro is the portfolio with estimated values, but Home showed a free account its owned properties' estimates in four places (the Properties rows, the Owned total, the map's value tags and the map card). Only the opened pane asked the plan. The gate went missing when Home became one map (2026-10-07) and the portfolio came back to it (2026-10-13). The owner's call: follow the plan. Home now takes the estimates off its rows in one place before anything draws them, the Owned heading says once that estimated values are part of Pro (with a door to the plans where Pro is on sale), and Home redraws when the plan answer lands late or changes. A deal's asking price, which the member typed, is untouched. Trial, Pro and comped accounts see what they saw."
+  },
+  {
     "date": "2026-11-10",
     "type": "fix",
     "title": "Tester codes work again",

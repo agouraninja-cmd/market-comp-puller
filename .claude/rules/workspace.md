@@ -22,6 +22,49 @@ paths:
 > read "Your properties and comps" until 2026-10-13, when there stopped
 > being a /vault page at all; see below.)
 
+> **A free account's Home is an address list (2026-11-13, the owner's call:
+> "Follow the plan").** billing.md's rule ("Free My Desk is an address list,
+> Pro is the book of values"; `entitlements.js`'s `portfolioValues`; the
+> pricing table's Portfolio row) was only half kept: the opened pane asked
+> the plan, while the Properties rows, the Owned total, the map's value tags
+> and the map card showed a free account its estimates. The gate was lost
+> when Home became one map (2026-10-07) and the portfolio came back to it
+> (2026-10-13). Read this before the boxes below, which it amends where they
+> say the Owned group adds up or a row shows its value: that is Pro (and a
+> trial, a tester, the team, and a Pro-off deployment).
+> - **One gate, at the source.** `drawHomeMap` passes `hmRows` through
+>   `HOMEMAP.withoutOwnValues` (home-map.js, pure, tested) when
+>   `hmShowValues()` is false, on the line after `HOMEMAP.properties(...)`
+>   and before anything reads the rows. Every value surface reads `hmRows`,
+>   so the row, `ownedTotal`, `hmDrawPins`' tags and `hmSelect`'s card follow
+>   with no check of their own. Never add a plan check to one of them; a new
+>   writer of `hmRows` must go through the gate (a test counts the writers).
+> - **Only an owned row's estimate goes** (`value`, `valueNote`, `change` on
+>   `group === "owned"`). A deal's asking price is a figure the member typed.
+> - **`hmShowValues()`** sits beside `hmCanVault` and reads
+>   `proConfig.portfolioValues` inside try/catch (the temporal dead zone);
+>   it fails closed, so a free member never sees a flash of values.
+>   `hmSitesView` hands the pane the same answer. Presentation only (rule 1):
+>   `GET /api/portfolio` still returns the member's own snapshots, and a
+>   report they open still shows its value.
+> - **Said once.** The Owned head reads "Estimated values are part of Pro",
+>   the pricing window's words ("Portfolio with estimated values"; a test
+>   holds the two together), with "See plans" (`openPricingModal`) only where
+>   Pro is on sale (`hmCanBuy`, `proConfig.billing`). Rows show status and
+>   who can see them; the map shows dots.
+> - **A late or changed plan redraws Home.** `initGate` calls `drawHomeMap()`
+>   again when `/api/config` lands after Home drew (no boot payload; no read
+>   is repeated), and `refreshProConfig` already repaints the desk on a
+>   checkout return.
+> - **`claude/kind-heisenberg-djalsz`** (unmerged on this date) nulls the
+>   same values locally in its `hmDrawBrief` and its workspace.md box calls
+>   this "Not changed, and worth a decision". When it merges: delete that
+>   local copy so the brief reads `hmRows`, and point its box here.
+> - Tests: `test/home-map.test.js` (the rule), `test/desk-map-layers.test.js`
+>   (the wiring). Before and after pictures were taken with a free account
+>   on the stand-in database (`cn_session` cookie; Leaflet served from a
+>   local copy, since unpkg is not reachable from a cloud session).
+
 > **A report opened from Home stands alone (2026-11-10, the owner: "when you
 > click on a property it will have the comp search with the value a building
 > card and stuff above it which I thought we removed").** Read this before

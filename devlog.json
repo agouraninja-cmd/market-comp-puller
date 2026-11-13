@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-11-13",
+    "type": "fix",
+    "title": "A hidden tab or button is hidden again",
+    "details": "Since the buttons and tabs were tidied into one shared style on November 10, a tab or button the page meant to hide stayed on screen. An account in no firm saw a People tab on Home that did nothing when pressed. On Sites, “+ Add a site” showed above the message saying Sites is for development firms, and a development firm with no deals yet got a row of dashes and four empty columns around its “No sites yet” card. All three are fixed, and a test now checks the whole family of buttons and tabs."
+  },
+  {
     "date": "2026-11-10",
     "type": "fix",
     "title": "Tester codes work again",

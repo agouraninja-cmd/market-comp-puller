@@ -154,6 +154,30 @@ test("tabs: a hairline under the row, a red line under the current tab, and no n
   }
 });
 
+test("hidden means hidden: every selector given a display says the attribute again", () => {
+  // The browser's own rule for [hidden] loses to ANY rule that sets display,
+  // so a component that sets one must restate it, or `el.hidden = true` does
+  // nothing. From 2026-11-10 to 2026-11-13 it did nothing on Home's People
+  // tab (shown, and dead, to a member in no firm) and on /sites' "+ Add a
+  // site" (shown over the wall that says Sites is not for this member).
+  for (const css of [CSS, UNIFIED]) {
+    const rules = rulesOf(css);
+    const shows = rules.filter(([, body]) => { const d = decl(body, "display"); return d && d !== "none"; });
+    assert.ok(shows.length >= 12, "the walk found too few display rules to mean anything");
+    for (const [sel] of shows) {
+      assert.equal(ruleFor(css, sel + "[hidden]"), "display:none", `${sel} sets a display and has no ${sel}[hidden]{display:none}`);
+    }
+  }
+  // The two that were live, by name.
+  assert.equal(ruleFor(CSS, ".hm-tabs button[hidden]"), "display:none");
+  assert.equal(ruleFor(CSS, ".hm-btn[hidden]"), "display:none");
+  // And each one out-ranks the rule it answers: same selector plus an
+  // attribute, written after it.
+  for (const sel of [".hm-tabs button", ".hm-btn", ".btn", ".tab"]) {
+    assert.ok(CSS.indexOf(sel + "[hidden]{") > CSS.indexOf(sel + "{"), `${sel}[hidden] must come after ${sel}`);
+  }
+});
+
 test("unified, every family is the canon: the differences are all in `differs`", () => {
   const c = C.BUTTON.sizes.compact;
   for (const f of C.BUTTON_FAMILIES) {

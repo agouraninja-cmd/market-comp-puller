@@ -448,7 +448,12 @@ Every button, whatever its size or look:
   side by side are the same size;
 - shows a **2px red focus ring**, 2px out, for keyboard users;
 - **dims to 60%** when disabled;
-- **fades** its colours over 0.12s on hover. Nothing moves.
+- **fades** its colours over 0.12s on hover. Nothing moves;
+- stays **hidden when it carries the `hidden` attribute** (2026-11-13). A
+  rule that sets `display` out-ranks the browser's own rule for `hidden`, so
+  `components.js` restates it for every button and tab it draws. A page
+  class of your own that sets a display needs the same line
+  (`.thing[hidden]{display:none}`) before a script may hide it that way.
 
 For **new work, use `.btn`, `.btn.sm`, `.btn.lg` and `.btn.ghost`** and
 nothing else. The page families (`.hm-btn` on Home and Sites, `.mc-btn` on the

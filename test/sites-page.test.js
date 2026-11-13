@@ -174,6 +174,33 @@ test("a card opens its deal under the board with Home's own pane, and closes it 
   assert.equal(card().getAttribute("aria-expanded"), "false");
 });
 
+// The stand-in DOM above knows nothing of CSS, so `el.hidden = true` passes
+// there whatever the stylesheet does. On screen the browser's own [hidden]
+// rule loses to any rule that sets a display, and until 2026-11-13 an empty
+// Sites page drew its figures (a row of dashes) and four empty columns around
+// the invitation, and "+ Add a site" stood over the wall that says Sites is
+// not for this member. This reads the stylesheet the page actually ships.
+test("what the script hides with the hidden attribute is hidden on screen too", () => {
+  const html = renderSitesBody({ s: 200, sites: [], today: TODAY, firm: DEV });
+  const css = html.slice(html.indexOf("<style>"), html.indexOf("</style>")) + "\n" + require("../components.js").componentCss();
+  // Every element the page hides by attribute: in the markup, or from the script.
+  const hides = new Set();
+  for (const m of html.matchAll(/<[a-z]+\b[^>]*\bid="(sp[A-Za-z]+)"[^>]*\shidden[\s>]/g)) hides.add(m[1]);
+  for (const m of SRC.matchAll(/\$\("(sp[A-Za-z]+)"\)\.hidden\s*=/g)) hides.add(m[1]);
+  for (const m of SRC.matchAll(/var (\w+) = \$\("(sp[A-Za-z]+)"\);/g)) if (new RegExp("\\b" + m[1] + "\\.hidden\\s*=").test(SRC)) hides.add(m[2]);
+  for (const id of ["spFigs", "spBoard", "spAddBtn", "spWall", "spApp", "spEmpty"]) assert.ok(hides.has(id), `the walk missed #${id}`);
+  for (const id of hides) {
+    const tag = (html.match(new RegExp(`<[a-z]+\\b[^>]*\\bid="${id}"[^>]*>`)) || [""])[0];
+    const classes = ((tag.match(/class="([^"]*)"/) || [, ""])[1]).split(/\s+/).filter(Boolean);
+    for (const c of classes) {
+      const sets = new RegExp(`(^|[},])\\s*\\.${c}\\{[^}]*display:(?!none)`).test(css);
+      if (!sets) continue;
+      assert.match(css, new RegExp(`\\.${c}\\[hidden\\][^{]*\\{display:none\\}`),
+        `#${id} is hidden by attribute, but .${c} sets a display and nothing restates [hidden]`);
+    }
+  }
+});
+
 test("an empty list is an invitation, and the add form takes deals only", () => {
   const { ids } = run({ s: 200, sites: [], today: TODAY, firm: DEV });
   assert.equal(ids.spEmpty.hidden, false);

@@ -17,6 +17,27 @@ paths:
 
 ## Configuration
 
+> **Hidden means hidden (2026-11-13).** The browser's own rule for the
+> `hidden` attribute loses to ANY rule that sets a `display`, and since the
+> buttons and tabs moved into `components.js` (2026-11-10) every family sets
+> one. So `el.hidden = true` did nothing on Home's People tab (shown, and
+> dead, to a member in no firm) and on `/sites`' "+ Add a site" (shown over
+> the wall that says Sites is for development firms). `components.js` now
+> writes `hiddenRule(sel)`, `<sel>[hidden]{display:none}`, after every
+> selector it gives a display (the canon, and every button, tab and
+> segmented family, lists included), and `test/components.test.js` walks the
+> stylesheet and fails on a display rule with no such companion. The same
+> trap on a page's OWN rules is that page's to restate: `/sites` hid its
+> figures row and its board by attribute while `.sp-figs` and `.sp-board`
+> set displays, so an empty Sites page drew a row of dashes and four empty
+> columns around its "No sites yet" card (`sites-page.js`;
+> `test/sites-page.test.js` reads the stylesheet the page ships, because
+> its stand-in DOM knows nothing of CSS and passed all along). A sweep of
+> 54 page-and-account combinations after the fix found nothing else marked
+> hidden and still drawn. Prefer a `.hidden` / `.hide` class with its own
+> rule (the vault's way) or check the attribute against the class's
+> display before relying on it.
+
 > **Comps, and no vault (2026-10-13, the owner: "Integrate it to the
 > report section and change the report section and name it Comps", and
 > "the vault doesn't even exist any more"): Home, Messages, Pipeline |

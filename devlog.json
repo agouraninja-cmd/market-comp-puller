@@ -2,6 +2,12 @@
   {
     "date": "2026-11-13",
     "type": "fix",
+    "title": "The firm’s initials stay centred in their tile with very large browser text",
+    "details": "With the browser’s minimum font size set to 20px or more, the initials beside the firm’s name on Home sat low in their tile, and at 24px on a phone they rested on its bottom edge. They are centred again. Nothing changes at ordinary text sizes."
+  },
+  {
+    "date": "2026-11-13",
+    "type": "fix",
     "title": "Home’s list stays lined up when the page is zoomed out",
     "details": "The fix that lined Home’s list up with the find box beside a Windows scrollbar went wrong when the browser was zoomed out (90% or less): a browser does not shrink its scrollbar with the page, so the scrollbar no longer fitted in the room made for it, and the list ended a few pixels short of the find box again, even a list that did not scroll. The list now uses the browser’s thin scrollbar when the full one does not fit, and lines up from 67% zoom to 175%."
   },

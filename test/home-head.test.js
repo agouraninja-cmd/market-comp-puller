@@ -843,6 +843,9 @@ test("the initials' tile is a floor, not a size: it widens with its letters, and
   const mark = rule(".hm-fh-mark"), small = rule(".hm-fh-mark", NARROW);
   assert.equal(decl(mark, "min-width"), "34px");
   assert.equal(decl(mark, "width"), null, "the tile is a fixed width again: larger letters stand outside it");
+  // The height stays fixed, so a line of larger letters is taller than the
+  // tile: centred, never hung from its top (they sat on the bottom border).
+  assert.equal(decl(mark, "align-content"), "center", "at a raised minimum font size the initials drop to the bottom of their tile");
   assert.equal(decl(small, "min-width"), "28px");
   assert.equal(decl(small, "width"), null);
   // A picture fills its tile and has no width of its own to give it: a

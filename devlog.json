@@ -6,6 +6,48 @@
     "details": "The plan says a free account's properties are an address list and Pro is the portfolio with estimated values, but Home showed a free account its owned properties' estimates in four places (the Properties rows, the Owned total, the map's value tags and the map card). Only the opened pane asked the plan. The gate went missing when Home became one map (2026-10-07) and the portfolio came back to it (2026-10-13). The owner's call: follow the plan. Home now takes the estimates off its rows in one place before anything draws them, the Owned heading says once that estimated values are part of Pro (with a door to the plans where Pro is on sale), and Home redraws when the plan answer lands late or changes. A deal's asking price, which the member typed, is untouched. Trial, Pro and comped accounts see what they saw."
   },
   {
+    "date": "2026-11-13",
+    "type": "fix",
+    "title": "Markets and the comp report page use the same typeface as the rest of the app",
+    "details": "For a signed-in member, Markets and the comp report page were drawn in the computer’s own font (Segoe UI on Windows) while Home, Messages, Sites, Permits and Your comps use Inter. The left sidebar is the same strip everywhere, so its labels visibly changed typeface when you moved between Home and either of those pages. Both now load Inter. Inter is a little wider, so on Markets the count beside the map’s filters (“196 market areas · 49 measured for industrial”) sits on a line of its own, and a few paragraphs wrap one line differently; nothing else moved. The public Markets page that signed-out visitors and search engines see is unchanged. Individual market pages and the rankings still use the computer’s font when you are signed in; that is the next step."
+  },
+  {
+    "date": "2026-11-12",
+    "type": "improvement",
+    "title": "The left sidebar is redrawn",
+    "details": "The sidebar was a dark strip with a grey block for the page you were on and icons that looked slightly out of focus on an ordinary monitor. Beside a browser that keeps its own tabs in a dark strip, it made two dark bands side by side. It now sits on the same pale surface as the page, and still goes dark in dark mode. The page you are on is a white tile with a small red tick, and pointing at another row only outlines it. Every icon was redrawn larger and sharper: Sites is a map pin, Comps is a bar chart, Permits is a signed-off sheet. The unread count sits beside the icon instead of across it, and Feedback and your account circle are one group at the foot."
+  },
+  {
+    "date": "2026-11-12",
+    "type": "fix",
+    "title": "The sidebar fits a short window",
+    "details": "In a window 620 pixels tall, the Permits row ran into the Feedback button for anyone on the free plan reading Markets or another tool page. In a shorter window, which is what a small laptop gives you once the page is zoomed in, the account circle was pushed off the bottom of the screen, and Settings and Sign out went with it. The rows now close up in a short window, so everything stays on screen. With Windows high-contrast colours on, the account circle also shows where the keyboard is again."
+  },
+  {
+    "date": "2026-11-13",
+    "type": "improvement",
+    "title": "Home has something to show on a quiet day",
+    "details": "When nothing needed you, Today said “Nothing needs you right now.” under the greeting and then again as the whole tab, beside an empty column. That is most days for anyone who owns a few buildings. Today now shows what you hold at a glance (how many properties and where, what they are likely worth together, the next date on the calendar), the dates still further out than the ones that need you, and which of your values moved the most since they were first valued. A property with no value yet leads your next steps. A busy day’s list is exactly as it was, and the sentence is said once."
+  },
+  {
+    "date": "2026-11-13",
+    "type": "improvement",
+    "title": "Buildings in the same city no longer hide behind one map pin",
+    "details": "From across the country, several buildings in one city sat on the same few pixels of Home’s map: one dot, with nothing saying it was six buildings, and on Properties one value tag covering the other five. Pins that would land on each other are now drawn once, as a pill with a count (and on Properties what those buildings are likely worth together). Click it and the map zooms in until each building stands on its own. In a narrow window a click always zooms at least one step, so it can never do nothing."
+  },
+  {
+    "date": "2026-11-13",
+    "type": "fix",
+    "title": "A hidden tab or button is hidden again",
+    "details": "Since the buttons and tabs were tidied into one shared style on November 10, a tab or button the page meant to hide stayed on screen. An account in no firm saw a People tab on Home that did nothing when pressed. On Sites, “+ Add a site” showed above the message saying Sites is for development firms, and a development firm with no deals yet got a row of dashes and four empty columns around its “No sites yet” card. All three are fixed, and a test now checks the whole family of buttons and tabs."
+  },
+  {
+    "date": "2026-11-13",
+    "type": "fix",
+    "title": "Three small things on Home",
+    "details": "In dark mode the Find box showed a darker rectangle inside its own frame. Under a short list the legal line floated in the middle of the panel; it now rests at the foot. On a phone the round Feedback button sat over the last lines of the list with no way to scroll them clear. Today’s note about what lands there also stopped promising deal dates to broker shops and lease dates to accounts in no firm: it names only what can reach you."
+  },
+  {
     "date": "2026-11-10",
     "type": "fix",
     "title": "Tester codes work again",

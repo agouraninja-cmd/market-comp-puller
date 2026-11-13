@@ -45,6 +45,11 @@ function renderSitesBody(boot) {
 .sp-sub{font-size:var(--text-small);color:var(--ink-3);margin:10px 0 0;max-width:88ch}
 .sp-figs{display:flex;flex-wrap:wrap;gap:6px 22px;margin:14px 0 0;font-size:var(--text-small);color:var(--ink-3)}
 .sp-figs b{display:block;font-family:var(--serif);font-weight:400;font-size:22px;color:var(--ink);font-variant-numeric:tabular-nums}
+/* The script hides these two with the hidden attribute, and each sets a
+   display, which out-ranks the browser's own rule for it: until 2026-11-13 an
+   empty Sites page drew a row of dashes and four empty columns around its
+   "No sites yet" card. (The buttons and tabs say theirs in components.js.) */
+.sp-figs[hidden],.sp-board[hidden]{display:none}
 .sp-wall{border:1px solid var(--edge);border-radius:var(--r-lg);background:var(--card);padding:18px 20px;margin:18px 0}
 .sp-wall p{margin:0 0 8px;font-size:var(--text-compact);color:var(--ink-body)}
 .sp-wall p:last-child{margin-bottom:0}

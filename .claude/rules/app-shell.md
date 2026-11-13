@@ -17,6 +17,121 @@ paths:
 
 ## Configuration
 
+> **The rail's look (2026-11-12, the owner: "The left side bar looks kind of
+> ugly fix it").** The strip is no longer a dark slab. It is one of the
+> page's own surfaces, `--wash` with a `--line` hairline (an inset shadow,
+> so the 84px stay 84), and so it follows the theme: pale beside paper, and
+> in dark mode the `#243044` it already was, where `--wash` and `--slab`
+> meet. Where the notes below say the strip is dark, sits on `--slab` or has
+> white ink, read it as history (2026-10-07 to 2026-11-12).
+> **Why, all of it read off the owner's own screenshot.** Their browser
+> keeps its tabs in a dark strip down the left, so the app's dark rail made
+> two dark bands side by side, each with rounded grey tiles, and the app
+> never visibly began. The row for the page you are on was one of those
+> grey tiles with nothing of the brand in it, and a hovered row was the same
+> tile a shade lighter. The icons were drawn to no grid and shown at 22px
+> from 20 units, so every stroke fell between pixels on a 1x monitor.
+> **How it was chosen.** Seven designs were applied to the live page and
+> photographed in the same situations (five from a panel, each told a
+> direction, and two more), then compared by three judges on craft, on fit
+> in the owner's own screenshot, and on usability. All three picked the same
+> pale one and all three said pale over dark; what shipped is that design
+> with the hover, label ink and tick size they asked for from the other pale
+> one. The dark runner-up (the current row as a paper tab cut into a navy
+> strip) is the one to build if the owner wants the navy back.
+> **What it is**, in `RAIL_CSS`'s icon-rail block and index.html's twin:
+> - **One rhythm.** A 60px head (the 30px mark), rows 68 by 56 with 4
+>   between, a 16px divider, a 60px foot (the 32px account circle) with
+>   Feedback standing on it. A row is a 24px icon over an 11px word on a
+>   14px line, in `--ink-2`.
+> - **Where you are** is a `--card` tile ringed in `--edge`, the word at
+>   600, and a red tick inside the tile's left edge: the red rule under a
+>   page's own current tab (`--red`). The tick is a border, never a
+>   background, so a forced-colours mode keeps it.
+> - **Pointing at a row** draws an outline (`--ink-4`) and nothing else, so
+>   it never looks like a second current row. **Keyboard focus** is an ink
+>   ring inside the row, not the product's red one: here red already means
+>   where you are. The account circle's focus ring is a shadow (it has to
+>   clear the circle), so its focus also keeps a transparent outline: a
+>   forced-colours mode drops shadows and paints outlines, and a review
+>   caught the circle with no focus mark at all there.
+> - **A row is its own target.** The bar's links carry an invisible
+>   `::after` that reaches 5px past each one (MARKET_CSS, for 20px-tall
+>   links). RAIL_CSS switches it off for rows, where it reached into the
+>   row below; index.html's links never had it.
+> - **Icons** are `NAV_ICONS`, one hand: a 24-unit grid shown at 24px, a 1.5
+>   stroke, straight strokes centred on a half pixel. Sites is a map pin,
+>   Comps is bars on an axis, Permits is the one sheet, with a tick. Home's
+>   map switch and its first-run door draw Permits too, at 16px and 18px on
+>   those icons' 20-unit grid; index.html keeps the same sheet there. The
+>   Feedback ninja is the brand's filled glyph and was left alone.
+> - **The unread count** is a 16px pill at the icon's shoulder, placed by
+>   its left edge so "9+" grows away from the drawing.
+> - **The account circle** is navy with a white initial, as on every bar,
+>   with a 1px `--ink-4` ring: on the dark theme's strip navy is the strip's
+>   own colour and the ring is what draws it. A ring rather than a
+>   `[data-theme]` rule, because index.html keeps every one of those inside
+>   one `@media screen` block (paper is never dark) and
+>   `test/theme.test.js` fails a second home for them.
+> - **A short window.** The column needs 560px with seven rows (a free
+>   member's Pricing row on a server-rendered page is the seventh). The
+>   strip cannot scroll (the account menu opens outside it), so in a shorter
+>   window the account circle was pushed off the bottom, and Settings and
+>   Sign out with it: for a free member a 768px laptop zoomed to 125% was
+>   enough, and at 150% it was everyone. Under 560px a second block now
+>   closes the column up (44px rows, 419px in all). Both sums count the
+>   nav's gap between the last row and the account slot, a flex child like
+>   the rows; the first draft of them did not, and was 4px short.
+>   Feedback still leaves the strip under 620px, as before; at exactly that
+>   height seven rows used to run 17px into it and now end 8px above.
+> **What holds it together.** `test/nav-parity.test.js` reads every rail
+> rule in both files (the 2026-08 block, the icon block, the short-window
+> block and print), merges them in source order the way the cascade does,
+> and compares what each box ends up with against a table of twin
+> selectors; a rule on one side only fails unless it is named as that
+> side's own. It refuses rail chrome styled anywhere else in either file,
+> and a rule inside those blocks without the `html.nav-rail` class. It
+> holds every row's icon in index.html to `NAV_ICONS`, adds the column up
+> from the stylesheets' own numbers (Feedback's included, lengths read
+> strictly, a row border refused), and pins the three decisions a tidy-up
+> of both files at once would undo: the tick is a border, the circle's
+> focus keeps its outline, the hairline is a shadow. Fourteen deliberate
+> breakages were run against copies of the files and a test fails on each.
+> A new rail rule goes in BOTH files and, if its selector is new, in that
+> table.
+> **Left alone, and worth knowing.** `/markets` and `/bulk` did not load
+> Inter (measured 2026-11-12: Home, Messages, Sites, Permits and Comps do,
+> through `INTER_FONT_HEAD`), so on those two pages the rail's words, like
+> the rest of the page, were in the system font, and the strip changed
+> typeface as a member moved through them. **Fixed 2026-11-13** for those
+> two (markets.md, "Inter on /markets"): every page a rail row opens now
+> loads it, and the rail's labels measure the same on each (Home 31.5px,
+> Messages 54.7, Sites 26.5, Markets 43.4, Comps 37.8, Permits 40.7; the
+> row you are on is bolder and a fraction wider). Still in the system font
+> for a member: `/market/<slug>`, `/rankings` and the public pages. Under
+> 419px of height the column is still cut off.
+
+> **Hidden means hidden (2026-11-13).** The browser's own rule for the
+> `hidden` attribute loses to ANY rule that sets a `display`, and since the
+> buttons and tabs moved into `components.js` (2026-11-10) every family sets
+> one. So `el.hidden = true` did nothing on Home's People tab (shown, and
+> dead, to a member in no firm) and on `/sites`' "+ Add a site" (shown over
+> the wall that says Sites is for development firms). `components.js` now
+> writes `hiddenRule(sel)`, `<sel>[hidden]{display:none}`, after every
+> selector it gives a display (the canon, and every button, tab and
+> segmented family, lists included), and `test/components.test.js` walks the
+> stylesheet and fails on a display rule with no such companion. The same
+> trap on a page's OWN rules is that page's to restate: `/sites` hid its
+> figures row and its board by attribute while `.sp-figs` and `.sp-board`
+> set displays, so an empty Sites page drew a row of dashes and four empty
+> columns around its "No sites yet" card (`sites-page.js`;
+> `test/sites-page.test.js` reads the stylesheet the page ships, because
+> its stand-in DOM knows nothing of CSS and passed all along). A sweep of
+> 54 page-and-account combinations after the fix found nothing else marked
+> hidden and still drawn. Prefer a `.hidden` / `.hide` class with its own
+> rule (the vault's way) or check the attribute against the class's
+> display before relying on it.
+
 > **Comps, and no vault (2026-10-13, the owner: "Integrate it to the
 > report section and change the report section and name it Comps", and
 > "the vault doesn't even exist any more"): Home, Messages, Pipeline |

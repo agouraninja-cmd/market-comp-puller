@@ -411,3 +411,368 @@ test("Pipeline sits under Messages on both rails, and Sites takes its place for 
   assert.match(VAULT_JS, /if\(window\.cnShopNav\)window\.cnShopNav\(shop\);/,
     "applyShop no longer tells the rail which kind of firm this is");
 });
+
+// --- The rail's look (2026-11-12) ---------------------------------------------
+//
+// The owner's "the left side bar looks kind of ugly" was answered by redrawing
+// the strip: a page surface instead of a dark slab, a tile and a red tick for
+// the page you are on, icons on a pixel grid. All of it exists twice, once in
+// RAIL_CSS and once in index.html, and until now only the account slot's
+// three properties were compared between them. The tests below compare every
+// rail rule the two files have, in every media block, so a restyle of one
+// half cannot ship without the other.
+
+// The rail's stylesheet, read as { media: { selector: { property: value } } }.
+// The top level is a plain rule or one @media block of plain rules; nothing
+// nests deeper. Rules are merged in source order, so where a later block
+// restates a property (the icon rail over the 2026-08 rail above it) the later
+// value wins, as it does in the browser for two rules with one selector. The
+// answer is therefore what each box ends up with, not what one block says.
+// Values keep their spaces ("0 0 12px" is not "00 12px"); only the spacing the
+// two files write differently is ironed out: around a comma or a slash, inside
+// brackets, and around the child combinator.
+const tidyValue = (v) => v.replace(/\s+/g, " ").replace(/\(\s+/g, "(").replace(/\s+\)/g, ")")
+  .replace(/\s*,\s*/g, ",").replace(/\s*\/\s*/g, "/").trim();
+const tidySelector = (s) => s.replace(/\s*>\s*/g, ">").replace(/\s+/g, " ").trim();
+function railSheet(css) {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const sheet = {};
+  const add = (media, selectors, body) => {
+    const decls = {};
+    for (const d of body.split(";")) {
+      const i = d.indexOf(":");
+      if (i > 0) decls[d.slice(0, i).trim()] = tidyValue(d.slice(i + 1));
+    }
+    const into = (sheet[media] = sheet[media] || {});
+    for (const sel of selectors.split(",")) {
+      const key = tidySelector(sel);
+      into[key] = Object.assign(into[key] || {}, decls);
+    }
+  };
+  let i = 0;
+  while (i < text.length) {
+    const open = text.indexOf("{", i);
+    if (open < 0) break;
+    const head = text.slice(i, open).trim();
+    if (head.startsWith("@media")) {
+      let depth = 1, j = open + 1;
+      while (j < text.length && depth) { if (text[j] === "{") depth++; else if (text[j] === "}") depth--; j++; }
+      const media = head.slice("@media".length).replace(/\s+/g, "");
+      for (const m of text.slice(open + 1, j - 1).matchAll(/([^{}]+)\{([^{}]*)\}/g)) add(media, m[1], m[2]);
+      i = j;
+    } else {
+      const close = text.indexOf("}", open);
+      add("", head, text.slice(open + 1, close));
+      i = close + 1;
+    }
+  }
+  return sheet;
+}
+const WIDE = "(min-width:900px)";                              // the rail
+const SHORT = "(min-width:900px)and(max-height:559px)";        // the rail in a short window
+const SERVER_RAIL = () => {
+  const m = SERVER_JS.match(/const RAIL_CSS = `([\s\S]*?)\n`;/);
+  assert.ok(m, "could not read RAIL_CSS");
+  return railSheet(m[1]);
+};
+const APP_RAIL = () => {
+  // From the app's first rail comment to the end of its print rule: every
+  // rail rule index.html has, and nothing else.
+  const from = INDEX_HTML.indexOf("/* --- The rail (NAV_SHELL=rail, 2026-08-28)");
+  const print = INDEX_HTML.indexOf("@media print { html.nav-rail body {", from);
+  assert.ok(from > -1 && print > from, "could not find index.html's rail rules");
+  return railSheet(INDEX_HTML.slice(from, INDEX_HTML.indexOf("\n", print)));
+};
+const railOnly = (rules) => Object.keys(rules || {}).filter((k) => k.startsWith("html.nav-rail"));
+
+// server.js's selector, then index.html's for the same box.
+const RAIL_TWINS = [
+  ["html.nav-rail body", "html.nav-rail body"],
+  ["html.nav-rail .hdr", "html.nav-rail body>header"],
+  ["html.nav-rail .hdr .wrap", "html.nav-rail .rd-appbar"],
+  ["html.nav-rail .hleft", "html.nav-rail .rd-appbar>a"],
+  ["html.nav-rail .hdr .brand .wordmark", "html.nav-rail .rd-appbar>a .rd-wordmark"],
+  ["html.nav-rail .hdr .brand svg", "html.nav-rail .rd-appbar>a svg"],
+  ["html.nav-rail .hdr nav", "html.nav-rail .rd-appbar>nav"],
+  ["html.nav-rail .hdr nav>a", "html.nav-rail .rd-appbar>nav>a"],
+  ["html.nav-rail .hdr nav>button", "html.nav-rail .rd-appbar>nav>button"],
+  ["html.nav-rail .hdr nav>a .nvi", "html.nav-rail .rd-appbar>nav>a .nvi"],
+  ["html.nav-rail .hdr nav>a:hover", "html.nav-rail .rd-appbar>nav>a:hover"],
+  ['html.nav-rail .hdr nav>a[aria-current="page"]', 'html.nav-rail .rd-appbar>nav>a[aria-current="page"]'],
+  ['html.nav-rail .hdr nav>a[aria-current="page"]::before', 'html.nav-rail .rd-appbar>nav>a[aria-current="page"]::before'],
+  ["html.nav-rail .hdr nav>a:focus-visible", "html.nav-rail .rd-appbar>nav>a:focus-visible"],
+  ["html.nav-rail .hdr nav>.navsec", "html.nav-rail .rd-appbar>nav>.navsec"],
+  ["html.nav-rail .hdr nav .navdot", "html.nav-rail .rd-appbar .navdot"],
+  ['html.nav-rail .hdr nav>a[aria-current="page"] .navdot', 'html.nav-rail .rd-appbar>nav>a[aria-current="page"] .navdot'],
+  ["html.nav-rail .hdr nav>a:focus-visible .navdot", "html.nav-rail .rd-appbar>nav>a:focus-visible .navdot"],
+  ["html.nav-rail .hdr nav>#navAcct", "html.nav-rail #acctMenuWrap"],
+  // The circle is a <span> inside <summary> there and a <button> here, so
+  // the pointer and the keyboard land on different elements.
+  ["html.nav-rail .hdr nav>#navAcct .ini", "html.nav-rail #acctMenuBtn"],
+  ["html.nav-rail .hdr nav>#navAcct summary:hover .ini", "html.nav-rail #acctMenuBtn:hover"],
+  ["html.nav-rail .hdr nav>#navAcct summary:focus-visible .ini", "html.nav-rail #acctMenuBtn:focus-visible"],
+  ["html.nav-rail .hdr nav>#navAcct .dd", "html.nav-rail #acctMenu"],
+];
+// What only one side has a reason to say.
+const RAIL_SERVER_ONLY = [
+  "html.nav-rail .hdr nav>a.btn.sm",                 // the red call to action: the app's nav has none
+  "html.nav-rail .hdr nav>details:not(#navAcct)",    // the Explore menu, hidden there by its tag
+  "html.nav-rail .hdr nav>a::after",                 // switches off the bar's enlarged hit area, which the app's links never had
+  "html.nav-rail .hdr nav>#navAcct summary",         // the <summary> is the thing focused there; it is rounded,
+  "html.nav-rail .hdr nav>#navAcct summary:focus-visible", // and carries the outline the app's button carries itself (below)
+];
+const RAIL_APP_ONLY = [
+  "html.nav-rail #exploreMenuWrap",                  // the Explore menu, hidden here by its id
+  "html.nav-rail .rd-appbar>nav>.hidden",            // Tailwind's .hidden, outranked by the row's display
+  "html.nav-rail #acctMenuWrap.hidden",
+  "html.nav-rail .rd-appbar>nav>button:hover",       // the Sign in button, a row only in the app
+];
+// A declaration one twin has that the other does not need. The account slot
+// positions its menu, and in the app a Tailwind class already says so. The
+// circle's focus keeps an outline for a forced-colours mode (see the test);
+// the app's circle is the focused element itself, so the outline rides the
+// rule that draws its ring, and the server's rides its <summary>.
+const RAIL_FOCUS_OUTLINE = { outline: "2px solid transparent", "outline-offset": "2px" };
+const RAIL_SERVER_EXTRA = { "html.nav-rail .hdr nav>#navAcct": { position: "relative" } };
+const RAIL_APP_EXTRA = { "html.nav-rail #acctMenuBtn:focus-visible": RAIL_FOCUS_OUTLINE };
+
+test("every rail rule is the same on both nav authors, in the rail and in a short window", () => {
+  const server = SERVER_RAIL(), app = APP_RAIL();
+  for (const media of [WIDE, SHORT]) {
+    const s = server[media], a = app[media];
+    assert.ok(s, `RAIL_CSS has no @media ${media} block`);
+    assert.ok(a, `index.html has no @media ${media} block for the rail`);
+    for (const [sSel, aSel] of RAIL_TWINS) {
+      if (!s[sSel] && !a[aSel]) {
+        assert.notEqual(media, WIDE, `neither file styles ${sSel} in the rail, so the table above is stale`);
+        continue;
+      }
+      assert.ok(s[sSel], `RAIL_CSS has no ${media} rule for ${sSel}, and index.html has one for ${aSel}`);
+      assert.ok(a[aSel], `index.html has no ${media} rule for ${aSel}, the twin of ${sSel}`);
+      const want = Object.assign({}, s[sSel]), got = Object.assign({}, a[aSel]);
+      for (const [side, extra, sel] of [[want, RAIL_SERVER_EXTRA, sSel], [got, RAIL_APP_EXTRA, aSel]]) {
+        for (const prop of Object.keys((media === WIDE && extra[sel]) || {})) {
+          assert.equal(side[prop], extra[sel][prop], `${sel} should still say ${prop}`);
+          delete side[prop];
+        }
+      }
+      assert.deepEqual(got, want, `@media ${media}: ${aSel} (index.html) and ${sSel} (RAIL_CSS) end up different`);
+    }
+    // And nothing unaccounted for on either side: a rule added to one file
+    // only has to be either twinned above or named as that side's own.
+    const sTwinned = new Set(RAIL_TWINS.map((t) => t[0])), aTwinned = new Set(RAIL_TWINS.map((t) => t[1]));
+    assert.deepEqual(railOnly(s).filter((k) => !sTwinned.has(k)).sort(), media === WIDE ? [...RAIL_SERVER_ONLY].sort() : [],
+      `@media ${media}: RAIL_CSS has a rail rule index.html does not`);
+    assert.deepEqual(railOnly(a).filter((k) => !aTwinned.has(k)).sort(), media === WIDE ? [...RAIL_APP_ONLY].sort() : [],
+      `@media ${media}: index.html has a rail rule RAIL_CSS does not`);
+  }
+  // The hover the app adds for its Sign in button is the anchors' own.
+  assert.deepEqual(app[WIDE]["html.nav-rail .rd-appbar>nav>button:hover"], app[WIDE]["html.nav-rail .rd-appbar>nav>a:hover"]);
+
+  // No third place: a rail rule outside the rail, short-window and print
+  // blocks would be compared with nothing here (and, unguarded, would reach a
+  // phone, which nav-shell.test.js refuses on the server's side).
+  assert.deepEqual(Object.keys(server).filter((m) => railOnly(server[m]).length).sort(), [SHORT, WIDE, "print"].sort(),
+    "RAIL_CSS grew rail rules in a media block this file does not compare");
+  assert.deepEqual(Object.keys(app).filter((m) => railOnly(app[m]).length).sort(), [SHORT, WIDE, "print"].sort(),
+    "index.html grew rail rules in a media block this file does not compare");
+  // Inside those blocks every rule is the rail's: one without the class would
+  // be compared with nothing above, and would style the bar's rows as well.
+  for (const [name, sheet] of [["RAIL_CSS", server], ["index.html", app]]) {
+    for (const media of [WIDE, SHORT, "print"]) {
+      assert.deepEqual(Object.keys(sheet[media]).filter((k) => !k.startsWith("html.nav-rail")), [],
+        `${name}: a rule in the rail's @media ${media} block does not start with html.nav-rail`);
+    }
+  }
+  // Nor anywhere else in either file. The rail's chrome (the strip, its
+  // column, its account slot) is styled in RAIL_CSS and in the app's rail
+  // slice and nowhere else; Home's own html.nav-rail.hm-page layout rules
+  // and the Feedback button's html.nav-rail .tninja rules are not chrome.
+  const noComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const railCss = SERVER_JS.match(/const RAIL_CSS = `[\s\S]*?\n`;/)[0];
+  assert.ok(!/html\.nav-rail \.(hdr|hleft)\b/.test(noComments(SERVER_JS.replace(railCss, ""))),
+    "server.js styles the rail's chrome somewhere outside RAIL_CSS, where nothing compares it with index.html");
+  const appFrom = INDEX_HTML.indexOf("/* --- The rail (NAV_SHELL=rail, 2026-08-28)");
+  const appTo = INDEX_HTML.indexOf("\n", INDEX_HTML.indexOf("@media print { html.nav-rail body {", appFrom));
+  const appStyle = INDEX_HTML.slice(0, INDEX_HTML.indexOf("</style>"));
+  assert.ok(!/html\.nav-rail (body\s*>\s*header|\.rd-appbar|#acctMenu)/.test(noComments(appStyle.slice(0, appFrom) + appStyle.slice(appTo))),
+    "index.html styles the rail's chrome somewhere outside its rail rules, where nothing compares it with RAIL_CSS");
+
+  // Three decisions a tidy-up of BOTH files at once would undo, and parity
+  // would not notice. The tick is a border and never a background, the
+  // account circle's focus keeps an outline, both because a forced-colours
+  // mode (Windows High Contrast) drops backgrounds and shadows and paints
+  // borders and outlines: without them the page you are on, and the focused
+  // circle, are unmarked there. And the strip's hairline is an inset shadow,
+  // because a border would take a pixel from the 84px.
+  const tick = server[WIDE]['html.nav-rail .hdr nav>a[aria-current="page"]::before'];
+  assert.ok(/^3px solid var\(--red\)$/.test(tick["border-left"]) && !("background" in tick) && !("background-color" in tick),
+    "the tick for the page you are on is no longer a border");
+  assert.deepEqual(server[WIDE]["html.nav-rail .hdr nav>#navAcct summary:focus-visible"], RAIL_FOCUS_OUTLINE,
+    "the server's account circle lost the outline a forced-colours mode draws for keyboard focus");
+  const strip = server[WIDE]["html.nav-rail .hdr"];
+  assert.ok(strip["border-right"] === "0" && /^inset -1px 0 0 var\(--line\)$/.test(strip["box-shadow"]),
+    "the strip's hairline is no longer an inset shadow");
+
+  // Paper. Both take the body's padding off. The server-rendered header also
+  // prints (as a bar across the top), so it sheds what made it a strip, the
+  // hairline's shadow included; the app's header is .no-print and needs none.
+  assert.deepEqual(app.print, { "html.nav-rail body": { "padding-left": "0" } });
+  assert.deepEqual(server.print["html.nav-rail body"], { "padding-left": "0" });
+  assert.deepEqual(server.print["html.nav-rail .hdr"],
+    { position: "static", width: "auto", "border-right": "0", "box-shadow": "none" });
+  assert.deepEqual(railOnly(server.print).sort(), ["html.nav-rail .hdr", "html.nav-rail body"]);
+});
+
+test("every rail icon in the app is the server's drawing", () => {
+  // This file already held Pipeline and Sites to NAV_ICONS; the other five
+  // rows were copied by hand and held by nothing, so a redraw could land on
+  // the server-rendered pages alone and the strip would change its icons as a
+  // member moved between Home and anywhere else.
+  const tpl = SERVER_JS.match(/const NAV_ICON = \(paths\) => `([^`]*)`;/);
+  assert.ok(tpl, "could not read NAV_ICON's template");
+  const svg = (name) => {
+    const m = SERVER_JS.match(new RegExp("\\n  " + name + ": NAV_ICON\\('([^']*)'\\)"));
+    assert.ok(m, "NAV_ICONS has no " + name + " icon");
+    return tpl[1].replace("${paths}", m[1]);
+  };
+  for (const [name, rowStart] of [
+    ["home", '<a id="myDeskLink" href="/desk"'],
+    ["messages", '<a id="navMessagesLink" href="/messages"'],
+    ["pipeline", '<a id="navPipe" href="/pipeline"'],
+    ["sites", '<a id="navSites" href="/sites"'],
+    ["markets", '<a href="/markets"'],
+    ["reports", '<a id="navComps" href="/comps"'],
+    ["permits", '<a href="/permits"'],
+  ]) {
+    const at = INDEX_HTML.indexOf(rowStart);
+    assert.ok(at > -1, "index.html has no row starting " + rowStart);
+    const row = INDEX_HTML.slice(at, INDEX_HTML.indexOf("</a>", at));
+    assert.ok(row.includes(svg(name)), `the app's ${name} icon is not NAV_ICONS.${name}`);
+  }
+  // One hand: a unit to a pixel, and the stroke every drawing was made for.
+  assert.match(tpl[1], /viewBox="0 0 24 24"/);
+  assert.match(tpl[1], /stroke-width="1\.5"/);
+  const shown = SERVER_RAIL()[WIDE]["html.nav-rail .hdr nav>a .nvi"];
+  assert.deepEqual([shown.width, shown.height], ["24px", "24px"],
+    "the icons are drawn on 24 units; shown at any other size their strokes fall between pixels");
+  // And no row keeps a drawing from the old 20-unit set beside them.
+  assert.ok(!INDEX_HTML.includes('<svg class="nvi" viewBox="0 0 20 20"'), "a rail row in index.html still has a 20-unit icon");
+
+  // Permits is one drawing wherever Home draws it. Its rail row, the switch
+  // over the map and the first-run door all sit on one screen; the last two
+  // are 16px and 18px icons on a 20-unit grid among others like them, so they
+  // carry the same sheet with a tick redrawn on that grid rather than the
+  // rail's paths. The old sheet (two lines and a seal) must be gone from all.
+  const TICK_20 = '<rect x="4.75" y="2.75" width="10.5" height="14.5" rx="1.25"/><path d="M7.25 6.25h5.5"/><path d="M7.25 11.75l1.75 1.75 3.5-3.75"/>';
+  for (const anchor of ['id="hmLayerPermits"', 'class="hm-first-door" href="/permits"']) {
+    const at = INDEX_HTML.indexOf(anchor);
+    assert.ok(at > -1, "index.html lost " + anchor);
+    assert.ok(INDEX_HTML.slice(at, at + 700).includes(TICK_20), anchor + " draws a different Permits sheet from the rail's");
+  }
+  assert.match(SERVER_JS, /\n  permits: NAV_ICON\('<rect x="5\.5" y="3\.5" width="13" height="17" rx="1\.5"\/><path d="M8\.5 7\.5h7"\/><path d="M8\.75 14\.25 11 16\.5l4\.25-4\.75"\/>'\)/,
+    "the rail's Permits is no longer the sheet with one line and a tick that TICK_20 restates");
+  assert.ok(!/<circle cx="10" cy="13" r="1\.(75|8)"\/>/.test(INDEX_HTML + SERVER_JS), "the old Permits sheet with a seal is still drawn somewhere");
+});
+
+// The rail's column, added up from the stylesheet's own numbers: WIDE alone,
+// or WIDE with the short-window block laid over it.
+// Strict: parseFloat would read "9px2px" as 9, and a browser drops that whole
+// declaration, so a slip of a space would pass here and change the page.
+const railPx = (v) => {
+  assert.ok(/^(0|-?\d*\.?\d+px)$/.test(String(v)), "not a length a browser would accept: " + v);
+  return parseFloat(v);
+};
+const railBox = (v) => {                                // a 1-to-4 value shorthand, read as top and bottom
+  const p = String(v || "0").split(" ").map(railPx);
+  return { top: p[0], bottom: p.length > 2 ? p[2] : p[0] };
+};
+// A label's line: a length as written, or a multiple of the font size.
+const railLine = (lineHeight, fontPx) => (/px$/.test(lineHeight) ? railPx(lineHeight) : fontPx * railPx(lineHeight));
+const TEXT_TINY_PX = railPx(require("../theme.js").SCALE_TOKENS["text-tiny"]);
+function railColumn(sheet, short) {
+  const rule = (sel) => {
+    const base = Object.assign({}, sheet[WIDE][sel]);
+    const over = short ? (sheet[SHORT][sel] || {}) : {};
+    // A longhand laid over a shorthand: fold padding-top / padding-bottom in.
+    const pad = railBox(base.padding);
+    if (over.padding) Object.assign(pad, railBox(over.padding));
+    if (over["padding-top"]) pad.top = railPx(over["padding-top"]);
+    if (over["padding-bottom"]) pad.bottom = railPx(over["padding-bottom"]);
+    return Object.assign(base, over, { pad });
+  };
+  const row = rule("html.nav-rail .hdr nav>a");
+  assert.equal(row["font-size"], "var(--text-tiny)", "the row's label is no longer the size this sum assumes");
+  // A border above or below a row is height this sum would not see.
+  assert.deepEqual(Object.keys(row).filter((k) => /^border/.test(k) && k !== "border-radius").sort(), ["border-left"],
+    "a row gained a border; add its width to this sum before trusting it");
+  assert.equal(row["border-left"], "0");
+  const margin = railBox(row.margin);
+  const inner = row.pad.top + railPx(rule("html.nav-rail .hdr nav>a .nvi").height) + railPx(row.gap)
+    + railLine(row["line-height"], TEXT_TINY_PX) + row.pad.bottom;
+  const rowH = Math.max(inner, row["min-height"] ? railPx(row["min-height"]) : 0) + margin.top + margin.bottom;
+  const gap = railPx(rule("html.nav-rail .hdr nav").gap);
+  const sec = rule("html.nav-rail .hdr nav>.navsec");
+  const divider = railPx(sec.height) + railBox(sec.margin).top + railBox(sec.margin).bottom;
+  const wrap = rule("html.nav-rail .hdr .wrap");
+  const head = wrap.pad.top + railPx(rule("html.nav-rail .hdr .brand svg").height) + rule("html.nav-rail .hleft").pad.bottom;
+  const circle = railPx(rule("html.nav-rail .hdr nav>#navAcct .ini").height);
+  // The foot: the slot's own padding above the circle, the circle, the strip's padding under it.
+  const foot = rule("html.nav-rail .hdr nav>#navAcct").pad.top + circle + wrap.pad.bottom;
+  // `rows` rows and the divider are rows + 1 flex items, so `rows` gaps. The
+  // account slot is a flex item of the same nav, so one more gap sits between
+  // the last row and it: the whole column is columnEnd.
+  const rowsEnd = (rows) => head + rows * rowH + rows * gap + divider;
+  return { rowH, gap, foot, circleTop: circle + wrap.pad.bottom, rowsEnd, columnEnd: (rows) => rowsEnd(rows) + gap + foot };
+}
+
+test("seven rows, Feedback and the account circle fit, in the tallest and the shortest window", () => {
+  // The sums RAIL_CSS's comments ask the next editor to re-add, done here. A
+  // free member reading a server-rendered page has a seventh row (Pricing).
+  // Until 2026-11-12 that row pushed Permits 17px into the Feedback button in
+  // a 620px window, and in any window under 570px the account circle was
+  // pushed off the bottom, with nothing anywhere to say so.
+  const sheet = SERVER_RAIL();
+  const tall = railColumn(sheet, false), short = railColumn(sheet, true);
+
+  // Feedback, from its own rules: it is laid out like a row, but nothing
+  // makes it one, so its height is read rather than assumed.
+  const blocks = [...SERVER_JS.matchAll(/@media \(min-width:900px\) and \(min-height:(\d+)px\)\{([\s\S]*?)\n    \}/g)];
+  assert.equal(blocks.length, 2, "the Feedback button should have two rail blocks: its placement, and the rule above it");
+  const minHeight = Number(blocks[0][1]), ruleFrom = Number(blocks[1][1]);
+  const fb = railSheet(blocks[0][2])[""];
+  const btn = fb["html.nav-rail .tninja"], glyph = fb["html.nav-rail .tninja svg"];
+  assert.ok(btn && glyph, "the Feedback button's rail rules lost the button or its glyph's size (the svg is 22px by its own attributes)");
+  assert.equal(btn["font-size"], "var(--text-tiny)");
+  assert.equal(btn.border, "0", "the Feedback button gained a border; add its width to this sum before trusting it");
+  const fbHeight = railBox(btn.padding).top + railPx(glyph.height) + railBox(glyph.margin).top + railBox(glyph.margin).bottom
+    + railPx(btn.gap) + railLine(btn["line-height"], TEXT_TINY_PX) + railBox(btn.padding).bottom;
+  const fbBottom = railPx(btn.bottom);
+  assert.ok(Math.abs(fbHeight - tall.rowH) < 0.01, `Feedback is ${fbHeight.toFixed(1)}px tall and a row is ${tall.rowH.toFixed(1)}px: it is drawn as a row`);
+
+  // 1. In the shortest window that keeps Feedback in the strip, seven rows
+  //    end above it with at least the gap rows keep between themselves.
+  const fbTop = minHeight - fbBottom - fbHeight;
+  assert.ok(tall.rowsEnd(7) + tall.gap <= fbTop,
+    `seven rows end at ${tall.rowsEnd(7).toFixed(1)}px and Feedback starts at ${fbTop.toFixed(1)}px in a ${minHeight}px window`);
+  // 2. Feedback stands on the foot: on or above the foot block, and never
+  //    nearer the circle than rows are to each other.
+  assert.ok(fbBottom >= tall.circleTop + tall.gap, `Feedback sits ${fbBottom}px up and the account circle reaches ${tall.circleTop}px up`);
+  assert.equal(fbBottom, tall.foot, "Feedback no longer stands on the strip's foot block");
+  // 3. The rule above Feedback only shows where it stands clear of the last row.
+  const line = railSheet(blocks[1][2])[""]["html.nav-rail .tninja::before"];
+  assert.ok(line && line.top && line.height, "the rule above Feedback is gone");
+  const lineTop = ruleFrom - fbBottom - fbHeight + railPx(line.top);
+  assert.ok(tall.rowsEnd(7) + tall.gap <= lineTop,
+    `seven rows end at ${tall.rowsEnd(7).toFixed(1)}px and the rule above Feedback is at ${lineTop.toFixed(1)}px in a ${ruleFrom}px window`);
+  // 4. Where Feedback has left the strip, seven rows and the circle still fit
+  //    down to the height at which the short-window block takes over...
+  const shortFrom = Number(SHORT.match(/max-height:(\d+)px/)[1]) + 1;
+  assert.ok(tall.columnEnd(7) <= shortFrom,
+    `seven rows and the account circle need ${tall.columnEnd(7).toFixed(1)}px, and the short-window block only starts under ${shortFrom}px`);
+  // 5. ...and under it the closed-up column holds them in a 430px window,
+  //    which is a 768px laptop zoomed to 150%.
+  assert.ok(short.columnEnd(7) <= 430,
+    `in a short window seven rows and the account circle need ${short.columnEnd(7).toFixed(1)}px`);
+  assert.ok(short.rowH < tall.rowH, "the short-window block no longer closes the rows up");
+});

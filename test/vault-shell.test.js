@@ -108,12 +108,12 @@ test("the book's map loads Leaflet and the tiles through the shared constants", 
   assert.ok(!/arcgisonline/.test(VAULT_JS), "vault-page.js carries its own tile URL");
 });
 
-test("the vault keeps Inter, which no other marketShell page loads", async (t) => {
-  // MARKET_CSS names Inter in body{} and NO server-rendered page fetches it —
-  // they were all designed against the system fallback. /vault was its own
-  // document and did load it, so folding it onto the shell would have silently
-  // restyled the page brokers use daily. This is the one thing the fold had to
-  // carry across, and it rides marketShell's `head`.
+test("the vault keeps Inter, which marketShell itself does not load", async (t) => {
+  // MARKET_CSS names Inter in body{} and marketShell fetches nothing, so a
+  // page that does not hand it the font falls back to the system one. /vault
+  // was its own document and did load it, so folding it onto the shell would
+  // have silently restyled the page brokers use daily. This is the one thing
+  // the fold had to carry across, and it rides marketShell's `head`.
   const srv = await boot({});
   t.after(() => srv.stop());
   const html = await (await fetch(srv.base + "/comps", { headers: SESSION })).text();
@@ -121,6 +121,35 @@ test("the vault keeps Inter, which no other marketShell page loads", async (t) =
     "/vault lost its typeface in the fold");
   assert.match(SERVER_JS, /const INTER_FONT_HEAD =/,
     "the font head should be a named constant, not pasted into the route");
+});
+
+test("every page on the rail loads Inter for a member, and a stranger's /markets does not", async (t) => {
+  // The rail is one strip on every page. /markets and /bulk did not load the
+  // font the other rail pages load (found 2026-11-12, fixed 2026-11-13), so
+  // the rail's words were Segoe UI there and Inter on Home, and changed under
+  // a member moving between them. Every page a rail row opens is listed, so a
+  // new one that forgets the font fails here.
+  const INTER = /<link href="https:\/\/fonts\.googleapis\.com\/css2\?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"\/>/g;
+  const srv = await boot({});
+  t.after(() => srv.stop());
+  for (const page of ["/messages", "/pipeline", "/sites", "/markets", "/comps", "/bulk", "/permits"]) {
+    const html = await (await fetch(srv.base + page, { headers: SESSION })).text();
+    assert.match(html, /<html lang="en" class="nav-rail">/, `${page} should wear the rail for a member`);
+    assert.equal((html.match(INTER) || []).length, 1, `${page} should load Inter once for a member`);
+    assert.ok(html.indexOf("family=Inter") < html.indexOf("<style>"),
+      `${page} should ask for the font before its stylesheet`);
+  }
+  // The signed-out /markets is the public, cached page: no font from another
+  // host, and the same caching it had.
+  const res = await fetch(srv.base + "/markets");
+  const anon = await res.text();
+  assert.ok(!/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(anon),
+    "the public /markets should not fetch a font");
+  assert.equal(res.headers.get("cache-control"), "public, max-age=3600");
+  assert.equal(res.headers.get("vary"), "cookie");
+  const member = await fetch(srv.base + "/markets", { headers: SESSION });
+  assert.equal(member.headers.get("cache-control"), "no-store");
+  assert.equal(member.headers.get("vary"), "cookie");
 });
 
 test("vault-page.js is a body renderer and takes nothing but a boot payload and a page", () => {

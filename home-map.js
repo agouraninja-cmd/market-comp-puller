@@ -291,6 +291,21 @@
     return { total: valued.reduce((t, r) => t + num(r.value), 0), valued: valued.length, of: owned.length };
   }
 
+  // A dated row, as Today and its map card read it: a lease date on one of
+  // the firm's buildings, and a date on a deal. One builder each, so a date
+  // that needs the member (agenda) and one still further out (later) are the
+  // same row with a different number of days on it.
+  function leaseItem(c, n) {
+    return { kind: "lease", n, date: str(c.date).slice(0, 10), label: c.kind === "notice" ? "Option notice" : "Lease expires",
+      who: str(c.tenant), address: str(c.address), place: street(c.address) + (c.suite ? ` · suite ${c.suite}` : ""),
+      scope: "firm", act: "Open lease", href: c.buildingId != null ? `/building/${encodeURIComponent(c.buildingId)}` : "/buildings" };
+  }
+  function dealItem(s, d, n, shareOrg) {
+    return { kind: "deal", n, date: str(d.on).slice(0, 10), label: str(d.label) || "Deal date", who: "", address: str(s.address),
+      place: street(s.address) + (town(s.address) ? " · " + town(s.address) : ""), scope: sharedWith(s, shareOrg) ? "firm" : "you", act: "Open deal",
+      href: "/desk#properties", stage: s.stage };
+  }
+
   // What needs the member: unread conversations first, then new BOV requests
   // (newest first), then every lease date inside LEASE_DAYS and every deal
   // date inside DEAL_DAYS, soonest first.
@@ -324,18 +339,14 @@
       if (!c || !c.date) return;
       const n = daysUntil(c.date, today);
       if (n == null || n < 0 || n > LEASE_DAYS) return;
-      out.push({ kind: "lease", n, date: str(c.date).slice(0, 10), label: c.kind === "notice" ? "Option notice" : "Lease expires",
-        who: str(c.tenant), address: str(c.address), place: street(c.address) + (c.suite ? ` · suite ${c.suite}` : ""),
-        scope: "firm", act: "Open lease", href: c.buildingId != null ? `/building/${encodeURIComponent(c.buildingId)}` : "/buildings" });
+      out.push(leaseItem(c, n));
     });
     (dealsOn(firmKind) && Array.isArray(sites) ? sites : []).forEach((s) => {
       if (!s || !ACTIVE[s.stage]) return;
       (Array.isArray(s.dates) ? s.dates : []).forEach((d) => {
         const n = d && d.on ? daysUntil(d.on, today) : null;
         if (n == null || n < 0 || n > DEAL_DAYS) return;
-        out.push({ kind: "deal", n, date: str(d.on).slice(0, 10), label: str(d.label) || "Deal date", who: "", address: str(s.address),
-          place: street(s.address) + (town(s.address) ? " · " + town(s.address) : ""), scope: sharedWith(s, shareOrg) ? "firm" : "you", act: "Open deal",
-          href: "/desk#properties", stage: s.stage });
+        out.push(dealItem(s, d, n, shareOrg));
       });
     });
     const rank = (x) => (x.kind === "msg" ? 0 : x.kind === "bov" ? 1 : 2);
@@ -347,6 +358,187 @@
     return out;
   }
   function thisWeek(items) { return (Array.isArray(items) ? items : []).filter((x) => x.n <= WEEK_DAYS).length; }
+
+  // ---- A quiet day (2026-11-13) ---------------------------------------------
+  // On most days nothing needs a member who holds a few buildings, and until
+  // now Today answered that with the status line's own sentence a second time
+  // and an empty column beside the map (the owner's screenshot: nine
+  // properties, "Nothing needs you right now." twice, and nothing else).
+  // These decide what a quiet Today shows instead, from what Home has already
+  // read: what is on the calendar past the "needs you" windows, what the
+  // member holds at a glance, and which of their values moved. None of it is
+  // a new claim: every figure is one Properties already shows, counted the
+  // same way, and the busy day's list (agenda) is untouched.
+
+  // The dates still ahead that do not need the member yet: a lease date
+  // further out than LEASE_DAYS and, for a development firm, a deal date
+  // further out than DEAL_DAYS, soonest first. The same rows agenda builds,
+  // with no number (a number is a pin, and a pin is a date that needs you).
+  function later({ critical = [], sites = [], firmKind = "", today = "", shareOrg = "" } = {}) {
+    const out = [];
+    (Array.isArray(critical) ? critical : []).forEach((c) => {
+      if (!c || !c.date) return;
+      const n = daysUntil(c.date, today);
+      if (n == null || n <= LEASE_DAYS) return;
+      out.push(leaseItem(c, n));
+    });
+    (dealsOn(firmKind) && Array.isArray(sites) ? sites : []).forEach((s) => {
+      if (!s || !ACTIVE[s.stage]) return;
+      (Array.isArray(s.dates) ? s.dates : []).forEach((d) => {
+        const n = d && d.on ? daysUntil(d.on, today) : null;
+        if (n == null || n <= DEAL_DAYS) return;
+        out.push(dealItem(s, d, n, shareOrg));
+      });
+    });
+    out.sort((a, b) => (a.n - b.n) || a.label.localeCompare(b.label));
+    out.forEach((x) => { x.num = null; x.later = true; });
+    return out;
+  }
+  // "in 111 days" is hard to place; past a couple of months a date is read
+  // in months (a month is 30.4 days, rounded to the nearest whole one, so
+  // never "in 0 months" and a year out reads "in a year").
+  function inAbout(n) {
+    if (n == null) return "";
+    if (n <= 60) return inDays(n);
+    const months = Math.round(n / 30.4);
+    if (months < 12) return `in ${months} months`;
+    return months === 12 ? "in a year" : `in ${months} months`;
+  }
+
+  // What the member holds, in a few figures: how many properties and where,
+  // what is being asked on the deals they are working, what they own is
+  // likely worth, and the next date on the calendar. Numbers only; the
+  // words are glanceCells', and index.html hands it the same money formatter
+  // the Properties tab's own headings use, so the two never disagree.
+  function glance({ rows = [], next = null } = {}) {
+    const list = (Array.isArray(rows) ? rows : []).filter(Boolean);
+    const towns = new Map();
+    list.forEach((r) => { const t = town(r.address); if (t && !towns.has(t.toLowerCase())) towns.set(t.toLowerCase(), t); });
+    const priced = list.filter((r) => r.group === "buying" && num(r.value) > 0);
+    const owned = list.filter((r) => r.group === "owned");
+    const valued = owned.filter((r) => num(r.value) > 0);
+    const sized = list.filter((r) => num(r.size) > 0);
+    return {
+      count: list.length,
+      cities: towns.size, city: towns.size === 1 ? [...towns.values()][0] : "",
+      asked: priced.length, asking: priced.reduce((t, r) => t + num(r.value), 0),
+      owned: owned.length, valued: valued.length, value: valued.reduce((t, r) => t + num(r.value), 0),
+      sized: sized.length, sqft: sized.reduce((t, r) => t + num(r.size), 0),
+      next: next && next.date ? { date: str(next.date).slice(0, 10), label: str(next.label) } : null,
+    };
+  }
+  // The figures as cells, at most three: the count, one sum (the asking
+  // prices of the deals in play when there are any, else what the member
+  // owns, else the floor area on the list, which is what a broker shop that
+  // holds nothing itself has), and the next date. A value is the member's
+  // own number, so its cell says who can see it (`scope`), the way every row
+  // does. A sum of one is not a sum: one valued building reads "likely
+  // value".
+  function glanceCells(g, { money: fmt } = {}) {
+    if (!g || !g.count) return [];
+    const f = typeof fmt === "function" ? fmt : money;
+    const cells = [{ key: "count", figure: String(g.count),
+      label: (g.count === 1 ? "property" : "properties") + (g.cities > 1 ? ` in ${g.cities} cities` : g.city ? ` in ${g.city}` : "") }];
+    if (g.asked) cells.push({ key: "asking", figure: f(g.asking), label: `asking on ${g.asked} ${g.asked === 1 ? "deal" : "deals"}` });
+    else if (g.valued) {
+      cells.push({ key: "value", figure: f(g.value), scope: "you",
+        label: g.valued === 1 && g.owned === 1 ? "likely value" : "likely combined" + (g.valued < g.owned ? ` (${g.valued} of ${g.owned})` : "") });
+    } else if (g.sqft) {
+      cells.push({ key: "size", figure: Math.round(g.sqft).toLocaleString("en-US"),
+        label: g.sized === g.count ? "square feet" : `square feet across ${g.sized} of them` });
+    }
+    if (g.next) cells.push({ key: "next", figure: shortDate(g.next.date), label: "next: " + g.next.label });
+    return cells;
+  }
+
+  // The values that moved: what the member owns, by how far its newest
+  // valuation sits from its first, furthest first. A change that would print
+  // as 0.0% is not a move.
+  const MOVERS_MAX = 3;
+  function movers(rows, limit) {
+    return (Array.isArray(rows) ? rows : [])
+      .filter((r) => r && r.group === "owned" && num(r.value) > 0 && Number.isFinite(r.change) && Math.abs(r.change) >= 0.0005)
+      .sort((a, b) => (Math.abs(b.change) - Math.abs(a.change)) || street(a.address).localeCompare(street(b.address)))
+      .slice(0, limit == null ? MOVERS_MAX : limit);
+  }
+  // What the member owns that has no value yet, in the list's own order.
+  function unvalued(rows) {
+    return (Array.isArray(rows) ? rows : []).filter((r) => r && r.group === "owned" && r.portfolioId != null && !(num(r.value) > 0));
+  }
+
+  // What lands on Today, said once, in the agenda's own order, and only the
+  // kinds that can reach THIS member: messages and lease dates are a firm's,
+  // deal dates a development firm's, BOV requests the Pipeline's. It used to
+  // promise "your deal dates" to a broker shop and lease dates to a member in
+  // no firm. "": nothing can land here, so nothing is promised.
+  function landsHere({ hasFirm = false, firmKind = "", leads = false } = {}) {
+    const parts = [];
+    if (hasFirm) parts.push("unread messages");
+    if (leads) parts.push("new BOV requests");
+    if (hasFirm) parts.push(`lease dates in the next ${LEASE_DAYS} days`);
+    if (hasFirm && dealsOn(firmKind)) parts.push(`your deal dates in the next ${DEAL_DAYS}`);
+    if (!parts.length) return "";
+    const line = parts.length > 1 ? parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1] : parts[0];
+    return line.charAt(0).toUpperCase() + line.slice(1) + " land here.";
+  }
+
+  // ---- Pins that land on each other (2026-11-13) ----------------------------
+  // From across the country six buildings in one city are one dot: their
+  // pins sit on the same few pixels, the top one hides the rest, and on
+  // Properties one value tag covers the other five. `stacks` groups the pins
+  // that would touch at the map's present zoom, so each group is drawn once,
+  // with its count, and a click on it zooms in until they stand apart.
+  //
+  // `points` are { x, y } in pixels at that zoom (index.html projects them),
+  // carrying whatever else the caller wants back. Two points are together
+  // when they are closer than `rx` across and `ry` down: a dot is round, a
+  // value tag is wide. Greedy, in the order given, so the same pins at the
+  // same zoom always group the same way: a point joins the first group whose
+  // FIRST point it touches, else it starts one. Measuring from the first
+  // point (never from a middle that moves as the group grows) is what keeps
+  // a line of pins from chaining into one group a screen wide.
+  const STACK_DOT = Object.freeze({ rx: 22, ry: 22 });
+  const STACK_TAG = Object.freeze({ rx: 64, ry: 26 });
+  function stacks(points, { rx = STACK_DOT.rx, ry = STACK_DOT.ry } = {}) {
+    const groups = [];
+    (Array.isArray(points) ? points : []).forEach((p) => {
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
+      const g = groups.find((q) => { const dx = (p.x - q.items[0].x) / rx, dy = (p.y - q.items[0].y) / ry; return dx * dx + dy * dy < 1; });
+      if (g) g.items.push(p); else groups.push({ items: [p] });
+    });
+    return groups;
+  }
+  // Where a stack is: the town most of its properties are in, and "area"
+  // once they are not all in it ("Boise area" for Boise and Meridian). A tie
+  // goes to the name that sorts first, so it never flickers between redraws.
+  function stackPlace(rows) {
+    const n = new Map();
+    (Array.isArray(rows) ? rows : []).forEach((r) => { const t = town(r && r.address); if (t) n.set(t, (n.get(t) || 0) + 1); });
+    if (!n.size) return "";
+    const top = [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+    return n.size > 1 ? top + " area" : top;
+  }
+  // What a stack says to a pointer resting on it and to a screen reader:
+  // how many, where, and what a click does.
+  function stackTitle(rows) {
+    const n = (Array.isArray(rows) ? rows : []).length;
+    if (!n) return "";
+    const place = stackPlace(rows);
+    return `${n} ${n === 1 ? "property" : "properties"}${place ? (/ area$/.test(place) ? ` in the ${place}` : ` in ${place}`) : ""}. Click to zoom in.`;
+  }
+  // What the properties in a stack add up to, for Properties' value tags.
+  // A sum is given only when it means one thing: EVERY property in the stack
+  // has a figure, and they are all the same kind of figure. An asking price
+  // and a likely value do not add up to anything, and a sum that leaves a
+  // building out reads as the worth of all of them. Otherwise `total` is 0
+  // and the stack shows its count alone; zooming in shows each tag.
+  function stackValue(rows) {
+    const list = (Array.isArray(rows) ? rows : []).filter(Boolean);
+    const valued = list.filter((r) => num(r.value) > 0);
+    const kinds = new Set(valued.map((r) => str(r.valueNote)));
+    const whole = list.length > 0 && valued.length === list.length && kinds.size === 1;
+    return { total: whole ? valued.reduce((t, r) => t + num(r.value), 0) : 0, valued: valued.length, whole };
+  }
 
   // ---- What the map shows (2026-10-08) -------------------------------------
   // The owner's ask: the map "shows where the properties, comps and permits
@@ -553,6 +745,8 @@
 
   return { LEASE_DAYS, DEAL_DAYS, BOV_DAYS, WEEK_DAYS, STAGES, addressKey, street, place, town, daysUntil, shortDate, inDays, money,
     stageLabel, stageStep, lastValue, dealsOn, properties, scopeOf, passedDeals, addWhere, ownedTotal, agenda, thisWeek, statusLine,
+    later, inAbout, glance, glanceCells, MOVERS_MAX, movers, unvalued, landsHere,
+    STACK_DOT, STACK_TAG, stacks, stackPlace, stackTitle, stackValue,
     LAYERS, LAYER_DEFAULT, readLayers, VIEWS, layerView, layersFor, tabLayer, PERMIT_STAGES, tidyCaps, permitPin, permitStageLabel, permitAt, layerNotes,
     WHEEL_BURST_MS, MAC_NOTCH_PX, wheelGesture, swipePan, pinchZoomBy, pinchSnap, marketCities, marketsLine, withoutOwnValues };
 });

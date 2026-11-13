@@ -249,9 +249,139 @@ test("Home's fixes from the empty Home drafts: words on the firm header, links a
   // One place opens on its neighbourhood, not at the fit's street-level ceiling.
   assert.match(html, /const HM_ONE_ZOOM = 14;/);
   // Next replaces a paragraph that repeated the status line, and is text-built.
+  // Since 2026-11-13 the paragraph no longer repeats it (below), so Next
+  // stands in for it only when Next is all a quiet Today has to show.
   const next = fnOf("function hmDrawNext(firm) {");
   assert.doesNotMatch(next.replace("ic.innerHTML = HM_ICON[st.icon]; // static markup, no data", ""), /innerHTML/);
-  assert.match(draw, /todayEmpty\.classList\.toggle\("hidden", hmItems\.length > 0 \|\| nothing \|\| next\);/);
+  assert.match(draw, /todayEmpty\.classList\.toggle\("hidden", hmItems\.length > 0 \|\| nothing \|\| !todayEmpty\.textContent \|\| \(next && !brief\)\);/);
+});
+
+// A quiet day (2026-11-13). The owner's screenshot of Home: nine properties,
+// nothing due, "Nothing needs you right now." under the greeting and again as
+// the whole of Today, and an empty column beside the map. What a quiet Today
+// shows is home-map.js (test/home-map.test.js); this pins how index.html
+// wires it.
+test("a quiet Today shows what the member holds, never the status line a second time", () => {
+  const draw = fnOf("function drawHomeMap() {");
+  // "Nothing needs you right now." is the status line's sentence, said once,
+  // by HOMEMAP.statusLine (home-map.js). Outside its comments, the page
+  // never writes it: that is what kept it from being said twice.
+  const said = html.replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(said, /Nothing needs you/, "index.html writes the status line's sentence itself");
+  assert.match(require("../home-map.js").statusLine({ items: [], propertyCount: 2 }), /^Nothing needs you right now\.$/);
+  assert.doesNotMatch(draw.replace(/\/\/[^\n]*/g, ""), /Nothing needs you/, "drawHomeMap says the status line itself");
+  // The words under a quiet day's cards say only what can reach this member.
+  assert.match(draw, /\? HOMEMAP\.landsHere\(\{ hasFirm: !!firm, firmKind: hmFirmKind\(\), leads: canLeads \}\)/);
+  // The later dates are read only on a quiet day, from what Home already holds.
+  assert.match(draw, /hmLater = hmItems\.length \? \[\] : HOMEMAP\.later\(\{ critical: firm && Array\.isArray\(deskCritical\) \? deskCritical : \[\],/);
+  assert.match(draw, /const brief = hmDrawBrief\(\);/);
+  // The brief asks the server nothing and is built from text.
+  const brief = fnOf("function hmDrawBrief() {");
+  assert.doesNotMatch(brief, /fetch\(|acctApi\(|bootFetch\(|innerHTML/);
+  assert.match(brief, /const quiet = !hmItems\.length && hmRows\.length > 0;/, "a busy day's list is left exactly as it was");
+  // At a glance starts at two properties, in the money format Properties' own headings use.
+  assert.match(brief, /const cells = quiet && rows\.length >= 2\s*\? HOMEMAP\.glanceCells\(HOMEMAP\.glance\(\{ rows, next: hmLater\[0\] \|\| null \}\), \{ money: hmSitesView\(\) \? HOMESITES\.short : HOMEMAP\.money \}\)/);
+  // The member's values show here only where their plan shows values: the
+  // working pane's rule (billing.md: a free account's properties are an
+  // address list, Pro's carry their values), read through the same flag.
+  // The brief reads Home's rows, which drawHomeMap has already gated on the
+  // plan (the 2026-11-13 block at the end of this file); no check of its own.
+  assert.match(brief, /const rows = hmRows;/);
+  assert.doesNotMatch(brief.replace(/\/\/[^\n]*/g, ""), /hmShowValues|portfolioValues|deskPortfolio/, "the brief decides the plan for itself again");
+  assert.ok(html.includes("const hmShowValues = () => { try { return Boolean(proConfig && proConfig.portfolioValues); } catch (_) { return false; } };"),
+    "the flag is read unguarded: proConfig is declared far below, a temporal dead zone throw");
+  // When the plan answers after Home drew, Home is drawn again, and no read is repeated.
+  const gate = fnOf("async function initGate() {");
+  assert.match(gate, /if \(typeof drawHomeMap === "function" && currentUser && hmRows\.length\) \{\s*try \{ drawHomeMap\(\); \}/);
+  assert.doesNotMatch(gate.replace(/\/\/[^\n]*/g, ""), /renderMyDesk\(/, "initGate re-runs the whole desk fill again: every desk read goes out twice");
+  assert.match(fnOf("function drawHomeMap() {"), /const ownMoney = mine \? HOMESITES\.short : HOMEMAP\.money;/, "Properties' Owned heading and the glance must share one formatter");
+  // A value says who can see it, the way every row does.
+  assert.match(brief, /if \(c\.scope\) cell\.append\(hmScope\(c\.scope\)\);/);
+  assert.match(brief, /const later = quiet \? hmLater\.slice\(0, HM_LATER_MAX\) : \[\];/);
+  assert.match(brief, /const moved = quiet \? HOMEMAP\.movers\(rows\) : \[\];/);
+  for (const fn of ["function hmLaterRow(x) {", "function hmMovedRow(r) {"]) assert.doesNotMatch(fnOf(fn), /innerHTML/, fn);
+  // A later date opens the card a Today row opens; it has no number and no pin.
+  assert.match(fnOf("function hmLaterRow(x) {"), /hmSelect\(HOMEMAP\.addressKey\(x\.address\), \{ item: x \}\)/);
+  assert.match(fnOf("function hmLaterRow(x) {"), /hmScope\(x\.scope\)/, "a later row says who can see it");
+  // The state sits with the rest of Home's, above the functions the boot path calls.
+  assert.ok(html.indexOf("let hmLater = [];") > 0 && html.indexOf("let hmLater = [];") < html.indexOf("function resetHomeMap() {"),
+    "hmLater is declared below a function the boot path calls: a temporal dead zone throw on load");
+  assert.match(fnOf("function resetHomeMap() {"), /hmLater = \[\];/, "a sign-out leaves the last member's dates behind");
+  // Every part the script writes is in the markup, hidden until it has something to say.
+  for (const id of ["hmBrief", "hmGlance", "hmLater", "hmMoved"]) {
+    assert.match(html, new RegExp(`<(div|section) id="${id}" class="hidden `), `#${id} must start hidden`);
+  }
+  // .hm-brief sets a display, so it needs its own .hidden (the .dk-strip trap).
+  assert.match(html, /\.hm-brief \{ display: grid;[^}]*\}\n\s*\.hm-brief\.hidden \{ display: none; \}/);
+});
+
+test("a property with no value yet leads a quiet Today's next steps, and the step runs nothing", () => {
+  const next = fnOf("function hmDrawNext(firm) {");
+  assert.match(next, /const bare = HOMEMAP\.unvalued\(hmRows\);/);
+  assert.ok(next.indexOf("HOMEMAP.unvalued(hmRows)") < next.indexOf("hmRows.length <= 3"), "the value step comes before the early account's steps");
+  // It opens the property's pane, where Refresh value is; a search is the member's own click.
+  assert.match(next, /act: "Open", go: \(\) => hmOpenWork\(bare\[0\]\.key\) \}/);
+  assert.doesNotMatch(next, /fetch\(|acctApi\(|refreshPortfolioItem|\/api\/comps/);
+  assert.match(next, /if \(!hmItems\.length && hmWorkHere\(\)\) \{/, "without home-sites.js there is no pane to open");
+  // Its words are the pane's own, and an estimate is never called an appraisal.
+  assert.match(next, /"No value yet\. Refresh runs a search for one\."/);
+  assert.doesNotMatch(next, /apprais/i);
+});
+
+test("Home's small fixes of 2026-11-13: the dark find box, the legal line's place, room for the Feedback button", () => {
+  // The dark bridge paints every input --paper; the find box's frame is its parent.
+  assert.match(html, /#hmFind \{ background-color: transparent; \}/);
+  // Beside the rail the legal line rests at the foot of the panel.
+  assert.match(html, /html\.nav-rail\.hm-page \.hm-body > \.hm-legal \{ margin-top: auto; padding-top: 26px; \}/);
+  // Away from the rail the list's foot can scroll clear of the round Feedback button.
+  assert.match(html, /\n    \.hm-body \{ padding: 4px 8px 84px; \}/);
+});
+
+// Pins that land on each other (2026-11-13). From across the country six
+// buildings in one city were a single dot, the top pin hiding the rest, and on
+// Properties one value tag covered five. How pins group is home-map.js's
+// stacks (test/home-map.test.js); this pins how index.html draws them.
+test("pins that would land on each other are drawn once, with their count, and a click zooms in", () => {
+  const draw = fnOf("function hmDrawPins() {");
+  // Every located property is still the tab's subject (the fit is unchanged);
+  // only how its pin is drawn moved.
+  assert.match(draw, /if \(showProps\) located\.forEach\(\(\{ r, ll \}\) => \{\s*put\(ll, true\);\s*\}\);\s*if \(showProps\) hmDrawPropertyPins\(located\);/);
+  const pins = fnOf("function hmDrawPropertyPins(located) {");
+  // Grouped at the map's present zoom: a round dot, or Properties' wide value tag.
+  assert.match(pins, /const p = hmMap\.project\(\[ll\.lat, ll\.lng\], zoom\);/);
+  assert.match(pins, /HOMEMAP\.stacks\(pts, tags \? HOMEMAP\.STACK_TAG : HOMEMAP\.STACK_DOT\)/);
+  // One property is drawn exactly as it always was.
+  assert.match(pins, /if \(items\.length === 1\) \{/);
+  assert.match(pins, /<span class="hm-tag \$\{hmPipClass\(r\)\}\$\{on \? " on" : ""\}">\$\{HOMEMAP\.money\(r\.value\)\}<\/span>`, \[76, 28\], \(\) => hmSelect\(r\.key, \{ from: "map" \}\), on \? 900 : 100, r\.address\)/);
+  assert.match(pins, /<span class="hm-pip \$\{hmPipClass\(r\)\}\$\{on \? " on" : ""\}"><\/span>`, \[14, 14\], \(\) => hmSelect\(r\.key, \{ from: "map" \}\), on \? 900 : 0, r\.address\)/);
+  // A stack's markup is class names and figures; its words (a town is text a
+  // person typed) are the marker's title, a DOM property.
+  const stack = pins.slice(pins.indexOf("const rows = items.map"));
+  assert.match(stack, /const html = `<span class="hm-stk\$\{on \? " on" : ""\}">\$\{dots\}<b>\$\{rows\.length\}<\/b>\$\{sum \? `<em>\$\{HOMEMAP\.money\(sum\)\}<\/em>` : ""\}<\/span>`;/);
+  assert.doesNotMatch(stack.slice(0, stack.indexOf("hmPin(at, html")), /address|stackTitle|stackPlace/, "a stack's HTML holds something a person typed");
+  assert.match(stack, /\}, on \? 900 : 200, null, HOMEMAP\.stackTitle\(rows\)\);/);
+  const pin = fnOf("function hmPin(");
+  assert.match(pin, /keyboard: false, \.\.\.\(still \? \{ title: still, alt: still \} : \{\}\) \}\);/);
+  // A stack takes a click and never opens on hover: a hover that moved the map
+  // would be worse than one that opened a card.
+  assert.ok(pin.indexOf("if (still) return m.addTo(hmPinLayer);") > pin.indexOf('if (onClick) m.on("click", onClick);'), "a stack lost its click");
+  assert.ok(pin.indexOf("if (still) return m.addTo(hmPinLayer);") < pin.indexOf("if (onClick && hmCanHover()) {"), "a stack opens on hover");
+  // The click zooms until its properties stand apart; where zooming cannot
+  // (one point, or the closest zoom) it opens the first one's card, as before.
+  assert.match(stack, /if \(one \|\| hmMap\.getZoom\(\) >= hmMap\.getMaxZoom\(\)\) \{ hmSelect\(rows\[0\]\.key, \{ from: "map" \}\); return; \}/);
+  assert.match(stack, /if \(to > zoomNow\) hmMap\.fitBounds\(lls, \{ \.\.\.fit, maxZoom: hmMap\.getMaxZoom\(\) \}\);/);
+  // In a narrow map the fit can land on the present zoom: one level in instead, so no click is a dead one.
+  assert.match(stack, /else hmMap\.setView\(at, Math\.min\(hmMap\.getMaxZoom\(\), zoomNow \+ 1\)\);/);
+  // On Today a dated row is its numbered pin: its dot is not drawn or counted beside it.
+  assert.match(pins, /const dated = new Set\(hmTab === "today" \? hmItems\.filter\(\(x\) => x\.num != null\)\.map\(\(x\) => HOMEMAP\.addressKey\(x\.address\)\) : \[\]\);/);
+  // A stack is the zoom's, so the pins are drawn again when the zoom settles:
+  // after the current task, never inside hmDrawPins' own fit.
+  assert.ok(fnOf("function hmEnsureMap()").includes('hmMap.on("zoomend", hmRestack);'));
+  const restack = fnOf("function hmRestack() {");
+  assert.match(restack, /hmRestackTimer = setTimeout\(\(\) => \{ if \(hmPinLayer\) hmDrawPins\(\); \}, 0\);/);
+  // The pill is centred on its marker like a value tag, and its dots are the legend's colours.
+  assert.match(html, /\.hm-stk \{ position: absolute; left: 50%; top: 50%; transform: translate\(-50%, -50%\);/);
+  for (const k of ["buy", "own", "firm"]) assert.match(html, new RegExp(`\\.hm-legend i\\.${k}, \\.hm-pip\\.${k}, \\.hm-stk i\\.${k} \\{`), `a stack's ${k} dot is not the legend's colour`);
 });
 
 test("a free account's Home is an address list: values come off the rows before anything draws them (2026-11-13)", () => {
@@ -274,7 +404,7 @@ test("a free account's Home is an address list: values come off the rows before 
   assert.equal((html.match(/hmRows = HOMEMAP\.properties\(/g) || []).length, 1);
   assert.equal((html.match(/\bhmRows = /g) || []).length, 4, "hmRows is written somewhere new (its declaration, its reset, properties() and the gate are the four): gate it there too");
   // The value surfaces read the row, never the portfolio's snapshots.
-  for (const fn of ["function hmPropRow(r) {", "function hmDrawPins() {", "function hmSelect(key, { item, permit, from } = {}) {"]) {
+  for (const fn of ["function hmPropRow(r) {", "function hmDrawPins() {", "function hmDrawPropertyPins(located) {", "function hmDrawBrief() {", "function hmSelect(key, { item, permit, from } = {}) {"]) {
     assert.doesNotMatch(fnOf(fn), /deskPortfolio|lastValue|snapshots/, fn);
   }
   // The pane is told the same answer, from the same helper.

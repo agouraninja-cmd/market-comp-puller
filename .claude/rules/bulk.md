@@ -53,6 +53,14 @@ paths:
   portfolio, at **`/bulk`**. Rules live in the pure, tested **`bulk.js`**; the
   page is **`bulk-page.js`** (a marketShell BODY, the /brokers-firms pattern, so it
   carries no chrome of its own); server.js owns the job tables and the worker.
+  **It loads Inter since 2026-11-13** (`head: INTER_FONT_HEAD` on the route,
+  signed in or not, like `/comps`, the other tab of the Comps section): until
+  then the page and the rail beside it were in the system font, and the
+  section changed typeface between its two tabs. Nothing wrapped differently
+  at 1440 or 390 wide on the form; the page is 1px shorter. **Not measured:
+  a finished portfolio's table**, which the seed did not hold; Inter is about
+  6% wider, so look at one with long addresses (markets.md, "Inter on
+  /markets", has the measurements and what is still left).
   **The page is a desk since 2026-09-04** (owner's pick from a design canvas):
   headed "Run a report" — the door every bar and the workspace header call it
   by, while the rail row keeps "Bulk valuation" — with a two-cell strip

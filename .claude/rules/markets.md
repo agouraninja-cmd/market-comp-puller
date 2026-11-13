@@ -28,6 +28,42 @@ paths:
 
 ## Architecture
 
+- **Inter on /markets, for a member only (2026-11-13).** `/markets` and
+  `/bulk` were the two rows of the rail whose pages did not load Inter, so
+  the whole page, the rail's words included, fell back to the system font
+  (Segoe UI on Windows) and the strip changed typeface as a member moved
+  between them and Home. `renderMarketDirectoryHTML` now puts
+  `INTER_FONT_HEAD` first in the `head` it hands `marketShell`, and only when
+  `signedIn`: the same switch as The Board and the Market Explorer form.
+  Three things to hold:
+  - **The signed-out page is untouched**, byte for byte (hashed before and
+    after). It is the public page, cached for an hour, designed against the
+    system font like every other public page, and a stylesheet from another
+    host in its head is a cost for every stranger and crawler. The route's
+    headers did not change (`sendShellPage`: no-store for a member, an hour
+    for a stranger, `vary: cookie` both ways).
+  - **What moved on a member's page** (measured at 1440 and 390 wide, every
+    text box before and after). Inter is wider than Segoe UI, about 6% on
+    body copy. At 1440 the map's filter row no longer fits its count ("196
+    market areas · 49 measured for industrial"), which drops to a line of its
+    own, right-aligned; the paragraphs in the cards that size to their text
+    (Market rankings, the closing "Have a specific property?", the footer's
+    disclaimer) grow wider and lose a line each, so the page is 17px
+    shorter. On a phone the Market rankings paragraph gains a line and the
+    page is 52px longer. No market card changed height and nothing
+    overflows sideways. The Board was empty in the seed, so its tiles were
+    not measured in Inter.
+  - **Not done, measured the same day.** `/market/<slug>` and `/rankings`
+    (and every public page a member can open: `/pricing`, `/faq`, `/lenders`,
+    `/brokers-firms`, `/download`, `/leadership`, `/terms`, `/privacy`) still
+    load no Inter for a member, so the rail is still in the system font
+    there. `/buildings` has no such gap: it has passed `INTER_FONT_HEAD`
+    since it was built. Closing the rest is one line in `marketShell` (the
+    font whenever `signedIn`), and it restyles a dozen pages for members, so
+    it wants its own pictures.
+  `test/vault-shell.test.js` asks every page a rail row opens for the font,
+  once, ahead of the stylesheet, and asks the public `/markets` for none.
+
 - **The Market Explorer form leads /markets (2026-11-10; the owner: "make it
   so I can search whatever city and building type for the market explorer
   and it will generate a report. It used to be able to do that").** Nothing

@@ -287,8 +287,23 @@ test("in the rail it is a row over the account circle, and floats everywhere els
   // and on the window being tall enough to hold it under Permits.
   const rail = css[0].match(/@media \(min-width:900px\) and \(min-height:620px\)\{([\s\S]*?)\n    \}/);
   assert.ok(rail, "the rail placement must sit behind the rail's own width guard and a height guard");
-  assert.match(rail[1], /html\.nav-rail \.tninja\{left:8px;right:auto;bottom:65px;width:68px;/,
-    "inset like the rail's rows (84px rail, 8px each side) and standing over the 57px account cluster");
+  // 60px since 2026-11-12 (65 before): it stands on the strip's foot, the
+  // 60px block that holds the 32px account circle between 14px and 14px.
+  // test/nav-parity.test.js adds the whole column up, this button included.
+  assert.match(rail[1], /html\.nav-rail \.tninja\{left:8px;right:auto;bottom:60px;width:68px;/,
+    "inset like the rail's rows (84px rail, 8px each side) and standing on the 60px foot that holds the account circle");
+  // A row of the strip in its colours too: the strip is a page surface, so
+  // its ink is the theme's, never literal white.
+  assert.match(rail[1], /color:var\(--ink-2\)/, "Feedback reads in the rows' own ink");
+  assert.ok(!/rgba\(255,255,255/.test(rail[1]), "white ink would vanish on the strip's pale surface");
+  // The ninja is the brand's own filled glyph, 22px by its attributes, and
+  // keeps that size in the strip inside a row's 24px of room.
+  assert.match(html, /<button id="testerBadge"[\s\S]{0,300}?<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"/,
+    "the Feedback glyph is no longer the filled ninja");
+  assert.match(rail[1], /html\.nav-rail \.tninja svg\{width:22px;height:22px;margin:1px 0\}/);
+  // The rule that opens the foot waits for a taller window, in a block of its own.
+  assert.match(css[0], /@media \(min-width:900px\) and \(min-height:680px\)\{\s*html\.nav-rail \.tninja::before\{/,
+    "the rule above Feedback should only be drawn where it stands clear of the last row");
   assert.match(rail[1], /html\.nav-rail \.tninja-l\{display:block\}/, "the word shows only in the rail");
   assert.match(rail[1], /html\.nav-rail \.tninja\.hidden\{display:none\}/,
     "the rail's display:flex must not out-rank hidden for a signed-out visitor");

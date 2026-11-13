@@ -415,9 +415,11 @@ paths:
       COMPUTES that set from the two stylesheets and fails the build on a new
       one; the fix is to state the property on the vault's own rule.
     `INTER_FONT_HEAD` rides through `marketShell`'s `head` for this page
-    alone: `MARKET_CSS` names Inter in `body{}` and no server-rendered page
-    fetches it, so without that link the fold would silently have restyled
-    the page brokers use daily.
+    (the first to pass it; every page a rail row opens does since
+    2026-11-13, see the comment above the constant): `MARKET_CSS` names
+    Inter in `body{}` and `marketShell` itself fetches nothing, so without
+    that link the fold would silently have restyled the page brokers use
+    daily.
   - **Draft B: the vault as tabs, the book as a map (2026-09-25; the owner's
     pick of the redesign drafts at
     https://claude.ai/artifact/Mw9KrzNpaLygnJ3azF1cYK).** Draft C with B's map

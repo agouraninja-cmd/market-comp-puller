@@ -40,6 +40,20 @@
 "use strict";
 
 // ---------------------------------------------------------------------------
+// Hidden means hidden
+// ---------------------------------------------------------------------------
+
+// A page hides a button or a tab with the `hidden` attribute, and the
+// browser's own rule for it is the weakest there is: any rule here that sets
+// `display` out-ranks it, and the control stays on screen. That was live from
+// 2026-11-10 (the day the families moved here) to 2026-11-13: Home's People
+// tab showed to a member in no firm and did nothing when pressed, and /sites
+// drew "+ Add a site" over its own "Sites is for development firms" wall.
+// So every selector this file gives a `display` says the attribute again,
+// one step more specific than itself. A test holds the two together.
+const hiddenRule = (sel) => `${sel}[hidden]{display:none}`;
+
+// ---------------------------------------------------------------------------
 // The button
 // ---------------------------------------------------------------------------
 
@@ -137,6 +151,7 @@ function buttonFamilyCss(f, unified) {
   out.push(`${f.sel}[disabled]{${has("disabledStyle") ? d.disabledStyle : BUTTON.disabled}}`);
   out.push(`${f.sel}:focus-visible{${BUTTON.focus}}`);
   if (f.small) out.push(`${f.sel}.sm{padding:${f.small.pad};font-size:${f.small.size}}`);
+  out.push(hiddenRule(f.sel));
   return out.join("\n");
 }
 
@@ -160,6 +175,7 @@ function buttonCss(opts) {
     `.btn.ghost:hover{${s.hover}}`,
     `.btn[disabled]{${BUTTON.disabled}}`,
     `.btn:focus-visible{${BUTTON.focus}}`,
+    hiddenRule(".btn"),
   ].join("\n");
   return canon + "\n" + BUTTON_FAMILIES.map((f) => buttonFamilyCss(f, unified)).join("\n");
 }
@@ -244,6 +260,7 @@ function tabFamilyCss(f, unified) {
   out.push(`${f.on}{color:var(--ink);font-weight:600;border-bottom-color:${v("line", t.line)}}`);
   if (v("focus", true)) out.push(`${f.tab}:focus-visible{outline:2px solid var(--red);outline-offset:${t.focusOffset}}`);
   if (f.extra) out.push(f.extra);
+  out.push(hiddenRule(f.list), hiddenRule(f.tab));
   return out.join("\n");
 }
 
@@ -293,6 +310,7 @@ function segmentedFamilyCss(f, unified) {
   ].filter(Boolean).join(";");
   const out = [`${f.list}{${list}}`, `${f.item}{${item}}`, `${f.item}:hover{${v("hover", I.hover)}}`, `${f.on}{${v("on", I.on)}}`];
   if (v("focus", false)) out.push(`${f.item}:focus-visible{outline:2px solid var(--red);outline-offset:-2px}`);
+  out.push(hiddenRule(f.list), hiddenRule(f.item));
   return out.join("\n");
 }
 
@@ -312,6 +330,7 @@ function tabsCss(opts) {
     `.seg>a:hover,.seg>button:hover{${I.hover}}`,
     `.seg>[aria-selected="true"],.seg>[aria-current="page"]{${I.on}}`,
     `.seg>:focus-visible{outline:2px solid var(--red);outline-offset:-2px}`,
+    hiddenRule(".tabs"), hiddenRule(".tab"), hiddenRule(".seg"), hiddenRule(".seg>a"), hiddenRule(".seg>button"),
   ].join("\n");
   return canon + "\n" + TAB_FAMILIES.map((f) => tabFamilyCss(f, unified)).join("\n") + "\n" +
     SEGMENTED_FAMILIES.map((f) => segmentedFamilyCss(f, unified)).join("\n");

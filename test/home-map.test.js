@@ -501,3 +501,205 @@ test("a free account's properties are an address list: no owned row keeps its es
   assert.equal(JSON.stringify(rows), before);
   assert.deepEqual(HM.withoutOwnValues(null), []);
 });
+
+// ---- A quiet day (2026-11-13) ------------------------------------------------
+// From the owner's screenshot of Home: nine properties, nothing due, and a
+// Today that said "Nothing needs you right now." twice over an empty column.
+// What a quiet Today shows instead is decided here.
+
+test("later: the dates past the 'needs you' windows, soonest first, with no number", () => {
+  const critical = [
+    { buildingId: "b1", address: "1450 S Eagle Rd, Meridian, ID", tenant: "Acme", suite: "200", kind: "expiry", date: "2027-03-04" },  // 148 days
+    { buildingId: "b2", address: "615 S Capitol Blvd, Boise, ID", tenant: "Ridgeline", kind: "notice", date: "2026-11-20" },            // 44 days: needs you
+    { buildingId: "b3", address: "88 Main St, Boise, ID", tenant: "Edge", kind: "expiry", date: "2027-01-05" },                          // 90 days: the window's last day
+    { buildingId: "b4", address: "90 Main St, Boise, ID", tenant: "Past", kind: "expiry", date: "2027-01-06" },                          // 91 days: the first day past it
+  ];
+  const sites = [SITE({ dates: [{ on: "2026-10-21", label: "Due diligence ends" }, { on: "2026-12-21", label: "Closing" }] })];
+  const dev = HM.later({ critical, sites, firmKind: DEV, today: TODAY });
+  assert.deepEqual(dev.map((x) => [x.kind, x.label, x.n]), [["deal", "Closing", 75], ["lease", "Lease expires", 91], ["lease", "Lease expires", 148]]);
+  assert.ok(dev.every((x) => x.num === null && x.later === true), "a later date has no number: a number is a pin, and a pin needs you");
+  // Nothing is in both lists, and nothing still ahead is in neither.
+  const now = HM.agenda({ critical, sites, firmKind: DEV, today: TODAY });
+  assert.deepEqual(now.map((x) => x.n).sort((a, b) => a - b), [14, 44, 90]);
+  assert.equal(now.length + dev.length, 6);
+  // Deals are a development firm's: a broker shop's later list is its leases.
+  assert.deepEqual(HM.later({ critical, sites, firmKind: "broker", today: TODAY }).map((x) => x.kind), ["lease", "lease"]);
+  // The row is the agenda's own row, so its card and its door are too.
+  assert.equal(dev[1].href, "/building/b4");
+  assert.equal(dev[1].scope, "firm");
+  assert.equal(dev[0].scope, "you");
+  assert.equal(dev[0].act, "Open deal");
+  assert.deepEqual(HM.later({}), []);
+  assert.deepEqual(HM.later({ critical: [null, { date: "" }, { date: "not a date" }], today: TODAY }), []);
+});
+
+test("a date months out is read in months, and never as 'in 0 months'", () => {
+  assert.equal(HM.inAbout(45), "in 45 days", "inside two months it is still days");
+  assert.equal(HM.inAbout(60), "in 60 days");
+  assert.equal(HM.inAbout(61), "in 2 months");
+  assert.equal(HM.inAbout(111), "in 4 months");
+  assert.equal(HM.inAbout(340), "in 11 months");
+  assert.equal(HM.inAbout(365), "in a year");
+  assert.equal(HM.inAbout(400), "in 13 months");
+  assert.equal(HM.inAbout(null), "");
+});
+
+test("at a glance: the count and where, one sum of money, and the next date", () => {
+  const rows = HM.properties({ today: TODAY, portfolio: [
+    HELD({}),
+    HELD({ id: "p2", address: "500 W 5th St, Austin, TX", snapshots: [{ likely: 9800000 }] }),
+    HELD({ id: "p3", address: "1100 Broadway, Columbus, GA", snapshots: [] }),
+  ] });
+  const g = HM.glance({ rows });
+  assert.equal(g.count, 3);
+  assert.equal(g.cities, 3);
+  assert.equal(g.value, 6120000 + 9800000);
+  assert.deepEqual([g.valued, g.owned], [2, 3]);
+  // The same sum Properties' Owned heading prints (ownedTotal), by construction.
+  const own = HM.ownedTotal(rows);
+  assert.deepEqual([own.total, own.valued, own.of], [g.value, g.valued, g.owned]);
+  const short = (n) => "$" + (n / 1e6).toFixed(2) + "M";
+  assert.deepEqual(HM.glanceCells(g, { money: short }), [
+    { key: "count", figure: "3", label: "properties in 3 cities" },
+    { key: "value", figure: "$15.92M", scope: "you", label: "likely combined (2 of 3)" },
+  ]);
+  // A value is the member's own number: its cell says who can see it.
+  assert.equal(HM.glanceCells(g)[1].scope, "you");
+  // One city is named; one valued building is a value, not a sum.
+  const one = HM.glance({ rows: rows.filter((r) => HM.town(r.address) === "Meridian") });
+  assert.deepEqual(HM.glanceCells(one, { money: short }), [
+    { key: "count", figure: "1", label: "property in Meridian" },
+    { key: "value", figure: "$6.12M", scope: "you", label: "likely value" },
+  ]);
+  // Nothing held, nothing said.
+  assert.deepEqual(HM.glanceCells(HM.glance({ rows: [] })), []);
+  assert.deepEqual(HM.glanceCells(null), []);
+});
+
+test("at a glance, for a development firm: what is being asked on its deals, and the next date", () => {
+  const sites = [SITE({ dates: [{ on: "2026-12-21", label: "Closing" }] }), SITE({ id: "s2", address: "4200 E Amity Rd, Nampa, ID", stage: "loi", asking_price: 3100000 }),
+    SITE({ id: "s3", address: "900 N Ten Mile Rd, Meridian, ID", stage: "prospect", asking_price: null })];
+  const rows = HM.properties({ today: TODAY, firmKind: DEV, sites, portfolio: [HELD({})], buildings: [B({ id: "b9", address: "615 S Capitol Blvd, Boise, ID" })] });
+  const next = HM.later({ sites, firmKind: DEV, today: TODAY })[0];
+  const cells = HM.glanceCells(HM.glance({ rows, next }));
+  assert.deepEqual(cells.map((c) => c.key), ["count", "asking", "next"], "at most three, and the deals in play lead the money");
+  assert.equal(cells[0].label, "properties in 3 cities");
+  assert.equal(cells[1].figure, "$6.55M");
+  assert.equal(cells[1].label, "asking on 2 deals", "a deal with no asking price is not counted into the sum");
+  assert.equal(cells[1].scope, undefined, "a deal may be shared with the firm, so the sum claims no one scope");
+  assert.deepEqual([cells[2].figure, cells[2].label], ["Dec 21", "next: Closing"]);
+  // A broker shop that holds nothing itself: the firm's buildings have no
+  // value on Home, so the sum is the floor area on the list, and it says how
+  // many of them it counts when some have no size.
+  const firm = HM.properties({ today: TODAY, buildings: [B({}), B({ id: "b2", address: "615 S Capitol Blvd, Boise, ID", sizeSqft: 22000 }),
+    B({ id: "b3", address: "88 Main St, Boise, ID", sizeSqft: null })] });
+  assert.deepEqual(HM.glanceCells(HM.glance({ rows: firm })).slice(1), [{ key: "size", figure: "70,000", label: "square feet across 2 of them" }]);
+  assert.deepEqual(HM.glanceCells(HM.glance({ rows: firm.filter((r) => r.size) })).slice(1), [{ key: "size", figure: "70,000", label: "square feet" }]);
+  // No sizes either: the count alone, never a zero.
+  assert.deepEqual(HM.glanceCells(HM.glance({ rows: firm.filter((r) => !r.size) })).map((c) => c.key), ["count"]);
+});
+
+test("what moved: the member's own values, furthest from where they started, and never a 0.0%", () => {
+  const rows = HM.properties({ today: TODAY, portfolio: [
+    HELD({ id: "a", address: "1 A St, Boise, ID", snapshots: [{ likely: 1000000 }, { likely: 1047000 }] }),   // +4.7%
+    HELD({ id: "b", address: "2 B St, Boise, ID", snapshots: [{ likely: 1000000 }, { likely: 964000 }] }),    // -3.6%
+    HELD({ id: "c", address: "3 C St, Boise, ID", snapshots: [{ likely: 1000000 }, { likely: 1000300 }] }),   // +0.03%: prints 0.0%
+    HELD({ id: "d", address: "4 D St, Boise, ID", snapshots: [{ likely: 1000000 }] }),                        // valued once: no change
+    HELD({ id: "e", address: "5 E St, Boise, ID", snapshots: [{ likely: 1000000 }, { likely: 1012000 }] }),   // +1.2%
+    HELD({ id: "f", address: "6 F St, Boise, ID", snapshots: [{ likely: 1000000 }, { likely: 1090000 }] }),   // +9.0%
+  ], buildings: [B({})] });
+  assert.deepEqual(HM.movers(rows).map((r) => HM.street(r.address)), ["6 F St", "1 A St", "2 B St"], "by distance, up or down, three at most");
+  assert.deepEqual(HM.movers(rows, 10).map((r) => HM.street(r.address)), ["6 F St", "1 A St", "2 B St", "5 E St"]);
+  assert.deepEqual(HM.movers([]), []);
+  assert.deepEqual(HM.movers(null), []);
+});
+
+test("what you own with no value yet is named, in the list's order; a firm building never is", () => {
+  const rows = HM.properties({ today: TODAY, portfolio: [
+    HELD({ id: "a", address: "9 Z St, Boise, ID", snapshots: [] }),
+    HELD({ id: "b", address: "2 B St, Boise, ID", snapshots: [{ likely: 1 }] }),
+    HELD({ id: "c", address: "1 A St, Boise, ID" , snapshots: [] }),
+  ], buildings: [B({})] });
+  assert.deepEqual(HM.unvalued(rows).map((r) => HM.street(r.address)), ["1 A St", "9 Z St"]);
+  assert.deepEqual(HM.unvalued([{ group: "firm", value: null }, { group: "buying", value: null }]), []);
+});
+
+test("Today promises only what can reach this member, once, in the agenda's order", () => {
+  assert.equal(HM.landsHere({ hasFirm: true, firmKind: DEV }),
+    "Unread messages, lease dates in the next 90 days and your deal dates in the next 30 land here.");
+  // A broker shop has no deals on Home; it was promised "your deal dates" until 2026-11-13.
+  assert.equal(HM.landsHere({ hasFirm: true, firmKind: "broker", leads: true }),
+    "Unread messages, new BOV requests and lease dates in the next 90 days land here.");
+  assert.doesNotMatch(HM.landsHere({ hasFirm: true, firmKind: "broker" }), /deal/);
+  // A member in no firm has no messages and no lease dates on Home.
+  assert.equal(HM.landsHere({ leads: true }), "New BOV requests land here.");
+  assert.equal(HM.landsHere({}), "", "nothing can land here, so nothing is promised");
+  assert.equal(HM.landsHere({ firmKind: DEV }), "", "a development kind with no firm is nobody's");
+  // The numbers are the agenda's own windows, not a second copy of them.
+  assert.ok(HM.landsHere({ hasFirm: true, firmKind: DEV }).includes(`next ${HM.LEASE_DAYS} days`));
+  assert.ok(HM.landsHere({ hasFirm: true, firmKind: DEV }).includes(`next ${HM.DEAL_DAYS} `));
+  // It never repeats the status line above it.
+  for (const o of [{ hasFirm: true, firmKind: DEV }, { hasFirm: true, leads: true }, { leads: true }]) {
+    assert.doesNotMatch(HM.landsHere(o), /Nothing needs you/);
+  }
+});
+
+// ---- Pins that land on each other (2026-11-13) --------------------------------
+// The owner's screenshot again: five dots on a map of the country, one of
+// which was several buildings in and around Boise, with nothing saying so.
+
+test("pins that would touch at this zoom are one stack; pins that stand apart are their own", () => {
+  const P = (x, y, id) => ({ x, y, id });
+  // Six in one city from across the country, three far away.
+  const far = [P(100, 100, "a"), P(101, 100, "b"), P(100, 103, "c"), P(104, 99, "d"), P(99, 98, "e"), P(102, 102, "f"), P(600, 300, "tx"), P(800, 250, "ga"), P(900, 150, "va")];
+  const groups = HM.stacks(far);
+  assert.deepEqual(groups.map((g) => g.items.map((p) => p.id).join("")), ["abcdef", "tx", "ga", "va"]);
+  // Zoomed in, the same six stand apart.
+  const near = far.slice(0, 6).map((p, i) => P(100 + i * 60, 100 + (i % 2) * 50, p.id));
+  assert.deepEqual(HM.stacks(near).map((g) => g.items.length), [1, 1, 1, 1, 1, 1]);
+  // The edge: touching is closer than the radius, and the radius itself is apart.
+  assert.equal(HM.stacks([P(0, 0), P(21.9, 0)]).length, 1);
+  assert.equal(HM.stacks([P(0, 0), P(22, 0)]).length, 2);
+  // A value tag is wide: two tags side by side overlap long before two dots would.
+  assert.equal(HM.stacks([P(0, 0), P(50, 0)]).length, 2, "dots 50px apart stand apart");
+  assert.equal(HM.stacks([P(0, 0), P(50, 0)], HM.STACK_TAG).length, 1, "tags 50px apart cover each other");
+  assert.equal(HM.stacks([P(0, 0), P(0, 30)], HM.STACK_TAG).length, 2, "but one above the other, 30px apart, both read");
+  // Measured from a group's FIRST point, so a line of pins never chains into
+  // one group a screen wide.
+  const line = [0, 15, 30, 45, 60, 75, 90].map((x) => P(x, 0));
+  assert.deepEqual(HM.stacks(line).map((g) => g.items.map((p) => p.x)), [[0, 15], [30, 45], [60, 75], [90]]);
+  // The same pins in the same order always group the same way, and nothing unplaced is counted.
+  assert.deepEqual(HM.stacks(far), groups);
+  assert.deepEqual(HM.stacks([P(NaN, 0), null, { x: 1 }, P(5, 5)]).map((g) => g.items.length), [1]);
+  assert.deepEqual(HM.stacks(null), []);
+});
+
+test("a stack says how many, where, and what a click does", () => {
+  const rows = [{ address: "1210 N 17th St, Boise, ID" }, { address: "450 W Main St, Boise, ID 83702" }, { address: "88 E Chinden Blvd, Meridian, ID" }];
+  assert.equal(HM.stackPlace(rows), "Boise area", "most are in Boise, and not all");
+  assert.equal(HM.stackPlace(rows.slice(0, 2)), "Boise");
+  assert.equal(HM.stackTitle(rows), "3 properties in the Boise area. Click to zoom in.");
+  assert.equal(HM.stackTitle(rows.slice(0, 2)), "2 properties in Boise. Click to zoom in.");
+  // A tie never flickers: the name that sorts first.
+  assert.equal(HM.stackPlace([{ address: "1 A St, Nampa, ID" }, { address: "2 B St, Boise, ID" }]), "Boise area");
+  // An address with no town still counts, and names no place.
+  assert.equal(HM.stackTitle([{ address: "1 A St" }, { address: "2 B St" }]), "2 properties. Click to zoom in.");
+  assert.equal(HM.stackTitle([]), "");
+  // On Properties a stack adds up what its tags would have said, but only
+  // when the sum means one thing: every building has a figure, all of one kind.
+  const own = (v) => ({ value: v, valueNote: v ? "likely value" : "" }), ask = (v) => ({ value: v, valueNote: "asking" });
+  assert.deepEqual(HM.stackValue([own(3820000), own(7720000)]), { total: 11540000, valued: 2, whole: true });
+  assert.deepEqual(HM.stackValue([ask(1850000), ask(780000)]), { total: 2630000, valued: 2, whole: true }, "two deals' asking prices are one kind");
+  // A building with no value: a sum that left it out would read as the worth of all of them.
+  assert.deepEqual(HM.stackValue([own(3820000), own(null), own(7720000), own(0)]), { total: 0, valued: 2, whole: false });
+  // An asking price and a likely value do not add up to anything.
+  assert.deepEqual(HM.stackValue([ask(1850000), own(3060000)]), { total: 0, valued: 2, whole: false });
+  // A firm building has no figure on Home at all.
+  assert.deepEqual(HM.stackValue([own(3060000), { value: null, valueNote: "" }]), { total: 0, valued: 1, whole: false });
+  assert.deepEqual(HM.stackValue([own(null)]), { total: 0, valued: 0, whole: false });
+  assert.deepEqual(HM.stackValue([]), { total: 0, valued: 0, whole: false });
+  assert.deepEqual(HM.stackValue(null), { total: 0, valued: 0, whole: false });
+  // The rows properties() builds carry the note this reads.
+  const built = HM.properties({ today: TODAY, firmKind: DEV, sites: [SITE({})], portfolio: [HELD({ address: "9 Other St, Boise, ID" })] });
+  assert.deepEqual(built.map((r) => r.valueNote).sort(), ["asking", "likely value"]);
+});

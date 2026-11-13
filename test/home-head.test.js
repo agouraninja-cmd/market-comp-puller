@@ -810,10 +810,17 @@ test("the firm row is ink and grey: no red line, no indigo shop, and the door is
   // tab did not change, with every suite green (broken to find).
   assert.equal(decl(door, "position"), "relative", "the door's press area fills the window: every click on the panel opens the file picker");
   assert.equal(decl(rule(".hm-fh-mark"), "position"), "relative", "the mark's press area fills the window: every click on the panel opens the file picker");
-  // A fact is never cut in half: each is one unbroken piece, and where a
-  // reader's own text spacing makes the line too long a fact drops to the
-  // next line whole (the old row wrapped too; an ellipsis here lost words).
-  assert.equal(decl(rule(".hm-fh-txt small > *"), "white-space"), "nowrap");
+  // A fact is never cut off: where a reader's own text spacing makes the
+  // line too long a fact drops to the next line whole (the old row wrapped
+  // too; an ellipsis here lost words). A LONE fact wider than its column
+  // (very large text on a phone) may shrink to the column and break between
+  // its words: when it could do neither, it ran on under "Firm settings".
+  const fact = rule(".hm-fh-txt small > *");
+  assert.equal(decl(fact, "flex"), "0 1 auto", "a fact cannot shrink: one wider than its column runs under Firm settings");
+  assert.equal(decl(fact, "min-width"), "0");
+  assert.equal(decl(fact, "white-space"), null, "a fact that cannot break stays as wide as its words");
+  assert.equal(decl(fact, "overflow"), null, "a fact is cut off instead of wrapped");
+  assert.equal(decl(fact, "text-overflow"), null);
   assert.equal(decl(facts, "flex-wrap"), "wrap");
   assert.equal(decl(rule(".hm-fh-txt small em"), "text-overflow"), null, "the shop is cut with an ellipsis again");
   // The dots are drawn, one after every fact but the last, so a fact that
@@ -884,10 +891,14 @@ test("the door's focus ring stays in the door's own line: outside it, its top st
   // the letters, and its foot two pixels under the line.
   assert.equal(pad[1] - width, 1);
   assert.equal(pad[2] - width, 2);
-  // And the press area reaches what it did, counted from the larger box: 7px
-  // sideways and 12px down, nothing up.
+  // The press area, counted from the larger box: nothing up, 7px to the
+  // right, 12px down, and 4px to the LEFT, which is the dot's own margin: at
+  // 7px a click on the dot before the door opened the logo's file picker.
   const press = px(decl(rule(".hm-fh-logo::after"), "inset"));
-  assert.deepEqual([press[0], pad[1] - press[1], pad[2] - press[2]], [0, 7, 12]);
+  assert.equal(press.length, 4);
+  assert.deepEqual([press[0], pad[1] - press[1], pad[2] - press[2], pad[1] - press[3]], [0, 7, 12, 4]);
+  const dot = px(decl(rule(".hm-fh-txt small > *:not(:last-child)::after"), "margin"));
+  assert.ok(pad[1] - press[3] <= dot[1], "the door's press area reaches the dot before it");
 });
 
 test("Firm settings is the shared compact button, hidden when the page says so, and named by the words on it", () => {

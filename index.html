@@ -3461,7 +3461,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <p id="buildingMsg" class="hidden dk-msg"></p>
               <p id="hmPropMsg" class="hidden dk-msg" role="status"></p>
               <div id="hmPropRows" class="hm-rows"></div>
-              <p id="hmPropsEmpty" class="hidden hm-empty">No properties yet. Add a building you own, manage or are buying, and it lands on the map with its value and its dates.</p>
+              <p id="hmPropsEmpty" class="hidden hm-empty">No properties yet. Add a building you own, manage or are buying, and it lands on the map with its status and its dates.</p>
             </div>
 
             <div id="hmPanePeople" class="hm-pane hidden" role="tabpanel" aria-labelledby="hmTabPeople">
@@ -15893,7 +15893,12 @@ async function renderMyDesk() {
       props.append(fold);
     }
     hmPlaceWork(hmFocus);
-    document.getElementById("hmPropsEmpty").classList.toggle("hidden", hmRows.length > 0 || passed.length > 0);
+    // The empty list promises a value only where the plan shows one.
+    const propsEmpty = document.getElementById("hmPropsEmpty");
+    propsEmpty.textContent = showValues
+      ? "No properties yet. Add a building you own, manage or are buying, and it lands on the map with its value and its dates."
+      : "No properties yet. Add a building you own, manage or are buying, and it lands on the map with its status and its dates.";
+    propsEmpty.classList.toggle("hidden", hmRows.length > 0 || passed.length > 0);
 
     // The map's switch: a Permits layer left on from a last visit is read
     // again.

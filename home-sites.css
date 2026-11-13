@@ -48,6 +48,10 @@
 .hs-mute { margin: 0; font-size: var(--text-small); line-height: 1.45; color: var(--ink-3); }
 .hs-passed { margin-top: 10px; }
 .hs-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hair); }
+/* With nothing above it (a free account's own property: no value block,
+   no firm), the foot is the pane's first line, so it draws no rule and no
+   gap under one. */
+.hs-foot:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 .hs-rm { margin-left: auto; padding: 0; border: 0; background: none; font: inherit; font-size: var(--text-small); color: var(--ink-3); cursor: pointer; }
 .hs-rm:hover { color: var(--red); text-decoration: underline; }
 .hs-note { margin-top: 8px; }

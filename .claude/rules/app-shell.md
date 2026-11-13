@@ -24,7 +24,8 @@ paths:
 > 10px word, 54px tall. Where the notes below say that under 900px the class
 > does nothing, the wrapping bar returns, or the bar "reads as words", read
 > it as history (2026-08-28 to 2026-11-13). Built straight (the ask was to
-> improve, not for options).
+> improve, not for options); the before-and-after pictures are at
+> https://claude.ai/artifact/HCMqHEZY51dwZ2agmjegxn.
 > **Why.** A phone audit of 21 pages found no sideways scroll and no field
 > under 16px; what was wrong was the navigation. A member's seven links
 > were 21px-tall words wrapping to two rows at the top of every page: about

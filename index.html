@@ -1748,7 +1748,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     html.hm-page #myDesk { margin-top: 0; }
     html.hm-page body > footer { display: none; }
     /* The loading stand-in, shaped like the list it stands in for. */
-    html.hm-page #deskLoading { max-width: 460px; padding: 28px 28px 0; }
+    html.hm-page #deskLoading { max-width: 460px; padding: 26px 26px 0; }
     html.hm-page #deskLoading .dk-skel-agenda { height: 70vh; }
     html.hm-page #checkoutNotice { margin: 16px; }
 
@@ -1757,7 +1757,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-map { position: absolute; inset: 0; }
     .hm-map.leaflet-container { background: var(--wash-2); font-family: inherit; }
     .hm-panel { min-width: 0; background: var(--paper); }
-    .hm-head { padding: 22px 16px 0; }
+    /* One line down the panel (2026-11-13). The cards and rows under the
+       tabs start 26px in beside the rail (the body's 16px and their own
+       10px) and 18px in away from it (8 and 10). The head stood at 28 and
+       16, two pixels out on both sides, so the find box and the cards never
+       shared an edge. The HEAD moves to the list's line, never the list to
+       the head's: two pixels less for the list wraps a line on Properties.
+       test/home-head.test.js adds the two up. */
+    .hm-head { padding: 24px 18px 0; }
     /* The foot is deep away from the rail (a phone, the bar shell): the round
        Feedback button floats over the bottom right corner there, and the
        list's last lines must be able to scroll clear of it (2026-11-13). */
@@ -1766,42 +1773,124 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       html.nav-rail.hm-page .hm { display: grid; grid-template-columns: 468px minmax(0, 1fr); height: 100vh; min-height: 560px; }
       html.nav-rail.hm-page .hm-mapw { order: 0; height: auto; border-bottom: 0; }
       html.nav-rail.hm-page .hm-panel { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
-      html.nav-rail.hm-page .hm-head { padding: 28px 28px 0; }
+      html.nav-rail.hm-page .hm-head { padding: 24px 26px 0; }
+      /* Beside the rail the firm row stands 14px from the top and is 34px
+         tall: the map switch's own rows (.hm-layers, top 14px, 34px), centred
+         a pixel under the rail's logo. Rail, firm and map controls read as
+         one band. A measured number, not a shared one: move the switch and
+         test/home-head.test.js fails until this follows it. */
+      html.nav-rail.hm-page .hm-fh { padding: 14px 26px 0; }
+      html.nav-rail.hm-page .hm-fh-msg { padding: 8px 26px 0 72px; }
       /* A column, so the legal line rests at the foot of the panel under a
-         short list instead of floating in the middle of it (2026-11-13). */
+         short list instead of floating in the middle of it (2026-11-13). Its
+         right padding is the room the list's own scrollbar stands in where
+         bars take room: hmFitListBar() writes what is left of it. */
       html.nav-rail.hm-page .hm-body { flex: 1; display: flex; flex-direction: column; overflow-y: auto; min-height: 0; padding: 4px 16px 28px; }
       html.nav-rail.hm-page .hm-body > * { flex: none; }
       html.nav-rail.hm-page .hm-body > .hm-legal { margin-top: auto; padding-top: 26px; }
     }
-    .hm-kick { font-size: var(--text-small); font-weight: 500; color: var(--ink-3); }
-    .hm-fh { display: flex; align-items: center; gap: 11px; padding: 0 0 14px; margin: 0 0 16px; border-bottom: 1px solid var(--line); }
+    /* The firm row (2026-11-13; the firm header of 2026-10-13, redrawn after
+       the owner sent a picture of his own Home and said this panel "looks
+       off"). Seven designs were applied to the live page, photographed in
+       the same four situations and judged three ways; this is what the three
+       judges agreed on. It is two lines in every state (it was three with no
+       logo and two with one), in ink and grey with no hue (it had an indigo
+       shop kind and a red third line), and the mark, the two lines and the
+       button are one 34px row. No rule under it and no fill: white space
+       sets it apart, so the panel stays one sheet. */
+    .hm-fh { flex: none; display: flex; align-items: center; gap: 12px; padding: 16px 18px 0; }
     .hm-fh.hidden { display: none; }
     .hm-fh-markw { flex: none; display: flex; }
-    .hm-fh-mark { position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 9px; background: var(--ink); color: var(--paper); font: inherit; font-size: var(--text-compact); font-weight: 700; letter-spacing: .02em; }
-    /* White in BOTH themes on purpose, like a photo: a firm logo is drawn for
-       paper, and dark lettering on a transparent PNG vanishes on the dark card. */
-    .hm-fh-mark.logo { background: rgb(255 255 255); box-shadow: inset 0 0 0 1px var(--line); }
-    .hm-fh-mark img { width: 100%; height: 100%; object-fit: contain; padding: 3px; box-sizing: border-box; border-radius: 9px; }
-    button.hm-fh-mark { cursor: pointer; }
+    /* The mark. One that cannot be pressed (a member's) is drawn flat. The
+       tile is 34px square at the sizes the page ships and no narrower: its
+       width is a floor, so where a reader has raised the browser's minimum
+       font size the tile widens with its initials (they stood 9px outside it
+       at a 20px minimum on a phone). The widest pair, "WW", is 27.3px of
+       letters: with the 2px each side it still fits the 34. */
+    .hm-fh-mark { position: relative; flex: none; display: grid; place-items: center; box-sizing: border-box; min-width: 34px; height: 34px; padding: 0 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--wash-2); color: var(--ink-2); font: inherit; font-size: var(--text-small); font-weight: 600; letter-spacing: .02em; }
+    /* One that can (an owner's or admin's: it adds or changes the logo) is
+       the button at the row's other end: the same tile, edge and corner. It
+       was a solid ink tile, which read as a second account picture and, in
+       dark mode, was the brightest thing on the screen. */
+    button.hm-fh-mark { border-color: var(--edge); background: var(--card); color: var(--ink); cursor: pointer; transition: border-color .12s; }
+    button.hm-fh-mark:hover { border-color: var(--ink-3); }
+    /* A 34px tile is a small thing to press: the button reaches 5px past it
+       on every side, 44px in all (the inset counts from inside the border). */
+    button.hm-fh-mark::after { content: ""; position: absolute; inset: -6px; }
     button.hm-fh-mark:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    /* White in BOTH themes on purpose, like a photo: a firm logo is drawn for
+       paper, and dark lettering on a transparent PNG vanishes on the dark card.
+       A picture has no width of its own to give the tile (it fills it), so a
+       logo's tile is a fixed square. */
+    .hm-fh-mark.logo { width: 34px; padding: 0; background: rgb(255 255 255); }
+    .hm-fh-mark img { width: 100%; height: 100%; object-fit: contain; padding: 2px; box-sizing: border-box; border-radius: var(--r-md); }
     .hm-fh-txt { min-width: 0; flex: 1; }
-    .hm-fh-txt b { display: block; font-size: var(--text-lead); font-weight: 600; line-height: 1.25; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .hm-fh-txt small { display: block; margin-top: 2px; font-size: var(--text-label); color: var(--ink-3); }
-    .hm-fh-txt small em { font-style: normal; font-weight: 600; color: var(--bv-text); }
-    .hm-fh-set { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid var(--edge); border-radius: var(--r-lg); background: var(--card); font: inherit; font-size: var(--text-small); font-weight: 600; color: var(--ink-2); white-space: nowrap; cursor: pointer; }
-    /* The logo's door, in words (2026-10-18): a red + on the initials did
-       not say what it added. */
-    .hm-fh-logo { display: block; margin-top: 3px; padding: 0; border: 0; background: none; font: inherit; font-size: var(--text-small); font-weight: 600; color: var(--red); cursor: pointer; }
-    .hm-fh-logo:hover { text-decoration: underline; text-underline-offset: 3px; }
-    .hm-fh-logo:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    /* 18px and 16px: the two lines are the mark's 34px. Said as ratios of
+       the text (18/14 and 16/12), never as lengths: a reader who raises the
+       browser's minimum font size gets taller lines, not letters cut by
+       them. Each ratio is rounded UP in its last place: rounded down, the
+       line is a sixty-fourth of a pixel short and every edge under it lands
+       between pixels. */
+    .hm-fh-txt b { display: block; font-size: var(--text-compact); font-weight: 600; line-height: 1.2858; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* The facts: whole items on one line, the dot after each but the last
+       drawn here. A fact is never cut: at the sizes the page ships they fit
+       (drawFirmHead writes two, and the narrow rules below make it one), and
+       where a reader's own text spacing or font makes them wider, a fact
+       drops to the next line whole, its dot left behind at the line's end. */
+    .hm-fh-txt small { display: flex; flex-wrap: wrap; min-width: 0; font-size: var(--text-label); line-height: 1.3334; color: var(--ink-3); }
+    .hm-fh-txt small > * { flex: none; white-space: nowrap; }
+    .hm-fh-txt small em { font-style: normal; }
+    .hm-fh-txt small > *:not(:last-child)::after { content: "\00B7"; margin: 0 4px; }
+    /* The logo's door, in words (2026-10-18), as the last fact: a step darker
+       than the facts, and underlined in its own ink to say it is a link. Its
+       press area reaches down and sideways only: above it is the firm's name.
+       So does its box (3px each side and 4px down, held in place by the same
+       margins taken back), and the focus ring is drawn INSIDE that box: a
+       ring outside it put its top stroke in the last two rows of the name's
+       line, through the tail of every g, p and y. */
+    .hm-fh-logo { position: relative; margin: 0 -3px -4px; padding: 0 3px 4px; border: 0; border-radius: var(--r-sm); background: none; font: inherit; font-weight: 500; color: var(--ink-2); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; cursor: pointer; transition: color .12s; }
+    .hm-fh-logo::after { content: ""; position: absolute; inset: 0 -4px -8px; }
+    .hm-fh-logo:hover { color: var(--ink); }
+    .hm-fh-logo:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
+    /* Firm settings is the shared compact button (class="hm-btn hm-fh-set"):
+       this is only its place in the row, and its height said whole (the
+       button's own is 34.2px) so it and the mark share a top and a bottom.
+       .hm-btn sets a display, so the hide class is restated here. */
+    .hm-fh-set { box-sizing: border-box; height: 34px; }
+    .hm-fh-set svg { flex: none; }
     .hm-fh-set.hidden { display: none; }
-    .hm-fh-set:hover { border-color: var(--ink-3); }
-    .hm-fh-set:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
-    .hm-fh-msg { margin: -8px 0 12px; font-size: var(--text-small); color: var(--ink-3); }
+    /* A logo being saved, said under the firm's two lines, on their edge. It
+       is the desk's own message (class="dk-msg hm-fh-msg": its size, its ink,
+       and its red when what it says is a refusal); this is only its place and
+       a whole-pixel line (18/13). In the facts' small grey, "Please choose a
+       PNG or JPEG image." read exactly as "Saved." did. */
+    .hm-fh-msg { margin: 0; padding: 8px 18px 0 64px; line-height: 1.3847; }
     .hm-fh-msg.hidden { display: none; }
-    .hm-title { margin: 6px 0 0; font-family: var(--serif); font-weight: 400; font-size: 30px; line-height: 1.12; letter-spacing: -.015em; color: var(--ink); }
-    .hm-sub { margin: 8px 0 0; font-size: var(--text-compact); line-height: 1.5; color: var(--ink-2); }
-    .hm-find { position: relative; display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 0 12px; border: 1px solid var(--edge); border-radius: 11px; background: var(--card); color: var(--ink-3); }
+    /* Narrow phones: a smaller mark and no briefcase, which is the room the
+       second line needs to stay whole down to 375px. */
+    @media (max-width: 449px) {
+      .hm-fh { gap: 10px; }
+      .hm-fh-mark { min-width: 28px; height: 28px; padding: 0 1px; border-radius: var(--r-md); font-size: var(--text-tiny); }
+      .hm-fh-mark.logo { width: 28px; }
+      button.hm-fh-mark::after { inset: -9px; }
+      .hm-fh-set svg { display: none; }
+      .hm-fh-msg { padding-left: 56px; }
+    }
+    /* Narrower still, the second line is ONE fact, whole, never a word cut in
+       half beside another: the logo's door where it is offered, else the
+       shop (the head count is on People, a tab away). */
+    @media (max-width: 371px) {
+      .hm-fh-txt small .hm-fh-n { display: none; }
+      .hm-fh-txt small.has-door em { display: none; }
+      .hm-fh-txt small > *:not(:last-child)::after { content: none; }
+    }
+    /* The day, the greeting, the status. Whole-pixel line boxes, 18px and
+       34px (they were 19.5 and 33.6), so every edge under them lands on a
+       pixel; as ratios of the text (18/13 and 34/30), like the firm row's. */
+    .hm-kick { font-size: var(--text-small); font-weight: 500; line-height: 1.3847; color: var(--ink-3); }
+    .hm-title { margin: 4px 0 0; font-family: var(--serif); font-weight: 400; font-size: 30px; line-height: 1.1334; letter-spacing: -.015em; color: var(--ink); }
+    .hm-sub { margin: 6px 0 0; font-size: var(--text-compact); line-height: 1.5; color: var(--ink-2); text-wrap: balance; }
+    .hm-find { position: relative; display: flex; align-items: center; gap: 10px; margin-top: 24px; padding: 0 12px; border: 1px solid var(--edge); border-radius: 11px; background: var(--card); color: var(--ink-3); }
     .hm-find:focus-within { border-color: var(--ink-3); box-shadow: 0 0 0 3px var(--hair); }
     .hm-find svg { flex: none; }
     .hm-find input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; -webkit-appearance: none; appearance: none; padding: 10px 0; font: inherit; font-size: var(--text-compact); color: var(--ink); }
@@ -1809,6 +1898,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        ten :not()s doing it: without this the box showed a darker rectangle
        inside its own frame in dark mode (2026-11-13). The frame is .hm-find. */
     #hmFind { background-color: transparent; }
+    /* The placeholder was Tailwind's reset grey in both themes, the palest
+       text on the panel in light (2.5:1 on the box) and the only text in the
+       head that was not a token (2026-11-13). */
+    #hmFind::placeholder { color: var(--ink-3); opacity: 1; }
+    /* The tabs sit closer under the find box than the shared tabs' own 16px:
+       the head's three tiers (firm, greeting, find and tabs) then stand the
+       same distance apart. From the head's side, never the component's. */
+    .hm-head .hm-tabs { margin-top: 12px; }
     .hm-find-res { position: absolute; left: -1px; right: -1px; top: calc(100% + 6px); z-index: 40; max-height: 360px; overflow-y: auto; padding: 6px; background: var(--card); border: 1px solid var(--edge); border-radius: var(--r-2xl); box-shadow: 0 16px 40px -18px rgba(15, 23, 42, .45); }
     .hm-fr { display: flex; flex-direction: column; width: 100%; padding: 8px 10px; border: 0; border-radius: var(--r-lg); background: none; text-align: left; font: inherit; color: var(--ink); cursor: pointer; text-decoration: none; }
     .hm-fr:hover, .hm-fr:focus-visible { background: var(--wash); outline: 0; }
@@ -3337,28 +3434,35 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            property". Each keeps its id and its one writer. -->
       <div id="homeMap" class="hm">
         <div class="hm-panel">
+          <!-- The firm row (2026-10-13, Draft C of the firm-type drafts; its
+               look since 2026-11-13): who the firm is and which shop, above
+               everything else on Home. The mark is the firm's logo when one
+               is saved (the firm's branding logo, so one logo per firm), else
+               its initials; for an owner or admin it is the button that adds
+               or changes that logo. drawFirmHead() is its one writer. It sits
+               OUTSIDE .hm-head, as the panel's first child with its own
+               gutters: with no firm there is no row at all, and the head
+               under it needs no rule that knows whether one is there. -->
+          <div id="hmFirmHead" class="hm-fh hidden">
+            <span id="hmFirmMarkWrap" class="hm-fh-markw"></span>
+            <span class="hm-fh-txt"><b id="hmFirmName"></b><small id="hmFirmMeta"></small></span>
+            <!-- The Firm & branding panel's door, for every member since
+                 2026-10-13, when the account menu's row went. A briefcase,
+                 not the gear it was: that read as a sun. It is the shared
+                 compact button (.hm-btn) since 2026-11-13, the one "Add a
+                 property" is, and its name is the words on it: it carried an
+                 aria-label and a title that said "Firm & branding" over a
+                 label that said "Firm settings". -->
+            <button id="hmFirmGear" type="button" class="hidden hm-btn hm-fh-set">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.75" y="6" width="14.5" height="10.5" rx="1.75"/><path d="M7.25 6V4.5c0-.7.55-1.25 1.25-1.25h3c.7 0 1.25.55 1.25 1.25V6M2.75 10.5h14.5M10 9.5v2"/></svg>
+              <!-- Said in words since 2026-10-18: an icon alone did not say
+                   what it opened. -->
+              <span>Firm settings</span>
+            </button>
+            <input id="hmFirmLogoFile" type="file" accept="image/png,image/jpeg" class="hidden" />
+          </div>
+          <p id="hmFirmMsg" class="hidden dk-msg hm-fh-msg" role="status"></p>
           <div class="hm-head">
-            <!-- The firm header (2026-10-13, Draft C of the firm-type
-                 drafts): who the firm is and which shop, above everything
-                 else on Home. The mark is the firm's logo when one is saved
-                 (the firm's branding logo, so one logo per firm), else its
-                 initials; for an owner or admin it is the button that adds
-                 or changes that logo. drawFirmHead() is its one writer. -->
-            <div id="hmFirmHead" class="hm-fh hidden">
-              <span id="hmFirmMarkWrap" class="hm-fh-markw"></span>
-              <span class="hm-fh-txt"><b id="hmFirmName"></b><small id="hmFirmMeta"></small></span>
-              <!-- The Firm & branding panel's door, for every member since
-                   2026-10-13, when the account menu's row went. A briefcase,
-                   not the gear it was: that read as a sun. -->
-              <button id="hmFirmGear" type="button" class="hidden hm-fh-set" aria-label="Firm &amp; branding" title="Firm &amp; branding">
-                <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.75" y="6" width="14.5" height="10.5" rx="1.75"/><path d="M7.25 6V4.5c0-.7.55-1.25 1.25-1.25h3c.7 0 1.25.55 1.25 1.25V6M2.75 10.5h14.5M10 9.5v2"/></svg>
-                <!-- Said in words since 2026-10-18: an icon alone did not say
-                     what it opened. -->
-                <span>Firm settings</span>
-              </button>
-              <input id="hmFirmLogoFile" type="file" accept="image/png,image/jpeg" class="hidden" />
-            </div>
-            <p id="hmFirmMsg" class="hidden hm-fh-msg" role="status"></p>
             <div class="hm-kick"><span id="hmDay"></span></div>
             <h2 id="hmTitle" class="hm-title">Home</h2>
             <p id="hmSub" class="hm-sub"></p>
@@ -15572,8 +15676,7 @@ async function renderMyDesk() {
     ["hmTodayRows", "hmPropRows", "hmTeam"].forEach((id) => { const e = document.getElementById(id); if (e) e.textContent = ""; });
     const t = document.getElementById("hmTitle"); if (t) t.textContent = "Home";
     const s = document.getElementById("hmSub"); if (s) s.textContent = "";
-    drawFirmHead(null);
-    const fm = document.getElementById("hmFirmMsg"); if (fm) { fm.textContent = ""; fm.classList.add("hidden"); }
+    drawFirmHead(null); // the saving message goes with the row
   }
 
   // The firm header (2026-10-13). Who the firm is, which shop (SHOP_COPY's
@@ -15590,20 +15693,46 @@ async function renderMyDesk() {
   function drawFirmHead(firm) {
     const head = document.getElementById("hmFirmHead");
     if (!head) return;
-    { const old = head.querySelector(".hm-fh-logo"); if (old) old.remove(); }
     head.classList.toggle("hidden", !firm);
     document.getElementById("hmFirmGear").classList.toggle("hidden", !firm);
     const wrap = document.getElementById("hmFirmMarkWrap");
-    wrap.textContent = "";
-    if (!firm) { document.getElementById("hmFirmName").textContent = ""; document.getElementById("hmFirmMeta").textContent = ""; return; }
-    document.getElementById("hmFirmName").textContent = firm.name;
+    const name = document.getElementById("hmFirmName");
     const meta = document.getElementById("hmFirmMeta");
+    // The mark and the door are rebuilt on every draw, and Home draws again
+    // as its reads land: note which of them the keyboard was on, so the new
+    // one can take the focus back (it fell to the top of the page).
+    const at = document.activeElement;
+    const hadFocus = at && wrap.contains(at) ? "mark" : at && meta.contains(at) ? "door" : "";
+    wrap.textContent = "";
+    // The facts line is rebuilt whole, the logo's door with it (the door is
+    // one of its facts), so nothing outside it is left to clear.
     meta.textContent = "";
+    if (!firm) {
+      name.textContent = ""; name.removeAttribute("title"); meta.classList.remove("has-door");
+      // No firm, no row, and nothing a row said: a "Saved." left standing
+      // would sit alone at the top of a Home that has no firm.
+      const msg = document.getElementById("hmFirmMsg");
+      if (msg) { msg.textContent = ""; msg.classList.add("hidden"); }
+      return;
+    }
+    name.textContent = firm.name;
+    // A name too long for the row is cut with an ellipsis, never wrapped
+    // into the button: the whole of it is one hover away.
+    name.title = firm.name;
+    const manage = Boolean(firm.canManage);
+    // The logo's door: an owner or admin whose firm has no logo yet.
+    const door = manage && !firm.logoAt;
+    // The facts: the shop, then ONE more thing, so the row is two lines in
+    // every state. Each fact is its own element: the stylesheet draws the
+    // dot between them, and one can drop out on a narrow phone without
+    // leaving a dot behind.
     meta.append(hmEl("em", null, shopCopy(firm.kind).label));
     const people = firmMembers.filter((m) => !m.pending).length;
-    if (people) meta.append(` · ${people} ${people === 1 ? "person" : "people"}`);
+    // While the door is offered it takes the head count's place: of the
+    // two, the count says less (it is on People, a tab away), and all three
+    // do not fit beside the button. The count is back once a logo is saved.
+    if (people && !door) meta.append(hmEl("span", "hm-fh-n", `${people} ${people === 1 ? "person" : "people"}`));
 
-    const manage = Boolean(firm.canManage);
     const mark = document.createElement(manage ? "button" : "span");
     mark.className = "hm-fh-mark";
     mark.id = "hmFirmMark";
@@ -15634,16 +15763,35 @@ async function renderMyDesk() {
     if (manage) {
       mark.type = "button";
       mark.addEventListener("click", () => document.getElementById("hmFirmLogoFile").click());
-      // Said in words (2026-10-18): the red + that sat on the initials did
-      // not say what it added. Only while the firm has no logo.
-      if (!firm.logoAt) {
-        const add = hmEl("button", "hm-fh-logo", "+ Add your firm’s logo");
-        add.type = "button";
-        add.addEventListener("click", () => document.getElementById("hmFirmLogoFile").click());
-        meta.after(add);
-      }
     }
+    // Said in words (2026-10-18): the red + that sat on the initials did not
+    // say what it added. Since 2026-11-13 the words are the last fact on the
+    // facts line, a step darker than the facts and underlined, where they
+    // were a red third line: the loudest thing on the panel and its least
+    // urgent job.
+    let add = null;
+    if (door) {
+      add = hmEl("button", "hm-fh-logo", "Add a logo");
+      add.type = "button";
+      add.addEventListener("click", () => document.getElementById("hmFirmLogoFile").click());
+      meta.append(add);
+      // Two buttons for one job, side by side: the words are the one the
+      // keyboard stops on and a screen reader names. The initials stay a
+      // place to click, and say what they do on hover.
+      mark.tabIndex = -1;
+      mark.setAttribute("aria-hidden", "true");
+    }
+    // On the narrowest phones even two facts do not fit beside the button:
+    // the stylesheet lets the shop give way to the door there (.has-door).
+    meta.classList.toggle("has-door", door);
     wrap.append(mark);
+    // The keyboard's place, handed back: to the door while it is offered
+    // (the mark is out of the tab order then), else to the mark. A door that
+    // has just gone, because the logo it asked for was saved, hands its
+    // place to the mark, which now changes that logo.
+    if (hadFocus && manage) {
+      try { (add || mark).focus({ preventScroll: true }); } catch (_) {}
+    }
   }
 
   // Saves the chosen file as the firm's logo. The firm's branding is ONE
@@ -15653,27 +15801,30 @@ async function renderMyDesk() {
   async function saveFirmLogo(file) {
     const firm = myFirm();
     const msg = document.getElementById("hmFirmMsg");
-    const say = (t) => { msg.textContent = t; msg.classList.toggle("hidden", !t); };
+    // A refusal (a file that is not a picture, a save the server turned down)
+    // is said in the desk's red (.dk-msg.bad), as the add-a-building form and
+    // Contacts say theirs (buildingMsg, contactsMsg).
+    const say = (t, bad) => { msg.textContent = t; msg.classList.toggle("hidden", !t); msg.classList.toggle("bad", Boolean(t && bad)); };
     if (!firm || !firm.canManage || !file) return;
     say("Saving your firm's logo…");
     try {
       const logo = await readLogoFile(file);
       const cur = await fetch(`/api/org/branding?id=${encodeURIComponent(firm.id)}`, { credentials: "same-origin" });
       const curBody = await cur.json().catch(() => ({}));
-      if (!cur.ok) return say(curBody.error || "Couldn't save the logo. Please try again.");
+      if (!cur.ok) return say(curBody.error || "Couldn't save the logo. Please try again.", true);
       const r = await fetch("/api/org/branding", {
         method: "PUT", credentials: "same-origin",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ ...(curBody.branding || {}), logo, orgId: firm.id }),
       });
       const body = await r.json().catch(() => ({}));
-      if (!r.ok) return say(body.error || "Couldn't save the logo. Please try again.");
+      if (!r.ok) return say(body.error || "Couldn't save the logo. Please try again.", true);
       currentFirmBranding = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
       firm.logoAt = String(Date.now());
       drawFirmHead(firm);
       say("Saved. Everyone in your firm sees it here, and it is the logo in your firm's report branding too.");
     } catch (e) {
-      say((e && e.message) || "Couldn't save the logo. Please try again.");
+      say((e && e.message) || "Couldn't save the logo. Please try again.", true);
     }
   }
 
@@ -16271,6 +16422,47 @@ async function renderMyDesk() {
     else hmOpenMineAdd("own", address);
   });
   document.getElementById("hmFirstTeam").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
+  // ---- The list's scrollbar (2026-11-13) -------------------------------------
+  // Where a scrollbar takes room (Chrome and Edge on Windows, Linux, a Mac
+  // with a mouse), the list's bar took its 15px out of the LIST: whenever a
+  // list was taller than the panel, every card, row and "+ Add a property"
+  // ended that far short of the find box and "Firm settings" above them, and
+  // a heading that just fit broke in two. No picture showed it, because a
+  // headless browser draws no scrollbars; the owner's Windows screen does, on
+  // his own Properties tab.
+  //
+  // Two things cure it. The bar's room is kept whether or not the list
+  // scrolls (scrollbar-gutter), so nothing in the list moves when a list
+  // starts or stops scrolling, and nothing has to watch for that. And that
+  // room comes out of the list's own right padding, so the list is as wide
+  // as the head with a bar and without one. A bar wider than that padding
+  // (17px in older Windows browsers, against 16) takes all of it, and the
+  // list is the difference narrower: a pixel, where it was seventeen. Where
+  // bars float over the page (a phone, a Mac trackpad), and away from the
+  // rail, where the page scrolls and not the list, the bar measures 0 and
+  // nothing is written.
+  function hmFitListBar(body) {
+    if (!body || !body.offsetWidth) return; // not laid out: asked again when it is
+    body.style.scrollbarGutter = "stable";
+    const bar = body.offsetWidth - body.clientWidth;
+    // The list's two sides are one padding (test/home-head.test.js holds the
+    // rules to that), so what the bar leaves of the right is read off the left.
+    body.style.paddingRight = bar > 0 ? Math.max(0, parseFloat(getComputedStyle(body).paddingLeft) - bar) + "px" : "";
+    if (!(bar > 0)) body.style.scrollbarGutter = "";
+  }
+  {
+    // Asked whenever the list's box changes: when Home is first laid out, when
+    // the window is resized or zoomed, and when the layout crosses 900px. The
+    // BORDER box on purpose: writing the padding does not change it, so the
+    // observer cannot be woken by its own write. A browser with no stable
+    // gutter is left as it was: fitted once there, the padding would be wrong
+    // the next time a list started or stopped scrolling.
+    const body = document.querySelector("#homeMap .hm-body");
+    const steady = typeof CSS !== "undefined" && CSS.supports && CSS.supports("scrollbar-gutter", "stable");
+    if (body && steady && typeof ResizeObserver === "function") {
+      new ResizeObserver(() => hmFitListBar(body)).observe(body, { box: "border-box" });
+    }
+  }
   document.getElementById("hmFirmGear").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
   document.getElementById("hmFirmLogoFile").addEventListener("change", (e) => {
     const file = e.target.files && e.target.files[0];

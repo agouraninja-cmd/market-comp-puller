@@ -239,7 +239,10 @@ test("Home's fixes from the empty Home drafts: words on the firm header, links a
   assert.match(gear, /<span>Firm settings<\/span>/);
   const head = fnOf("function drawFirmHead(firm) {");
   assert.doesNotMatch(head, /hm-fh-add/, "the unlabelled red + is back on the firm's initials");
-  assert.match(head, /hmEl\("button", "hm-fh-logo", "\+ Add your firm’s logo"\)/);
+  // Still a button and still in words. Since 2026-11-13 the words are the
+  // last fact on the firm row's second line ("Add a logo"), where they were a
+  // red third line under it; test/home-head.test.js runs the row.
+  assert.match(head, /hmEl\("button", "hm-fh-logo", "Add a logo"\)/);
   // Today's links go only to lists that have something in them.
   const draw = fnOf("function drawHomeMap() {");
   assert.match(draw, /const leasesLink = !!firm && firmBuildings\.length > 0;/);

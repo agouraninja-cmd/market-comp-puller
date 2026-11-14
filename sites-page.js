@@ -44,7 +44,7 @@ function renderSitesBody(boot) {
 .sp-head h1{margin:0;font-weight:600;font-size:var(--text-h1);line-height:1.2143;letter-spacing:-.02em;color:var(--ink)}
 .sp-sub{font-size:var(--text-small);color:var(--ink-3);margin:10px 0 0;max-width:88ch}
 .sp-figs{display:flex;flex-wrap:wrap;gap:6px 22px;margin:14px 0 0;font-size:var(--text-small);color:var(--ink-3)}
-.sp-figs b{display:block;font-family:var(--serif);font-weight:400;font-size:22px;color:var(--ink);font-variant-numeric:tabular-nums}
+.sp-figs b{display:block;font-weight:600;font-size:var(--text-subhead);letter-spacing:-.01em;color:var(--ink);font-variant-numeric:tabular-nums}
 /* The script hides these two with the hidden attribute, and each sets a
    display, which out-ranks the browser's own rule for it: until 2026-11-13 an
    empty Sites page drew a row of dashes and four empty columns around its

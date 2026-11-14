@@ -274,10 +274,8 @@ test("a member page's own title rule names no Georgia", () => {
   assert.match(read("messages-page.js"), /<h1 style="margin:0 0 4px">Messages<\/h1>/);
 });
 
-test("a member page's own headings name no Georgia; only its figures still may", () => {
-  // Each page's heading rules, read from its source. The FIGURE rules are
-  // listed too, so that the day they change this says which list to move
-  // them to instead of passing by accident.
+test("a member page's own headings and figures name no Georgia", () => {
+  // Each page's heading rules, and then its figures', read from its source.
   const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
   const ruleOf = (src, sel) => {
     const at = src.indexOf(sel + "{");
@@ -292,8 +290,17 @@ test("a member page's own headings name no Georgia; only its figures still may",
     assert.ok(!/serif|Georgia/.test(body), `${file}: ${sel.trim()} is Georgia again`);
     assert.match(body, /font-weight:600/, `${file}: ${sel.trim()} is not the heading weight`);
   }
-  const FIGURES = [["vault-page.js", ".lfig"], ["vault-page.js", ".sfig"], ["sites-page.js", ".sp-figs b"]];
+  // The figures followed ("make the figures Inter too"): the same check.
+  const FIGURES = [["vault-page.js", ".lfig"], ["vault-page.js", ".sfig"], ["vault-page.js", ".card .big"], ["vault-page.js", ".vd-lrate b"],
+    ["vault-page.js", ".vd-tk b"], ["sites-page.js", ".sp-figs b"], ["bulk-page.js", ".bk-run .strip .v"], ["permit-compare.js", ".pc-v"]];
   for (const [file, sel] of FIGURES) {
-    assert.match(ruleOf(read(file), sel), /serif/, `${file}: ${sel} is no longer Georgia: move it to the headings' list`);
+    const src = read(file);
+    let at = -1, any = false;
+    while ((at = src.indexOf(sel + "{", at + 1)) !== -1) {
+      any = true;
+      assert.ok(!/serif|Georgia/.test(src.slice(at, src.indexOf("}", at))), `${file}: ${sel} is Georgia again`);
+    }
+    assert.ok(any, `${file} lost its ${sel} rule`);
   }
+  assert.ok(!/serif|Georgia/.test(read("home-sites.css")), "home-sites.css names Georgia again");
 });

@@ -89,7 +89,7 @@ const BULK_RUN_CSS = `
    table of done rows reads as done at a glance rather than as a column of
    identical grey pills. */
 .bk-run .chip.ok{border-color:var(--ok-rule,#BFE5D2);background:var(--ok-bg,#E7F5EE);color:var(--ok-text,#06603A)}
-.bk-run .strip .v{font-family:var(--serif,Georgia,'Times New Roman',serif);font-weight:500;letter-spacing:-.02em;font-size:22px}
+.bk-run .strip .v{font-weight:600;letter-spacing:-.02em;font-size:var(--text-subhead,20px);font-variant-numeric:tabular-nums}
 .bk-run .sub{color:var(--ink,#1A2433);font-size:var(--text-label,12px)}
 /* Earlier runs is a ledger (2026-09-04 evening): a table with the same
    headers as the rows table above it, not a list of links. */

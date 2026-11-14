@@ -12289,13 +12289,15 @@ const INTER_FONT_HEAD =
   // `:root body` is there to out-rank a class and an element from the head,
   // which is emitted before them. A page's own heading rule (vault-page.js,
   // sites-page.js and the rest) is changed in place. The big FIGURES
-  // (.tile .v, .lcell .v, a page's own) are still Georgia: not asked.
+  // followed last ("make the figures Inter too"): the shared ones
+  // (.tile .v, .lcell .v) are in the list below, a page's own in its file.
   `<style>body h1{font-family:inherit;font-weight:600;font-size:var(--text-h1);line-height:1.2143;letter-spacing:-.02em}` +
   // Every h2 and h3 takes the page's face; only the ones that WERE Georgia
   // take the heading weight too, so a small label that happens to be an h3
   // keeps its own weight and spacing.
   `:root body h2,:root body h3{font-family:inherit}` +
   `:root body .card h2,:root body .mlook h2,:root body .bd-head h2,:root body .cta h2,:root body .person h3,` +
+  `:root body .tile .v,:root body .lcell .v,` +
   `:root body .mcard .t,:root body .bkhead,:root body .bd-gh b,:root body .rke h2{font-family:inherit;font-weight:600;letter-spacing:-.01em}</style>\n`;
 
 // Paired so the mobile browser chrome agrees with the page it frames.

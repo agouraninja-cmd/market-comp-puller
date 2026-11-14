@@ -435,7 +435,7 @@ const COMPARE_CSS =
   ".pc-page th[scope=row]{text-align:left;font-weight:500;color:var(--ink);padding-left:0;min-width:150px}" +
   ".pc-page thead th:first-child{text-align:left;padding-left:0}" +
   ".pc-page tbody tr:last-child th,.pc-page tbody tr:last-child td{border-bottom:0}" +
-  ".pc-v{display:block;font-family:Georgia,\"Times New Roman\",serif;font-size:18px;color:var(--ink);line-height:1.25}" +
+  ".pc-v{display:block;font-weight:600;font-size:18px;color:var(--ink);line-height:1.25}" +
   ".pc-n{display:block;font-size:12px;color:var(--ink-3);font-weight:400;margin-top:1px}" +
   ".pc-page .pp-up{color:var(--ok-text);font-weight:600}.pc-page .pp-down{color:var(--err-text);font-weight:600}" +
   ".pc-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}" +

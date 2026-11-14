@@ -65,7 +65,7 @@ const PRICING_CSS = `
 .prc-tile{display:flex;flex-direction:column;position:relative;padding:20px}
 .prc-tile .prc-k{font-size:var(--text-tiny);text-transform:uppercase;letter-spacing:.1em;
   color:var(--ink-3);font-weight:600}
-.prc-tile .prc-v{font-family:var(--serif);font-weight:500;font-size:var(--text-hero);
+.prc-tile .prc-v{font-weight:600;font-size:var(--text-hero);
   line-height:1.15;margin-top:6px;color:var(--ink);font-variant-numeric:tabular-nums}
 .prc-tile .prc-n{font-size:var(--text-label);color:var(--ink-3);margin-top:2px}
 .prc-sum{font-size:var(--text-compact);line-height:1.55;color:var(--ink-body);margin:12px 0 0}
@@ -92,7 +92,7 @@ const PRICING_CSS = `
 .prc-fm{background:var(--slab);border-radius:var(--r-md);padding:22px 26px;margin:20px 0 0;
   display:flex;flex-wrap:wrap;gap:22px;align-items:center;justify-content:space-between}
 .prc-fm-lab{font-size:var(--text-tiny);font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#F87171}
-.prc-fm-h{font-family:var(--serif);font-weight:500;font-size:23px;line-height:1.25;
+.prc-fm-h{font-weight:600;font-size:23px;line-height:1.25;
   color:#fff;margin:8px 0 6px;font-variant-numeric:tabular-nums}
 .prc-fm-sub{font-size:var(--text-small);line-height:1.5;color:#B6C1CF;margin:0}
 .prc-fm-right{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
@@ -108,7 +108,7 @@ const PRICING_CSS = `
 .prc-wc{border-radius:var(--r-md);padding:22px}
 .prc-wc-pro{background:var(--wash);border:1px solid var(--line)}
 .prc-wc-free{background:var(--card);border:1px solid var(--edge)}
-.prc-wc h2{font-family:var(--serif);font-weight:500;font-size:var(--text-subhead);line-height:1.3;
+.prc-wc h2{font-weight:600;font-size:var(--text-subhead);line-height:1.3;
   color:var(--ink);margin:0 0 14px}
 .prc-wl{list-style:none;margin:0;padding:0}
 .prc-wl li{display:flex;gap:12px;padding:9px 0;font-size:var(--text-compact);line-height:1.55;color:var(--ink-body)}

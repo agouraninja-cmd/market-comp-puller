@@ -53,7 +53,7 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr nav a{color:var(--ink-2);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
 main{flex:1;padding:var(--s8) 0 var(--s9)}
 .kicker{font-size:var(--text-tiny);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
-h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:var(--s4) 0 0;font-size:var(--text-hero);line-height:1.15}
+h1.h{font-weight:600;letter-spacing:-.005em;color:var(--ink);margin:var(--s4) 0 0;font-size:var(--text-hero);line-height:1.15}
 .sub{color:var(--ink-2);font-size:var(--text-compact);max-width:62ch;margin:var(--s4) 0 0}
 .gate{background:#fff;border:1px solid var(--edge);border-radius:var(--r-sm);padding:var(--s6);max-width:400px;margin:var(--s8) auto;text-align:center}
 .gate .lab{display:block;font-size:var(--text-small);color:var(--ink-3)}
@@ -71,7 +71,7 @@ h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(-
 .tally b{color:var(--ink);font-weight:600}
 .card{border-top:1px solid var(--line);padding:var(--s6) 0}
 .card-h{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:var(--s3) var(--s5);margin:0 0 var(--s4)}
-.card-h h2{font-family:var(--serif);font-weight:500;font-size:var(--text-title);letter-spacing:-.005em;color:var(--ink);margin:0}
+.card-h h2{font-weight:600;font-size:var(--text-title);letter-spacing:-.005em;color:var(--ink);margin:0}
 .meta{font-size:var(--text-small);color:var(--ink-3)}
 .badge{font-size:var(--text-tiny);letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--ink-2)}
 .badge.look{color:var(--red)}

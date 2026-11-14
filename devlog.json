@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-14",
+    "type": "improvement",
+    "title": "The public pages are Inter too",
+    "details": "The pages a visitor sees before signing in (the home page, pricing, FAQ, the brokers and lenders pages, Markets, each market’s page, rankings, terms and privacy) had Georgia headings over a body in whatever font the visitor’s computer supplied: Segoe UI on Windows, San Francisco on a Mac. They now load Inter, the font the app uses, and their headings and figures are Inter in bold. The whole site is one typeface. Loading the font adds one small request to Google Fonts on those pages; text shows at once in the system font and switches when Inter arrives."
+  },
+  {
+    "date": "2026-11-14",
     "type": "feature",
     "title": "A comp can say which appraisal it came from",
     "details": "Your comps has a new Source field: a short label for the document a comp came from, such as the appraisal it is out of or a file number. Add it as a “source” column in a spreadsheet, type it when adding a comp by hand, or edit it in the spreadsheet view. It shows when you open a comp, the Find box searches it, it is in both CSV downloads, and the printed comp sheet lists it in its own column. Notes still stay off the printed sheet. A source is never included when a comp is published."

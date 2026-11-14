@@ -193,7 +193,7 @@ main.wrap{max-width:none;padding:0}
    and "For firms — Pro version"), which is what makes them read as one
    family across two pages; a 11.5px version of it is a different device. */
 .faqeye{font-size:18px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--red);line-height:1.35}
-.faqpg h1{font-family:var(--serif);font-weight:500;font-size:36px;line-height:1.16;
+.faqpg h1{font-weight:600;font-size:36px;line-height:1.16;
   color:var(--ink);margin:10px 0 18px}
 
 /* --- The accordions -------------------------------------------------------
@@ -225,7 +225,7 @@ main.wrap{max-width:none;padding:0}
 .faqq summary::-webkit-details-marker{display:none}
 .faqq summary::marker{content:""}
 .faqq summary:focus-visible{outline:2px solid var(--red);outline-offset:3px}
-.faqq h2{font-family:var(--serif);font-weight:500;font-size:var(--text-subhead);line-height:1.3;
+.faqq h2{font-weight:600;font-size:var(--text-subhead);line-height:1.3;
   color:var(--ink);margin:0}
 /* The + that becomes an ×. One glyph rotated 45deg, never two swapped: a
    swap needs a second element and gets the two out of step. */

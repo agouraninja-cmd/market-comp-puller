@@ -402,7 +402,8 @@ test("every in-scope server page can set the theme before first paint", () => {
   // marketShell covers /markets, /market/<slug>, /brokers, /broker/<slug>,
   // /terms, /privacy.
   const shell = SERVER_JS.slice(SERVER_JS.indexOf("function marketShell("));
-  assert.ok(shell.slice(0, 2000).includes("THEME_BOOT"), "marketShell lacks the boot script");
+  // 2400, not 2000: the shell gained a line (the font links) on 2026-11-14.
+  assert.ok(shell.slice(0, 2400).includes("THEME_BOOT"), "marketShell lacks the boot script");
   // renderHowItWorksHTML was the SECOND shell and was checked separately here
   // -- checking one shell was never evidence about the other. It was deleted
   // with /how-it-works on 2026-09-02, and marketShell is the only server-side

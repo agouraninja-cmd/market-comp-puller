@@ -71,8 +71,13 @@ paths:
 > inner `main.wrap.pt-page` gives its padding back there (the page had two
 > 16px gutters a side and 88px above its heading).
 > **Left alone, and worth knowing.** Messages' context menu (z 60) can open
-> under the bar. The Feedback button still covers the right end of /comps'
-> comp set.
+> under the bar.
+> **/comps' comp set stops short of the Feedback button (2026-11-14, the
+> owner: "fix the feedback button covering the comp set").** Under 900px
+> the button floats 16px from the right, 44px wide, in the corner the
+> sticky set stands in; `.vd-tray.on{margin-right:56px}` (44 + 12, in
+> vault-page.js's phone block) puts them side by side. Nothing is hidden
+> and nothing is measured in script.
 > **A stranger's header on a phone is two rows (2026-11-14, the owner:
 > "fix the signed-out header on mobile too").** It was three under about
 > 407px (brand; Home, Explore, Tools, Log in; the red button alone), 138px.

@@ -183,6 +183,11 @@ test("a phone gets the nav along the bottom, on screen only, and nothing rides u
   assert.match(badge, stands);
   assert.match(VAULT_JS, /@media screen and \(max-width:899px\)\{\s*html\.nav-rail \.vd-tray\.on\{bottom:calc\(66px/,
     "/comps' selection tray no longer stands on the phone bar, so it sticks behind it");
+  // And it stops short of the floating Feedback button in the same corner
+  // (16px from the right, 44px wide): 44 + 12, in that same phone block.
+  assert.match(badge, /\.tninja\{position:fixed;bottom:16px;right:16px;z-index:1000;width:44px;height:44px;/);
+  assert.match(VAULT_JS, /@media screen and \(max-width:899px\)\{[^@]*\n  \.vd-tray\.on\{margin-right:56px\}\n\}/,
+    "/comps' selection tray runs under the Feedback button again on a phone");
   // The page you are on is a border (forced colours keep it), as in the rail.
   assert.match(phone, /nav>a\[aria-current="page"\]::before\{[^}]*border-top:3px solid var\(--red\)/);
   // Above a map's controls (Leaflet's are 1000) and the Feedback button,

@@ -22,6 +22,23 @@ paths:
 
 ## Architecture
 
+- **The report sets no Georgia (2026-11-14; the owner, after Home and every
+  member page went to Inter: "make the comp report Inter too").** index.html
+  now names no serif anywhere: `.font-brand` and `.rd-h` (the address, the
+  hero's Low / Likely / High, the tile figures), `.ap-stmt td.num`,
+  `.pr-fig`, `.pr-stmt tfoot .fig`, `.dk-mname`, `.dk-addr`, `.dk-gt`,
+  `.mc-name`, and on Home `.hm-map-empty b`, `.hm-first-h` and
+  `.hm-pop-b > b` are the page's own face at 600 (Georgia was 400 or 500,
+  and Inter at 500 reads as body text). `--serif` stays defined, because the
+  scale is shared with theme.js, and is used by nothing here. The sample
+  report measured the same height before and after (5,522px at 1440), so
+  nothing reflowed. It reaches what is the same page: a shared report at
+  `/r/<id>`, the sample, and the print and PNG exports, which photograph it.
+  The PowerPoint export writes its own text and was already sans. The public
+  pages are other documents and keep Georgia. Held by
+  `test/index-html-type.test.js`; app-shell.md ("Member page titles") has
+  the member pages' half.
+
 - **The Collateral Check card (2026-11-10; the owner's ask was to cater to an
   SBA lender, Live Oak Bank).** The Analysis tab's Debt & Refi card hides
   until an NOI is typed, and an owner-occupied building has none: the

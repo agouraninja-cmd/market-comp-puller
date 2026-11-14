@@ -41,7 +41,7 @@ function renderSitesBody(boot) {
 .sp-page{margin:24px 0 48px}
 .sp-page .kicker{font-size:var(--text-tiny);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
 .sp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;border-bottom:1.5px solid var(--ink);padding-bottom:8px;margin-top:4px}
-.sp-head h1{margin:0;font-family:var(--serif);font-weight:400;font-size:var(--text-h1);line-height:1.15;color:var(--ink)}
+.sp-head h1{margin:0;font-weight:600;font-size:var(--text-h1);line-height:1.2143;letter-spacing:-.02em;color:var(--ink)}
 .sp-sub{font-size:var(--text-small);color:var(--ink-3);margin:10px 0 0;max-width:88ch}
 .sp-figs{display:flex;flex-wrap:wrap;gap:6px 22px;margin:14px 0 0;font-size:var(--text-small);color:var(--ink-3)}
 .sp-figs b{display:block;font-family:var(--serif);font-weight:400;font-size:22px;color:var(--ink);font-variant-numeric:tabular-nums}

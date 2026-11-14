@@ -49,8 +49,9 @@ paths:
 >   stood on (`1.2143`, rounded up), so nothing under it moved and the
 >   head's alignment tests are unchanged. At 30px a long greeting ("Good
 >   afternoon, Christopher") broke in two in Inter, which is wider than
->   Georgia; at 28 it fits. Home is now the one rail page whose title is
->   not Georgia: that was said to the owner before he chose. The map's own
+>   Georgia; at 28 it fits. Home was for a few hours the one rail page whose
+>   title was not Georgia; the owner then had the others follow
+>   (app-shell.md, "Member page titles"). The map's own
 >   things (the card over a pin, the empty-map card) and the first-building
 >   screen (`#hmFirst`, whose own greeting and heading are still Georgia)
 >   keep their type: they are not the list.

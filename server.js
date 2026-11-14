@@ -12354,10 +12354,21 @@ function deskBootScript(payload) {
 // render-blocking stylesheet from another host is not a free change there.
 // The same pages read by a member (/market/<slug> and /rankings above all)
 // still wear the rail in the system font: markets.md, "Inter on /markets".
-const INTER_FONT_HEAD =
+//
+// EVERY marketShell page loads the font since 2026-11-14 (the owner, last of
+// five steps that took the site to one typeface: "make the public pages
+// Inter too"). The paragraph above is history: the public pages' Georgia
+// headings are Inter at 600 now, and without the font they would be Segoe
+// UI on Windows and San Francisco on a Mac, a different face on each
+// visitor's machine. marketShell adds INTER_FONT_LINKS itself when the
+// page's `head` does not already carry it, so a page still loads it once.
+// The cost is one small stylesheet from Google with `display=swap`: text
+// paints at once in the system face and swaps when Inter arrives.
+const INTER_FONT_LINKS =
   `<link rel="preconnect" href="https://fonts.googleapis.com"/>\n` +
   `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>\n` +
-  `<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>\n` +
+  `<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>\n`;
+const INTER_FONT_HEAD = INTER_FONT_LINKS +
   // A member page's title is Inter (2026-11-14; the owner, after Home's
   // greeting went to Inter: "make the other pages' titles Inter too"). It
   // rides with the font because the pages that load Inter ARE the member
@@ -13349,7 +13360,7 @@ ${RAIL_CSS}
   .hdr nav>a.btn.sm[href$="=signup"]{position:absolute;top:11px;right:16px}
 }
 /* Type */
-h1{font-family:var(--serif);font-weight:500;font-size:var(--text-h1);line-height:1.15;
+h1{font-weight:600;font-size:var(--text-h1);line-height:1.15;
   letter-spacing:-.005em;color:var(--ink);margin:10px 0 6px}
 .sub{color:var(--ink-mute);font-size:var(--text-compact);margin:0 0 22px;max-width:70ch}
 .sub a{color:var(--ink-mute);text-decoration:underline;text-decoration-color:var(--edge)}
@@ -13360,7 +13371,7 @@ h1{font-family:var(--serif);font-weight:500;font-size:var(--text-h1);line-height
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:22px 0}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:16px 18px;box-shadow:var(--lift)}
 .tile .k{font-size:var(--text-tiny);text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);font-weight:600}
-.tile .v{font-family:var(--serif);font-weight:500;font-size:25px;line-height:1.2;margin-top:4px;
+.tile .v{font-weight:600;font-size:25px;line-height:1.2;margin-top:4px;
   color:var(--ink);font-variant-numeric:tabular-nums}
 .tile .n{font-size:var(--text-small);color:var(--ink-3);margin-top:2px}
 /* Ledger stat strip (Direction G, owner-approved 2026-08-09): the market
@@ -13386,7 +13397,7 @@ h1{font-family:var(--serif);font-weight:500;font-size:var(--text-h1);line-height
 [data-theme="dark"] .lcell.mid .n{color:var(--ink-2)}
 [data-theme="dark"] .lcell.mid .k{color:var(--red-deep)}
 
-.lcell .v{font-family:var(--serif);font-weight:500;font-size:var(--text-heading);line-height:1.2;margin-top:4px;
+.lcell .v{font-weight:600;font-size:var(--text-heading);line-height:1.2;margin-top:4px;
   color:var(--ink);font-variant-numeric:tabular-nums}
 .lcell.mid .v{font-size:29px}
 .lcell .n{font-size:var(--text-label);color:var(--ink-3);margin-top:2px}
@@ -13402,7 +13413,7 @@ table.stmt tfoot .tl{font-size:var(--text-tiny);letter-spacing:.07em;text-transf
    micro-label used elsewhere — these are sentence-length ("What's driving
    Industrial prices in Ontario"), which uppercase 10px would make unreadable. */
 .card{background:var(--card);border:1px solid var(--edge);border-radius:var(--r-md);padding:22px;margin:18px 0;box-shadow:var(--lift)}
-.card h2{font-family:var(--serif);font-weight:500;font-size:var(--text-title);color:var(--ink);
+.card h2{font-weight:600;font-size:var(--text-title);color:var(--ink);
   margin:0 0 12px;letter-spacing:normal;text-transform:none}
 .card h3{font-size:var(--text-lead);font-weight:600;color:var(--ink);margin:16px 0 4px}
 .card p{margin:0 0 10px;color:var(--ink-body);font-size:var(--text-lead)}
@@ -13427,7 +13438,7 @@ table.stmt tfoot .tl{font-size:var(--text-tiny);letter-spacing:.07em;text-transf
 /* /brokers offer — two stacked ledgers. Do not reuse .steps (sequence) or
    .grid (the old two-card band). /markets still uses .grid; this page does
    not. Rows are visible on first paint: this sheet has no html.anim. */
-.bkhead{font-family:var(--serif);font-weight:500;font-size:var(--text-title);color:var(--ink);
+.bkhead{font-weight:600;font-size:var(--text-title);color:var(--ink);
   margin:28px 0 0;letter-spacing:normal;text-transform:none}
 .sub + .bkhead,.kicker + .bkhead{margin-top:8px}
 .bk{border:1px solid var(--edge);border-radius:var(--r-md);overflow:hidden;background:var(--card);margin-top:12px;box-shadow:var(--lift)}
@@ -13450,7 +13461,7 @@ table.stmt tfoot .tl{font-size:var(--text-tiny);letter-spacing:.07em;text-transf
 .bkexcap{padding:12px 16px;border-bottom:1px solid var(--hair);font-size:var(--text-tiny);color:var(--ink-3);
   letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
 .bkexbody{padding:16px}
-.bkexaddr{font-family:var(--serif);font-weight:500;font-size:var(--text-input);color:var(--ink);
+.bkexaddr{font-weight:600;font-size:var(--text-input);color:var(--ink);
   letter-spacing:-.005em}
 .bkexmeta{font-size:var(--text-tiny);color:var(--ink-mute);margin:6px 0 12px}
 .bkexlab{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--ink);
@@ -13465,7 +13476,7 @@ table.stmt tfoot .tl{font-size:var(--text-tiny);letter-spacing:.07em;text-transf
 .bk + .kicker,.disc + .kicker{margin-top:36px}
 .bkbeat{padding:22px;border-bottom:1px solid var(--hair)}
 .bkbeat:last-child{border-bottom:0}
-.bknum{font-family:var(--serif);font-size:var(--text-small);color:var(--red);margin-bottom:8px}
+.bknum{font-weight:600;font-size:var(--text-small);color:var(--red);margin-bottom:8px}
 .bkbeat h3{font-size:var(--text-lead);font-weight:600;color:var(--ink);margin:0 0 8px}
 .bkbeat p{font-size:var(--text-compact);color:var(--ink-mute);margin:0}
 details.q{background:var(--card);border:1px solid var(--edge);border-radius:var(--r-md);padding:16px 20px;margin-bottom:12px}
@@ -13507,7 +13518,7 @@ details.q p{font-size:var(--text-compact);color:var(--ink-mute);margin:8px 0 0;m
 /* Same micro-label as .bklag, and the same red: on both pages it names the
    ROLE a row is playing, so it should read identically. */
 .prole{font-size:var(--text-tiny);letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--red)}
-.person h3{font-family:var(--serif);font-weight:500;font-size:var(--text-title);color:var(--ink);
+.person h3{font-weight:600;font-size:var(--text-title);color:var(--ink);
   margin:6px 0 8px;line-height:1.2}
 .person p{font-size:var(--text-compact);color:var(--ink-mute);margin:0}
 @media(min-width:900px){
@@ -13569,7 +13580,7 @@ td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-
 .badge.li{color:var(--warn-text);background:var(--warn-bg)}
 /* CTA — the calm bordered block from the landing page, not the old gradient. */
 .cta{border:1px solid var(--edge);background:var(--card);border-radius:var(--r-md);padding:28px;margin:26px 0;text-align:center;box-shadow:var(--lift)}
-.cta h2{font-family:var(--serif);font-weight:500;font-size:22px;color:var(--ink);
+.cta h2{font-weight:600;font-size:22px;color:var(--ink);
   margin:0 0 8px;letter-spacing:normal;text-transform:none}
 /* The BOV band at the top of a covered market page. Same card, tighter to the
    h1 above it, since it is answering the heading rather than closing the page. */
@@ -13622,7 +13633,7 @@ table.stmt th[aria-sort="ascending"]::after{content:" ▲";font-size:.8em}
 .mcard.haspic{padding:0;overflow:hidden}
 .mcard .mthumb{display:block;width:100%;height:auto;aspect-ratio:${MARKETHERO.HERO_THUMB_WIDTH} / ${MARKETHERO.HERO_THUMB_HEIGHT};object-fit:cover;background:var(--wash);border-bottom:1px solid var(--hair)}
 .mcard .mbody{padding:14px 18px 16px}
-.mcard .t{font-family:var(--serif);font-weight:500;font-size:17px;color:var(--ink)}
+.mcard .t{font-weight:600;font-size:17px;color:var(--ink)}
 .mcard .s{color:var(--ink-mute);font-size:var(--text-small);margin-top:6px;font-variant-numeric:tabular-nums}
 /* /markets directory filter. .vh hides the label from sight but not from a
    screen reader: a bare search box with only a placeholder has no accessible
@@ -13751,7 +13762,7 @@ body.has-hero main.wrap{padding-top:20px}
 /* Legal pages (/terms, /privacy) — document style: flowing prose under serif
    section headings, a readable measure, no cards or boxes. */
 .legal{max-width:72ch}
-.legal h2{font-family:var(--serif);font-weight:500;font-size:var(--text-subhead);color:var(--ink);
+.legal h2{font-weight:600;font-size:var(--text-subhead);color:var(--ink);
   letter-spacing:normal;text-transform:none;margin:34px 0 10px}
 .legal p{margin:0 0 12px;color:var(--ink-body);font-size:var(--text-lead)}
 .legal ul{margin:0 0 12px;padding-left:22px}
@@ -15643,6 +15654,7 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     `<link rel="manifest" href="/manifest.webmanifest"/>\n` +
     `${THEME_META}` +
     (jsonLd ? `<script type="application/ld+json">${jsonLd}</script>\n` : "") +
+    (head && head.includes("family=Inter") ? "" : INTER_FONT_LINKS) +
     (head || "") +
     `<style>${MARKET_CSS}</style>\n` +
     THEME_BOOT +
@@ -16481,7 +16493,7 @@ const MARKET_LOOKUP =
 // No backticks in here: this is a template literal.
 const MARKET_BUILD_CSS = `
 .mlook{margin:6px 0 22px;border:1px solid var(--edge);border-radius:var(--r-xl);background:var(--card);box-shadow:var(--lift);padding:18px 20px}
-.mlook h2{margin:0;font-family:var(--serif);font-weight:500;font-size:var(--text-heading);line-height:1.2;color:var(--ink)}
+.mlook h2{margin:0;font-weight:600;font-size:var(--text-heading);line-height:1.2;color:var(--ink)}
 .mlook-sub{margin:4px 0 14px;font-size:var(--text-compact);color:var(--ink-3);max-width:72ch}
 .mlook-row{display:grid;grid-template-columns:minmax(0,1fr) 200px auto;gap:10px;align-items:end}
 .mlook-row label{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:var(--text-tiny);letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--ink-3)}
@@ -16531,7 +16543,7 @@ const BOARD_SECTION =
 const BOARD_CSS = `
 .bd{margin:6px 0 30px;border:1px solid var(--edge);border-radius:var(--r-xl);background:var(--card);box-shadow:var(--lift);padding:18px 20px 14px}
 .bd-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 16px;margin-bottom:12px}
-.bd-head h2{margin:0;font-family:var(--serif);font-weight:500;font-size:var(--text-heading);line-height:1.2;color:var(--ink)}
+.bd-head h2{margin:0;font-weight:600;font-size:var(--text-heading);line-height:1.2;color:var(--ink)}
 .bd-sum{margin:4px 0 0;font-size:var(--text-compact);color:var(--ink-3)}
 .bd-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .bd-seg{display:inline-flex;padding:3px;border-radius:var(--r-lg);background:var(--wash)}
@@ -16578,7 +16590,7 @@ const BOARD_CSS = `
 .bd-cv{width:18px;color:var(--ink-4);font-size:18px;line-height:1}
 .bd-row.on .bd-cv{color:var(--ink)}
 .bd-gh > td{padding:16px 10px 6px;border-bottom:1px solid var(--line);cursor:default}
-.bd-gh b{font-family:var(--serif);font-weight:500;font-size:17px;color:var(--ink)}
+.bd-gh b{font-weight:600;font-size:17px;color:var(--ink)}
 .bd-gh span{margin-left:8px;font-size:var(--text-label);font-weight:600;color:var(--ink-3)}
 .bd-gh small{margin-left:8px;font-size:var(--text-label);color:var(--ink-3)}
 .bd-gh a{font-size:var(--text-label);font-weight:600}
@@ -18276,7 +18288,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 .hdr nav a{color:var(--ink-2);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
 main{flex:1;padding:var(--s8) 0 var(--s9)}
 .kicker{font-size:var(--text-tiny);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
-.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
+.h{font-weight:600;letter-spacing:-.005em;color:var(--ink);margin:0}
 h1.h{font-size:var(--text-hero);line-height:1.15;margin:var(--s4) 0 0}
 .sub{color:var(--ink-2);font-size:var(--text-compact);max-width:62ch;margin:var(--s4) 0 0}
 .gate{background:#fff;border:1px solid var(--edge);border-radius:var(--r-sm);padding:var(--s6);max-width:400px;margin:var(--s8) auto;text-align:center}
@@ -18322,11 +18334,11 @@ h1.h{font-size:var(--text-hero);line-height:1.15;margin:var(--s4) 0 0}
   .tile:nth-child(n+6){border-top:1px solid var(--line)}
 }
 .tile .k{font-size:var(--text-small);color:var(--ink-3);font-weight:500}
-.tile .v{font-family:var(--serif);font-weight:500;font-size:var(--text-hero);line-height:1.2;margin-top:var(--s2);
+.tile .v{font-weight:600;font-size:var(--text-hero);line-height:1.2;margin-top:var(--s2);
   color:var(--ink);font-variant-numeric:tabular-nums}
 .tile .n{font-size:var(--text-small);color:var(--ink-3);margin-top:var(--s1)}
 .card{background:#fff;border:1px solid var(--edge);border-radius:var(--r-sm);padding:var(--s5) var(--s6);margin:var(--s5) 0}
-.card h2{font-family:var(--serif);font-weight:500;font-size:var(--text-title);letter-spacing:-.005em;color:var(--ink);margin:0 0 var(--s4)}
+.card h2{font-weight:600;font-size:var(--text-title);letter-spacing:-.005em;color:var(--ink);margin:0 0 var(--s4)}
 .card p{margin:0 0 var(--s3);font-size:var(--text-compact);color:var(--ink-2)}
 .card.alarm{border-color:var(--red);background:var(--red-wash)}
 .card.alarm h2{color:var(--red)}
@@ -19194,7 +19206,7 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr nav a{color:var(--ink-2);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
 main{flex:1;padding:var(--s8) 0 var(--s9)}
 .kicker{font-size:var(--text-tiny);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
-.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
+.h{font-weight:600;letter-spacing:-.005em;color:var(--ink);margin:0}
 h1.h{font-size:var(--text-hero);line-height:1.15;margin:var(--s4) 0 0}
 .sub{color:var(--ink-2);font-size:var(--text-compact);max-width:60ch;margin:var(--s4) 0 0}
 .gate{background:#fff;border:1px solid var(--edge);border-radius:var(--r-sm);padding:var(--s6);max-width:400px;margin:var(--s8) auto;text-align:center}
@@ -19211,7 +19223,7 @@ h1.h{font-size:var(--text-hero);line-height:1.15;margin:var(--s4) 0 0}
 #hub{margin-top:var(--s8)}
 .card{background:none;border:0;border-radius:0;padding:0;margin:0}
 .card+.card{margin-top:var(--s8);border-top:1px solid var(--line);padding-top:var(--s7)}
-.card h2{font-family:var(--serif);font-weight:500;font-size:var(--text-title);letter-spacing:-.005em;color:var(--ink);
+.card h2{font-weight:600;font-size:var(--text-title);letter-spacing:-.005em;color:var(--ink);
   text-transform:none;margin:0 0 var(--s6)}
 
 /* A day is one grid row: the date sits in the margin, its entries stack in
@@ -19219,7 +19231,7 @@ h1.h{font-size:var(--text-hero);line-height:1.15;margin:var(--s4) 0 0}
    rather than a list of status pills. */
 .day{display:grid;grid-template-columns:var(--spine) minmax(0,1fr);column-gap:var(--spine-gap);padding:var(--s6) 0}
 .day+.day{border-top:1px solid var(--hair)}
-.day-date{grid-column:1;grid-row:1;font-family:var(--serif);font-size:var(--text-lead);color:var(--ink);
+.day-date{grid-column:1;grid-row:1;font-weight:600;font-size:var(--text-lead);color:var(--ink);
   line-height:1.35;margin:0;padding-top:var(--s1)}
 .day-date .dd-y{display:block;font-size:var(--text-small);color:var(--ink-3)}
 .entry{grid-column:2;display:block;padding:0}
@@ -19243,7 +19255,7 @@ h1.h{font-size:var(--text-hero);line-height:1.15;margin:var(--s4) 0 0}
    put the second heading beside the first bucket's rows). */
 .bucket{display:grid;grid-template-columns:var(--spine) minmax(0,1fr);column-gap:var(--spine-gap);padding:var(--s6) 0}
 .bucket+.bucket{border-top:1px solid var(--hair)}
-.bucket-h{grid-column:1;grid-row:1;font-family:var(--serif);font-size:var(--text-lead);letter-spacing:0;
+.bucket-h{grid-column:1;grid-row:1;font-weight:600;font-size:var(--text-lead);letter-spacing:0;
   text-transform:none;color:var(--ink);font-weight:500;margin:0;padding-top:var(--s1)}
 .bucket-body{grid-column:2;min-width:0}
 /* Rows stay flex INSIDE the text column: checkbox / text / priority / actions
@@ -19309,7 +19321,7 @@ h1.h{font-size:var(--text-hero);line-height:1.15;margin:var(--s4) 0 0}
 .ed .lnk:hover{color:var(--red);text-decoration:underline}
 .ed .spacer{flex:1}
 details.month{border-top:1px solid var(--line);margin-top:0;padding-top:0}
-summary.month-sum{cursor:pointer;font-family:var(--serif);font-size:var(--text-lead);color:var(--ink-2);padding:var(--s5) 0;
+summary.month-sum{cursor:pointer;font-weight:600;font-size:var(--text-lead);color:var(--ink-2);padding:var(--s5) 0;
   list-style:none;display:flex;align-items:baseline;gap:var(--s3)}
 summary.month-sum::-webkit-details-marker{display:none}
 /* Literal + / − glyphs: a CSS \\2212 escape would be read as an octal escape
@@ -19770,7 +19782,7 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr nav a{color:var(--ink-2);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
 main{flex:1;padding:var(--s8) 0 var(--s9)}
 .kicker{font-size:var(--text-tiny);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
-.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
+.h{font-weight:600;letter-spacing:-.005em;color:var(--ink);margin:0}
 h1.h{font-size:var(--text-hero);line-height:1.15;margin:var(--s4) 0 0}
 .sub{color:var(--ink-2);font-size:var(--text-compact);max-width:62ch;margin:var(--s4) 0 0}
 .gate{background:#fff;border:1px solid var(--edge);border-radius:var(--r-sm);padding:var(--s6);max-width:400px;margin:var(--s8) auto;text-align:center}
@@ -19787,7 +19799,7 @@ h1.h{font-size:var(--text-hero);line-height:1.15;margin:var(--s4) 0 0}
 .btn.sm{padding:var(--s2) var(--s4);font-size:var(--text-small)}
 .err{color:var(--red);font-size:var(--text-small);margin-top:var(--s3)}
 .card{background:#fff;border:1px solid var(--edge);border-radius:var(--r-sm);padding:var(--s5) var(--s6);margin:var(--s5) 0}
-.card h2{font-family:var(--serif);font-weight:500;font-size:var(--text-title);letter-spacing:-.005em;color:var(--ink);margin:0 0 var(--s4)}
+.card h2{font-weight:600;font-size:var(--text-title);letter-spacing:-.005em;color:var(--ink);margin:0 0 var(--s4)}
 .muted{color:var(--ink-3);font-size:var(--text-small)}
 .bar{display:flex;gap:var(--s4);align-items:center;flex-wrap:wrap;margin:0 0 var(--s5)}
 .bar input[type=search]{flex:1;min-width:200px;padding:var(--s3) var(--s4);border:1px solid var(--edge);border-radius:var(--r-sm);
@@ -21039,7 +21051,7 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr nav a{color:var(--ink-2);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
 main{flex:1;padding:var(--s8) 0 var(--s9)}
 .kicker{font-size:var(--text-tiny);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
-h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:var(--s4) 0 0;font-size:var(--text-hero);line-height:1.15}
+h1.h{font-weight:600;letter-spacing:-.005em;color:var(--ink);margin:var(--s4) 0 0;font-size:var(--text-hero);line-height:1.15}
 .sub{color:var(--ink-2);font-size:var(--text-compact);max-width:60ch;margin:var(--s4) 0 0}
 .gate{background:#fff;border:1px solid var(--edge);border-radius:var(--r-sm);padding:var(--s6);max-width:400px;margin:var(--s8) auto;text-align:center}
 .gate .lab{display:block;font-size:var(--text-small);color:var(--ink-3)}
@@ -21060,7 +21072,7 @@ h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(-
    folded into .card itself. */
 .card{background:none;border:0;border-radius:0;margin:var(--s8) 0 0;
   border-top:1px solid var(--line);padding:var(--s7) 0 0}
-.card h2{font-family:var(--serif);font-weight:500;font-size:var(--text-title);letter-spacing:-.005em;color:var(--ink);
+.card h2{font-weight:600;font-size:var(--text-title);letter-spacing:-.005em;color:var(--ink);
   text-transform:none;margin:0 0 var(--s5)}
 /* The sentence that answers the page's own question, above the figures: four
    numbers in a grid still need one line tying them together, and this is what
@@ -21103,7 +21115,7 @@ h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(-
 .tile-name{display:inline-block;font-size:var(--text-small);font-weight:600;color:var(--ink-2);
   text-decoration:underline;text-decoration-color:var(--ink-4);text-underline-offset:3px}
 .tile-name:hover{color:var(--red);text-decoration-color:var(--red)}
-.tile-v{font-family:var(--serif);font-weight:500;font-size:var(--text-hero);line-height:1.15;
+.tile-v{font-weight:600;font-size:var(--text-hero);line-height:1.15;
   margin-top:var(--s4);color:var(--ink);font-variant-numeric:tabular-nums}
 /* Three distinct steps under the figure, so the supporting lines stop reading
    as one grey mush: the unit at body size in mid ink, details a step smaller

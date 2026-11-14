@@ -53,6 +53,14 @@ function boot(comps, identity, extra) {
     ...(extra || {}),
   } };
 }
+// A licensed broker's identity: the one account the page offers publishing
+// to (2026-11-14). canPublish is the server's own answer (VAULT.canPublishAs),
+// so a test about a publishing control passes this, and the default above is
+// the account that is offered none: a lender, an owner, a new member.
+const LICENSED = {
+  display_name: "Chuck Hawkins", company: "Hawkins Ridge CRE", license_number: "01899123",
+  creditedTo: "Hawkins Ridge CRE", canPublish: true,
+};
 // The page's own inline script, as the browser would receive it.
 function pageScript(html) {
   const m = html.match(/<script>\n\(function\(\)\{[\s\S]*?\}\)\(\);\n<\/script>/);
@@ -2511,8 +2519,13 @@ test("choosing a property type reveals that type's own fields, and switching typ
 test("an unstated identity says so, and offers to fix it", async () => {
   const { doc } = await runPage([comp({})]);
   const line = doc.getElementById("creditLine").innerHTML;
-  assert.match(line, /need a name to credit/i);
+  // Since 2026-11-14 the line says publishing is OFF, rather than asking for
+  // a name to credit comps to: an account nobody has said is a broker's is
+  // offered no publishing anywhere on the page, and this is the one door.
+  assert.match(line, /^Publishing is off for your account\. Only a licensed broker can turn it on/);
+  assert.doesNotMatch(line, /need a name to credit/i);
   assert.match(line, /id="idEdit"/, "there must be a control to state one");
+  assert.ok(!doc.getElementById("creditLine").classList.contains("hide"), "the door for a broker went missing");
 });
 
 test("an unstated identity is offered the member's report branding — filled in, never saved", async () => {
@@ -4886,14 +4899,106 @@ test("the Sites tab is gone from both pages, and its scripts with it", () => {
   }
 });
 
-test("a broker firm, and a member in no firm, keep their comps as they were", async () => {
+test("a licensed broker, in a broker firm or in none, keeps their comps as they were", async () => {
   for (const firm of [{ id: "f2", name: "Colliers Boise", kind: "broker" }, null]) {
-    const { doc } = await runPage([comp({})], null, { firm: firm || undefined });
+    const { doc } = await runPage([comp({})], null, { firm: firm || undefined }, LICENSED);
       assert.equal(doc.getElementById("panelBook").className, "vt-panel on");
     assert.ok(!doc.getElementById("cPubCell").classList.contains("hide"), "the Published cell went missing");
+    assert.ok(doc.getElementById("cRecentCell").classList.contains("hide"), "a broker's strip gained a recency cell");
     assert.ok(!doc.getElementById("creditLine").classList.contains("hide"), "the credit line went missing");
     assert.match(doc.getElementById("tblHead").innerHTML, />Public</);
+    assert.match(doc.getElementById("tbody").innerHTML, /data-pub="c1"/);
+    tickInto(doc, "c1");
+    assert.match(doc.getElementById("setTray").innerHTML, /id="setPub">Publish 1</);
+    assert.equal(doc.getElementById("cPubSub").textContent, "only if you choose it");
   }
+});
+
+// ---------------------------------------------------------------------------
+// An account that cannot publish is not offered it (2026-11-14)
+//
+// The server has refused a publish without a license on the broker profile
+// since 2026-08-19, and the page went on offering the act to everyone: a
+// Publish button on every comp set and a green Published cell over every
+// book. The owner's ask was to make this page work for an SBA lender, whose
+// comps are the ones out of the appraisals in its files; for that reader a
+// Publish button is one that must never work, sitting beside confidential
+// data. So every surface that offers publishing reads the server's own
+// answer (identity.canPublish) through the flag a development firm already
+// used, and one line at the foot is the way to turn it on.
+// ---------------------------------------------------------------------------
+
+test("an account with no license is offered publishing nowhere, and the strip counts what is recent instead", async () => {
+  const { doc } = await runPage([
+    comp({ id: "c1", deal_date: isoIn(-30) }),
+    comp({ id: "c2", address: "200 Oak Ave", deal_date: isoIn(-500) }),
+    comp({ id: "c3", address: "300 Elm St", deal_date: null }),
+  ]);
+  // Every surface that offers publishing.
+  assert.ok(doc.getElementById("cPubCell").classList.contains("hide"), "the strip still counts Published");
+  assert.equal(doc.getElementById("bookStrip").className, "ledger vd-strip nopub");
+  assert.doesNotMatch(doc.getElementById("tblHead").innerHTML, />Public</);
+  assert.doesNotMatch(doc.getElementById("tbody").innerHTML, /data-pub=/);
+  assert.ok(doc.getElementById("vFootPub").classList.contains("hide"));
+  tickInto(doc, "c1"); tickInto(doc, "c2");
+  assert.doesNotMatch(doc.getElementById("setTray").innerHTML, /setPub/, "the comp set offers a publish the server would refuse");
+  // The promise drops the clause about an act there is no button for.
+  assert.match(doc.getElementById("trustNote").innerHTML,
+    /^Visible only to you\. Nothing here is ever read into CompNinja.s public records\.$/);
+  // The one door, for a broker: the line that says it is off.
+  assert.ok(!doc.getElementById("creditLine").classList.contains("hide"));
+  assert.match(doc.getElementById("creditLine").innerHTML, /Publishing is off for your account/);
+  // In Published's place: how much of the book closed in the last year.
+  assert.equal(doc.getElementById("cRecentCell").className, "lcell");
+  assert.equal(String(doc.getElementById("cRecent").textContent), "1");
+  assert.equal(doc.getElementById("cRecentSub").textContent, "1 older · 1 undated");
+});
+
+test("a credit name without a license is still not offered publishing, and the line says what is missing", async () => {
+  const { doc } = await runPage([comp({ id: "c1" })], null, {}, {
+    display_name: "", company: "First Coastal Bank", license_number: "", creditedTo: "First Coastal Bank", canPublish: false,
+  });
+  assert.ok(doc.getElementById("cPubCell").classList.contains("hide"));
+  tickInto(doc, "c1");
+  assert.doesNotMatch(doc.getElementById("setTray").innerHTML, /setPub/);
+  assert.match(doc.getElementById("creditLine").innerHTML, /publishing needs your license number/);
+});
+
+test("an account with something already published keeps every control, licensed or not", async () => {
+  // A public comp must never look private, and must always be possible to take back.
+  const { doc } = await runPage([comp({ id: "c1", published: true }), comp({ id: "c2", address: "200 Oak Ave" })]);
+  assert.ok(!doc.getElementById("cPubCell").classList.contains("hide"));
+  assert.ok(doc.getElementById("cRecentCell").classList.contains("hide"));
+  assert.match(doc.getElementById("tbody").innerHTML, /data-pub="c1" data-on="1"/);
+  tickInto(doc, "c2");
+  assert.match(doc.getElementById("setTray").innerHTML, /id="setPub">Publish 1</);
+});
+
+test("a member of a broker firm with no license keeps the shelf and gains no recency cell", async () => {
+  const { doc } = await runPage([comp({ id: "c1" }), comp({ id: "c2", address: "200 Oak Ave" })],
+    null, { firm: { id: "f2", name: "Colliers Boise", kind: "broker" }, sharedIds: ["c1"] });
+  assert.equal(doc.getElementById("bookStrip").className, "ledger vd-strip nopub");
+  assert.equal(doc.getElementById("cSharedCell").className, "lcell");
+  assert.equal(doc.getElementById("cRecentCell").className, "lcell hide", "the strip grew to five cells");
+});
+
+test("saving a license turns publishing on without a reload", async () => {
+  const { doc } = await runPage([comp({ id: "c1" })], null, {
+    identity: () => Promise.resolve(jsonResponse(200, {
+      ok: true, identity: { display_name: "Chuck Hawkins", company: "Hawkins Ridge CRE", license_number: "01899123" },
+      creditedTo: "Hawkins Ridge CRE", canPublish: true,
+    })),
+  });
+  tickInto(doc, "c1");
+  assert.doesNotMatch(doc.getElementById("setTray").innerHTML, /setPub/);
+  doc.getElementById("idSave").fire("click", {});
+  await tick();
+  assert.ok(!doc.getElementById("cPubCell").classList.contains("hide"), "the Published cell did not come back");
+  assert.ok(doc.getElementById("cRecentCell").classList.contains("hide"));
+  assert.match(doc.getElementById("setTray").innerHTML, /id="setPub">Publish 1</);
+  assert.match(doc.getElementById("tblHead").innerHTML, />Public</);
+  assert.match(doc.getElementById("trustNote").innerHTML, /nothing is published unless you choose it/);
+  assert.match(doc.getElementById("creditLine").innerHTML, /credited to <strong>Hawkins Ridge CRE<\/strong>\./);
 });
 
 test("a development firm's member reads Comps and is not offered publishing", async () => {
@@ -5062,7 +5167,12 @@ test("the quick views are settings of the same selects the table reads", async (
   assert.match(views, /data-qv="all" aria-pressed="true">All <i>3<\/i>/);
   assert.match(views, /data-qv="sale"[^>]*>Sales <i>2<\/i>/, "counted over the whole book");
   assert.match(views, /data-qv="lease"[^>]*>Leases <i>1<\/i>/);
-  assert.match(views, /data-qv="recent"[^>]*>Last 90 days <i>2<\/i>/);
+  // The date windows are toggles of their own since 2026-11-14 (data-qw),
+  // counted over the whole book like the views.
+  assert.match(views, /data-qw="recent"[^>]*>Last 90 days <i>2<\/i>/);
+  assert.match(views, /data-qw="year"[^>]*>Last 12 months <i>3<\/i>/);
+  assert.ok(views.indexOf('data-qw="year"') < views.indexOf('data-qw="recent"'), "twelve months leads");
+  assert.doesNotMatch(views, /data-qv="recent"/, "the window is a fourth view again");
   assert.doesNotMatch(views, /data-qv="unshared"/, "a broker in no firm has nothing to share");
 
   pressView(doc, "data-qv", "lease");
@@ -5070,13 +5180,33 @@ test("the quick views are settings of the same selects the table reads", async (
   assert.equal(doc.getElementById("bmCount").textContent, "1 of 3 comps");
   assert.match(doc.getElementById("bmViews").innerHTML, /data-qv="lease" aria-pressed="true"/);
 
-  pressView(doc, "data-qv", "recent");
-  assert.equal(doc.getElementById("fTrans").value, "", "views replace each other rather than stacking");
-  assert.equal(doc.getElementById("bmCount").textContent, "2 of 3 comps", "the 200-day-old deal is outside the window");
+  pressView(doc, "data-qv", "sale");
+  assert.equal(doc.getElementById("fTrans").value, "sale", "views replace each other rather than stacking");
+  assert.equal(doc.getElementById("bmCount").textContent, "2 of 3 comps");
+
+  // A window STACKS on the view that is on: the sales of the last 90 days,
+  // the question a lender asks first and the ledger could not answer.
+  pressView(doc, "data-qw", "recent");
+  assert.equal(doc.getElementById("fTrans").value, "sale", "the window threw the view away");
+  assert.equal(doc.getElementById("bmCount").textContent, "1 of 3 comps", "the 200-day-old sale is outside the window");
+  assert.match(doc.getElementById("bmViews").innerHTML, /data-qv="sale" aria-pressed="true"/);
+  assert.match(doc.getElementById("bmViews").innerHTML, /data-qw="recent" aria-pressed="true"/);
   assert.ok(!doc.getElementById("fClear").classList.contains("hide"), "Clear knows about the window");
 
+  // The other window replaces it, and the view still stands.
+  pressView(doc, "data-qw", "year");
+  assert.equal(doc.getElementById("bmCount").textContent, "2 of 3 comps");
+  assert.match(doc.getElementById("bmViews").innerHTML, /data-qw="recent" aria-pressed="false"/);
+
+  // Pressed again, a window is off.
+  pressView(doc, "data-qw", "year");
+  assert.match(doc.getElementById("bmViews").innerHTML, /data-qw="year" aria-pressed="false"/);
+  assert.equal(doc.getElementById("bmCount").textContent, "2 of 3 comps", "the Sales view is still on");
+
+  pressView(doc, "data-qw", "recent");
   pressView(doc, "data-qv", "all");
-  assert.equal(doc.getElementById("bmCount").textContent, "3 comps");
+  assert.equal(doc.getElementById("bmCount").textContent, "3 comps", "All clears the window with everything else");
+  assert.match(doc.getElementById("bmViews").innerHTML, /data-qw="recent" aria-pressed="false"/);
 });
 
 test("a filter no quick view describes shows as a pill with a way out", async () => {
@@ -5321,8 +5451,10 @@ test("the book's figures sit at the top: sales and leases apart, each median for
 });
 
 test("a broker in a firm gets the shelf as a fifth figure", async () => {
+  // A licensed broker: Published is a cell only for an account that can
+  // publish (2026-11-14), and without it the shelf is the fourth figure.
   const { doc } = await runPage([at({ id: "c1" }), at({ id: "c2", address: "200 Oak Ave" }), at({ id: "c3", address: "300 Elm St" })],
-    null, { firm: FIRM, sharedIds: ["c1"] });
+    null, { firm: FIRM, sharedIds: ["c1"] }, LICENSED);
   assert.equal(doc.getElementById("cSharedCell").className, "lcell");
   assert.equal(doc.getElementById("bookStrip").className, "ledger vd-strip five");
   assert.equal(String(doc.getElementById("cShared").textContent), "1");
@@ -5513,4 +5645,316 @@ test("Home's old ?add=own link is not read: a property you own is added on Home"
   const went = [];
   await runPage([comp({})], null, { window: { location: Object.assign(LOC("#properties", "?add=own"), { replace: (u) => went.push(u) }) } });
   assert.deepEqual(went, ["/desk#properties"]);
+});
+
+// ---------------------------------------------------------------------------
+// The loan check (2026-11-14)
+//
+// The owner's ask was to make this page work for an SBA lender. That reader's
+// comps are the ones out of the appraisals in its files, and the question it
+// asks of them is the report's Collateral Check's: is this loan covered by
+// what the building is worth. Here the value is the comp set's own lowest,
+// median and highest sale, times the size of the building.
+//
+// The rules, each pinned below: the arithmetic and the words are
+// collateral-check.js's (one loan, one wording, on the report, the lender
+// page and here); a set of mixed property types gets no answer rather than a
+// blended one; it is a pre-screen and says so; and nothing typed into it
+// leaves the page (never-break rule 6).
+// ---------------------------------------------------------------------------
+
+const COLLATERAL = require("../collateral-check");
+// The page reads the module off window, as the browser does after the
+// script tag; without it the check says it could not load.
+const runCheck = (comps, extra) => runPage(comps, null, Object.assign({ window: { COLLATERAL } }, extra || {}));
+const typeInto = (doc, id, v) => { doc.getElementById(id).value = v; doc.getElementById(id).fire("input", {}); };
+const el = (doc, id) => doc.getElementById(id);
+const TWO_SALES = () => [
+  comp({ id: "s1", price_per_sqft: 100 }),
+  comp({ id: "s2", price_per_sqft: 140, address: "2 Two St, Boise, ID" }),
+];
+// The check's own code, as emitted.
+function checkBlock() {
+  const js = pageScript(renderVaultHTML(boot([comp({})]), CHROME));
+  const a = js.indexOf("// ---- The loan check"), b = js.indexOf("// The empty book's map");
+  assert.ok(a > 0 && b > a, "the loan check's block moved");
+  return js.slice(a, b);
+}
+
+test("the page loads the report's own collateral arithmetic, and the check opens from the comp set", async () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /<script src="\/collateral-check\.js"><\/script>/);
+  assert.match(html, /<div class="vd-ck hide" id="loanCheck"/, "the panel ships closed");
+  const { doc } = await runCheck(TWO_SALES());
+  assert.match(el(doc, "setTray").innerHTML, /checks a loan against them/, "the empty set says what a set can do");
+  tickInto(doc, "s1"); tickInto(doc, "s2");
+  assert.match(el(doc, "setTray").innerHTML, /id="setCheck" aria-expanded="false"[^>]*>Check a loan</);
+  assert.equal(el(doc, "loanCheck").className, "vd-ck hide", "ticking a comp opened the check by itself");
+  pressSet(doc, "setCheck");
+  assert.equal(el(doc, "loanCheck").className, "vd-ck");
+  assert.match(el(doc, "setTray").innerHTML, /id="setCheck" aria-expanded="true"[^>]*>Hide loan check</);
+  assert.equal(String(el(doc, "ckLimit").value), String(COLLATERAL.DEFAULT_LIMIT_PCT), "the limit box opens on the module's own default");
+  el(doc, "ckClose").fire("click", {});
+  assert.equal(el(doc, "loanCheck").className, "vd-ck hide");
+});
+
+test("a loan is read against the set's own low, median and high, in the module's words", async () => {
+  const { doc } = await runCheck(TWO_SALES());
+  tickInto(doc, "s1"); tickInto(doc, "s2");
+  pressSet(doc, "setCheck");
+  // The set's figures, said once; no size yet, so no value and no tiles.
+  assert.equal(el(doc, "ckBasis").textContent, "From 2 sales: $100/SF to $140/SF, median $120/SF");
+  assert.match(el(doc, "ckMsg").textContent, /^Type the building.s size/);
+  assert.equal(el(doc, "ckOut").className, "hide");
+
+  // A size turns $/SF into three values: what the limit allows on each.
+  typeInto(doc, "ckSize", "10,000");
+  assert.equal(el(doc, "ckOut").className, "");
+  assert.equal(el(doc, "ckMsg").className, "vd-ck-msg hide");
+  assert.equal(el(doc, "ckLikelySub").textContent, "up to $960,000 on $1,200,000");
+  assert.equal(String(el(doc, "ckLikely").textContent), "—");
+  assert.equal(el(doc, "ckNeedSub").textContent, "Type a loan amount to read it against this range.");
+
+  // A loan: 100.0% at the low sale, 83.3% at the median, 71.4% at the high.
+  typeInto(doc, "ckLoan", "1,000,000");
+  const want = COLLATERAL.describe(COLLATERAL.summarize({
+    loan: 1000000, limitPct: 80, value: { low: 1000000, likely: 1200000, high: 1400000 } }), { whose: "this set's" });
+  assert.equal(String(el(doc, "ckLow").textContent), "100.0%");
+  assert.equal(el(doc, "ckLow").className, "vd-ck-pct over");
+  assert.equal(String(el(doc, "ckLikely").textContent), "83.3%");
+  assert.equal(String(el(doc, "ckHigh").textContent), "71.4%");
+  assert.equal(el(doc, "ckHigh").className, "vd-ck-pct ok");
+  assert.equal(String(el(doc, "ckNeed").textContent), "$1,250,000");
+  assert.equal(el(doc, "ckNeedSub").textContent, want.need.sub);
+  assert.equal(el(doc, "ckRead").textContent, want.read.join(" "), "the read is the module's sentence, word for word");
+  assert.match(el(doc, "ckRead").textContent, /^A stretch\./);
+
+  // A purchase price: the lesser of price and value, the module's rule.
+  typeInto(doc, "ckPrice", "1,100,000");
+  assert.match(el(doc, "ckLikelySub").textContent, /^on the \$1,100,000 price/);
+
+  // The limit is the reader's own, and the box is put back to the one in use.
+  typeInto(doc, "ckLimit", "150");
+  el(doc, "ckLimit").fire("blur", {});
+  assert.equal(String(el(doc, "ckLimit").value), "80");
+});
+
+test("the check holds no LTV arithmetic and no verdict wording of its own", () => {
+  const block = checkBlock();
+  assert.match(block, /CK\.summarize\(\{loan:/);
+  assert.match(block, /CK\.describe\(out\.summary,\{whose:"this set's"\}\)/);
+  assert.doesNotMatch(block, /ltvPct|maxLoan|requiredValue\s*=|\/\s*\(?\s*limit/, "the page computes a loan figure itself");
+  assert.doesNotMatch(block, /Covered|A stretch|appraisal decides|Over your/, "the page words a verdict itself");
+});
+
+test("a set of mixed property types, or with no priced sale, gets no answer", async () => {
+  const mixed = await runCheck([
+    comp({ id: "s1", price_per_sqft: 100 }),
+    comp({ id: "o1", property_type: "Office", price_per_sqft: 250, address: "4 Office Ave, Boise, ID" }),
+  ]);
+  tickInto(mixed.doc, "s1"); tickInto(mixed.doc, "o1");
+  pressSet(mixed.doc, "setCheck");
+  typeInto(mixed.doc, "ckSize", "10,000"); typeInto(mixed.doc, "ckLoan", "1,000,000");
+  assert.match(el(mixed.doc, "ckMsg").textContent, /sales of 2 property types, so it has no single figure/);
+  assert.equal(el(mixed.doc, "ckOut").className, "hide", "office and industrial were blended into one value");
+  assert.equal(el(mixed.doc, "ckBasis").textContent, "");
+
+  const lease = await runCheck([comp({ id: "r1", transaction: "lease", price: null, price_per_sqft: null, rent_psf_yr: 9.5 })]);
+  tickInto(lease.doc, "r1");
+  pressSet(lease.doc, "setCheck");
+  assert.match(el(lease.doc, "ckMsg").textContent, /no value to read a loan against/);
+  assert.equal(el(lease.doc, "ckOut").className, "hide");
+});
+
+test("one priced sale is one value, never an invented range", async () => {
+  const { doc } = await runCheck(TWO_SALES());
+  tickInto(doc, "s1");
+  pressSet(doc, "setCheck");
+  typeInto(doc, "ckSize", "10,000"); typeInto(doc, "ckLoan", "700,000");
+  assert.equal(el(doc, "ckBasis").textContent, "From 1 sale: $100/SF");
+  assert.equal(String(el(doc, "ckLikely").textContent), "70.0%");
+  assert.equal(String(el(doc, "ckLow").textContent), "—");
+  assert.equal(el(doc, "ckLowSub").textContent, "one sale in this set, so one value");
+  assert.match(el(doc, "ckRead").textContent, /^Covered\. At this set's value/);
+});
+
+test("shorthand is refused and said, for the size, the loan and the price", async () => {
+  const { doc } = await runCheck(TWO_SALES());
+  tickInto(doc, "s1"); tickInto(doc, "s2");
+  pressSet(doc, "setCheck");
+  typeInto(doc, "ckSize", "10k");
+  assert.equal(el(doc, "ckMsg").textContent, "That size could not be read. Type it in full, like 6,200.");
+  assert.equal(el(doc, "ckOut").className, "hide", "10k was read as a size");
+  typeInto(doc, "ckSize", "10,000");
+  typeInto(doc, "ckLoan", "1.6M");
+  assert.equal(String(el(doc, "ckLikely").textContent), "—", "1.6M was read as a $1.60 loan");
+  assert.equal(el(doc, "ckNeedSub").textContent, COLLATERAL.UNREAD.loan);
+  typeInto(doc, "ckLoan", "1,000,000");
+  typeInto(doc, "ckPrice", "7M");
+  assert.ok(el(doc, "ckRead").textContent.endsWith(COLLATERAL.UNREAD.price), "a refused price was refused in silence");
+});
+
+test("a land set is checked per acre", async () => {
+  const land = (o) => comp(Object.assign({ property_type: "Land", size_sqft: null, price_per_sqft: null }, o));
+  const { doc } = await runCheck([
+    land({ id: "l1", price: 300000, lot_acres: 2, address: "1 Dirt Rd, Boise, ID" }),
+    land({ id: "l2", price: 400000, lot_acres: 2, address: "2 Dirt Rd, Boise, ID" }),
+  ]);
+  tickInto(doc, "l1"); tickInto(doc, "l2");
+  pressSet(doc, "setCheck");
+  assert.equal(el(doc, "ckSizeLab").textContent, "Lot size (acres)");
+  assert.equal(el(doc, "ckBasis").textContent, "From 2 sales: $150,000/acre to $200,000/acre, median $175,000/acre");
+  typeInto(doc, "ckSize", "3"); typeInto(doc, "ckLoan", "400,000");
+  // 3 acres at $175K is $525,000: 76.2% at the median.
+  assert.equal(String(el(doc, "ckLikely").textContent), "76.2%");
+});
+
+test("nothing typed into the check leaves the page", async () => {
+  const { doc, calls } = await runCheck(TWO_SALES());
+  tickInto(doc, "s1"); tickInto(doc, "s2");
+  pressSet(doc, "setCheck");
+  const before = calls.length;
+  typeInto(doc, "ckSubject", "12 Subject St, vet clinic purchase");
+  typeInto(doc, "ckSize", "10,000"); typeInto(doc, "ckLoan", "1,000,000"); typeInto(doc, "ckPrice", "1,300,000");
+  el(doc, "ckLimit").fire("blur", {});
+  await tick();
+  assert.equal(calls.length, before, "typing a loan made a request");
+  // Never-break rule 6, in the source: no request, no storage, no beacon.
+  const block = checkBlock();
+  assert.doesNotMatch(block, /fetch\(|XMLHttpRequest|sendBeacon|localStorage|sessionStorage|document\.cookie|indexedDB/,
+    "the loan check can send or store what is typed into it");
+  // The sheet's letterhead read is the one request near it, and it is a bare GET.
+  pressSet(doc, "setSheet");
+  await tick();
+  const after = calls.slice(before);
+  assert.deepEqual(after.map((c) => c.url), ["/api/branding"]);
+  assert.equal(after[0].body, null, "the branding read carried a body");
+  assert.ok(!/1,?000,?000|1,?300,?000|Subject/.test(JSON.stringify(after)), "a loan figure rode a request");
+});
+
+test("the comp sheet leads with the check as a collateral pre-screen, and says what it is not", async () => {
+  const { doc } = await runCheck(TWO_SALES());
+  tickInto(doc, "s1"); tickInto(doc, "s2");
+  // Closed, the sheet is the list it always was.
+  pressSet(doc, "setSheet");
+  await tick();
+  assert.doesNotMatch(el(doc, "compSheet").innerHTML, /Collateral pre-screen/);
+  assert.match(el(doc, "compSheet").innerHTML, /<h1>Comparable transactions<\/h1>/);
+  assert.match(el(doc, "compSheet").innerHTML, /From the preparer&rsquo;s own records, as recorded\./,
+    "the sheet calls a lender's file a broker's records");
+
+  pressSet(doc, "setCheck");
+  typeInto(doc, "ckSubject", "12 Subject St <b>vet</b>");
+  typeInto(doc, "ckSize", "10,000");
+  // Open with a size and no loan: nothing to pre-screen yet.
+  pressSet(doc, "setSheet");
+  await tick();
+  assert.doesNotMatch(el(doc, "compSheet").innerHTML, /Collateral pre-screen/, "a check with no loan printed");
+
+  typeInto(doc, "ckLoan", "1,000,000");
+  pressSet(doc, "setSheet");
+  await tick();
+  const sheet = el(doc, "compSheet").innerHTML;
+  assert.match(sheet, /<h1>Collateral pre-screen<\/h1>/);
+  assert.match(sheet, /<h2>Comparable transactions<\/h2>/, "the comps it was read against follow it");
+  assert.match(sheet, /12 Subject St &lt;b&gt;vet&lt;\/b&gt;/, "the subject is typed text and prints as text");
+  assert.match(sheet, /10,000 SF · Loan \$1,000,000 · LTV limit 80%/);
+  assert.match(sheet, /<td>Median sale<\/td><td class="num">\$120\/SF<\/td><td class="num">\$1,200,000<\/td><td class="num">83\.3%<\/td>/);
+  assert.match(sheet, /Value this loan needs: \$1,250,000/);
+  assert.match(sheet, /A stretch\./);
+  assert.match(sheet, /not an appraisal and not a bank evaluation\. Use it to decide whether to order one, never in place of one\./);
+  assert.match(sheet, /Prepared with CompNinja/);
+});
+
+test("the check says it is a pre-screen, on the page, and states no lending limit", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  const start = html.indexOf('id="loanCheck"');
+  const panel = html.slice(start, html.indexOf('id="setTray"', start));
+  assert.ok(panel.includes("A pre-screen against the comps you ticked, not an appraisal and not a bank evaluation. " +
+    "Use it to decide whether to order one, never in place of one."), "the panel lost the sentence that says what this is not");
+  assert.ok(panel.includes("it is not saved and not sent anywhere"), "the panel no longer says where the figures go");
+  assert.match(panel, /<label for="ckLimit">Your LTV limit %<\/label>/, "the limit is the reader's own");
+  // "Evaluation" is a term of art for a bank: said once, to say it is not one.
+  assert.equal((panel.match(/evaluation/gi) || []).length, 1);
+  // The check's own words: the panel, its script, and the block it prints.
+  const js = pageScript(html);
+  const printed = js.slice(js.indexOf("function sheetCheckHtml(k){"), js.indexOf("function sheetHtml(list,brand,check){"));
+  assert.ok(printed.length > 200, "sheetCheckHtml moved");
+  for (const banned of [/\bappraised\b/i, /\bcertified\b/i, /\bguarantee/i, /\bcompliant\b/i, /\bapproved\b/i, /USPAP/i]) {
+    assert.doesNotMatch(panel + checkBlock() + printed, banned, "the check makes a claim it cannot keep: " + banned);
+  }
+  // And the page names no bank: a lender's name here reads as their endorsement.
+  assert.doesNotMatch(html, /Live Oak/i);
+});
+
+test("the check follows the set, and keeps what was typed when the set empties", async () => {
+  const { doc } = await runCheck(TWO_SALES());
+  tickInto(doc, "s1"); tickInto(doc, "s2");
+  pressSet(doc, "setCheck");
+  typeInto(doc, "ckSize", "10,000"); typeInto(doc, "ckLoan", "1,000,000");
+  assert.equal(String(el(doc, "ckLikely").textContent), "83.3%");
+  // Unticking the high sale leaves one: 100.0% on the one value.
+  tickInto(doc, "s2", false);
+  assert.equal(String(el(doc, "ckLikely").textContent), "100.0%", "the check kept reading a comp that left the set");
+  tickInto(doc, "s1", false);
+  assert.equal(el(doc, "loanCheck").className, "vd-ck hide", "the check stayed open over an empty set");
+  assert.equal(String(el(doc, "ckLoan").value), "1,000,000", "the loan was thrown away with the set");
+  tickInto(doc, "s2");
+  assert.equal(el(doc, "loanCheck").className, "vd-ck", "it comes back with the next set");
+  assert.equal(String(el(doc, "ckLikely").textContent), "71.4%");
+});
+
+test("without the arithmetic the check says so instead of guessing", async () => {
+  const { doc } = await runPage(TWO_SALES(), null, {});
+  tickInto(doc, "s1");
+  pressSet(doc, "setCheck");
+  assert.equal(el(doc, "loanCheck").className, "vd-ck");
+  assert.match(el(doc, "ckMsg").textContent, /could not load/);
+  assert.equal(el(doc, "ckOut").className, "hide");
+});
+
+test("the set says how old it is, on the tray and under the check", async () => {
+  const { doc } = await runCheck([
+    comp({ id: "n1", price_per_sqft: 100, deal_date: "2026-08-14" }),
+    comp({ id: "o1", price_per_sqft: 140, address: "2 Old St, Boise, ID", deal_date: "2024-02-13" }),
+  ]);
+  tickInto(doc, "n1");
+  assert.match(el(doc, "setTray").innerHTML, /· Aug 2026</, "one month is one month, not a span");
+  tickInto(doc, "o1");
+  assert.match(el(doc, "setTray").innerHTML, /Feb 2024 to Aug 2026 · 1 over a year old/);
+  pressSet(doc, "setCheck");
+  assert.equal(el(doc, "ckAge").textContent,
+    "1 of these 2 sales closed more than 12 months ago. An appraiser will lean on the recent ones.");
+  assert.equal(el(doc, "ckAge").className, "vd-ck-age");
+});
+
+test("a value read off comps is said to the nearest thousand, and its $/SF to the cent", async () => {
+  // $297.35 x 6,800 SF is $2,021,980 in arithmetic. A value from comps is an
+  // estimate, so the check says $2,022,000, and quotes the $/SF with its
+  // cents so the reader's own multiplication lands on the same figure.
+  const { doc } = await runCheck([comp({ id: "s1", price_per_sqft: 297.35 })]);
+  tickInto(doc, "s1");
+  pressSet(doc, "setCheck");
+  typeInto(doc, "ckSize", "6,800");
+  assert.equal(el(doc, "ckBasis").textContent, "From 1 sale: $297.35/SF");
+  assert.equal(el(doc, "ckLikelySub").textContent, "up to $1,617,600 on $2,022,000");
+  typeInto(doc, "ckLoan", "1,617,600");
+  assert.equal(String(el(doc, "ckLikely").textContent), "80.0%");
+  assert.equal(el(doc, "ckLikelySub").textContent, "on $2,022,000 · at your limit");
+});
+
+test("the promise is made once at the foot: the trust line for an open book, the foot's own line for a locked one", async () => {
+  // Until 2026-11-14 an open book ended with the same sentence twice, the
+  // trust line's and the page foot's.
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /<p class="vfoot" id="vFoot">Private to you\./, "the foot's line must ship visible: it is all a signed-out page has");
+  const open = await runPage([comp({})]);
+  assert.equal(open.doc.getElementById("vFoot").className, "vfoot hide", "an open book says it twice");
+  assert.match(open.doc.getElementById("trustNote").innerHTML, /^Visible only to you\./);
+  const js = pageScript(html);
+  const lock = js.match(/function lockVaultDecks\(msg\)\{[\s\S]*?\n  \}/);
+  assert.ok(lock, "lockVaultDecks moved");
+  assert.match(lock[0], /if\(PAGE==="comps"\)\$\("vFoot"\)\.className="vfoot";/, "a locked book has no promise at its foot");
+  // /pipeline never showed it.
+  assert.match(renderVaultHTML(boot([comp({})]), { page: "pipeline" }), /<p class="vfoot hide" id="vFoot">/);
 });

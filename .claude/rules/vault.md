@@ -73,6 +73,78 @@ paths:
 >   `test/vault-personal-decks.test.js`, `test/vault-shell.test.js` and
 >   `test/routes.test.js`.
 
+> **`/comps` for a lender (2026-11-14; the owner: "optimize it for Live Oak
+> Bank's purposes").** The reader is an SBA lender whose comps are the ones
+> out of the appraisals in its files, and the question it asks of them is the
+> report's Collateral Check's (report-and-valuation.md): is this loan covered
+> by what the building is worth. Built straight (the ask was to review and
+> improve, not for drafts), and built for everyone rather than as a lender
+> mode: the product knows nothing about a member's line of work, the report's
+> Collateral Check is a card every report has, and a broker asks "will it
+> appraise" as often as a lender does. The public rule holds here too: the
+> page names no bank (test-pinned). Five changes, all in `vault-page.js`:
+> - **The loan check** (`#loanCheck`, "Check a loan" on the comp set). A loan
+>   read against the set's own lowest, median and highest sale, in $/SF (or
+>   $/acre for land), times a typed building size. Five rules, each
+>   test-pinned in `test/vault-page.test.js`:
+>   - **The arithmetic and the words are `collateral-check.js`'s**
+>     (`summarize()`, `describe()` with `whose: "this set's"`), loaded as
+>     `/collateral-check.js` and read off `window.COLLATERAL`. The page
+>     hands in three values and holds no LTV arithmetic and no verdict
+>     wording (a source scan fails on either). Without the script the panel
+>     says it could not load.
+>   - **One property type, or no answer.** A set spanning types has no single
+>     $/SF (`saleStats`), so the check declines and says to untick down to
+>     one. One priced sale, or every sale at one figure, is one value and no
+>     invented range.
+>   - **A value is said to the nearest thousand** (`ckValue`; the nearest
+>     hundred under $100,000) and the $/SF it came from to the cent
+>     (`ckRate`), so the reader's own multiplication lands on the figure
+>     shown and nothing reads as exact to the dollar.
+>   - **A pre-screen, and says so**: "not an appraisal and not a bank
+>     evaluation ... never in place of one", on the panel and on the printed
+>     sheet. "Evaluation" is said once, to say it is not one, and 80 is only
+>     where the limit box starts (`COLLATERAL.DEFAULT_LIMIT_PCT`).
+>   - **Nothing typed leaves the page** (never-break rule 6). No request
+>     carries the loan, price, limit or subject and nothing stores them, not
+>     even this browser. The one place they show besides the panel is the
+>     comp sheet this browser prints, which then leads with a "Collateral
+>     pre-screen" block (`sheetCheckHtml`) above the comps it was read
+>     against; with no loan typed the sheet is the list it always was. The
+>     sheet's footer says "the preparer's own records", never "the broker's".
+> - **The date windows stack.** "Last 12 months" and "Last 90 days" are
+>   toggles (`QW`, `data-qw`) that stack on All / Sales / Leases, where "Last
+>   90 days" used to be a fourth view that replaced them, so the sales of the
+>   last year could not be asked of the ledger. All clears the window with
+>   everything else. Draft C's "views replace each other" still holds for the
+>   views themselves.
+> - **The set says how old it is** (`setAge`): the months it spans and how
+>   many deals are over a year old, on the set's line, on the sheet, and as a
+>   caution under the check.
+> - **An account that cannot publish is not offered it.** `noPublish` is now
+>   `!pubCount && (development firm || !identity.canPublish)`. The server has
+>   refused a publish without a license since 2026-08-19; the page went on
+>   offering the button and the green Published cell to everyone. A licensed
+>   broker sees what they always did, and anything already published keeps
+>   every control. Everyone else gets no Publish button, no Public column, a
+>   promise without the publishing clause, and one line at the foot that is
+>   the door: "Publishing is off for your account ... I'm a licensed broker"
+>   (`renderIdentity`; a development firm's member still gets no line at
+>   all). Saving a license redraws every one of those without a reload. In
+>   Published's place, for a member in no firm, the strip's fourth cell is
+>   **Last 12 months** (`#cRecentCell`).
+> - **One promise at the foot.** The page foot's "Private to you" line
+>   (`#vFoot`) repeated the trust line under every open book. It shows now
+>   only where there is no trust line: signed out, or the book locked.
+> Find's placeholder names what it always searched ("address, city, type or
+> note"), and the empty book says the comps out of an appraisal belong here.
+> The before-and-after pictures are at
+> https://claude.ai/artifact/9HUs8Aiwxmz5i3eKXKF2NE. Not built, and worth
+> doing next: a source field per comp
+> (which appraisal a comp came from; today that is the note), and a larger
+> file limit for a whole appraisal PDF (4 MiB today; a screenshot of the comp
+> grid works).
+
 > **Customer-facing names (owner's call, 2026-10-04): "Home" and "Data".**
 > The firm space (`/desk`, and `/` for a member) is labelled **Home**, and the
 > personal space (`/vault`) is labelled **Data**; the rail reads Home · Data ·

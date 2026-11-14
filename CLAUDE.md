@@ -122,7 +122,9 @@ session that never reads it.
    never the cache key) or any public surface, and `/api/share` strips them,
    as does every read of a shared report (`SHARE_PRIVATE_ASSUMPTIONS`). The
    signed-in portfolio is the one place they are stored, so any future
-   share-from-portfolio must strip them too. [report-and-valuation.md]
+   share-from-portfolio must strip them too. `/comps`' loan check holds its
+   loan, price and limit in the page's memory alone: no request, no storage.
+   [report-and-valuation.md, vault.md]
 7. **A private comp's address reaches a third party only through our own
    server, and never in a URL** — POST `/api/geocode` (Census behind it) and,
    since 2026-10-09 (the owner's call, for building photos), POST

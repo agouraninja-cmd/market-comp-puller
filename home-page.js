@@ -113,7 +113,7 @@ main.wrap{max-width:none;padding:0}
    headings it introduces, while MARKET_CSS's 11.5px .kicker reads as a caption
    rather than as the line that opens a band. */
 .hmeye{font-size:var(--text-lead);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--red);line-height:1.35}
-.hmh{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
+.hmh{font-weight:600;letter-spacing:-.005em;color:var(--ink);margin:0}
 
 /* --- Band 0: intro ------------------------------------------------------ */
 .hmintro{padding:72px 32px 64px;border-bottom:1px solid var(--line)}
@@ -123,7 +123,7 @@ main.wrap{max-width:none;padding:0}
 /* An ink rule over each half, so the two products read as a pair of columns
    rather than two loose paragraphs. */
 .hmtwo>div{border-top:2px solid var(--ink);padding-top:22px}
-.hmtwo h1,.hmtwo h2{font-family:var(--serif);font-weight:400;font-size:var(--text-display);line-height:1.15;
+.hmtwo h1,.hmtwo h2{font-weight:600;font-size:var(--text-display);line-height:1.15;
   letter-spacing:-.005em;color:var(--ink);margin:0 0 10px}
 .hmtwo p{font-size:16.5px;line-height:1.65;color:var(--ink-body);margin:0}
 /* The intro's own call to action. Until Draft 1 the first sign-up door was the
@@ -188,7 +188,7 @@ main.wrap{max-width:none;padding:0}
   text-transform:uppercase;color:var(--ink-3)}
 .hmcap .ill{color:var(--ink-faint)}
 .hmsubj{padding:24px 24px 18px}
-.hmaddr{font-family:var(--serif);font-size:var(--text-heading);color:var(--ink)}
+.hmaddr{font-weight:600;font-size:var(--text-heading);color:var(--ink)}
 .hmchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:var(--text-small);color:var(--ink-mute)}
 .hmchips span{background:var(--wash);padding:3px 9px;border-radius:var(--r-sm)}
 .hmlab{font-size:var(--text-tiny);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
@@ -197,7 +197,7 @@ main.wrap{max-width:none;padding:0}
 .hmrcell:last-child{border-right:0}
 .hmrcell.mid{background:var(--wash-2)}
 .hmrcell.mid .hmlab{color:var(--red)}
-.hmfig{font-family:var(--serif);font-size:var(--text-figure);color:var(--ink);font-variant-numeric:tabular-nums;
+.hmfig{font-weight:600;font-size:var(--text-figure);color:var(--ink);font-variant-numeric:tabular-nums;
   margin-top:8px}
 .hmrcell.mid .hmfig{font-size:var(--text-hero)}
 .hmpsf{font-size:var(--text-small);color:var(--ink-3);margin-top:4px}
@@ -236,8 +236,8 @@ main.wrap{max-width:none;padding:0}
 .hmmesh>div{background:var(--card)}
 .hmsteps{grid-template-columns:1fr 1fr 1fr}
 .hmsteps>div{padding:24px}
-.hmstep{font-family:var(--serif);font-size:var(--text-lead);color:var(--red);margin-bottom:8px}
-.hmsteph{font-family:var(--serif);font-size:21px;line-height:1.25;color:var(--ink);margin-bottom:8px}
+.hmstep{font-weight:600;font-size:var(--text-lead);color:var(--red);margin-bottom:8px}
+.hmsteph{font-weight:600;font-size:21px;line-height:1.25;color:var(--ink);margin-bottom:8px}
 .hmstepp{font-size:var(--text-compact);line-height:1.6;color:var(--ink-body)}
 .hmvault{background:var(--card);border:1px solid var(--edge);border-radius:var(--r-lg);overflow:hidden;box-shadow:0 1px 2px rgba(26,36,51,.05),0 16px 36px -20px rgba(26,36,51,.2)}
 [data-theme="dark"] .hmvault{box-shadow:var(--lift)}
@@ -251,7 +251,7 @@ main.wrap{max-width:none;padding:0}
 .hmvr .shown{font-size:var(--text-label);color:var(--ink-3)}
 .hmvfoot{background:var(--wash);border-top:1px solid var(--hair);padding:12px 20px;font-size:var(--text-small);
   line-height:1.55;color:var(--ink-mute)}
-.hmmore h2{font-family:var(--serif);font-weight:400;font-size:var(--text-heading);color:var(--ink);margin:0 0 14px}
+.hmmore h2{font-weight:600;font-size:var(--text-heading);color:var(--ink);margin:0 0 14px}
 .hmtiles{grid-template-columns:repeat(3,1fr)}
 .hmtiles>div{padding:20px}
 .hmtlab{font-size:var(--text-tiny);font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--red);margin-bottom:6px}
@@ -275,7 +275,7 @@ main.wrap{max-width:none;padding:0}
    different reasons — and the ramp is Jacob's. --edge is #333E4F in dark, a
    step up from the fill, so it reads as a rule and not as a line. */
 [data-theme="dark"] .hmclose{border-top:1px solid var(--edge)}
-.hmclose h2{font-family:var(--serif);font-weight:400;font-size:var(--text-hero);color:#fff;margin:0 0 12px}
+.hmclose h2{font-weight:600;font-size:var(--text-hero);color:#fff;margin:0 0 12px}
 .hmclose p{font-size:var(--text-input);line-height:1.6;color:#B6C1CF;margin:0 auto 24px;max-width:46ch}
 .hmbtns{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
 /* The band is dark in both themes, so its buttons take the dark theme's

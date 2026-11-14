@@ -1,6 +1,18 @@
 [
   {
     "date": "2026-11-14",
+    "type": "feature",
+    "title": "Check a loan against your own comps",
+    "details": "Your comps was built around a broker’s book. It now works for a lender whose comps come out of appraisals. Tick the sales that match a building, press Check a loan, and type the building’s size, the loan, an optional purchase price and your own loan-to-value limit: the page reads the loan against the lowest, median and highest sale in your set, shows the loan-to-value at each, the value the loan needs, and one sentence on whether the appraisal is likely to cover it. It is the same arithmetic and the same wording as the Collateral Check on every report. A set that mixes property types gets no answer rather than a blended one. Nothing you type there is saved or sent anywhere. Press Comp sheet with a loan filled in and the printout leads with a collateral pre-screen, above the comps it was read against, for the file. It is a pre-screen, not an appraisal and not a bank evaluation, and says so on the page and on the sheet. Also on the page: Last 12 months and Last 90 days now stack on Sales or Leases (so “sales in the last 12 months” is two clicks), a comp set says how old its deals are, and the Find box says it searches city and type too."
+  },
+  {
+    "date": "2026-11-14",
+    "type": "improvement",
+    "title": "Publishing is only offered to accounts that can publish",
+    "details": "Only a licensed broker can publish a comp, and the server has refused anyone else since August. The page still showed everyone a Publish button on every comp set and a green Published count over their comps. An account with no broker license on file now sees neither: the count is replaced by how many comps closed in the last 12 months, and one line at the foot says publishing is off and how a licensed broker turns it on. Brokers with a license see exactly what they did before, and anything already published keeps every control. The privacy sentence at the foot of the page also appears once now, not twice."
+  },
+  {
+    "date": "2026-11-14",
     "type": "fix",
     "title": "The Feedback button no longer covers the comp set on a phone",
     "details": "On Your comps on a phone, ticking comps brings up the dark comp set at the bottom of the screen, and the round Feedback button sat on top of its right end. The comp set now stops just short of the button, so the two sit side by side and every button in the set can be tapped. Nothing changes on a computer, where Feedback is in the sidebar."

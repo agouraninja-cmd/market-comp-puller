@@ -43,7 +43,10 @@ paths:
     sentences. Two pages draw this card, the report and the public lender
     page (`lenders-page.js`, public-pages.md), and with the sentences in each
     the public page would promise one wording while the product showed
-    another. `renderCollateralCard` keeps only what the report alone knows:
+    another. **A third caller since 2026-11-14:** `/comps`' loan check reads
+    a loan against a comp set's own low, median and high with the same two
+    functions (`whose: "this set's"`; vault.md), so a change to a sentence
+    here changes it in three places at once, which is the point. `renderCollateralCard` keeps only what the report alone knows:
     its money format (a report can be in another currency), the colour a
     tone maps to, and the prompts for a box nobody has typed a figure into.
   - **Lesser of price and value.** With a purchase price the basis of each

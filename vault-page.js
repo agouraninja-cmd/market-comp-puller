@@ -778,6 +778,50 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 .vd-tray.on .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.4)}
 .vd-tray.on .btn.ghost:hover{background:rgba(255,255,255,.08);color:#fff}
 .vd-tray.on .lnk{color:rgba(255,255,255,.8)}
+/* The loan check (2026-11-14): a loan read against the comp set's own low,
+   median and high. It opens above the set from the set's own button. The
+   tiles are the report's Collateral Check card's, and the lender page's. */
+.vd-ck{margin-top:var(--s4);border:1px solid var(--edge);border-radius:var(--r-md);background:var(--card);
+  box-shadow:var(--shadow),var(--lift)}
+.vd-ck-top{display:flex;align-items:baseline;gap:6px 16px;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid var(--line)}
+.vd-ck-top b{font-weight:600;font-size:17px;color:var(--ink)}
+.vd-ck-top span{flex:1 1 320px;min-width:0;font-size:var(--text-small);color:var(--ink-3)}
+.vd-ck-top .lnk{font-size:var(--text-small);margin-left:auto}
+.vd-ck-in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:16px 18px 0}
+.vd-ck-in .vd-ck-wide{grid-column:1/-1}
+/* No display on the label or the box: a full-width box takes its own line
+   under an inline label, and a display here would out-rank .hide on every
+   other hidden label and box on the page (the test computes it). */
+.vd-ck-in label{font-size:var(--text-tiny);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.vd-ck-in label i{font-style:normal;font-weight:400;letter-spacing:0;text-transform:none;font-size:var(--text-label)}
+.vd-ck-in input{width:100%;margin-top:5px;font-size:var(--text-compact);color:var(--ink);background:var(--card)}
+.vd-ck-msg{margin:0;padding:14px 18px 0;font-size:var(--text-compact);line-height:1.6;color:var(--ink-2)}
+.vd-ck-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:16px 18px 0}
+.vd-ck-tile{background:var(--wash);border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px;min-width:0}
+.vd-ck-k{font-size:var(--text-tiny);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.vd-ck-pct{font-size:var(--text-heading);font-weight:600;margin-top:4px;color:var(--ink);font-variant-numeric:tabular-nums}
+.vd-ck-pct.ok{color:var(--ok-text)}
+.vd-ck-pct.over{color:var(--red)}
+.vd-ck-sub{font-size:var(--text-small);color:var(--ink-3);margin-top:3px;line-height:1.5}
+.vd-ck-need{margin:12px 18px 0;border:1px solid var(--red);border-radius:var(--r-md);padding:12px 14px}
+.vd-ck-need .vd-ck-k{color:var(--red)}
+.vd-ck-fig{font-weight:600;letter-spacing:-.02em;font-size:var(--text-figure);color:var(--ink);margin-top:4px;
+  font-variant-numeric:tabular-nums}
+.vd-ck-read{margin:0;padding:14px 18px 0;font-size:var(--text-compact);line-height:1.6;color:var(--ink-body)}
+.vd-ck-read:empty{display:none}
+.vd-ck-age{margin:0;padding:8px 18px 0;font-size:var(--text-small);line-height:1.5;color:var(--ink-2)}
+.vd-ck-note{margin:0;padding:12px 18px 16px;font-size:var(--text-label);line-height:1.55;color:var(--ink-3);max-width:86ch}
+/* The date windows stand apart from the deal views they stack on. */
+.vd-qsep{align-self:center;width:1px;height:18px;margin:0 6px 2px;background:var(--edge);flex:none}
+@media (max-width:900px){
+  .vd-ck-in{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+}
+@media (max-width:640px){
+  .vd-ck-tiles{grid-template-columns:minmax(0,1fr)}
+  .vd-ck-in input{font-size:var(--text-input)}
+  /* The title and Close share the first line; what the set gives is under them. */
+  .vd-ck-top span{order:3;flex-basis:100%}
+}
 /* On a phone the tabs scroll sideways and each part's action sits under
    them on its own line, rather than over the tabs it would cover. */
 @media (max-width:640px){
@@ -790,7 +834,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   .vd-strip.five .lcell:last-child{grid-column:1/-1;border-left:0;border-top:1px solid var(--hair)}
   /* Four cells with Published hidden (a development firm, applyShop): the
      shelf is the FIFTH child, so the even-child divider misses it. */
-  .vd-strip.nopub #cSharedCell{border-left:1px solid var(--hair)}
+  .vd-strip.nopub #cSharedCell,.vd-strip.nopub #cRecentCell{border-left:1px solid var(--hair)}
   .vd-strip .lfig{font-size:22px}
   /* The ledger becomes two-line rows: the meta line and the figure's
      sub-line stand in for the columns a phone has no room for. */
@@ -836,6 +880,12 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   #compSheet .num{text-align:right;white-space:nowrap}
   #compSheet tr{break-inside:avoid}
   #compSheet .vd-sh-foot{margin-top:14px;font-size:8pt;color:dimgray}
+  /* The collateral pre-screen, when the set's loan check is filled in. */
+  #compSheet h2{font-family:Georgia,serif;font-weight:500;font-size:14pt;margin:22px 0 2px;color:black}
+  #compSheet .vd-sh-subj{margin:6px 0 0;font-size:11pt}
+  #compSheet .vd-sh-need{margin:12px 0 0}
+  #compSheet .vd-sh-read{margin:8px 0 0}
+  #compSheet .vd-sh-ck td:first-child{white-space:nowrap}
 }
 </style>
   <p class="kicker">Private to you</p>
@@ -922,7 +972,7 @@ ${tabButtons}
       <div class="vd-drop">
       <p class="vd-drop-k" id="bookEmptyK">Your book, on one map</p>
       <h2 class="vd-drop-h">Drop a spreadsheet, PDF or screenshot anywhere on this page</h2>
-      <p>Upload closed deals. They appear in your reports and stay private, and they land here as pins you can search, filter and pull into a comp set.</p>
+      <p>Upload closed deals: your own, or the comps out of an appraisal. They appear in your reports and stay private, and they land here as pins you can search, filter and pull into a comp set to print or check a loan against.</p>
       <details>
         <summary>Required columns &amp; privacy details</summary>
         <p class="fine">Four columns are required: address, property type, sale or
@@ -930,7 +980,7 @@ ${tabButtons}
           still count.</p>
         <p class="fine">Your comps are never read into CompNinja&rsquo;s public
           records, never included in an export or a shared link, and never shown
-          to another broker.</p>
+          to another account.</p>
         <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. CompNinja does not store the file. Rows are added to your comps only after you confirm.</p>
       </details>
       <div class="row">
@@ -1123,7 +1173,13 @@ ${tabButtons}
          on screen for an empty vault too (this strip is not inside #compsSec,
          which applyFirstRun hides). The firm cell exists only for a broker in
          a firm, and goes LAST so the phone's 2x2 wrap can still place its
-         dividers by position for everybody else. -->
+         dividers by position for everybody else.
+
+         Published is a cell only for an account that is offered publishing
+         (2026-11-14; noPublish). The proof is for a broker, who could
+         publish and has not; an account with no license on file cannot, so
+         for it the cell was a promise about an act it does not have, and
+         "Last 12 months" takes its place. -->
     <div class="ledger vd-strip" id="bookStrip">
       <div class="lcell"><span class="llab">Comps</span>
         <div class="lfig" id="cCount">0</div><div class="lsub" id="cMarkets"></div></div>
@@ -1133,6 +1189,12 @@ ${tabButtons}
         <div class="lfig" id="cLeases">0</div><div class="lsub" id="cRentSub">none yet</div></div>
       <div class="lcell mid" id="cPubCell"><span class="llab">Published</span>
         <div class="lfig" id="cPub">0</div><div class="lsub" id="cPubSub">only if you choose it</div></div>
+      <!-- In Published's place for an account that is not offered publishing
+           and is in no firm (renderStripFigures, 2026-11-14): how much of the
+           book is recent enough to lean on, the first thing a lender asks of
+           a comp file. -->
+      <div class="lcell hide" id="cRecentCell"><span class="llab">Last 12 months</span>
+        <div class="lfig" id="cRecent">0</div><div class="lsub" id="cRecentSub"></div></div>
       <div class="lcell hide" id="cSharedCell"><span class="llab">Shared with firm</span>
         <div class="lfig" id="cShared">0</div><div class="lsub" id="cSharedSub"></div></div>
     </div>
@@ -1194,7 +1256,7 @@ ${tabButtons}
              exactly what they are trying to remember. Searches address and
              notes: the address is what they know, and notes is where the
              tenant name or the "sold with the adjacent parcel" detail lives. -->
-        <label class="vb-find">Find <input type="search" id="fText" placeholder="address or note" autocomplete="off"/></label>
+        <label class="vb-find">Find <input type="search" id="fText" placeholder="address, city, type or note" autocomplete="off"/></label>
         <button class="btn ghost hide" id="fClear">Clear</button>
         <!-- How the ledger is grouped. Market by default: a busy book reads as
              a list of markets you open one at a time. -->
@@ -1240,6 +1302,48 @@ ${tabButtons}
           <div class="vd-led" id="bmLed">
             <div class="vd-lhead"><label class="vd-all"><input type="checkbox" id="bmAll"/> <span id="bmCount"></span></label><span class="note" id="bmSort">Newest first</span></div>
             <div class="vd-ltw"><table class="vd-lt"><thead id="bmHead"></thead><tbody id="bmRows"></tbody></table></div>
+          </div>
+          <!-- The loan check (2026-11-14; the owner's ask was to make this
+               page work for an SBA lender). A loan read against the comp
+               set's own lowest, median and highest sale, times the size of
+               the building it is collateral for. It opens from the set's
+               "Check a loan" button and is drawn by renderCheck() with
+               collateral-check.js's summarize() and describe(), the report
+               card's own arithmetic and words. The boxes are in the markup
+               so their handlers bind once. What is typed here stays in this
+               page's memory: no request carries it and nothing stores it
+               (never-break rule 6). -->
+          <div class="vd-ck hide" id="loanCheck" role="region" aria-label="Check a loan against your comp set">
+            <div class="vd-ck-top"><b>Check a loan against this set</b><span id="ckBasis"></span>
+              <button type="button" class="lnk" id="ckClose">Close</button></div>
+            <div class="vd-ck-in">
+              <div class="vd-ck-wide"><label for="ckSubject">Subject property <i>&middot; optional, prints on the comp sheet</i></label>
+                <input id="ckSubject" type="text" autocomplete="off" maxlength="120" placeholder="e.g. 4102 Oleander Dr, veterinary clinic purchase"/></div>
+              <div><label for="ckSize" id="ckSizeLab">Building size (SF)</label>
+                <input id="ckSize" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 6,200"/></div>
+              <div><label for="ckLoan">Loan amount ($)</label>
+                <input id="ckLoan" type="text" inputmode="numeric" autocomplete="off" placeholder="e.g. 1,600,000"/></div>
+              <div><label for="ckPrice">Purchase price ($)</label>
+                <input id="ckPrice" type="text" inputmode="numeric" autocomplete="off" placeholder="if it is a purchase"/></div>
+              <div><label for="ckLimit">Your LTV limit %</label>
+                <input id="ckLimit" type="text" inputmode="decimal" autocomplete="off" value="80"/></div>
+            </div>
+            <p class="vd-ck-msg hide" id="ckMsg" role="status"></p>
+            <div id="ckOut" class="hide">
+              <div class="vd-ck-tiles">
+                <div class="vd-ck-tile"><div class="vd-ck-k">LTV at the low value</div>
+                  <div class="vd-ck-pct" id="ckLow">&mdash;</div><div class="vd-ck-sub" id="ckLowSub"></div></div>
+                <div class="vd-ck-tile"><div class="vd-ck-k">LTV at the likely value</div>
+                  <div class="vd-ck-pct" id="ckLikely">&mdash;</div><div class="vd-ck-sub" id="ckLikelySub"></div></div>
+                <div class="vd-ck-tile"><div class="vd-ck-k">LTV at the high value</div>
+                  <div class="vd-ck-pct" id="ckHigh">&mdash;</div><div class="vd-ck-sub" id="ckHighSub"></div></div>
+              </div>
+              <div class="vd-ck-need"><div class="vd-ck-k">Value this loan needs</div>
+                <div class="vd-ck-fig" id="ckNeed">&mdash;</div><div class="vd-ck-sub" id="ckNeedSub"></div></div>
+              <p class="vd-ck-read" id="ckRead" role="status"></p>
+            </div>
+            <p class="vd-ck-age hide" id="ckAge"></p>
+            <p class="vd-ck-note">A pre-screen against the comps you ticked, not an appraisal and not a bank evaluation. Use it to decide whether to order one, never in place of one. Low, likely and high are the set&rsquo;s lowest, median and highest sale, times the size you type. What you type here stays on this page: it is not saved and not sent anywhere.</p>
           </div>
           <!-- The comp set. Held in this page's memory only: a set is built for
                one client conversation, and nothing about it is stored or sent
@@ -1494,13 +1598,19 @@ ${tabButtons}
        about a broker's book. -->
   <!-- About comps, so /pipeline keeps it hidden (2026-10-13); it stays in the
        markup there because applyShop writes #vFootPub on both pages. -->
-  <p class="vfoot${pipe ? " hide" : ""}">Private to you. Your comps are never read into CompNinja's public records<span id="vFootPub"> unless you choose to publish them</span>.</p>
+  <!-- The promise, for the states that have no trust line to make it: nobody
+       signed in, and a book this account cannot open (the trust line is one
+       of the locked decks). With the book open the trust line says it, with
+       what is true of this book, and apply() hides this second copy; until
+       2026-11-14 both showed, one sentence twice at the foot of the page. -->
+  <p class="vfoot${pipe ? " hide" : ""}" id="vFoot">Private to you. Your comps are never read into CompNinja's public records<span id="vFootPub"> unless you choose to publish them</span>.</p>
   <!-- The comp sheet, filled and moved under body only at the moment it is
        printed (printSheet). Never on screen. -->
   <div class="vd-sheet" id="compSheet"></div>
 <script>window.__VAULT_BOOT__=${bootJson};</script>
 <script src="/gut-check.js"></script>
 <script src="/building-facts.js"></script>
+<script src="/collateral-check.js"></script>
 <script>
 (function(){
   var $=function(id){return document.getElementById(id)};
@@ -1532,6 +1642,17 @@ ${tabButtons}
   // (pubCount, the read's own count), because the Verified badge a published
   // comp earns says a licensed broker vouched for it. Every surface that
   // offers it reads this one flag.
+  //
+  // Nor is an account that cannot publish (2026-11-14): the server has
+  // refused a publish without a license on the broker profile since
+  // 2026-08-19 (VAULT.canPublishAs), yet the page went on offering the act
+  // to everyone, a Publish button on every comp set and a green Published
+  // cell over every book. For a lender holding the comps out of its
+  // appraisals that is a button that must never work, shown beside
+  // confidential data. identity.canPublish is the server's own answer, so
+  // the page offers exactly what the route would accept. A licensed broker
+  // sees what they always did; everybody else sees no publishing at all and
+  // one line at the foot that turns it on (renderIdentity).
   var pubCount=0,noPublish=false;
 
   var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
@@ -1784,6 +1905,9 @@ ${tabButtons}
       if(el.className.indexOf("hide")<0) el.className=(el.className+" hide").trim();
     });
     $("vaultLocked").className="invite";
+    // The trust line is locked away with the book, so the foot's own copy of
+    // the promise stands in for it.
+    if(PAGE==="comps")$("vFoot").className="vfoot";
     locked=true;
     syncLockedTabs();
     if(msg) $("vaultLocked").insertAdjacentHTML("afterbegin",
@@ -1853,6 +1977,20 @@ ${tabButtons}
     $("cPubCell").className=noPublish?"lcell mid hide":"lcell mid";
     $("bookStrip").className=noPublish?"ledger vd-strip nopub"
       : myFirm?"ledger vd-strip five":"ledger vd-strip";
+    // With Published gone and no shelf to count, the fourth cell is how much
+    // of the book closed in the last twelve months, so the strip is four
+    // cells for everyone. An undated comp is in no window, and is said.
+    $("cRecentCell").className=noPublish&&!myFirm?"lcell":"lcell hide";
+    var cut=sinceDay(365),recent=0,undated=0;
+    comps.forEach(function(c){
+      var d=String(c.deal_date||"");
+      if(!d)undated++; else if(d>=cut)recent++;
+    });
+    var older=comps.length-recent-undated,bits=[];
+    if(older)bits.push(num(older)+" older");
+    if(undated)bits.push(num(undated)+" undated");
+    $("cRecent").textContent=num(recent);
+    $("cRecentSub").textContent=!comps.length?"none yet":bits.length?bits.join(" \\u00b7 "):"every comp in your book";
     $("cShared").textContent=num(shared);
     $("cSharedSub").textContent=myFirm?num(comps.length-shared)+" not shared yet":"";
   }
@@ -1881,6 +2019,8 @@ ${tabButtons}
     // A read that succeeds after one that failed has to put them back.
     $("vaultLocked").className="invite hide";
     locked=false; $("vtWrap").className="vt-wrap";
+    // The trust line makes the promise for an open book: one copy, not two.
+    $("vFoot").className="vfoot hide";
     comps=o.j.comps||[];
     $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
     tabCount("tabBookN",comps.length?num(comps.length):"",false);
@@ -1909,6 +2049,8 @@ ${tabButtons}
     allMarkets=o.j.markets||[];
     uploads=o.j.uploads||[];
     myFirm=o.j.firm||null;
+    // Before applyShop, which asks it whether this account can publish.
+    identity=identityOf(o.j.identity);
     applyShop();
     sharedIds={};
     (o.j.sharedWithFirm||[]).forEach(function(id){sharedIds[id]=true});
@@ -2900,25 +3042,36 @@ ${tabButtons}
   // credit could promise a name the write would not produce.
   // (No backticks anywhere in this block: the whole page is one template
   // literal, and one stray backtick ends it — see the file's header note.)
-  var identity={display_name:"",company:"",license_number:"",creditedTo:"",canPublish:false};
+  function identityOf(idn){
+    return idn||{display_name:"",company:"",license_number:"",creditedTo:"",canPublish:false};
+  }
+  var identity=identityOf(null);
   // The report branding's firm, name and license, sent by vaultReadPayload
   // only while no credit is stated. Offered into the form, never saved by
   // itself (2026-09-02, "one profile").
   var identitySuggest=null;
 
   function renderIdentity(idn){
-    identity=idn||{display_name:"",company:"",license_number:"",creditedTo:"",canPublish:false};
+    identity=identityOf(idn);
     // A credit for comps nobody here can publish would be a form to fill in
-    // for nothing (noPublish, applyShop).
-    $("creditLine").className=noPublish?"note hide":"note";
+    // for nothing: a development firm's member is never offered publishing
+    // (applyShop), so the line goes. Anybody else who cannot publish yet
+    // keeps it, because it is the one way to turn publishing on.
+    var shop=!!(myFirm&&myFirm.kind==="development");
+    $("creditLine").className=noPublish&&shop?"note hide":"note";
     var to=identity.creditedTo||"";
     // Three states, not two. A broker with a credit name but no license is
     // ready in every way the old copy could describe and would still be
     // refused on click, so the line says which of the two is missing BEFORE
     // the Publish button is pressed rather than after.
     if(!to){
-      $("creditLine").innerHTML="Comps you publish need a name to credit them to. "+
-        '<button class="pubbtn" id="idEdit">Add your firm</button>';
+      // The account nobody has said is a broker's: a lender, an owner, a new
+      // member. Publishing is not offered to it anywhere on the page
+      // (noPublish), so the line says it is off rather than asking for a
+      // name to credit comps to, and keeps the door for a broker.
+      $("creditLine").innerHTML="Publishing is off for your account. Only a licensed broker can turn it on, "+
+        "and then only for the comps they choose. "+
+        '<button class="pubbtn" id="idEdit">I&rsquo;m a licensed broker</button>';
     }else if(!identity.canPublish){
       $("creditLine").innerHTML="Comps you publish are credited to <strong>"+esc(to)+"</strong>, "+
         "and publishing needs your license number. "+
@@ -2973,10 +3126,18 @@ ${tabButtons}
           $("idMsg").className="msg bad";
           return;
         }
-        renderIdentity({display_name:o.j.identity.display_name,
+        identity=identityOf({display_name:o.j.identity.display_name,
           company:o.j.identity.company,license_number:o.j.identity.license_number,
           creditedTo:o.j.creditedTo,canPublish:o.j.canPublish});
+        // A license saved (or taken away) changes whether this account is
+        // offered publishing, so every surface that offers it is redrawn:
+        // the flag, the promise, the strip, this line, then the book.
+        applyShop();
+        renderFirmPrivacy();
+        renderStripFigures();
+        renderIdentity(identity);
         setIdOpen(false);
+        render();
       })
       .catch(function(){
         $("idSave").disabled=false; $("idSave").textContent="Save";
@@ -3512,7 +3673,9 @@ ${tabButtons}
     // (server.js SHOP_NAV_JS, which also remembers it for the next page's
     // first paint).
     if(window.cnShopNav)window.cnShopNav(shop);
-    noPublish=shop&&!pubCount;
+    // A member with something already published keeps every control, so a
+    // public comp never looks private and can always be taken back.
+    noPublish=!pubCount&&(shop||!(identity&&identity.canPublish));
     $("bookEmptyK").textContent="Your comps, on one map";
     $("vFootPub").className=noPublish?"hide":"";
     // Never from a page built ahead of being seen (instant tab switching):
@@ -3791,19 +3954,28 @@ ${tabButtons}
   // back from them. Anything set that no view describes (a market from a
   // rollup card, the Table view's dropdowns) shows beside them as a pill with
   // a way out, rather than narrowing the ledger from behind a hidden control.
-  var QV=[["all","All"],["sale","Sales"],["lease","Leases"],["recent","Last 90 days"],["unshared","Not shared yet"]];
+  var QV=[["all","All"],["sale","Sales"],["lease","Leases"],["unshared","Not shared yet"]];
+  // The date windows (2026-11-14). Until then "Last 90 days" was a fourth
+  // view that replaced Sales or Leases, so the question a lender (or an
+  // appraiser) asks first, the SALES of the last twelve months, could not be
+  // asked of the ledger at all. A window is a toggle that stacks on whichever
+  // view is on: press it again and it is off, and All clears it with
+  // everything else. Twelve months leads because it is the age a sale is
+  // usually still leaned on at; ninety days is what is new.
+  var QW=[["year","Last 12 months",365],["recent","Last 90 days",90]];
   function quickOn(){
     var x=$("fTrans").value,f=$("fFirm").value;
     if(f==="shared")return "";
-    if(recentDays)return (!x&&!f)?"recent":"";
     if(f==="unshared")return x?"":"unshared";
     return x||"all";
   }
   function renderViews(){
-    var since=sinceDay(90),n={all:comps.length,sale:0,lease:0,recent:0,unshared:0};
+    var n={all:comps.length,sale:0,lease:0,unshared:0},wn={};
+    QW.forEach(function(w){ wn[w[0]]=0; });
+    var cuts=QW.map(function(w){return [w[0],sinceDay(w[2])]});
     comps.forEach(function(c){
       if(c.transaction==="lease")n.lease++; else n.sale++;
-      if(String(c.deal_date||"")>=since)n.recent++;
+      cuts.forEach(function(w){ if(String(c.deal_date||"")>=w[1])wn[w[0]]++; });
       if(myFirm&&!sharedIds[c.id])n.unshared++;
     });
     var on=quickOn();
@@ -3811,12 +3983,16 @@ ${tabButtons}
       return '<button type="button" class="vd-qb'+(on===q[0]?" on":"")+'" data-qv="'+q[0]+'" aria-pressed="'+(on===q[0]?"true":"false")+'">'+
         q[1]+" <i>"+num(n[q[0]])+"</i></button>";
     }).join("");
+    h+='<span class="vd-qsep" aria-hidden="true"></span>'+QW.map(function(w){
+      var won=recentDays===w[2];
+      return '<button type="button" class="vd-qb'+(won?" on":"")+'" data-qw="'+w[0]+'" aria-pressed="'+(won?"true":"false")+'">'+
+        w[1]+" <i>"+num(wn[w[0]])+"</i></button>";
+    }).join("");
     var x=$("fTrans").value,f=$("fFirm").value,pills=[];
     if($("fMarket").value)pills.push(["fMarket",$("fMarket").value]);
     if($("fType").value)pills.push(["fType",$("fType").value]);
     if(x&&on!==x)pills.push(["fTrans",x==="lease"?"Leases":"Sales"]);
     if(f&&on!=="unshared")pills.push(["fFirm",f==="shared"?"Shared with firm":"Not shared yet"]);
-    if(recentDays&&on!=="recent")pills.push(["recent","Last 90 days"]);
     h+=pills.map(function(p){
       return '<button type="button" class="vd-pill" data-clr="'+p[0]+'" aria-label="Stop filtering by '+escA(p[1])+'">'+
         esc(p[1])+' <span aria-hidden="true">\\u00d7</span></button>';
@@ -3966,11 +4142,18 @@ ${tabButtons}
     var b=e.target&&e.target.closest?e.target.closest("button"):null; if(!b)return;
     var clr=b.getAttribute("data-clr");
     if(clr){ if(clr==="recent")recentDays=0; else $(clr).value=""; redraw(); return; }
+    // A window toggles, and leaves the view it stacks on alone.
+    var w=b.getAttribute("data-qw");
+    if(w){
+      var days=0; QW.forEach(function(q){ if(q[0]===w)days=q[2]; });
+      recentDays=recentDays===days?0:days;
+      redraw();
+      return;
+    }
     var q=b.getAttribute("data-qv"); if(!q)return;
-    if(q==="all"){ $("fMarket").value=""; $("fType").value=""; }
+    if(q==="all"){ $("fMarket").value=""; $("fType").value=""; recentDays=0; }
     $("fTrans").value=q==="sale"||q==="lease"?q:"";
     $("fFirm").value=q==="unshared"?"unshared":"";
-    recentDays=q==="recent"?90:0;
     redraw();
   });
 
@@ -3997,14 +4180,31 @@ ${tabButtons}
     }
     var bare=list.length-s.values.length-r.values.length;
     if(bare>0)parts.push(bare+" without a price or rent");
+    var age=setAge(list);
+    if(age)parts.push(age);
     return parts.join(" \\u00b7 ");
+  }
+  // How old the set is (2026-11-14). A comp sheet and a loan check both lean
+  // on what sold lately, so the set says the months it spans and how many of
+  // its deals closed more than a year ago, rather than leaving the reader to
+  // scan the Date column for it. An undated comp is in no span.
+  function staleCount(list){
+    var cut=sinceDay(365);
+    return list.filter(function(c){ var d=String(c.deal_date||""); return d&&d<cut; }).length;
+  }
+  function setAge(list){
+    var dates=list.map(function(c){return String(c.deal_date||"")}).filter(function(d){return d}).sort();
+    if(!dates.length)return "";
+    var first=monthLabel(dates[0]),last=monthLabel(dates[dates.length-1]),old=staleCount(list);
+    return (first===last?first:first+" to "+last)+(old?" \\u00b7 "+old+" over a year old":"");
   }
   function renderTray(){
     var list=setList(),n=list.length,t=$("setTray");
     if(!n){
       t.className="vd-tray";
       t.innerHTML='<p class="vd-tk"><b>Build a comp set</b><span>Tick comps in the list to gather them here. '+
-        "The set keeps its own median and range, and prints as a comp sheet on your letterhead.</span></p>";
+        "The set keeps its own median and range, checks a loan against them, and prints as a comp sheet on your letterhead.</span></p>";
+      renderCheck();
       return;
     }
     var unpub=list.filter(function(c){return !c.published});
@@ -4012,16 +4212,21 @@ ${tabButtons}
     t.className="vd-tray on";
     t.innerHTML='<p class="vd-tk"><b>'+n+" comp"+(n===1?"":"s")+" in your set</b><span>"+esc(setSummary(list))+"</span></p>"+
       '<div class="vd-tact"><button type="button" class="btn" id="setSheet">Comp sheet</button>'+
+      '<button type="button" class="btn ghost" id="setCheck" aria-expanded="'+(ckOpen?"true":"false")+'" aria-controls="loanCheck">'+
+        (ckOpen?"Hide loan check":"Check a loan")+"</button>"+
       '<button type="button" class="btn ghost" id="setCsv">Download CSV</button>'+
       (unshared.length?'<button type="button" class="btn ghost" id="setFirm">Share '+unshared.length+" with "+esc(myFirm.name)+"</button>":"")+
       (unpub.length&&!noPublish?'<button type="button" class="btn ghost" id="setPub">Publish '+unpub.length+"</button>":"")+
       '<button type="button" class="lnk" id="setClear">Clear</button></div>';
+    // The check reads the set, so it follows every tick.
+    renderCheck();
   }
   $("setTray").addEventListener("click",function(e){
     var b=e.target&&e.target.closest?e.target.closest("button"):null; if(!b)return;
     var list=setList();
     if(b.id==="setClear"){ setIds={}; renderBookMap(bmRows); return; }
     if(b.id==="setCsv"){ downloadSetCsv(list); return; }
+    if(b.id==="setCheck"){ setCheckOpen(!ckOpen); return; }
     if(b.id==="setSheet"){ printSheet(list); return; }
     if(b.id==="setPub"){ publishList(list.filter(function(c){return !c.published}),b); return; }
     if(b.id==="setFirm"){ shareListWithFirm(list.filter(function(c){return !sharedIds[String(c.id)]}),b); return; }
@@ -4069,7 +4274,35 @@ ${tabButtons}
   // sheet is headed with the name their published comps are credited to.
   // Notes stay off it: a note is written for the broker, and this is the page
   // they hand a client.
-  function sheetHtml(list,brand){
+  //
+  // With a loan check filled in (2026-11-14) the sheet leads with it, as a
+  // collateral pre-screen: the page a lender puts in the file beside the
+  // comps it was read against. check is checkForSheet()'s answer, or null,
+  // and every figure and sentence in the block is collateral-check.js's.
+  function sheetCheckHtml(k){
+    var b=k.basis,u=b.unit==="acre",d=k.words,r=k.summary;
+    var per=function(v){ return ckRate(v,b.unit); };
+    var sized=u?(Math.round(k.size*100)/100).toLocaleString("en-US")+" acres":num(k.size)+" SF";
+    var facts=[sized,"Loan "+money(r.loan)];
+    if(r.price!=null)facts.push("Purchase price "+money(r.price));
+    facts.push("LTV limit "+d.limit);
+    var row=function(label,rate,s,t){
+      if(!s||!t)return "";
+      return "<tr><td>"+label+'</td><td class="num">'+esc(per(rate))+'</td><td class="num">'+esc(money(s.value))+
+        '</td><td class="num">'+esc(t.figure||"")+"</td><td>"+esc(t.sub)+"</td></tr>";
+    };
+    return (k.subject?'<p class="vd-sh-subj"><b>'+esc(k.subject)+"</b></p>":"")+
+      '<p class="vd-sh-sum">'+esc(facts.join(" \\u00b7 "))+"</p>"+
+      '<table class="vd-sh-ck"><thead><tr><th>Against this set</th><th class="num">'+(u?"$/acre":"$/SF")+
+      '</th><th class="num">Value at '+esc(sized)+'</th><th class="num">Loan to value</th><th>Against the limit</th></tr></thead><tbody>'+
+      row("Lowest sale",b.low,r.low,d.low)+row(b.n>1?"Median sale":"The one sale",b.likely,r.likely,d.likely)+
+      row("Highest sale",b.high,r.high,d.high)+"</tbody></table>"+
+      (d.need?'<p class="vd-sh-need"><b>Value this loan needs: '+esc(d.need.figure)+"</b> "+esc(d.need.sub)+"</p>":"")+
+      '<p class="vd-sh-read">'+esc(d.read.join(" "))+"</p>"+
+      '<p class="vd-sh-foot">A pre-screen against the comparable transactions listed below, not an appraisal and not a bank evaluation. '+
+      "Use it to decide whether to order one, never in place of one.</p>";
+  }
+  function sheetHtml(list,brand,check){
     var firm=(brand&&brand.firmName)||(identity&&identity.creditedTo)||"";
     var contact=brand?[brand.preparerName,brand.licenseNumber?"Lic. "+brand.licenseNumber:"",brand.phone,brand.email]
       .filter(function(x){return x}).join(" \\u00b7 "):"";
@@ -4093,17 +4326,23 @@ ${tabButtons}
     return '<div class="vd-sh-head">'+(brand&&brand.logo?'<img src="'+escA(brand.logo)+'" alt=""/>':"")+
       '<div class="vd-sh-firm">'+(firm?"<b>"+esc(firm)+"</b>":"")+(contact?"<span>"+esc(contact)+"</span>":"")+"</div>"+
       '<div class="vd-sh-date">'+esc(dated)+"</div></div>"+
-      "<h1>Comparable transactions</h1>"+
+      (check?"<h1>Collateral pre-screen</h1>"+sheetCheckHtml(check)+"<h2>Comparable transactions</h2>"
+        : "<h1>Comparable transactions</h1>")+
       '<p class="vd-sh-sum">'+list.length+" comp"+(list.length===1?"":"s")+(sum?" \\u00b7 "+esc(sum):"")+"</p>"+
       '<table><thead><tr><th>Address</th><th>Type</th><th>Deal</th><th>Date</th><th class="num">'+(land?"Size":"Size (SF)")+"</th>"+
       '<th class="num">Price</th><th class="num">'+(!land?"$/SF or rent":built?"$/SF, $/acre or rent":"$/acre or rent")+
       '</th><th class="num">Cap rate</th></tr></thead><tbody>'+body+"</tbody></table>"+
       (brand&&brand.disclaimer?'<p class="vd-sh-foot">'+esc(brand.disclaimer)+"</p>":"")+
-      '<p class="vd-sh-foot">'+(firm?"From "+esc(firm)+"&rsquo;s own transaction records, as recorded. ":"From the broker&rsquo;s own transaction records, as recorded. ")+
+      // "The preparer", not "the broker": the set may be a lender's, drawn
+      // from the appraisals in its files, and the line must be true of it.
+      '<p class="vd-sh-foot">'+(firm?"From "+esc(firm)+"&rsquo;s own records, as recorded. ":"From the preparer&rsquo;s own records, as recorded. ")+
       "A list of comparable transactions, not an appraisal. Prepared with CompNinja.</p>";
   }
   function printSheet(list){
     var b=$("setSheet"); if(b)b.disabled=true;
+    // Read before the branding request, which carries none of it: the check
+    // is this page's own memory, and only the printed sheet ever shows it.
+    var check=checkForSheet();
     fetch("/api/branding",{credentials:"same-origin"})
       .then(function(r){return r.ok?r.json():null})
       .catch(function(){return null})
@@ -4111,7 +4350,7 @@ ${tabButtons}
         if(b)b.disabled=false;
         var own=(j&&j.branding&&(j.branding.firmName||j.branding.logo))?j.branding:null;
         var sheet=$("compSheet");
-        sheet.innerHTML=sheetHtml(list,own||(j&&j.firm)||null);
+        sheet.innerHTML=sheetHtml(list,own||(j&&j.firm)||null,check);
         // Moved under body, because the print rule shows body's one child
         // that is the sheet and nothing else. On screen the class does nothing.
         var body=document.body;
@@ -4123,6 +4362,154 @@ ${tabButtons}
         window.print();
       });
   }
+
+  // ---- The loan check ---------------------------------------------------------
+  // A loan read against the comp set (2026-11-14; the owner's ask was to make
+  // this page work for an SBA lender, whose comps are the ones out of the
+  // appraisals in its files). The report's Collateral Check card reads a loan
+  // against the report's value range; this reads one against the set's own
+  // sales: the lowest, the median and the highest, in $/SF (or $/acre for
+  // land), times the size of the building the loan is on. Five rules:
+  //
+  //   1. THE ARITHMETIC AND THE WORDS ARE collateral-check.js's. summarize()
+  //      and describe() are what the report card and the lender page call, so
+  //      one loan cannot be worded three ways. Nothing here computes an LTV
+  //      or writes a verdict (a test fails on it). What IS this page's: the
+  //      three values handed in, which are the set's own figures (the ones
+  //      its summary line already quotes) times one typed size.
+  //   2. ONE PROPERTY TYPE, OR NO ANSWER. A set spanning types has no single
+  //      $/SF (saleStats), so it has no value to read a loan against, and the
+  //      check says so instead of blending them. A set of one priced sale
+  //      gives one value and no invented range.
+  //   3. IT IS A PRE-SCREEN, AND SAYS SO: "not an appraisal and not a bank
+  //      evaluation", on the panel and on the printed sheet. The 80 the limit
+  //      box opens on is only where it starts; the limit is the lender's own.
+  //   4. NOTHING TYPED HERE LEAVES THE PAGE (never-break rule 6). No request
+  //      carries the loan, the price, the limit or the subject, and nothing
+  //      stores them, not even this browser: a reload starts empty. The one
+  //      place they show besides the panel is the comp sheet this browser
+  //      prints.
+  //   5. SHORTHAND IS REFUSED AND SAID. "1.6M" is not read as 1.6
+  //      (COLLATERAL.money), and a size that cannot be read is named rather
+  //      than treated as empty.
+  var CK=(typeof window!=="undefined"&&window.COLLATERAL)||null;
+  var ckOpen=false;
+  if(CK)$("ckLimit").value=String(CK.DEFAULT_LIMIT_PCT);
+  // A size as a person types it: digits, with commas. No shorthand, rule 5.
+  function ckSizeOf(raw){
+    var s=String(raw==null?"":raw).trim().split(",").join("");
+    if(!/^\\d*\\.?\\d+$/.test(s))return null;
+    var n=Number(s);
+    return isFinite(n)&&n>0?n:null;
+  }
+  // What the set offers a loan to be read against: its priced sales' lowest,
+  // median and highest figure in their one unit, or why there is none.
+  function ckBasisOf(list){
+    var s=saleStats(list.filter(function(c){return c.transaction!=="lease"}));
+    if(!s.values.length)return {why:"none"};
+    if(s.mixed)return {why:"mixed",types:s.types};
+    var v=s.values,lo=Math.min.apply(null,v),hi=Math.max.apply(null,v);
+    // One sale, or every sale at one figure, is one value: no range.
+    return {unit:s.unit,n:v.length,low:lo,likely:median(v),high:hi,ranged:v.length>1&&hi>lo};
+  }
+  // A sale figure as the check quotes it: to the cent where it has cents (the
+  // ledger rounds to the dollar), so the figure times the size is the value
+  // the reader is shown, give or take the rounding below.
+  function ckRate(v,unit){
+    if(unit==="acre")return money(v)+"/acre";
+    var r=Math.round(v*100)/100,whole=r===Math.round(r);
+    return "$"+r.toLocaleString("en-US",{minimumFractionDigits:whole?0:2,maximumFractionDigits:2})+"/SF";
+  }
+  // A value read off comps is an estimate, so it is said to the nearest
+  // thousand (the nearest hundred under $100,000) and never to the dollar:
+  // $297.35 times 6,800 SF is $2,021,980 only in arithmetic.
+  function ckValue(v){
+    var step=v>=100000?1000:100;
+    return Math.round(v/step)*step;
+  }
+  // Everything the panel and the sheet draw, from the set and the boxes.
+  function ckState(){
+    var list=setList(),b=ckBasisOf(list);
+    var out={list:list,basis:b,size:null,summary:null,words:null,
+      subject:String($("ckSubject").value||"").trim()};
+    if(!CK||b.why)return out;
+    out.size=ckSizeOf($("ckSize").value);
+    if(out.size==null)return out;
+    var value=b.ranged?{low:ckValue(b.low*out.size),likely:ckValue(b.likely*out.size),high:ckValue(b.high*out.size)}
+      : {likely:ckValue(b.likely*out.size)};
+    out.summary=CK.summarize({loan:$("ckLoan").value,price:$("ckPrice").value,
+      limitPct:$("ckLimit").value,value:value});
+    out.words=CK.describe(out.summary,{whose:"this set's"});
+    return out;
+  }
+  // The check as the comp sheet prints it: only while it is open on a set
+  // that gave an answer, with a loan to read.
+  function checkForSheet(){
+    if(!ckOpen)return null;
+    var st=ckState();
+    return st.words&&st.summary&&st.summary.loan!=null?st:null;
+  }
+  function ckTile(id,t,none){
+    var el=$(id);
+    el.className="vd-ck-pct"+(t&&t.tone?" "+t.tone:"");
+    el.textContent=t&&t.figure?t.figure:"\\u2014";
+    $(id+"Sub").textContent=t?t.sub:none;
+  }
+  function renderCheck(){
+    var st=ckState(),b=st.basis,n=st.list.length;
+    // With nothing ticked there is no set, so there is no panel either; the
+    // boxes keep what was typed for the next set.
+    $("loanCheck").className=ckOpen&&n?"vd-ck":"vd-ck hide";
+    if(!ckOpen||!n)return;
+    var acre=b.unit==="acre",per=function(v){ return ckRate(v,b.unit); };
+    $("ckSizeLab").textContent=acre?"Lot size (acres)":"Building size (SF)";
+    var msg="";
+    if(!CK)msg="The loan check could not load. Refresh the page to try again.";
+    else if(b.why==="none")msg="Nothing in this set is a sale with a price and a size, so there is no value to read a loan against. Tick priced sales.";
+    else if(b.why==="mixed")msg="This set holds sales of "+b.types+" property types, so it has no single figure to value a building at. Untick down to one type to check a loan.";
+    else if(st.size==null)msg=String($("ckSize").value||"").trim()
+      ? "That size could not be read. Type it in full, like "+(acre?"2.5":"6,200")+"."
+      : "Type the "+(acre?"lot":"building")+"\\u2019s size to turn this set\\u2019s "+(acre?"$/acre":"$/SF")+" into a value.";
+    $("ckMsg").textContent=msg;
+    $("ckMsg").className=msg?"vd-ck-msg":"vd-ck-msg hide";
+    // What the set gives, said once beside the title.
+    $("ckBasis").textContent=b.why||!CK?"":"From "+b.n+" sale"+(b.n===1?"":"s")+": "+
+      (b.ranged?per(b.low)+" to "+per(b.high)+", median "+per(b.likely):per(b.likely));
+    var old=b.why?0:staleCount(st.list.filter(function(c){return c.transaction!=="lease"&&saleOf(c)!=null}));
+    $("ckAge").textContent=old?old+" of these "+b.n+" sale"+(b.n===1?"":"s")+" closed more than 12 months ago. An appraiser will lean on the recent ones.":"";
+    $("ckAge").className=old?"vd-ck-age":"vd-ck-age hide";
+    var d=st.words;
+    $("ckOut").className=d?"":"hide";
+    if(!d)return;
+    var loan=$("ckLoan").value,price=$("ckPrice").value;
+    var lone=b.n===1?"one sale in this set, so one value":"every sale in this set is at one figure";
+    ckTile("ckLow",d.low,lone); ckTile("ckLikely",d.likely,""); ckTile("ckHigh",d.high,lone);
+    $("ckNeed").textContent=d.need?d.need.figure:"\\u2014";
+    $("ckNeedSub").textContent=d.need?d.need.sub
+      : CK.unreadable(loan)?CK.UNREAD.loan:"Type a loan amount to read it against "+(d.ranged?"this range.":"this value.");
+    $("ckRead").textContent=d.read.concat(CK.unreadable(price)?[CK.UNREAD.price]:[]).join(" ");
+  }
+  function setCheckOpen(open){
+    ckOpen=!!open;
+    renderTray();
+    if(ckOpen){
+      var p=$("loanCheck");
+      if(p.scrollIntoView)p.scrollIntoView({block:"nearest",behavior:"smooth"});
+      if(!String($("ckSize").value||"").trim()&&$("ckSize").focus)$("ckSize").focus();
+    }
+  }
+  ["ckSubject","ckSize","ckLoan","ckPrice","ckLimit"].forEach(function(id){
+    $(id).addEventListener("input",renderCheck);
+  });
+  // The limit box is put back to the limit in use when it is left: an emptied
+  // or out-of-range limit computes at the default, and a box showing 150 over
+  // tiles read at 80 is two answers on one panel (the lender page's rule).
+  $("ckLimit").addEventListener("blur",function(){
+    if(!CK)return;
+    $("ckLimit").value=String(CK.limitPct($("ckLimit").value));
+    renderCheck();
+  });
+  $("ckClose").addEventListener("click",function(){ setCheckOpen(false); });
 
   // The empty book's map: the country, until the first import puts pins on
   // the book's own map. Never a pin and never an address here.

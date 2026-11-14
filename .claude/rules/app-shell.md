@@ -70,10 +70,40 @@ paths:
 > a page that sets its own later in the document keeps it), and /permits'
 > inner `main.wrap.pt-page` gives its padding back there (the page had two
 > 16px gutters a side and 88px above its heading).
-> **Left alone, and worth knowing.** A stranger's header still wraps to
-> three rows on a phone (Home must stay in it; marketBar's comment has the
-> owner's reason). Messages' context menu (z 60) can open under the bar.
-> The Feedback button still covers the right end of /comps' comp set.
+> **Left alone, and worth knowing.** Messages' context menu (z 60) can open
+> under the bar. The Feedback button still covers the right end of /comps'
+> comp set.
+> **A stranger's header on a phone is two rows (2026-11-14, the owner:
+> "fix the signed-out header on mobile too").** It was three under about
+> 407px (brand; Home, Explore, Tools, Log in; the red button alone), 138px.
+> In `MARKET_CSS`'s `@media (max-width:559.98px)` block the red button is
+> placed beside the brand (absolute against `.wrap`, which the menus' rule
+> already positions on a phone) and Log in is pushed to the right end of
+> the links' row: 87px at every width from 320px. Home stays (the owner's
+> earlier call; hiding it would not have bought a row, since the home page
+> has no Home link and was two rows). The markup and tab order are
+> untouched. The rules are keyed on the END of the two signed-out links'
+> addresses (`[href$="=signin"]`, `[href$="=signup"]`), so a member's bar
+> has nothing they match. Never the whole address: the stylesheet goes to
+> members too, and three suites refuse a member's page with either address
+> anywhere in its bytes. Cost: the HOME page alone fitted one line from about 500px to
+> 559px and is two rows there now. `test/nav-shell.test.js` pins it;
+> pictures at https://claude.ai/artifact/HCMqHEZY51dwZ2agmjegxn.
+> **The APP page's signed-out header is two rows too (the same day, the
+> owner: "yes hide them").** Signed out, index.html (`/?auth=signup`, a
+> shared report at `/r/<id>`) showed Explore, Home, Messages, Pipeline,
+> Markets, Comps, Permits and Sign in: 376px of words that no layout fits
+> on one 358px line, 131px of bar. Under 640px a signed-out visitor is no
+> longer shown the four member places (Messages, Pipeline or Sites, Comps,
+> Permits; the public pages' bar never showed them) and Sign in stands
+> beside the brand: 88px. Explore, Home and Markets stay. On a wide screen
+> all eight still show. One block after index.html's rail rules, every
+> rule scoped `html:not(.cn-in):not(.nav-rail) .rd-appbar:has(> nav >
+> #signInLink:not(.hidden))`: the Sign in button is showing
+> (`refreshAccountUI` hides it for a member) and neither class `authBoot`
+> stamps for a cookie holder is there, so a member's bar never loses its
+> places, not even while the account read is out. Without `:has()` the bar
+> is as it was. `test/nav-shell.test.js` holds every rule to that scope.
 
 > **The rail's look (2026-11-12, the owner: "The left side bar looks kind of
 > ugly fix it").** The strip is no longer a dark slab. It is one of the

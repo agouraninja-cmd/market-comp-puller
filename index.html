@@ -1095,6 +1095,31 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* Paper has no sidebar. The header is already no-print; this is the body
        padding it would otherwise leave behind as an empty left column. */
     @media print { html.nav-rail body { padding-left: 0; } }
+    /* A stranger's header on a phone: two rows, not three (2026-11-14, the
+       owner: "yes hide them"). Signed out, this page (the sign-up page, a
+       shared report) showed Explore, Home, Messages, Pipeline, Markets,
+       Comps, Permits and Sign in: 376px of words that no layout fits on one
+       358px line, so the bar was 131px. A signed-out visitor on a phone is
+       no longer shown the four member places (the public pages' bar never
+       showed them), and Sign in stands beside the brand, top right, as the
+       red button does on the public pages: 88px.
+       "Signed out" is read off the page itself: the Sign in button is
+       showing (refreshAccountUI hides it for a member), and the two classes
+       authBoot stamps for a cookie holder are absent, so a member's bar
+       never loses its places while the account read is still out. Where
+       :has() is not understood the rule does nothing and the bar is as it
+       was. Hidden on a phone only: on a wide screen the eight fit one line
+       and are left alone. */
+    @media (max-width: 639.98px) {
+      html:not(.cn-in):not(.nav-rail) .rd-appbar:has(> nav > #signInLink:not(.hidden)) { position: relative; padding-top: 14px; padding-bottom: 12px; }
+      html:not(.cn-in):not(.nav-rail) .rd-appbar:has(> nav > #signInLink:not(.hidden)) > nav { flex: 1 1 100%; }
+      html:not(.cn-in):not(.nav-rail) .rd-appbar:has(> nav > #signInLink:not(.hidden)) > nav > #navMessagesLink,
+      html:not(.cn-in):not(.nav-rail) .rd-appbar:has(> nav > #signInLink:not(.hidden)) > nav > #navPipe,
+      html:not(.cn-in):not(.nav-rail) .rd-appbar:has(> nav > #signInLink:not(.hidden)) > nav > #navSites,
+      html:not(.cn-in):not(.nav-rail) .rd-appbar:has(> nav > #signInLink:not(.hidden)) > nav > #navComps,
+      html:not(.cn-in):not(.nav-rail) .rd-appbar:has(> nav > #signInLink:not(.hidden)) > nav > a[href="/permits"] { display: none; }
+      html:not(.cn-in):not(.nav-rail) .rd-appbar:has(> nav > #signInLink:not(.hidden)) #signInLink { position: absolute; top: 10px; right: 16px; padding: 8px 0; font-weight: 500; color: var(--ink); }
+    }
     /* The home hero used to stack kicker / claim / lead down the left, each
        capped at 22ch and 58ch inside a max-w-5xl band, so the right ~450px of
        it was empty and the band ran 326px tall before the search form -- the

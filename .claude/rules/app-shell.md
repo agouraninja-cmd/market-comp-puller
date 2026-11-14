@@ -5,6 +5,8 @@ paths:
   - "instant-nav.js"
   - "security-headers.js"
   - "test/security-headers.test.js"
+  - "graceful-shutdown.js"
+  - "test/graceful-shutdown.test.js"
   - "test/components.test.js"
   - "test/nav-*.test.js"
   - "test/theme.test.js"
@@ -52,6 +54,50 @@ know before touching them:
 
 Checked by loading the public pages signed out and the member pages against
 the stand-in database in a real browser: nothing was refused on any of them.
+
+## Stopping and crashing without dropping requests (2026-11-14)
+
+`server.js` had no signal handler and no crash handler. Render ends the old
+instance of every deploy with SIGTERM and Node's default is to die on the
+spot, so each deploy cut off the searches in flight after they were billed;
+one unhandled promise rejection anywhere did the same to every visitor; and
+nothing told the owner. `graceful-shutdown.js` holds the drain and its rules
+(pure, tested against a plain `http.Server`); the process handlers and the
+mail are at the foot of `server.js`, above `server.listen`. What to know:
+
+- **SIGTERM and SIGINT drain.** The port closes at once, requests in flight
+  finish, then the process exits 0. With nothing in flight that is
+  immediate; a second signal always ends it at once.
+- **In flight is counted by `SHUTDOWN.track(req, res)`**, the second
+  statement of the request handler, from there until the response emits
+  `close`. Not `server.close()`'s callback, which also waits on the proxy's
+  idle keep-alive connections. Counted once per request, because `routeWarm`
+  re-emits. A route that answers without going through the handler would not
+  be counted; there is none.
+- **`SHUTDOWN_GRACE_SECONDS`, default 280**, is how long a drain waits. The
+  host's limit is the real one: Render kills the old instance 30 seconds
+  after SIGTERM unless the service's shutdown delay is raised (at most 300),
+  so **raise it there** to let a long search finish. That number is from
+  memory of Render's docs, which this session could not open; check it.
+  Blank, zero or unreadable is the default, never "no wait".
+- **An unhandled rejection is logged and mailed, and the server keeps
+  running.** The request that caused it has already failed; ending the
+  process fails everyone else's.
+- **An uncaught exception drains and exits 1**, so the host starts a fresh
+  process. The stack is printed in full first: `test/helpers/boot.js` reads
+  `EADDRINUSE` out of stderr to tell a stolen port from a real crash.
+- **The crash mail** goes to `LEAD_NOTIFY_EMAIL` through `sendEmail`, at most
+  one per kind per 15 minutes, from the event and never a timer. It is
+  silent without `RESEND_API_KEY`; the log line is always there.
+- **Tests**: the boot helper sets `SHUTDOWN_GRACE_SECONDS=2`, because
+  `stop()` now drains and a suite that walks away from an open stream would
+  hold its child for 280 seconds. `srv.signal()` and `srv.exited` exist for
+  the shutdown suite, which sends the real server a real SIGTERM with a slow
+  `/api/geocode` in flight.
+
+Not covered: a request arriving on a connection the proxy already held is
+still answered during a drain (with `Connection: close`), and a search that
+STARTS then can outlive the wait.
 
 ## Configuration
 

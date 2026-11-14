@@ -300,6 +300,10 @@ const INSTANTNAV = require("./instant-nav");
 // The security headers every response carries, set once per request at the
 // top of the request handler (security-headers.js explains each one).
 const SECHEADERS = require("./security-headers");
+// Stopping without dropping the request somebody is waiting on: the drain a
+// deploy's SIGTERM starts, and the crash handlers at the foot of this file
+// (graceful-shutdown.js explains the rules).
+const GRACEFUL = require("./graceful-shutdown");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -21320,6 +21324,10 @@ const server = http.createServer((req, res) =>
   // names one of them itself still wins. Idempotent, so routeWarm handing a
   // request back through server.emit sets the same values again.
   SECHEADERS.applySecurityHeaders(req, res);
+  // Counted as in flight until its response closes, so a deploy's SIGTERM
+  // waits for it instead of cutting it off (SHUTDOWN, at the foot of this
+  // file). Counted once per request, however often routeWarm re-emits it.
+  SHUTDOWN.track(req, res);
   // A page built ahead for this visitor (instant tab switching, Safari and
   // Firefox) — or the write that makes one stale. See routeWarm. Re-emitting
   // is the way back in on a miss: routeWarm marks the request, so the second
@@ -34232,6 +34240,79 @@ const server = http.createServer((req, res) =>
 
   sendNotFound(req, res);
 }));
+
+// ---------------------------------------------------------------------------
+// Stopping, and crashing, without dropping what is in flight (2026-11-14).
+//
+// Until this there was no signal handler and no crash handler in this file.
+// Render ends the old instance of every deploy with SIGTERM and Node's default
+// is to die on the spot, so each deploy cut off the searches in flight AFTER
+// they had been billed; one unhandled promise rejection anywhere did the same
+// to every visitor at once; and nothing told the owner about either.
+// graceful-shutdown.js holds the drain and its rules. What lives here is the
+// part that touches the process: the signals, the two crash events, the mail.
+//
+// SHUTDOWN_GRACE_SECONDS (default 280) is how long a drain waits. The host's
+// own limit is the real one: Render kills the old instance 30 seconds after
+// SIGTERM unless the service's shutdown delay is raised (at most 300), so
+// raise it THERE to let a long search finish; this default already allows it.
+// ---------------------------------------------------------------------------
+const SHUTDOWN = GRACEFUL.createShutdown({
+  server,
+  graceMs: GRACEFUL.graceMsFrom(process.env.SHUTDOWN_GRACE_SECONDS),
+  log: (line) => console.log(line),
+  exit: (code) => process.exit(code),
+});
+process.on("SIGTERM", () => SHUTDOWN.begin("SIGTERM (a deploy or a restart)", 0));
+process.on("SIGINT", () => SHUTDOWN.begin("SIGINT (Ctrl+C)", 0));
+
+// One mail to the owner per kind of crash per 15 minutes: a bug that rejects
+// on every request is one message, not one per visitor. Sent from the event
+// itself, never a timer. Resolves false, at once, when mail is not configured
+// (sendEmail's own rule), and sendEmail never rejects.
+const CRASH_MAIL_ALLOWED = GRACEFUL.createLimiter(15 * 60 * 1000);
+function alertOwnerOfCrash(kind, detail, consequence) {
+  if (!CRASH_MAIL_ALLOWED(kind)) return Promise.resolve(false);
+  return sendEmail(LEAD_NOTIFY_EMAIL, `CompNinja server: ${kind}`,
+    [
+      `What happened: ${kind}.`,
+      `What it means: ${consequence}`,
+      `When: ${new Date().toISOString()}`,
+      ``,
+      detail,
+      ``,
+      `At most one of these is sent every 15 minutes per kind of error; the host's logs have every occurrence.`,
+    ].join("\n"));
+}
+
+// A promise rejected with nobody listening. Node's default is to end the
+// process, which fails every OTHER visitor's request to punish one. The
+// request that caused it has already failed; the rest carry on, and the stack
+// is in the log and in the owner's inbox.
+process.on("unhandledRejection", (reason) => {
+  const detail = GRACEFUL.describeError(reason);
+  console.error("⛔ Unhandled promise rejection. The request that caused it failed; the server keeps running.\n" + detail);
+  alertOwnerOfCrash("unhandled promise rejection", detail,
+    "One request failed. The server kept running and nobody else was affected.");
+});
+
+// A thrown error nothing caught. Unlike a rejection, the process may now be
+// in a state nobody planned for, so it does not carry on: it finishes what is
+// in flight and exits non-zero, and the host starts a fresh one. The mail is
+// given a moment first (three seconds at most), because with nothing in
+// flight the drain exits immediately. The stack is printed in full BEFORE
+// anything else: the test boot helper reads EADDRINUSE out of it to tell a
+// stolen port from a real crash.
+process.on("uncaughtException", (err) => {
+  const detail = GRACEFUL.describeError(err);
+  console.error("⛔ Uncaught exception. Finishing the requests in flight, then exiting so the host restarts the server.\n" + detail);
+  const drain = () => SHUTDOWN.begin("an uncaught exception", 1);
+  Promise.race([
+    alertOwnerOfCrash("uncaught exception (the server restarted)", detail,
+      "The server finished the requests it could and restarted itself."),
+    new Promise((resolve) => setTimeout(resolve, 3000)),
+  ]).then(drain, drain);
+});
 
 server.listen(PORT, () => {
   // Does Stripe charge what the pages say? Off the request path, after the

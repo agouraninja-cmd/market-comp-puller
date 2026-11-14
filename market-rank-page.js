@@ -118,7 +118,7 @@ table.rk td.num,table.rk th.num{text-align:right;font-variant-numeric:tabular-nu
   padding:22px 24px;margin:0 0 26px;box-shadow:var(--lift);
   display:grid;grid-template-columns:1.35fr 1fr;gap:8px 30px;align-items:start}
 .rke-head{grid-column:1}
-.rke h2{font-family:var(--serif);font-weight:500;font-size:21px;color:var(--ink);
+.rke h2{font-weight:600;font-size:21px;color:var(--ink);
   margin:0 0 6px;letter-spacing:normal;text-transform:none}
 .rke-head p{color:var(--ink-2);font-size:var(--text-compact);margin:0;max-width:56ch}
 .rke-tabs{grid-column:1;display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:14px}

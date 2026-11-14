@@ -270,3 +270,37 @@ paths:
   only when they exist. `index.html` needs no copy — under `ACCOUNT_WALL` a
   crawler at `/` gets the landing render, which spreads `brandGraph()` like
   every other server-rendered page.
+
+## The public pages are Inter (2026-11-14)
+
+The owner, last of five steps that took the whole site to one typeface
+(Home's list, its greeting, the member pages, the comp report): "make the
+public pages Inter too". Read this before any older note here or in
+markets.md that says a public page has Georgia headings or loads no font.
+
+- **Every `marketShell` page loads Inter.** `INTER_FONT_LINKS` (the two
+  preconnects and the stylesheet) is added by `marketShell` itself when the
+  page's `head` does not already carry `family=Inter`, so each page loads it
+  once. Before this the public pages named Inter in `body{}` and fetched
+  nothing, so their text was Segoe UI on Windows and San Francisco on a Mac.
+  `display=swap`: text paints at once in the system face and swaps. The
+  public `/markets` keeps its `cache-control` and `vary`.
+- **No rule sets a serif.** `font-family:var(--serif)` is gone from
+  `MARKET_CSS` and the other stylesheets in server.js, and from
+  home-page.js, faq-page.js, pricing-page.js, brokers-firms-page.js,
+  lenders-page.js, market-rank-page.js and market-hero-review.js. Each of
+  those rules is the page's face at 600 (Georgia was 400 or 500). Sizes are
+  unchanged: a public title is still 34 to 42px, where a member page's is
+  28 (the member rule in `INTER_FONT_HEAD` still pins that).
+- **`--serif` is still defined** in theme.js's scale and index.html's copy,
+  and used by nothing on a page. Still Georgia by name, on purpose: the
+  printed comp sheet (`#compSheet h1` in vault-page.js, a document handed to
+  a client), email-shell.js (mail clients have no Inter), and the internal
+  ship-board and permit-pulse pages.
+- **Not done, and the owner's call:** the privacy policy's third-party list
+  does not name Google Fonts. The app page has loaded Inter from Google
+  since before this; the public pages now do too. Said to the owner.
+- Tests: `test/vault-shell.test.js` asks the public `/markets` for the font
+  once, ahead of the stylesheet, with none of the member rules, and reads
+  the public page files and the shared stylesheet for a serif.
+  Rendered check: 13 public pages, every text element Inter, no serif.

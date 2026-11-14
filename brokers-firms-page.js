@@ -93,7 +93,7 @@ main.wrap{max-width:none;padding:0}
    different devices rather than one family. */
 .bfeye{font-size:var(--text-tiny);font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--red);line-height:1.4}
 .bfhero{padding:56px 32px 48px}
-.bfhero h1{font-family:var(--serif);font-weight:500;font-size:var(--text-display-lg);line-height:1.14;
+.bfhero h1{font-weight:600;font-size:var(--text-display-lg);line-height:1.14;
   letter-spacing:-.005em;color:var(--ink);margin:20px 0 0;max-width:20ch}
 .bflede{font-size:var(--text-input);line-height:1.62;color:var(--ink-body);margin:20px 0 0;max-width:64ch}
 .bfacts{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:24px 0 0}
@@ -101,7 +101,7 @@ main.wrap{max-width:none;padding:0}
 .bfalt:hover{color:var(--ink)}
 /* Section headers. The band's h2 is the serif 29px of the design; .card h2 in
    MARKET_CSS is 19px and belongs to a card, not to a band. */
-.bfband h2{font-family:var(--serif);font-weight:500;font-size:29px;line-height:1.2;
+.bfband h2{font-weight:600;font-size:29px;line-height:1.2;
   color:var(--ink);margin:8px 0 0;letter-spacing:normal;text-transform:none}
 .bfsub{font-size:var(--text-lead);line-height:1.6;color:var(--ink-body);margin:12px 0 0}
 .bfhead{display:flex;align-items:flex-end;justify-content:space-between;gap:40px}
@@ -129,7 +129,7 @@ main.wrap{max-width:none;padding:0}
   border-top:1px solid var(--hair)}
 .bfprevrow .a{font-size:var(--text-compact);color:var(--ink)}
 .bfprevrow .m{font-size:var(--text-small);color:var(--ink-3);margin-top:2px}
-.bffig{font-family:var(--serif);font-weight:500;font-size:18px;color:var(--ink);
+.bffig{font-weight:600;font-size:18px;color:var(--ink);
   font-variant-numeric:tabular-nums;white-space:nowrap}
 .bfmore{padding:11px 20px;border-top:1px solid var(--hair);font-size:var(--text-small);color:var(--ink-3)}
 .bfupfoot{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 20px;
@@ -172,7 +172,7 @@ main.wrap{max-width:none;padding:0}
 .bfledcell.mid{background:var(--wash)}
 .bfledcell .k{font-size:var(--text-tiny);font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--red);
   margin-bottom:8px}
-.bfledcell h3{font-family:var(--serif);font-weight:500;font-size:var(--text-title);color:var(--ink);
+.bfledcell h3{font-weight:600;font-size:var(--text-title);color:var(--ink);
   line-height:1.28;margin:0 0 8px}
 .bfledcell p{font-size:var(--text-compact);line-height:1.6;color:var(--ink-body);margin:0}
 .bfshops{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
@@ -186,7 +186,7 @@ main.wrap{max-width:none;padding:0}
 .bfprice{display:grid;grid-template-columns:1fr;gap:16px}
 .bfplan{border:1px solid var(--edge);border-radius:var(--r-md);background:var(--card);padding:22px 24px;box-shadow:var(--lift)}
 .bfplan .k{font-size:var(--text-tiny);font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
-.bfplan .f{font-family:var(--serif);font-weight:500;font-size:30px;color:var(--ink);
+.bfplan .f{font-weight:600;font-size:30px;color:var(--ink);
   font-variant-numeric:tabular-nums;margin:8px 0}
 .bfplan .f span{font-family:Inter,system-ui,sans-serif;font-size:var(--text-lead);color:var(--ink-3)}
 .bfplan p{font-size:var(--text-compact);line-height:1.6;color:var(--ink-body);margin:0}
@@ -203,7 +203,7 @@ main.wrap{max-width:none;padding:0}
 .bfplan.firm .f span,.bfplan.firm p{color:#B6C1CF}
 .bfcta{background:var(--slab);padding:44px 32px}
 .bfcta .bfin{display:flex;align-items:center;justify-content:space-between;gap:32px;flex-wrap:wrap}
-.bfcta h2{font-family:var(--serif);font-weight:500;font-size:var(--text-h1);color:#fff;margin:0 0 8px}
+.bfcta h2{font-weight:600;font-size:var(--text-h1);color:#fff;margin:0 0 8px}
 .bfcta p{font-size:var(--text-lead);color:#B6C1CF;margin:0}
 /* The one door onto the comp-submission modal that survived the merge. It is
    a QUERY, never a /#submit-comp fragment: ACCOUNT_WALL decides what "/"

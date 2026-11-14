@@ -188,6 +188,15 @@ test("a phone gets the nav along the bottom, on screen only, and nothing rides u
   assert.match(badge, /\.tninja\{position:fixed;bottom:16px;right:16px;z-index:1000;width:44px;height:44px;/);
   assert.match(VAULT_JS, /@media screen and \(max-width:899px\)\{[^@]*\n  \.vd-tray\.on\{margin-right:56px\}\n\}/,
     "/comps' selection tray runs under the Feedback button again on a phone");
+  // A sheet that rises from the bottom of a phone stands OVER the bar and
+  // under the dialogs. Messages' menu and "About this chat" are one: at
+  // z-index 60 they opened behind the bar, their last row covered.
+  const MESSAGES_JS = fs.readFileSync(path.join(__dirname, "..", "messages-page.js"), "utf8");
+  const barZ = Number(phone.match(/html\.nav-rail \.hdr nav\{[^}]*z-index:(\d+)/)[1]);
+  const sheetZ = Number((MESSAGES_JS.match(/\.msg-menu\.is-sheet,\.msg-info\.is-sheet\{z-index:(\d+);/) || [])[1]);
+  const scrimZ = Number((MESSAGES_JS.match(/\.msg-scrim\{[^}]*z-index:(\d+)\}/) || [])[1]);
+  assert.ok(scrimZ > barZ && sheetZ > scrimZ && sheetZ < 1200,
+    `Messages' sheet (${sheetZ}) and scrim (${scrimZ}) must stand over the phone bar (${barZ}) and under the dialogs (1200)`);
   // The page you are on is a border (forced colours keep it), as in the rail.
   assert.match(phone, /nav>a\[aria-current="page"\]::before\{[^}]*border-top:3px solid var\(--red\)/);
   // Above a map's controls (Leaflet's are 1000) and the Feedback button,

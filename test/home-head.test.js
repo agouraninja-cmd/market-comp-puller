@@ -962,10 +962,14 @@ test("the day, the greeting and the find box: whole-pixel lines, a placeholder t
   // sentence case, never capitals.
   assert.equal(decl(rule(".hm-kick"), "text-transform"), null);
   assert.equal(lineBox(".hm-kick"), 18);
-  // The greeting keeps Home's one heading size, on a whole-pixel line.
-  assert.equal(decl(rule(".hm-title"), "font-size"), "30px");
+  // The greeting is Inter since 2026-11-14 (the owner: "make the greeting
+  // Inter too"): the page's own face, so the rule names none, at 28px and
+  // 600. It stands on the 34px line the Georgia 30 stood on, so nothing
+  // under it moved.
+  assert.equal(decl(rule(".hm-title"), "font-size"), "var(--text-h1)");
+  assert.equal(decl(rule(".hm-title"), "font-weight"), "600");
   assert.equal(lineBox(".hm-title"), 34);
-  assert.equal(decl(rule(".hm-title"), "font-family"), "var(--serif)");
+  assert.equal(decl(rule(".hm-title"), "font-family"), null, "the greeting names a typeface again: the panel is one face");
   // The find box's placeholder was Tailwind's reset grey, the one text in the
   // head that was not a token (2.5:1 on the box in light).
   assert.equal(decl(rule("#hmFind::placeholder"), "color"), "var(--ink-3)");

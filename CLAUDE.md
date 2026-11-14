@@ -267,8 +267,11 @@ folder is gone, so a `node-portable` path found in an old plan is dead.)
 
 ### Restart rule (important)
 
-- Editing **`index.html`** needs no restart — `server.js` reads it from disk on
-  every request, so just refresh the browser. That page's one inline
+- Editing **`index.html`** needs no restart — `server.js` re-reads it whenever
+  its size or modified time changes (`loadAppPage`), so just refresh the
+  browser. Since 2026-11-14 its one big inline script is SERVED as
+  `/app.<hash>.js`, cached for a year; the file on disk is unchanged and must
+  stay one file (`app-page.js`; workspace.md). That page's one inline
   `<script>` block has a hard runtime dependency on **`/valuation.js`**: its
   very first statement destructures `VALUATION`, so if that file fails to
   load, the destructure throws and the whole front end aborts — no search
@@ -425,6 +428,7 @@ so they are trusted config and are never set in production.
 | `CORPUS_RADIUS`, `CORPUS_METRO`, `CORPUS_LISTED`, `ARCHIVE_FIRST` | on | `off` rolls back the radius blend, metro retrieval, on-market listings, archive-first | corpus.md |
 | `LEAD_METRO` | on | broker lead coverage matches across metro groups | vault.md |
 | `NAV_SHELL` | `rail` | signed-in chrome as a left rail; `bar` is the rollback | app-shell.md |
+| `EXTERNAL_APP_SCRIPT` | on | serve index.html's megabyte of inline script as `/app.<hash>.js`, cached for a year; `off` is the rollback (script inline, as before) | workspace.md |
 | `SHUTDOWN_GRACE_SECONDS` | 280 | how long a stop (a deploy's SIGTERM, Ctrl+C, a crash) waits for requests in flight; the host's own shutdown delay is the real limit | app-shell.md |
 | `SITE_URL`, `GOOGLE_SITE_VERIFICATION` | Render URL / unset | canonical origin; Search Console file verification (keep it set for good) | public-pages.md |
 | `PRO_ENABLED` | off in code | master switch for the paid tier (run its DDL first) | billing.md |
@@ -455,7 +459,7 @@ gone. Document a new feature in its area's file, not here.
 | `billing.md` | Pro tier, trial, prices, free allowance, passkeys, admin access, branding, trial emails, `/api/config`, `/pricing` | `entitlements.js`, `stripe.js`, `branding.js`, `trial-notices.js`, `pricing-page.js` |
 | `vault.md` | the broker vault (import, mapper, editing, publishing, dashboard, gut check, BOV, building facts), comp submissions, the lead inbox | `vault-*.js`, `broker-*.js`, `building-facts.js`, `gut-check.js`, `bov-log.js`, `blend-comps.js`, `xlsx.js` |
 | `firms.md` | firms: membership, shelf, buildings, sheets, leases, contacts, messaging doors, Messages' Reports view, auto-share, the shared vault, seats, shop kinds | `org-*.js`, `buildings-page.js`, `messaging.js`, `messages-page.js`, `report-inbox.js` |
-| `workspace.md` | the signed-in Home (`/desk`): Home as one map and its layer switch, layout history, one-paint fill, `DESK_BOOT`, `AUTH_BOOT`, `pagePath` | `index.html`, `home-map.js`, desk tests |
+| `workspace.md` | the signed-in Home (`/desk`): Home as one map and its layer switch, layout history, one-paint fill, `DESK_BOOT`, `AUTH_BOOT`, `pagePath`, index.html's script served as `/app.<hash>.js` (`app-page.js`) | `index.html`, `home-map.js`, `app-page.js`, desk tests |
 | `app-shell.md` | the `NAV_SHELL` rail, the signed-in header on server-rendered pages, nav parity with `index.html`, the shared button and tabs (`components.js`), instant tab switching (prerendered tabs, `/api/visit`), the security headers on every response (`security-headers.js`), stopping and crashing without dropping requests (`graceful-shutdown.js`) | `theme.js`, `components.js`, `instant-nav.js`, `security-headers.js`, `graceful-shutdown.js`, nav tests |
 | `sharing.md` | `POST /api/share`, `/api/shared`, `/r/<id>`, permissioned sharing | `report-access.js` |
 | `accounts.md` | account wall, guest limit, Google sign-in, confirming an email address, accounts and portfolio, profile photo | `google-auth.js`, `email-verify.js`, `confirm-notice.js`, `account-avatar.js`, `portfolio-*.js` |

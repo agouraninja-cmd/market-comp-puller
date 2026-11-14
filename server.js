@@ -304,6 +304,9 @@ const SECHEADERS = require("./security-headers");
 // deploy's SIGTERM starts, and the crash handlers at the foot of this file
 // (graceful-shutdown.js explains the rules).
 const GRACEFUL = require("./graceful-shutdown");
+// index.html's megabyte of inline script, served as its own cacheable file
+// (app-page.js; loadAppPage below does the reading).
+const APPPAGE = require("./app-page");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -12004,6 +12007,44 @@ function tailwindLink() {
   } catch {
     return TAILWIND_LINK;
   }
+}
+
+// index.html as it is handed out (2026-11-14; app-page.js has the design and
+// the rules). The file is about 400 KB of markup and CSS and one megabyte of
+// inline script, served no-store, so that megabyte was downloaded again on
+// every page view. loadAppPage() moves the script to /app.<hash>.js, a
+// content-addressed file the browser keeps for a year, and remembers the
+// result until index.html's size or modified time changes, so editing the
+// file still needs only a refresh (the Restart rule) and a page view no
+// longer reads 1.4 MB off the disk.
+//
+// EXTERNAL_APP_SCRIPT=off is the rollback: the page goes out exactly as it
+// is on disk, script inline, and /app.<hash>.js answers 404.
+//
+// The canonical-origin rewrite the page gets at the end of its handler is
+// applied to the script HERE, before it is hashed: SITE_URL is fixed for the
+// life of the process, and a rewrite after hashing would make the address
+// lie about the content.
+const EXTERNAL_APP_SCRIPT = String(process.env.EXTERNAL_APP_SCRIPT || "on").trim().toLowerCase() !== "off";
+let APP_PAGE = { key: "", html: "", scriptBody: null, hash: "", url: "" };
+async function loadAppPage() {
+  const file = path.join(__dirname, "index.html");
+  const st = await fs.promises.stat(file);
+  const key = `${st.size}:${st.mtimeMs}`;
+  if (APP_PAGE.key === key) return APP_PAGE;
+  const raw = await fs.promises.readFile(file, "utf8");
+  const ext = EXTERNAL_APP_SCRIPT
+    ? APPPAGE.externalize(raw, {
+      transformScript: (s) => (SITE_URL !== DEFAULT_SITE_URL ? s.split(DEFAULT_SITE_URL).join(SITE_URL) : s),
+    })
+    : null;
+  if (EXTERNAL_APP_SCRIPT && !ext) {
+    console.warn("index.html has no plain inline script big enough to serve separately; serving the page whole.");
+  }
+  APP_PAGE = ext
+    ? { key, html: ext.html, scriptBody: Buffer.from(ext.script, "utf8"), hash: ext.hash, url: ext.url }
+    : { key, html: raw, scriptBody: null, hash: "", url: "" };
+  return APP_PAGE;
 }
 
 // Instant tab switching (2026-09-26): prerender the tab a member points at,
@@ -32730,8 +32771,14 @@ const server = http.createServer((req, res) =>
     const deskBootP = (staticPath === "/" || staticPath === "/desk")
       ? deskBootPayload(req).catch(() => null)
       : Promise.resolve(null);
-    fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
-      if (err) {
+    // The page as it is handed out (loadAppPage): index.html, with its one
+    // megabyte of inline script moved to /app.<hash>.js unless
+    // EXTERNAL_APP_SCRIPT=off. Remembered until the file changes on disk, so
+    // an edit still needs only a refresh. `data` keeps its old name and its
+    // old meaning for everything below: the page before the serve-time
+    // rewrites.
+    loadAppPage().then((page) => page.html, () => null).then((data) => {
+      if (data == null) {
         res.writeHead(500);
         return res.end("index.html not found");
       }
@@ -32759,7 +32806,7 @@ const server = http.createServer((req, res) =>
       // as every server-rendered header, so the menus cannot drift. Then
       // canonical/og/JSON-LD URLs, written against the default origin, are
       // rewritten when SITE_URL is overridden (custom domain).
-      let html = data.toString("utf8")
+      let html = data
         .replace(NAV_LINKS_MARKER, APP_NAV_LINKS_HTML)
         // Same one-source rule as the nav list: index.html carries a marker,
         // never a hand-copy of the in-app detection (THEME_BOOT is the
@@ -32809,8 +32856,44 @@ const server = http.createServer((req, res) =>
       if (SITE_URL !== DEFAULT_SITE_URL) html = html.split(DEFAULT_SITE_URL).join(SITE_URL);
       res.end(html);
       });
+    }).catch((err) => {
+      // This used to be a file-read callback, where a throw ended the
+      // process. As a promise it would be a request left hanging, so say so.
+      console.error("serving index.html failed:", err && err.stack || err);
+      if (!res.headersSent) res.writeHead(500);
+      res.end("Server error");
     });
     return;
+  }
+
+  // --- The app's script, /app.<hash>.js (2026-11-14; app-page.js has the
+  // rules). The megabyte of inline script index.html carries, at an address
+  // that is its own content hash: a year and immutable when the hash asked
+  // for is the current one, and the CURRENT script with no caching when it is
+  // not, because a 404 here is a page that looks fine and does nothing (a
+  // page from the old instance asking the new one, during a deploy).
+  {
+    const wantedHash = (req.method === "GET" || req.method === "HEAD") ? APPPAGE.hashFromPath(staticPath) : null;
+    if (wantedHash) {
+      loadAppPage().then((page) => {
+        if (!page.scriptBody) {
+          // EXTERNAL_APP_SCRIPT=off, or a page with no script to move: no
+          // page this server hands out points here.
+          res.writeHead(404, { "content-type": "text/plain" });
+          return res.end("Not found");
+        }
+        res.writeHead(200, {
+          "content-type": "text/javascript; charset=utf-8",
+          "cache-control": APPPAGE.scriptCacheControl(wantedHash, page.hash),
+          "x-robots-tag": "noindex",
+        });
+        res.end(req.method === "HEAD" ? undefined : page.scriptBody);
+      }, () => {
+        res.writeHead(500, { "content-type": "text/plain" });
+        res.end("index.html not found");
+      });
+      return;
+    }
   }
 
   // --- Static assets: allowlisted files only, never arbitrary paths. The CSS

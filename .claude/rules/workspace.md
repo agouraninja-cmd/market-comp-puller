@@ -9,8 +9,54 @@ paths:
   - "test/desk-*.test.js"
   - "test/home-head.test.js"
   - "test/auth-boot.test.js"
+  - "app-page.js"
+  - "test/app-page.test.js"
 ---
 # The signed-in workspace
+
+> **index.html's script is served as its own file (2026-11-14).** The file is
+> about 400 KB of markup and CSS and ONE inline script of about 1 MB, served
+> `no-store`, so the megabyte was downloaded again on every page view (Home,
+> the comp report page, every shared report). Now the page goes out with
+> `<script src="/app.<hash>.js"></script>` where the block was, and the block
+> is at that address, cached for a year. Measured at brotli 4: a page view
+> was about 400 KB over the wire and is about 106 KB; the script (about
+> 310 KB) is fetched once. `app-page.js` has the design and the rules;
+> `loadAppPage()` in `server.js` does the reading. What to know:
+> - **The split is at SERVE time. index.html on disk did not change**, and
+>   must stay one file: the Tailwind build finds classes in its JS strings,
+>   and the tests that read or run the page read it from disk.
+> - **The address is the content hash**, and the page (never cached) names
+>   the exact one, so a browser cannot pair a page with a stale script.
+>   Editing index.html still needs only a refresh: `loadAppPage()` remembers
+>   its result until the file's size or modified time changes.
+> - **Only the one big plain `<script>` moves.** The small inline scripts
+>   ahead of it, and everything the serve-time markers inject, stay inline
+>   and still run first. If the big script ever gains an attribute, or there
+>   is none big enough, the page is served whole (and a warning is logged).
+> - **Every serve-time marker must stay in the page half**, never inside the
+>   script: a marker in the script would go out unfilled, or worse, be cached
+>   for a year with one visitor's value. `test/app-page.test.js` pins the
+>   list; a NEW marker belongs in that list.
+> - **A request for a hash that is not the current one gets the current
+>   script, `no-store`**, never a 404 (a page from the old instance asking
+>   the new one during a deploy). For those seconds an old page can run a
+>   new script, as it already could with every other script file.
+> - **`EXTERNAL_APP_SCRIPT=off` is the rollback**: script inline, exactly as
+>   before, and `/app.<hash>.js` answers 404.
+> - **A test about what the app DOES reads `servedApp()`**
+>   (`test/helpers/served-app.js`: the page with its script put back), never
+>   the page's text alone, which no longer holds the script. Three tests in
+>   `test/routes.test.js` were moved to it; one of them (every
+>   `getElementById` names a real id) would otherwise have kept passing
+>   while checking nothing.
+> - **Proof that nothing changed for the visitor**: a test boots the server
+>   both ways and requires page plus script, minus the one preload hint, to
+>   equal the whole page byte for byte.
+>
+> Not done, and not planned as one change: breaking index.html or server.js
+> into smaller source files. The standing rule in docs/ROADMAP.md is to
+> extract a module when its code is touched, with tests first.
 
 > **Customer-facing names (owner's call, 2026-10-04): "Home" and "Data".**
 > The firm space (`/desk`, and `/` for a member) is labelled **Home**, and the

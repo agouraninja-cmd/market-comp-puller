@@ -31,6 +31,12 @@
   },
   {
     "date": "2026-11-14",
+    "type": "improvement",
+    "title": "Pages in the app load about a quarter of what they used to",
+    "details": "Home, the comp report page and every shared report are one page, and that page carried about a megabyte of program code inside it. Because the page is personal to each visitor it is never saved by the browser, so that megabyte was downloaded again on every single page view. The code is now a separate file that the browser downloads once and keeps: the first visit is about the same, and every page view after it downloads roughly a quarter of what it did (about 106 KB instead of about 400 KB, measured the way the site compresses it). When the code changes, the file gets a new address, so nobody is left running an old copy. Nothing looks or works differently: the page was loaded in a browser both ways and behaved the same, and a test requires the two versions to match exactly. There is a switch to go back to the old way if anything turns up."
+  },
+  {
+    "date": "2026-11-14",
     "type": "fix",
     "title": "A deploy no longer cuts off the searches that are running",
     "details": "Every time a new version went live, the old copy of the server was told to stop and stopped that instant, so any comp search still running was dropped after it had already been paid for, and the visitor saw an error. Now a stopping server takes no new visitors, finishes the requests it already has, and only then exits. How long it may wait is set by the host: Render allows 30 seconds unless the service's shutdown delay is raised, up to 5 minutes, so that setting should be raised to cover a long search. Two more things changed with it. An error in one visitor's request that used to take the whole server down, and everyone's requests with it, now fails only that request. And when either that or a real crash happens, an email goes to the owner with the error, at most one every 15 minutes per kind, so it no longer happens silently. There was no report of this from a visitor; it was found by reading the code."

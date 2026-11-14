@@ -21,6 +21,10 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const shared = require("./helpers/boot");
+// The app as a browser assembles it: the served page with the script it
+// names put back in. See the helper for why a test about what the app DOES
+// must not read the page's text alone.
+const { servedApp } = require("./helpers/served-app");
 
 // Boot server.js with an explicit environment and wait for /healthz.
 // One implementation for every suite — ports are OS-assigned and the
@@ -856,7 +860,9 @@ test("bare environment", async (t) => {
 
   // The app cannot make that choice at serve time.
   await t.test("the app keeps the nav-anon sweep, and the removed 1031 page out", async () => {
-    const app = await (await fetch(srv.base + "/")).text();
+    // servedApp: the page WITH the script it names (/app.<hash>.js) put back,
+    // since both assertions here are about what the script does.
+    const app = await servedApp(srv.base, "/");
     // The 1031 guide's row (and its footer link) left with the page on
     // 2026-09-12. A link to a page that 404s is worse than no link.
     assert.ok(!app.includes("/1031-exchange"),
@@ -891,7 +897,14 @@ test("bare environment", async (t) => {
     // Deliberately one-directional: an id with no getElementById is ordinary
     // (CSS, anchors, aria-controls, labels), so only the dangling READ is an
     // error.
-    const app = await (await fetch(srv.base + "/")).text();
+    //
+    // servedApp, not the page alone: since 2026-11-14 the script that makes
+    // those reads is served at /app.<hash>.js, and the page's own text holds
+    // almost no getElementById at all, so this would pass having checked
+    // nothing. The count below is what proves the script was really read.
+    const app = await servedApp(srv.base, "/");
+    assert.ok([...app.matchAll(/getElementById\("([A-Za-z0-9_-]+)"\)/g)].length > 200,
+      "the served app's script was not read, so this check would prove nothing");
     const ids = new Set([...app.matchAll(/\bid="([A-Za-z0-9_-]+)"/g)].map((m) => m[1]));
     const missing = [...new Set(
       [...app.matchAll(/getElementById\("([A-Za-z0-9_-]+)"\)/g)].map((m) => m[1]),
@@ -908,7 +921,7 @@ test("bare environment", async (t) => {
   // them no door, and /bulk answers them with its upgrade card. What must
   // survive is that the vault's own flag still decides what it gates here.
   await t.test("the app's rail has no Data row, Comps is everyone's, and the vault's flag still gates what it gates", async () => {
-    const app = await (await fetch(srv.base + "/")).text();
+    const app = await servedApp(srv.base, "/");
     assert.ok(!app.includes('id="menuBulkLink"'), "the hidden-until-hydrated Comp report row is back");
     assert.ok(!/id="navComps"[^>]*\bhidden\b/.test(app), "the Comps row ships hidden");
     assert.ok(app.includes('id="navComps" href="/comps"'), "the app's rail lost its Comps row");

@@ -42,7 +42,7 @@ function renderBuildingsBody(boot) {
 .bl-page .kicker{font-size:var(--text-tiny);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
 .bl-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
   border-bottom:1.5px solid var(--ink);padding-bottom:6px;margin-bottom:10px}
-.bl-head h1{margin:0;font-family:var(--serif);font-weight:400;font-size:var(--text-heading);color:var(--ink)}
+.bl-head h1{margin:0;font-weight:600;font-size:var(--text-heading);letter-spacing:-.02em;color:var(--ink)}
 .bl-count{font-size:var(--text-label);color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .bl-sub{font-size:var(--text-small);color:var(--ink-2);margin:0 0 14px}
 .bl-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 12px}
@@ -272,7 +272,7 @@ function renderBuildingSheetBody(boot) {
 .bs-page .kicker{font-size:var(--text-tiny);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
 .bs-page .kicker a{color:var(--ink-3)}
 .bs-head{border-bottom:1.5px solid var(--ink);padding-bottom:8px;margin-bottom:6px}
-.bs-head h1{margin:0;font-family:var(--serif);font-weight:400;font-size:var(--text-figure);color:var(--ink)}
+.bs-head h1{margin:0;font-weight:600;font-size:var(--text-figure);letter-spacing:-.02em;color:var(--ink)}
 .bs-sub{font-size:var(--text-small);color:var(--ink-3);margin:0 0 18px}
 .bs-id{display:flex;flex-wrap:wrap;gap:14px 28px;margin:0 0 22px}
 .bs-id label{display:flex;flex-direction:column;gap:4px;font-size:var(--text-tiny);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}

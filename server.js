@@ -12274,7 +12274,15 @@ function deskBootScript(payload) {
 const INTER_FONT_HEAD =
   `<link rel="preconnect" href="https://fonts.googleapis.com"/>\n` +
   `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>\n` +
-  `<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>\n`;
+  `<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>\n` +
+  // A member page's title is Inter (2026-11-14; the owner, after Home's
+  // greeting went to Inter: "make the other pages' titles Inter too"). It
+  // rides with the font because the pages that load Inter ARE the member
+  // pages: MARKET_CSS's own h1 is Georgia and is also the public pages',
+  // which keep it. `body h1` out-ranks that bare `h1` (and its 34px step at
+  // 640px) wherever this sits in the document; a page with a title rule of
+  // its own (.sp-head h1, h1.h, .pt-head h1) says the same thing there.
+  `<style>body h1{font-family:inherit;font-weight:600;font-size:var(--text-h1);line-height:1.2143;letter-spacing:-.02em}</style>\n`;
 
 // Paired so the mobile browser chrome agrees with the page it frames.
 const THEME_META =

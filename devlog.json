@@ -2,6 +2,12 @@
   {
     "date": "2026-11-13",
     "type": "improvement",
+    "title": "Home’s list is set in one typeface and four sizes, on one line",
+    "details": "The list beside Home’s map had grown two typefaces in nine sizes: Georgia for the greeting, for the big figures, for a date and for each group’s name, and Inter at five more sizes down to 11px, with a section’s name written three different ways (capitals with wide spacing, a Georgia word, capitals over a black rule). Now the whole panel is Inter, the greeting included, and everything under the greeting is in four sizes: 14 for a name or a value, 13 for the line under it, 12 for a caption or a tag, and 20 for a figure. Every section on every tab (At a glance, Coming up, What moved, Next, Owned, Firm buildings, Contacts) is named the same way, and nothing is in capitals. The layout follows one line too: Today’s sections were boxes whose words started further in than everything else on the panel, and they are now plain sections on the same left edge as the find box and the rows, with a thin rule between them. A group’s note (“$58.35M likely combined · your numbers stay private”) sits whole on its own line under the group’s name, where it used to break in two beside it. The panel that opens under a property and the firm’s contacts follow the same sizes. One thing was removed: the green “Owned” tag that repeated on every row under the “Owned” heading. No other words changed."
+  },
+  {
+    "date": "2026-11-13",
+    "type": "improvement",
     "title": "On a phone, your places are a bar at the bottom of the screen",
     "details": "Signed in on a phone, Home, Messages, Pipeline (or Sites), Markets, Comps, Permits and your account are now a bar along the bottom of the screen, an icon over a word, with the page you are on marked. Before, they were seven small text links in two rows at the top of every page, which took about 130px of the first screen and were hard to hit with a thumb. The account menu opens upward from the bar with taller rows, the Feedback button and the comp set on Your comps stand above the bar instead of over it, and pages start closer to the top of the screen. The Permit tracker also lost a doubled side margin on phones. Nothing changes on a computer, or for visitors who are not signed in."
   },

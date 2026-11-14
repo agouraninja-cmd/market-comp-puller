@@ -23,6 +23,95 @@ paths:
 > read "Your properties and comps" until 2026-10-13, when there stopped
 > being a /vault page at all; see below.)
 
+> **The list's type and its one left edge (2026-11-13; the owner, of the
+> panel beside the map: "there are too many different types of fonts and
+> font sizes and the layout is weird can you please fix it").** Read this
+> before the boxes below, which it amends: where they say a figure or a
+> group's name is Georgia, a label is in capitals, or a quiet Today is a
+> stack of cards in Next's shell, this is what the page does now. Built
+> straight (the ask was a fix, not options); the before-and-after pictures
+> are at https://claude.ai/artifact/63p8LpFQESKv3DEwG1HN9Q. Of the head
+> (the box below) only the greeting's face changed; where that box says
+> "the greeting 30px Georgia", it is 28px Inter now.
+> - **What was measured.** On an account like his (a firm of one, nine
+>   properties, nothing due) the panel set two typefaces in nine sizes:
+>   Georgia at 30 (the greeting), 24 (At a glance's figures and the opened
+>   pane's value), 19 (a calendar leaf's day), 17 (a group's name), 15.5
+>   ("No contacts yet") and 14 (a person's initials); Inter at 15, 14, 13,
+>   12 and 11. A section's name was written three ways: capitals with wide
+>   spacing ("AT A GLANCE", "NEXT"), a Georgia word ("Owned"), and capitals
+>   over a black rule ("CONTACTS").
+> - **One typeface: the panel has no Georgia.** The first build (2026-11-13)
+>   kept the greeting in Georgia as this page's title, like every member
+>   page's `h1`, and asked the owner; his answer the next day was "make the
+>   greeting Inter too". `.hm-title` is `--text-h1` (28px) at 600,
+>   `-.02em`, and names no face. It stands on the 34px line the Georgia 30
+>   stood on (`1.2143`, rounded up), so nothing under it moved and the
+>   head's alignment tests are unchanged. At 30px a long greeting ("Good
+>   afternoon, Christopher") broke in two in Inter, which is wider than
+>   Georgia; at 28 it fits. Home is now the one rail page whose title is
+>   not Georgia: that was said to the owner before he chose. The map's own
+>   things (the card over a pin, the empty-map card) and the first-building
+>   screen (`#hmFirst`, whose own greeting and heading are still Georgia)
+>   keep their type: they are not the list.
+> - **Four sizes under the greeting.** 14 (`--text-compact`: a row's name, a
+>   value, a sentence), 13 (`--text-small`: a row's second line, a helper
+>   line, a button, a section's name), 12 (`--text-label`: a caption, a tag,
+>   a count, the fine print) and 20 (`--text-subhead`: a figure, which is
+>   `.hm-fig b` and the opened pane's `.hs-vb` and nothing else). Nothing in
+>   the list is 11px (the tags and chips went from 11/600 to 12/500, their
+>   padding a pixel less so a row is no taller) and nothing is in capitals.
+>   The one 11px left on the panel is the firm's initials in the 28px tile
+>   on a narrow phone, the head's rule.
+> - **One section label**, one rule at the foot of the Home sheet under
+>   "The list's type": `.hm-bk, .hm-next-k, .hm-gh b, .hm-fold > summary`
+>   and People's Contacts label, 13px/600 `--ink-2`, sentence case. None of
+>   those may set a size, weight, face, case or colour in a rule of its own
+>   (that is how there came to be three); a new section takes one of these
+>   classes.
+> - **One left edge.** Today's quiet-day sections (`.hm-bc`) and Next
+>   (`.hm-next`) are sections on the list's line, not cards: as cards their
+>   words started 16px inside the line the head, the rows and the legal
+>   line start on, and Today was the one tab drawn in boxes. No border, no
+>   fill, no corner, no side padding; the 10px margin the head's test adds
+>   up stays. A 1px `--line` rule parts one section from the next, drawn by
+>   sibling rules that ask whether the one before SHOWS
+>   (`.hm-bc:not(.hidden) ~ .hm-bc`, `.hm-brief:not(.hidden) ~ .hm-next`),
+>   so a hidden section leaves no rule behind. Their rows lost the hairline
+>   between each (a rule is for sections; the busy day's rows and the
+>   property rows never had one).
+> - **A group's head on Properties** is its name and count on one line and
+>   its note whole on the line under (`.hm-gh` wraps; `.hm-gh small` is
+>   `flex: 0 0 100%`). Beside the name the Owned note broke in two ("your
+>   numbers stay / private" hanging under the count). A rule parts a group
+>   from the rows of the one above (`.hm-rows > .hm-gh:not(:first-child)`).
+> - **What the list borrows is restyled from the panel's side.** The pane
+>   under a property is home-sites.css's, shared with /sites, which has its
+>   own (Georgia) figures; the contacts are the desk's `.dk-` rules, which
+>   other panels use. The list's versions are `.hm-panel .hs-…` and
+>   `#hmPanePeople #deskContacts .dk-…` rules in index.html, so neither
+>   changes for anybody else. Not brought over: `.hs-sl` on a phone under
+>   420px (a stage's name, 11px so five stages fit across).
+> - **An owned row carries no "Owned" tag (2026-11-14, the owner: "remove
+>   the Owned tag").** Every row under the Owned heading said Owned again
+>   in green; `hmPropRow` now skips the chip for `stage === "owned"` as it
+>   already did for `"firm"`, and for the same reason (the heading, like the
+>   Firm tag, has said it). Who can see the row is still on every row. A
+>   deal keeps its stage chip, which differs from row to row; the card over
+>   a pin keeps "Owned", since no heading stands over it there; a passed
+>   deal under the Passed fold still says Passed (not asked for). No other
+>   words changed.
+> - Tests: `test/home-list-type.test.js` reads the Home sheet and holds it
+>   to all four (the faces, the sizes, the label rule, the edge), telling the
+>   list's rules from the map's by selector. Broken four ways to check it
+>   (a Georgia avatar, an 11px helper line, a boxed section, a label back in
+>   capitals): each went red. Pictures were taken on the stand-in database
+>   (`cn_session` cookie; Leaflet from a local copy) in four situations: a
+>   firm of one on a quiet day, a busy day with contacts, a development firm
+>   with deals and later dates, and an opened property; desktop, dark, phone.
+>   Georgia is not installed in a cloud session, so the greeting in those
+>   pictures is a stand-in serif.
+
 > **The head of Home's list: one row for the firm, one line down the panel
 > (2026-11-13; the owner, with a picture of his own Home: "The middle bar
 > where it says Jacob Adler and good morning looks off can you make it look
@@ -313,7 +402,8 @@ paths:
 >   all there is (`next && !brief`), Draft C's first-property Today.
 > - **`#hmBrief` is a quiet Today** (`hmDrawBrief()`, its one writer, called
 >   from `drawHomeMap` before `hmDrawNext`): `!hmItems.length &&
->   hmRows.length`. Up to three cards in Next's shell (`.hm-bc`), each only
+>   hmRows.length`. Up to three sections (`.hm-bc`; cards in Next's shell
+>   until the list's type box above, the same day), each only
 >   when it has something to say, all from what Home already read (no fetch,
 >   textContent only):
 >   - **At a glance** (`#hmGlance`, from two properties up):

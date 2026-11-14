@@ -203,8 +203,14 @@ function renderMessagesBody(boot) {
 .msg-mi small{margin-left:auto;color:var(--ink-faint);font-size:var(--text-tiny)}
 .msg-mi.danger,.msg-mi.danger svg{color:var(--red)}
 .msg-msep{height:1px;background:var(--hair);margin:4px 2px}
-.msg-scrim{position:fixed;inset:0;background:rgba(15,23,42,.42);z-index:59}
-.msg-menu.is-sheet,.msg-info.is-sheet{left:0!important;right:0;top:auto!important;bottom:0;width:auto;
+/* The sheet and its scrim stand over the phone bar (RAIL_CSS: a member's
+   places along the bottom of a phone, z-index 1050) and under the dialogs
+   (1200). At 60 the sheet opened behind the bar: its last row and 54px of
+   it were covered, and the bar stayed live under a dimmed page (the owner,
+   2026-11-14: "fix the messages menu opening under the bottom bar"). The
+   menu beside a mouse pointer keeps 60; no bar is there. */
+.msg-scrim{position:fixed;inset:0;background:rgba(15,23,42,.42);z-index:1059}
+.msg-menu.is-sheet,.msg-info.is-sheet{z-index:1060;left:0!important;right:0;top:auto!important;bottom:0;width:auto;
   border-radius:16px 16px 0 0;padding:8px 14px calc(18px + env(safe-area-inset-bottom,0px));
   box-shadow:0 -10px 30px rgba(0,0,0,.22);max-height:80vh;overflow-y:auto}
 .msg-menu.is-sheet:before,.msg-info.is-sheet:before{content:"";display:block;width:38px;height:4px;

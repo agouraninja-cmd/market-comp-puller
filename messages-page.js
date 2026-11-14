@@ -412,7 +412,7 @@ function renderMessagesBody(boot) {
 <section style="padding:28px 0 0">
   <!-- ONE heading. The eyebrow above this said Messages too, directly over an
        h1 saying Messages, under a rail row saying Messages. -->
-  <h1 style="margin:0 0 4px;font-size:26px;letter-spacing:-.01em">Messages</h1>
+  <h1 style="margin:0 0 4px">Messages</h1>
   <!-- Reports joined on 2026-10-08, from Home's Reports tab: a shared report
        is correspondence too, somebody sent it to somebody. -->
   <p style="margin:0;color:var(--ink-2);max-width:66ch;font-size:14px;line-height:1.6">

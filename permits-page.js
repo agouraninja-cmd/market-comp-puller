@@ -83,7 +83,7 @@ function renderPermitsBody(boot) {
 @media (max-width:640px){main.wrap.pt-page{margin:0 0 24px;padding:0}}
 .pt-page .kicker{font-size:var(--text-tiny);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
 .pt-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1.5px solid var(--ink);padding-bottom:8px;margin-top:4px}
-.pt-head h1{margin:0;font-family:var(--serif);font-weight:400;font-size:var(--text-h1);line-height:1.15;color:var(--ink)}
+.pt-head h1{margin:0;font-weight:600;font-size:var(--text-h1);line-height:1.2143;letter-spacing:-.02em;color:var(--ink)}
 .pt-cmp{font-size:var(--text-small);color:var(--ink-2);white-space:nowrap}
 .pt-cmp:hover{color:var(--ink)}
 .pt-sub{font-size:var(--text-small);color:var(--ink-3);margin:10px 0 0;max-width:88ch}

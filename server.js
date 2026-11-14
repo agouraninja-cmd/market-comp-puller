@@ -13216,6 +13216,39 @@ ${RAIL_CSS}
   .hdr nav .dd{left:16px;right:16px;min-width:0}
   .hdr nav .dd .em{max-width:none}
 }
+/* A stranger's header on a phone: two rows, not three (2026-11-14, the
+   owner: "fix the signed-out header on mobile too"). Under about 407px the
+   bar was the brand, then Home / Explore / Tools / Log in, then the red
+   button alone on a third row: 138px before the page began. Now the red
+   button stands beside the brand, top right, and Log in sits at the right
+   end of the links' row, under it: the two account actions in one column,
+   the navigation in the other, 86px.
+   - Home stays. It is the owner's (marketBar's comment), and hiding it
+     would not have bought a row anyway: the home page has no Home link and
+     was two rows.
+   - The button is placed, not moved: the markup and the tab order are
+     untouched (routes.test.js pins the nav's first bytes), and .wrap is
+     already the positioned box on a phone (the menus' rule above). 11px is
+     the 14px top padding plus half the 28px brand, less half the 34px
+     button, so the two share a centre line.
+   - The nav takes the whole second row at every width in this block.
+     Without that, from about 420px the links fit beside the brand and ran
+     under the placed button.
+   - Keyed on the END of the two signed-out links' addresses, so a member's
+     bar (the phone bar in RAIL_CSS, or NAV_SHELL=bar) is not touched: it
+     has neither link. The end and not the whole address, because this
+     stylesheet is sent to members too, and three suites refuse a member's
+     page that contains either address anywhere in its bytes (a member must
+     never be told to create an account or log in); the whole address in a
+     selector read to them as exactly that.
+   - 559.98px is where the whole bar stops fitting on one line (149px of
+     brand, 375px of nav, 32px of gutter). */
+@media (max-width:559.98px){
+  .hdr .wrap{padding-top:14px;padding-bottom:12px}
+  .hdr nav{flex:1 1 100%}
+  .hdr nav>a[href$="=signin"]{margin-left:auto}
+  .hdr nav>a.btn.sm[href$="=signup"]{position:absolute;top:11px;right:16px}
+}
 /* Type */
 h1{font-family:var(--serif);font-weight:500;font-size:var(--text-h1);line-height:1.15;
   letter-spacing:-.005em;color:var(--ink);margin:10px 0 6px}

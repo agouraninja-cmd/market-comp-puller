@@ -6,6 +6,12 @@
     "details": "After Home’s greeting went to Inter, the titles of the other pages you work in were still Georgia, at four different sizes. Messages, Pipeline, Sites, Markets, Your comps, Run a report, Permit tracker and Buildings now title themselves the way Home greets you: Inter, bold, 28px. The public pages a visitor sees before signing in keep their Georgia titles. The smaller headings inside these pages are unchanged."
   },
   {
+    "date": "2026-11-14",
+    "type": "improvement",
+    "title": "The header takes two rows on a phone for visitors who are not signed in, not three",
+    "details": "On a phone, the public pages (the home page, FAQ, pricing, markets, the brokers and lenders pages) opened with the logo, then a row of links, then the red Create account button alone on a third row: 138px before the page began. The button now sits beside the logo at the top right, and Log in sits at the right end of the links row under it, so the header is 87px. Nothing was removed: Home, Explore, Tools, Log in and Create account are all still there. The sign-up page and shared reports got the same treatment (131px to 88px): on a phone, a visitor who is not signed in sees Explore, Home, Markets and Sign in there, and no longer the four places that need an account (Messages, Pipeline, Comps, Permits). Nothing changes on a computer or for signed-in members."
+  },
+  {
     "date": "2026-11-13",
     "type": "improvement",
     "title": "Home’s list is set in one typeface and four sizes, on one line",

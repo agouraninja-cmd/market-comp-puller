@@ -52,7 +52,7 @@ function renderBuildingsBody(boot) {
 .bl-shown{font-size:var(--text-label);color:var(--ink-3);font-variant-numeric:tabular-nums}
 .bl-row{display:flex;align-items:baseline;gap:10px;padding:8px 0;border-bottom:1px solid var(--hair);font-size:var(--text-compact)}
 .bl-row:last-child{border-bottom:0}
-.bl-addr{flex:1 1 auto;min-width:0;color:var(--ink);font-family:var(--serif);
+.bl-addr{flex:1 1 auto;min-width:0;color:var(--ink);font-weight:600;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bl-meta{flex:0 0 auto;font-size:var(--text-tiny);color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .bl-rm{appearance:none;border:0;background:none;padding:0;font:inherit;font-size:var(--text-tiny);color:var(--ink-3);

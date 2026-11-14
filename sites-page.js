@@ -44,7 +44,7 @@ function renderSitesBody(boot) {
 .sp-head h1{margin:0;font-weight:600;font-size:var(--text-h1);line-height:1.2143;letter-spacing:-.02em;color:var(--ink)}
 .sp-sub{font-size:var(--text-small);color:var(--ink-3);margin:10px 0 0;max-width:88ch}
 .sp-figs{display:flex;flex-wrap:wrap;gap:6px 22px;margin:14px 0 0;font-size:var(--text-small);color:var(--ink-3)}
-.sp-figs b{display:block;font-family:var(--serif);font-weight:400;font-size:22px;color:var(--ink);font-variant-numeric:tabular-nums}
+.sp-figs b{display:block;font-weight:600;font-size:var(--text-subhead);letter-spacing:-.01em;color:var(--ink);font-variant-numeric:tabular-nums}
 /* The script hides these two with the hidden attribute, and each sets a
    display, which out-ranks the browser's own rule for it: until 2026-11-13 an
    empty Sites page drew a row of dashes and four empty columns around its
@@ -83,13 +83,13 @@ function renderSitesBody(boot) {
 /* The open deal, worked under the board with Home's pane (home-sites.css). */
 .sp-open{margin-top:18px;scroll-margin-top:16px}
 .sp-oh{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 12px;padding:14px 14px 10px;border:1px solid var(--edge);border-bottom:0;border-radius:12px 12px 0 0;background:var(--card)}
-.sp-oh h2{margin:0;font-family:var(--serif);font-weight:400;font-size:21px;color:var(--ink);overflow-wrap:anywhere}
+.sp-oh h2{margin:0;font-weight:600;font-size:var(--text-subhead);letter-spacing:-.01em;color:var(--ink);overflow-wrap:anywhere}
 .sp-oh .c{font-size:var(--text-small);color:var(--ink-3)}
 .sp-oh button{appearance:none;border:0;background:none;padding:0;font:inherit;font-size:var(--text-small);color:var(--ink-2);cursor:pointer}
 .sp-oh button:hover{color:var(--ink);text-decoration:underline}
 .sp-open .hs-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 .sp-empty{margin-top:20px;padding:26px 22px;border:1px dashed var(--edge);border-radius:var(--r-2xl);background:var(--card);text-align:center}
-.sp-empty h2{margin:0 0 6px;font-family:var(--serif);font-weight:400;font-size:21px;color:var(--ink)}
+.sp-empty h2{margin:0 0 6px;font-weight:600;font-size:var(--text-subhead);letter-spacing:-.01em;color:var(--ink)}
 .sp-empty p{margin:0 auto 14px;max-width:52ch;font-size:var(--text-compact);line-height:1.5;color:var(--ink-3)}
 .sp-fold{margin-top:22px;border-top:1px solid var(--line)}
 .sp-fold>summary{padding:12px 0;cursor:pointer;font-size:var(--text-compact);font-weight:600;color:var(--ink-2)}

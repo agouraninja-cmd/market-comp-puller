@@ -149,7 +149,7 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
 .pw-sub{flex:1 1 320px;margin:0;font-size:var(--text-compact);color:var(--ink-2)}
 .pw-btns{display:flex;gap:8px}
 .pw-pro{max-width:560px;padding:4px 0 16px}
-.pw-pro h2{margin:0;font-family:var(--serif);font-weight:400;font-size:var(--text-subhead);color:var(--ink)}
+.pw-pro h2{margin:0;font-weight:600;font-size:var(--text-subhead);letter-spacing:-.01em;color:var(--ink)}
 .pw-pro p{margin:6px 0 14px;font-size:var(--text-compact);color:var(--ink-2)}
 .pw-form{border-top:1px solid var(--line);padding:16px 0 18px}
 .pw-grid{display:flex;flex-wrap:wrap;gap:10px}
@@ -234,7 +234,7 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
 .pa-mapnote{font-size:var(--text-label);color:var(--ink-3);margin:6px 0 4px}
 .leaflet-tooltip.pa-count,[data-theme="dark"] .leaflet-tooltip.pa-count{background:none;border:0;box-shadow:none;color:#fff;font-weight:700;font-size:var(--text-tiny);padding:0}
 .leaflet-tooltip.pa-count:before{display:none}
-.pa-h{margin:0 0 10px;font-family:var(--serif);font-weight:400;font-size:18px;color:var(--ink)}
+.pa-h{margin:0 0 10px;font-weight:600;font-size:18px;letter-spacing:-.01em;color:var(--ink)}
 .hide{display:none}
 @media (max-width:760px){
   .pt-two{grid-template-columns:minmax(0,1fr);gap:14px}

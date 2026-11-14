@@ -12,6 +12,12 @@
     "details": "The list beside Home’s map had grown two typefaces in nine sizes: Georgia for the greeting, for the big figures, for a date and for each group’s name, and Inter at five more sizes down to 11px, with a section’s name written three different ways (capitals with wide spacing, a Georgia word, capitals over a black rule). Now the whole panel is Inter, the greeting included, and everything under the greeting is in four sizes: 14 for a name or a value, 13 for the line under it, 12 for a caption or a tag, and 20 for a figure. Every section on every tab (At a glance, Coming up, What moved, Next, Owned, Firm buildings, Contacts) is named the same way, and nothing is in capitals. The layout follows one line too: Today’s sections were boxes whose words started further in than everything else on the panel, and they are now plain sections on the same left edge as the find box and the rows, with a thin rule between them. A group’s note (“$58.35M likely combined · your numbers stay private”) sits whole on its own line under the group’s name, where it used to break in two beside it. The panel that opens under a property and the firm’s contacts follow the same sizes. One thing was removed: the green “Owned” tag that repeated on every row under the “Owned” heading. No other words changed."
   },
   {
+    "date": "2026-11-14",
+    "type": "fix",
+    "title": "A new publisher's first comps wait for a one-time review",
+    "details": "Publishing a comp from Your comps earns the green Verified badge in other people's reports, and the only thing asked for was a firm name and a license number that nobody checked. Any new account, including one on the free trial, could type both and have an invented deal show as Verified straight away. Now the first comps an account publishes go to the review list on the admin page instead, marked In review on the member's own page, and are in no report until one is approved. The review list shows the license number to check, and an email says a new publisher is waiting. Once one of their comps is approved, later ones publish right away as before. Until then at most five can be waiting at a time. Members who already had an approved published comp are not affected. This reverses the earlier choice to publish immediately. There was no sign anyone had used this; it was found by reading the code."
+  },
+  {
     "date": "2026-11-13",
     "type": "improvement",
     "title": "On a phone, your places are a bar at the bottom of the screen",

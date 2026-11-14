@@ -1606,6 +1606,10 @@ const rateHits = new Map();
 const BROKER_ALERT_SUPPRESS = new Map(); // "userId|market|type" -> lastSentMs
 const BROKER_ALERT_WINDOW_MS = 60 * 60 * 1000;
 
+// When the owner was last told a publisher is waiting for review (userId ->
+// ms). See notifyPublishReview beside the vault publish routes.
+const PUBLISH_REVIEW_NOTIFIED = new Map();
+
 function clientIp(req) {
   // Hosts like Render sit behind a proxy; the proxy APPENDS the real client to
   // x-forwarded-for, so the last entry is the trustworthy one (earlier entries
@@ -18489,6 +18493,10 @@ function subRow(x){
   var who=esc(x.broker_name)+(x.broker_company?" ("+esc(x.broker_company)+")":"")+" · "+esc(x.broker_email);
   var comp=esc(x.address)+" — "+esc(x.property_type||"?")+(x.transaction?" · "+esc(x.transaction):"")+" · "+esc(x.price_or_rate)+(x.deal_date?" · "+esc(x.deal_date):"");
   var notes=x.notes?"<div class=muted>"+esc(String(x.notes).slice(0,160))+"</div>":"";
+  // A member's own comp, waiting on the one-time publisher review: the license
+  // number is the thing to check before approving.
+  if(x.member)notes="<div class=muted>Published by a member · License "+(x.license?esc(x.license):"not on file")+
+    ". Check it with the state before approving; approving one lets their later comps go live without review.</div>"+notes;
   return "<tr><td style='text-align:left'><div style='font-weight:600'>"+comp+"</div><div class=muted>"+who+"</div>"+notes+"</td>"+
     "<td style='white-space:nowrap'><button class='btn ap' data-id='"+Number(x.id)+"'>Approve</button> "+
     "<button class='btn rj mute' data-id='"+Number(x.id)+"'>Reject</button></td></tr>";
@@ -20380,17 +20388,26 @@ async function attachCitedCounts(rows) {
     // an in.() list long enough to be refused as a URL, and the failure would
     // be silent because this whole function swallows its errors.
     const counts = new Map();
+    const reviews = new Map();
     for (let i = 0; i < ids.length; i += 200) {
       const slice = ids.slice(i, i + 200);
       const subs = await sbRequest("GET",
         `comp_submissions?id=in.(${slice.map((v) => encodeURIComponent(v)).join(",")})` +
-        "&select=id,cited_count");
-      for (const sub of subs || []) counts.set(String(sub.id), Number(sub.cited_count) || 0);
+        "&select=id,cited_count,status");
+      for (const sub of subs || []) {
+        counts.set(String(sub.id), Number(sub.cited_count) || 0);
+        reviews.set(String(sub.id), sub.status);
+      }
     }
     for (const r of rows || []) {
       if (!r || r.published_submission_id == null) continue;
       const n = counts.get(String(r.published_submission_id));
       if (n != null) r.cited_count = n;
+      // Where the comp stands with the owner's review (2026-11-14), so the
+      // page never calls a comp nobody has approved "Published". Only the two
+      // not-public answers are named; approved is the absence of the field.
+      const st = reviews.get(String(r.published_submission_id));
+      if (st === "pending" || st === "rejected") r.review = st;
     }
   } catch (err) {
     console.error("cited_count read failed:", err.message);
@@ -20494,6 +20511,12 @@ async function vaultReadPayload(req, params) {
     counts: {
       returned: rows.length,
       published: rows.filter((r) => r.published).length,
+      // Of those, the ones the owner has not approved (pending or rejected),
+      // so the page's Published figure counts only what is really public.
+      // `published` itself stays "marked published in the book": the page
+      // keeps a member's publish controls on that count, and a comp in
+      // review must stay withdrawable.
+      inReview: rows.filter((r) => r.published && r.review).length,
     },
     markets: [...new Set(rows.map((r) => r.market).filter(Boolean))].sort(),
     types: [...new Set(rows.map((r) => r.property_type).filter(Boolean))].sort(),
@@ -26444,6 +26467,60 @@ const server = http.createServer((req, res) =>
       return true;
     }
 
+    // Has the owner approved anything this account published, and how many of
+    // its published comps are still waiting? VAULT.publisherStanding has the
+    // rule and the reason; this is the read behind it, and both publish routes
+    // ask it so they cannot drift apart.
+    //
+    // Starts from the CALLER's own comps (user_id in the filter, always) and
+    // only then reads comp_submissions by those ids, never by email: a
+    // submission somebody else wrote under this address must not approve
+    // anyone. THROWS on a failed read, which both routes turn into "that
+    // didn't go through": guessing "approved" on an error is the hole this
+    // closes, and guessing "pending" would put a trusted broker's comp in the
+    // queue with no way for them to know why.
+    const vaultPublisherStanding = async (userId) => {
+      const mine = (await sbRequest("GET",
+        `broker_comps?user_id=eq.${encodeURIComponent(userId)}` +
+        `&published=is.true&select=id,published_submission_id&limit=5000`)) || [];
+      const ids = [];
+      for (const c of mine) {
+        const id = c && c.published_submission_id;
+        if (id != null && String(id).trim() !== "" && ids.indexOf(id) < 0) ids.push(id);
+      }
+      const statuses = [];
+      for (let i = 0; i < ids.length; i += 100) {
+        const subs = (await sbRequest("GET",
+          `comp_submissions?id=in.(${pgInList(ids.slice(i, i + 100))})&select=id,status`)) || [];
+        for (const s of subs) statuses.push(s.status);
+      }
+      return VAULT.publisherStanding(statuses);
+    };
+
+    // One note to the owner when comps land in the review queue, carrying the
+    // license number they are being asked to check. At most one an hour per
+    // publisher: a broker publishing five comps one click at a time is one
+    // review, not five emails. In memory, like BROKER_ALERT_SUPPRESS, and for
+    // its reason: a restart forgiving the window costs a repeat, never a miss.
+    const notifyPublishReview = (user, by, license, comps) => {
+      const now = Date.now();
+      const last = PUBLISH_REVIEW_NOTIFIED.get(user.id) || 0;
+      if (now - last < 60 * 60 * 1000) return;
+      PUBLISH_REVIEW_NOTIFIED.set(user.id, now);
+      notifyByEmail(
+        `New publisher waiting for review: ${by}`,
+        [
+          ["Credit name", by],
+          ["License number", license],
+          ["Account", user.email],
+          ["Comps waiting", String(comps.length)],
+          ["First comp", comps[0] && comps[0].address],
+          ["Next step", "Check the license number with the state that issued it, then approve or reject " +
+            `the comp under Submissions on ${SITE_URL}/admin. Approving one lets this publisher's later comps go live without review.`],
+        ]
+      );
+    };
+
     // --- Publish / unpublish one comp ---------------------------------------
     //
     // Ecosystem Plan §4: the ONE sanctioned door through the privacy wall, and
@@ -26508,8 +26585,18 @@ const server = http.createServer((req, res) =>
           }
           const by = gateBy.by;
 
+          // A publisher the owner has not approved yet goes to the review
+          // queue instead of straight into reports, a few comps at a time.
+          const standing = await vaultPublisherStanding(user.id);
+          if (standing.room < 1) {
+            return sendJson(res, 400, { error: VAULT.REVIEW_FULL_REASON, code: "review_pending" });
+          }
+
           const inserted = await sbRequest("POST", "comp_submissions",
-            [VAULT.submissionRowFrom(comp, { creditName: by, email: user.email })],
+            [VAULT.submissionRowFrom(comp, {
+              creditName: by, email: user.email,
+              status: standing.approved ? "approved" : "pending",
+            })],
             { prefer: "return=representation" });
           const subId = inserted && inserted[0] && inserted[0].id;
           if (!subId) throw new Error("comp_submissions insert returned no id");
@@ -26523,8 +26610,15 @@ const server = http.createServer((req, res) =>
           // report for that market+type is now stale. The cache key already
           // hashes a signature of the offered verified comps, so this is
           // self-correcting — noted here so nobody adds a manual bust later.
-          console.log(`📤 Vault comp published: ${comp.address} by ${by} (user ${user.id}, submission ${subId})`);
-          return sendJson(res, 200, { ok: true, published: true, creditedTo: by });
+          console.log(`📤 Vault comp ${standing.approved ? "published" : "sent for review"}: ${comp.address} by ${by} (user ${user.id}, submission ${subId})`);
+          if (!standing.approved) notifyPublishReview(user, by, gateBy.license, [comp]);
+          return sendJson(res, 200, {
+            ok: true, published: true, creditedTo: by,
+            // `inReview` rather than a different `published`: the comp IS
+            // marked published in the member's book (so it can be withdrawn),
+            // it is the public half that waits.
+            ...(standing.approved ? {} : { inReview: true }),
+          });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault publish failed:", err.message);
@@ -26595,12 +26689,22 @@ const server = http.createServer((req, res) =>
             `broker_comps?id=in.(${batch.map((i) => encodeURIComponent(i)).join(",")})` +
             `&user_id=eq.${encodeURIComponent(user.id)}&limit=${batch.length}`)) || [];
 
+          // The single route's review rule, asked once for the batch: until the
+          // owner has approved this publisher, only the first few comps go
+          // out, as pending, and the rest are skipped with the reason.
+          const standing = await vaultPublisherStanding(user.id);
+          const subStatus = standing.approved ? "approved" : "pending";
+
           const skipped = [];
           const ready = [];
           for (const comp of rows) {
             if (comp.published) continue;                 // idempotent, not an error
             const gate = VAULT.canPublish(comp);
             if (!gate.ok) { skipped.push({ id: comp.id, address: comp.address, reason: gate.reason }); continue; }
+            if (ready.length >= standing.room) {
+              skipped.push({ id: comp.id, address: comp.address, reason: VAULT.REVIEW_FULL_REASON });
+              continue;
+            }
             ready.push(comp);
           }
 
@@ -26622,7 +26726,7 @@ const server = http.createServer((req, res) =>
               let subId = null;
               try {
                 const inserted = await sbRequest("POST", "comp_submissions",
-                  [VAULT.submissionRowFrom(comp, { creditName: by, email: user.email })],
+                  [VAULT.submissionRowFrom(comp, { creditName: by, email: user.email, status: subStatus })],
                   { prefer: "return=representation" });
                 subId = inserted && inserted[0] && inserted[0].id;
                 if (!subId) throw new Error("comp_submissions insert returned no id");
@@ -26651,9 +26755,13 @@ const server = http.createServer((req, res) =>
           };
           await Promise.all(Array.from({ length: Math.min(6, ready.length) }, worker));
 
-          console.log(`📤 Vault bulk publish: ${published} of ${rows.length} by ${by} (user ${user.id})`);
+          console.log(`📤 Vault bulk publish: ${published} of ${rows.length} by ${by} (user ${user.id}, ${subStatus})`);
+          if (!standing.approved && published) {
+            notifyPublishReview(user, by, gateBy.license, ready);
+          }
           return sendJson(res, 200, {
             ok: true, published, creditedTo: by,
+            ...(standing.approved ? {} : { inReview: true }),
             skipped: skipped.concat(failed).slice(0, 50),
             skippedCount: skipped.length + failed.length,
             remaining,
@@ -27849,6 +27957,32 @@ const server = http.createServer((req, res) =>
         (statusOk === "all" ? "" : `&status=eq.${statusOk}`) +
         "&select=id,ts,status,broker_name,broker_email,broker_phone,broker_company," +
         "address,property_type,transaction,deal_date,size_sqft,price_or_rate,cap_rate,notes,cited_count");
+      // A row a member published from their own comps is waiting on ONE
+      // question, whether the license number on their profile is real, so the
+      // number rides the row (2026-11-14). The public form's rows have no
+      // account behind them and get nothing. Best-effort: the queue must still
+      // open if this lookup fails, the review email carries the number too.
+      try {
+        const ids = (rows || []).map((r) => r.id).filter((v) => v != null);
+        if (ids.length) {
+          const links = (await sbRequest("GET",
+            `broker_comps?published_submission_id=in.(${pgInList(ids)})` +
+            `&select=published_submission_id,user_id&limit=${ids.length}`)) || [];
+          const userIds = [...new Set(links.map((l) => l.user_id).filter(Boolean))];
+          if (userIds.length) {
+            const profiles = (await sbRequest("GET",
+              `broker_profiles?user_id=in.(${pgInList(userIds)})&select=user_id,license_number`)) || [];
+            const licenseOfUser = new Map(profiles.map((p) => [String(p.user_id), VAULT.licenseOf(p)]));
+            const userOfSub = new Map(links.map((l) => [String(l.published_submission_id), String(l.user_id)]));
+            for (const r of rows) {
+              const uid = userOfSub.get(String(r.id));
+              if (uid) { r.member = true; r.license = licenseOfUser.get(uid) || ""; }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("admin submissions: license lookup failed:", err.message);
+      }
       return sendJson(res, 200, { db: true, rows: rows || [] });
     })().catch((err) => { console.error("admin submissions error:", err); sendJson(res, 500, { error: "Could not load submissions." }); });
     return;

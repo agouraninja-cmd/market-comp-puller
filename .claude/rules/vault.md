@@ -324,9 +324,10 @@ paths:
     input the vault exists to refuse) still pulled the comp from the public
     records and stripped its firm credit before the 400 was ever returned —
     the broker saw only a parse error and had no way to know what had
-    happened, and if the submission had already been approved, republishing
-    creates a fresh PENDING row needing manual owner re-approval, so the
-    credit does not come back on its own. DELETE has no validation step that
+    happened, and republishing writes a NEW submission row, which is
+    `pending` again if that comp was the publisher's only approved one (see
+    "A publisher is reviewed once" below), so the credit does not always
+    come back on its own. DELETE has no validation step that
     can fail, so it stays retract-first.
     **An address edit nulls `property_id`** before the write, specifically
     when `row.address_key !== comp.address_key`, never on an untouched
@@ -593,6 +594,54 @@ paths:
     through the module-level `lastGut`/`lastReps` rather than a changed return
     type, because the return value is the outlier map the table reads. Four
     further rules:
+    - **A publisher is reviewed once** (2026-11-14, the owner's call, which
+      reverses the earlier "immediate publication"). `submissionRowFrom` wrote
+      every published comp as `approved`, and the license number
+      `canPublishAs` asks for is self-typed, so any account that could open
+      its comps (a 30-day trial included) could type a firm name and "123" and
+      have an invented deal served as "Verified · via \<firm\>" with nobody
+      having looked. Now both publish routes ask `vaultPublisherStanding`
+      (server.js) and write `pending` until the owner has approved one of the
+      account's published comps; the verified layer reads `status=eq.approved`,
+      so a pending row is in no report, no market credit and no lead coverage.
+      Five rules:
+      - **Standing is derived, never stored** (`publisherStanding` in
+        `broker-vault.js`): approved while at least one of the caller's OWN
+        published comps has an approved submission. No column and no
+        migration. It is read from `broker_comps` by `user_id` and only then
+        from `comp_submissions` by those ids, **never by email**: an approved
+        row from the public form under the same address approves nobody
+        (rule 16's reason). The edge it accepts: a broker who withdraws or
+        edits their only approved comp is reviewed again on the next one.
+        Accounts with an approved published comp before this shipped keep
+        publishing directly; nobody reviewed those, so look at
+        `/api/admin/submissions?status=approved` if that ever matters.
+      - **At most `PUBLISH_REVIEW_CAP` (5) unapproved comps at a time**,
+        rejected ones counted, so a refused publisher cannot refill the
+        queue. The single route answers 400 `review_pending`; publish-many
+        sends what fits and skips the rest with `REVIEW_FULL_REASON`.
+      - **The builder fails closed**: `submissionRowFrom` writes `approved`
+        only for the literal option `status: "approved"`, and `pending` for
+        anything else, an omitted option included. The standing read throws
+        on a database error and the route answers 502, never a guess.
+      - **The member's page never says Published for it.** `attachCitedCounts`
+        also reads `status` and sets the derived `review` field (`pending` or
+        `rejected`, absent once approved; `DERIVED_FIELDS` in `vault-api.js`).
+        `publishCell` and the list badge say "In review" / "Not approved"
+        with no green, and keep `data-on` so the same click withdraws.
+        `counts.published` still counts them (the page keeps a member's
+        publish controls on `pubCount`); `counts.inReview` is subtracted for
+        the Published figure, and the line under it says "N in review".
+      - **The owner's side is the existing queue.** `/api/admin/submissions`
+        marks a member's row (`member`, `license`, looked up through
+        `broker_comps.published_submission_id`, best-effort) so `/admin` shows
+        the number to check, and `notifyPublishReview` mails the owner once
+        an hour per publisher at most, from the request, not a timer.
+        Approving is the same `POST /api/admin/submission-status` as a form
+        submission, one row at a time; there is no cascade to the other
+        waiting rows.
+      Pinned by `test/vault-publish-review-run.test.js` and three tests in
+      `test/vault-page.test.js`.
     - **What publishing gave back** (2026-08-17). `comp_submissions.cited_count`
       has existed since migration 003 and `bumpCitedCounts` has incremented it
       on every earned badge ever since — and it was rendered in exactly one

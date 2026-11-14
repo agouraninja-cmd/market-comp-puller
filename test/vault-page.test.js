@@ -41,7 +41,8 @@ function comp(o) {
 function boot(comps, identity, extra) {
   return { s: 200, j: {
     comps, uploads: [],
-    counts: { returned: comps.length, published: comps.filter((c) => c.published).length },
+    counts: { returned: comps.length, published: comps.filter((c) => c.published).length,
+      inReview: comps.filter((c) => c.published && c.review).length },
     markets: [...new Set(comps.map((c) => c.market))],
     types: [...new Set(comps.map((c) => c.property_type))],
     // The credit identity, as vaultReadPayload serves it. Default is the
@@ -3497,6 +3498,40 @@ test("the spreadsheet shows the same count as the compact table", async () => {
   await tick();
   assert.match(doc.getElementById("tbody").innerHTML, /class="cites"[^>]*>2</,
     "one builder feeds both tables, so the two can never disagree");
+});
+
+// ---------------------------------------------------------------------------
+// A publisher is reviewed once (2026-11-14)
+//
+// A new publisher's first comps wait for the owner to check the license
+// number. Until then the comp is in nobody's report, so the page must not call
+// it Published or paint it green, and it must still be withdrawable.
+// ---------------------------------------------------------------------------
+
+test("a comp waiting on review says In review, not Published", async () => {
+  const { doc } = await runPage([comp({ id: "c1", published: true, review: "pending" })]);
+  const body = doc.getElementById("tbody").innerHTML;
+  assert.match(body, />In review</);
+  assert.ok(!/>Published</.test(body), "nothing unreviewed may read as published");
+  assert.ok(!body.includes('class="pubbtn on"'), "green is for a comp that is really public");
+  assert.match(body, /data-pub="c1" data-on="1"/, "the same click still withdraws it");
+});
+
+test("a comp that was not approved says so", async () => {
+  const { doc } = await runPage([comp({ id: "c1", published: true, review: "rejected" })]);
+  const body = doc.getElementById("tbody").innerHTML;
+  assert.match(body, />Not approved</);
+  assert.ok(!/>Published</.test(body));
+});
+
+test("the Published figure counts only what is public, and names what is waiting", async () => {
+  const { doc } = await runPage([
+    comp({ id: "c1", published: true }),
+    comp({ id: "c2", published: true, review: "pending" }),
+    comp({ id: "c3", published: true, review: "pending" }),
+  ]);
+  assert.equal(doc.getElementById("cPub").textContent, "1");
+  assert.equal(doc.getElementById("cPubSub").textContent, "2 in review");
 });
 
 // ---------------------------------------------------------------------------

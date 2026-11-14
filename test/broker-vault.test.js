@@ -949,9 +949,18 @@ test("publishing stringifies the numbers comp_submissions stores as text", () =>
   assert.equal(row.size_sqft, "84000");
 });
 
-test("a published row lands approved, credited, and lower-cased by email", () => {
-  const row = submissionRowFrom(vaultComp(), { creditName: "Adler Industrial", email: "  Broker@Firm.COM " });
-  assert.equal(row.status, "approved", "the owner chose immediate publication");
+test("a published row lands credited and lower-cased by email, approved only when asked", () => {
+  // Until 2026-11-14 this row was ALWAYS approved ("the owner chose immediate
+  // publication"). The owner reversed that for a publisher nobody has reviewed
+  // yet: the route passes "approved" only once one of the account's published
+  // comps has been approved, and the builder's own default is pending. See
+  // test/vault-publish-review-run.test.js for the route half.
+  assert.equal(
+    submissionRowFrom(vaultComp(), { creditName: "Adler Industrial", email: "b@c.com" }).status,
+    "pending", "an unstated status must never publish");
+  const row = submissionRowFrom(vaultComp(),
+    { creditName: "Adler Industrial", email: "  Broker@Firm.COM ", status: "approved" });
+  assert.equal(row.status, "approved");
   assert.equal(row.broker_company, "Adler Industrial");
   assert.equal(row.broker_name, "Adler Industrial");
   // attachVerifiedAttribution looks a profile up by lowercased email; a stray

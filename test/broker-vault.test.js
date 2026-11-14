@@ -1800,9 +1800,12 @@ test("VAULT_FIELD_KEYS is template plus optional spec, nothing else", () => {
   assert.deepEqual(VAULT_FIELD_KEYS, [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS]);
 });
 
-test("EXTRACT_KEYS is the vault fields minus lat and lng", () => {
+test("EXTRACT_KEYS is the vault fields minus lat, lng and source", () => {
+  // source (063) names the document a comp came from: the member says it,
+  // the reader never guesses it from a column headed "Source".
   assert.deepEqual(EXTRACT_KEYS, [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS]
-    .filter((k) => k !== "lat" && k !== "lng"));
+    .filter((k) => k !== "lat" && k !== "lng" && k !== "source"));
+  assert.ok(!EXTRACT_KEYS.includes("source"));
   assert.ok(!EXTRACT_KEYS.includes("lat"));
   assert.ok(!EXTRACT_KEYS.includes("lng"));
   assert.ok(EXTRACT_KEYS.includes("address"));

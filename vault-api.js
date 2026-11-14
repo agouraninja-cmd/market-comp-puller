@@ -116,6 +116,8 @@ const API_COMP_FIELDS = Object.freeze([
   "tenancy",
   "year_built",
   "notes",
+  // Which document the comp came from (063). The member's own input.
+  "source",
   "published",
   "published_at",
   "created_at",

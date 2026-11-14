@@ -84,7 +84,8 @@
     "price", "price_per_sqft", "cap_rate",
     "rent_psf", "rent_basis", "lease_type", "rent_psf_yr",
     "lease_expiry", "option_notice_date",
-    "tenancy", "notes",
+    // source (063): which document THIS deal came from, never the building's.
+    "tenancy", "notes", "source",
     "price_per_unit", "price_per_acre",
   ]);
 

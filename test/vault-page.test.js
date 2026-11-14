@@ -5923,3 +5923,66 @@ test("the promise is made once at the foot: the trust line for an open book, the
   // /pipeline never showed it.
   assert.match(renderVaultHTML(boot([comp({})]), { page: "pipeline" }), /<p class="vfoot hide" id="vFoot">/);
 });
+
+// ---------------------------------------------------------------------------
+// Where a comp came from (migration 063, 2026-11-14)
+//
+// A lender's comps come out of appraisals, and a credit file asks which one.
+// That lived in the note, which is written for the member and kept off the
+// printed sheet. The source is a field of its own: findable, editable,
+// exported, and printed.
+// ---------------------------------------------------------------------------
+
+test("a comp's source is shown, found, exported and printed; its note still is not printed", async () => {
+  const comps = [
+    comp({ id: "a1", address: "9 Sheet St, Boise, ID", source: "Appraisal, 4102 Oleander Dr, Mar 2026", notes: "do not share" }),
+    comp({ id: "b1", address: "2 Plain St, Boise, ID" }),
+  ];
+  const { doc } = await runPage(comps, null, {});
+  // Find reaches it.
+  await typeFind(doc, "oleander");
+  assert.equal(doc.getElementById("bmCount").textContent, "1 of 2 comps");
+  await typeFind(doc, "");
+  // The opened row shows it.
+  doc.getElementById("bmRows").fire("click", { target: { closest: (sel) =>
+    sel === "[data-bm]" ? { getAttribute: () => "a1" } : null } });
+  assert.match(doc.getElementById("bmRows").innerHTML, /<dt>Source<\/dt><dd>Appraisal, 4102 Oleander Dr, Mar 2026<\/dd>/);
+  // The sheet prints it in a column of its own, beside no note.
+  tickInto(doc, "a1"); tickInto(doc, "b1");
+  pressSet(doc, "setSheet");
+  await tick();
+  const sheet = doc.getElementById("compSheet").innerHTML;
+  assert.match(sheet, /<th>Source<\/th>/);
+  assert.match(sheet, /<td>Appraisal, 4102 Oleander Dr, Mar 2026<\/td>/);
+  assert.doesNotMatch(sheet, /do not share/);
+  // The page's lists that name every editable field carry it.
+  const js = pageScript(renderVaultHTML(boot(comps), CHROME));
+  assert.match(js, /"tenancy","year_built","notes","source"\];\n  var EDIT_LABELS=/, "the spreadsheet cannot edit a source");
+  assert.match(js, /\["source","Source"\],\["notes","Notes"\]\];/, "the set's CSV lost the source");
+  assert.match(renderVaultHTML(boot(comps), CHROME), /id="addComp_source"/, "a comp added by hand cannot say where it came from");
+});
+
+test("a set with no source prints the sheet it always did", async () => {
+  const { doc } = await runPage([comp({ id: "s1" })], null, {});
+  tickInto(doc, "s1");
+  pressSet(doc, "setSheet");
+  await tick();
+  assert.doesNotMatch(doc.getElementById("compSheet").innerHTML, /<th>Source<\/th>/);
+});
+
+test("the source is the member's own: imported, capped, and never in what publishing sends", () => {
+  const VAULT_ = require("../broker-vault");
+  assert.ok(VAULT_.TEMPLATE_COLUMNS.includes("source"));
+  assert.ok(VAULT_.EDITABLE_FIELDS.includes("source"));
+  const long = "A".repeat(300);
+  const out = VAULT_.parseUpload("address,property_type,transaction,deal_date,price,size_sqft,source\n" +
+    '"100 Main St, Boise, ID",Industrial,sale,2026-03-14,1000000,10000,' + long + "\n");
+  const row = (out.rows || out.comps || [])[0];
+  assert.ok(row, "the row did not import: " + JSON.stringify(out.errors || out).slice(0, 200));
+  assert.equal(row.source.length, 120);
+  // Publishing names its fields, and a private document's label is not one.
+  const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "broker-vault.js"), "utf8");
+  const pub = src.slice(src.indexOf("broker_company: by || null"), src.indexOf("// --- who may wear the Verified badge"));
+  assert.ok(pub.includes("notes: c.notes || null"), "the publish payload moved");
+  assert.ok(!/\bsource\b/.test(pub), "publishing a comp would carry its source into the public records");
+});

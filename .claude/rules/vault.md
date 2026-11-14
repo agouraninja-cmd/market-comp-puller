@@ -140,10 +140,25 @@ paths:
 > note"), and the empty book says the comps out of an appraisal belong here.
 > The before-and-after pictures are at
 > https://claude.ai/artifact/9HUs8Aiwxmz5i3eKXKF2NE. Not built, and worth
-> doing next: a source field per comp
-> (which appraisal a comp came from; today that is the note), and a larger
-> file limit for a whole appraisal PDF (4 MiB today; a screenshot of the comp
-> grid works).
+> doing next: a larger file limit for a whole appraisal PDF (4 MiB today; a
+> screenshot of the comp grid works).
+> **A comp's source (the same day; migration `063-broker-comps-source.sql`,
+> RUN BEFORE DEPLOYING: 038's write-path hazard, normalizeRow emits the
+> column on every upload, cell edit and hand-added comp).** `source` is a
+> short free-text label for the document a comp came from (the appraisal it
+> is out of, a file number, a broker's package), capped at 120 characters.
+> It was the note's job, and a note is written for the member and stays off
+> the printed sheet; a source is for the sheet's reader, so the comp sheet
+> prints it in a column of its own when any comp in the set has one. It is
+> a template column (`TEMPLATE_COLUMNS`, with header aliases), editable in
+> the spreadsheet, a box on the add-a-comp form, a line in the opened row,
+> searched by Find, and in the set's CSV and the whole-book export. Three
+> rules: it is the DEAL's, never the building's (`DEAL_FIELDS`); it is not
+> in `EXTRACT_KEYS`, so the PDF reader never fills it from a column that
+> happens to be headed "Source" (the member can still type one in the
+> confirm table); and it is not in the publish payload
+> (`submissionFromVaultComp` names its fields; a test pins it), so a
+> private document's label never reaches the public records.
 
 > **Customer-facing names (owner's call, 2026-10-04): "Home" and "Data".**
 > The firm space (`/desk`, and `/` for a member) is labelled **Home**, and the

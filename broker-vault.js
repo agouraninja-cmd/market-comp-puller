@@ -61,6 +61,11 @@ const TEMPLATE_COLUMNS = [
   "tenancy",
   "year_built",
   "notes",
+  // Which document the comp came from: an appraisal, a file number, a
+  // broker's package (063). Beside notes because it is free text too, and
+  // apart from them because notes are written for the member and stay off
+  // the printed comp sheet, while a source is what that sheet's reader needs.
+  "source",
   // Optional, and last on purpose: the four required columns lead, and a
   // broker skimming the header should not meet two fields they may not have
   // before they meet the ones they must. Many CRM and MLS exports carry these
@@ -89,6 +94,9 @@ const PROPERTY_TYPES = ["Industrial", "Office", "Retail", "Multifamily", "Land",
 // as misreading a price.
 const MAX_TEXT = 500;
 const MAX_SHORT_TEXT = 60;
+// A source is a document's label ("Appraisal, 4102 Oleander Dr, Mar 2026"),
+// longer than a spec and far shorter than a note.
+const MAX_SOURCE_TEXT = 120;
 
 // A ceiling on one import. Not a licensing limit — a guard against a runaway
 // file turning one HTTP request into a hundred thousand inserts.
@@ -280,6 +288,7 @@ const HEADER_ALIASES = {
   tenancy:       ["tenancy_type"],
   year_built:    ["yr_built", "built", "year_constructed"],
   notes:         ["comments", "remarks", "note"],
+  source:        ["source_document", "data_source", "comp_source", "appraisal", "appraisal_file", "file_number", "file_no"],
   // Rent headers are rate-shaped by nature ("Rent/SF", "$/SF/Yr", "Rent PSF"),
   // which is why RATE_TARGETS below exempts this target from the rate-header
   // guard rather than the guard being loosened for everyone.
@@ -341,7 +350,10 @@ const VAULT_FIELD_KEYS = [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS];
 // Keys offered to the extract model. lat/lng stay on the confirm table so a
 // broker can type them, but a table PDF almost never carries them and a
 // hallucinated coordinate permanently locates a private property.
-const EXTRACT_KEYS = VAULT_FIELD_KEYS.filter((k) => k !== "lat" && k !== "lng");
+// `source` (063) is left out too: it names the document a comp came from,
+// which is the member's to say. Offered the key, the reader would fill it
+// from whatever column on the page happens to be headed "Source".
+const EXTRACT_KEYS = VAULT_FIELD_KEYS.filter((k) => k !== "lat" && k !== "lng" && k !== "source");
 
 // The four fields normalizeRow refuses a row without. Kept here as one list so
 // the mapper and the row parser cannot disagree about what "required" means.
@@ -1232,6 +1244,7 @@ function normalizeRow(raw) {
   row.tenancy = text(src.tenancy, MAX_SHORT_TEXT) || null;
   row.year_built = text(src.year_built, 12) || null;
   row.notes = text(src.notes, MAX_TEXT) || null;
+  row.source = text(src.source, MAX_SOURCE_TEXT) || null;
 
   for (const key of OPTIONAL_SPEC_COLUMNS) {
     row[key] = text(src[key], MAX_SHORT_TEXT) || null;
@@ -1647,6 +1660,7 @@ function templateCsv() {
     // no line at all — only three example cells — and lat/lng were named by
     // their abbreviations alone.
     "tenancy: who occupies the building - Single tenant, Multi-tenant or Owner-user. Free text and optional; it is shown on the comp and searchable, never used in the math.",
+    "source: where the comp came from - the appraisal it is out of, a file number, a broker's package. Free text and optional; it is searchable and prints on the comp sheet, unlike notes.",
     // Filled in on the sale example rather than left blank, because a blank
     // column reads as "leave this alone" and these two are what keep a private
     // address from being sent to a third party to place its map pin.

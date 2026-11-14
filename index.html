@@ -1806,8 +1806,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        width is a floor, so where a reader has raised the browser's minimum
        font size the tile widens with its initials (they stood 9px outside it
        at a 20px minimum on a phone). The widest pair, "WW", is 27.3px of
-       letters: with the 2px each side it still fits the 34. */
-    .hm-fh-mark { position: relative; flex: none; display: grid; place-items: center; box-sizing: border-box; min-width: 34px; height: 34px; padding: 0 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--wash-2); color: var(--ink-2); font: inherit; font-size: var(--text-small); font-weight: 600; letter-spacing: .02em; }
+       letters: with the 2px each side it still fits the 34. The tile's
+       height stays 34px, so a line of larger letters is taller than it:
+       align-content keeps that line centred, where it hung from the top with
+       the capitals on the tile's bottom edge (24px minimum, on a phone). */
+    .hm-fh-mark { position: relative; flex: none; display: grid; place-items: center; align-content: center; box-sizing: border-box; min-width: 34px; height: 34px; padding: 0 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--wash-2); color: var(--ink-2); font: inherit; font-size: var(--text-small); font-weight: 600; letter-spacing: .02em; }
     /* One that can (an owner's or admin's: it adds or changes the logo) is
        the button at the row's other end: the same tile, edge and corner. It
        was a solid ink tile, which read as a second account picture and, in
@@ -1838,7 +1841,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        where a reader's own text spacing or font makes them wider, a fact
        drops to the next line whole, its dot left behind at the line's end. */
     .hm-fh-txt small { display: flex; flex-wrap: wrap; min-width: 0; font-size: var(--text-label); line-height: 1.3334; color: var(--ink-3); }
-    .hm-fh-txt small > * { flex: none; white-space: nowrap; }
+    /* A lone fact wider than its column (a reader's very large text, on a
+       phone) breaks between its words inside the column. It ran on under
+       "Firm settings" when it could neither shrink nor wrap. Facts that fit
+       are untouched: the line still wraps whole facts first. */
+    .hm-fh-txt small > * { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
     .hm-fh-txt small em { font-style: normal; }
     .hm-fh-txt small > *:not(:last-child)::after { content: "\00B7"; margin: 0 4px; }
     /* The logo's door, in words (2026-10-18), as the last fact: a step darker
@@ -1849,7 +1856,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        ring outside it put its top stroke in the last two rows of the name's
        line, through the tail of every g, p and y. */
     .hm-fh-logo { position: relative; margin: 0 -3px -4px; padding: 0 3px 4px; border: 0; border-radius: var(--r-sm); background: none; font: inherit; font-weight: 500; color: var(--ink-2); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; cursor: pointer; transition: color .12s; }
-    .hm-fh-logo::after { content: ""; position: absolute; inset: 0 -4px -8px; }
+    /* To the left it stops at the dot before it (4px, the dot's own margin):
+       at 7px a click on the dot opened the logo's file picker. */
+    .hm-fh-logo::after { content: ""; position: absolute; inset: 0 -4px -8px -1px; }
     .hm-fh-logo:hover { color: var(--ink); }
     .hm-fh-logo:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
     /* Firm settings is the shared compact button (class="hm-btn hm-fh-set"):

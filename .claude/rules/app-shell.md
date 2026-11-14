@@ -17,6 +17,64 @@ paths:
 
 ## Configuration
 
+> **The phone bar (2026-11-13, the owner: "improve the CompNinja web
+> experience for mobile users").** Below 900px a signed-in member's nav is a
+> bar fixed along the bottom of the screen: Home, Messages, Pipeline (or
+> Sites), Markets, Comps, Permits and the account circle, an icon over a
+> 10px word, 54px tall. Where the notes below say that under 900px the class
+> does nothing, the wrapping bar returns, or the bar "reads as words", read
+> it as history (2026-08-28 to 2026-11-13). Built straight (the ask was to
+> improve, not for options); the before-and-after pictures are at
+> https://claude.ai/artifact/HCMqHEZY51dwZ2agmjegxn.
+> **Why.** A phone audit of 21 pages found no sideways scroll and no field
+> under 16px; what was wrong was the navigation. A member's seven links
+> were 21px-tall words wrapping to two rows at the top of every page: about
+> 130px of the first screen, at the far end of the phone from a thumb, with
+> the page you are on unmarked.
+> **What it is**, in `RAIL_CSS`'s `@media screen and (max-width:899px)`
+> block and index.html's twin (`test/nav-parity.test.js` compares them rule
+> by rule, `test/nav-shell.test.js` holds the numbers):
+> - **Same element, same markup, same class** (`html.nav-rail`), so there is
+>   still no drawer, focus trap or scroll lock, a stranger's bar is
+>   untouched, and `NAV_SHELL=bar` is still the rollback.
+> - **`screen` only.** A printed page is about 800px wide, which a bare
+>   max-width query calls a phone; the bar would print on every sheet.
+> - **The header keeps the brand** and scrolls away. The nav is
+>   `position:fixed` at the bottom; the body is padded by its 54px (4 + a
+>   46px row + 4), plus the safe-area inset, which is 0 until a page asks
+>   for `viewport-fit=cover` (none does; adding it would need every fixed
+>   element checked against the notch).
+> - **The rail's vocabulary:** `--wash` with a `--line` hairline (an inset
+>   shadow), the page you are on a `--card` tile ringed in `--edge` with the
+>   red tick, here on its top edge and still a border.
+> - **Cells share the width equally and are never squeezed below their
+>   word** (`flex:1 1 0`, no `min-width:0`). With it, on a 320px screen the
+>   heavier "Messages" of the current page ran out of its tile.
+> - **The account circle is the last cell**, with the word Account (CSS
+>   content; its accessible name is the control's own aria-label). The menu
+>   opens upward from the corner with 45px rows. The server's cell is the
+>   `<details>` and its `<summary>` fills it; the app's is `#acctMenuWrap`,
+>   whose `<button>` reaches over the cell with an `::after` (so its
+>   overflow is visible and the photo rounds itself). The app's wrap must
+>   carry no font size: its menu is its child and inherited 10px rows.
+> - **Not in the bar:** Explore (its links are in the footer), the red call
+>   to action (the Comps cell is the door) and the Pricing row (Upgrade to
+>   Pro is in the account menu). Seven cells is what fits 320px.
+> - **z-index 1050:** over a map's controls (Leaflet's are 1000 and are not
+>   contained by the map) and the Feedback button, under the modals (1200).
+> - **Two things stand on the bar**, 12px above it (`66px`): the Feedback
+>   ninja (`TESTER_BADGE_CSS`) and /comps' sticky comp set (`.vd-tray.on`,
+>   vault-page.js). A new fixed or sticky-bottom element on a member page
+>   needs the same rule, or it sits behind the bar.
+> **With it:** `main.wrap`'s top padding is 20px under 640px (32px before;
+> a page that sets its own later in the document keeps it), and /permits'
+> inner `main.wrap.pt-page` gives its padding back there (the page had two
+> 16px gutters a side and 88px above its heading).
+> **Left alone, and worth knowing.** A stranger's header still wraps to
+> three rows on a phone (Home must stay in it; marketBar's comment has the
+> owner's reason). Messages' context menu (z 60) can open under the bar.
+> The Feedback button still covers the right end of /comps' comp set.
+
 > **The rail's look (2026-11-12, the owner: "The left side bar looks kind of
 > ugly fix it").** The strip is no longer a dark slab. It is one of the
 > page's own surfaces, `--wash` with a `--line` hairline (an inset shadow,

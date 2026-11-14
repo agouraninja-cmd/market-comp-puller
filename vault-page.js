@@ -1885,7 +1885,11 @@ ${tabButtons}
     $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
     tabCount("tabBookN",comps.length?num(comps.length):"",false);
     pubCount=(o.j.counts&&o.j.counts.published)||0;
-    $("cPub").textContent=pubCount;
+    // The figure is what is really public. A comp waiting on the one-time
+    // review (or not approved) is named in the line under it instead; pubCount
+    // keeps counting it, because it must stay withdrawable (applyShop).
+    var inReview=(o.j.counts&&o.j.counts.inReview)||0;
+    $("cPub").textContent=Math.max(0,pubCount-inReview);
     // What publishing gave back. Until now a broker published a comp, saw a
     // green chip, and learned nothing further — while the very same figure was
     // already on their public profile page, if they had one, under "Report
@@ -1897,7 +1901,8 @@ ${tabButtons}
     // already says when a book is truncated past 1,000.
     var cites=comps.reduce(function(n,c){return n+(Number(c.cited_count)||0)},0);
     $("cPubSub").textContent=cites
-      ? cites+" report citation"+(cites===1?"":"s")
+      ? cites+" report citation"+(cites===1?"":"s")+(inReview?", "+inReview+" in review":"")
+      : inReview ? inReview+" in review"
       : "only if you choose it";
     // The strip's other figures need the firm and the shelf, which arrive
     // below, so they are drawn by renderStripFigures() once those are set.
@@ -2107,12 +2112,26 @@ ${tabButtons}
   // The count is deliberately NOT on the button: the button is a toggle with a
   // confirm behind it, and a number that grows inside a control reads as part
   // of the action rather than a result of it.
+  //
+  // A comp the member published that the owner has not approved yet (c.review,
+  // 2026-11-14) is NOT called Published and is not green: it is in nobody's
+  // report. It keeps data-on, because the click that withdraws a published
+  // comp is the same click that withdraws one still waiting.
+  function reviewLabel(c){
+    return c.review==="pending"?"In review":c.review==="rejected"?"Not approved":"";
+  }
   function publishCell(c){
-    var btn=c.published
+    var wait=c.published?reviewLabel(c):"";
+    var btn=wait
+      ? '<button class="pubbtn" data-pub="'+esc(c.id)+'" data-on="1" title="'+
+        escA(c.review==="pending"
+          ?"Waiting for a one-time review of your license. It is not in any report yet."
+          :"This comp was not approved, so it is not in any report. Click to withdraw it.")+'">'+wait+"</button>"
+      : c.published
       ? '<button class="pubbtn on" data-pub="'+esc(c.id)+'" data-on="1">Published</button>'
       : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
     var n=Number(c.cited_count)||0;
-    if(!c.published||!n)return btn;
+    if(!c.published||wait||!n)return btn;
     // "cited in N reports" rather than "seen N times": the count rises when a
     // report is GENERATED citing this comp, and a cached re-run of the same
     // report does not bump it, so it is a floor on how often the broker's name
@@ -3724,7 +3743,7 @@ ${tabButtons}
     var lease=c.transaction==="lease";
     var meta=[withCity?cityOf(c.market):"",c.property_type,lease?"Lease":"Sale",monthLabel(c.deal_date)]
       .filter(function(x){return x}).join(" \\u00b7 ");
-    var badges=(c.published?'<em class="vd-b ok">Published</em>':"")+(myFirm&&sharedIds[id]?'<em class="vd-b">Firm</em>':"");
+    var badges=(c.published?(reviewLabel(c)?'<em class="vd-b">'+reviewLabel(c)+"</em>":'<em class="vd-b ok">Published</em>'):"")+(myFirm&&sharedIds[id]?'<em class="vd-b">Firm</em>':"");
     return '<tr class="vd-lr'+(on?" on":"")+(open?" open":"")+'" data-bm="'+escA(id)+'">'+
       '<td class="vd-lc"><input type="checkbox" data-set="'+escA(id)+'"'+(on?" checked":"")+' aria-label="Add '+escA(street)+' to your comp set"/></td>'+
       '<td class="vd-la"><button type="button" class="vd-name" aria-expanded="'+(open?"true":"false")+'">'+esc(street)+"</button>"+
@@ -5605,7 +5624,9 @@ ${tabButtons}
           load();
           return;
         }
-        var parts=[o.j.published+" published"];
+        // A publisher the owner has not approved yet: say where the comps went
+        // rather than "published", which they are not until the review.
+        var parts=[o.j.published+(o.j.inReview?" sent for review":" published")];
         if(o.j.skippedCount)parts.push(o.j.skippedCount+" skipped");
         if(o.j.remaining)parts.push(o.j.remaining+" left \u2014 run it again");
         // Name the FIRST reason rather than a bare count: "5 skipped" sends a
@@ -5780,6 +5801,8 @@ ${tabButtons}
           // of sending them off to find where identity is set — which, until
           // this shipped, was nowhere.
           if(o.j.code==="needs_credit_name"||o.j.code==="needs_license")setIdOpen(true);
+        }else if(o.j.published&&o.j.inReview){
+          compMsg("Sent for review. We check a new publisher's license once, by hand, before their first comps go public. After that yours publish right away.");
         }else if(o.j.published&&o.j.creditedTo){
           compMsg("Published, credited to "+o.j.creditedTo+".");
         }else{

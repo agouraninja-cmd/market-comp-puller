@@ -65,10 +65,11 @@ we "connect you with a local broker", never that we are one, and every
 valuation is labeled an automated estimate, never an appraisal. That rule
 reaches the DATA too, not just the copy: publishing a vault comp earns the
 green "Verified · via \<name\>" badge, which means "a named broker vouched
-for this deal", so **the owner does not publish** (decided 2026-08-12) and
-the standing plan is to refuse `POST /api/vault/publish` without a license
-on the broker profile — see docs/ROADMAP.md's "Next" for the decision and
-the alternatives already rejected.
+for this deal", so **the owner does not publish** (decided 2026-08-12),
+`POST /api/vault/publish` refuses without a license number on the broker
+profile (migration 034), and since 2026-11-14 a publisher's first comps wait
+as `pending` in `/admin`'s review queue until the owner has approved one
+(`publisherStanding` in `broker-vault.js`; vault.md).
 
 There is no build step, no linter, and **no npm dependencies** — it runs on
 plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
@@ -424,6 +425,7 @@ so they are trusted config and are never set in production.
 | `CORPUS_RADIUS`, `CORPUS_METRO`, `CORPUS_LISTED`, `ARCHIVE_FIRST` | on | `off` rolls back the radius blend, metro retrieval, on-market listings, archive-first | corpus.md |
 | `LEAD_METRO` | on | broker lead coverage matches across metro groups | vault.md |
 | `NAV_SHELL` | `rail` | signed-in chrome as a left rail; `bar` is the rollback | app-shell.md |
+| `SHUTDOWN_GRACE_SECONDS` | 280 | how long a stop (a deploy's SIGTERM, Ctrl+C, a crash) waits for requests in flight; the host's own shutdown delay is the real limit | app-shell.md |
 | `SITE_URL`, `GOOGLE_SITE_VERIFICATION` | Render URL / unset | canonical origin; Search Console file verification (keep it set for good) | public-pages.md |
 | `PRO_ENABLED` | off in code | master switch for the paid tier (run its DDL first) | billing.md |
 | `PRO_AUDIENCE` | unset (everyone) | email allowlist narrowing who Pro applies to; unsetting it is the launch | billing.md |
@@ -454,7 +456,7 @@ gone. Document a new feature in its area's file, not here.
 | `vault.md` | the broker vault (import, mapper, editing, publishing, dashboard, gut check, BOV, building facts), comp submissions, the lead inbox | `vault-*.js`, `broker-*.js`, `building-facts.js`, `gut-check.js`, `bov-log.js`, `blend-comps.js`, `xlsx.js` |
 | `firms.md` | firms: membership, shelf, buildings, sheets, leases, contacts, messaging doors, Messages' Reports view, auto-share, the shared vault, seats, shop kinds | `org-*.js`, `buildings-page.js`, `messaging.js`, `messages-page.js`, `report-inbox.js` |
 | `workspace.md` | the signed-in Home (`/desk`): Home as one map and its layer switch, layout history, one-paint fill, `DESK_BOOT`, `AUTH_BOOT`, `pagePath` | `index.html`, `home-map.js`, desk tests |
-| `app-shell.md` | the `NAV_SHELL` rail, the signed-in header on server-rendered pages, nav parity with `index.html`, the shared button and tabs (`components.js`), instant tab switching (prerendered tabs, `/api/visit`) | `theme.js`, `components.js`, `instant-nav.js`, nav tests |
+| `app-shell.md` | the `NAV_SHELL` rail, the signed-in header on server-rendered pages, nav parity with `index.html`, the shared button and tabs (`components.js`), instant tab switching (prerendered tabs, `/api/visit`), the security headers on every response (`security-headers.js`), stopping and crashing without dropping requests (`graceful-shutdown.js`) | `theme.js`, `components.js`, `instant-nav.js`, `security-headers.js`, `graceful-shutdown.js`, nav tests |
 | `sharing.md` | `POST /api/share`, `/api/shared`, `/r/<id>`, permissioned sharing | `report-access.js` |
 | `accounts.md` | account wall, guest limit, Google sign-in, confirming an email address, accounts and portfolio, profile photo | `google-auth.js`, `email-verify.js`, `confirm-notice.js`, `account-avatar.js`, `portfolio-*.js` |
 | `public-pages.md` | home, FAQ, how-it-works, brokers-firms, the lender page (`/lenders`), the brand entity, `SITE_URL`, Search Console | `home-page.js`, `faq-page.js`, `brokers-firms-page.js`, `lenders-page.js` |

@@ -3,6 +3,10 @@ paths:
   - "theme.js"
   - "components.js"
   - "instant-nav.js"
+  - "security-headers.js"
+  - "test/security-headers.test.js"
+  - "graceful-shutdown.js"
+  - "test/graceful-shutdown.test.js"
   - "test/components.test.js"
   - "test/nav-*.test.js"
   - "test/theme.test.js"
@@ -14,6 +18,86 @@ paths:
 > when it opens a file matching `paths` above; read it by hand before changing
 > this area's code in `server.js`. The never-break rules stay in CLAUDE.md.
 > Add new notes for this area here, not there.
+
+## Security headers on every response (2026-11-14)
+
+Until this the live site answered with no security headers at all (`nosniff`
+on three routes). `security-headers.js` holds them and says what each is for;
+`SECHEADERS.applySecurityHeaders(req, res)` is the FIRST statement of the
+request handler in `server.js`, ahead of `routeWarm`, so a page answered from
+the warm store and the desktop preload carry them too. They are set with
+`res.setHeader`, which a later `res.writeHead` merges in, so no route repeats
+them and a route naming the same header itself still wins. Five things to
+know before touching them:
+
+- **`nosniff` means a wrong content type is now a broken page.** A browser
+  refuses a script not served as JavaScript and a stylesheet not served as
+  `text/css`. A new entry in `STATIC_FILES`, or a new route that serves a
+  script, needs its real type; `test/security-headers.test.js` reads the
+  allowlist and fails the build on a `.js` or `.css` entry without one.
+- **Nothing third-party may frame the site** (`X-Frame-Options: SAMEORIGIN`
+  and CSP `frame-ancestors 'self'`). If an embeddable report or widget is
+  ever wanted, it is a deliberate exception on that one route (name the
+  header in its own `writeHead`), never a loosening of the default. The
+  desktop app is unaffected: its pages are `WebContentsView`s, not frames.
+- **The Content-Security-Policy has no `script-src`, `style-src` or
+  `default-src`, on purpose.** Every page runs inline scripts and styles, so
+  a script policy needs a nonce on each one first; without them it blanks the
+  app the way a failed `/valuation.js` does. A test fails the build if one of
+  those directives appears. That nonce work is the remaining half of this.
+- **HSTS only when `x-forwarded-proto` says HTTPS**, 180 days, with no
+  `includeSubDomains` and no `preload` (both bind hostnames this code does
+  not know about, and preload is hard to undo). A local run, the test suite
+  and the loopback warm render never send it.
+- **`Referrer-Policy: strict-origin-when-cross-origin`** keeps a shared
+  report's `/r/<id>` and an admin `?key=` link out of other sites' logs.
+
+Checked by loading the public pages signed out and the member pages against
+the stand-in database in a real browser: nothing was refused on any of them.
+
+## Stopping and crashing without dropping requests (2026-11-14)
+
+`server.js` had no signal handler and no crash handler. Render ends the old
+instance of every deploy with SIGTERM and Node's default is to die on the
+spot, so each deploy cut off the searches in flight after they were billed;
+one unhandled promise rejection anywhere did the same to every visitor; and
+nothing told the owner. `graceful-shutdown.js` holds the drain and its rules
+(pure, tested against a plain `http.Server`); the process handlers and the
+mail are at the foot of `server.js`, above `server.listen`. What to know:
+
+- **SIGTERM and SIGINT drain.** The port closes at once, requests in flight
+  finish, then the process exits 0. With nothing in flight that is
+  immediate; a second signal always ends it at once.
+- **In flight is counted by `SHUTDOWN.track(req, res)`**, the second
+  statement of the request handler, from there until the response emits
+  `close`. Not `server.close()`'s callback, which also waits on the proxy's
+  idle keep-alive connections. Counted once per request, because `routeWarm`
+  re-emits. A route that answers without going through the handler would not
+  be counted; there is none.
+- **`SHUTDOWN_GRACE_SECONDS`, default 280**, is how long a drain waits. The
+  host's limit is the real one: Render kills the old instance 30 seconds
+  after SIGTERM unless the service's shutdown delay is raised (at most 300),
+  so **raise it there** to let a long search finish. That number is from
+  memory of Render's docs, which this session could not open; check it.
+  Blank, zero or unreadable is the default, never "no wait".
+- **An unhandled rejection is logged and mailed, and the server keeps
+  running.** The request that caused it has already failed; ending the
+  process fails everyone else's.
+- **An uncaught exception drains and exits 1**, so the host starts a fresh
+  process. The stack is printed in full first: `test/helpers/boot.js` reads
+  `EADDRINUSE` out of stderr to tell a stolen port from a real crash.
+- **The crash mail** goes to `LEAD_NOTIFY_EMAIL` through `sendEmail`, at most
+  one per kind per 15 minutes, from the event and never a timer. It is
+  silent without `RESEND_API_KEY`; the log line is always there.
+- **Tests**: the boot helper sets `SHUTDOWN_GRACE_SECONDS=2`, because
+  `stop()` now drains and a suite that walks away from an open stream would
+  hold its child for 280 seconds. `srv.signal()` and `srv.exited` exist for
+  the shutdown suite, which sends the real server a real SIGTERM with a slow
+  `/api/geocode` in flight.
+
+Not covered: a request arriving on a connection the proxy already held is
+still answered during a drain (with `Connection: close`), and a search that
+STARTS then can outlive the wait.
 
 ## Configuration
 

@@ -751,6 +751,12 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   border:1px dashed var(--edge);background:var(--card)}
 .vd-tray.on{position:sticky;bottom:12px;z-index:700;background:var(--slab);border:1px solid var(--slab);
   box-shadow:0 12px 30px -12px rgba(0,0,0,.35)}
+/* On a phone a member's places are a bar along the bottom of the screen
+   (server.js RAIL_CSS, "The phone bar", 54px tall), so the set stands 12px
+   above that bar rather than behind it. */
+@media screen and (max-width:899px){
+  html.nav-rail .vd-tray.on{bottom:calc(66px + env(safe-area-inset-bottom,0px))}
+}
 .vd-tk{flex:1;min-width:0;margin:0}
 .vd-tk b{display:block;font-family:var(--serif);font-weight:500;font-size:17px;color:var(--ink)}
 .vd-tk span{display:block;font-size:var(--text-small);color:var(--ink-3)}

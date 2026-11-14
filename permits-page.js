@@ -77,6 +77,10 @@ function renderPermitsBody(boot) {
   return `<style>
 .pt-page,.pt-page *{box-sizing:border-box}
 .pt-page{margin:24px 0 48px}
+/* This page's own main sits inside the shell's main, and both are .wrap, so
+   on a phone the page had two 16px gutters a side and 88px of nothing above
+   its heading. Under 640px the inner one gives its padding back. */
+@media (max-width:640px){main.wrap.pt-page{margin:0 0 24px;padding:0}}
 .pt-page .kicker{font-size:var(--text-tiny);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
 .pt-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1.5px solid var(--ink);padding-bottom:8px;margin-top:4px}
 .pt-head h1{margin:0;font-family:var(--serif);font-weight:400;font-size:var(--text-h1);line-height:1.15;color:var(--ink)}

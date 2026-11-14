@@ -1047,6 +1047,51 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       html.nav-rail #acctMenuWrap { padding-top: 6px; }
       html.nav-rail #acctMenu { bottom: 8px; }
     }
+    /* --- The phone bar (2026-11-13): the twin of RAIL_CSS's block, which
+       has the reasons. Below 900px a member's places are a bar along the
+       bottom of the screen, an icon over a word; the header keeps the brand.
+       What differs here is the account slot's markup. The circle is a
+       <button> inside #acctMenuWrap (a <summary> there), so the word Account
+       is the wrap's ::after and the button's own ::after reaches over the
+       cell to be the thing a thumb lands on; that needs the button's
+       overflow visible, so the photo carries the circle's corner itself.
+       screen only: a printed page is "a phone" to a width query. */
+    @media screen and (max-width: 899px) {
+      html.nav-rail body { padding-bottom: calc(54px + env(safe-area-inset-bottom, 0px)); }
+      html.nav-rail .rd-appbar { padding-top: 12px; padding-bottom: 12px; }
+      html.nav-rail .rd-appbar > nav {
+        position: fixed; left: 0; right: 0; bottom: 0; z-index: 1050; display: flex; flex-wrap: nowrap;
+        align-items: stretch; gap: 0; padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
+        background: var(--wash); box-shadow: inset 0 1px 0 var(--line);
+      }
+      html.nav-rail .rd-appbar > nav > a {
+        position: relative; flex: 1 1 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 0; padding: 5px 2px 4px; border-radius: var(--r-xl);
+        font-size: 10px; font-weight: 500; line-height: 13px; letter-spacing: 0; color: var(--ink-2);
+        -webkit-tap-highlight-color: transparent;
+      }
+      html.nav-rail .rd-appbar > nav > a .nvi { display: block; width: 24px; height: 24px; }
+      html.nav-rail .rd-appbar > nav > a[aria-current="page"] { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: inset 0 0 0 1px var(--edge); }
+      html.nav-rail .rd-appbar > nav > a[aria-current="page"]::before { content: ""; position: absolute; top: 0; left: 50%; width: 20px; height: 0; margin-left: -10px; border-top: 3px solid var(--red); border-radius: 2px; }
+      html.nav-rail .rd-appbar > nav > a:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+      html.nav-rail #exploreMenuWrap { display: none; }
+      html.nav-rail .rd-appbar .navdot { position: absolute; top: 1px; left: calc(50% + 4px); min-width: 16px; height: 16px; margin: 0; padding: 0 4px; font-size: 10px; line-height: 16px; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 2px var(--wash); }
+      html.nav-rail .rd-appbar > nav > a[aria-current="page"] .navdot { box-shadow: 0 0 0 2px var(--card); }
+      html.nav-rail #acctMenuWrap {
+        flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 0; padding: 5px 2px 4px;
+      }
+      html.nav-rail #acctMenuWrap.hidden { display: none; }
+      /* The word's type is on the word, not the wrap: the menu is the wrap's
+         child too and would inherit 10px rows. */
+      html.nav-rail #acctMenuWrap::after { content: "Account"; font-size: 10px; font-weight: 500; line-height: 13px; color: var(--ink-2); }
+      html.nav-rail #acctMenuBtn { width: 24px; height: 24px; line-height: 24px; font-size: 10px; box-shadow: 0 0 0 1px var(--ink-4); overflow: visible; -webkit-tap-highlight-color: transparent; }
+      html.nav-rail #acctMenuBtn::after { content: ""; position: absolute; inset: -9px -10px -18px; }
+      html.nav-rail #acctMenuBtn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+      html.nav-rail #acctMenuPhoto { border-radius: 9999px; }
+      html.nav-rail #acctMenu { left: auto; right: 4px; top: auto; bottom: calc(100% + 8px); }
+      html.nav-rail #acctMenu button { padding-top: 12px; padding-bottom: 12px; }
+    }
     /* Paper has no sidebar. The header is already no-print; this is the body
        padding it would otherwise leave behind as an empty left column. */
     @media print { html.nav-rail body { padding-left: 0; } }

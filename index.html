@@ -471,7 +471,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .enter-4 { animation-delay: 360ms; }
 
     /* Display face — serif, Research Desk. Report headings inherit it too. */
-    .font-brand { font-family: var(--serif); font-weight: 500; }
+    /* No Georgia on this page since 2026-11-14 (the owner, after Home and
+       every member page went to Inter: "make the comp report Inter too").
+       A heading is the page's own face at 600 where Georgia was 400 or 500;
+       --serif stays defined for the shared tokens and is used by nothing
+       here. test/index-html-type.test.js holds it. */
+    .font-brand { font-weight: 600; }
 
     /* The report is a data document: tabular (fixed-width) numerals keep digits
        aligned down the comps table, stat tiles, and value bands. */
@@ -871,7 +876,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     /* ---------------- Research Desk landing system ---------------- */
     .rd-kicker { font-size: var(--text-label); letter-spacing: 0.16em; text-transform: uppercase; color: var(--red); font-weight: 600; }
-    .rd-h { font-family: var(--serif); font-weight: 500; letter-spacing: -0.005em; color: var(--ink); }
+    .rd-h { font-weight: 600; letter-spacing: -.02em; color: var(--ink); }
     /* The header bar could not wrap, so at 390px it squeezed instead: the theme
        toggle sat flush against the wordmark with a 0px gap, and "My Desk" and
        "Sign in" each broke across two lines to fit. Nothing overflowed, which
@@ -1407,7 +1412,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .ap-stmt th.num, .ap-stmt td.num { text-align: right; }
     .ap-stmt td { padding: 9px 0; border-bottom: 1px solid var(--hair); vertical-align: baseline; font-size: var(--text-small); color: var(--ink-2); line-height: 1.5; }
     .ap-stmt tr:last-child td { border-bottom: 0; }
-    .ap-stmt td.num { white-space: nowrap; padding-left: 14px; font-family: var(--serif); font-weight: 500; letter-spacing: -0.005em; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .ap-stmt td.num { white-space: nowrap; padding-left: 14px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); font-variant-numeric: tabular-nums; }
     .ap-stmt .ap-lab { font-weight: 600; color: var(--ink); }
     .ap-stmt tr.muted td { font-size: var(--text-label); color: var(--ink-3); }
     .ap-stmt tr.muted .ap-lab { color: var(--ink-3); }
@@ -1448,7 +1453,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        #annualTile (the founding tile, until 2026-09-25), and without this
        rule the toggle does nothing. */
     .pr-cell.hidden { display: none; }
-    .pr-fig { font-family: var(--serif); font-weight: 500; letter-spacing: -0.005em; color: var(--ink); font-size: 23px; margin-top: 3px; }
+    .pr-fig { font-weight: 600; letter-spacing: -.02em; color: var(--ink); font-size: 22px; margin-top: 3px; font-variant-numeric: tabular-nums; }
     .rd-lcell.mid .pr-fig { font-size: var(--text-h1); }
     .pr-per { font-size: var(--text-tiny); color: var(--ink-3); }
     .pr-sum { font-size: var(--text-label); color: var(--ink-2); margin-top: 6px; flex: 1; }
@@ -1464,7 +1469,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .pr-stmt td.c .no { color: var(--ink-faint); }
     .pr-stmt col.pro-col { background: var(--wash); }
     .pr-stmt tfoot td { border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); font-weight: 600; padding: 9px 10px; }
-    .pr-stmt tfoot .fig { font-family: var(--serif); font-weight: 500; font-size: 17px; }
+    .pr-stmt tfoot .fig { font-weight: 600; font-size: 17px; }
     /* My Desk (Directions K+L, owner-approved 2026-08-09): the portfolio as a
        book — ledger strip, statement table closing on the combined total,
        per-row sparklines drawn from the snapshot history the product already
@@ -1479,7 +1484,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        card edge is what keeps its comp list from reading as the next
        market's. #feedWrap's space-y-4 already spaces them. */
     .dk-mkt { padding: 14px 16px; border: 1px solid var(--edge); border-radius: var(--r-md); background: var(--card); }
-    .dk-mname { font-family: var(--serif); font-weight: 500; font-size: var(--text-lead); color: var(--ink); }
+    .dk-mname { font-weight: 600; font-size: var(--text-lead); color: var(--ink); }
     .dk-new { display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--red); margin-top: 6px; }
     /* The search-demand line. Vars, not literals, so it follows dark mode with
        everything else on the card rather than needing its own override. */
@@ -1513,7 +1518,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        anyway). All in the style block, never new Tailwind utilities — the
        vendored build silently drops a class it was not purged against, and
        this file already carries three scars from that. */
-    .dk-addr { font-family: var(--serif); font-weight: 500; font-size: var(--text-compact); color: var(--ink); }
+    .dk-addr { font-weight: 600; font-size: var(--text-compact); color: var(--ink); }
     /* ONE row family for every list on the workspace (2026-09-04, the owner's
        pick from the Ledger canvas): the name on its own line, the meta UNDER
        it in the quiet voice, actions as small words at the right. It replaced
@@ -1581,7 +1586,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-ghost-card { display: flex; align-items: center; gap: 13px; max-width: 470px; padding: 13px 16px; border: 1px solid var(--edge); border-radius: 11px; background: var(--card); box-shadow: 0 12px 28px -14px rgba(15,23,42,.35); }
     .dk-gico { flex: 0 0 38px; height: 38px; border-radius: var(--r-xl); display: flex; align-items: center; justify-content: center; }
     .dk-gtxt { flex: 1 1 auto; min-width: 0; }
-    .dk-gt { display: block; font-family: var(--serif); font-size: 15.5px; color: var(--ink); }
+    .dk-gt { display: block; font-size: var(--text-lead); font-weight: 600; color: var(--ink); }
     .dk-gx { display: block; margin-top: 1px; font-size: var(--text-small); line-height: 1.45; color: var(--ink-3); }
     .dk-gx a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
     @media (max-width: 640px) {
@@ -1608,7 +1613,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .mc-head { display: flex; gap: 12px; align-items: flex-start; padding-right: 18px; }
     .mc-who { min-width: 0; }
     .mc-head .mc-av { width: 52px; height: 52px; font-size: var(--text-input); }
-    .mc-name { font-family: var(--serif); font-size: var(--text-subhead); line-height: 1.2; color: var(--ink); letter-spacing: -.01em; }
+    .mc-name { font-size: var(--text-subhead); font-weight: 600; line-height: 1.2; color: var(--ink); letter-spacing: -.01em; }
     .mc-role { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 9px; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: var(--text-tiny); font-weight: 600; letter-spacing: .03em; text-transform: capitalize; vertical-align: 3px; background: var(--wash); color: var(--ink-2); }
     .mc-role.owner { background: var(--bv-bg); color: var(--bv-text); }
     .mc-role.admin { background: var(--ok-bg); color: var(--ok-text); }
@@ -2113,7 +2118,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       .hm-layer-note { left: 10px; top: 50px; }
     }
     .hm-map-empty { position: absolute; left: 50%; top: 50%; z-index: 500; pointer-events: none; width: min(340px, calc(100% - 32px)); transform: translate(-50%, -50%); padding: 20px 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); text-align: center; box-shadow: 0 18px 40px -16px rgba(15, 23, 42, .4); }
-    .hm-map-empty b { display: block; font-family: var(--serif); font-size: 21px; font-weight: 400; color: var(--ink); }
+    .hm-map-empty b { display: block; font-size: var(--text-subhead); font-weight: 600; letter-spacing: -.01em; color: var(--ink); }
     .hm-map-empty span { display: block; margin-top: 6px; font-size: var(--text-compact); color: var(--ink-3); }
     /* Start here (2026-10-18; Draft C of the empty Home drafts). An account
        with nothing on Home: the list steps aside and one question sits over
@@ -2133,7 +2138,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-first-kick i { width: 3px; height: 3px; border-radius: 99px; background: var(--ink-4); }
     .hm-first-kick b { font-weight: 600; color: var(--ink-2); }
     @media (max-width: 899px) { .hm-first-kick i { display: none; } }
-    .hm-first-h { margin: 14px 0 0; font-family: var(--serif); font-weight: 400; font-size: 30px; line-height: 1.1; letter-spacing: -.02em; color: var(--ink); text-wrap: balance; }
+    .hm-first-h { margin: 14px 0 0; font-weight: 600; font-size: var(--text-h1); line-height: 1.15; letter-spacing: -.02em; color: var(--ink); text-wrap: balance; }
     .hm-first-h span { display: block; margin-bottom: 6px; font-size: 17px; letter-spacing: -.01em; color: var(--ink-3); }
     .hm-first-p { margin: 12px 0 0; max-width: 46ch; font-size: var(--text-lead); line-height: 1.55; color: var(--ink-2); }
     .hm-first-form { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
@@ -2173,7 +2178,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       /* The map fades out under the card, so the question reads first. */
       html.nav-rail.hm-page .hm.hm-first-on .hm-mapw::before { content: ""; position: absolute; inset: 0; z-index: 450; pointer-events: none; opacity: .88; background: linear-gradient(90deg, var(--paper) 0%, var(--paper) 34%, transparent 60%); }
       html.nav-rail.hm-page .hm-first { position: absolute; left: 44px; top: 50%; z-index: 520; width: min(580px, calc(100% - 88px)); margin: 0; padding: 34px 38px 28px; border-radius: 20px; transform: translateY(-50%); }
-      html.nav-rail.hm-page .hm-first-h { font-size: var(--text-display); }
+      html.nav-rail.hm-page .hm-first-h { font-size: var(--text-hero); }
       html.nav-rail.hm-page .hm-first-h span { font-size: var(--text-subhead); }
       html.nav-rail.hm-page .hm-first-form { flex-direction: row; }
       html.nav-rail.hm-page .hm-first-go { padding: 0 18px; }
@@ -2269,7 +2274,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-pop .leaflet-popup-tip { background: var(--card); }
     .hm-pop-ph { position: relative; height: 104px; overflow: hidden; background: var(--wash-2); }
     .hm-pop-b { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px 14px; }
-    .hm-pop-b > b { font-family: var(--serif); font-size: 18px; font-weight: 400; line-height: 1.2; color: var(--ink); }
+    .hm-pop-b > b { font-size: 17px; font-weight: 600; line-height: 1.25; color: var(--ink); }
     .hm-pop-b > small { font-size: var(--text-small); color: var(--ink-3); }
     .hm-pop-r { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
     .hm-pop-v { margin-top: 8px; font-size: var(--text-small); color: var(--ink-3); }

@@ -1040,6 +1040,7 @@ ${tabButtons}
           <label title="Who occupies the building: Single tenant, Multi-tenant or Owner-user. Optional.">Tenancy <input id="addComp_tenancy" type="text" placeholder="Single tenant, Multi-tenant or Owner-user"/></label>
           <label>Year built <input id="addComp_year_built" type="text" placeholder="optional"/></label>
           <label class="span-all">Notes <input id="addComp_notes" type="text" placeholder="optional"/></label>
+          <label class="span-all" title="Where the comp came from: the appraisal it is out of, a file number, a broker&rsquo;s package. Optional; it prints on the comp sheet.">Source <input id="addComp_source" type="text" maxlength="120" placeholder="e.g. Appraisal, 4102 Oleander Dr, Mar 2026 (optional)"/></label>
           <!-- Spelled out (2026-09-02): "Lat" and "Lng" were the question. -->
           <label title="Latitude in decimal degrees. Optional; with longitude, it keeps this address off third-party geocoders.">Latitude <input id="addComp_lat" type="text" placeholder="43.6187 (optional)"/></label>
           <label title="Longitude in decimal degrees. Optional; with latitude, it keeps this address off third-party geocoders.">Longitude <input id="addComp_lng" type="text" placeholder="-116.2146 (optional)"/></label>
@@ -1256,7 +1257,7 @@ ${tabButtons}
              exactly what they are trying to remember. Searches address and
              notes: the address is what they know, and notes is where the
              tenant name or the "sold with the adjacent parcel" detail lives. -->
-        <label class="vb-find">Find <input type="search" id="fText" placeholder="address, city, type or note" autocomplete="off"/></label>
+        <label class="vb-find">Find <input type="search" id="fText" placeholder="address, city, type, source or note" autocomplete="off"/></label>
         <button class="btn ghost hide" id="fClear">Clear</button>
         <!-- How the ledger is grouped. Market by default: a busy book reads as
              a list of markets you open one at a time. -->
@@ -1683,7 +1684,7 @@ ${tabButtons}
   function matchesText(c,terms){
     if(!terms.length)return true;
     var hay=((c.address||"")+" "+(c.notes||"")+" "+(c.market||"")+" "+
-             (c.property_type||"")+" "+(c.tenancy||"")).toLowerCase();
+             (c.property_type||"")+" "+(c.tenancy||"")+" "+(c.source||"")).toLowerCase();
     for(var i=0;i<terms.length;i++){ if(hay.indexOf(terms[i])<0)return false; }
     return true;
   }
@@ -2130,12 +2131,12 @@ ${tabButtons}
   var EDIT_FIELDS=["address","property_type","transaction","deal_date",
                    "price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type",
                    "lease_expiry","option_notice_date",
-                   "tenancy","year_built","notes"];
+                   "tenancy","year_built","notes","source"];
   var EDIT_LABELS={address:"Address",property_type:"Type",transaction:"Sale/lease",
     deal_date:"Date",price:"Price",size_sqft:"Size (SF)",cap_rate:"Cap rate",
     rent_psf:"Rent $/SF",rent_basis:"Rent per",lease_type:"Lease type",
     lease_expiry:"Lease expires",option_notice_date:"Option notice by",
-    tenancy:"Tenancy",year_built:"Year built",notes:"Notes"};
+    tenancy:"Tenancy",year_built:"Year built",notes:"Notes",source:"Source"};
 
   function sheetLabel(k){
     return EDIT_LABELS[k]||(typeof TARGET_LABELS!=="undefined"&&TARGET_LABELS[k])||k;
@@ -2148,6 +2149,7 @@ ${tabButtons}
   // explains a column, it never names one.
   var FIELD_HINTS={
     tenancy:"Who occupies the building: Single tenant, Multi-tenant or Owner-user. Free text, optional; never used in the math.",
+    source:"Where the comp came from: the appraisal it is out of, a file number, a broker\u2019s package. Optional. Searchable, and printed on the comp sheet.",
     lat:"Latitude in decimal degrees, e.g. 43.6187. Optional. With longitude, it keeps this address off third-party geocoders.",
     lng:"Longitude in decimal degrees, e.g. -116.2146. Optional. With latitude, it keeps this address off third-party geocoders.",
     cap_rate:"The sale cap rate as a percentage, e.g. 5.75.",
@@ -2209,7 +2211,7 @@ ${tabButtons}
   // longest one in it, which is what the text did before. Capped per field
   // because a 400-character note must not produce a 400-character column; past
   // the cap the table's own wrapper scrolls, as it already does.
-  var CELL_MAX_CH={address:46,notes:64,deal_date:14,price:16,size_sqft:14,
+  var CELL_MAX_CH={address:46,notes:64,source:40,deal_date:14,price:16,size_sqft:14,
     property_type:16,transaction:12,cap_rate:12,tenancy:20,year_built:12};
   function cellWidth(k,shown){
     var n=String(shown==null?"":shown).length;
@@ -3800,7 +3802,7 @@ ${tabButtons}
     ["option_notice_date","Notice by"],["clear_height","Clear height"],["dock_doors","Dock doors"],
     ["building_class","Class"],["floor_plate","Floor plate"],["center_type","Center type"],["anchor_tenant","Anchor tenant"],
     ["units","Units"],["price_per_unit","Price per unit"],["lot_acres","Lot acres"],["price_per_acre","Price per acre"],
-    ["zoning","Zoning"],["beds_baths","Beds / baths"]];
+    ["zoning","Zoning"],["beds_baths","Beds / baths"],["source","Source"]];
   function detailValue(k,v){
     if(v==null||v==="")return "";
     if(k==="price"||k==="price_per_unit"||k==="price_per_acre")return money(v);
@@ -4234,7 +4236,7 @@ ${tabButtons}
   var SET_COLS=[["address","Address"],["market","Market"],["property_type","Type"],["transaction","Deal"],
     ["deal_date","Date"],["size_sqft","Size (SF)"],["price","Price"],["price_per_sqft","Price $/SF"],
     ["rent_psf_yr","Rent $/SF/yr"],["lease_type","Lease type"],["lease_expiry","Lease ends"],["cap_rate","Cap rate %"],
-    ["year_built","Year built"],["tenancy","Tenancy"],["notes","Notes"]];
+    ["year_built","Year built"],["tenancy","Tenancy"],["source","Source"],["notes","Notes"]];
   // A text cell a spreadsheet would run as a formula is written as text, the
   // rule the server's own export keeps (guardFormula).
   function setCsvCell(v){
@@ -4311,6 +4313,10 @@ ${tabButtons}
     // Land is sized in acres and priced per acre, in full on a page a client
     // reads; the headings name both units only when the set holds land.
     var land=list.some(isLand),built=list.some(function(c){return !isLand(c)&&c.transaction!=="lease"});
+    // Where each comp came from (063), when any comp in the set says: the
+    // appraisal it is out of, a file number. Unlike a note it is written for
+    // the sheet's reader, so it prints; a set with none prints as it did.
+    var sourced=list.some(function(c){return c.source});
     var body=rows.map(function(c){
       var rate=c.transaction==="lease"
         ? (rentOf(c)!=null?rentLabel(rentOf(c))+(c.lease_type?" "+c.lease_type:""):"")
@@ -4320,7 +4326,8 @@ ${tabButtons}
       return "<tr><td>"+esc(c.address)+"</td><td>"+esc(c.property_type)+"</td><td>"+(c.transaction==="lease"?"Lease":"Sale")+"</td>"+
         "<td>"+esc(c.deal_date?dayLabel(c.deal_date,true):"Undated")+'</td><td class="num">'+esc(size)+"</td>"+
         '<td class="num">'+(c.price?money(c.price):"")+'</td><td class="num">'+esc(rate)+"</td>"+
-        '<td class="num">'+(c.cap_rate!=null&&c.cap_rate!==""?esc(String(c.cap_rate))+"%":"")+"</td></tr>";
+        '<td class="num">'+(c.cap_rate!=null&&c.cap_rate!==""?esc(String(c.cap_rate))+"%":"")+"</td>"+
+        (sourced?"<td>"+esc(c.source||"")+"</td>":"")+"</tr>";
     }).join("");
     var sum=setSummary(list);
     return '<div class="vd-sh-head">'+(brand&&brand.logo?'<img src="'+escA(brand.logo)+'" alt=""/>':"")+
@@ -4331,7 +4338,7 @@ ${tabButtons}
       '<p class="vd-sh-sum">'+list.length+" comp"+(list.length===1?"":"s")+(sum?" \\u00b7 "+esc(sum):"")+"</p>"+
       '<table><thead><tr><th>Address</th><th>Type</th><th>Deal</th><th>Date</th><th class="num">'+(land?"Size":"Size (SF)")+"</th>"+
       '<th class="num">Price</th><th class="num">'+(!land?"$/SF or rent":built?"$/SF, $/acre or rent":"$/acre or rent")+
-      '</th><th class="num">Cap rate</th></tr></thead><tbody>'+body+"</tbody></table>"+
+      '</th><th class="num">Cap rate</th>'+(sourced?"<th>Source</th>":"")+"</tr></thead><tbody>"+body+"</tbody></table>"+
       (brand&&brand.disclaimer?'<p class="vd-sh-foot">'+esc(brand.disclaimer)+"</p>":"")+
       // "The preparer", not "the broker": the set may be a lender's, drawn
       // from the appraisals in its files, and the line must be true of it.
@@ -4984,11 +4991,11 @@ ${tabButtons}
   // Keep in step with broker-vault.js REQUIRED_TARGETS / TEMPLATE_COLUMNS /
   // OPTIONAL_SPEC_COLUMNS. This page cannot require that module.
   var PDF_REQUIRED=["address","property_type","transaction","deal_date"];
-  var PDF_KEYS=["address","property_type","transaction","deal_date","price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type","lease_expiry","option_notice_date","tenancy","year_built","notes","lat","lng","clear_height","dock_doors","building_class","floor_plate","center_type","anchor_tenant","units","price_per_unit","lot_acres","price_per_acre","zoning","beds_baths"];
+  var PDF_KEYS=["address","property_type","transaction","deal_date","price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type","lease_expiry","option_notice_date","tenancy","year_built","notes","source","lat","lng","clear_height","dock_doors","building_class","floor_plate","center_type","anchor_tenant","units","price_per_unit","lot_acres","price_per_acre","zoning","beds_baths"];
   var TARGET_LABELS={
     address:"Address", property_type:"Property type", transaction:"Sale or lease",
     deal_date:"Deal date", price:"Price", size_sqft:"Size (SF)", cap_rate:"Cap rate",
-    tenancy:"Tenancy", year_built:"Year built", notes:"Notes",
+    tenancy:"Tenancy", year_built:"Year built", notes:"Notes", source:"Source",
     lat:"Latitude", lng:"Longitude",
     clear_height:"Clear height", dock_doors:"Dock doors",
     building_class:"Building class", floor_plate:"Floor plate",
@@ -5806,7 +5813,7 @@ ${tabButtons}
   // input twice.
   var BASE_FIELDS=["address","property_type","transaction","deal_date",
                    "price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type",
-                   "tenancy","year_built","notes","lat","lng"];
+                   "tenancy","year_built","notes","source","lat","lng"];
   $("addComp_property_type").innerHTML=Object.keys(TYPE_FIELDS)
     .map(function(t){return "<option>"+t+"</option>"}).join("");
   function renderAddTypeFields(){

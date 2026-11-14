@@ -159,6 +159,9 @@ const COLUMNS = [
   ["broker_comps",      ["lease_expiry", "option_notice_date", "renewal_notified_at"],
                                                                 "038-lease-renewal-watch.sql"],
   ["shared_reports",    ["shared_by_name"],                     "038-lease-renewal-watch.sql"],
+  // 063 is 038's write-path shape again: normalizeRow emits `source` on
+  // every upload, cell edit and hand-added comp.
+  ["broker_comps",      ["source"],                             "063-broker-comps-source.sql"],
   // 039's table check above proves org_contacts exists; email is also worth
   // naming because the import's upsert conflicts on (org_id, email) and a
   // partially-applied file would 400 every import while reads look fine.

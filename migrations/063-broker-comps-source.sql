@@ -1,0 +1,44 @@
+-- 063 · Where a private comp came from (2026-11-14)
+-- Rules: broker-vault.js (TEMPLATE_COLUMNS, normalizeRow), vault-api.js
+--        (API_COMP_FIELDS), building-facts.js (DEAL_FIELDS)
+-- Page:  vault-page.js (/comps): the row's detail, Find, the spreadsheet, the
+--        comp set's CSV and the printed comp sheet
+--
+-- ---------------------------------------------------------------------------
+-- RUN THIS BEFORE DEPLOYING. It is 038's hazard exactly.
+-- ---------------------------------------------------------------------------
+-- The vault's READ path passes no `select=`, so it cannot name a column that
+-- does not exist. Its WRITE path does: normalizeRow emits every field it
+-- knows, null included, so once the new code ships an upload, a cell edit and
+-- a hand-added comp all POST a payload naming `source`. PostgREST 400s an
+-- insert on an unknown column, and on the upload path that refuses the whole
+-- spreadsheet. Migrate first, then deploy.
+--
+-- ---------------------------------------------------------------------------
+-- WHAT IT IS
+-- ---------------------------------------------------------------------------
+-- The owner's ask, after /comps was made to work for a lender (2026-11-14):
+-- a lender's comps come out of the appraisals in its files, and the first
+-- question a credit file asks of a comp is which appraisal it came from. Until
+-- now that lived in `notes`, which is free text written for the member and is
+-- deliberately kept OFF the printed comp sheet. `source` is a short label for
+-- the document ("Appraisal, 4102 Oleander Dr, Mar 2026", a file number, a
+-- broker's package) that IS printed, because provenance is what a reader of
+-- the sheet needs.
+--
+-- Free text, optional, capped at 120 characters in normalizeRow. Private like
+-- every other vault column: it is not in the publish payload
+-- (submissionFromVaultComp names its fields), so publishing a comp never
+-- carries it into comp_submissions or the corpus.
+--
+-- Purely additive and idempotent: one nullable column, no default, no index
+-- (it is searched in the browser, over rows the page already holds).
+
+alter table broker_comps add column if not exists source text;
+
+-- Verify (zero rows = applied):
+--   select 'broker_comps.source'
+--   where not exists (select 1 from information_schema.columns
+--                     where table_schema = 'public'
+--                       and table_name = 'broker_comps'
+--                       and column_name = 'source');

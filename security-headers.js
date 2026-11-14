@@ -28,8 +28,7 @@
 //
 //  - Referrer-Policy: strict-origin-when-cross-origin. A link out of a page
 //    tells the other site only "compninja.co", never the path. That matters
-//    here: /r/<id> is a shared report's whole secret, and an admin CSV link
-//    can still carry ?key=.
+//    here: /r/<id> is a shared report's whole secret.
 //
 //  - Strict-Transport-Security, only on a request that arrived over HTTPS
 //    (the proxy's x-forwarded-proto; browsers ignore it over plain HTTP

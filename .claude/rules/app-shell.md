@@ -50,7 +50,7 @@ know before touching them:
   not know about, and preload is hard to undo). A local run, the test suite
   and the loopback warm render never send it.
 - **`Referrer-Policy: strict-origin-when-cross-origin`** keeps a shared
-  report's `/r/<id>` and an admin `?key=` link out of other sites' logs.
+  report's `/r/<id>` out of other sites' logs.
 
 Checked by loading the public pages signed out and the member pages against
 the stand-in database in a real browser: nothing was refused on any of them.

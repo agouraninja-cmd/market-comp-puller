@@ -1466,11 +1466,10 @@ function sendCsvDownload(req, res, table, file, cols, filename) {
     res.writeHead(404, { "content-type": "text/plain" });
     return res.end("Not found");
   }
-  // Header, ?key= (machine callers), or the cn_admin cookie — the cookie is
-  // what lets the dashboards link these as plain hrefs with no key in the URL.
-  const key = new URL(req.url, "http://localhost").searchParams.get("key");
-  if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) {
-    return sendJson(res, 401, { error: "Unauthorized." });
+  // The x-admin-key header or the cn_admin cookie — the cookie is what lets
+  // the dashboards link these as plain hrefs. Never ?key= (isAdminRequestOrUrlKey).
+  if (!isAdminRequestOrUrlKey(req)) {
+    return sendJson(res, 401, adminRefusal(req));
   }
   readRows(table, file, cols).then((rows) => {
     // guardFormula: these files hold visitor-typed (lead name/company) and
@@ -1551,6 +1550,38 @@ function isAdminRequest(req) {
   if (!ADMIN_KEY || !req) return false;
   if (secretMatches(req.headers["x-admin-key"], ADMIN_KEY)) return true;
   return adminCookieValid(parseCookies(req)[ADMIN_COOKIE]);
+}
+// The admin key in a URL (`?key=`), which is no longer accepted (2026-11-14).
+//
+// Six routes took it "for machine callers": the three CSV downloads (leads,
+// broker submissions, the corpus), /api/stats, /api/admin/submissions and
+// /api/corpus-audit. A key in a URL is written to the host's access log, the
+// browser's history and any proxy in between, and the lead CSV it opens is
+// people's names, emails and phone numbers. Every caller in this repository
+// already sends the `x-admin-key` header (the workflows, gen-market-seed.js,
+// run-eval.js, the dashboards' own fetches), and a browser carries the
+// cn_admin cookie, so nothing here needed the URL form.
+//
+// ADMIN_KEY_IN_URL=on is the rollback, for a bookmark or a spreadsheet import
+// nobody remembered: it restores exactly the old behaviour on those routes.
+//
+// The refusal says what to do instead, and says the same thing whether the
+// key in the URL was right or wrong, so it confirms nothing about the key.
+const ADMIN_KEY_IN_URL = String(process.env.ADMIN_KEY_IN_URL || "").trim().toLowerCase() === "on";
+function urlKeyOf(req) {
+  try { return new URL(req.url, "http://localhost").searchParams.get("key"); } catch (_) { return null; }
+}
+// isAdminRequest for the routes that used to read ?key= as well.
+function isAdminRequestOrUrlKey(req) {
+  if (isAdminRequest(req)) return true;
+  return ADMIN_KEY_IN_URL && Boolean(ADMIN_KEY) && secretMatches(urlKeyOf(req), ADMIN_KEY);
+}
+function adminRefusal(req) {
+  return urlKeyOf(req) != null && !ADMIN_KEY_IN_URL
+    ? { error: "Unauthorized. The admin key is not accepted in the address any more: send it as the " +
+        "x-admin-key header, or unlock /admin in this browser first and open the link again.",
+        code: "key_in_url" }
+    : { error: "Unauthorized." };
 }
 function setAdminCookie(res, req, value, maxAgeSec) {
   const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
@@ -21311,14 +21342,33 @@ function renderAlerts(d){
   }
   el("alerts").innerHTML=html;
 }
-// Built AFTER the gate passes. In a cookie-unlocked session the links are
-// plain hrefs — the cn_admin cookie rides along with the click and no key
-// ever appears in a URL. Only a typed-key session (where the cookie may not
-// have landed yet) falls back to the ?key= form the CSV routes still accept.
+// Built AFTER the gate passes. The links are plain hrefs in every session and
+// no key ever appears in a URL: the routes stopped taking ?key= on 2026-11-14
+// (a key in an address is in the access log and the browser's history, and
+// the lead CSV is people's contact details). In a cookie-unlocked session the
+// cn_admin cookie rides along with the click. In a typed-key session the
+// cookie may not have landed yet, so the click is answered here instead: the
+// file is fetched with the key in the x-admin-key header and saved from
+// memory, under the same name the route gives it.
 function renderDls(key){
-  var q=key?"?key="+encodeURIComponent(key):"";
-  el("dls").innerHTML=[["/api/leads","Leads"],["/api/comp-submissions","Broker submissions"],["/api/comp-corpus","Comp corpus"]]
-    .map(function(p){return '<a href="'+p[0]+q+'" download>'+p[1]+' CSV</a>';}).join(" &middot; ");
+  var files=[["/api/leads","Leads","leads.csv"],["/api/comp-submissions","Broker submissions","comp-submissions.csv"],["/api/comp-corpus","Comp corpus","comp-corpus.csv"]];
+  el("dls").innerHTML=files
+    .map(function(p){return '<a href="'+p[0]+'" data-file="'+p[2]+'" download>'+p[1]+' CSV</a>';}).join(" &middot; ");
+  if(!key)return;
+  Array.prototype.forEach.call(el("dls").querySelectorAll("a"),function(a){
+    a.addEventListener("click",function(e){
+      e.preventDefault();
+      fetch(a.getAttribute("href"),{headers:{"x-admin-key":key}})
+        .then(function(r){if(!r.ok){throw new Error("Could not download ("+r.status+").");}return r.blob();})
+        .then(function(b){
+          var u=URL.createObjectURL(b),t=document.createElement("a");
+          t.href=u;t.download=a.getAttribute("data-file");
+          document.body.appendChild(t);t.click();t.remove();
+          setTimeout(function(){URL.revokeObjectURL(u);},2000);
+        })
+        .catch(function(err){alert(err.message);});
+    });
+  });
 }
 function load(key){
   fetch("/api/hq",{headers:{"x-admin-key":key}}).then(function(r){
@@ -28027,8 +28077,7 @@ const server = http.createServer((req, res) =>
   // ---------------------------------------------------------------------------
   if (req.method === "GET" && req.url.split("?")[0] === "/api/admin/submissions") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    const key = new URL(req.url, "http://localhost").searchParams.get("key");
-    if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    if (!isAdminRequestOrUrlKey(req)) return sendJson(res, 401, adminRefusal(req));
     (async () => {
       // The verified layer is DB-only, so review is too — file mode just tells
       // the admin UI to render its "requires Supabase" note.
@@ -33439,8 +33488,8 @@ const server = http.createServer((req, res) =>
   if (req.method === "GET" && req.url.split("?")[0] === "/api/devlog") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
     // Header or the cn_admin cookie; never ?key=, which would leak the admin
-    // key into URLs and access logs. (The CSV downloads keep ?key= for
-    // machine callers — browser download links ride the cookie instead.)
+    // key into URLs and access logs. (No route takes ?key= any more, since
+    // 2026-11-14: see isAdminRequestOrUrlKey.)
     if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
     readDevlogMerged()
       .then((entries) => sendJson(res, 200, { entries }))
@@ -33626,8 +33675,7 @@ const server = http.createServer((req, res) =>
   // admin dashboard. Logging happens regardless; only the view is gated. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/stats") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    const key = new URL(req.url, "http://localhost").searchParams.get("key");
-    if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    if (!isAdminRequestOrUrlKey(req)) return sendJson(res, 401, adminRefusal(req));
     Promise.all([
       readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue", "visitor_id", "user_id", "plan"]),
       // Never rejects: readIntroRequests catches its own errors and returns
@@ -33647,8 +33695,7 @@ const server = http.createServer((req, res) =>
   // and this panel must never be what breaks it.
   if (req.method === "GET" && req.url.split("?")[0] === "/api/corpus-audit") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    const key = new URL(req.url, "http://localhost").searchParams.get("key");
-    if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    if (!isAdminRequestOrUrlKey(req)) return sendJson(res, 401, adminRefusal(req));
     corpusAuditReport()
       .then((data) => sendJson(res, 200, data))
       .catch((err) => {
@@ -33706,8 +33753,7 @@ const server = http.createServer((req, res) =>
 
   // --- HQ: the internal homepage. One aggregate of the three tools' headline
   // numbers. Same gate as /api/stats (404 with ADMIN_KEY unset, 401 on a bad
-  // key): header or the cn_admin cookie, like the dev endpoints — ?key= stays
-  // confined to the CSV download routes. ---
+  // key): header or the cn_admin cookie, like the dev endpoints. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/hq") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
     if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });

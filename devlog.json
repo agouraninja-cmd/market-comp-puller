@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-14",
+    "type": "fix",
+    "title": "The admin key is no longer accepted in a web address",
+    "details": "The lead list, the broker submissions and a few admin figures could be opened by putting the admin key on the end of the address (?key=...). Anything in an address is saved in the browser's history and in the host's logs, so the key that opens everyone's contact details was being written down in places it should not be. Those pages now accept the key only the two safe ways they already supported: the admin pages you unlock by typing it, and the automated jobs, which send it out of sight. The Leads, Broker submissions and Comp corpus downloads on the HQ page work as before. If an old bookmark or a spreadsheet import used an address with the key in it, it now gets a message saying what to do instead, and there is a switch to turn the old behaviour back on if that is needed for a while. If the key was ever used that way, it is worth changing it. There was no sign anyone had misused it; it was found by reading the code."
+  },
+  {
+    "date": "2026-11-14",
     "type": "improvement",
     "title": "The comp report is Inter too",
     "details": "The comp report was the last part of the signed-in app still set in Georgia: the address at the top, the Low, Likely and High values, the tile figures, the statement figures in Analysis and the plan prices. They are Inter now, in bold, like Home and every other page you work in. The report is the same height and holds the same words and numbers; only the typeface changed. This covers a shared report link and the sample report as well, since they are the same page, and a printed or downloaded report follows it. The public pages a visitor sees before signing in keep their Georgia headings."

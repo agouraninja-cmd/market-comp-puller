@@ -756,3 +756,38 @@ whole design in its header; the load-bearing parts:
   sandbox has one). The measurement above launched Chromium with no DevTools
   at all, behind a small proxy that injected the member's cookie and a
   harness that hovered, clicked and reported `activationStart`.
+
+## Member page titles are Inter (2026-11-14)
+
+The owner, after Home's list and then its greeting went to Inter
+(workspace.md, "The list's type"): "make the other pages' titles Inter
+too". Every page a member works in now titles itself the way Home greets:
+Inter, `--text-h1` (28px) at 600, `-.02em`, on a 34px line. They were
+Georgia at 34 (Comps, Pipeline, Run a report, Markets), 28 (Sites, Permit
+tracker), 26 (Messages) and 24 (Buildings).
+
+- **The rule rides with the font.** `INTER_FONT_HEAD` in server.js ends
+  with `<style>body h1{…}</style>`. The pages that pass that constant ARE
+  the member pages (the list above it), so a public page, which loads no
+  Inter, never gets the rule: a signed-out `/markets`, `/market/<slug>`,
+  `/rankings`, `/pricing`, `/faq` and the home page keep `MARKET_CSS`'s
+  Georgia `h1`, and the public `/markets` is byte for byte what it was.
+  `body h1` out-ranks the bare `h1` (and its 34px step at 640px) wherever it
+  sits in the document; marketShell's `head` is emitted BEFORE `MARKET_CSS`,
+  so a bare `h1` there would lose.
+- **A page with a title rule of its own says it there**, because a class
+  out-ranks `body h1`: `h1.h` (vault-page.js, `/comps` and `/pipeline`),
+  `.sp-head h1` (sites-page.js), `.pt-head h1` (permits-page.js),
+  `.bl-head h1` and `.bs-head h1` (buildings-page.js; the list keeps its
+  24px and a building's sheet its 26, an address being longer than a
+  title). Messages' title carried `font-size:26px` inline, which out-ranked
+  everything; it is `margin` only now.
+- **Titles only.** The headings under them ("Market Explorer", "The
+  Board", a card's `h2`) and the big figures on these pages are still
+  Georgia: the ask was the titles, and that was said to the owner. The
+  printed comp sheet (`#compSheet h1`) is a document for a client and keeps
+  its Georgia. `/market/<slug>` and `/rankings` read by a member load no
+  Inter at all yet (markets.md), so their titles are unchanged.
+- Tests: `test/vault-shell.test.js` asks every page a rail row opens for
+  the rule, once, asks the public `/markets` for none, and reads each
+  page's own title rule for Georgia.

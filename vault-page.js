@@ -115,7 +115,9 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 main.wrap{flex:1;padding-top:40px;padding-bottom:72px}
 .kicker{margin:0 0 var(--s3);font-size:var(--text-tiny);font-weight:600;letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink-3)}
-h1.h{font-family:var(--serif);font-weight:500;margin:0;font-size:var(--text-h1-lg);line-height:1.12;
+/* A member page's title is Inter since 2026-11-14 (app-shell.md, "Member
+   page titles"): 28px at 600, Home's greeting. */
+h1.h{font-weight:600;margin:0;font-size:var(--text-h1);line-height:1.2143;
   letter-spacing:-.02em}
 .sub{color:var(--ink-2);max-width:54ch;margin:var(--s4) 0 0;font-size:var(--text-lead);line-height:1.55}
 /* The trust line. A broker does not hand over their book of business because

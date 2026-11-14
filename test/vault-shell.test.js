@@ -130,6 +130,7 @@ test("every page on the rail loads Inter for a member, and a stranger's /markets
   // a member moving between them. Every page a rail row opens is listed, so a
   // new one that forgets the font fails here.
   const INTER = /<link href="https:\/\/fonts\.googleapis\.com\/css2\?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"\/>/g;
+  const MEMBER_TITLE = "<style>body h1{font-family:inherit;font-weight:600;font-size:var(--text-h1);line-height:1.2143;letter-spacing:-.02em}</style>";
   const srv = await boot({});
   t.after(() => srv.stop());
   for (const page of ["/messages", "/pipeline", "/sites", "/markets", "/comps", "/bulk", "/permits"]) {
@@ -138,11 +139,16 @@ test("every page on the rail loads Inter for a member, and a stranger's /markets
     assert.equal((html.match(INTER) || []).length, 1, `${page} should load Inter once for a member`);
     assert.ok(html.indexOf("family=Inter") < html.indexOf("<style>"),
       `${page} should ask for the font before its stylesheet`);
+    // Its title is Inter too (2026-11-14, the owner: "make the other pages'
+    // titles Inter too"): the rule rides with the font, so the public pages,
+    // which load neither, keep their Georgia titles.
+    assert.equal(html.split(MEMBER_TITLE).length - 1, 1, `${page} should carry the member title rule once`);
   }
   // The signed-out /markets is the public, cached page: no font from another
   // host, and the same caching it had.
   const res = await fetch(srv.base + "/markets");
   const anon = await res.text();
+  assert.ok(!anon.includes("<style>body h1{"), "the public /markets keeps its Georgia title");
   assert.ok(!/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(anon),
     "the public /markets should not fetch a font");
   assert.equal(res.headers.get("cache-control"), "public, max-age=3600");
@@ -242,4 +248,23 @@ test("no MARKET_CSS declaration leaks into a vault component", () => {
   // And the invariant is only meaningful if it is actually comparing something.
   assert.ok(Object.keys(V).filter((s) => M[s]).length >= 5,
     "the shared-selector set collapsed to nothing — this test stopped checking anything");
+});
+
+test("a member page's own title rule names no Georgia", () => {
+  // The pages whose title has a rule of its own (it out-ranks the shared
+  // `body h1`), each read from its source: none may put the serif back, and
+  // each is the 600 the shared rule is.
+  const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+  for (const [file, sel] of [["vault-page.js", "h1.h"], ["sites-page.js", ".sp-head h1"], ["permits-page.js", ".pt-head h1"],
+    ["buildings-page.js", ".bl-head h1"], ["buildings-page.js", ".bs-head h1"]]) {
+    const src = read(file);
+    const at = src.indexOf("\n" + sel + "{");
+    assert.notEqual(at, -1, `${file} lost its ${sel} rule`);
+    const body = src.slice(at, src.indexOf("}", at));
+    assert.ok(!/serif|Georgia/.test(body), `${file}: ${sel} is Georgia again`);
+    assert.match(body, /font-weight:600/, `${file}: ${sel} is not the title weight`);
+  }
+  // Messages' title carried a size of its own inline (26px), which out-ranked
+  // every rule.
+  assert.match(read("messages-page.js"), /<h1 style="margin:0 0 4px">Messages<\/h1>/);
 });

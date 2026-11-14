@@ -155,8 +155,13 @@ STARTS then can outlive the wait.
 > inner `main.wrap.pt-page` gives its padding back there (the page had two
 > 16px gutters a side and 88px above its heading).
 > **Left alone, and worth knowing.** Messages' context menu (z 60) can open
-> under the bar. The Feedback button still covers the right end of /comps'
-> comp set.
+> under the bar.
+> **/comps' comp set stops short of the Feedback button (2026-11-14, the
+> owner: "fix the feedback button covering the comp set").** Under 900px
+> the button floats 16px from the right, 44px wide, in the corner the
+> sticky set stands in; `.vd-tray.on{margin-right:56px}` (44 + 12, in
+> vault-page.js's phone block) puts them side by side. Nothing is hidden
+> and nothing is measured in script.
 > **A stranger's header on a phone is two rows (2026-11-14, the owner:
 > "fix the signed-out header on mobile too").** It was three under about
 > 407px (brand; Home, Explore, Tools, Log in; the red button alone), 138px.
@@ -828,9 +833,33 @@ tracker), 26 (Messages) and 24 (Buildings).
   24px and a building's sheet its 26, an address being longer than a
   title). Messages' title carried `font-size:26px` inline, which out-ranked
   everything; it is `margin` only now.
-- **Titles only.** The headings under them ("Market Explorer", "The
-  Board", a card's `h2`) and the big figures on these pages are still
-  Georgia: the ask was the titles, and that was said to the owner. The
+- **The headings inside followed the same day** ("make the headings inside
+  those pages Inter too"). Two halves, as for the titles. The shared half
+  is in the same `<style>`: `:root body h2,:root body h3{font-family:
+  inherit}` for every one, and the heading weight (600, `-.01em`) only for
+  the selectors that WERE Georgia in `MARKET_CSS` and on Markets
+  (`.card h2`, `.mlook h2`, `.bd-head h2`, `.cta h2`, `.person h3`,
+  `.mcard .t`, `.bkhead`, `.bd-gh b`, `.rke h2`), so a small label that
+  happens to be an `h3` keeps its weight and spacing. `:root body` is what
+  out-ranks a class and an element from the head; those rules are shared
+  with the public pages and are not edited. The other half is each page's
+  own rule, changed in place: vault-page.js `h2`, `.drop-k`, `.dlab`;
+  sites-page.js `.sp-oh h2`, `.sp-empty h2`; permits-page.js `.pw-pro h2`,
+  `.pa-h`; buildings-page.js `.bl-addr`; bulk-page.js `.bk-run .deckrule
+  h2`; permit-compare.js `.pc-head h1` (a title the first pass missed: a
+  class out-ranks `body h1`). The 21 and 22px ones are 20 now: Inter reads
+  larger than Georgia at one size.
+- **The big figures followed last** ("make the figures Inter too"), the
+  same two halves: `.tile .v` and `.lcell .v` joined the shared list, and
+  each page's own are changed in place (vault-page.js `.lfig`, `.sfig`,
+  `.card .big`, `.vd-lrate b`, `.vd-tk b`; sites-page.js `.sp-figs b`;
+  bulk-page.js `.bk-run .strip .v`, which must keep a fallback on every
+  `var()` because that block is also injected into index.html;
+  permit-compare.js `.pc-v`; home-sites.css `.hs-vb`, the pane under a
+  deal, which Home's panel already set in Inter). Nothing on a member
+  page a rail row opens is Georgia now. Still Georgia: the public pages,
+  the comp REPORT in index.html (its headings and value figures), the map
+  card over a pin and the first-building screen on Home. The
   printed comp sheet (`#compSheet h1`) is a document for a client and keeps
   its Georgia. `/market/<slug>` and `/rankings` read by a member load no
   Inter at all yet (markets.md), so their titles are unchanged.

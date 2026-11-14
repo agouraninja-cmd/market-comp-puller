@@ -416,7 +416,7 @@ const COMPARE_CSS =
   ".pc-page .kicker{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}" +
   ".pc-page .kicker a{color:var(--ink-3)}.pc-page .kicker a:hover{color:var(--ink)}" +
   ".pc-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1.5px solid var(--ink);padding-bottom:6px;margin-bottom:10px}" +
-  ".pc-head h1{margin:0;font-family:Georgia,\"Times New Roman\",serif;font-weight:400;font-size:24px;color:var(--ink)}" +
+  ".pc-head h1{margin:0;font-weight:600;font-size:24px;letter-spacing:-.02em;color:var(--ink)}" +
   ".pc-when{font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}" +
   ".pc-sub{font-size:13.5px;color:var(--ink-2);margin:0 0 4px;max-width:72ch}" +
   ".pc-sub.stale{color:var(--warn-text)}" +
@@ -435,7 +435,7 @@ const COMPARE_CSS =
   ".pc-page th[scope=row]{text-align:left;font-weight:500;color:var(--ink);padding-left:0;min-width:150px}" +
   ".pc-page thead th:first-child{text-align:left;padding-left:0}" +
   ".pc-page tbody tr:last-child th,.pc-page tbody tr:last-child td{border-bottom:0}" +
-  ".pc-v{display:block;font-family:Georgia,\"Times New Roman\",serif;font-size:18px;color:var(--ink);line-height:1.25}" +
+  ".pc-v{display:block;font-weight:600;font-size:18px;color:var(--ink);line-height:1.25}" +
   ".pc-n{display:block;font-size:12px;color:var(--ink-3);font-weight:400;margin-top:1px}" +
   ".pc-page .pp-up{color:var(--ok-text);font-weight:600}.pc-page .pp-down{color:var(--err-text);font-weight:600}" +
   ".pc-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}" +

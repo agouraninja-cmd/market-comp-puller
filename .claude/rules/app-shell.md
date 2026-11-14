@@ -765,10 +765,17 @@ tracker), 26 (Messages) and 24 (Buildings).
   h2`; permit-compare.js `.pc-head h1` (a title the first pass missed: a
   class out-ranks `body h1`). The 21 and 22px ones are 20 now: Inter reads
   larger than Georgia at one size.
-- **The big figures are still Georgia** (`.lfig`, `.sfig`, `.card .big`,
-  `.sp-figs b`, `.strip .v`, `.tile .v`, `.lcell .v`, `.pc-v`): the ask was
-  headings, and that was said to the owner, twice. A row of them under an
-  Inter heading (Sites' four figures) is where it shows. The
+- **The big figures followed last** ("make the figures Inter too"), the
+  same two halves: `.tile .v` and `.lcell .v` joined the shared list, and
+  each page's own are changed in place (vault-page.js `.lfig`, `.sfig`,
+  `.card .big`, `.vd-lrate b`, `.vd-tk b`; sites-page.js `.sp-figs b`;
+  bulk-page.js `.bk-run .strip .v`, which must keep a fallback on every
+  `var()` because that block is also injected into index.html;
+  permit-compare.js `.pc-v`; home-sites.css `.hs-vb`, the pane under a
+  deal, which Home's panel already set in Inter). Nothing on a member
+  page a rail row opens is Georgia now. Still Georgia: the public pages,
+  the comp REPORT in index.html (its headings and value figures), the map
+  card over a pin and the first-building screen on Home. The
   printed comp sheet (`#compSheet h1`) is a document for a client and keeps
   its Georgia. `/market/<slug>` and `/rankings` read by a member load no
   Inter at all yet (markets.md), so their titles are unchanged.

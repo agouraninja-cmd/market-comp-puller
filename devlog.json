@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-11-14",
+    "type": "improvement",
+    "title": "The header takes two rows on a phone for visitors who are not signed in, not three",
+    "details": "On a phone, the public pages (the home page, FAQ, pricing, markets, the brokers and lenders pages) opened with the logo, then a row of links, then the red Create account button alone on a third row: 138px before the page began. The button now sits beside the logo at the top right, and Log in sits at the right end of the links row under it, so the header is 87px. Nothing was removed: Home, Explore, Tools, Log in and Create account are all still there. Nothing changes on a computer or for signed-in members."
+  },
+  {
     "date": "2026-11-13",
     "type": "improvement",
     "title": "On a phone, your places are a bar at the bottom of the screen",

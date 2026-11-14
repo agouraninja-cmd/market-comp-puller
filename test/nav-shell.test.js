@@ -190,6 +190,48 @@ test("a phone gets the nav along the bottom, on screen only, and nothing rides u
   assert.match(phone, /html\.nav-rail \.hdr nav\{[^}]*z-index:1050/);
 });
 
+test("a stranger's phone header is two rows: the button beside the brand, Log in under it", () => {
+  // 2026-11-14. Under about 407px the signed-out bar was three rows (brand;
+  // Home, Explore, Tools, Log in; the red button alone), 138px before the
+  // page began. The button is now placed beside the brand and Log in is
+  // pushed to the right end of the links' row. All of it is four
+  // declarations a tidy-up could drop with every other suite green.
+  // The literal ends at its first "`;" (it closes on an interpolation, not
+  // on a line of its own).
+  const raw = SERVER_JS.match(/const MARKET_CSS = `[\s\S]*?`;/)[0];
+  const css = raw.replace(/\/\*[\s\S]*?\*\//g, "");
+  const m = css.match(/@media \(max-width:559\.98px\)\{([\s\S]*?)\n\}/);
+  assert.ok(m, "MARKET_CSS lost the signed-out phone header block");
+  const block = m[1];
+  assert.match(block, /\.hdr nav>a\.btn\.sm\[href\$="=signup"\]\{position:absolute;top:11px;right:16px\}/,
+    "the red button no longer stands beside the brand");
+  assert.match(block, /\.hdr nav>a\[href\$="=signin"\]\{margin-left:auto\}/,
+    "Log in no longer sits at the right end of the links' row");
+  // The selectors name the END of each address, never the whole of it: this
+  // stylesheet is sent to members too, and public-pages, pricing-page and
+  // brokers-firms-page all refuse a member's page with either address in it.
+  // (Read with its comments: they are served too.)
+  assert.ok(!/auth=sign(in|up)/.test(raw),
+    "MARKET_CSS spells out a signed-out address, which a member's page then contains");
+  // Without this the links fit beside the brand from about 420px and run
+  // under the placed button.
+  assert.match(block, /\.hdr nav\{flex:1 1 100%\}/, "the nav no longer takes the whole second row");
+  // 11px is the top padding plus half the brand less half the button.
+  assert.match(block, /\.hdr \.wrap\{padding-top:14px;padding-bottom:12px\}/);
+  // The button is placed against .wrap, which is the positioned box on a
+  // phone because of the menus' rule, at a wider breakpoint than this one.
+  assert.match(css, /@media \(max-width:639\.98px\)\{\s*\.hdr \.wrap\{position:relative\}/);
+  // The two selectors name addresses marketBar really writes; a renamed
+  // route would leave the rules matching nothing and the third row back.
+  assert.ok(SERVER_JS.includes('`<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`'),
+    "marketBar's signed-out links changed; the phone header's selectors must follow");
+  // Nothing is hidden (Home stays, the owner's call), and a member's bar is
+  // not touched: its rules are RAIL_CSS's, and nav-parity.test.js refuses
+  // rail chrome styled anywhere else.
+  assert.ok(!/display:none/.test(block), "the signed-out phone header hides something");
+  assert.ok(!block.includes("nav-rail"), "the signed-out phone header names the member's shell");
+});
+
 test("both market stylesheets still take the rail, and the vault does too", () => {
   // The whole point of one definition is that consumers cannot drift apart.
   // The failure this catches is silent: a stylesheet that stops interpolating

@@ -744,9 +744,26 @@ tracker), 26 (Messages) and 24 (Buildings).
   24px and a building's sheet its 26, an address being longer than a
   title). Messages' title carried `font-size:26px` inline, which out-ranked
   everything; it is `margin` only now.
-- **Titles only.** The headings under them ("Market Explorer", "The
-  Board", a card's `h2`) and the big figures on these pages are still
-  Georgia: the ask was the titles, and that was said to the owner. The
+- **The headings inside followed the same day** ("make the headings inside
+  those pages Inter too"). Two halves, as for the titles. The shared half
+  is in the same `<style>`: `:root body h2,:root body h3{font-family:
+  inherit}` for every one, and the heading weight (600, `-.01em`) only for
+  the selectors that WERE Georgia in `MARKET_CSS` and on Markets
+  (`.card h2`, `.mlook h2`, `.bd-head h2`, `.cta h2`, `.person h3`,
+  `.mcard .t`, `.bkhead`, `.bd-gh b`, `.rke h2`), so a small label that
+  happens to be an `h3` keeps its weight and spacing. `:root body` is what
+  out-ranks a class and an element from the head; those rules are shared
+  with the public pages and are not edited. The other half is each page's
+  own rule, changed in place: vault-page.js `h2`, `.drop-k`, `.dlab`;
+  sites-page.js `.sp-oh h2`, `.sp-empty h2`; permits-page.js `.pw-pro h2`,
+  `.pa-h`; buildings-page.js `.bl-addr`; bulk-page.js `.bk-run .deckrule
+  h2`; permit-compare.js `.pc-head h1` (a title the first pass missed: a
+  class out-ranks `body h1`). The 21 and 22px ones are 20 now: Inter reads
+  larger than Georgia at one size.
+- **The big figures are still Georgia** (`.lfig`, `.sfig`, `.card .big`,
+  `.sp-figs b`, `.strip .v`, `.tile .v`, `.lcell .v`, `.pc-v`): the ask was
+  headings, and that was said to the owner, twice. A row of them under an
+  Inter heading (Sites' four figures) is where it shows. The
   printed comp sheet (`#compSheet h1`) is a document for a client and keeps
   its Georgia. `/market/<slug>` and `/rankings` read by a member load no
   Inter at all yet (markets.md), so their titles are unchanged.

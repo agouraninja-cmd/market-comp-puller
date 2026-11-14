@@ -130,7 +130,10 @@ test("every page on the rail loads Inter for a member, and a stranger's /markets
   // a member moving between them. Every page a rail row opens is listed, so a
   // new one that forgets the font fails here.
   const INTER = /<link href="https:\/\/fonts\.googleapis\.com\/css2\?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"\/>/g;
-  const MEMBER_TITLE = "<style>body h1{font-family:inherit;font-weight:600;font-size:var(--text-h1);line-height:1.2143;letter-spacing:-.02em}</style>";
+  const MEMBER_TITLE = "<style>body h1{font-family:inherit;font-weight:600;font-size:var(--text-h1);line-height:1.2143;letter-spacing:-.02em}";
+  // The headings inside the page take the page's face too (the same day:
+  // "make the headings inside those pages Inter too").
+  const MEMBER_HEADINGS = ":root body h2,:root body h3{font-family:inherit}";
   const srv = await boot({});
   t.after(() => srv.stop());
   for (const page of ["/messages", "/pipeline", "/sites", "/markets", "/comps", "/bulk", "/permits"]) {
@@ -143,12 +146,14 @@ test("every page on the rail loads Inter for a member, and a stranger's /markets
     // titles Inter too"): the rule rides with the font, so the public pages,
     // which load neither, keep their Georgia titles.
     assert.equal(html.split(MEMBER_TITLE).length - 1, 1, `${page} should carry the member title rule once`);
+    assert.equal(html.split(MEMBER_HEADINGS).length - 1, 1, `${page} should carry the member heading rule once`);
   }
   // The signed-out /markets is the public, cached page: no font from another
   // host, and the same caching it had.
   const res = await fetch(srv.base + "/markets");
   const anon = await res.text();
   assert.ok(!anon.includes("<style>body h1{"), "the public /markets keeps its Georgia title");
+  assert.ok(!anon.includes(":root body h2"), "the public /markets keeps its Georgia headings");
   assert.ok(!/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(anon),
     "the public /markets should not fetch a font");
   assert.equal(res.headers.get("cache-control"), "public, max-age=3600");
@@ -267,4 +272,28 @@ test("a member page's own title rule names no Georgia", () => {
   // Messages' title carried a size of its own inline (26px), which out-ranked
   // every rule.
   assert.match(read("messages-page.js"), /<h1 style="margin:0 0 4px">Messages<\/h1>/);
+});
+
+test("a member page's own headings name no Georgia; only its figures still may", () => {
+  // Each page's heading rules, read from its source. The FIGURE rules are
+  // listed too, so that the day they change this says which list to move
+  // them to instead of passing by accident.
+  const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+  const ruleOf = (src, sel) => {
+    const at = src.indexOf(sel + "{");
+    assert.notEqual(at, -1, `no ${sel} rule`);
+    return src.slice(at, src.indexOf("}", at));
+  };
+  const HEADINGS = [["vault-page.js", "\nh2"], ["vault-page.js", ".drop-k"], ["vault-page.js", ".dlab"],
+    ["sites-page.js", ".sp-oh h2"], ["sites-page.js", ".sp-empty h2"], ["permits-page.js", ".pw-pro h2"], ["permits-page.js", ".pa-h"],
+    ["buildings-page.js", ".bl-addr"], ["bulk-page.js", ".bk-run .deckrule h2"], ["permit-compare.js", ".pc-head h1"]];
+  for (const [file, sel] of HEADINGS) {
+    const body = ruleOf(read(file), sel);
+    assert.ok(!/serif|Georgia/.test(body), `${file}: ${sel.trim()} is Georgia again`);
+    assert.match(body, /font-weight:600/, `${file}: ${sel.trim()} is not the heading weight`);
+  }
+  const FIGURES = [["vault-page.js", ".lfig"], ["vault-page.js", ".sfig"], ["sites-page.js", ".sp-figs b"]];
+  for (const [file, sel] of FIGURES) {
+    assert.match(ruleOf(read(file), sel), /serif/, `${file}: ${sel} is no longer Georgia: move it to the headings' list`);
+  }
 });

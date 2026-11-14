@@ -169,12 +169,14 @@ h1.h{font-weight:600;margin:0;font-size:var(--text-h1);line-height:1.2143;
   background:var(--card);box-shadow:var(--shadow),var(--lift)}
 section{margin-top:var(--s8)}
 section+section{border-top:1px solid var(--line);padding-top:var(--s7)}
-h2{font-family:var(--serif);font-weight:500;font-size:var(--text-subhead);margin:0 0 6px;letter-spacing:-.01em}
+/* Headings inside a member page are Inter since 2026-11-14 (app-shell.md,
+   "Member page titles"): 600, where Georgia was 400 or 500. */
+h2{font-weight:600;font-size:var(--text-subhead);margin:0 0 6px;letter-spacing:-.01em}
 section > .sub{margin-top:0;margin-bottom:var(--s5)}
 .drop{border:1px dashed var(--edge);border-radius:var(--r-md);padding:36px var(--s6);text-align:center;
   background:var(--card);transition:border-color .15s,background .15s,box-shadow .15s}
 .drop.over{border-color:var(--red);border-style:solid;background:var(--err-bg);box-shadow:inset 0 0 0 1px var(--red)}
-.drop-k{margin:0 0 var(--s4);font-family:var(--serif);font-size:17px;font-weight:500;color:var(--ink)}
+.drop-k{margin:0 0 var(--s4);font-size:17px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
 .drop p{margin:var(--s4) 0 0;color:var(--ink-2);font-size:var(--text-small)}
 /* display is stated for the .ledger reason above. MARKET_CSS's .btn is an
    inline-block anchor; these are real <button>s, and the a.btn rule further
@@ -509,7 +511,7 @@ a.btn.ghost:hover{color:var(--ink)}
    rule across the top of an empty vault — verified in a browser, not
    reasoned about. Same trap, same fix, on .strip below. */
 .deck.hide{display:none}
-.dlab{font-family:var(--serif);font-weight:500;font-size:22px;white-space:nowrap;letter-spacing:-.015em}
+.dlab{font-weight:600;font-size:var(--text-subhead);white-space:nowrap;letter-spacing:-.015em}
 .dln{flex:1;height:0;border-top:2px solid var(--ink);transform:translateY(-6px)}
 .dact{background:var(--card);border:1px solid var(--red);border-radius:var(--r-lg);padding:6px 12px;
   font-family:inherit;font-size:var(--text-small);font-weight:600;color:var(--red);cursor:pointer;white-space:nowrap}

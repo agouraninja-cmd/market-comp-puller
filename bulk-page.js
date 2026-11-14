@@ -60,7 +60,7 @@ const BULK_RUN_CSS = `
 .bk-run .deck{margin:0 0 28px}
 .bk-run .deckrule{display:flex;align-items:baseline;justify-content:space-between;gap:16px;
   border-bottom:1px solid var(--ink,#1A2433);padding-bottom:6px;margin:0 0 14px}
-.bk-run .deckrule h2{font-family:var(--serif,Georgia,'Times New Roman',serif);font-size:var(--text-title,19px);font-weight:400;margin:0;letter-spacing:.01em;
+.bk-run .deckrule h2{font-size:var(--text-title,19px);font-weight:600;margin:0;letter-spacing:-.01em;
   color:var(--ink,#1A2433)}
 .bk-run .msg{font-size:var(--text-small,13px);margin:12px 0 0;color:var(--ink,#1A2433)}
 .bk-run .msg.bad{color:var(--red-deep,#991B1B)}

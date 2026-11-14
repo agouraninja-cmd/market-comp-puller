@@ -168,7 +168,10 @@ test("what the list borrows is brought onto its scale from the panel's side", ()
   // the contacts are the desk's .dk- rules. Both keep their own type for
   // everybody else: the list's rules are scoped to the panel.
   const css = fs.readFileSync(path.join(__dirname, "..", "home-sites.css"), "utf8");
-  assert.match(css, /\.hs-vb \{[^}]*font-family: var\(--serif\)/, "home-sites.css changed: /sites sets its value in its own type");
+  // /sites' own value was Georgia until 2026-11-14, when the member pages'
+  // figures went to Inter; the panel's rule still sets the list's SIZE.
+  assert.ok(!/serif|Georgia/.test(css), "home-sites.css names Georgia again");
+  void css;
   for (const [sel] of RULES) {
     if (/\.hs-/.test(sel)) assert.ok(sel.split(",").every((s) => s.trim().startsWith(".hm-panel ")), `${sel} restyles the pane for /sites too`);
     if (/\.dk-(rule|note|toggle|copy|row|gt)/.test(sel)) {

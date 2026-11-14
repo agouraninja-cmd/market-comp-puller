@@ -8,6 +8,12 @@
   {
     "date": "2026-11-14",
     "type": "improvement",
+    "title": "The headings and figures inside each page are Inter too",
+    "details": "After the page titles went to Inter, the headings under them were still Georgia: “Market Explorer”, “The Board” and “Market rankings” on Markets, the section headings on Your comps and Pipeline, a deal’s heading on Sites, the headings on Permit tracker and the permit comparison, and each address in the Buildings list. They are Inter now, in bold, like the titles. The public pages a visitor sees before signing in are unchanged. The large figures on these pages (a deal count, a total, a median) are Inter now too, so nothing on them is Georgia."
+  },
+  {
+    "date": "2026-11-14",
+    "type": "improvement",
     "title": "Every page’s title matches Home’s",
     "details": "After Home’s greeting went to Inter, the titles of the other pages you work in were still Georgia, at four different sizes. Messages, Pipeline, Sites, Markets, Your comps, Run a report, Permit tracker and Buildings now title themselves the way Home greets you: Inter, bold, 28px. The public pages a visitor sees before signing in keep their Georgia titles. The smaller headings inside these pages are unchanged."
   },

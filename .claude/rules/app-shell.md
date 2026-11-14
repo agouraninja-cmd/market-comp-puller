@@ -70,8 +70,15 @@ paths:
 > a page that sets its own later in the document keeps it), and /permits'
 > inner `main.wrap.pt-page` gives its padding back there (the page had two
 > 16px gutters a side and 88px above its heading).
-> **Left alone, and worth knowing.** Messages' context menu (z 60) can open
-> under the bar.
+> **A sheet from the bottom of a phone stands over the bar (2026-11-14, the
+> owner: "fix the messages menu opening under the bottom bar").** Messages'
+> More menu and About this chat are sheets under 900px, and at z-index 60
+> they opened behind the bar: the last row covered, the bar live under the
+> dimmed page. `.msg-scrim` is 1059 and the `.is-sheet` pair 1060
+> (messages-page.js): over the bar's 1050, under the dialogs' 1200. The
+> menu beside a mouse pointer keeps 60. Any new bottom sheet on a member
+> page needs a z-index between 1050 and 1200; `test/nav-shell.test.js`
+> holds Messages' to that.
 > **/comps' comp set stops short of the Feedback button (2026-11-14, the
 > owner: "fix the feedback button covering the comp set").** Under 900px
 > the button floats 16px from the right, 44px wide, in the corner the

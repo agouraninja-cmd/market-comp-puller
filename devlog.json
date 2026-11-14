@@ -2,6 +2,12 @@
   {
     "date": "2026-11-14",
     "type": "fix",
+    "title": "The Messages menu opens over the bottom bar on a phone",
+    "details": "In Messages on a phone, the menu on a chat (About this chat, Rename, Delete for me) and the About this chat panel slide up from the bottom of the screen. They opened behind the new bottom bar, which covered their last row and could still be tapped through the dimmed page. They now open over the bar, like every other pop-up."
+  },
+  {
+    "date": "2026-11-14",
+    "type": "fix",
     "title": "The Feedback button no longer covers the comp set on a phone",
     "details": "On Your comps on a phone, ticking comps brings up the dark comp set at the bottom of the screen, and the round Feedback button sat on top of its right end. The comp set now stops just short of the button, so the two sit side by side and every button in the set can be tapped. Nothing changes on a computer, where Feedback is in the sidebar."
   },

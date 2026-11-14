@@ -297,6 +297,9 @@ const PFMATCH = require("./portfolio-match");
 // Instant tab switching: the rail's tabs are prerendered on intent, and what a
 // prerendered page may do before anyone sees it (instant-nav.js explains).
 const INSTANTNAV = require("./instant-nav");
+// The security headers every response carries, set once per request at the
+// top of the request handler (security-headers.js explains each one).
+const SECHEADERS = require("./security-headers");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -21302,6 +21305,13 @@ async function checkExploreCity(req, city, state) {
 // anything inside it, at any await depth, is attributed.
 const server = http.createServer((req, res) =>
   REQUEST_CONTEXT.run(newRequestContext(req, res), () => {
+  // Security headers, on every response there is (2026-11-14). FIRST, ahead
+  // of routeWarm, because a page answered from the warm store and the desktop
+  // preload never reach the routes below. Set with setHeader, which a later
+  // res.writeHead merges in: no route has to repeat them, and a route that
+  // names one of them itself still wins. Idempotent, so routeWarm handing a
+  // request back through server.emit sets the same values again.
+  SECHEADERS.applySecurityHeaders(req, res);
   // A page built ahead for this visitor (instant tab switching, Safari and
   // Firefox) — or the write that makes one stale. See routeWarm. Re-emitting
   // is the way back in on a miss: routeWarm marks the request, so the second

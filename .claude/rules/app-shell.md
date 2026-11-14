@@ -3,6 +3,8 @@ paths:
   - "theme.js"
   - "components.js"
   - "instant-nav.js"
+  - "security-headers.js"
+  - "test/security-headers.test.js"
   - "test/components.test.js"
   - "test/nav-*.test.js"
   - "test/theme.test.js"
@@ -14,6 +16,42 @@ paths:
 > when it opens a file matching `paths` above; read it by hand before changing
 > this area's code in `server.js`. The never-break rules stay in CLAUDE.md.
 > Add new notes for this area here, not there.
+
+## Security headers on every response (2026-11-14)
+
+Until this the live site answered with no security headers at all (`nosniff`
+on three routes). `security-headers.js` holds them and says what each is for;
+`SECHEADERS.applySecurityHeaders(req, res)` is the FIRST statement of the
+request handler in `server.js`, ahead of `routeWarm`, so a page answered from
+the warm store and the desktop preload carry them too. They are set with
+`res.setHeader`, which a later `res.writeHead` merges in, so no route repeats
+them and a route naming the same header itself still wins. Five things to
+know before touching them:
+
+- **`nosniff` means a wrong content type is now a broken page.** A browser
+  refuses a script not served as JavaScript and a stylesheet not served as
+  `text/css`. A new entry in `STATIC_FILES`, or a new route that serves a
+  script, needs its real type; `test/security-headers.test.js` reads the
+  allowlist and fails the build on a `.js` or `.css` entry without one.
+- **Nothing third-party may frame the site** (`X-Frame-Options: SAMEORIGIN`
+  and CSP `frame-ancestors 'self'`). If an embeddable report or widget is
+  ever wanted, it is a deliberate exception on that one route (name the
+  header in its own `writeHead`), never a loosening of the default. The
+  desktop app is unaffected: its pages are `WebContentsView`s, not frames.
+- **The Content-Security-Policy has no `script-src`, `style-src` or
+  `default-src`, on purpose.** Every page runs inline scripts and styles, so
+  a script policy needs a nonce on each one first; without them it blanks the
+  app the way a failed `/valuation.js` does. A test fails the build if one of
+  those directives appears. That nonce work is the remaining half of this.
+- **HSTS only when `x-forwarded-proto` says HTTPS**, 180 days, with no
+  `includeSubDomains` and no `preload` (both bind hostnames this code does
+  not know about, and preload is hard to undo). A local run, the test suite
+  and the loopback warm render never send it.
+- **`Referrer-Policy: strict-origin-when-cross-origin`** keeps a shared
+  report's `/r/<id>` and an admin `?key=` link out of other sites' logs.
+
+Checked by loading the public pages signed out and the member pages against
+the stand-in database in a real browser: nothing was refused on any of them.
 
 ## Configuration
 

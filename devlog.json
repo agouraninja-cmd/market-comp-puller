@@ -13,6 +13,12 @@
   },
   {
     "date": "2026-11-14",
+    "type": "improvement",
+    "title": "Every page now sends the standard browser security headers",
+    "details": "The site sent none of the headers browsers use to protect visitors. Now every response tells the browser four things. Another website may not show our pages inside a hidden frame, which is how a signed-in member can be tricked into clicking Share or Publish without seeing it. A browser that has reached the site securely keeps using the secure connection for the next six months. A link out of a page tells the other site only that the visitor came from CompNinja, not which page, so a shared report's private link is not handed over. And a file is treated as the type we say it is and nothing else. The pages also may not use the camera, microphone or payment prompts, which the site never uses. Nothing looks or works differently: the public pages and the signed-in pages were each loaded in a browser afterwards and nothing was blocked. One part is not done yet: the rule that would stop an injected script from running needs a change to every page's own scripts first, and is a separate piece of work. There was no sign anyone had exploited this; it was found by reading the code."
+  },
+  {
+    "date": "2026-11-14",
     "type": "fix",
     "title": "A new publisher's first comps wait for a one-time review",
     "details": "Publishing a comp from Your comps earns the green Verified badge in other people's reports, and the only thing asked for was a firm name and a license number that nobody checked. Any new account, including one on the free trial, could type both and have an invented deal show as Verified straight away. Now the first comps an account publishes go to the review list on the admin page instead, marked In review on the member's own page, and are in no report until one is approved. The review list shows the license number to check, and an email says a new publisher is waiting. Once one of their comps is approved, later ones publish right away as before. Until then at most five can be waiting at a time. Members who already had an approved published comp are not affected. This reverses the earlier choice to publish immediately. There was no sign anyone had used this; it was found by reading the code."

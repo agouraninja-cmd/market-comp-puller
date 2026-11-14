@@ -138,7 +138,9 @@ paths:
 >   only where there is no trust line: signed out, or the book locked.
 > Find's placeholder names what it always searched ("address, city, type or
 > note"), and the empty book says the comps out of an appraisal belong here.
-> Pictures: the PR. Not built, and worth doing next: a source field per comp
+> The before-and-after pictures are at
+> https://claude.ai/artifact/9HUs8Aiwxmz5i3eKXKF2NE. Not built, and worth
+> doing next: a source field per comp
 > (which appraisal a comp came from; today that is the note), and a larger
 > file limit for a whole appraisal PDF (4 MiB today; a screenshot of the comp
 > grid works).

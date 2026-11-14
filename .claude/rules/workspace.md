@@ -30,10 +30,9 @@ paths:
 > group's name is Georgia, a label is in capitals, or a quiet Today is a
 > stack of cards in Next's shell, this is what the page does now. Built
 > straight (the ask was a fix, not options); the before-and-after pictures
-> are at https://claude.ai/artifact/63p8LpFQESKv3DEwG1HN9Q. The head (the
-> firm row, the
-> date, the greeting, the status, the find box, the tabs: the box below)
-> was not touched.
+> are at https://claude.ai/artifact/63p8LpFQESKv3DEwG1HN9Q. Of the head
+> (the box below) only the greeting's face changed; where that box says
+> "the greeting 30px Georgia", it is 28px Inter now.
 > - **What was measured.** On an account like his (a firm of one, nine
 >   properties, nothing due) the panel set two typefaces in nine sizes:
 >   Georgia at 30 (the greeting), 24 (At a glance's figures and the opened
@@ -42,10 +41,18 @@ paths:
 >   12 and 11. A section's name was written three ways: capitals with wide
 >   spacing ("AT A GLANCE", "NEXT"), a Georgia word ("Owned"), and capitals
 >   over a black rule ("CONTACTS").
-> - **Georgia is the greeting and nothing else in the list.** It is this
->   page's title, as every member page's `h1` is Georgia (and a test of the
->   head's holds it). Everything under it is Inter. The map's own things
->   (the card over a pin, the empty-map card) and the first-building screen
+> - **One typeface: the panel has no Georgia.** The first build (2026-11-13)
+>   kept the greeting in Georgia as this page's title, like every member
+>   page's `h1`, and asked the owner; his answer the next day was "make the
+>   greeting Inter too". `.hm-title` is `--text-h1` (28px) at 600,
+>   `-.02em`, and names no face. It stands on the 34px line the Georgia 30
+>   stood on (`1.2143`, rounded up), so nothing under it moved and the
+>   head's alignment tests are unchanged. At 30px a long greeting ("Good
+>   afternoon, Christopher") broke in two in Inter, which is wider than
+>   Georgia; at 28 it fits. Home is now the one rail page whose title is
+>   not Georgia: that was said to the owner before he chose. The map's own
+>   things (the card over a pin, the empty-map card) and the first-building
+>   screen (`#hmFirst`, whose own greeting and heading are still Georgia)
 >   keep their type: they are not the list.
 > - **Four sizes under the greeting.** 14 (`--text-compact`: a row's name, a
 >   value, a sentence), 13 (`--text-small`: a row's second line, a helper
@@ -85,9 +92,15 @@ paths:
 >   `#hmPanePeople #deskContacts .dk-…` rules in index.html, so neither
 >   changes for anybody else. Not brought over: `.hs-sl` on a phone under
 >   420px (a stage's name, 11px so five stages fit across).
-> - **No words changed and nothing was removed.** The "Owned" chip still
->   repeats its group's name on every owned row; that is content, and was
->   left for the owner to call.
+> - **An owned row carries no "Owned" tag (2026-11-14, the owner: "remove
+>   the Owned tag").** Every row under the Owned heading said Owned again
+>   in green; `hmPropRow` now skips the chip for `stage === "owned"` as it
+>   already did for `"firm"`, and for the same reason (the heading, like the
+>   Firm tag, has said it). Who can see the row is still on every row. A
+>   deal keeps its stage chip, which differs from row to row; the card over
+>   a pin keeps "Owned", since no heading stands over it there; a passed
+>   deal under the Passed fold still says Passed (not asked for). No other
+>   words changed.
 > - Tests: `test/home-list-type.test.js` reads the Home sheet and holds it
 >   to all four (the faces, the sizes, the label rule, the edge), telling the
 >   list's rules from the map's by selector. Broken four ways to check it

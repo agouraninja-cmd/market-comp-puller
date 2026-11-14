@@ -1895,9 +1895,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     /* The day, the greeting, the status. Whole-pixel line boxes, 18px and
        34px (they were 19.5 and 33.6), so every edge under them lands on a
-       pixel; as ratios of the text (18/13 and 34/30), like the firm row's. */
+       pixel; as ratios of the text (18/13 and 34/28), like the firm row's.
+       The greeting is Inter since 2026-11-14 (the owner, shown the list on
+       one typeface with the greeting still Georgia: "make the greeting Inter
+       too"): 28px at 600, on the 34px line the Georgia 30 stood on, so
+       nothing under it moved. The panel now has no Georgia at all. */
     .hm-kick { font-size: var(--text-small); font-weight: 500; line-height: 1.3847; color: var(--ink-3); }
-    .hm-title { margin: 4px 0 0; font-family: var(--serif); font-weight: 400; font-size: 30px; line-height: 1.1334; letter-spacing: -.015em; color: var(--ink); }
+    .hm-title { margin: 4px 0 0; font-weight: 600; font-size: var(--text-h1); line-height: 1.2143; letter-spacing: -.02em; color: var(--ink); }
     .hm-sub { margin: 6px 0 0; font-size: var(--text-compact); line-height: 1.5; color: var(--ink-2); text-wrap: balance; }
     .hm-find { position: relative; display: flex; align-items: center; gap: 10px; margin-top: 24px; padding: 0 12px; border: 1px solid var(--edge); border-radius: 11px; background: var(--card); color: var(--ink-3); }
     .hm-find:focus-within { border-color: var(--ink-3); box-shadow: 0 0 0 3px var(--hair); }
@@ -2234,9 +2238,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        19 (a date), 17 (a group's name), 15.5 and 14, and Inter at 15, 14, 13,
        12 and 11, with three ways to write a section's name (capitals with
        wide spacing, a Georgia word, capitals over a black rule). Now:
-       - GEORGIA IS THE GREETING AND NOTHING ELSE. It is this page's title,
-         as every member page's title is Georgia. Everything under it is
-         Inter.
+       - ONE TYPEFACE. The whole panel is Inter. The greeting kept its
+         Georgia for a day, as this page's title, and went to Inter on
+         2026-11-14 at the owner's word (28px at 600: --text-h1).
        - FOUR SIZES UNDER THE GREETING: 14 (--text-compact: a row's name, a
          value, a sentence), 13 (--text-small: a row's second line, a helper
          line, a button, a section's name), 12 (--text-label: a caption, a
@@ -15933,8 +15937,12 @@ async function renderMyDesk() {
       hmEl("small", null, [HOMEMAP.town(r.address), r.type, r.acres ? `${r.acres} acres` : (r.size ? `${Number(r.size).toLocaleString("en-US")} SF` : "")].filter(Boolean).join(" · ")));
     const tags = hmEl("span", "hm-tags");
     // A firm-only building's status IS that it is the firm's, which its
-    // Firm tag already says; a chip would say it twice.
-    if (r.stage !== "firm") tags.append(hmChip(r.stage));
+    // Firm tag already says; a chip would say it twice. So would "Owned"
+    // on every row under the Owned heading (2026-11-14, the owner: "remove
+    // the Owned tag"): an owned row carries who can see it and no chip. A
+    // deal keeps its stage, which differs from row to row, and the card
+    // over a pin keeps "Owned", since no heading stands over it there.
+    if (r.stage !== "firm" && r.stage !== "owned") tags.append(hmChip(r.stage));
     tags.append(hmScopeTags(r));
     rt.append(tags);
     const val = hmEl("span", "hm-val");

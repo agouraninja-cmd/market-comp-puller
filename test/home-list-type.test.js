@@ -9,7 +9,9 @@
 // line everything else on the panel starts on.
 //
 // What it is now, and what this file holds the stylesheet to:
-//   1. Georgia is the greeting and nothing else in the list.
+//   1. One typeface. The greeting kept its Georgia for a day, as the page's
+//      title, and went to Inter on 2026-11-14 ("make the greeting Inter
+//      too"): the panel has no Georgia at all.
 //   2. Under the greeting there are four sizes: 14, 13, 12, and 20 for a
 //      figure. Nothing is 11px, and nothing is in capitals.
 //   3. Every section of every tab is named by ONE rule.
@@ -54,14 +56,13 @@ test("the sheet is read: the list's rules are found, and the map's are told apar
   assert.ok(!LIST.some(([sel]) => sel.includes(".hm-pop")), "the map card is not the list");
 });
 
-test("Georgia is the greeting and nothing else in the list", () => {
+test("one typeface: nothing in the list is Georgia, the greeting included", () => {
   const serif = LIST.filter(([, body]) => /font-family\s*:[^;]*(serif\)|Georgia)/.test(body)).map(([sel]) => sel);
-  assert.deepEqual(serif, [".hm-title"],
-    "a second Georgia in the list: the greeting is this page's title and the only one");
-  // A family is otherwise only ever handed back to the page's own.
+  assert.deepEqual(serif, [], "Georgia is back in the list");
+  // A family is only ever handed back to the page's own.
   for (const [sel, body] of LIST) {
     const family = decl(body, "font-family");
-    if (family == null || sel === ".hm-title") continue;
+    if (family == null) continue;
     assert.equal(family, "inherit", `${sel} names a typeface of its own (${family})`);
   }
 });
@@ -74,7 +75,8 @@ test("four sizes under the greeting: 14, 13, 12, and 20 for a figure", () => {
   for (const [sel, body] of LIST) {
     const size = decl(body, "font-size");
     if (size == null) continue;
-    if (sel === ".hm-title") { assert.equal(size, "30px"); continue; }
+    // The greeting: the panel's one heading size.
+    if (sel === ".hm-title") { assert.equal(size, "var(--text-h1)"); continue; }
     // The firm's initials on a narrow phone, in a 28px tile: the head's own
     // rule, held by test/home-head.test.js. The one 11px left on the panel.
     if (sel === ".hm-fh-mark" && size === "var(--text-tiny)") continue;
@@ -173,4 +175,21 @@ test("what the list borrows is brought onto its scale from the panel's side", ()
       assert.ok(sel.split(",").every((s) => /#hmPanePeople /.test(s) || !/\.dk-(rule|note|toggle|copy|row|gt)/.test(s)), `${sel} restyles the desk's rows everywhere`);
     }
   }
+});
+
+test("an owned row carries no Owned tag: its group's heading says it", () => {
+  // The owner, 2026-11-14: "remove the Owned tag". Every row under the Owned
+  // heading said Owned again in green. A deal keeps its stage (it differs
+  // from row to row), and the card over a pin keeps "Owned": no heading
+  // stands over it there.
+  const at = html.indexOf("function hmPropRow(r)");
+  assert.notEqual(at, -1);
+  const row = html.slice(at, html.indexOf("function hmGroupHead", at));
+  assert.match(row, /if \(r\.stage !== "firm" && r\.stage !== "owned"\) tags\.append\(hmChip\(r\.stage\)\);/);
+  assert.equal((row.match(/hmChip\(/g) || []).length, 1, "a second chip on a property's row");
+  // Who can see it is still on every row.
+  assert.match(row, /tags\.append\(hmScopeTags\(r\)\);/);
+  // The card over a property's pin is unchanged: it still names the stage.
+  const rest = html.replace(row, "");
+  assert.equal((rest.match(/if \(r\.stage !== "firm"\) tags\.append\(hmChip\(r\.stage\)\);/g) || []).length, 1);
 });

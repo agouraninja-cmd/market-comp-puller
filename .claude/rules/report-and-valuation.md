@@ -22,6 +22,39 @@ paths:
 
 ## Architecture
 
+- **A report on a phone shows its estimate on the first screen (2026-11-14;
+  the owner, of a phone audit: "yes fix both").** Under 640px the estimate's
+  heading sat 578px down the report (646px at 320px wide): three rows of
+  export buttons, the jump bar and the header card came first, so Low,
+  Likely and High all started below the fold. One `@media (max-width:
+  639.98px)` block in index.html, measured on the sample report at 390px:
+  the heading is at 439px and Likely at 616px (it was 763px).
+  - **The toolbar is one row that scrolls sideways**, 42px tall. It was a
+    two-column grid with Share across the top (four rows, about 200px, with
+    Share). The row runs to the screen's edges (the page's 16px gutter given
+    back as negative margins and put inside as padding, so the PAGE never
+    gets wider) and fades out on the right; 36px of end padding lets the
+    last button scroll clear of the 32px fade. Share stays first.
+  - **The two cards over the ledger are closed up**: the header card's
+    padding, mark (22px) and address (`--text-heading`, 24px; it is 26px
+    elsewhere), the value card's padding, and 4px a side in each ledger
+    cell. A phone-width PNG export photographs these too; print does not
+    (it has its own rules).
+  - **The jump bar's links** take an `::after` overlay (41px tall) so a
+    thumb gets the bar's height; nothing moves, and the current link's
+    underline stays under its word.
+  - **A comp card's field labels are 11px** (`.cardgrid dt`, and Sort by),
+    at every width: they were `text-[10px]`, 62 of them on the sample at
+    phone width, where the cards stand in for the table.
+  - **In the same block, Firm settings' two dropdowns** (`#firmAutoShareSelect`,
+    `#firmShopSelect`) are `max-width: 100%`: a select is as wide as its
+    longest option, 358px at a phone's 16px field size, and the dialog slid
+    sideways (firms.md's auto-share box).
+  - Still under 11px on the report, left alone: the comp scatter's "Likely"
+    label and the map pins' numbers (9.5px and 10px), which are sized to
+    their marks.
+  - Held by `test/phone-report.test.js`.
+
 - **The report sets no Georgia (2026-11-14; the owner, after Home and every
   member page went to Inter: "make the comp report Inter too").** index.html
   now names no serif anywhere: `.font-brand` and `.rd-h` (the address, the

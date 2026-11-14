@@ -1,6 +1,18 @@
 [
   {
     "date": "2026-11-14",
+    "type": "improvement",
+    "title": "On a phone, a report shows its estimate on the first screen",
+    "details": "Opening a comp report on a phone used to show three rows of export buttons, the section links and the address card before the estimate, so the Low, Likely and High figures started below the first screen. The export buttons are now one row you swipe sideways, and the cards above the estimate are a little more compact, so the heading sits about 140px higher and Low and Likely are visible without scrolling. The section links are easier to tap, and the small labels on each comp card are a size larger. Nothing changes on a computer, in print, or in the exports."
+  },
+  {
+    "date": "2026-11-14",
+    "type": "fix",
+    "title": "Firm settings no longer slides sideways on a phone",
+    "details": "In Firm settings on a phone, the “My new reports” dropdown was wider than the dialog, so its right edge was cut off and the whole dialog could be dragged left and right. It now fits the dialog."
+  },
+  {
+    "date": "2026-11-14",
     "type": "feature",
     "title": "Check a loan against your own comps",
     "details": "Your comps was built around a broker’s book. It now works for a lender whose comps come out of appraisals. Tick the sales that match a building, press Check a loan, and type the building’s size, the loan, an optional purchase price and your own loan-to-value limit: the page reads the loan against the lowest, median and highest sale in your set, shows the loan-to-value at each, the value the loan needs, and one sentence on whether the appraisal is likely to cover it. It is the same arithmetic and the same wording as the Collateral Check on every report. A set that mixes property types gets no answer rather than a blended one. Nothing you type there is saved or sent anywhere. Press Comp sheet with a loan filled in and the printout leads with a collateral pre-screen, above the comps it was read against, for the file. It is a pre-screen, not an appraisal and not a bank evaluation, and says so on the page and on the sheet. Also on the page: Last 12 months and Last 90 days now stack on Sales or Leases (so “sales in the last 12 months” is two clicks), a comp set says how old its deals are, and the Find box says it searches city and type too."

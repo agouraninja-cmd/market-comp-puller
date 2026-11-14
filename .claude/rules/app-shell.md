@@ -89,14 +89,21 @@ paths:
 > anywhere in its bytes. Cost: the HOME page alone fitted one line from about 500px to
 > 559px and is two rows there now. `test/nav-shell.test.js` pins it;
 > pictures at https://claude.ai/artifact/HCMqHEZY51dwZ2agmjegxn.
-> **Not done, the owner's to decide:** the APP page's signed-out header
-> (`/?auth=signup`, a shared report at `/r/<id>`) is still three rows,
-> 131px, on a phone. It shows a stranger Explore, Home, Messages, Pipeline,
-> Markets, Comps, Permits and Sign in, 376px of words that no layout fits
-> on one 358px line. Two rows there means not showing a signed-out phone
-> visitor the four member places (Messages, Pipeline, Comps, Permits), as
-> the public pages' bar already does not; that is a decision about what a
-> stranger is offered, not a layout fix.
+> **The APP page's signed-out header is two rows too (the same day, the
+> owner: "yes hide them").** Signed out, index.html (`/?auth=signup`, a
+> shared report at `/r/<id>`) showed Explore, Home, Messages, Pipeline,
+> Markets, Comps, Permits and Sign in: 376px of words that no layout fits
+> on one 358px line, 131px of bar. Under 640px a signed-out visitor is no
+> longer shown the four member places (Messages, Pipeline or Sites, Comps,
+> Permits; the public pages' bar never showed them) and Sign in stands
+> beside the brand: 88px. Explore, Home and Markets stay. On a wide screen
+> all eight still show. One block after index.html's rail rules, every
+> rule scoped `html:not(.cn-in):not(.nav-rail) .rd-appbar:has(> nav >
+> #signInLink:not(.hidden))`: the Sign in button is showing
+> (`refreshAccountUI` hides it for a member) and neither class `authBoot`
+> stamps for a cookie holder is there, so a member's bar never loses its
+> places, not even while the account read is out. Without `:has()` the bar
+> is as it was. `test/nav-shell.test.js` holds every rule to that scope.
 
 > **The rail's look (2026-11-12, the owner: "The left side bar looks kind of
 > ugly fix it").** The strip is no longer a dark slab. It is one of the

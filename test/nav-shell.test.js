@@ -232,6 +232,45 @@ test("a stranger's phone header is two rows: the button beside the brand, Log in
   assert.ok(!block.includes("nav-rail"), "the signed-out phone header names the member's shell");
 });
 
+test("the app page hides the four member places from a signed-out phone visitor, and from nobody else", () => {
+  // 2026-11-14, the owner's call ("yes hide them"). Signed out, index.html
+  // (the sign-up page, a shared report) showed eight links that no layout
+  // fits on one line of a phone, so its bar was three rows.
+  const INDEX = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  const style = INDEX.slice(0, INDEX.indexOf("</style>")).replace(/\/\*[\s\S]*?\*\//g, "");
+  const at = style.indexOf("@media (max-width: 639.98px) {\n      html:not(.cn-in)");
+  assert.ok(at > -1, "index.html lost the signed-out phone header block");
+  const block = style.slice(at, style.indexOf("\n    }", at));
+  // Every rule in it asks three things: no cookie holder's boot class, no
+  // member shell, and a Sign in button that is showing. Drop one and a
+  // member's own bar loses its places (for good, or while the account read
+  // is out).
+  const SCOPE = "html:not(.cn-in):not(.nav-rail) .rd-appbar:has(> nav > #signInLink:not(.hidden))";
+  const selectors = block.slice(block.indexOf("{") + 1).split("}").map((r) => r.split("{")[0]).join(",")
+    .split(",").map((s) => s.trim()).filter(Boolean);
+  assert.ok(selectors.length >= 8, "could not read the block's selectors");
+  for (const sel of selectors) assert.ok(sel.startsWith(SCOPE), `a rule in the signed-out phone header is not scoped to a signed-out visitor: ${sel}`);
+  // The four member places, by the ids and address the nav really carries.
+  for (const [sel, markup] of [
+    ["> nav > #navMessagesLink", '<a id="navMessagesLink" href="/messages"'],
+    ["> nav > #navPipe", '<a id="navPipe" href="/pipeline"'],
+    ["> nav > #navSites", '<a id="navSites" href="/sites"'],
+    ["> nav > #navComps", '<a id="navComps" href="/comps"'],
+    ['> nav > a[href="/permits"]', '<a href="/permits"'],
+  ]) {
+    assert.ok(selectors.includes(SCOPE + " " + sel), `the signed-out phone header no longer hides ${sel}`);
+    assert.ok(INDEX.includes(markup), `index.html's nav no longer has ${markup}`);
+  }
+  // Home, Markets and Explore stay: they work without an account.
+  assert.ok(!/#myDeskLink|\/markets|#exploreMenuWrap/.test(block), "the signed-out phone header hides a place a stranger can use");
+  // What "signed out" is read from: refreshAccountUI hides the button for a
+  // member, and authBoot stamps cn-in for a cookie holder before that.
+  assert.match(INDEX, /getElementById\("signInLink"\)\.classList\.toggle\("hidden", on\)/);
+  assert.match(SERVER_JS, /html\.cn-in #signInLink\{display:none!important\}/);
+  // Sign in is placed beside the brand, with room for a thumb.
+  assert.match(block, /#signInLink \{ position: absolute; top: 10px; right: 16px; padding: 8px 0;/);
+});
+
 test("both market stylesheets still take the rail, and the vault does too", () => {
   // The whole point of one definition is that consumers cannot drift apart.
   // The failure this catches is silent: a stylesheet that stops interpolating

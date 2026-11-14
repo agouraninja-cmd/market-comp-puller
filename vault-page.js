@@ -758,6 +758,13 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
    above that bar rather than behind it. */
 @media screen and (max-width:899px){
   html.nav-rail .vd-tray.on{bottom:calc(66px + env(safe-area-inset-bottom,0px))}
+  /* The round Feedback button floats in the same corner on a phone (16px
+     from the right, 44px wide) and sat on the set's right end, over its
+     buttons when they wrapped that far (the owner, 2026-11-14: "fix the
+     feedback button covering the comp set"). The set stops 12px short of
+     the button, so the two stand side by side: 44 + 12. At 900px and up
+     the button is a row of the rail and nothing floats here. */
+  .vd-tray.on{margin-right:56px}
 }
 .vd-tk{flex:1;min-width:0;margin:0}
 .vd-tk b{display:block;font-family:var(--serif);font-weight:500;font-size:17px;color:var(--ink)}

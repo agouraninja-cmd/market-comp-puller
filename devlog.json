@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-14",
+    "type": "fix",
+    "title": "The Feedback button no longer covers the comp set on a phone",
+    "details": "On Your comps on a phone, ticking comps brings up the dark comp set at the bottom of the screen, and the round Feedback button sat on top of its right end. The comp set now stops just short of the button, so the two sit side by side and every button in the set can be tapped. Nothing changes on a computer, where Feedback is in the sidebar."
+  },
+  {
+    "date": "2026-11-14",
     "type": "improvement",
     "title": "Every page’s title matches Home’s",
     "details": "After Home’s greeting went to Inter, the titles of the other pages you work in were still Georgia, at four different sizes. Messages, Pipeline, Sites, Markets, Your comps, Run a report, Permit tracker and Buildings now title themselves the way Home greets you: Inter, bold, 28px. The public pages a visitor sees before signing in keep their Georgia titles. The smaller headings inside these pages are unchanged."

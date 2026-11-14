@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-14",
+    "type": "improvement",
+    "title": "The public pages are Inter too",
+    "details": "The pages a visitor sees before signing in (the home page, pricing, FAQ, the brokers and lenders pages, Markets, each market’s page, rankings, terms and privacy) had Georgia headings over a body in whatever font the visitor’s computer supplied: Segoe UI on Windows, San Francisco on a Mac. They now load Inter, the font the app uses, and their headings and figures are Inter in bold. The whole site is one typeface. Loading the font adds one small request to Google Fonts on those pages; text shows at once in the system font and switches when Inter arrives."
+  },
+  {
+    "date": "2026-11-14",
     "type": "feature",
     "title": "Check a loan against your own comps",
     "details": "Your comps was built around a broker’s book. It now works for a lender whose comps come out of appraisals. Tick the sales that match a building, press Check a loan, and type the building’s size, the loan, an optional purchase price and your own loan-to-value limit: the page reads the loan against the lowest, median and highest sale in your set, shows the loan-to-value at each, the value the loan needs, and one sentence on whether the appraisal is likely to cover it. It is the same arithmetic and the same wording as the Collateral Check on every report. A set that mixes property types gets no answer rather than a blended one. Nothing you type there is saved or sent anywhere. Press Comp sheet with a loan filled in and the printout leads with a collateral pre-screen, above the comps it was read against, for the file. It is a pre-screen, not an appraisal and not a bank evaluation, and says so on the page and on the sheet. Also on the page: Last 12 months and Last 90 days now stack on Sales or Leases (so “sales in the last 12 months” is two clicks), a comp set says how old its deals are, and the Find box says it searches city and type too."

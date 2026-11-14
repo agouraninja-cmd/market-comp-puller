@@ -78,7 +78,7 @@ const LN_CSS = `
 .lntop b{font-weight:600;color:var(--ink);font-size:var(--text-compact)}
 .lntop span{font-size:var(--text-small);color:var(--ink-3)}
 .lnk{font-size:var(--text-tiny);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
-.lnfig{font-family:var(--serif);font-weight:500;font-size:var(--text-figure);color:var(--ink);margin-top:4px;
+.lnfig{font-weight:600;font-size:var(--text-figure);color:var(--ink);margin-top:4px;
   font-variant-numeric:tabular-nums}
 .lnsub{font-size:var(--text-small);color:var(--ink-3);margin-top:3px;line-height:1.5}
 .lnin{display:grid;grid-template-columns:1fr;gap:12px;padding:18px 20px 0}

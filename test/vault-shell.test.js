@@ -148,14 +148,22 @@ test("every page on the rail loads Inter for a member, and a stranger's /markets
     assert.equal(html.split(MEMBER_TITLE).length - 1, 1, `${page} should carry the member title rule once`);
     assert.equal(html.split(MEMBER_HEADINGS).length - 1, 1, `${page} should carry the member heading rule once`);
   }
-  // The signed-out /markets is the public, cached page: no font from another
-  // host, and the same caching it had.
+  // The signed-out /markets is the public, cached page. Since 2026-11-14 it
+  // loads Inter too ("make the public pages Inter too"): once, from the shell
+  // itself, ahead of the stylesheet. It still carries none of the MEMBER
+  // rules (the 28px title), and its caching is what it was.
   const res = await fetch(srv.base + "/markets");
   const anon = await res.text();
-  assert.ok(!anon.includes("<style>body h1{"), "the public /markets keeps its Georgia title");
-  assert.ok(!anon.includes(":root body h2"), "the public /markets keeps its Georgia headings");
-  assert.ok(!/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(anon),
-    "the public /markets should not fetch a font");
+  assert.equal((anon.match(INTER) || []).length, 1, "the public /markets should load Inter once");
+  assert.ok(anon.indexOf("family=Inter") < anon.indexOf("<style>"),
+    "the public /markets should ask for the font before its stylesheet");
+  assert.ok(!anon.includes("<style>body h1{"), "the public /markets carries the member title rule");
+  assert.ok(!anon.includes(":root body h2"), "the public /markets carries the member heading rule");
+  // And nothing the public pages are built from sets a serif face.
+  for (const f of ["home-page.js", "faq-page.js", "pricing-page.js", "brokers-firms-page.js", "lenders-page.js", "market-rank-page.js"]) {
+    assert.ok(!/var\(--serif|Georgia/.test(fs.readFileSync(path.join(__dirname, "..", f), "utf8")), `${f} sets a serif face again`);
+  }
+  assert.equal((SERVER_JS.match(/var\(--serif\)/g) || []).length, 0, "the shared stylesheet uses --serif again");
   assert.equal(res.headers.get("cache-control"), "public, max-age=3600");
   assert.equal(res.headers.get("vary"), "cookie");
   const member = await fetch(srv.base + "/markets", { headers: SESSION });

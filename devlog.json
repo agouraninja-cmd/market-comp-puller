@@ -2,6 +2,18 @@
   {
     "date": "2026-11-14",
     "type": "improvement",
+    "title": "On a phone, a report shows its estimate on the first screen",
+    "details": "Opening a comp report on a phone used to show three rows of export buttons, the section links and the address card before the estimate, so the Low, Likely and High figures started below the first screen. The export buttons are now one row you swipe sideways, and the cards above the estimate are a little more compact, so the heading sits about 140px higher and Low and Likely are visible without scrolling. The section links are easier to tap, and the small labels on each comp card are a size larger. Nothing changes on a computer, in print, or in the exports."
+  },
+  {
+    "date": "2026-11-14",
+    "type": "fix",
+    "title": "Firm settings no longer slides sideways on a phone",
+    "details": "In Firm settings on a phone, the “My new reports” dropdown was wider than the dialog, so its right edge was cut off and the whole dialog could be dragged left and right. It now fits the dialog."
+  },
+  {
+    "date": "2026-11-14",
+    "type": "improvement",
     "title": "The public pages are Inter too",
     "details": "The pages a visitor sees before signing in (the home page, pricing, FAQ, the brokers and lenders pages, Markets, each market’s page, rankings, terms and privacy) had Georgia headings over a body in whatever font the visitor’s computer supplied: Segoe UI on Windows, San Francisco on a Mac. They now load Inter, the font the app uses, and their headings and figures are Inter in bold. The whole site is one typeface. Loading the font adds one small request to Google Fonts on those pages; text shows at once in the system font and switches when Inter arrives."
   },

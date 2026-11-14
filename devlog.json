@@ -1,6 +1,18 @@
 [
   {
     "date": "2026-11-14",
+    "type": "feature",
+    "title": "Check a loan against your own comps",
+    "details": "Your comps was built around a broker’s book. It now works for a lender whose comps come out of appraisals. Tick the sales that match a building, press Check a loan, and type the building’s size, the loan, an optional purchase price and your own loan-to-value limit: the page reads the loan against the lowest, median and highest sale in your set, shows the loan-to-value at each, the value the loan needs, and one sentence on whether the appraisal is likely to cover it. It is the same arithmetic and the same wording as the Collateral Check on every report. A set that mixes property types gets no answer rather than a blended one. Nothing you type there is saved or sent anywhere. Press Comp sheet with a loan filled in and the printout leads with a collateral pre-screen, above the comps it was read against, for the file. It is a pre-screen, not an appraisal and not a bank evaluation, and says so on the page and on the sheet. Also on the page: Last 12 months and Last 90 days now stack on Sales or Leases (so “sales in the last 12 months” is two clicks), a comp set says how old its deals are, and the Find box says it searches city and type too."
+  },
+  {
+    "date": "2026-11-14",
+    "type": "improvement",
+    "title": "Publishing is only offered to accounts that can publish",
+    "details": "Only a licensed broker can publish a comp, and the server has refused anyone else since August. The page still showed everyone a Publish button on every comp set and a green Published count over their comps. An account with no broker license on file now sees neither: the count is replaced by how many comps closed in the last 12 months, and one line at the foot says publishing is off and how a licensed broker turns it on. Brokers with a license see exactly what they did before, and anything already published keeps every control. The privacy sentence at the foot of the page also appears once now, not twice."
+  },
+  {
+    "date": "2026-11-14",
     "type": "improvement",
     "title": "The comp report is Inter too",
     "details": "The comp report was the last part of the signed-in app still set in Georgia: the address at the top, the Low, Likely and High values, the tile figures, the statement figures in Analysis and the plan prices. They are Inter now, in bold, like Home and every other page you work in. The report is the same height and holds the same words and numbers; only the typeface changed. This covers a shared report link and the sample report as well, since they are the same page, and a printed or downloaded report follows it. The public pages a visitor sees before signing in keep their Georgia headings."

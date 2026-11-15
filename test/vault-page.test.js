@@ -5981,3 +5981,50 @@ test("a tap anywhere in a tick box's cell ticks the box, and opens no row (2026-
   assert.match(rows.innerHTML, /class="vd-detail"/, "a tap on the row no longer opens it");
   assert.equal(presses, 1);
 });
+
+test("on a phone the comp set is one line until it is opened (2026-11-15)", async () => {
+  // With its summary and five buttons stacked the set was 305px on a phone,
+  // over a third of the screen, standing on the rows still being ticked.
+  const html = renderVaultHTML(boot([comp({ id: "s1" }), comp({ id: "s2", address: "200 Main St" })]), CHROME);
+  const css = html.slice(html.indexOf("<style>"), html.indexOf("</style>")).replace(/\/\*[\s\S]*?\*\//g, "");
+  // The stylesheet half: closed, only the count and the chevron show, and
+  // only on a phone. Everywhere else the chevron is not drawn at all.
+  assert.match(css, /\n\.vd-tgl\{display:none\}/, "the chevron shows on a wide screen");
+  const phone = css.match(/@media \(max-width:640px\)\{\s*\.vd-tray\.on\{[\s\S]*?\n\}/);
+  assert.ok(phone, "the comp set lost its phone block");
+  assert.match(phone[0], /\.vd-tray\.on:not\(\.open\) \.vd-tk span,\.vd-tray\.on:not\(\.open\) \.vd-tact\{display:none\}/);
+  assert.match(phone[0], /\.vd-tgl\{display:inline-flex;[^}]*width:36px;height:36px/);
+  assert.ok(!/\.vd-tray\.on[^{]*\{[^}]*display:none/.test(css.replace(phone[0], "")), "the set's buttons are hidden outside the phone block");
+
+  // The script half, run.
+  const { doc } = await runPage([comp({ id: "s1" }), comp({ id: "s2", address: "200 Main St" })]);
+  const tray = doc.getElementById("setTray");
+  const press = (answers) => tray.fire("click", { target: { closest: (sel) => (sel in answers ? answers[sel] : null) } });
+  tickInto(doc, "s1");
+  assert.equal(tray.className, "vd-tray on", "a new set starts opened out");
+  assert.match(tray.innerHTML, /<button type="button" class="vd-tgl" id="setToggle" aria-expanded="false" aria-controls="setActs" aria-label="Open your comp set">/);
+  assert.match(tray.innerHTML, /<div class="vd-tact" id="setActs">/, "the chevron controls nothing");
+  // The chevron opens it, and says so.
+  press({ button: { id: "setToggle" } });
+  assert.equal(tray.className, "vd-tray on open");
+  assert.match(tray.innerHTML, /id="setToggle" aria-expanded="true" aria-controls="setActs" aria-label="Close your comp set"/);
+  // It stays open while another comp is ticked.
+  tickInto(doc, "s2");
+  assert.equal(tray.className, "vd-tray on open", "ticking a comp closed the set");
+  assert.match(tray.innerHTML, /<b>2 comps in your set<\/b>/);
+  // The count is the same switch (a tap on it, not on a button).
+  press({ ".vd-tk": {} });
+  assert.equal(tray.className, "vd-tray on");
+  press({ ".vd-tk": {} });
+  assert.equal(tray.className, "vd-tray on open");
+  // Check a loan opens above the set, so the set closes to its line.
+  press({ button: { id: "setCheck" } });
+  assert.equal(tray.className, "vd-tray on", "the opened set stayed over the loan check");
+  // Every other button still does what it did (the control).
+  press({ button: { id: "setToggle" } });
+  press({ button: { id: "setClear" } });
+  assert.equal(tray.className, "vd-tray", "Clear no longer empties the set");
+  // An emptied set forgets it was open.
+  tickInto(doc, "s1");
+  assert.equal(tray.className, "vd-tray on", "a set started after Clear opened by itself");
+});

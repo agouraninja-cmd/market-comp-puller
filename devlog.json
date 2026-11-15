@@ -1,5 +1,17 @@
 [
   {
+    "date": "2026-11-15",
+    "type": "fix",
+    "title": "A conversation in Messages fits one phone screen",
+    "details": "On a phone, opening a conversation showed its oldest message at the top of a long page, and the box you type in sat under every message: with eleven messages it was about 1,450px down, nearly two screens of scrolling before you could reply. An open conversation is now one screen: the newest message is in view, older ones scroll inside it, and the message box and Send stay just above the bottom bar. Send and Attach are taller (40px, from 27px), and Back, Conversation, Comps, the ⋯ menu and Unsend answer a tap a little past their edge. The round Feedback button, which floated over Send, steps aside while a conversation is open. Nothing changes on a computer."
+  },
+  {
+    "date": "2026-11-15",
+    "type": "improvement",
+    "title": "On a phone, your comp set stays out of the way of the list",
+    "details": "In Your comps on a phone, ticking one comp raised a dark panel about 305px tall, over a third of the screen, on top of the rows you were still choosing from. The set is now one line with its count (“2 comps in your set”) until you open it. Tap the line or its arrow to see the summary, Comp sheet, Check a loan, Download CSV and the rest; tap again to close it. Choosing Check a loan closes it so the loan check can be read. On a tablet or computer the set is unchanged."
+  },
+  {
     "date": "2026-11-14",
     "type": "fix",
     "title": "A deploy now waits up to 5 minutes for searches in progress",

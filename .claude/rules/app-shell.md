@@ -157,6 +157,18 @@ STARTS then can outlive the wait.
 > a page that sets its own later in the document keeps it), and /permits'
 > inner `main.wrap.pt-page` gives its padding back there (the page had two
 > 16px gutters a side and 88px above its heading).
+> **An open chat and the comp set on a phone (2026-11-15, the owner: "yes
+> fix both").** Two things a phone audit with filled test data found, and
+> where their rules are: an open conversation in Messages is one screen
+> tall, in the page's flow, with the Feedback button put away (firms.md,
+> "A chat on a phone is one screen"); and /comps' comp set is one line
+> until opened (vault.md, "The comp set on a phone"). Both are things that
+> stand on the phone bar, so both carry its 54px. Messages' buttons joined
+> the touch-target list below (`test/phone-taps.test.js`). **Still small
+> under a finger, found the same day with buildings in the test data and
+> not fixed:** on Home, "Add a logo", the three links at Today's foot and
+> the map's Properties / Permits switch (20 to 30px); on /buildings, each
+> address (22px) and Remove (18px).
 > **Touch targets: small controls are reached past their edge under a
 > finger (2026-11-15, the owner: "fix the small tap targets").** A phone
 > audit of twelve member pages found 40 controls under 32px tall (the

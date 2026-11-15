@@ -778,6 +778,26 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 .vd-tray.on .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.4)}
 .vd-tray.on .btn.ghost:hover{background:rgba(255,255,255,.08);color:#fff}
 .vd-tray.on .lnk{color:rgba(255,255,255,.8)}
+/* The set on a phone is ONE LINE until it is opened (2026-11-15). With its
+   summary and five buttons stacked it was 305px, over a third of a phone's
+   screen, standing on the very rows still being ticked. Closed, it is its
+   count and a chevron, 56px; a tap on either opens it over the list and a
+   tap again closes it. #setToggle is drawn at every width and shown only
+   here, and .open is written at every width and read only here, so a wide
+   screen's set is exactly what it was. */
+.vd-tgl{display:none}
+@media (max-width:640px){
+  .vd-tray.on{flex-direction:row;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 12px 10px 16px}
+  .vd-tray.on .vd-tk{flex:1 1 0;cursor:pointer}
+  .vd-tray.on .vd-tk b{font-size:var(--text-lead)}
+  .vd-tray.on .vd-tact{flex:1 1 100%}
+  .vd-tray.on:not(.open) .vd-tk span,.vd-tray.on:not(.open) .vd-tact{display:none}
+  .vd-tgl{display:inline-flex;align-items:center;justify-content:center;flex:none;width:36px;height:36px;padding:0;
+    border:1px solid rgba(255,255,255,.4);border-radius:var(--r-md);background:transparent;color:#fff;cursor:pointer}
+  .vd-tgl svg{transform:rotate(-90deg)}
+  .vd-tray.open .vd-tgl svg{transform:rotate(90deg)}
+  .vd-tgl:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+}
 /* The loan check (2026-11-14): a loan read against the comp set's own low,
    median and high. It opens above the set from the set's own button. The
    tiles are the report's Collateral Check card's, and the lender page's. */
@@ -4244,9 +4264,14 @@ ${tabButtons}
     var first=monthLabel(dates[0]),last=monthLabel(dates[dates.length-1]),old=staleCount(list);
     return (first===last?first:first+" to "+last)+(old?" \\u00b7 "+old+" over a year old":"");
   }
+  // Whether the set is opened out on a phone, where it is one line until it
+  // is (the stylesheet's .vd-tgl rule). A wide screen never reads it. An
+  // emptied set forgets it, so the next set starts as one line again.
+  var trayOpen=false;
   function renderTray(){
     var list=setList(),n=list.length,t=$("setTray");
     if(!n){
+      trayOpen=false;
       t.className="vd-tray";
       t.innerHTML='<p class="vd-tk"><b>Build a comp set</b><span>Tick comps in the list to gather them here. '+
         "The set keeps its own median and range, checks a loan against them, and prints as a comp sheet on your letterhead.</span></p>";
@@ -4255,9 +4280,11 @@ ${tabButtons}
     }
     var unpub=list.filter(function(c){return !c.published});
     var unshared=myFirm?list.filter(function(c){return !sharedIds[String(c.id)]}):[];
-    t.className="vd-tray on";
+    t.className="vd-tray on"+(trayOpen?" open":"");
     t.innerHTML='<p class="vd-tk"><b>'+n+" comp"+(n===1?"":"s")+" in your set</b><span>"+esc(setSummary(list))+"</span></p>"+
-      '<div class="vd-tact"><button type="button" class="btn" id="setSheet">Comp sheet</button>'+
+      '<button type="button" class="vd-tgl" id="setToggle" aria-expanded="'+(trayOpen?"true":"false")+'" aria-controls="setActs" '+
+        'aria-label="'+(trayOpen?"Close your comp set":"Open your comp set")+'">'+CHEV+"</button>"+
+      '<div class="vd-tact" id="setActs"><button type="button" class="btn" id="setSheet">Comp sheet</button>'+
       '<button type="button" class="btn ghost" id="setCheck" aria-expanded="'+(ckOpen?"true":"false")+'" aria-controls="loanCheck">'+
         (ckOpen?"Hide loan check":"Check a loan")+"</button>"+
       '<button type="button" class="btn ghost" id="setCsv">Download CSV</button>'+
@@ -4268,11 +4295,21 @@ ${tabButtons}
     renderCheck();
   }
   $("setTray").addEventListener("click",function(e){
-    var b=e.target&&e.target.closest?e.target.closest("button"):null; if(!b)return;
+    var b=e.target&&e.target.closest?e.target.closest("button"):null;
+    // The chevron, or the set's own count, opens and closes it on a phone.
+    // Nothing else changes: the set, the loan check and the list stay as
+    // they are, and on a wide screen the class it writes is read by no rule.
+    if(b?b.id==="setToggle":!!(e.target&&e.target.closest&&e.target.closest(".vd-tk"))){
+      if(setList().length){ trayOpen=!trayOpen; renderTray(); }
+      return;
+    }
+    if(!b)return;
     var list=setList();
     if(b.id==="setClear"){ setIds={}; renderBookMap(bmRows); return; }
     if(b.id==="setCsv"){ downloadSetCsv(list); return; }
-    if(b.id==="setCheck"){ setCheckOpen(!ckOpen); return; }
+    // The check opens above the set, so on a phone the set closes to its one
+    // line and lets it be read; the panel has its own Close.
+    if(b.id==="setCheck"){ trayOpen=false; setCheckOpen(!ckOpen); return; }
     if(b.id==="setSheet"){ printSheet(list); return; }
     if(b.id==="setPub"){ publishList(list.filter(function(c){return !c.published}),b); return; }
     if(b.id==="setFirm"){ shareListWithFirm(list.filter(function(c){return !sharedIds[String(c.id)]}),b); return; }

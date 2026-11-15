@@ -202,6 +202,41 @@ paths:
   contact door composes name and company and **never the email** (039), and
   the shelf door sends a report as its `/r/<id>` link, never a snapshot, so
   `report-access.js` stays the sole decider.
+  **A chat on a phone is one screen** (2026-11-15, the owner: "yes fix
+  both"; pictures at https://claude.ai/artifact/HCMqHEZY51dwZ2agmjegxn).
+  Under 900px an open conversation was as tall as its messages: the page
+  opened on the oldest one and the composer sat under all of them (1,450px
+  down with eleven). `renderStream`'s `el.scrollTop = el.scrollHeight` had
+  never done anything there, because the stream had no height to scroll in.
+  Now, in messages-page.js's one-pane block:
+  - **`.msg-page.on-thread:not([data-view="reports"])` has a height**:
+    `100dvh - 16px`, or `- 70px` and the safe area with the phone bar under
+    it (54 + 8 + 8; app-shell.md). `vh` is written first as the fallback.
+    Its one grid row is `minmax(0,1fr)`: an auto row grows with its content
+    and the page's `overflow:hidden` would cut the composer off. The stream
+    scrolls inside, so the newest message is in view and stays there after
+    a send.
+  - **In the page's flow, never `position:fixed`.** A phone's keyboard
+    scrolls a field in the flow into view and does not for one in a fixed
+    box. Not verified on a real phone; that is the reason for the choice.
+  - **`fitThread()`** brings the chat to 8px under the top of the screen,
+    from the two places a CHAT opens (never a report). The page's title and
+    intro are above it and scroll away.
+  - **Chats only.** A report's pane (`#msgRMain`) has no scroller of its
+    own; every rule is `:not([data-view="reports"])` and a test fails one
+    that is not.
+  - **The Feedback button** floats over the corner Send is in:
+    `html:has(...) .tninja{display:none}` while a chat is open, and Send
+    moves 36px clear of it where `:has()` is not understood.
+  - **Under a finger** Send and Attach are 40px tall (27 before), and Back,
+    Conversation, Comps, People, More, New, Unsend and a row's ⋯ take
+    overlays (app-shell.md, "Touch targets").
+  - **The same is true on a computer and was left alone**: a long
+    conversation there is also a long page with the composer at its foot
+    (`.msg-page` has a min-height and no height above 900px). It needs its
+    own pictures.
+  Held by `test/messages-page.test.js` (the last test runs `fitThread`) and
+  `test/phone-taps.test.js`.
   **Deleting a conversation** (2026-09-26, no migration; owner's ask, Draft
   C of the drafts at https://claude.ai/artifact/2yqGKYAyv4n8mrFD5ZtHHF).
   `POST /api/messages/delete {threadId}` deletes a FIRM conversation **for the

@@ -73,6 +73,27 @@ paths:
 >   `test/vault-personal-decks.test.js`, `test/vault-shell.test.js` and
 >   `test/routes.test.js`.
 
+> **The comp set on a phone is one line until it is opened (2026-11-15, the
+> owner: "yes fix both").** With its summary and five buttons stacked the
+> sticky set was 305px on a phone, 40% of the screen, standing on the rows
+> still being ticked. Under 640px it is now its count and a chevron (58px):
+> - **`#setToggle` (`.vd-tgl`) and `trayOpen`.** `renderTray` draws the
+>   chevron at every width and writes `.open` on the tray at every width;
+>   only the `@media (max-width:640px)` block shows the one or reads the
+>   other, so a tablet's and a computer's set are what they were. Closed, the
+>   summary line and `#setActs` (the buttons) are `display:none`.
+> - **The count is the same switch**: a tap on `.vd-tk` toggles too. The
+>   handler asks for the chevron first, and for `.vd-tk` only when the tap
+>   was on no button.
+> - **It stays as the member left it** while comps are ticked. An emptied
+>   set forgets it, and **Check a loan closes it**, because the check opens
+>   above the set and an opened set stood over it (the panel has its own
+>   Close).
+> - Nothing else changed: the set is still memory only, its buttons call
+>   what they called, and it still stands 12px above the phone bar and 56px
+>   short of the Feedback button (app-shell.md).
+> Run in `test/vault-page.test.js` ("one line until it is opened").
+
 > **`/comps` for a lender (2026-11-14; the owner: "optimize it for Live Oak
 > Bank's purposes").** The reader is an SBA lender whose comps are the ones
 > out of the appraisals in its files, and the question it asks of them is the

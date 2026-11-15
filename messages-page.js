@@ -405,6 +405,51 @@ function renderMessagesBody(boot) {
   .msg-page .msg-main{display:none}
   .msg-page.on-thread .msg-side{display:none}
   .msg-page.on-thread .msg-main{display:flex}
+  /* An open chat is ONE SCREEN on a phone (2026-11-15). It was as tall as
+     its messages: the page opened on the oldest one and the box to type in
+     sat under all of them (1,450px down with eleven messages). The page is
+     now a fixed height, its one grid row is that height (minmax(0,1fr); an
+     auto row grows with its content and the page's overflow:hidden would cut
+     it off), and the stream scrolls inside it, so "scrollTop = scrollHeight"
+     finally lands on the newest message and the composer is on screen.
+     fitThread() in the script brings the chat to the top of the screen.
+     Still in the page's flow, never position:fixed: when a phone's keyboard
+     opens, the browser scrolls a field in the flow into view by itself and
+     does not for one inside a fixed box. dvh is the screen as it is now
+     (address bar showing or not); vh is the fallback and is only too tall.
+     Chats only: a report's pane has no scroller of its own and would be cut. */
+  .msg-page.on-thread:not([data-view="reports"]){grid-template-rows:minmax(0,1fr);min-height:0;margin-bottom:8px;
+    height:calc(100vh - 16px);height:calc(100dvh - 16px)}
+  .msg-page.on-thread:not([data-view="reports"]) .msg-main{min-height:0;overflow-y:auto}
+  .msg-page.on-thread:not([data-view="reports"]) .msg-stream{min-height:120px}
+}
+/* The same chat with the phone bar under it (server.js RAIL_CSS, 54px and
+   the safe area): 8px above the chat, 8px between it and the bar. */
+@media screen and (max-width:899px){
+  html.nav-rail .msg-page.on-thread:not([data-view="reports"]){
+    height:calc(100vh - 70px - env(safe-area-inset-bottom,0px));height:calc(100dvh - 70px - env(safe-area-inset-bottom,0px))}
+  /* The round Feedback button floats over the corner the Send button is in.
+     In an open chat it is put away (it is back on the list of chats); where
+     a browser cannot ask "is a chat open" from here, Send moves clear of it. */
+  html:has(.msg-page.on-thread:not([data-view="reports"])) .tninja{display:none}
+  @supports not selector(:has(a)){ html.nav-rail .msg-page.on-thread .msg-actions{margin-right:36px} }
+}
+/* Touch targets (2026-11-15; app-shell.md). An open chat's own buttons were
+   27px tall: Back, Conversation, Comps, People, More, each message's Unsend,
+   and New over the list. Under a finger each is reached 8px above and below,
+   inside the header's own 14px padding or the message's own line, by an
+   overlay that moves nothing. Back is 25px wide, so its overlay also reaches
+   into the header's 16px side padding. A row's More button is 30px in a
+   48px slot and takes 7px each way. .msg-unsend and .msg-more are already
+   absolute and must not be made relative.
+   Send and Attach get real height instead: Send is the one button a chat
+   cannot do without, and 50 by 27 was the smallest thing on the screen. */
+@media (pointer:coarse){
+  .msg-head .msg-btn{position:relative}
+  .msg-head .msg-btn::after,.msg-unsend::after,.msg-more::after{content:"";position:absolute;inset:-8px -4px}
+  #msgBack::after,#msgRBack::after{inset:-8px -6px -8px -12px}
+  .msg-more::after{inset:-7px}
+  .msg-actions .msg-btn{min-height:40px;padding-left:16px;padding-right:16px}
 }
 @media (min-width:901px){ #msgBack,#msgRBack{display:none} }
 </style>
@@ -764,7 +809,7 @@ ${REPORT_INBOX_SRC}
     $("msgPeoplePanel").className = "msg-panel msg-hide";
     renderTray();
     setTab("chat");
-    if (jump !== false) $("msgPage").className = "msg-page on-thread";
+    if (jump !== false) { $("msgPage").className = "msg-page on-thread"; fitThread(); }
     renderThreads();
     if (push) {
       try { history.replaceState({}, "", "/messages?x=" + encodeURIComponent(id)); } catch (e) {}
@@ -1284,6 +1329,19 @@ ${REPORT_INBOX_SRC}
   // missed tap there (and a phone has no right-click at all).
   function sheetMode(){
     try { return window.matchMedia("(hover: none), (max-width: 900px)").matches; } catch (e) { return false; }
+  }
+  // On a phone an open chat is one screen tall (the stylesheet's
+  // .msg-page.on-thread rule), so opening one brings it to the top of the
+  // screen: the page's title and intro are above it, and without this the
+  // box to type in would still be a scroll away. Only where the two panes
+  // are one (the stylesheet's own 900px). It writes nothing but the scroll
+  // position, so a page built ahead of a click may run it.
+  function fitThread(){
+    try {
+      if (!window.matchMedia("(max-width: 900px)").matches) return;
+      var r = $("msgPage").getBoundingClientRect();
+      window.scrollTo(0, Math.max(0, Math.round(r.top + (window.pageYOffset || 0) - 8)));
+    } catch (e) {}
   }
   function splitKey(key){
     var s = String(key || ""), i = s.indexOf(":");
@@ -1909,7 +1967,7 @@ ${REPORT_INBOX_SRC}
     applyComposerMode();
     applyDraft();
     setTab("chat");
-    if (jump !== false) $("msgPage").className = "msg-page on-thread";
+    if (jump !== false) { $("msgPage").className = "msg-page on-thread"; fitThread(); }
     renderThreads();
     if (push) {
       try { history.replaceState({}, "", "/messages?t=" + encodeURIComponent(id)); } catch (e) {}

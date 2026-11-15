@@ -1940,12 +1940,18 @@ function validateIdentity(input) {
  *  2. **`comp_submissions` columns are all text**, because they were filled by
  *     a human form. The vault holds real numbers. Numbers must be stringified,
  *     not passed through, or PostgREST coerces inconsistently.
+ *
+ * `status` is "approved" only when the caller says so in exactly that word,
+ * and "pending" for everything else, an omitted option included. Until
+ * 2026-11-14 this row was always written approved, so the first comp a
+ * brand-new account published wore the Verified badge with nobody having
+ * looked at the license number behind it (see publisherStanding below).
  */
-function submissionRowFrom(comp, { creditName: by, email }) {
+function submissionRowFrom(comp, { creditName: by, email, status } = {}) {
   const c = comp || {};
   const str = (v) => (v == null || v === "" ? null : String(v));
   return {
-    status: "approved",
+    status: status === "approved" ? "approved" : "pending",
     broker_name: by || null,
     broker_company: by || null,
     broker_email: String(email || "").trim().toLowerCase() || null,
@@ -1960,6 +1966,44 @@ function submissionRowFrom(comp, { creditName: by, email }) {
     notes: c.notes || null,
   };
 }
+
+// --- a publisher is reviewed once -------------------------------------------
+//
+// The license number on a profile is self-typed, and canPublishAs can only ask
+// that it is there. So the first comps an account publishes wait in the
+// owner's review queue (comp_submissions, status "pending", the queue /admin
+// has had since the public submission form), and nothing reaches a report
+// until a person has checked the number and approved one.
+//
+// The standing is DERIVED, not stored: a publisher is approved while at least
+// one of the comps they have published is approved. No column, so no migration
+// and nothing to drift, and it un-approves itself if the owner later rejects
+// or removes everything they had. The cost is the edge the other way: a broker
+// who withdraws their only approved comp is reviewed again on the next one.
+//
+// `statuses` is the status of every submission behind the caller's OWN
+// published comps. Anything that is not the literal "approved" counts as
+// waiting, a rejected row included, so a refused publisher cannot refill the
+// queue by publishing five more.
+const PUBLISH_REVIEW_CAP = 5;
+
+function publisherStanding(statuses) {
+  let approved = false;
+  let waiting = 0;
+  for (const s of Array.isArray(statuses) ? statuses : []) {
+    if (s === "approved") approved = true;
+    else waiting += 1;
+  }
+  return {
+    approved,
+    waiting,
+    // How many more comps may go to review right now. Unlimited once approved.
+    room: approved ? Infinity : Math.max(0, PUBLISH_REVIEW_CAP - waiting),
+  };
+}
+
+const REVIEW_FULL_REASON =
+  "Your first published comps are being reviewed. You can publish more once one is approved.";
 
 // --- who may wear the Verified badge ----------------------------------------
 //
@@ -2316,6 +2360,9 @@ module.exports = {
   canPublishAs,
   validateIdentity,
   submissionRowFrom,
+  publisherStanding,
+  PUBLISH_REVIEW_CAP,
+  REVIEW_FULL_REASON,
   parseCsv,
   isCommentRow,
   normalizeHeader,

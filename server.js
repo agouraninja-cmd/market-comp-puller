@@ -297,6 +297,16 @@ const PFMATCH = require("./portfolio-match");
 // Instant tab switching: the rail's tabs are prerendered on intent, and what a
 // prerendered page may do before anyone sees it (instant-nav.js explains).
 const INSTANTNAV = require("./instant-nav");
+// The security headers every response carries, set once per request at the
+// top of the request handler (security-headers.js explains each one).
+const SECHEADERS = require("./security-headers");
+// Stopping without dropping the request somebody is waiting on: the drain a
+// deploy's SIGTERM starts, and the crash handlers at the foot of this file
+// (graceful-shutdown.js explains the rules).
+const GRACEFUL = require("./graceful-shutdown");
+// index.html's megabyte of inline script, served as its own cacheable file
+// (app-page.js; loadAppPage below does the reading).
+const APPPAGE = require("./app-page");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -1456,11 +1466,10 @@ function sendCsvDownload(req, res, table, file, cols, filename) {
     res.writeHead(404, { "content-type": "text/plain" });
     return res.end("Not found");
   }
-  // Header, ?key= (machine callers), or the cn_admin cookie — the cookie is
-  // what lets the dashboards link these as plain hrefs with no key in the URL.
-  const key = new URL(req.url, "http://localhost").searchParams.get("key");
-  if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) {
-    return sendJson(res, 401, { error: "Unauthorized." });
+  // The x-admin-key header or the cn_admin cookie — the cookie is what lets
+  // the dashboards link these as plain hrefs. Never ?key= (isAdminRequestOrUrlKey).
+  if (!isAdminRequestOrUrlKey(req)) {
+    return sendJson(res, 401, adminRefusal(req));
   }
   readRows(table, file, cols).then((rows) => {
     // guardFormula: these files hold visitor-typed (lead name/company) and
@@ -1542,6 +1551,38 @@ function isAdminRequest(req) {
   if (secretMatches(req.headers["x-admin-key"], ADMIN_KEY)) return true;
   return adminCookieValid(parseCookies(req)[ADMIN_COOKIE]);
 }
+// The admin key in a URL (`?key=`), which is no longer accepted (2026-11-14).
+//
+// Six routes took it "for machine callers": the three CSV downloads (leads,
+// broker submissions, the corpus), /api/stats, /api/admin/submissions and
+// /api/corpus-audit. A key in a URL is written to the host's access log, the
+// browser's history and any proxy in between, and the lead CSV it opens is
+// people's names, emails and phone numbers. Every caller in this repository
+// already sends the `x-admin-key` header (the workflows, gen-market-seed.js,
+// run-eval.js, the dashboards' own fetches), and a browser carries the
+// cn_admin cookie, so nothing here needed the URL form.
+//
+// ADMIN_KEY_IN_URL=on is the rollback, for a bookmark or a spreadsheet import
+// nobody remembered: it restores exactly the old behaviour on those routes.
+//
+// The refusal says what to do instead, and says the same thing whether the
+// key in the URL was right or wrong, so it confirms nothing about the key.
+const ADMIN_KEY_IN_URL = String(process.env.ADMIN_KEY_IN_URL || "").trim().toLowerCase() === "on";
+function urlKeyOf(req) {
+  try { return new URL(req.url, "http://localhost").searchParams.get("key"); } catch (_) { return null; }
+}
+// isAdminRequest for the routes that used to read ?key= as well.
+function isAdminRequestOrUrlKey(req) {
+  if (isAdminRequest(req)) return true;
+  return ADMIN_KEY_IN_URL && Boolean(ADMIN_KEY) && secretMatches(urlKeyOf(req), ADMIN_KEY);
+}
+function adminRefusal(req) {
+  return urlKeyOf(req) != null && !ADMIN_KEY_IN_URL
+    ? { error: "Unauthorized. The admin key is not accepted in the address any more: send it as the " +
+        "x-admin-key header, or unlock /admin in this browser first and open the link again.",
+        code: "key_in_url" }
+    : { error: "Unauthorized." };
+}
 function setAdminCookie(res, req, value, maxAgeSec) {
   const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
   // Append rather than assign: /api/admin-access sets no other cookie today,
@@ -1605,6 +1646,10 @@ const rateHits = new Map();
 // forgiving the window is fine, a mail storm is not.
 const BROKER_ALERT_SUPPRESS = new Map(); // "userId|market|type" -> lastSentMs
 const BROKER_ALERT_WINDOW_MS = 60 * 60 * 1000;
+
+// When the owner was last told a publisher is waiting for review (userId ->
+// ms). See notifyPublishReview beside the vault publish routes.
+const PUBLISH_REVIEW_NOTIFIED = new Map();
 
 function clientIp(req) {
   // Hosts like Render sit behind a proxy; the proxy APPENDS the real client to
@@ -11995,6 +12040,44 @@ function tailwindLink() {
   }
 }
 
+// index.html as it is handed out (2026-11-14; app-page.js has the design and
+// the rules). The file is about 400 KB of markup and CSS and one megabyte of
+// inline script, served no-store, so that megabyte was downloaded again on
+// every page view. loadAppPage() moves the script to /app.<hash>.js, a
+// content-addressed file the browser keeps for a year, and remembers the
+// result until index.html's size or modified time changes, so editing the
+// file still needs only a refresh (the Restart rule) and a page view no
+// longer reads 1.4 MB off the disk.
+//
+// EXTERNAL_APP_SCRIPT=off is the rollback: the page goes out exactly as it
+// is on disk, script inline, and /app.<hash>.js answers 404.
+//
+// The canonical-origin rewrite the page gets at the end of its handler is
+// applied to the script HERE, before it is hashed: SITE_URL is fixed for the
+// life of the process, and a rewrite after hashing would make the address
+// lie about the content.
+const EXTERNAL_APP_SCRIPT = String(process.env.EXTERNAL_APP_SCRIPT || "on").trim().toLowerCase() !== "off";
+let APP_PAGE = { key: "", html: "", scriptBody: null, hash: "", url: "" };
+async function loadAppPage() {
+  const file = path.join(__dirname, "index.html");
+  const st = await fs.promises.stat(file);
+  const key = `${st.size}:${st.mtimeMs}`;
+  if (APP_PAGE.key === key) return APP_PAGE;
+  const raw = await fs.promises.readFile(file, "utf8");
+  const ext = EXTERNAL_APP_SCRIPT
+    ? APPPAGE.externalize(raw, {
+      transformScript: (s) => (SITE_URL !== DEFAULT_SITE_URL ? s.split(DEFAULT_SITE_URL).join(SITE_URL) : s),
+    })
+    : null;
+  if (EXTERNAL_APP_SCRIPT && !ext) {
+    console.warn("index.html has no plain inline script big enough to serve separately; serving the page whole.");
+  }
+  APP_PAGE = ext
+    ? { key, html: ext.html, scriptBody: Buffer.from(ext.script, "utf8"), hash: ext.hash, url: ext.url }
+    : { key, html: raw, scriptBody: null, hash: "", url: "" };
+  return APP_PAGE;
+}
+
 // Instant tab switching (2026-09-26): prerender the tab a member points at,
 // and keep the one they most likely want next warm, so the click swaps in a
 // page that has already loaded. Member pages only, and one script on both
@@ -17255,7 +17338,14 @@ function renderLeadershipPageHTML(signedIn) {
 // contact (no street address; the SOS registry publishes it for anyone who
 // truly needs it).
 // ---------------------------------------------------------------------------
-const LEGAL_UPDATED = "August 14, 2026";
+// One date each since 2026-11-15 (the owner: "give them separate dates"). A
+// single LEGAL_UPDATED dated both, so a change to one document either left
+// its date stale or restamped the other, which had not changed. Move a date
+// only when THAT document's text changes.
+const TERMS_UPDATED = "August 14, 2026";
+// The Privacy Policy last changed when Google Fonts joined its list of
+// outside services (the evening of November 14, 2026, US time).
+const PRIVACY_UPDATED = "November 14, 2026";
 
 function renderTermsPageHTML(signedIn) {
   const title = "Terms of Service | CompNinja";
@@ -17264,7 +17354,7 @@ function renderTermsPageHTML(signedIn) {
     "The terms that govern CompNinja: what the service is, what it is not, subscriptions, and your responsibilities.";
   const body =
     `<h1>Terms of Service</h1>` +
-    `<p class="sub">Last updated: ${LEGAL_UPDATED}. Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
+    `<p class="sub">Last updated: ${TERMS_UPDATED}. Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
 
     `<div class="legal">` +
     `<h2>Who we are and what this is</h2>` +
@@ -17340,7 +17430,7 @@ function renderPrivacyPageHTML(signedIn) {
     "How CompNinja LLC collects, uses, and shares information, which data never leaves your browser, and how to request deletion.";
   const body =
     `<h1>Privacy Policy</h1>` +
-    `<p class="sub">Effective date: ${LEGAL_UPDATED}</p>` +
+    `<p class="sub">Effective date: ${PRIVACY_UPDATED}</p>` +
     `<div class="legal">` +
     `<p>This Privacy Policy describes how CompNinja LLC, an Idaho limited liability company ` +
     `(file no. 6928558) (&quot;CompNinja,&quot; &quot;we,&quot; &quot;us&quot;), collects, uses, and ` +
@@ -17401,6 +17491,12 @@ function renderPrivacyPageHTML(signedIn) {
     `<li>The <strong>US Census Bureau</strong> and <strong>Nominatim</strong> provide address ` +
     `geocoding.</li>` +
     `<li><strong>cdnjs</strong> and <strong>jsdelivr</strong> provide content delivery for the export feature.</li>` +
+    // Every page loads Inter from Google since 2026-11-14 (the app page always
+    // did). Loading a font sends the visitor's IP address and browser details
+    // to Google, like any request; no cookie is set by it and nothing a
+    // visitor types goes with it.
+    `<li><strong>Google Fonts</strong> serves the typeface the Service is set in. Your browser requests it ` +
+    `directly from Google when a page loads.</li>` +
     `</ul>` +
 
     `<h2>5. Cookies and Local Storage</h2>` +
@@ -18537,6 +18633,10 @@ function subRow(x){
   var who=esc(x.broker_name)+(x.broker_company?" ("+esc(x.broker_company)+")":"")+" · "+esc(x.broker_email);
   var comp=esc(x.address)+" — "+esc(x.property_type||"?")+(x.transaction?" · "+esc(x.transaction):"")+" · "+esc(x.price_or_rate)+(x.deal_date?" · "+esc(x.deal_date):"");
   var notes=x.notes?"<div class=muted>"+esc(String(x.notes).slice(0,160))+"</div>":"";
+  // A member's own comp, waiting on the one-time publisher review: the license
+  // number is the thing to check before approving.
+  if(x.member)notes="<div class=muted>Published by a member · License "+(x.license?esc(x.license):"not on file")+
+    ". Check it with the state before approving; approving one lets their later comps go live without review.</div>"+notes;
   return "<tr><td style='text-align:left'><div style='font-weight:600'>"+comp+"</div><div class=muted>"+who+"</div>"+notes+"</td>"+
     "<td style='white-space:nowrap'><button class='btn ap' data-id='"+Number(x.id)+"'>Approve</button> "+
     "<button class='btn rj mute' data-id='"+Number(x.id)+"'>Reject</button></td></tr>";
@@ -20428,17 +20528,26 @@ async function attachCitedCounts(rows) {
     // an in.() list long enough to be refused as a URL, and the failure would
     // be silent because this whole function swallows its errors.
     const counts = new Map();
+    const reviews = new Map();
     for (let i = 0; i < ids.length; i += 200) {
       const slice = ids.slice(i, i + 200);
       const subs = await sbRequest("GET",
         `comp_submissions?id=in.(${slice.map((v) => encodeURIComponent(v)).join(",")})` +
-        "&select=id,cited_count");
-      for (const sub of subs || []) counts.set(String(sub.id), Number(sub.cited_count) || 0);
+        "&select=id,cited_count,status");
+      for (const sub of subs || []) {
+        counts.set(String(sub.id), Number(sub.cited_count) || 0);
+        reviews.set(String(sub.id), sub.status);
+      }
     }
     for (const r of rows || []) {
       if (!r || r.published_submission_id == null) continue;
       const n = counts.get(String(r.published_submission_id));
       if (n != null) r.cited_count = n;
+      // Where the comp stands with the owner's review (2026-11-14), so the
+      // page never calls a comp nobody has approved "Published". Only the two
+      // not-public answers are named; approved is the absence of the field.
+      const st = reviews.get(String(r.published_submission_id));
+      if (st === "pending" || st === "rejected") r.review = st;
     }
   } catch (err) {
     console.error("cited_count read failed:", err.message);
@@ -20542,6 +20651,12 @@ async function vaultReadPayload(req, params) {
     counts: {
       returned: rows.length,
       published: rows.filter((r) => r.published).length,
+      // Of those, the ones the owner has not approved (pending or rejected),
+      // so the page's Published figure counts only what is really public.
+      // `published` itself stays "marked published in the book": the page
+      // keeps a member's publish controls on that count, and a comp in
+      // review must stay withdrawable.
+      inReview: rows.filter((r) => r.published && r.review).length,
     },
     markets: [...new Set(rows.map((r) => r.market).filter(Boolean))].sort(),
     types: [...new Set(rows.map((r) => r.property_type).filter(Boolean))].sort(),
@@ -21264,14 +21379,33 @@ function renderAlerts(d){
   }
   el("alerts").innerHTML=html;
 }
-// Built AFTER the gate passes. In a cookie-unlocked session the links are
-// plain hrefs — the cn_admin cookie rides along with the click and no key
-// ever appears in a URL. Only a typed-key session (where the cookie may not
-// have landed yet) falls back to the ?key= form the CSV routes still accept.
+// Built AFTER the gate passes. The links are plain hrefs in every session and
+// no key ever appears in a URL: the routes stopped taking ?key= on 2026-11-14
+// (a key in an address is in the access log and the browser's history, and
+// the lead CSV is people's contact details). In a cookie-unlocked session the
+// cn_admin cookie rides along with the click. In a typed-key session the
+// cookie may not have landed yet, so the click is answered here instead: the
+// file is fetched with the key in the x-admin-key header and saved from
+// memory, under the same name the route gives it.
 function renderDls(key){
-  var q=key?"?key="+encodeURIComponent(key):"";
-  el("dls").innerHTML=[["/api/leads","Leads"],["/api/comp-submissions","Broker submissions"],["/api/comp-corpus","Comp corpus"]]
-    .map(function(p){return '<a href="'+p[0]+q+'" download>'+p[1]+' CSV</a>';}).join(" &middot; ");
+  var files=[["/api/leads","Leads","leads.csv"],["/api/comp-submissions","Broker submissions","comp-submissions.csv"],["/api/comp-corpus","Comp corpus","comp-corpus.csv"]];
+  el("dls").innerHTML=files
+    .map(function(p){return '<a href="'+p[0]+'" data-file="'+p[2]+'" download>'+p[1]+' CSV</a>';}).join(" &middot; ");
+  if(!key)return;
+  Array.prototype.forEach.call(el("dls").querySelectorAll("a"),function(a){
+    a.addEventListener("click",function(e){
+      e.preventDefault();
+      fetch(a.getAttribute("href"),{headers:{"x-admin-key":key}})
+        .then(function(r){if(!r.ok){throw new Error("Could not download ("+r.status+").");}return r.blob();})
+        .then(function(b){
+          var u=URL.createObjectURL(b),t=document.createElement("a");
+          t.href=u;t.download=a.getAttribute("data-file");
+          document.body.appendChild(t);t.click();t.remove();
+          setTimeout(function(){URL.revokeObjectURL(u);},2000);
+        })
+        .catch(function(err){alert(err.message);});
+    });
+  });
 }
 function load(key){
   fetch("/api/hq",{headers:{"x-admin-key":key}}).then(function(r){
@@ -21327,6 +21461,17 @@ async function checkExploreCity(req, city, state) {
 // anything inside it, at any await depth, is attributed.
 const server = http.createServer((req, res) =>
   REQUEST_CONTEXT.run(newRequestContext(req, res), () => {
+  // Security headers, on every response there is (2026-11-14). FIRST, ahead
+  // of routeWarm, because a page answered from the warm store and the desktop
+  // preload never reach the routes below. Set with setHeader, which a later
+  // res.writeHead merges in: no route has to repeat them, and a route that
+  // names one of them itself still wins. Idempotent, so routeWarm handing a
+  // request back through server.emit sets the same values again.
+  SECHEADERS.applySecurityHeaders(req, res);
+  // Counted as in flight until its response closes, so a deploy's SIGTERM
+  // waits for it instead of cutting it off (SHUTDOWN, at the foot of this
+  // file). Counted once per request, however often routeWarm re-emits it.
+  SHUTDOWN.track(req, res);
   // A page built ahead for this visitor (instant tab switching, Safari and
   // Firefox) — or the write that makes one stale. See routeWarm. Re-emitting
   // is the way back in on a miss: routeWarm marks the request, so the second
@@ -26492,6 +26637,60 @@ const server = http.createServer((req, res) =>
       return true;
     }
 
+    // Has the owner approved anything this account published, and how many of
+    // its published comps are still waiting? VAULT.publisherStanding has the
+    // rule and the reason; this is the read behind it, and both publish routes
+    // ask it so they cannot drift apart.
+    //
+    // Starts from the CALLER's own comps (user_id in the filter, always) and
+    // only then reads comp_submissions by those ids, never by email: a
+    // submission somebody else wrote under this address must not approve
+    // anyone. THROWS on a failed read, which both routes turn into "that
+    // didn't go through": guessing "approved" on an error is the hole this
+    // closes, and guessing "pending" would put a trusted broker's comp in the
+    // queue with no way for them to know why.
+    const vaultPublisherStanding = async (userId) => {
+      const mine = (await sbRequest("GET",
+        `broker_comps?user_id=eq.${encodeURIComponent(userId)}` +
+        `&published=is.true&select=id,published_submission_id&limit=5000`)) || [];
+      const ids = [];
+      for (const c of mine) {
+        const id = c && c.published_submission_id;
+        if (id != null && String(id).trim() !== "" && ids.indexOf(id) < 0) ids.push(id);
+      }
+      const statuses = [];
+      for (let i = 0; i < ids.length; i += 100) {
+        const subs = (await sbRequest("GET",
+          `comp_submissions?id=in.(${pgInList(ids.slice(i, i + 100))})&select=id,status`)) || [];
+        for (const s of subs) statuses.push(s.status);
+      }
+      return VAULT.publisherStanding(statuses);
+    };
+
+    // One note to the owner when comps land in the review queue, carrying the
+    // license number they are being asked to check. At most one an hour per
+    // publisher: a broker publishing five comps one click at a time is one
+    // review, not five emails. In memory, like BROKER_ALERT_SUPPRESS, and for
+    // its reason: a restart forgiving the window costs a repeat, never a miss.
+    const notifyPublishReview = (user, by, license, comps) => {
+      const now = Date.now();
+      const last = PUBLISH_REVIEW_NOTIFIED.get(user.id) || 0;
+      if (now - last < 60 * 60 * 1000) return;
+      PUBLISH_REVIEW_NOTIFIED.set(user.id, now);
+      notifyByEmail(
+        `New publisher waiting for review: ${by}`,
+        [
+          ["Credit name", by],
+          ["License number", license],
+          ["Account", user.email],
+          ["Comps waiting", String(comps.length)],
+          ["First comp", comps[0] && comps[0].address],
+          ["Next step", "Check the license number with the state that issued it, then approve or reject " +
+            `the comp under Submissions on ${SITE_URL}/admin. Approving one lets this publisher's later comps go live without review.`],
+        ]
+      );
+    };
+
     // --- Publish / unpublish one comp ---------------------------------------
     //
     // Ecosystem Plan §4: the ONE sanctioned door through the privacy wall, and
@@ -26556,8 +26755,18 @@ const server = http.createServer((req, res) =>
           }
           const by = gateBy.by;
 
+          // A publisher the owner has not approved yet goes to the review
+          // queue instead of straight into reports, a few comps at a time.
+          const standing = await vaultPublisherStanding(user.id);
+          if (standing.room < 1) {
+            return sendJson(res, 400, { error: VAULT.REVIEW_FULL_REASON, code: "review_pending" });
+          }
+
           const inserted = await sbRequest("POST", "comp_submissions",
-            [VAULT.submissionRowFrom(comp, { creditName: by, email: user.email })],
+            [VAULT.submissionRowFrom(comp, {
+              creditName: by, email: user.email,
+              status: standing.approved ? "approved" : "pending",
+            })],
             { prefer: "return=representation" });
           const subId = inserted && inserted[0] && inserted[0].id;
           if (!subId) throw new Error("comp_submissions insert returned no id");
@@ -26571,8 +26780,15 @@ const server = http.createServer((req, res) =>
           // report for that market+type is now stale. The cache key already
           // hashes a signature of the offered verified comps, so this is
           // self-correcting — noted here so nobody adds a manual bust later.
-          console.log(`📤 Vault comp published: ${comp.address} by ${by} (user ${user.id}, submission ${subId})`);
-          return sendJson(res, 200, { ok: true, published: true, creditedTo: by });
+          console.log(`📤 Vault comp ${standing.approved ? "published" : "sent for review"}: ${comp.address} by ${by} (user ${user.id}, submission ${subId})`);
+          if (!standing.approved) notifyPublishReview(user, by, gateBy.license, [comp]);
+          return sendJson(res, 200, {
+            ok: true, published: true, creditedTo: by,
+            // `inReview` rather than a different `published`: the comp IS
+            // marked published in the member's book (so it can be withdrawn),
+            // it is the public half that waits.
+            ...(standing.approved ? {} : { inReview: true }),
+          });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault publish failed:", err.message);
@@ -26643,12 +26859,22 @@ const server = http.createServer((req, res) =>
             `broker_comps?id=in.(${batch.map((i) => encodeURIComponent(i)).join(",")})` +
             `&user_id=eq.${encodeURIComponent(user.id)}&limit=${batch.length}`)) || [];
 
+          // The single route's review rule, asked once for the batch: until the
+          // owner has approved this publisher, only the first few comps go
+          // out, as pending, and the rest are skipped with the reason.
+          const standing = await vaultPublisherStanding(user.id);
+          const subStatus = standing.approved ? "approved" : "pending";
+
           const skipped = [];
           const ready = [];
           for (const comp of rows) {
             if (comp.published) continue;                 // idempotent, not an error
             const gate = VAULT.canPublish(comp);
             if (!gate.ok) { skipped.push({ id: comp.id, address: comp.address, reason: gate.reason }); continue; }
+            if (ready.length >= standing.room) {
+              skipped.push({ id: comp.id, address: comp.address, reason: VAULT.REVIEW_FULL_REASON });
+              continue;
+            }
             ready.push(comp);
           }
 
@@ -26670,7 +26896,7 @@ const server = http.createServer((req, res) =>
               let subId = null;
               try {
                 const inserted = await sbRequest("POST", "comp_submissions",
-                  [VAULT.submissionRowFrom(comp, { creditName: by, email: user.email })],
+                  [VAULT.submissionRowFrom(comp, { creditName: by, email: user.email, status: subStatus })],
                   { prefer: "return=representation" });
                 subId = inserted && inserted[0] && inserted[0].id;
                 if (!subId) throw new Error("comp_submissions insert returned no id");
@@ -26699,9 +26925,13 @@ const server = http.createServer((req, res) =>
           };
           await Promise.all(Array.from({ length: Math.min(6, ready.length) }, worker));
 
-          console.log(`📤 Vault bulk publish: ${published} of ${rows.length} by ${by} (user ${user.id})`);
+          console.log(`📤 Vault bulk publish: ${published} of ${rows.length} by ${by} (user ${user.id}, ${subStatus})`);
+          if (!standing.approved && published) {
+            notifyPublishReview(user, by, gateBy.license, ready);
+          }
           return sendJson(res, 200, {
             ok: true, published, creditedTo: by,
+            ...(standing.approved ? {} : { inReview: true }),
             skipped: skipped.concat(failed).slice(0, 50),
             skippedCount: skipped.length + failed.length,
             remaining,
@@ -27884,8 +28114,7 @@ const server = http.createServer((req, res) =>
   // ---------------------------------------------------------------------------
   if (req.method === "GET" && req.url.split("?")[0] === "/api/admin/submissions") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    const key = new URL(req.url, "http://localhost").searchParams.get("key");
-    if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    if (!isAdminRequestOrUrlKey(req)) return sendJson(res, 401, adminRefusal(req));
     (async () => {
       // The verified layer is DB-only, so review is too — file mode just tells
       // the admin UI to render its "requires Supabase" note.
@@ -27897,6 +28126,32 @@ const server = http.createServer((req, res) =>
         (statusOk === "all" ? "" : `&status=eq.${statusOk}`) +
         "&select=id,ts,status,broker_name,broker_email,broker_phone,broker_company," +
         "address,property_type,transaction,deal_date,size_sqft,price_or_rate,cap_rate,notes,cited_count");
+      // A row a member published from their own comps is waiting on ONE
+      // question, whether the license number on their profile is real, so the
+      // number rides the row (2026-11-14). The public form's rows have no
+      // account behind them and get nothing. Best-effort: the queue must still
+      // open if this lookup fails, the review email carries the number too.
+      try {
+        const ids = (rows || []).map((r) => r.id).filter((v) => v != null);
+        if (ids.length) {
+          const links = (await sbRequest("GET",
+            `broker_comps?published_submission_id=in.(${pgInList(ids)})` +
+            `&select=published_submission_id,user_id&limit=${ids.length}`)) || [];
+          const userIds = [...new Set(links.map((l) => l.user_id).filter(Boolean))];
+          if (userIds.length) {
+            const profiles = (await sbRequest("GET",
+              `broker_profiles?user_id=in.(${pgInList(userIds)})&select=user_id,license_number`)) || [];
+            const licenseOfUser = new Map(profiles.map((p) => [String(p.user_id), VAULT.licenseOf(p)]));
+            const userOfSub = new Map(links.map((l) => [String(l.published_submission_id), String(l.user_id)]));
+            for (const r of rows) {
+              const uid = userOfSub.get(String(r.id));
+              if (uid) { r.member = true; r.license = licenseOfUser.get(uid) || ""; }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("admin submissions: license lookup failed:", err.message);
+      }
       return sendJson(res, 200, { db: true, rows: rows || [] });
     })().catch((err) => { console.error("admin submissions error:", err); sendJson(res, 500, { error: "Could not load submissions." }); });
     return;
@@ -32602,8 +32857,14 @@ const server = http.createServer((req, res) =>
     const deskBootP = (staticPath === "/" || staticPath === "/desk")
       ? deskBootPayload(req).catch(() => null)
       : Promise.resolve(null);
-    fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
-      if (err) {
+    // The page as it is handed out (loadAppPage): index.html, with its one
+    // megabyte of inline script moved to /app.<hash>.js unless
+    // EXTERNAL_APP_SCRIPT=off. Remembered until the file changes on disk, so
+    // an edit still needs only a refresh. `data` keeps its old name and its
+    // old meaning for everything below: the page before the serve-time
+    // rewrites.
+    loadAppPage().then((page) => page.html, () => null).then((data) => {
+      if (data == null) {
         res.writeHead(500);
         return res.end("index.html not found");
       }
@@ -32631,7 +32892,7 @@ const server = http.createServer((req, res) =>
       // as every server-rendered header, so the menus cannot drift. Then
       // canonical/og/JSON-LD URLs, written against the default origin, are
       // rewritten when SITE_URL is overridden (custom domain).
-      let html = data.toString("utf8")
+      let html = data
         .replace(NAV_LINKS_MARKER, APP_NAV_LINKS_HTML)
         // Same one-source rule as the nav list: index.html carries a marker,
         // never a hand-copy of the in-app detection (THEME_BOOT is the
@@ -32681,8 +32942,44 @@ const server = http.createServer((req, res) =>
       if (SITE_URL !== DEFAULT_SITE_URL) html = html.split(DEFAULT_SITE_URL).join(SITE_URL);
       res.end(html);
       });
+    }).catch((err) => {
+      // This used to be a file-read callback, where a throw ended the
+      // process. As a promise it would be a request left hanging, so say so.
+      console.error("serving index.html failed:", err && err.stack || err);
+      if (!res.headersSent) res.writeHead(500);
+      res.end("Server error");
     });
     return;
+  }
+
+  // --- The app's script, /app.<hash>.js (2026-11-14; app-page.js has the
+  // rules). The megabyte of inline script index.html carries, at an address
+  // that is its own content hash: a year and immutable when the hash asked
+  // for is the current one, and the CURRENT script with no caching when it is
+  // not, because a 404 here is a page that looks fine and does nothing (a
+  // page from the old instance asking the new one, during a deploy).
+  {
+    const wantedHash = (req.method === "GET" || req.method === "HEAD") ? APPPAGE.hashFromPath(staticPath) : null;
+    if (wantedHash) {
+      loadAppPage().then((page) => {
+        if (!page.scriptBody) {
+          // EXTERNAL_APP_SCRIPT=off, or a page with no script to move: no
+          // page this server hands out points here.
+          res.writeHead(404, { "content-type": "text/plain" });
+          return res.end("Not found");
+        }
+        res.writeHead(200, {
+          "content-type": "text/javascript; charset=utf-8",
+          "cache-control": APPPAGE.scriptCacheControl(wantedHash, page.hash),
+          "x-robots-tag": "noindex",
+        });
+        res.end(req.method === "HEAD" ? undefined : page.scriptBody);
+      }, () => {
+        res.writeHead(500, { "content-type": "text/plain" });
+        res.end("index.html not found");
+      });
+      return;
+    }
   }
 
   // --- Static assets: allowlisted files only, never arbitrary paths. The CSS
@@ -33228,8 +33525,8 @@ const server = http.createServer((req, res) =>
   if (req.method === "GET" && req.url.split("?")[0] === "/api/devlog") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
     // Header or the cn_admin cookie; never ?key=, which would leak the admin
-    // key into URLs and access logs. (The CSV downloads keep ?key= for
-    // machine callers — browser download links ride the cookie instead.)
+    // key into URLs and access logs. (No route takes ?key= any more, since
+    // 2026-11-14: see isAdminRequestOrUrlKey.)
     if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
     readDevlogMerged()
       .then((entries) => sendJson(res, 200, { entries }))
@@ -33415,8 +33712,7 @@ const server = http.createServer((req, res) =>
   // admin dashboard. Logging happens regardless; only the view is gated. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/stats") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    const key = new URL(req.url, "http://localhost").searchParams.get("key");
-    if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    if (!isAdminRequestOrUrlKey(req)) return sendJson(res, 401, adminRefusal(req));
     Promise.all([
       readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue", "visitor_id", "user_id", "plan"]),
       // Never rejects: readIntroRequests catches its own errors and returns
@@ -33436,8 +33732,7 @@ const server = http.createServer((req, res) =>
   // and this panel must never be what breaks it.
   if (req.method === "GET" && req.url.split("?")[0] === "/api/corpus-audit") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    const key = new URL(req.url, "http://localhost").searchParams.get("key");
-    if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    if (!isAdminRequestOrUrlKey(req)) return sendJson(res, 401, adminRefusal(req));
     corpusAuditReport()
       .then((data) => sendJson(res, 200, data))
       .catch((err) => {
@@ -33495,8 +33790,7 @@ const server = http.createServer((req, res) =>
 
   // --- HQ: the internal homepage. One aggregate of the three tools' headline
   // numbers. Same gate as /api/stats (404 with ADMIN_KEY unset, 401 on a bad
-  // key): header or the cn_admin cookie, like the dev endpoints — ?key= stays
-  // confined to the CSV download routes. ---
+  // key): header or the cn_admin cookie, like the dev endpoints. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/hq") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
     if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
@@ -34128,6 +34422,79 @@ const server = http.createServer((req, res) =>
 
   sendNotFound(req, res);
 }));
+
+// ---------------------------------------------------------------------------
+// Stopping, and crashing, without dropping what is in flight (2026-11-14).
+//
+// Until this there was no signal handler and no crash handler in this file.
+// Render ends the old instance of every deploy with SIGTERM and Node's default
+// is to die on the spot, so each deploy cut off the searches in flight AFTER
+// they had been billed; one unhandled promise rejection anywhere did the same
+// to every visitor at once; and nothing told the owner about either.
+// graceful-shutdown.js holds the drain and its rules. What lives here is the
+// part that touches the process: the signals, the two crash events, the mail.
+//
+// SHUTDOWN_GRACE_SECONDS (default 280) is how long a drain waits. The host's
+// own limit is the real one: Render kills the old instance 30 seconds after
+// SIGTERM unless the service's shutdown delay is raised (at most 300), so
+// raise it THERE to let a long search finish; this default already allows it.
+// ---------------------------------------------------------------------------
+const SHUTDOWN = GRACEFUL.createShutdown({
+  server,
+  graceMs: GRACEFUL.graceMsFrom(process.env.SHUTDOWN_GRACE_SECONDS),
+  log: (line) => console.log(line),
+  exit: (code) => process.exit(code),
+});
+process.on("SIGTERM", () => SHUTDOWN.begin("SIGTERM (a deploy or a restart)", 0));
+process.on("SIGINT", () => SHUTDOWN.begin("SIGINT (Ctrl+C)", 0));
+
+// One mail to the owner per kind of crash per 15 minutes: a bug that rejects
+// on every request is one message, not one per visitor. Sent from the event
+// itself, never a timer. Resolves false, at once, when mail is not configured
+// (sendEmail's own rule), and sendEmail never rejects.
+const CRASH_MAIL_ALLOWED = GRACEFUL.createLimiter(15 * 60 * 1000);
+function alertOwnerOfCrash(kind, detail, consequence) {
+  if (!CRASH_MAIL_ALLOWED(kind)) return Promise.resolve(false);
+  return sendEmail(LEAD_NOTIFY_EMAIL, `CompNinja server: ${kind}`,
+    [
+      `What happened: ${kind}.`,
+      `What it means: ${consequence}`,
+      `When: ${new Date().toISOString()}`,
+      ``,
+      detail,
+      ``,
+      `At most one of these is sent every 15 minutes per kind of error; the host's logs have every occurrence.`,
+    ].join("\n"));
+}
+
+// A promise rejected with nobody listening. Node's default is to end the
+// process, which fails every OTHER visitor's request to punish one. The
+// request that caused it has already failed; the rest carry on, and the stack
+// is in the log and in the owner's inbox.
+process.on("unhandledRejection", (reason) => {
+  const detail = GRACEFUL.describeError(reason);
+  console.error("⛔ Unhandled promise rejection. The request that caused it failed; the server keeps running.\n" + detail);
+  alertOwnerOfCrash("unhandled promise rejection", detail,
+    "One request failed. The server kept running and nobody else was affected.");
+});
+
+// A thrown error nothing caught. Unlike a rejection, the process may now be
+// in a state nobody planned for, so it does not carry on: it finishes what is
+// in flight and exits non-zero, and the host starts a fresh one. The mail is
+// given a moment first (three seconds at most), because with nothing in
+// flight the drain exits immediately. The stack is printed in full BEFORE
+// anything else: the test boot helper reads EADDRINUSE out of it to tell a
+// stolen port from a real crash.
+process.on("uncaughtException", (err) => {
+  const detail = GRACEFUL.describeError(err);
+  console.error("⛔ Uncaught exception. Finishing the requests in flight, then exiting so the host restarts the server.\n" + detail);
+  const drain = () => SHUTDOWN.begin("an uncaught exception", 1);
+  Promise.race([
+    alertOwnerOfCrash("uncaught exception (the server restarted)", detail,
+      "The server finished the requests it could and restarted itself."),
+    new Promise((resolve) => setTimeout(resolve, 3000)),
+  ]).then(drain, drain);
+});
 
 server.listen(PORT, () => {
   // Does Stripe charge what the pages say? Off the request path, after the

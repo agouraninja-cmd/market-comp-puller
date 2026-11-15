@@ -297,9 +297,15 @@ markets.md that says a public page has Georgia headings or loads no font.
   printed comp sheet (`#compSheet h1` in vault-page.js, a document handed to
   a client), email-shell.js (mail clients have no Inter), and the internal
   ship-board and permit-pulse pages.
-- **Not done, and the owner's call:** the privacy policy's third-party list
-  does not name Google Fonts. The app page has loaded Inter from Google
-  since before this; the public pages now do too. Said to the owner.
+- **The privacy policy names Google Fonts (2026-11-15, the owner: "add the
+  Google Fonts line").** One `<li>` after the cdnjs and jsdelivr line in the
+  third-party list; `test/public-pages.test.js` pins it. **Each legal document
+  has its own date since the same day** ("give them separate dates"):
+  `TERMS_UPDATED` (August 14, 2026) and `PRIVACY_UPDATED` (November 14,
+  2026, when that line went live, US time). One `LEGAL_UPDATED` used to date
+  both, so changing one document either left its date stale or restamped
+  the other. Move a date only when that document's own text changes; the
+  test reads both pages.
 - Tests: `test/vault-shell.test.js` asks the public `/markets` for the font
   once, ahead of the stylesheet, with none of the member rules, and reads
   the public page files and the shared stylesheet for a serif.

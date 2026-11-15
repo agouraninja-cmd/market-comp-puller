@@ -21,6 +21,10 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const shared = require("./helpers/boot");
+// The app as a browser assembles it: the served page with the script it
+// names put back in. See the helper for why a test about what the app DOES
+// must not read the page's text alone.
+const { servedApp } = require("./helpers/served-app");
 
 // Boot server.js with an explicit environment and wait for /healthz.
 // One implementation for every suite — ports are OS-assigned and the
@@ -856,7 +860,9 @@ test("bare environment", async (t) => {
 
   // The app cannot make that choice at serve time.
   await t.test("the app keeps the nav-anon sweep, and the removed 1031 page out", async () => {
-    const app = await (await fetch(srv.base + "/")).text();
+    // servedApp: the page WITH the script it names (/app.<hash>.js) put back,
+    // since both assertions here are about what the script does.
+    const app = await servedApp(srv.base, "/");
     // The 1031 guide's row (and its footer link) left with the page on
     // 2026-09-12. A link to a page that 404s is worse than no link.
     assert.ok(!app.includes("/1031-exchange"),
@@ -891,7 +897,14 @@ test("bare environment", async (t) => {
     // Deliberately one-directional: an id with no getElementById is ordinary
     // (CSS, anchors, aria-controls, labels), so only the dangling READ is an
     // error.
-    const app = await (await fetch(srv.base + "/")).text();
+    //
+    // servedApp, not the page alone: since 2026-11-14 the script that makes
+    // those reads is served at /app.<hash>.js, and the page's own text holds
+    // almost no getElementById at all, so this would pass having checked
+    // nothing. The count below is what proves the script was really read.
+    const app = await servedApp(srv.base, "/");
+    assert.ok([...app.matchAll(/getElementById\("([A-Za-z0-9_-]+)"\)/g)].length > 200,
+      "the served app's script was not read, so this check would prove nothing");
     const ids = new Set([...app.matchAll(/\bid="([A-Za-z0-9_-]+)"/g)].map((m) => m[1]));
     const missing = [...new Set(
       [...app.matchAll(/getElementById\("([A-Za-z0-9_-]+)"\)/g)].map((m) => m[1]),
@@ -908,7 +921,7 @@ test("bare environment", async (t) => {
   // them no door, and /bulk answers them with its upgrade card. What must
   // survive is that the vault's own flag still decides what it gates here.
   await t.test("the app's rail has no Data row, Comps is everyone's, and the vault's flag still gates what it gates", async () => {
-    const app = await (await fetch(srv.base + "/")).text();
+    const app = await servedApp(srv.base, "/");
     assert.ok(!app.includes('id="menuBulkLink"'), "the hidden-until-hydrated Comp report row is back");
     assert.ok(!/id="navComps"[^>]*\bhidden\b/.test(app), "the Comps row ships hidden");
     assert.ok(app.includes('id="navComps" href="/comps"'), "the app's rail lost its Comps row");
@@ -1917,6 +1930,22 @@ test("MARKET_EXAMPLE pins the Explorer's example across loads", async (t) => {
   }
 });
 
+// The rollback for the rule above, for a bookmark or a spreadsheet import
+// nobody remembered: ADMIN_KEY_IN_URL=on restores the old behaviour exactly.
+test("ADMIN_KEY_IN_URL=on puts the key in the address back", async (t) => {
+  const KEY = "test-admin-key-in-url";
+  const srv = await boot({ ADMIN_KEY: KEY, ADMIN_KEY_IN_URL: "on" });
+  t.after(() => srv.stop());
+  for (const route of ["/api/stats", "/api/leads", "/api/admin/submissions"]) {
+    const ok = await fetch(srv.base + route + "?key=" + encodeURIComponent(KEY));
+    await ok.arrayBuffer();
+    assert.equal(ok.status, 200, route);
+    const wrong = await fetch(srv.base + route + "?key=nope");
+    assert.equal(wrong.status, 401, route);
+    assert.equal((await wrong.json()).code, undefined, "switched back on, there is no advice to give");
+  }
+});
+
 test("an ADMIN_KEY stored with stray whitespace still authenticates", async (t) => {
   const CLEAN = "test-admin-key-whitespace";
   for (const [label, stored] of [
@@ -2071,9 +2100,58 @@ test("admin gating", async (t) => {
       "an undone row must not enter the attempts denominator");
   });
 
-  await t.test("the ?key= form still works for machine callers", async () => {
-    const r = await fetch(srv.base + "/api/stats?key=" + encodeURIComponent(ADMIN));
-    assert.equal(r.status, 200);
+  // Until 2026-11-14 this test read "the ?key= form still works for machine
+  // callers". A key in an address is written to the host's access log and the
+  // browser's history, and the lead CSV behind it is people's contact
+  // details; every caller in the repo already sends the header. So the six
+  // routes that took it now refuse it, and say what to do instead.
+  await t.test("the admin key is refused in the address on every route that used to take it", async () => {
+    const routes = ["/api/stats", "/api/leads", "/api/comp-submissions", "/api/comp-corpus",
+      "/api/admin/submissions", "/api/corpus-audit"];
+    for (const route of routes) {
+      const right = await fetch(srv.base + route + "?key=" + encodeURIComponent(ADMIN));
+      assert.equal(right.status, 401, route + " still takes the key in the address");
+      const said = await right.json();
+      assert.equal(said.code, "key_in_url", route);
+      assert.match(said.error, /x-admin-key header/, "the refusal says what to do instead");
+
+      // The same answer for a wrong key: the refusal confirms nothing.
+      const wrong = await fetch(srv.base + route + "?key=not-the-key");
+      assert.equal(wrong.status, 401);
+      assert.deepEqual(await wrong.json(), said, route + " answers a right and a wrong key differently");
+
+      // No key at all is the plain refusal, with no advice to act on.
+      const none = await fetch(srv.base + route);
+      assert.equal(none.status, 401);
+      assert.equal((await none.json()).code, undefined);
+
+      // The header is how a machine caller says who it is, as it always was.
+      const header = await fetch(srv.base + route, { headers: { "x-admin-key": ADMIN } });
+      await header.arrayBuffer();
+      assert.notEqual(header.status, 401, route + " refused the header");
+    }
+  });
+
+  await t.test("a browser that unlocked /admin downloads the lead CSV with its cookie, no key in the address", async () => {
+    const grant = await fetch(srv.base + "/api/admin-access", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key: ADMIN }),
+    });
+    assert.equal(grant.status, 200);
+    const cookie = String(grant.headers.get("set-cookie") || "").split(";")[0];
+    assert.ok(cookie.startsWith("cn_admin="), "expected a cn_admin cookie, got " + cookie);
+    const csv = await fetch(srv.base + "/api/leads", { headers: { cookie } });
+    assert.equal(csv.status, 200);
+    assert.match(csv.headers.get("content-type"), /^text\/csv/);
+    await csv.text();
+  });
+
+  // The one page that still built a ?key= link: /hq's CSV downloads, in a
+  // session where the key was typed. It fetches with the header now.
+  await t.test("no dashboard builds a link with the key in it", async () => {
+    for (const page of ["/hq", "/admin", "/dev"]) {
+      const html = await (await fetch(srv.base + page)).text();
+      assert.ok(!/["']\?key=["']/.test(html), page + " still builds a ?key= link");
+    }
   });
 
   await t.test("the lead CSV is gated by the same key", async () => {

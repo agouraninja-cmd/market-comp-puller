@@ -852,3 +852,93 @@ test("conditionFit is not fooled by inherited Object properties", () => {
   // Real subject, junk comps: the comps must not count as rated.
   assert.equal(V.conditionFit("Renovated", comps), null);
 });
+
+// --- Size restatement (2026-11-15) ------------------------------------------
+// A commercial comp's $/SF is restated at the subject's size before it is
+// weighted. Measured with scripts/accuracy-lab.js; see sizeRestateFactor.
+
+test("sizeRestateFactor: a bigger commercial comp counts higher, a smaller one lower", () => {
+  const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-12, a + " vs " + b);
+  near(V.sizeRestateFactor(20000, 10000, "Industrial"), Math.pow(0.5, -0.2));
+  near(V.sizeRestateFactor(5000, 10000, "Office"), Math.pow(2, -0.2));
+  assert.ok(V.sizeRestateFactor(20000, 10000, "Retail") > 1);
+  assert.ok(V.sizeRestateFactor(5000, 10000, "Retail") < 1);
+  assert.equal(V.sizeRestateFactor(10000, 10000, "Industrial"), 1);
+});
+
+test("sizeRestateFactor is capped at 8x either way, so a wrong size cannot become a price", () => {
+  const cap = Math.pow(8, 0.2);
+  assert.equal(V.sizeRestateFactor(800000, 10000, "Industrial"), V.sizeRestateFactor(80000, 10000, "Industrial"));
+  assert.ok(Math.abs(V.sizeRestateFactor(5000000, 10000, "Industrial") - cap) < 1e-12);
+  assert.ok(Math.abs(V.sizeRestateFactor(10, 10000, "Industrial") - 1 / cap) < 1e-12);
+});
+
+test("sizeRestateFactor is neutral for houses, per-unit types, unknown types and missing sizes", () => {
+  for (const t of ["Residential", "Multifamily", "Land", "", undefined, null, "Warehouse", "toString", "constructor", "__proto__"]) {
+    assert.equal(V.sizeRestateFactor(20000, 10000, t), 1, String(t));
+  }
+  for (const [c, s] of [[0, 10000], [10000, 0], [NaN, 10000], [10000, NaN], [-5, 10000], [null, 10000], [10000, undefined]]) {
+    assert.equal(V.sizeRestateFactor(c, s, "Industrial"), 1);
+  }
+  assert.deepEqual(Object.keys(V.SIZE_ELASTICITY).sort(), ["Industrial", "Office", "Retail"]);
+});
+
+test("valueFromComps restates commercial comps at the subject's size before taking the band", () => {
+  // Same date, tier and size class, so every weight is equal and only the
+  // restatement can move the figure: three comps twice the subject's size.
+  const comps = [80, 100, 120].map((p) => comp({ price_per_sqft: String(p), size_sqft: "20000" }));
+  const f = Math.pow(0.5, -0.2);
+  const ind = V.valueFromComps(comps, { subjectSF: 10000, asOf: AS_OF, trendPct: null, propertyType: "Industrial" });
+  assert.ok(Math.abs(ind.psfMid - 100 * f) < 1e-9);
+  assert.ok(Math.abs(ind.psfLow - 80 * f) < 1e-9);
+  assert.ok(Math.abs(ind.psfHigh - 120 * f) < 1e-9);
+  assert.equal(ind.sizeRestated, 3);
+  assert.deepEqual(ind.raw, [80, 100, 120], "raw stays what the table shows");
+  assert.equal(ind.mid, V.heroRound(100 * f * 10000));
+
+  // A house, an untyped call and an unsized subject keep the figures they had.
+  for (const opts of [{ propertyType: "Residential", subjectSF: 10000 }, { subjectSF: 10000 }, { propertyType: "Industrial", subjectSF: 0 }]) {
+    const v = V.valueFromComps(comps, Object.assign({ asOf: AS_OF, trendPct: null }, opts));
+    assert.equal(v.psfMid, 100, JSON.stringify(opts));
+    assert.equal(v.sizeRestated, 0);
+  }
+});
+
+test("a size range restates against its midpoint, the size the weights already use", () => {
+  const comps = [80, 100, 120].map((p) => comp({ price_per_sqft: String(p), size_sqft: "20000" }));
+  const range = V.valueFromComps(comps, { subjectSF: { min: 8000, max: 12000 }, asOf: AS_OF, trendPct: null, propertyType: "Office" });
+  const point = V.valueFromComps(comps, { subjectSF: 10000, asOf: AS_OF, trendPct: null, propertyType: "Office" });
+  assert.equal(range.psfMid, point.psfMid);
+});
+
+test("a per-unit or per-acre basis is never size-restated", () => {
+  const comps = [80000, 100000, 120000].map((p) => comp({ price_per_unit: String(p), size_sqft: "20000", price_per_sqft: "100" }));
+  const v = V.valueFromComps(comps, {
+    subjectSF: 10000, asOf: AS_OF, trendPct: null, propertyType: "Industrial",
+    readValue: (c) => V.numericValue(c.price_per_unit),
+  });
+  assert.equal(v.psfMid, 100000);
+  assert.equal(v.sizeRestated, 0);
+});
+
+test("restating moves the figure, never the weight: an off-size comp still counts less", () => {
+  const far = comp({ size_sqft: "80000" });
+  assert.equal(V.compWeight(far, AS_OF, 10000, null, { propertyType: "Industrial" }),
+    V.compWeight(far, AS_OF, 10000, null, { propertyType: "Residential" }));
+});
+
+test("countedPsf is the figure valueFromComps took the band over", () => {
+  const c = comp({ price_per_sqft: "100", size_sqft: "40000", date: "2024-07-01" });
+  const opts = { subjectSF: 10000, asOf: AS_OF, trendPct: 6, propertyType: "Industrial" };
+  const k = V.countedPsf(c, opts);
+  const v = V.valueFromComps([c], opts);
+  assert.ok(Math.abs(k.value - v.psfMid) < 1e-9);
+  assert.equal(k.raw, 100);
+  assert.ok(Math.abs(k.value - 100 * k.trend * k.size) < 1e-9);
+  assert.ok(k.trend > 1 && k.size > 1);
+  // A range reads its midpoint; a house is only ever time-indexed; no $/SF, no answer.
+  assert.equal(V.countedPsf(c, Object.assign({}, opts, { subjectSF: { min: 8000, max: 12000 } })).value, k.value);
+  assert.equal(V.countedPsf(c, Object.assign({}, opts, { propertyType: "Residential" })).size, 1);
+  assert.equal(V.countedPsf(comp({ price_per_sqft: "", price_or_rate: "", size_sqft: "" }), opts), null);
+  assert.equal(V.countedPsf(null, opts), null);
+});

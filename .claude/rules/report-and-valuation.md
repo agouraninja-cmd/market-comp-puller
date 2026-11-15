@@ -588,6 +588,46 @@ and exporting each slide to PNG (a PowerShell one-liner, no dependency).
      above it would say agent above and leasing broker below — the drift that
      block's own ⚠ warns about.
 
+3g. **Commercial comps are restated at the subject's size (2026-11-15).**
+   `valueFromComps` multiplies each Industrial, Office and Retail comp's $/SF
+   by `sizeRestateFactor` before weighting it: `(subject SF / comp SF)^-0.2`,
+   the ratio capped at 8x either way, so a comp twice the subject's size
+   counts about 15% higher and one half its size about 13% lower. `compWeight`
+   is untouched (an off-size comp still counts LESS, it just no longer counts
+   at the wrong figure), so the ⚠ `compWeight` pair with comp-gate.js did not
+   move, and `basisRow` already carries the size and the $/SF, so a free
+   report's range still matches Pro. **It is measured, and the type list is
+   the measurement**: hold-one-out over the corpus (`scripts/accuracy-lab.js`,
+   corpus.md) took the median miss on 48 commercial sales from 34.1% to 25.6%
+   with the market-resampled interval below zero, and moved 189 house sales by
+   nothing, so `SIZE_ELASTICITY` lists three types and Residential, Multifamily
+   and Land return 1. A per-unit or per-acre basis (a custom `readValue`) is
+   never restated. Add a type or change -0.2 only with a lab run.
+   **Four surfaces had to move with it**, and each was found by looking at the
+   sample report rather than at the diff:
+   - **The table shows the raw $/SF and the `adj` mark carries the counted
+     one.** `indexedPsfNote` reads `VALUATION.countedPsf` (through
+     `countedPsfOf`, which hands it the hero's own inputs) and names what
+     moved the figure: the trend, the size, or both in the order the math
+     applies them. The legend reads time-, size-, or time- and size-adjusted
+     to match.
+   - **The hero's tick chart and the outlier chip switch to counted figures
+     together**, off one flag (`currentPsfBand.restated`). Raw ticks under a
+     restated band put the whole tint past the last comp on the sample
+     (74,000 SF subject, every comp larger). They stay on DISPLAYED figures
+     for every report the restatement does not touch, which is the pairing
+     the scatter's header has always described.
+   - **Likely reads "median at your size", not "comp median"**, on screen and
+     on the Excel sheet. The table's footer prints the plain median of the
+     $/SF column as "Median of N sale comps", and two medians 8% apart with
+     one name would have nothing saying which to believe. The Excel label
+     reads the band, not `lastValuation`, because that object is posted to the
+     server as a portfolio snapshot and keeps its four fields.
+   - **home-page.js's sample is an Industrial building**, so its three
+     figures are the restated ones (rule 4 in that file). One comp moved $2 so
+     every whole-dollar $/SF times the size still lands on the total beside
+     it, which `test/home-page.test.js` enforces.
+
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High
    range from sale-comp $/SF (leases are excluded even on mixed searches) ×

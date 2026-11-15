@@ -159,11 +159,13 @@ test("a disqualified first copy of a building does not block a scoreable second 
 // in part from the OTHER's own price, at 0.0% error apiece. This fixture
 // fails against that old normAddress; it must pass against the fixed one.
 test("a spelling-variant duplicate of the subject cannot peer with or duplicate-score itself", () => {
+  // The peers are the subject's own size, so the size restatement is neutral
+  // and the arithmetic stays the hand-checkable 150 / 250 / 350.
   const peers = [
-    row({ market: "Caldwell, ID", address: "1 Warehouse Row", deal_date: "2026-01", price_per_sqft: "100" }),
-    row({ market: "Caldwell, ID", address: "2 Warehouse Row", deal_date: "2026-01", price_per_sqft: "200" }),
-    row({ market: "Caldwell, ID", address: "3 Warehouse Row", deal_date: "2026-01", price_per_sqft: "300" }),
-    row({ market: "Caldwell, ID", address: "4 Warehouse Row", deal_date: "2026-01", price_per_sqft: "400" }),
+    row({ market: "Caldwell, ID", address: "1 Warehouse Row", deal_date: "2026-01", size_sqft: "56000", price_per_sqft: "100" }),
+    row({ market: "Caldwell, ID", address: "2 Warehouse Row", deal_date: "2026-01", size_sqft: "56000", price_per_sqft: "200" }),
+    row({ market: "Caldwell, ID", address: "3 Warehouse Row", deal_date: "2026-01", size_sqft: "56000", price_per_sqft: "300" }),
+    row({ market: "Caldwell, ID", address: "4 Warehouse Row", deal_date: "2026-01", size_sqft: "56000", price_per_sqft: "400" }),
   ];
   const variants = [
     row({
@@ -274,4 +276,38 @@ test("score survives an empty corpus without inventing a number", () => {
   assert.equal(r.scored, 0);
   assert.equal(r.belowFloor, true);
   assert.equal(r.medianAbsError, null);
+});
+
+// --- The accuracy lab's door (scripts/accuracy-lab.js) ---------------------
+
+test("valueFn scores a candidate over the same subject and the same peers", () => {
+  const seen = [];
+  const r = BT.score(fixture(), Object.assign({}, OPTS, {
+    valueFn: (comps, opts, ctx) => {
+      seen.push({ n: comps.length, sf: opts.subjectSF, type: opts.propertyType, subj: ctx.subject.row.address, peers: ctx.peers.length });
+      return { psfLow: 200, psfMid: 275, psfHigh: 300 };
+    },
+  }));
+  assert.deepEqual(seen, [{ n: 4, sf: 10000, type: "Industrial", subj: "9 Subject Way", peers: 4 }]);
+  assert.equal(r.scored, 1);
+  assert.ok(Math.abs(r.medianAbsError - 0.1) < 1e-12, "275 against an actual of 250");
+  assert.equal(r.bandCoverage, 1);
+});
+
+test("without a valueFn the production math scores, and a non-function is ignored", () => {
+  const plain = BT.score(fixture(), OPTS);
+  const junk = BT.score(fixture(), Object.assign({}, OPTS, { valueFn: "nope" }));
+  assert.deepEqual(junk, plain);
+});
+
+test("detail returns the per-subject rows; the /admin payload never carries them", () => {
+  assert.equal("subjects" in BT.score(fixture(), OPTS), false);
+  const d = BT.score(fixture(), Object.assign({}, OPTS, { detail: true }));
+  assert.equal(d.subjects.length, 1);
+  const s = d.subjects[0];
+  assert.equal(s.market, "Boise, ID");
+  assert.equal(s.type, "Industrial");
+  assert.equal(s.key, "9 subject way");
+  assert.equal(s.peers, 4);
+  assert.equal(s.signedError, 0);
 });

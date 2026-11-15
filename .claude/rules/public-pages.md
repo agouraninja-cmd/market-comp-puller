@@ -299,11 +299,13 @@ markets.md that says a public page has Georgia headings or loads no font.
   ship-board and permit-pulse pages.
 - **The privacy policy names Google Fonts (2026-11-15, the owner: "add the
   Google Fonts line").** One `<li>` after the cdnjs and jsdelivr line in the
-  third-party list; `test/public-pages.test.js` pins it. `LEGAL_UPDATED` was
-  NOT moved: one constant dates both the Terms ("Last updated") and the
-  Privacy Policy ("Effective date"), so bumping it would restamp Terms that
-  did not change. Said to the owner; splitting the constant is the fix if he
-  wants the policy's date moved.
+  third-party list; `test/public-pages.test.js` pins it. **Each legal document
+  has its own date since the same day** ("give them separate dates"):
+  `TERMS_UPDATED` (August 14, 2026) and `PRIVACY_UPDATED` (November 14,
+  2026, when that line went live, US time). One `LEGAL_UPDATED` used to date
+  both, so changing one document either left its date stale or restamped
+  the other. Move a date only when that document's own text changes; the
+  test reads both pages.
 - Tests: `test/vault-shell.test.js` asks the public `/markets` for the font
   once, ahead of the stylesheet, with none of the member rules, and reads
   the public page files and the shared stylesheet for a serif.

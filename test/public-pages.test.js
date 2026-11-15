@@ -861,12 +861,14 @@ test("the privacy policy names every host the export feature loads code from", a
   assert.match(body, /<strong>cdnjs<\/strong> and <strong>jsdelivr<\/strong> provide content delivery for the export feature/);
   // Every page loads Inter from Google Fonts (2026-11-14), so the list names
   // it, and the page that says so loads it like the rest.
-  assert.match(body, /<strong>Google Fonts<\/strong> serves the typeface the Service is set in/);
+  assert.match(body, /<strong>Google Fonts<\/strong> serves the typeface the Service and our emails are set in/);
+  // Emails ask for it too (2026-11-15), so the line says when a mail app does.
+  assert.match(body, /some email apps request it when you open an email from us/);
   assert.match(body, /fonts\.googleapis\.com\/css2\?family=Inter/);
   // Each document carries its own date (2026-11-15): the policy's moved when
   // that line was added, and the Terms, which did not change, kept theirs.
-  assert.match(body, /Effective date: November 14, 2026</);
+  assert.match(body, /Effective date: November 15, 2026</);
   const terms = await (await fetch(srv.base + "/terms")).text();
   assert.match(terms, /Last updated: August 14, 2026\./);
-  assert.ok(!terms.includes("November 14, 2026"), "the Terms were restamped with the policy's date");
+  assert.ok(!terms.includes("November 15, 2026"), "the Terms were restamped with the policy's date");
 });

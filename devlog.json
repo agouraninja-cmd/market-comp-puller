@@ -2,6 +2,12 @@
   {
     "date": "2026-11-15",
     "type": "improvement",
+    "title": "Emails are set in Inter where the mail app allows it",
+    "details": "Every email CompNinja sends (share invitations, confirmations, password resets, The Board’s digest, permit notices) now asks for Inter, the site’s typeface. Apple Mail on a Mac, iPhone or iPad shows it. Gmail, Outlook and most webmail do not load web fonts, so they keep showing Arial, as before. No words in any email changed."
+  },
+  {
+    "date": "2026-11-15",
+    "type": "improvement",
     "title": "The Terms and the Privacy Policy each carry their own date",
     "details": "One date used to stamp both documents, so changing either one meant leaving its date stale or restamping the other. The Privacy Policy now shows November 14, 2026, when Google Fonts was added to its list of outside services. The Terms of Service did not change and still show August 14, 2026."
   },

@@ -12,7 +12,14 @@
 // Email-client constraints, so nobody "modernizes" this into breakage:
 //   - table layout and inline styles only (Gmail strips <style> in places,
 //     Outlook renders via Word);
-//   - system fonts only — Georgia and Arial ship everywhere, webfonts do not;
+//   - Inter where the mail app will load it, Arial everywhere else
+//     (2026-11-15, the owner, after the whole site went to Inter: "make the
+//     emails Inter too"). Apple Mail on a Mac, iPhone or iPad loads a web
+//     font from the <link> in the head; Gmail, Outlook and most webmail strip
+//     or ignore it and draw the next face in the stack. So every font-family
+//     here is FONT, Inter first and Arial behind it, and the letterhead must
+//     read right in BOTH. Never drop the fallback, and never size anything to
+//     Inter's widths alone;
 //   - no images: the wordmark is text, because remote images are blocked by
 //     default in most clients and the letterhead must survive that.
 //
@@ -31,6 +38,10 @@ const MUTED = "#68707E";
 const RED = "#B91C1C";
 const PAPER = "#FBFBF9";
 const HAIRLINE = "#E4E2DA";
+// One stack for every piece of text in the letter. See the header.
+const FONT = "Inter,Arial,Helvetica,sans-serif";
+// 400 for the body and 700 for the wordmark: the two weights the letter uses.
+const FONT_LINK = '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&amp;display=swap" rel="stylesheet"/>';
 
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (ch) =>
@@ -77,7 +88,7 @@ function paragraphs(text) {
     .map((p) => p.trim())
     .filter(Boolean)
     .map((p) =>
-      `<p style="margin:0 0 14px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:${BODY};">` +
+      `<p style="margin:0 0 14px;font-family:${FONT};font-size:14px;line-height:1.6;color:${BODY};">` +
       linkify(escapeHtml(p)).replace(/\n/g, "<br/>") +
       `</p>`)
     .join("");
@@ -89,7 +100,7 @@ function paragraphs(text) {
 function renderEmailHtml(subject, text) {
   return `<!doctype html>
 <html>
-<head><meta charset="utf-8"/><title>${escapeHtml(subject)}</title></head>
+<head><meta charset="utf-8"/><title>${escapeHtml(subject)}</title>${FONT_LINK}</head>
 <body style="margin:0;padding:0;background:${PAPER};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${PAPER};">
 <tr><td align="center" style="padding:28px 12px;">
@@ -97,7 +108,7 @@ function renderEmailHtml(subject, text) {
 <tr><td style="padding:24px 28px 0;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
   <tr><td style="padding-bottom:12px;border-bottom:2px solid ${RED};">
-    <span style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;letter-spacing:3px;color:${INK};">COMP<span style="color:${RED};">NINJA</span></span>
+    <span style="font-family:${FONT};font-size:15px;font-weight:bold;letter-spacing:3px;color:${INK};">COMP<span style="color:${RED};">NINJA</span></span>
   </td></tr>
   </table>
 </td></tr>
@@ -107,7 +118,7 @@ ${paragraphs(text)}
 <tr><td style="padding:14px 28px 22px;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
   <tr><td style="padding-top:12px;border-top:1px solid ${HAIRLINE};">
-    <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:${MUTED};">CompNinja &middot; <a href="mailto:info@compninja.co" style="color:${MUTED};text-decoration:underline;">info@compninja.co</a> &middot; <a href="https://compninja.co" style="color:${MUTED};text-decoration:underline;">compninja.co</a></span>
+    <span style="font-family:${FONT};font-size:11px;color:${MUTED};">CompNinja &middot; <a href="mailto:info@compninja.co" style="color:${MUTED};text-decoration:underline;">info@compninja.co</a> &middot; <a href="https://compninja.co" style="color:${MUTED};text-decoration:underline;">compninja.co</a></span>
   </td></tr>
   </table>
 </td></tr>

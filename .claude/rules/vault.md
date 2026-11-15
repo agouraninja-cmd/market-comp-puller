@@ -73,6 +73,33 @@ paths:
 >   `test/vault-personal-decks.test.js`, `test/vault-shell.test.js` and
 >   `test/routes.test.js`.
 
+> **The list starts sooner on a phone (2026-11-15, the owner: "yes fix
+> both").** On a 390px phone the ledger began 1,115px down an 844px screen:
+> title, four figures (276px), the map band (180px) and its note (83px), the
+> filters. It begins at about 715px now, so its head and first group are on
+> the first screen. Pictures: https://claude.ai/artifact/HCMqHEZY51dwZ2agmjegxn.
+> - **The map starts hidden on a phone when the member has made no choice**
+>   (`mapStartsHidden(stored)`: "hidden" and "shown" in `vaultLedgerMap`
+>   win on every screen; with neither, `matchMedia("(max-width:640px)")`
+>   decides). Show map sits beside More; pressing it stores "shown" as it
+>   always did. A wider screen, and a browser with no `matchMedia`, start
+>   with the map. Nothing about the map itself changed.
+> - **A figure sits on its label's line** (`.vd-strip .lcell` is a
+>   two-column grid under 640px, the sub-line whole beneath): 209px for
+>   four cells. **`.vd-strip .lcell.hide{display:none}` must follow that
+>   rule**: the grid's `display` out-ranks `.hide`, and the strip hides
+>   Published, Last 12 months and Shared with firm by that class. The first
+>   build showed all of them at once.
+> - **The eyebrow ("Private to you") is not drawn on a phone**
+>   (`main.wrap>.kicker`); the line under the title says the same. The
+>   page's top padding is the other pages' 20px there. Both reach
+>   /pipeline too, which is the same page.
+> - **Group by, Show map and More share one line at 390px** (the filter
+>   row's buttons take 10px side padding on a phone; at 12px they were 2px
+>   too wide and More wrapped). At 320px Show map and More take a second
+>   line.
+> Run in `test/vault-page.test.js` ("the list starts sooner").
+
 > **The comp set on a phone is one line until it is opened (2026-11-15, the
 > owner: "yes fix both").** With its summary and five buttons stacked the
 > sticky set was 305px on a phone, 40% of the screen, standing on the rows

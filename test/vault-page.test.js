@@ -6028,3 +6028,53 @@ test("on a phone the comp set is one line until it is opened (2026-11-15)", asyn
   tickInto(doc, "s1");
   assert.equal(tray.className, "vd-tray on", "a set started after Clear opened by itself");
 });
+
+test("on a phone the list starts sooner: the map starts hidden, the figures are compact (2026-11-15)", async () => {
+  // The list began 1,115px down an 844px screen. It begins at about 715 now.
+  const html = renderVaultHTML(boot([comp({ id: "s1" })]), CHROME);
+  const css = html.slice(html.indexOf("<style>"), html.indexOf("</style>")).replace(/\/\*[\s\S]*?\*\//g, "");
+  const at = css.search(/@media \(max-width:640px\)\{\s*\.vt-tabs\{/);
+  assert.ok(at > -1, "the page's phone block moved");
+  const phone = css.slice(at, css.indexOf("\n}", at));
+  assert.match(phone, /\n  main\.wrap\{padding-top:20px\}/);
+  assert.match(phone, /\n  main\.wrap>\.kicker\{display:none\}/);
+  // The eyebrow is still the first thing in the page's body, so the rule
+  // above reaches it and nothing else.
+  assert.match(html, /<\/style>\s*<p class="kicker">Private to you<\/p>/);
+  // A figure on its label's line, its sub-line whole beneath.
+  assert.match(phone, /\.vd-strip \.lcell\{display:grid;grid-template-columns:minmax\(0,1fr\) auto;align-items:baseline;column-gap:8px;padding:10px 14px\}/);
+  assert.match(phone, /\.vd-strip \.lfig\{grid-column:2;grid-row:1\}/);
+  assert.match(phone, /\.vd-strip \.lsub\{grid-column:1\/-1;margin-top:2px\}/);
+  // That display out-ranks .hide, and the strip hides cells by that class.
+  // Without the line after it, Published, Last 12 months and Shared with
+  // firm all show at once (they did, on the first build of this).
+  const grid = phone.indexOf(".vd-strip .lcell{display:grid");
+  const hide = phone.indexOf(".vd-strip .lcell.hide{display:none}");
+  assert.ok(hide > grid && grid > -1, "a hidden figure cell shows on a phone: .vd-strip .lcell.hide must follow the grid rule");
+  assert.match(html, /<div class="lcell hide" id="cRecentCell">/, "the strip no longer hides a cell by class; this guard checks nothing");
+
+  // The script half. The member's own choice wins on every screen; with
+  // none made, a phone starts without the map and a wide screen with it.
+  const js = pageScript(html);
+  const src = js.match(/function mapStartsHidden\(stored\)\{[\s\S]*?\n  \}/);
+  assert.ok(src, "mapStartsHidden moved");
+  const starts = (stored, win) => new Function("window", src[0] + "; return mapStartsHidden;")(win)(stored);
+  const phoneWin = { matchMedia: (q) => { assert.equal(q, "(max-width:640px)", "the script asks a different width than the stylesheet's phone block"); return { matches: true }; } };
+  const wideWin = { matchMedia: () => ({ matches: false }) };
+  assert.equal(starts(null, phoneWin), true, "a phone with no choice made starts with the map");
+  assert.equal(starts(null, wideWin), false, "a wide screen with no choice made starts without the map");
+  assert.equal(starts("shown", phoneWin), false, "a phone forgot that its member asked for the map");
+  assert.equal(starts("hidden", wideWin), true, "a wide screen forgot that its member hid the map");
+  assert.equal(starts(null, {}), false, "a browser with no matchMedia lost its map");
+  assert.equal(starts(null, { matchMedia: () => { throw new Error("no"); } }), false);
+
+  // And run: on a phone the band is hidden, Show map is offered beside More,
+  // and the line about unplaced comps is put away with the band.
+  const narrow = await runPage([comp({ id: "s1" })], undefined, { window: { matchMedia: () => ({ matches: true }) } });
+  assert.equal(narrow.doc.getElementById("bmBand").className, "vd-band hide");
+  assert.equal(narrow.doc.getElementById("mapShow").className, "btn ghost");
+  assert.equal(narrow.doc.getElementById("bmNoLoc").className, "note hide");
+  const wide = await runPage([comp({ id: "s1" })]);
+  assert.equal(wide.doc.getElementById("bmBand").className, "vd-band");
+  assert.equal(wide.doc.getElementById("mapShow").className, "btn ghost hide");
+});

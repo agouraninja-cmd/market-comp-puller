@@ -157,6 +157,39 @@ STARTS then can outlive the wait.
 > a page that sets its own later in the document keeps it), and /permits'
 > inner `main.wrap.pt-page` gives its padding back there (the page had two
 > 16px gutters a side and 88px above its heading).
+> **Touch targets, second pass, and a shorter top on /comps (2026-11-15,
+> the owner: "yes fix both").** The first pass measured pages with little
+> in them. With a firm, buildings, a conversation and a report in the test
+> data, and the dialogs open, about forty more controls were under 32px
+> (the "still small" list in the box below is this list; it is fixed now).
+> - **Same method, same test.** Overlays under `@media (pointer:coarse)`,
+>   each listed in `test/phone-taps.test.js` with the room measured around
+>   it: in index.html (the dialogs' Close, "Not now", "Forgot password?",
+>   a firm member's buttons, the theme switch, the sign-in and report tabs,
+>   Copy, a comp card's "More details", People's "+ Add or import", two
+>   links on the home page), buildings-page.js (a sheet's links back and a
+>   section's own link) and brokers-firms-page.js (the two quiet links).
+> - **Real room where an overlay would lie on a neighbour or be clipped:**
+>   Today's foot links (34px lines; they wrap 6px apart), the firm's
+>   share-by-default label, the report's Expanding / Flat / Contracting
+>   buttons and Home's map switch (both sit in a frame that clips; the
+>   switch only under 900px, where nothing is lined up on it), and
+>   /buildings' address and Remove (2px apart on a phone).
+> - **`.disclose`** already carried a 6px overlay for every pointer; under
+>   a finger it is 9px. The test's `ALSO_WITH_A_MOUSE` is the one exception
+>   to "styled only in a touch block".
+> - **A rule in Home's sheet that names a `.dk-` class is scoped
+>   `#hmPanePeople`** (`test/home-list-type.test.js`).
+> - **Left alone:** Home's "Add a logo" (28px; its overlay reaches down and
+>   sideways only, on purpose: the firm's name is above it), the Edit and
+>   Remove links inside a lease, contact or note row on a building's sheet
+>   (rows stand a line apart; not measured, the test data has none), and
+>   links inside sentences and the footer.
+> - **Two things the checks report that are not on screen:** fields inside
+>   a closed `<details>` still have a box (the home page's `#targetPrice`),
+>   and /rankings' radio inputs are 1px by design (their labels are the
+>   targets).
+> /comps' top on a phone is vault.md's ("The list starts sooner").
 > **An open chat and the comp set on a phone (2026-11-15, the owner: "yes
 > fix both").** Two things a phone audit with filled test data found, and
 > where their rules are: an open conversation in Messages is one screen

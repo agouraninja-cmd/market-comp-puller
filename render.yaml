@@ -5,10 +5,19 @@ services:
   - type: web
     name: market-comp-puller
     runtime: node
-    plan: free
+    # No `plan:` line on purpose. Without it Render keeps the plan the service
+    # already has (Starter); a new service made from this file gets Render's
+    # default paid plan. This said `plan: free` until 2026-11-14, a leftover
+    # from the first deploy that the next sync could have applied.
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /healthz
+    # How long Render waits after a deploy's SIGTERM before it kills the old
+    # instance. Render's default is 30 and its maximum is 300. The server
+    # drains requests in flight for up to SHUTDOWN_GRACE_SECONDS (280), so
+    # this has to stay above that or a long search is cut off after it was
+    # billed. There is no dashboard control for it: this file or the API.
+    maxShutdownDelaySeconds: 300
     envVars:
       # Your Anthropic API key. Required. Enter it in the Render dashboard.
       - key: ANTHROPIC_API_KEY

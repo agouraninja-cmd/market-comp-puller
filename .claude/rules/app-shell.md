@@ -77,8 +77,11 @@ mail are at the foot of `server.js`, above `server.listen`. What to know:
 - **`SHUTDOWN_GRACE_SECONDS`, default 280**, is how long a drain waits. The
   host's limit is the real one: Render kills the old instance 30 seconds
   after SIGTERM unless the service's shutdown delay is raised (at most 300),
-  so **raise it there** to let a long search finish. That number is from
-  memory of Render's docs, which this session could not open; check it.
+  so it is raised there: `maxShutdownDelaySeconds: 300` in `render.yaml`
+  (2026-11-14). Both numbers were checked against Render's docs that day
+  (render.com/docs/deploys, "Setting a shutdown delay"). The dashboard has
+  no control for it, only `render.yaml` or the API, and a service with a
+  persistent disk cannot set it at all. Keep it above the grace.
   Blank, zero or unreadable is the default, never "no wait".
 - **An unhandled rejection is logged and mailed, and the server keeps
   running.** The request that caused it has already failed; ending the

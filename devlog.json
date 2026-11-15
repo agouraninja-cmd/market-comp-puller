@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-11-14",
+    "type": "fix",
+    "title": "A deploy now waits up to 5 minutes for searches in progress",
+    "details": "The server already waits up to 280 seconds for requests in progress when a deploy stops it, but Render was killing the old server 30 seconds after the stop began, so a long search could still be cut off after it was billed. render.yaml now asks Render to wait 300 seconds, its maximum. Render has no dashboard control for this; it takes effect when Render next syncs the Blueprint. The same change drops a leftover “plan: free” line from render.yaml so that sync leaves the service on its current plan."
+  },
+  {
     "date": "2026-11-15",
     "type": "improvement",
     "title": "The privacy policy says emails load the font too",

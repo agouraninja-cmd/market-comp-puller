@@ -13604,6 +13604,18 @@ ${COMPONENT_CSS}
 .cta button.alt{background:none;border:0;padding:0;cursor:pointer;font-family:inherit;font-size:var(--text-compact);color:var(--ink-mute);
   text-decoration:underline;text-decoration-color:var(--edge)}
 .cta button.alt:hover{color:var(--ink)}
+/* Touch targets (2026-11-15). Under a finger three things every page of this
+   shell can carry are reached a little past their own box, by an overlay
+   that moves nothing: the brand (28px tall, 40 to a finger, inside the
+   header's own padding), the Comps section's two tabs (32px, 44 to a finger)
+   and a card's quiet second link (22px or 17px, 42 or 37 to a finger; two of
+   them stand 30px apart on a market page, so the overlays never meet). A
+   mouse pointer keeps the exact boxes. */
+@media (pointer:coarse){
+  .brand,.cs-tabs a,.cta .alt{position:relative}
+  .brand::after,.cs-tabs a::after,.cta .alt::after{content:"";position:absolute;left:0;right:0;top:-6px;bottom:-6px}
+  .cta .alt::after{top:-10px;bottom:-10px}
+}
 .ledger.aux{margin-top:-14px}
 .ledger.aux .v{font-size:var(--text-subhead)}
 .mkt-tx{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}

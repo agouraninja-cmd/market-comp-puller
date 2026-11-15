@@ -2,6 +2,12 @@
   {
     "date": "2026-11-15",
     "type": "improvement",
+    "title": "Small buttons and links are easier to tap on a phone",
+    "details": "On a phone or tablet, forty small controls on the member pages were under 32px tall, some as small as 15px: the CompNinja logo, the two Comps tabs, “+ Add comps”, “Hide map”, the tick boxes and names in your comp list, “Compare cities” on Permits, the city links in the market rankings, and the dropdowns on Run a comp report. Each now answers a tap a little past its edge, and every one is at least 32px. In your comp list, tapping anywhere in a tick box’s cell ticks it; before, a near miss opened the comp instead. Almost nothing moved on screen: the dropdowns on Run a comp report are 10px taller and the tick-box column is 6px wider. Nothing changes with a mouse."
+  },
+  {
+    "date": "2026-11-15",
+    "type": "improvement",
     "title": "Emails are set in Inter where the mail app allows it",
     "details": "Every email CompNinja sends (share invitations, confirmations, password resets, The Board’s digest, permit notices) now asks for Inter, the site’s typeface. Apple Mail on a Mac, iPhone or iPad shows it. Gmail, Outlook and most webmail do not load web fonts, so they keep showing Arial, as before. No words in any email changed."
   },

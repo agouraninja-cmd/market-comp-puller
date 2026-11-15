@@ -154,6 +154,46 @@ STARTS then can outlive the wait.
 > a page that sets its own later in the document keeps it), and /permits'
 > inner `main.wrap.pt-page` gives its padding back there (the page had two
 > 16px gutters a side and 88px above its heading).
+> **Touch targets: small controls are reached past their edge under a
+> finger (2026-11-15, the owner: "fix the small tap targets").** A phone
+> audit of twelve member pages found 40 controls under 32px tall (the
+> comp list's tick boxes were 15px). None is now. The rules:
+> - **`@media (pointer:coarse)`, never a width.** A tablet is wide and
+>   still a finger; a narrow desktop window is still a mouse, whose boxes
+>   stay exact. `scripts/shot.js` has no touch, so its pictures show none
+>   of this: check with Playwright's `hasTouch: true, isMobile: true`.
+> - **An invisible `::after` overlay, so nothing moves.** The control gets
+>   `position:relative` and an absolutely placed `::after` with a negative
+>   inset (the bar's `.hdr nav>a::after` pattern). **The host must be
+>   positioned in the same block**: without it the overlay is the size of
+>   an ancestor and a tap anywhere there presses the control (Home's firm
+>   row, workspace.md). `.vd-mapx` is already absolute and must NOT be made
+>   relative.
+> - **Each inset is the room the control already stands in** (its row's,
+>   box's or bar's padding), measured against its neighbours at 390px, so
+>   no overlay lies over another control. `test/phone-taps.test.js` lists
+>   every overlay with that room and fails on a larger one, on an
+>   unpositioned host, on an overlay outside a touch block, and on a new
+>   one that is not listed. An inset is measured from the padding box, so a
+>   bordered button's overlay reaches 1px less than its number.
+> - **Where they are:** MARKET_CSS (the brand, the Comps section's tabs, a
+>   card's quiet `.alt` link), index.html (its brand, twin of that rule,
+>   and Home's "Explore"), vault-page.js (`.dact`, `.pubbtn`, Hide map,
+>   the select-all label, a group's and a row's name, a `.dbox` summary,
+>   an opened row's link), bulk-page.js, permits-page.js,
+>   permit-compare.js and market-rank-page.js. Not in components.js: its
+>   tests refuse page rules there, and these are per page.
+> - **Three that take real room instead.** /comps' tick boxes: an input
+>   has no pseudo element, so the CELL is the target. `#bmRows`' click
+>   handler passes a tap in `td.vd-lc` to its box (and returns, so the row
+>   does not open), and the cell is 36px wide under a finger (30 on a
+>   phone with a mouse). The comp set's Clear takes `padding:8px 6px`,
+>   because the set's buttons wrap 8px apart and an overlay lay over the
+>   one above. /bulk's settings fields are 36px (7px of padding; 26 before).
+> - **Not covered:** links inside a sentence (exempt everywhere), the
+>   footer's links, and anything the stand-in data did not draw (a
+>   finished bulk run's table, a real conversation, a full Pipeline).
+>   Pictures: https://claude.ai/artifact/HCMqHEZY51dwZ2agmjegxn.
 > **A sheet from the bottom of a phone stands over the bar (2026-11-14, the
 > owner: "fix the messages menu opening under the bottom bar").** Messages'
 > More menu and About this chat are sheets under 900px, and at z-index 60

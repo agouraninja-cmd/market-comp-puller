@@ -886,6 +886,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        so the two front doors now behave the same on a phone: brand on one
        line, controls beneath it, no label broken mid-word. */
     .rd-appbar { flex-wrap: wrap; row-gap: 12px; }
+    /* Touch targets (2026-11-15), the twin of MARKET_CSS's .brand rule: under
+       a finger the 28px brand is reached 6px past its box, inside the bar's
+       own padding, by an overlay that moves nothing. */
+    @media (pointer: coarse) {
+      .rd-appbar > a { position: relative; }
+      .rd-appbar > a::after { content: ""; position: absolute; left: 0; right: 0; top: -6px; bottom: -6px; }
+    }
     /* The unread dot beside Messages — the twin of ACCOUNT_NAV_CSS's .navdot. */
     .rd-appbar .navdot { display: inline-block; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--red-fill); color: #fff; font-size: var(--text-tiny); font-weight: 600; line-height: 18px; text-align: center; vertical-align: middle; margin-left: 6px; }
     .rd-appbar .navdot[hidden] { display: none; }
@@ -2212,6 +2219,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-first-key { position: absolute; left: 10px; top: 196px; z-index: 500; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--card); font-size: var(--text-label); color: var(--ink-2); }
     .hm-first-key i { width: 9px; height: 9px; border-radius: 99px; background: var(--ink); }
     .hm-first-key a { font-weight: 600; color: var(--red); text-decoration: none; }
+    /* Under a finger "Explore" (18px) is reached 10px past its word (2026-11-15). */
+    @media (pointer: coarse) {
+      .hm-first-key a { position: relative; }
+      .hm-first-key a::after { content: ""; position: absolute; inset: -10px; }
+    }
     /* The market dots: Leaflet circles, coloured here so they follow the theme. */
     .hm-mkt { fill: var(--ink); fill-opacity: .85; stroke: var(--card); stroke-width: 1.5; }
     @media (min-width: 900px) {

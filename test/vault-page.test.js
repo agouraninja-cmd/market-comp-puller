@@ -5958,3 +5958,26 @@ test("the promise is made once at the foot: the trust line for an open book, the
   // /pipeline never showed it.
   assert.match(renderVaultHTML(boot([comp({})]), { page: "pipeline" }), /<p class="vfoot hide" id="vFoot">/);
 });
+
+test("a tap anywhere in a tick box's cell ticks the box, and opens no row (2026-11-15)", async () => {
+  // The box is 15px and stands in a cell 36px by a row's height. A finger
+  // that lands in the cell beside the box used to open the row instead. An
+  // input takes no ::after overlay, so the cell's click is passed to the box.
+  const { doc } = await runPage([comp({ id: "s1" })]);
+  const rows = doc.getElementById("bmRows");
+  let presses = 0;
+  const cell = { querySelector: (sel) => (sel === "input" ? { click: () => { presses++; } } : null) };
+  const tapIn = (answers) => rows.fire("click", { target: { closest: (sel) => (sel in answers ? answers[sel] : null) } });
+  const row = { getAttribute: () => "s1" };
+  tapIn({ "td.vd-lc": cell, "[data-bm]": row });
+  assert.equal(presses, 1, "a tap in the tick cell did not press its box");
+  assert.doesNotMatch(rows.innerHTML, /class="vd-detail"/, "a tap in the tick cell opened the row");
+  // A tap on the box itself is the box's own click: passing it on again
+  // would tick and untick in one tap.
+  tapIn({ input: {}, "td.vd-lc": cell, "[data-bm]": row });
+  assert.equal(presses, 1, "a tap on the box itself was pressed a second time");
+  // The control: the same tap anywhere else in the row still opens it.
+  tapIn({ "[data-bm]": row });
+  assert.match(rows.innerHTML, /class="vd-detail"/, "a tap on the row no longer opens it");
+  assert.equal(presses, 1);
+});

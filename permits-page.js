@@ -86,6 +86,9 @@ function renderPermitsBody(boot) {
 .pt-head h1{margin:0;font-weight:600;font-size:var(--text-h1);line-height:1.2143;letter-spacing:-.02em;color:var(--ink)}
 .pt-cmp{font-size:var(--text-small);color:var(--ink-2);white-space:nowrap}
 .pt-cmp:hover{color:var(--ink)}
+/* Under a finger the 21px link is reached for 10px either side of its line
+   (2026-11-15): an overlay inside the heading's own height, moving nothing. */
+@media (pointer:coarse){.pt-cmp{position:relative}.pt-cmp::after{content:"";position:absolute;inset:-10px -6px}}
 .pt-sub{font-size:var(--text-small);color:var(--ink-3);margin:10px 0 0;max-width:88ch}
 .pt-sub.stale{color:var(--err-text)}
 .pt-wall{border:1px solid var(--edge);border-radius:var(--r-lg);background:var(--card);padding:18px 20px;margin:18px 0}

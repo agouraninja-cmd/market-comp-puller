@@ -860,6 +860,29 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   .vd-tray{flex-direction:column;align-items:stretch}
   .vd-strip.five .lcell{padding:12px 14px}
 }
+/* Touch targets (2026-11-15). Under a finger, a control this page draws
+   smaller than about 36px gets an invisible overlay that reaches past it, so
+   nothing moves and nothing is redrawn; a mouse pointer keeps the exact box.
+   Each inset stays inside the space the control already stands in (its
+   row's, its box's or its bar's padding), so no overlay lies over a
+   neighbour. The tick boxes cannot take one (an input has no pseudo
+   element), so their whole cell is the target: see the click handler on
+   #bmRows. .vd-mapx is already absolute and is left out of the first rule.
+   The comp set's Clear is the one that takes real padding: on a phone the
+   set's buttons wrap 8px apart, and an overlay tall enough to help lay over
+   the button in the row above. */
+@media (pointer:coarse){
+  .dact,.pubbtn,.vd-all,.vd-gn,.vd-name,.dbox>summary,.vd-dact .lnk{position:relative}
+  .dact::after,.pubbtn::after,.vd-mapx::after,.vd-all::after,.vd-gn::after,.vd-name::after,.dbox>summary::after,.vd-dact .lnk::after{content:"";position:absolute;inset:-7px 0}
+  .vd-dact .lnk::after{inset:-9px -6px}
+  .vd-mapx::after{inset:-8px}
+  .vd-all::after{inset:-9px -8px}
+  .vd-gn::after{inset:-8px -10px}
+  .vd-name::after{inset:-8px 0}
+  .dbox>summary::after{inset:-12px -18px}
+  .vd-tact .lnk{padding:8px 6px}
+  .vd-lt td.vd-lc{width:36px}
+}
 /* The comp sheet is paper, so it is black on white in either theme, and its
    colours are named rather than tokens: a token would print the dark theme's
    pale ink onto white. */
@@ -4128,6 +4151,10 @@ ${tabButtons}
   $("bmRows").addEventListener("click",function(e){
     var t=e.target; if(!t||!t.closest)return;
     if(t.closest("input"))return;
+    // The tick box is 15px. A tap anywhere in its cell ticks it, rather
+    // than opening the row the finger only just missed the box in.
+    var lc=t.closest("td.vd-lc");
+    if(lc){ var bx=lc.querySelector("input"); if(bx)bx.click(); return; }
     var gk=t.closest("[data-gk]");
     if(gk){ var k=gk.getAttribute("data-gk"); gOpen[k]=!gLast[k]; renderBmList(); return; }
     var ga=t.closest("[data-gall]");

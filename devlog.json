@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-11-15",
+    "type": "improvement",
+    "title": "The privacy policy names Google Fonts",
+    "details": "Every page now loads its typeface, Inter, from Google Fonts, and the privacy policy’s list of outside services did not say so. It does now: Google Fonts serves the typeface, and your browser requests it directly from Google when a page loads."
+  },
+  {
     "date": "2026-11-14",
     "type": "improvement",
     "title": "On a phone, a report shows its estimate on the first screen",

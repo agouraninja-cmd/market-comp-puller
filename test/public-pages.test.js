@@ -859,4 +859,8 @@ test("the privacy policy names every host the export feature loads code from", a
   t.after(() => srv.stop());
   const body = await (await fetch(srv.base + "/privacy")).text();
   assert.match(body, /<strong>cdnjs<\/strong> and <strong>jsdelivr<\/strong> provide content delivery for the export feature/);
+  // Every page loads Inter from Google Fonts (2026-11-14), so the list names
+  // it, and the page that says so loads it like the rest.
+  assert.match(body, /<strong>Google Fonts<\/strong> serves the typeface the Service is set in/);
+  assert.match(body, /fonts\.googleapis\.com\/css2\?family=Inter/);
 });

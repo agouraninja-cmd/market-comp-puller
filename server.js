@@ -17389,6 +17389,12 @@ function renderPrivacyPageHTML(signedIn) {
     `<li>The <strong>US Census Bureau</strong> and <strong>Nominatim</strong> provide address ` +
     `geocoding.</li>` +
     `<li><strong>cdnjs</strong> and <strong>jsdelivr</strong> provide content delivery for the export feature.</li>` +
+    // Every page loads Inter from Google since 2026-11-14 (the app page always
+    // did). Loading a font sends the visitor's IP address and browser details
+    // to Google, like any request; no cookie is set by it and nothing a
+    // visitor types goes with it.
+    `<li><strong>Google Fonts</strong> serves the typeface the Service is set in. Your browser requests it ` +
+    `directly from Google when a page loads.</li>` +
     `</ul>` +
 
     `<h2>5. Cookies and Local Storage</h2>` +

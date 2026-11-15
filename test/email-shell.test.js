@@ -87,3 +87,21 @@ test("a bare ampersand still ends the URL, so an apostrophe cannot ride along", 
   const out = linkify(escapeHtml("Open https://x.co/a's page"));
   assert.equal(out.match(/href="([^"]*)"/)[1], "https://x.co/a");
 });
+
+test("the letter is set in Inter where the mail app loads it, and in Arial everywhere else", () => {
+  // 2026-11-15, the owner, after the whole site went to Inter: "make the
+  // emails Inter too". Apple Mail loads the web font; Gmail and Outlook do
+  // not and draw the next face, so Arial must stay behind Inter on every
+  // piece of text, and no face may be named without it.
+  const { renderEmailHtml } = require("../email-shell.js");
+  const html = renderEmailHtml("A subject", "First paragraph.\n\nSecond, with https://compninja.co/r/abc.");
+  const faces = [...html.matchAll(/font-family:([^;"]+)/g)].map((m) => m[1]);
+  assert.equal(faces.length, 4, "the wordmark, two paragraphs and the footer each name the face");
+  for (const f of faces) assert.equal(f, "Inter,Arial,Helvetica,sans-serif");
+  // The font is asked for once, in the head, at the two weights the letter uses.
+  assert.equal((html.match(/fonts\.googleapis\.com/g) || []).length, 1);
+  assert.match(html, /<head>[\s\S]*family=Inter:wght@400;700&amp;display=swap[\s\S]*<\/head>/);
+  // Still no <style> block and no image: Gmail strips the first, and the
+  // letterhead must survive blocked images.
+  assert.ok(!/<style|<img/i.test(html));
+});

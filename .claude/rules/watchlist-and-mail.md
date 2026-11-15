@@ -62,6 +62,19 @@ paths:
 
 ## Architecture
 
+- **Emails ask for Inter (2026-11-15; the owner, after the whole site went
+  to Inter: "make the emails Inter too").** Every outbound email goes
+  through `email-shell.js`, whose text was Arial (never Georgia). Its one
+  stack is now `FONT` = `Inter,Arial,Helvetica,sans-serif`, and the head
+  carries one `<link>` to Google Fonts for Inter at 400 and 700. Apple Mail
+  (Mac, iPhone, iPad) loads it; Gmail, Outlook and most webmail ignore web
+  fonts in mail and draw Arial, as before, so the letter must read right in
+  both and the fallback is never dropped. Still no `<style>` block and no
+  image. An email opened in Apple Mail requests the font from Google; the
+  privacy policy's Google Fonts line says "when a page loads" and was left
+  as it is (said to the owner). `test/email-shell.test.js` holds the stack
+  and the single link.
+
 - `POST /api/lead` — stores a lead-capture submission (name/email/phone/company
   + the searched address/type + `source`: `"export"` for export unlocks,
   `"bov"` for Broker Opinion of Value requests, and — on rows written

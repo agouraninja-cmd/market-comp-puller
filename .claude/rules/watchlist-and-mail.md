@@ -71,8 +71,9 @@ paths:
   fonts in mail and draw Arial, as before, so the letter must read right in
   both and the fallback is never dropped. Still no `<style>` block and no
   image. An email opened in Apple Mail requests the font from Google; the
-  privacy policy's Google Fonts line says "when a page loads" and was left
-  as it is (said to the owner). `test/email-shell.test.js` holds the stack
+  privacy policy's Google Fonts line names email as well as pages since
+  the same day (the owner: "make the privacy line mention email";
+  public-pages.md). `test/email-shell.test.js` holds the stack
   and the single link.
 
 - `POST /api/lead` — stores a lead-capture submission (name/email/phone/company

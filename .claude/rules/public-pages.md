@@ -301,8 +301,10 @@ markets.md that says a public page has Georgia headings or loads no font.
   Google Fonts line").** One `<li>` after the cdnjs and jsdelivr line in the
   third-party list; `test/public-pages.test.js` pins it. **Each legal document
   has its own date since the same day** ("give them separate dates"):
-  `TERMS_UPDATED` (August 14, 2026) and `PRIVACY_UPDATED` (November 14,
-  2026, when that line went live, US time). One `LEGAL_UPDATED` used to date
+  `TERMS_UPDATED` (August 14, 2026) and `PRIVACY_UPDATED` (November 15,
+  2026: the line went live on the 14th, US time, and was reworded on the
+  15th to say that emails load the font too, "make the privacy line mention
+  email"). One `LEGAL_UPDATED` used to date
   both, so changing one document either left its date stale or restamped
   the other. Move a date only when that document's own text changes; the
   test reads both pages.

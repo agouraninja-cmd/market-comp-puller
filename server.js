@@ -17343,9 +17343,10 @@ function renderLeadershipPageHTML(signedIn) {
 // its date stale or restamped the other, which had not changed. Move a date
 // only when THAT document's text changes.
 const TERMS_UPDATED = "August 14, 2026";
-// The Privacy Policy last changed when Google Fonts joined its list of
-// outside services (the evening of November 14, 2026, US time).
-const PRIVACY_UPDATED = "November 14, 2026";
+// The Privacy Policy last changed when its Google Fonts line began to name
+// email as well as pages (November 15, 2026). The line itself joined the
+// list of outside services the evening before.
+const PRIVACY_UPDATED = "November 15, 2026";
 
 function renderTermsPageHTML(signedIn) {
   const title = "Terms of Service | CompNinja";
@@ -17495,8 +17496,12 @@ function renderPrivacyPageHTML(signedIn) {
     // did). Loading a font sends the visitor's IP address and browser details
     // to Google, like any request; no cookie is set by it and nothing a
     // visitor types goes with it.
-    `<li><strong>Google Fonts</strong> serves the typeface the Service is set in. Your browser requests it ` +
-    `directly from Google when a page loads.</li>` +
+    // Emails ask for the same font since 2026-11-15 (email-shell.js), and a
+    // mail app that loads web fonts (Apple Mail) requests it when the email
+    // is opened, so the line names both.
+    `<li><strong>Google Fonts</strong> serves the typeface the Service and our emails are set in. Your browser ` +
+    `requests it directly from Google when a page loads, and some email apps request it when you open ` +
+    `an email from us.</li>` +
     `</ul>` +
 
     `<h2>5. Cookies and Local Storage</h2>` +

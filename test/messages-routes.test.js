@@ -213,7 +213,7 @@ test("Messages is a row on both rails, in the same place", () => {
   // sat under left the rail), so the sidebar does not reshuffle itself when a
   // member navigates between the app and a server-rendered page. The last
   // row of the members' group since 2026-10-08, when Reports left the rail
-  // for Messages: the Tools group, Markets first, follows it.
+  // for Messages: the Tools group (Comps first since 2026-11-15) follows it.
   const shared_ = SERVER_JS.slice(SERVER_JS.indexOf('<a href="/desk">${NAV_ICONS.home}'));
   assert.ok(shared_.indexOf("/messages") > 0 && shared_.indexOf("/messages") < shared_.indexOf('href="/markets"'),
     "Messages must sit between Home and Markets on the shared rail");

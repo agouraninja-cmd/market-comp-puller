@@ -149,7 +149,8 @@ test("the filters: every property type with its count, zero included, and a type
 
 test("the rail's last two rows are Markets, then Permits, on both nav authors", () => {
   // Draft C (2026-10-07): the Comp report row left the rail, so Permits sits
-  // right after Markets, under the divider the Tools label draws.
+  // right after Markets, under the divider the Tools label draws. Comps came
+  // back above Markets (2026-11-15); Permits still follows Markets.
   for (const [name, src] of [["server.js", SERVER_JS], ["index.html", INDEX_HTML]]) {
     const label = src.indexOf('class="navsec">Tools<');
     const me = src.indexOf('<a href="/markets"', label);

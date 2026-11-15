@@ -8,6 +8,12 @@
   {
     "date": "2026-11-15",
     "type": "improvement",
+    "title": "Comps opens on Run a comp report, and sits above Markets",
+    "details": "Clicking Comps in the side menu now opens Run a comp report, the section's first tab, instead of Your comps. Comps is also the first row under Tools, above Markets."
+  },
+  {
+    "date": "2026-11-15",
+    "type": "improvement",
     "title": "Number and email fields open the right keyboard on a phone",
     "details": "On a phone, the price, size, cap rate and year boxes in Your comps (the Add a comp form and the table’s cells), the size box on Log a BOV and the size and cap rate boxes on the comp submission form opened the letter keyboard, so you had to switch to numbers by hand. They now open the number keyboard. The boxes for inviting colleagues, sharing a report by email, a contact’s email and inviting someone in Messages open the email keyboard, with @ on it. Nothing changes on a computer."
   },

@@ -30,12 +30,13 @@ the **Data** rail row from 2026-10-04 and later "Your properties and comps",
 was taken apart, and `/vault` now redirects to `/comps`, whose script sends
 a saved link's old tab (`#properties`, `#pipeline`, `#sites`, `#board`) to
 where it lives now. The rail (app-shell.md) is Home, Messages, **Pipeline** |
-Markets, **Comps**, Permits, with **Sites** in Pipeline's place for a
+**Comps**, Markets, Permits, with **Sites** in Pipeline's place for a
 development firm: `/sites`, its deals on a board of the four buying stages
 (`sites-page.js`, since 2026-10-12; it opened Home's Properties tab before).
-**Comps** is a section of two tabs (`compsSectionTabs`): `/comps`, "Your
-comps", the member's own comps and the comps they contributed, and `/bulk`,
-"Run a comp report". **Pipeline** is `/pipeline`, a broker's BOV requests
+**Comps** is a section of two tabs (`compsSectionTabs`): `/bulk`, "Run a
+comp report", first and where the rail's Comps row opens (since
+2026-11-15), and `/comps`, "Your comps", the member's own comps and the
+comps they contributed. **Pipeline** is `/pipeline`, a broker's BOV requests
 and engagements; new requests also land in Home's Today. `vault-page.js`
 draws both `/comps` and `/pipeline` (vault.md).
 **The Board** is a stock-style watchlist of markets and watched properties

@@ -695,13 +695,15 @@ test("bare environment", async (t) => {
     // 2026-10-12; it was Home's Properties tab, so Home twice).
     // 2026-10-13 (the owner's "remove the vault"): Comp report is Comps, a
     // section whose row opens /comps (its other tab is /bulk).
+    // 2026-11-15 (owner's call): Comps sits above Markets and its row opens
+    // /bulk, Run a comp report, the section's first tab.
     const ROWS = [
       ["Home", /<span class="nvl">Home</],
       ["Messages", /<a [^>]*href="\/messages"/],
       ["Pipeline", /<a id="navPipe" href="\/pipeline"/],
       ["Sites", /<a id="navSites" href="\/sites"/],
+      ["Comps", /<a id="navComps" href="\/bulk"/],
       ["Markets", /<a [^>]*href="\/markets"/],
-      ["Comps", /<a id="navComps" href="\/comps"/],
       ["Permits", /<a [^>]*href="\/permits"/],
     ];
     for (const page of ["/", "/markets", "/comps", "/pipeline", "/bulk"]) {
@@ -738,14 +740,14 @@ test("bare environment", async (t) => {
   // Sites row is /sites (2026-10-12), a page of its own, marked the same way.
   await t.test("/comps and /pipeline serve the vault page, each with its own row marked", async () => {
     const SESSION = { cookie: "cn_session=not-a-real-token" };
-    for (const [page, id] of [["/comps", "navComps"], ["/pipeline", "navPipe"]]) {
+    for (const [page, id, href] of [["/comps", "navComps", "/bulk"], ["/pipeline", "navPipe", "/pipeline"]]) {
       const r = await fetch(srv.base + page, { headers: SESSION });
       assert.equal(r.status, 200, page);
       assert.equal(r.headers.get("cache-control"), "no-store", page + " is a member's page");
       const html = await r.text();
       assert.match(html, /id="vaultTabs"/, page + " is not the vault page");
       const nav = (html.match(/<nav[\s\S]*?<\/nav>/) || [""])[0];
-      assert.match(nav, new RegExp(`<a id="${id}" href="${page}" aria-current="page"`), page + " does not mark its row");
+      assert.match(nav, new RegExp(`<a id="${id}" href="${href}" aria-current="page"`), page + " does not mark its row");
       assert.equal((nav.match(/aria-current="page"/g) || []).length, 1, page + " marks more than its own row");
       assert.ok(!nav.includes('class="btn sm" href="/bulk"'), page + " still offers the red CTA");
       // The note that picks Sites over Pipeline is stamped in <head>, before
@@ -800,7 +802,7 @@ test("bare environment", async (t) => {
       assert.match(tabs, new RegExp('<a href="' + on + '" aria-current="page">'), page + " does not mark its tab");
       assert.equal((tabs.match(/aria-current/g) || []).length, 1, page + " marks both tabs");
       const nav = (html.match(/<nav>[\s\S]*?<\/nav>/) || [""])[0];
-      assert.match(nav, /<a id="navComps" href="\/comps" aria-current="page">/, page + " does not mark the Comps row");
+      assert.match(nav, /<a id="navComps" href="\/bulk" aria-current="page">/, page + " does not mark the Comps row");
     }
     const pipe = await (await fetch(srv.base + "/pipeline", { headers: SESSION })).text();
     assert.ok(!pipe.includes('class="cs-tabs"'), "/pipeline grew the Comps section's tabs");
@@ -924,7 +926,7 @@ test("bare environment", async (t) => {
     const app = await servedApp(srv.base, "/");
     assert.ok(!app.includes('id="menuBulkLink"'), "the hidden-until-hydrated Comp report row is back");
     assert.ok(!/id="navComps"[^>]*\bhidden\b/.test(app), "the Comps row ships hidden");
-    assert.ok(app.includes('id="navComps" href="/comps"'), "the app's rail lost its Comps row");
+    assert.ok(app.includes('id="navComps" href="/bulk"'), "the app's rail lost its Comps row");
     assert.ok(!app.includes('id="menuVaultLink"'), "the Data row is back in the rail");
     // canUseVault still gates something in this file -- creating a hub
     // (canCreateHub) -- so the two flags are provably separate answers rather

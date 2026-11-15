@@ -2,6 +2,12 @@
   {
     "date": "2026-11-15",
     "type": "improvement",
+    "title": "The Terms and the Privacy Policy each carry their own date",
+    "details": "One date used to stamp both documents, so changing either one meant leaving its date stale or restamping the other. The Privacy Policy now shows November 14, 2026, when Google Fonts was added to its list of outside services. The Terms of Service did not change and still show August 14, 2026."
+  },
+  {
+    "date": "2026-11-15",
+    "type": "improvement",
     "title": "The privacy policy names Google Fonts",
     "details": "Every page now loads its typeface, Inter, from Google Fonts, and the privacy policy’s list of outside services did not say so. It does now: Google Fonts serves the typeface, and your browser requests it directly from Google when a page loads."
   },

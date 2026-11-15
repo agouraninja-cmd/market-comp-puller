@@ -17326,7 +17326,14 @@ function renderLeadershipPageHTML(signedIn) {
 // contact (no street address; the SOS registry publishes it for anyone who
 // truly needs it).
 // ---------------------------------------------------------------------------
-const LEGAL_UPDATED = "August 14, 2026";
+// One date each since 2026-11-15 (the owner: "give them separate dates"). A
+// single LEGAL_UPDATED dated both, so a change to one document either left
+// its date stale or restamped the other, which had not changed. Move a date
+// only when THAT document's text changes.
+const TERMS_UPDATED = "August 14, 2026";
+// The Privacy Policy last changed when Google Fonts joined its list of
+// outside services (the evening of November 14, 2026, US time).
+const PRIVACY_UPDATED = "November 14, 2026";
 
 function renderTermsPageHTML(signedIn) {
   const title = "Terms of Service | CompNinja";
@@ -17335,7 +17342,7 @@ function renderTermsPageHTML(signedIn) {
     "The terms that govern CompNinja: what the service is, what it is not, subscriptions, and your responsibilities.";
   const body =
     `<h1>Terms of Service</h1>` +
-    `<p class="sub">Last updated: ${LEGAL_UPDATED}. Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
+    `<p class="sub">Last updated: ${TERMS_UPDATED}. Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
 
     `<div class="legal">` +
     `<h2>Who we are and what this is</h2>` +
@@ -17411,7 +17418,7 @@ function renderPrivacyPageHTML(signedIn) {
     "How CompNinja LLC collects, uses, and shares information, which data never leaves your browser, and how to request deletion.";
   const body =
     `<h1>Privacy Policy</h1>` +
-    `<p class="sub">Effective date: ${LEGAL_UPDATED}</p>` +
+    `<p class="sub">Effective date: ${PRIVACY_UPDATED}</p>` +
     `<div class="legal">` +
     `<p>This Privacy Policy describes how CompNinja LLC, an Idaho limited liability company ` +
     `(file no. 6928558) (&quot;CompNinja,&quot; &quot;we,&quot; &quot;us&quot;), collects, uses, and ` +

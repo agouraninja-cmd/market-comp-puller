@@ -59,8 +59,12 @@ CLAUDE.md ("Design changes: before and after") then applies as usual.
   `scripts/firm-sandbox.js` does. Then capture with a `cn_session` cookie,
   because `scripts/shot.js` cannot sign in. Spend nothing: blank the API keys,
   as the sandbox's boot helper does.
-- **Screens.** Desktop is 1440px wide. Dark emulates
-  `prefers-color-scheme: dark` at the same width. Phone is 390px wide. Always
+- **Screens.** Desktop is 1440px wide. Dark is the same width with
+  `localStorage["theme"]="dark"` stored BEFORE the page's own scripts run (an
+  init script; `scripts/shot.js --dark` does the same). The site's dark mode
+  is a member's stored choice, not the system's: emulating
+  `prefers-color-scheme: dark` alone photographs a light page (the first
+  Run a report drafts did, 2026-11-15). Phone is 390px wide. Always
   emulate `prefers-reduced-motion: reduce` (shot.js explains why: reveal
   animations otherwise leave blank bands). Open any `<details>` that holds
   copy. Find the browser with `desktop.js`'s exported `findBrowser`, the way

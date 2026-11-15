@@ -157,7 +157,14 @@ const PROPERTY_FIELDS = Object.freeze(["lat", "lng", "geo_source", "facts"]);
 // broker stated on another deal. A fourth checked list rather than a loosened
 // one, for the reason the other three exist: the tests hold each list to its
 // own table, and this one's table is "none" — pinned in both directions.
-const DERIVED_FIELDS = Object.freeze(["inherited"]);
+//
+// `review` (2026-11-14) is where a PUBLISHED comp stands with the owner's
+// review: "pending" or "rejected", and absent once it is approved (or was
+// never published). Derived from comp_submissions.status by the same read
+// that fetches cited_count, and named differently on purpose: `status` on a
+// comp would read as the deal's status, and only the two not-yet-public
+// answers ever reach the page.
+const DERIVED_FIELDS = Object.freeze(["inherited", "review"]);
 
 // Fields a comp inherits from the SUBMISSION it was published as, rather than
 // from broker_comps. A third list for the same reason PROPERTY_FIELDS is a

@@ -65,10 +65,11 @@ we "connect you with a local broker", never that we are one, and every
 valuation is labeled an automated estimate, never an appraisal. That rule
 reaches the DATA too, not just the copy: publishing a vault comp earns the
 green "Verified · via \<name\>" badge, which means "a named broker vouched
-for this deal", so **the owner does not publish** (decided 2026-08-12) and
-the standing plan is to refuse `POST /api/vault/publish` without a license
-on the broker profile — see docs/ROADMAP.md's "Next" for the decision and
-the alternatives already rejected.
+for this deal", so **the owner does not publish** (decided 2026-08-12),
+`POST /api/vault/publish` refuses without a license number on the broker
+profile (migration 034), and since 2026-11-14 a publisher's first comps wait
+as `pending` in `/admin`'s review queue until the owner has approved one
+(`publisherStanding` in `broker-vault.js`; vault.md).
 
 There is no build step, no linter, and **no npm dependencies** — it runs on
 plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
@@ -268,8 +269,11 @@ folder is gone, so a `node-portable` path found in an old plan is dead.)
 
 ### Restart rule (important)
 
-- Editing **`index.html`** needs no restart — `server.js` reads it from disk on
-  every request, so just refresh the browser. That page's one inline
+- Editing **`index.html`** needs no restart — `server.js` re-reads it whenever
+  its size or modified time changes (`loadAppPage`), so just refresh the
+  browser. Since 2026-11-14 its one big inline script is SERVED as
+  `/app.<hash>.js`, cached for a year; the file on disk is unchanged and must
+  stay one file (`app-page.js`; workspace.md). That page's one inline
   `<script>` block has a hard runtime dependency on **`/valuation.js`**: its
   very first statement destructures `VALUATION`, so if that file fails to
   load, the destructure throws and the whole front end aborts — no search
@@ -394,7 +398,10 @@ dependency. `.env` is git-ignored — never commit it.
   DB insert fails, leads append to `leads.jsonl` (git-ignored — contains PII,
   never commit). `GET /api/leads` merges both sources.
 - `ADMIN_KEY` — optional. When set, `GET /api/leads` returns the captured leads
-  as CSV (send the key via `x-admin-key` header or `?key=`). Unset = that
+  as CSV (send the key in the `x-admin-key` header; a browser that unlocked
+  `/admin` carries a cookie instead). **Never in the address:** `?key=` has
+  been refused since 2026-11-14, because a key in a URL lands in access logs
+  and browser history (`ADMIN_KEY_IN_URL=on` is the rollback). Unset = that
   endpoint is disabled. Without Supabase configured, leads live only in
   `leads.jsonl`, which ephemeral-filesystem hosts wipe on every redeploy.
   **It is also the admin identity for comped Pro** — see "Admin access" in
@@ -426,6 +433,9 @@ so they are trusted config and are never set in production.
 | `CORPUS_RADIUS`, `CORPUS_METRO`, `CORPUS_LISTED`, `ARCHIVE_FIRST` | on | `off` rolls back the radius blend, metro retrieval, on-market listings, archive-first | corpus.md |
 | `LEAD_METRO` | on | broker lead coverage matches across metro groups | vault.md |
 | `NAV_SHELL` | `rail` | signed-in chrome as a left rail; `bar` is the rollback | app-shell.md |
+| `ADMIN_KEY_IN_URL` | off | `on` lets the six admin routes that used to take `?key=` take it again (the CSV downloads, `/api/stats`, `/api/admin/submissions`, `/api/corpus-audit`); the rollback for a forgotten bookmark, not a setting to leave on | billing.md |
+| `EXTERNAL_APP_SCRIPT` | on | serve index.html's megabyte of inline script as `/app.<hash>.js`, cached for a year; `off` is the rollback (script inline, as before) | workspace.md |
+| `SHUTDOWN_GRACE_SECONDS` | 280 | how long a stop (a deploy's SIGTERM, Ctrl+C, a crash) waits for requests in flight; the host's own shutdown delay is the real limit | app-shell.md |
 | `SITE_URL`, `GOOGLE_SITE_VERIFICATION` | Render URL / unset | canonical origin; Search Console file verification (keep it set for good) | public-pages.md |
 | `PRO_ENABLED` | off in code | master switch for the paid tier (run its DDL first) | billing.md |
 | `PRO_AUDIENCE` | unset (everyone) | email allowlist narrowing who Pro applies to; unsetting it is the launch | billing.md |
@@ -455,8 +465,8 @@ gone. Document a new feature in its area's file, not here.
 | `billing.md` | Pro tier, trial, prices, free allowance, passkeys, admin access, branding, trial emails, `/api/config`, `/pricing` | `entitlements.js`, `stripe.js`, `branding.js`, `trial-notices.js`, `pricing-page.js` |
 | `vault.md` | the broker vault (import, mapper, editing, publishing, dashboard, gut check, BOV, building facts), comp submissions, the lead inbox | `vault-*.js`, `broker-*.js`, `building-facts.js`, `gut-check.js`, `bov-log.js`, `blend-comps.js`, `xlsx.js` |
 | `firms.md` | firms: membership, shelf, buildings, sheets, leases, contacts, messaging doors, Messages' Reports view, auto-share, the shared vault, seats, shop kinds | `org-*.js`, `buildings-page.js`, `messaging.js`, `messages-page.js`, `report-inbox.js` |
-| `workspace.md` | the signed-in Home (`/desk`): Home as one map and its layer switch, layout history, one-paint fill, `DESK_BOOT`, `AUTH_BOOT`, `pagePath` | `index.html`, `home-map.js`, desk tests |
-| `app-shell.md` | the `NAV_SHELL` rail, the signed-in header on server-rendered pages, nav parity with `index.html`, the shared button and tabs (`components.js`), instant tab switching (prerendered tabs, `/api/visit`) | `theme.js`, `components.js`, `instant-nav.js`, nav tests |
+| `workspace.md` | the signed-in Home (`/desk`): Home as one map and its layer switch, layout history, one-paint fill, `DESK_BOOT`, `AUTH_BOOT`, `pagePath`, index.html's script served as `/app.<hash>.js` (`app-page.js`) | `index.html`, `home-map.js`, `app-page.js`, desk tests |
+| `app-shell.md` | the `NAV_SHELL` rail, the signed-in header on server-rendered pages, nav parity with `index.html`, the shared button and tabs (`components.js`), instant tab switching (prerendered tabs, `/api/visit`), the security headers on every response (`security-headers.js`), stopping and crashing without dropping requests (`graceful-shutdown.js`) | `theme.js`, `components.js`, `instant-nav.js`, `security-headers.js`, `graceful-shutdown.js`, nav tests |
 | `sharing.md` | `POST /api/share`, `/api/shared`, `/r/<id>`, permissioned sharing | `report-access.js` |
 | `accounts.md` | account wall, guest limit, Google sign-in, confirming an email address, accounts and portfolio, profile photo | `google-auth.js`, `email-verify.js`, `confirm-notice.js`, `account-avatar.js`, `portfolio-*.js` |
 | `public-pages.md` | home, FAQ, how-it-works, brokers-firms, the lender page (`/lenders`), the brand entity, `SITE_URL`, Search Console | `home-page.js`, `faq-page.js`, `brokers-firms-page.js`, `lenders-page.js` |

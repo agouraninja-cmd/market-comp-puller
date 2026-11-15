@@ -281,9 +281,28 @@ column. So "is this an admin?" is answered by **possession of that key**, which
    endpoint accepts the cookie** (via `isAdminRequest`) as an alternative to
    the header, so a new tab within the 30-day cookie window opens unlocked
    without retyping the key — each page's loader silently tries a keyless
-   fetch before showing the gate. In a cookie session `/hq`'s CSV links are
-   plain hrefs (the cookie rides along); `?key=` survives on the CSV routes
-   and `/api/stats`/`/api/admin/submissions` for machine callers only.
+   fetch before showing the gate. `/hq`'s CSV links are plain hrefs in every
+   session: in a cookie session the cookie rides along, and in a typed-key
+   session the click fetches the file with the header and saves it from
+   memory (`renderDls`).
+
+**The key is never accepted in a URL (2026-11-14).** Six routes took `?key=`
+"for machine callers": the three CSV downloads (`/api/leads`,
+`/api/comp-submissions`, `/api/comp-corpus`), `/api/stats`,
+`/api/admin/submissions` and `/api/corpus-audit`. A key in an address is
+written to the host's access log and the browser's history, and the lead CSV
+behind it is people's contact details; every caller in the repo already sent
+the header, and `/hq` was the one page still building such a link. Those
+routes now ask `isAdminRequestOrUrlKey(req)`, which is `isAdminRequest` unless
+**`ADMIN_KEY_IN_URL=on`** (the rollback, for a bookmark or a spreadsheet
+import nobody remembered; not a setting to leave on). A request that still
+carries `?key=` gets a 401 with `code: "key_in_url"` and a sentence saying to
+use the header or unlock `/admin` first, the same answer whether the key was
+right or wrong. A key that was ever used in a URL should be treated as
+exposed: rotating `ADMIN_KEY` means updating it on Render AND in the
+repository's `ADMIN_KEY` Actions secret (the permit sweep and trial notices),
+and every `cn_admin` cookie stops working until the dashboards are unlocked
+again. A new admin route uses `isAdminRequest`, never the URL helper.
 
 The cookie is **not the key**: it is `<expiry ms>.<HMAC-SHA256(expiry,
 ADMIN_KEY)>`, httpOnly, 30 days. It cannot be turned back into the key, and

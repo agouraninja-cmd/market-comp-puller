@@ -194,6 +194,13 @@ async function bootOnce(env) {
       // suite (test/pro-trial-run.test.js) turns it on explicitly.
       PRO_TRIAL_DAYS: "0",
       PRO_TRIAL_START: "",
+      // How long a stopped server waits for a request still in flight
+      // (graceful-shutdown.js, 2026-11-14). stop() sends SIGTERM, which now
+      // DRAINS instead of dying on the spot; with nothing in flight that is
+      // still immediate, but a suite that walks away from an open stream
+      // would otherwise hold its child, and the run, for the production
+      // default of 280 seconds. The drain's own suite sets what it needs.
+      SHUTDOWN_GRACE_SECONDS: "2",
       ...env,
     },
     // stderr is piped (stdout stays ignored: the startup banner is noise)
@@ -228,6 +235,11 @@ async function bootOnce(env) {
   // it, so the next person starts from the server's own last words rather
   // than from a stack trace that only says fetch failed.
   let everHealthy = false;
+  // How the child ended, for a suite that is testing exactly that (the
+  // shutdown drain): resolves once, with the exit code and the signal.
+  const exited = new Promise((resolve) => {
+    child.once("close", (code, signal) => resolve({ code, signal }));
+  });
   child.on("close", (code, signal) => {
     // code is null for a signal, which is how stop() ends a child; a real
     // non-zero status is a death nobody asked for, even if stop() has since
@@ -279,6 +291,11 @@ async function bootOnce(env) {
             alive: async () => {
               try { return (await fetch(base + "/healthz")).ok; } catch (_) { return false; }
             },
+            // For the shutdown suite only: send the child a signal and learn
+            // how it ended. Everything else uses stop().
+            signal: (sig) => child.kill(sig),
+            exited,
+            stderr: () => stderr,
             stop: () => {
               child.kill();
               try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch (_) {}

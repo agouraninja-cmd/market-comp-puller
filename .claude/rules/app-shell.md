@@ -157,6 +157,17 @@ STARTS then can outlive the wait.
 > a page that sets its own later in the document keeps it), and /permits'
 > inner `main.wrap.pt-page` gives its padding back there (the page had two
 > 16px gutters a side and 88px above its heading).
+> **Phone keyboards (2026-11-15, the owner: "yes fix both").** A
+> `type=text` field opens the letter keyboard on a phone. Fields that hold
+> a figure carry `inputmode="decimal"` (or `numeric` for a year), and
+> fields that hold addresses to mail carry `inputmode="email"`: /comps'
+> Add a comp form and its table cells (`NUM_CELLS`), /pipeline's BOV size,
+> the comp submission form's size and cap rate, Share's and Firm
+> settings' invite boxes, a contact's email, Messages' invite box. They
+> stay `type=text`: they show and accept "$1,250,000", "6.25%" and comma
+> lists. "Price / rate" boxes (`#compPrice`, `#acPrice`) take words and
+> keep letters. A NEW figure field should carry an inputmode. Held by the
+> last test in `test/phone-taps.test.js`. Not checked on a real phone.
 > **Touch targets, second pass, and a shorter top on /comps (2026-11-15,
 > the owner: "yes fix both").** The first pass measured pages with little
 > in them. With a firm, buildings, a conversation and a report in the test

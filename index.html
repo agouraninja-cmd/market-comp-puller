@@ -2803,13 +2803,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="compDate" type="text" placeholder="Close date, e.g. Mar 2026" aria-label="Close date"
               class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
-            <input id="compSize" type="text" placeholder="Size (SF), e.g. 86,400" aria-label="Size in square feet"
+            <input id="compSize" type="text" inputmode="decimal" placeholder="Size (SF), e.g. 86,400" aria-label="Size in square feet"
               class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="compPrice" type="text" placeholder="Price / rate *" aria-label="Price or rate"
               class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
-            <input id="compCapRate" type="text" placeholder="Cap rate (optional)" aria-label="Cap rate (optional)"
+            <input id="compCapRate" type="text" inputmode="decimal" placeholder="Cap rate (optional)" aria-label="Cap rate (optional)"
               class="w-full min-w-0 rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none" />
           </div>
           <textarea id="compNotes" rows="2" placeholder="Notes: tenant, condition, terms (optional)" aria-label="Notes (optional)"
@@ -2876,7 +2876,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </label>
       </div>
       <div id="shareEmailsWrap" class="hidden mt-3">
-        <textarea id="shareEmails" rows="2" placeholder="client@company.com, partner@company.com" aria-label="Emails to invite"
+        <textarea id="shareEmails" rows="2" inputmode="email" autocapitalize="off" placeholder="client@company.com, partner@company.com" aria-label="Emails to invite"
           class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none"></textarea>
       </div>
       <!-- Shown only for a signed-in vault-entitled member on a report that
@@ -3157,7 +3157,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div id="firmMembers" class="hidden mt-2">
           <div id="firmMemberRows" class="space-y-1.5"></div>
           <div id="firmInviteWrap" class="hidden mt-3">
-            <textarea id="firmInviteEmails" rows="2" placeholder="colleague@yourfirm.com, analyst@yourfirm.com" aria-label="Colleagues to invite"
+            <textarea id="firmInviteEmails" rows="2" inputmode="email" autocapitalize="off" placeholder="colleague@yourfirm.com, analyst@yourfirm.com" aria-label="Colleagues to invite"
               class="w-full rounded-lg border border-edge px-3 py-2 focus:ring-2 focus:ring-red focus:border-red outline-none"></textarea>
             <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
               <button id="firmInviteBtn" type="button"
@@ -3835,7 +3835,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                   </label>
                   <label class="flex-1 min-w-[10rem]">
                     <span class="rd-lab">Email</span>
-                    <input id="contactEmail" type="text" maxlength="200" placeholder="optional"
+                    <input id="contactEmail" type="text" inputmode="email" autocapitalize="off" autocomplete="off" maxlength="200" placeholder="optional"
                       class="w-full rounded-lg border border-edge px-3 py-2 text-sm focus:ring-2 focus:ring-red focus:border-red outline-none" />
                   </label>
                   <label class="flex-1 min-w-[10rem]">

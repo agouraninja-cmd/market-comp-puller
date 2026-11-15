@@ -588,7 +588,7 @@ function renderMessagesBody(boot) {
     <div class="msg-panel msg-hide" id="msgPeoplePanel">
       <h3>People in this conversation</h3>
       <div id="msgPeopleList"></div>
-      <input id="msgPeopleAdd" type="text" placeholder="Invite somebody by email" autocomplete="off">
+      <input id="msgPeopleAdd" type="text" inputmode="email" autocapitalize="off" placeholder="Invite somebody by email" autocomplete="off">
       <div class="msg-panelfoot">
         <button class="msg-btn primary sm" id="msgPeopleGo" type="button">Send invite</button>
         <button class="msg-btn sm" id="msgPeopleDone" type="button">Done</button>

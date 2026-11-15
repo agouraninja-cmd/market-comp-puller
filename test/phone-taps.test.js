@@ -296,3 +296,22 @@ test("the overlays are under a finger only, and each control they name is still 
   has("brokers-firms-page.js", 'class="bfalt"');
   has("messages-page.js", 'class="msg-btn primary sm" id="msgSend"');
 });
+
+test("fields that hold a figure or an email bring up the right phone keyboard (2026-11-15)", () => {
+  // On a phone a type=text field opens the letter keyboard. These held
+  // prices, sizes and addresses to mail, and made the member switch keyboards
+  // by hand. inputmode only: the fields stay type=text, because they show
+  // and accept "$1,250,000", "6.25%" and a comma-separated list of addresses.
+  const want = {
+    "vault-page.js": ['id="addComp_price" type="text" inputmode="decimal"', 'id="addComp_size_sqft" type="text" inputmode="decimal"',
+      'id="addComp_cap_rate" type="text" inputmode="decimal"', 'id="addComp_year_built" type="text" inputmode="numeric"',
+      'id="bovSize" type="text" inputmode="decimal"', "var NUM_CELLS={price:1,size_sqft:1,cap_rate:1};",
+      `'<input type="text"'+(NUM_CELLS[k]?' inputmode="decimal"':"")+' class="cell'`],
+    "index.html": ['id="compSize" type="text" inputmode="decimal"', 'id="compCapRate" type="text" inputmode="decimal"',
+      'id="shareEmails" rows="2" inputmode="email"', 'id="firmInviteEmails" rows="2" inputmode="email"', 'id="contactEmail" type="text" inputmode="email"'],
+    "messages-page.js": ['id="msgPeopleAdd" type="text" inputmode="email"'],
+  };
+  for (const [name, needles] of Object.entries(want)) for (const n of needles) assert.ok(FILES[name].includes(n), name + " lost " + n);
+  // "Price / rate" boxes take words ("$9.50/SF/yr"), so they keep letters.
+  for (const id of ["compPrice", "acPrice"]) assert.ok(!new RegExp('id="' + id + '"[^>]*inputmode').test(FILES["index.html"]), "#" + id + " takes a rate in words and must keep the letter keyboard");
+});

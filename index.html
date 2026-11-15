@@ -1340,11 +1340,54 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        a row at one width. Wrapped as a flex row it was seven buttons of seven
        widths, ragged on both sides. */
     .rd-tools > #shareBtn { margin-right: auto; }
+    /* A comp card's field labels (and the cards' Sort by) were 10px, 62 of
+       them on the sample report at phone width, where the cards are what a
+       reader gets instead of the table. They are the scale's smallest size
+       now, 11px; each sits on its own line over its value, so nothing wraps. */
+    .cardgrid dt, label[for="cardSort"] { font-size: var(--text-tiny); }
+    /* On a phone the toolbar is ONE row that scrolls sideways (2026-11-14, the
+       owner: "fix both", of a phone audit that found the estimate starting
+       below the first screen). From 2026-11 it was a grid, Share across the
+       top and the rest two to a row: tidy, and four rows tall, about 200px of
+       buttons between the top of the report and the value it is for. One row
+       is 44px. Share stays first; the rest follow at their own widths, which
+       a single row cannot make ragged. The row runs to the screen's edges
+       (the page's 16px gutter given back, then put inside as padding) and
+       fades out on the right, so a cut-off button says there are more; the
+       36px of padding at the end lets the last one scroll clear of the fade.
+       (The mask's "black" is a keyword on purpose: a mask reads only how
+       opaque it is, so it is no colour of the page's, and theme.test.js
+       refuses a raw hex anywhere in this sheet.) */
     @media (max-width: 639.98px) {
-      .rd-tools { display: grid; grid-template-columns: 1fr 1fr; }
-      .rd-tools > button { justify-content: center; }
-      .rd-tools > #shareBtn { grid-column: 1 / -1; margin-right: 0; }
-      .rd-tools > #exportAllowance { grid-column: 1 / -1; justify-content: center; }
+      .rd-tools { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto;
+        -webkit-overflow-scrolling: touch; scrollbar-width: none;
+        margin-left: -16px; margin-right: -16px; padding: 0 36px 0 16px;
+        -webkit-mask-image: linear-gradient(to right, black calc(100% - 32px), transparent);
+        mask-image: linear-gradient(to right, black calc(100% - 32px), transparent); }
+      .rd-tools::-webkit-scrollbar { display: none; }
+      .rd-tools > button, .rd-tools > #exportAllowance { flex: none; white-space: nowrap; }
+      .rd-tools > #shareBtn { margin-right: 0; }
+      .rd-tools { margin-bottom: 10px; }
+      /* The report's own header card and the value card, closed up: the
+         address a size smaller, the mark a size smaller, 6px less padding on
+         both cards and 4px less in each cell of the ledger. Small sums, and
+         together with the one-row toolbar they are what put Low and Likely on
+         a phone's first screen (Likely started 646px down the report and was
+         cut by the bottom bar; it starts at about 600). */
+      #reportHeaderCard { padding: 16px 18px; }
+      #reportHeaderCard #reportAddress { font-size: var(--text-heading); }
+      #reportHeaderCard .report-lockup svg { width: 22px; height: 22px; }
+      #ownerHero { padding: 18px; }
+      #ownerHero .rd-ledger .rd-lcell { padding: 10px 16px; }
+      /* The jump bar's links are 21px tall; a thumb gets the bar's whole
+         height and a little either side, with nothing moved. */
+      .rn-link { position: relative; }
+      .rn-link::after { content: ""; position: absolute; inset: -11px -7px; }
+      /* Firm settings: a dropdown is as wide as its longest option ("Always
+         share, even if the firm turns it off" is 358px at a phone's 16px
+         field size), which was 24px wider than the dialog and made the whole
+         dialog slide sideways. */
+      #firmAutoShareSelect, #firmShopSelect { max-width: 100%; min-width: 0; }
     }
 
     /* ------------- Research Desk report tokens (live report restyle) ------------- */

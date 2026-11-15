@@ -1099,11 +1099,11 @@ ${tabButtons}
             <option value="lease">Lease</option>
           </select></label>
           <label>Date <input id="addComp_deal_date" type="date"/></label>
-          <label>Price <input id="addComp_price" type="text"/></label>
-          <label>Size (SF) <input id="addComp_size_sqft" type="text"/></label>
-          <label>Cap rate <input id="addComp_cap_rate" type="text" placeholder="optional"/></label>
+          <label>Price <input id="addComp_price" type="text" inputmode="decimal"/></label>
+          <label>Size (SF) <input id="addComp_size_sqft" type="text" inputmode="decimal"/></label>
+          <label>Cap rate <input id="addComp_cap_rate" type="text" inputmode="decimal" placeholder="optional"/></label>
           <label title="Who occupies the building: Single tenant, Multi-tenant or Owner-user. Optional.">Tenancy <input id="addComp_tenancy" type="text" placeholder="Single tenant, Multi-tenant or Owner-user"/></label>
-          <label>Year built <input id="addComp_year_built" type="text" placeholder="optional"/></label>
+          <label>Year built <input id="addComp_year_built" type="text" inputmode="numeric" placeholder="optional"/></label>
           <label class="span-all">Notes <input id="addComp_notes" type="text" placeholder="optional"/></label>
           <!-- Spelled out (2026-09-02): "Lat" and "Lng" were the question. -->
           <label title="Latitude in decimal degrees. Optional; with longitude, it keeps this address off third-party geocoders.">Latitude <input id="addComp_lat" type="text" placeholder="43.6187 (optional)"/></label>
@@ -1552,7 +1552,7 @@ ${tabButtons}
             <option value="repeat_client">Repeat client</option>
             <option value="other" selected>Other</option>
           </select></label>
-          <label>Size (SF) <input id="bovSize" type="text"/></label>
+          <label>Size (SF) <input id="bovSize" type="text" inputmode="decimal"/></label>
           <label>Received <input id="bovDate" type="date"/></label>
           <label class="span2">Address <input id="bovAddr" type="text" placeholder="optional"/></label>
           <label class="span2">Notes <input id="bovNotes" type="text" placeholder="optional"/></label>
@@ -2244,6 +2244,9 @@ ${tabButtons}
   // to change the cap rate" in the table itself). It is a stated figure, never
   // derived, so it is a typed cell like price rather than a td.ro; the server
   // parses it with parsePercent, which takes 5.75 and 5.75% alike.
+  // The cells that hold a figure bring up a phone's number keyboard
+  // (2026-11-15). Still type=text: a cell shows "$1,250,000" and "6.25%".
+  var NUM_CELLS={price:1,size_sqft:1,cap_rate:1};
   var CELL_FIELDS=["address","property_type","transaction","deal_date","price","size_sqft","cap_rate"];
 
   // A cell shows the FORMATTED figure and holds the raw one, swapping to raw
@@ -2301,7 +2304,7 @@ ${tabButtons}
     // deal_date's raw mirrors its display for the undated case — "undated" is
     // a real input value the server accepts, unlike "" which it refuses.
     var raw=inh?"":(c[k]==null?(k==="deal_date"?"undated":""):c[k]),shown=cellDisplay(k,c[k]);
-    return '<input type="text" class="cell'+(inh?" inh":"")+'" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
+    return '<input type="text"'+(NUM_CELLS[k]?' inputmode="decimal"':"")+' class="cell'+(inh?" inh":"")+'" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
       '" data-raw="'+escA(raw)+'" value="'+escA(shown)+'"'+
       (inh?' title="'+escA(INH_TITLE)+'"':"")+
       ' style="min-width:'+cellWidth(k,shown)+'ch" aria-label="'+escA(sheetLabel(k))+'"/>';

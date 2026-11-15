@@ -2224,6 +2224,52 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       .hm-first-key a { position: relative; }
       .hm-first-key a::after { content: ""; position: absolute; inset: -10px; }
     }
+    /* Touch targets, second pass (2026-11-15; app-shell.md). The first pass
+       measured pages with little in them. With a firm, buildings and a report
+       on screen, and the dialogs open, another forty controls were under 32px
+       under a finger, the smallest 16px: Close in Settings and Firm settings,
+       "Not now" and "Forgot password?" on sign-in, a member's Remove, the
+       report's two tabs, Copy, "More details" on a comp card, and a few links
+       on Home and the home page. Each takes the same invisible overlay,
+       reaching no further than half the room to its nearest neighbour
+       (test/phone-taps.test.js lists each with that room). */
+    @media (pointer: coarse) {
+      #hmPanePeople .dk-toggle, #firmClose, #settingsClose, #acctCancel, #acctForgotLink, #firmMemberRows button, #themeToggleApp,
+      #acctTabs button, #reportTabs button, #copySummaryBtn, .cardmore > summary, .rd-desk-market-body a, #homeInfo a { position: relative; }
+      #hmPanePeople .dk-toggle::after, #firmClose::after, #settingsClose::after, #acctCancel::after, #acctForgotLink::after,
+      #firmMemberRows button::after, #themeToggleApp::after, #acctTabs button::after, #reportTabs button::after,
+      #copySummaryBtn::after, .cardmore > summary::after, .rd-desk-market-body a::after, #homeInfo a::after { content: ""; position: absolute; inset: -6px; }
+      #hmPanePeople .dk-toggle::after { inset: -7px -6px; }
+      #firmClose::after, #settingsClose::after { inset: -8px; }
+      #acctCancel::after, #acctForgotLink::after { inset: -6px -8px; }
+      #firmMemberRows button::after { inset: -8px -4px; }
+      #themeToggleApp::after { inset: -4px; }
+      #reportTabs button::after { inset: -6px -8px; }
+      .cardmore > summary::after { inset: -6px 0; }
+      .rd-desk-market-body a::after { inset: -4px -6px -10px; }
+      #homeInfo a::after { inset: -3px -10px -9px; }
+      /* A report's "How this range is calculated" and its two siblings have
+         carried a 6px overlay for every pointer (28px in all). Under a
+         finger it is 9px, 34px in all; each stands 30px or more from the
+         next control. */
+      .disclose { position: relative; }
+      .disclose::after { content: ""; position: absolute; left: 0; right: 0; top: -9px; bottom: -9px; }
+      /* Four that take real room instead. Today's foot links wrap 6px apart,
+         too close for an overlay, so each line is 34px (20 before). The
+         firm's "share by default" box is its whole label, 34px. The report's
+         Expanding / Flat / Contracting buttons sit in a frame that clips an
+         overlay, as do the map's Properties / Permits buttons below. */
+      .hm-more { row-gap: 0; }
+      .hm-more a { padding: 7px 0; }
+      #firmDefaultWrap { min-height: 34px; }
+      #userReadControls button { min-height: 34px; }
+    }
+    /* The map's switch is 36px under a finger on a phone or tablet (30
+       before). Not above 900px: there the firm row beside the rail is lined
+       up on this switch's rows to the pixel (test/home-head.test.js). */
+    @media (pointer: coarse) and (max-width: 899px) {
+      .hm-layers button { min-height: 36px; }
+    }
     /* The market dots: Leaflet circles, coloured here so they follow the theme. */
     .hm-mkt { fill: var(--ink); fill-opacity: .85; stroke: var(--card); stroke-width: 1.5; }
     @media (min-width: 900px) {

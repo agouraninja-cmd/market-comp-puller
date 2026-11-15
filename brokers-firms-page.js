@@ -99,6 +99,12 @@ main.wrap{max-width:none;padding:0}
 .bfacts{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:24px 0 0}
 .bfalt{font-size:var(--text-compact);color:var(--ink-mute);text-decoration:underline;text-decoration-color:var(--edge)}
 .bfalt:hover{color:var(--ink)}
+/* Touch targets (2026-11-15; app-shell.md). Under a finger the hero's quiet
+   second link and the closing band's are reached 8px past their 22px line. */
+@media (pointer:coarse){
+  .bfalt,.bfcta .sub{position:relative}
+  .bfalt::after,.bfcta .sub::after{content:"";position:absolute;inset:-8px -6px}
+}
 /* Section headers. The band's h2 is the serif 29px of the design; .card h2 in
    MARKET_CSS is 19px and belongs to a card, not to a band. */
 .bfband h2{font-weight:600;font-size:29px;line-height:1.2;

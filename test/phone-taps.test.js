@@ -96,6 +96,8 @@ const FILES = {
   "permit-compare.js": read("permit-compare.js"),
   "market-rank-page.js": read("market-rank-page.js"),
   "messages-page.js": read("messages-page.js"),
+  "buildings-page.js": read("buildings-page.js"),
+  "brokers-firms-page.js": read("brokers-firms-page.js"),
   "server.js": read("server.js"),
   "index.html": read("index.html"),
 };
@@ -128,7 +130,33 @@ const OVERLAYS = [
   ["messages-page.js", "#msgRBack", 8, 12, "the same header, on a report"],
   ["messages-page.js", ".msg-unsend", 8, 4, "its own message's line; it stands 8px from the edge"],
   ["messages-page.js", ".msg-more", 7, 7, "a 30px button in the 48px slot the row keeps clear for it"],
+  // The second pass (2026-11-15): the dialogs, Home with a firm, the report,
+  // Buildings and the public pages, measured with a firm, buildings and a
+  // report on screen. Each reach is at most half the gap to the nearest
+  // other control.
+  ["index.html", "#hmPanePeople .dk-toggle", 7, 6, "15px under the list above it"],
+  ["index.html", "#firmClose", 8, 8, "17px under the dialog's last field"],
+  ["index.html", "#settingsClose", 8, 8, "17px under the dialog's last row"],
+  ["index.html", "#acctCancel", 6, 8, "12px under the password box"],
+  ["index.html", "#acctForgotLink", 6, 8, "12px under the password box"],
+  ["index.html", "#firmMemberRows button", 8, 4, "member rows stand 21px apart"],
+  ["index.html", "#themeToggleApp", 4, 4, "a 30px switch with a border"],
+  ["index.html", "#acctTabs button", 6, 6, "the two tabs stand 16px apart"],
+  ["index.html", "#reportTabs button", 6, 8, "the two tabs stand 24px apart"],
+  ["index.html", "#copySummaryBtn", 6, 6, "alone at the end of its card's heading"],
+  ["index.html", ".cardmore > summary", 6, 0, "33px over the next card"],
+  ["index.html", ".rd-desk-market-body a", 10, 6, "8px under the line above it, the card's padding below"],
+  ["index.html", "#homeInfo a", 9, 10, "its band's 20px padding; the two links stand 37px apart"],
+  ["index.html", ".disclose", 9, 0, "each stands 30px or more from the next control"],
+  ["buildings-page.js", ".bs-page .kicker a", 12, 5, "the two links back stand 14px apart, over the page's title"],
+  ["buildings-page.js", ".bs-lease-act .bs-lnk", 8, 4, "a section's own link; two of them stand 10px apart"],
+  ["brokers-firms-page.js", ".bfalt", 8, 6, "18px beside the hero's button"],
+  ["brokers-firms-page.js", ".bfcta .sub", 8, 6, "12px under the closing band's button"],
 ];
+// A control that carries a smaller overlay for EVERY pointer, by an older
+// rule, and a taller one under a finger. The only-under-a-finger check lets
+// it be styled outside a touch block; the other three checks still hold it.
+const ALSO_WITH_A_MOUSE = { ".disclose": /\n    \.disclose::after \{ content: ""; position: absolute; left: 0; right: 0; top: -6px; bottom: -6px; \}/ };
 
 // Hosts that are positioned by their own rule elsewhere in the sheet, and so
 // need no `position:relative` in the block.
@@ -216,12 +244,30 @@ test("the controls that take real room under a finger", () => {
   // the one button a chat cannot do without.
   const msgs = coarseBlocks(FILES["messages-page.js"]).join("\n");
   assert.equal(declsFor(msgs, ".msg-actions .msg-btn")["min-height"], "40px");
+  // The second pass's four on the app page. Today's foot links wrap 6px
+  // apart, too close for an overlay; the firm's share-by-default box is its
+  // label; the report's read buttons sit in a frame that clips an overlay.
+  const app = coarseBlocks(FILES["index.html"]).join("\n");
+  assert.equal(declsFor(app, ".hm-more a").padding, "7px 0");
+  assert.equal(declsFor(app, ".hm-more")["row-gap"], "0");
+  assert.equal(declsFor(app, "#firmDefaultWrap")["min-height"], "34px");
+  assert.equal(declsFor(app, "#userReadControls button")["min-height"], "34px");
+  // The map's switch, on a phone or tablet only: above 900px the firm row
+  // beside the rail is lined up on this switch's rows (home-head.test.js).
+  assert.match(FILES["index.html"], /@media \(pointer: coarse\) and \(max-width: 899px\) \{\s*\.hm-layers button \{ min-height: 36px; \}\s*\}/);
+  // /buildings: a row's address and Remove stand 2px apart on a phone, so
+  // each takes real padding (34px in all) and no overlay.
+  const bld = coarseBlocks(FILES["buildings-page.js"]).join("\n");
+  assert.equal(declsFor(bld, ".bl-addr").padding, "6px 0");
+  assert.equal(declsFor(bld, ".bl-rm").padding, "8px 0");
+  assert.ok(!rules(bld).some(([sels]) => sels.includes(".bl-rm::after") || sels.includes(".bl-addr::after")), "a /buildings row has an overlay again: on a phone it lies over the control 2px away");
 });
 
 test("the overlays are under a finger only, and each control they name is still in its page", () => {
   // Not a width query: a tablet is wide and still a finger, and a narrow
   // desktop window is still a mouse, whose exact boxes must not grow.
   for (const [name, host] of OVERLAYS) {
+    if (ALSO_WITH_A_MOUSE[host]) { assert.match(FILES[name], ALSO_WITH_A_MOUSE[host], name + ": " + host + "'s every-pointer overlay changed; decide whether it still belongs on this list"); continue; }
     const src = FILES[name].replace(/\/\*[\s\S]*?\*\//g, "").replace(/\\"/g, '"');
     const outside = src.replace(/@media \(pointer: ?coarse\) ?\{[\s\S]*?\}\s*\}/g, "");
     const esc = host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s*>\s*/g, "\\s*>\\s*").replace(/ /g, "\\s+");
@@ -240,5 +286,13 @@ test("the overlays are under a finger only, and each control they name is still 
   has("permit-compare.js", '<div class="kicker"><a href="/permits">');
   has("market-rank-page.js", '<ol class="rke-list">');
   has("messages-page.js", 'class="msg-btn sm msg-unsend"');
+  for (const id of ["firmClose", "settingsClose", "acctCancel", "acctForgotLink", "firmMemberRows", "themeToggleApp", "acctTabs", "reportTabs", "copySummaryBtn", "homeInfo", "firmDefaultWrap", "userReadControls"]) {
+    has("index.html", 'id="' + id + '"');
+  }
+  has("index.html", 'class="rd-desk-market-body"');
+  has("buildings-page.js", '<p class="bs-lease-act"><button type="button" class="bs-lnk" id="bsLeaseAdd">');
+  // Never the Edit / Remove links inside a row: rows stand a line apart.
+  assert.ok(!/[},{]\s*\.bs-lnk::after/.test(FILES["buildings-page.js"]), "every .bs-lnk has a touch overlay: inside a lease row it lies over the rows above and below");
+  has("brokers-firms-page.js", 'class="bfalt"');
   has("messages-page.js", 'class="msg-btn primary sm" id="msgSend"');
 });

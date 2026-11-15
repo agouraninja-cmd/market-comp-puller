@@ -856,6 +856,23 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
      shelf is the FIFTH child, so the even-child divider misses it. */
   .vd-strip.nopub #cSharedCell,.vd-strip.nopub #cRecentCell{border-left:1px solid var(--hair)}
   .vd-strip .lfig{font-size:22px}
+  /* The list starts sooner on a phone (2026-11-15). It began 1,115px down an
+     844px screen, under the page's eyebrow, four figures 276px tall, the map
+     and the filters. Three things here and one in the script (the map starts
+     hidden on a phone, mapStartsHidden): the page's top padding is the other
+     pages' 20px, the eyebrow goes (the line under the title says the same),
+     and a figure sits on its label's line, its sub-line whole beneath, which
+     takes the strip from 276px to about 170. */
+  main.wrap{padding-top:20px}
+  main.wrap>.kicker{display:none}
+  .vd-strip .lcell{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;column-gap:8px;padding:10px 14px}
+  /* The display above out-ranks .hide, and two of the strip's cells are
+     hidden by that class (Published, Last 12 months, Shared with firm take
+     turns): without this line every one of them shows. */
+  .vd-strip .lcell.hide{display:none}
+  .vd-strip .llab{margin:0}
+  .vd-strip .lfig{grid-column:2;grid-row:1}
+  .vd-strip .lsub{grid-column:1/-1;margin-top:2px}
   /* The ledger becomes two-line rows: the meta line and the figure's
      sub-line stand in for the columns a phone has no room for. */
   .vd-lt{min-width:0}
@@ -872,6 +889,11 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   .vd-band .vd-legend{top:10px;bottom:auto;left:52px;gap:8px;padding:5px 8px;font-size:var(--text-tiny)}
   .filters.vb-ledger>label.vb-find{flex:1 1 100%;order:-1;margin-bottom:0}
   .filters.vb-ledger>label.vb-find input{width:100%;font-size:var(--text-input)}
+  /* Group by, Show map and More share one line on a 390px phone: with the
+     buttons' 12px side padding they were 2px too wide and More took a line
+     of its own (49px) whenever the map was hidden, which on a phone it now
+     is to begin with. */
+  .filters.vb-ledger .btn{padding-left:10px;padding-right:10px}
   .vd-qv{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;flex:1 1 100%;order:1}
 }
 @media (max-width:900px){
@@ -3759,12 +3781,22 @@ ${tabButtons}
   var bmMap=null,bmLayer=null,bmPins={},bmFitKey=null;
   // How the ledger groups, and whether the band is hidden: per browser, like
   // the view itself. "" groups by nothing.
-  var bmGroup="market",mapHidden=false;
+  var bmGroup="market",mapHidden=false,map0=null;
   try{
     var g0=window.localStorage&&window.localStorage.getItem("vaultLedgerGroup");
     if(g0==="type")bmGroup="type"; else if(g0==="none")bmGroup="";
-    mapHidden=!!(window.localStorage&&window.localStorage.getItem("vaultLedgerMap")==="hidden");
+    map0=window.localStorage&&window.localStorage.getItem("vaultLedgerMap");
   }catch(e){}
+  // The member's own choice wins on every screen. With none made, the band
+  // starts hidden on a phone (the stylesheet's 640px): there it and its note
+  // stood 280px tall between the member and their list, and Show map, beside
+  // More, is one tap away. A wider screen starts with it, as before.
+  function mapStartsHidden(stored){
+    if(stored==="hidden")return true;
+    if(stored==="shown")return false;
+    try{ return !!(window.matchMedia&&window.matchMedia("(max-width:640px)").matches); }catch(e){ return false; }
+  }
+  mapHidden=mapStartsHidden(map0);
   $("bmGroup").value=bmGroup;
   function setBookView(v){
     bookView=v==="table"?"table":"map";

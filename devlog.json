@@ -1,6 +1,18 @@
 [
   {
     "date": "2026-11-15",
+    "type": "improvement",
+    "title": "On a phone, Your comps reaches your list sooner",
+    "details": "On a phone the list of comps started about 1,115px down the page, more than a full screen, under the title, four figures, the map and the filters. It now starts at about 715px, so the list and its first market are on the first screen. Three changes: the map starts hidden on a phone (tap Show map, beside More, to bring it back; your choice is remembered), each figure sits on the same line as its label, and the small “Private to you” line above the title is gone, since the line under the title says the same. Tablets and computers are unchanged."
+  },
+  {
+    "date": "2026-11-15",
+    "type": "improvement",
+    "title": "More small buttons and links are easier to tap",
+    "details": "A second pass on phones and tablets, this time with a firm, buildings and a report on screen and the pop-up windows open. About forty more controls were under 32px tall, the smallest 16px: Close in Settings and Firm settings, “Not now” and “Forgot password?” on sign-in, Remove on a firm member and on a building, the report’s Market Report and Analysis tabs, Copy, “More details” on a comp card, the links at the foot of Today on Home, and a few links on the public pages. Each now answers a tap a little past its edge. On Buildings, each row’s address and Remove are taller. Nothing changes with a mouse."
+  },
+  {
+    "date": "2026-11-15",
     "type": "fix",
     "title": "A conversation in Messages fits one phone screen",
     "details": "On a phone, opening a conversation showed its oldest message at the top of a long page, and the box you type in sat under every message: with eleven messages it was about 1,450px down, nearly two screens of scrolling before you could reply. An open conversation is now one screen: the newest message is in view, older ones scroll inside it, and the message box and Send stay just above the bottom bar. Send and Attach are taller (40px, from 27px), and Back, Conversation, Comps, the ⋯ menu and Unsend answer a tap a little past their edge. The round Feedback button, which floated over Send, steps aside while a conversation is open. Nothing changes on a computer."

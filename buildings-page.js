@@ -66,6 +66,14 @@ function renderBuildingsBody(boot) {
   .bl-addr{flex-basis:100%}
   .bl-meta{flex:1 1 auto;min-width:0;white-space:normal}
 }
+/* Touch targets (2026-11-15; app-shell.md). Under a finger a row's address
+   and its Remove are 34px each (22 and 18 before). They take real padding,
+   not an overlay: on a phone they stand 2px apart, one over the other, and
+   an overlay tall enough to help would lie on its neighbour. */
+@media (pointer:coarse){
+  .bl-addr{padding:6px 0}
+  .bl-rm{padding:8px 0}
+}
 .bl-note{font-size:var(--text-small);color:var(--ink-3);margin:10px 0 0}
 .bl-msg{font-size:var(--text-small);color:var(--ink-2);margin:10px 0 0}
 .bl-msg.bad{color:var(--err-text)}
@@ -293,6 +301,17 @@ function renderBuildingSheetBody(boot) {
 .bs-lnk{appearance:none;border:0;background:none;padding:0;font:inherit;font-size:var(--text-tiny);color:var(--ink-3);text-decoration:underline;cursor:pointer}
 .bs-lnk:hover{color:var(--red)}
 .bs-lnk.on{color:var(--ok-text);text-decoration:none}
+/* Touch targets (2026-11-15; app-shell.md). Under a finger the two links
+   back (14px) and a section's own link, "Add a lease" or "Attach a contact"
+   (18px), are reached past their text by an overlay that moves nothing.
+   Only the section's own link (.bs-lease-act), never the Edit and Remove
+   links inside a lease, contact or note row: those rows stand one line
+   apart, and an overlay there would lie over the row above and below. */
+@media (pointer:coarse){
+  .bs-page .kicker a,.bs-lease-act .bs-lnk{position:relative}
+  .bs-page .kicker a::after,.bs-lease-act .bs-lnk::after{content:"";position:absolute;inset:-12px -5px}
+  .bs-lease-act .bs-lnk::after{inset:-8px -4px}
+}
 .bs-notes .body{white-space:pre-wrap;font-size:var(--text-compact);color:var(--ink-body);margin:0}
 .bs-lease{display:grid;grid-template-columns:repeat(auto-fill,minmax(9rem,1fr));gap:8px 12px;margin:10px 0 12px}
 .bs-lease label{display:flex;flex-direction:column;gap:3px;font-size:var(--text-tiny);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}

@@ -407,7 +407,13 @@ STARTS then can outlive the wait.
 > **Comps, and no vault (2026-10-13, the owner: "Integrate it to the
 > report section and change the report section and name it Comps", and
 > "the vault doesn't even exist any more"): Home, Messages, Pipeline |
-> Markets, Comps, Permits.** The row that was Comp report is **Comps**,
+> Markets, Comps, Permits.** **Since 2026-11-15 (the owner: "The run a comp
+> report tab needs to be the first tab to pop up when you click comps. and
+> the Comps tab itself needs to be above markets") it is Home, Messages,
+> Pipeline | Comps, Markets, Permits, and the row's `href` is `/bulk`**, so
+> the Tools label now sits directly above Comps (nav-parity measures it)
+> and `INSTANT_NAV_APP` keeps `/bulk` warm instead of `/comps`. Read
+> `href="/comps"` and "Markets, Comps" below as history. The row that was Comp report is **Comps**,
 > `#navComps` on both nav authors, `href="/comps"` with `NAV_ICONS.reports`.
 > Comps is a section of two tabs, `compsSectionTabs(current)` in server.js
 > (`COMPS_TABS`: "Run a comp report" `/bulk`, then "Your comps" `/comps`, a

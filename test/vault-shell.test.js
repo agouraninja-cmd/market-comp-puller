@@ -37,7 +37,7 @@ const HUB_JS = read("hub-page.js");
 test("/comps and /pipeline are rendered by marketShell, header and footer included", async (t) => {
   const srv = await boot({});
   t.after(() => srv.stop());
-  for (const [page, row] of [["/comps", "navComps"], ["/pipeline", "navPipe"]]) {
+  for (const [page, row, rowHref] of [["/comps", "navComps", "/bulk"], ["/pipeline", "navPipe", "/pipeline"]]) {
   const html = await (await fetch(srv.base + page, { headers: SESSION })).text();
 
   // One document, and the shell's.
@@ -51,14 +51,14 @@ test("/comps and /pipeline are rendered by marketShell, header and footer includ
   // it renders that the copy never did.
   assert.match(html, /<div class="hleft">/, "not marketBar's header");
   const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
-  // The rail since 2026-10-13: Home, Messages, Pipeline | Markets, Comps,
-  // Permits.
-  for (const href of ["/desk", "/messages", "/pipeline", "/markets", "/comps", "/permits"]) {
+  // The rail since 2026-11-15: Home, Messages, Pipeline | Comps (opening
+  // /bulk, Run a comp report), Markets, Permits.
+  for (const href of ["/desk", "/messages", "/pipeline", "/bulk", "/markets", "/permits"]) {
     assert.ok(nav.includes('href="' + href + '"'), page + "'s nav lost " + href);
   }
   // Each page is its own row's, and only that row is current.
   assert.equal((nav.match(/aria-current="page"/g) || []).length, 1, page + ": not exactly one current row");
-  assert.match(nav, new RegExp('id="' + row + '" href="' + page + '" aria-current="page"'), page + " does not mark its row");
+  assert.match(nav, new RegExp('id="' + row + '" href="' + rowHref + '" aria-current="page"'), page + " does not mark its row");
   // The account cluster arrives with accountNavSlots. The theme toggle does
   // NOT, since later the same day (owner's call): the switch went back into
   // index.html's settings panel and out of every nav, so what this page owes

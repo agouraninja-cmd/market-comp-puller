@@ -3502,11 +3502,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              Home twice), so neither is ever current here. -->
         <a id="navPipe" href="/pipeline" class="hover:text-ink"><svg class="nvi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h17l-6 7.25v7.75l-5-2.5v-5.25z"/><path d="M6.9 8.5h10.2"/></svg><span class="nvl">Pipeline</span></a>
         <a id="navSites" href="/sites" class="hover:text-ink"><svg class="nvi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.5c-3.9-3.3-6.5-6.6-6.5-10.5a6.5 6.5 0 0 1 13 0c0 3.9-2.6 7.2-6.5 10.5z"/><circle cx="12" cy="10" r="2.5"/></svg><span class="nvl">Sites</span></a>
-        <!-- The tools group's label. Rail-only, and present for every visitor
-             so the two nav authors keep emitting the same shape -- see
-             server.js's marketBar and RAIL_CSS for the twin. -->
-        <span class="navsec">Tools</span>
-        <a href="/markets" class="hover:text-ink"><svg class="nvi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6.5l6-2 5 2 6-2v13l-6 2-5-2-6 2z"/><path d="M9.5 4.5v13M14.5 6.5v13"/></svg><span class="nvl">Markets</span></a>
         <!-- A "Run a report" row (/run-report) sat here for one day,
              2026-09-04, and the owner took it out the same evening: Bulk
              valuation is the comp-report tool (one address or fifty), and a
@@ -3529,9 +3524,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              row hidden until canBulkValue (its shape before Draft C) would
              leave them no door. marketBar carries the twin.
              Comps since 2026-10-13: a section, the member's own comps at
-             /comps (the row's address) and the comp report tool at /bulk.
+             /comps (the row's address until 2026-11-15) and the comp report tool at /bulk.
              index.html never serves either, so it never marks this row. -->
-        <a id="navComps" href="/comps" class="hover:text-ink"><svg class="nvi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 4.5V18A1.5 1.5 0 0 0 6 19.5h14.5"/><path d="M8.5 15.5v-3M12.5 15.5v-8M16.5 15.5v-5"/></svg><span class="nvl">Comps</span></a>
+        <!-- Comps above Markets, and the row opens /bulk, the Run a comp
+             report tab, since 2026-11-15 (the owner: Run a comp report is the
+             first tab Comps opens, and Comps sits above Markets). The comps
+             the member has are the section's second tab, /comps. -->
+        <!-- The tools group's label. Rail-only, and present for every visitor
+             so the two nav authors keep emitting the same shape -- see
+             server.js's marketBar and RAIL_CSS for the twin. -->
+        <span class="navsec">Tools</span>
+        <a id="navComps" href="/bulk" class="hover:text-ink"><svg class="nvi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 4.5V18A1.5 1.5 0 0 0 6 19.5h14.5"/><path d="M8.5 15.5v-3M12.5 15.5v-8M16.5 15.5v-5"/></svg><span class="nvl">Comps</span></a>
+        <a href="/markets" class="hover:text-ink"><svg class="nvi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6.5l6-2 5 2 6-2v13l-6 2-5-2-6 2z"/><path d="M9.5 4.5v13M14.5 6.5v13"/></svg><span class="nvl">Markets</span></a>
         <!-- The Permit tracker (2026-09-24): the THIRD Tools row, after Comp
              report (owner's order). marketBar carries the twin. Its unread dot
              (2026-09-27) is a tracked permit's step completing; filled by

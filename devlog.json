@@ -2,6 +2,12 @@
   {
     "date": "2026-11-15",
     "type": "improvement",
+    "title": "Comps opens on Run a comp report, and sits above Markets",
+    "details": "Clicking Comps in the side menu now opens Run a comp report, the section's first tab, instead of Your comps. Comps is also the first row under Tools, above Markets."
+  },
+  {
+    "date": "2026-11-15",
+    "type": "improvement",
     "title": "Run a report fits on one screen",
     "details": "The page is shorter and simpler. The form lost its heading row and starts with a three-line address box that grows with your list, and each address in a run is one line, with the range in its own column and a green tick where every row used to say Done. On a 1440 by 800 laptop window a finished eight-address run used to end 2,109px down the page; it now ends at 781px. While a run is on screen the form folds away and Earlier runs closes to one line; New report brings the form back, and a click opens the list. Download CSV, Run again, Rename and Delete are behind a three-dot button on each earlier run. On a phone each address is a small card, so the table no longer slides off the side. Also fixed: in dark mode the red button was pale pink with white words, the row-number column was 180px wide, the size box showed no outline when clicked, and on the app page a list run’s Cancel and Add to portfolio buttons did nothing. The note at the bottom is one sentence now; it still says every figure is an automated estimate and not an appraisal."
   },

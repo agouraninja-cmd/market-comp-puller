@@ -105,17 +105,18 @@ test("the tools group is labelled on both rails, and shows on neither bar", () =
   // three-tab story got a reading fix instead of a reshuffle. Two rules make
   // that work and both are easy to half-apply across the two nav authors.
 
-  // 1. The label exists in both, immediately before Market explorer, so the
-  //    group starts at the same row on both sides of a click.
+  // 1. The label exists in both, immediately before the group's first row,
+  //    so the group starts at the same row on both sides of a click. Comps
+  //    is that row since 2026-11-15 (owner's call: Comps above Markets).
   for (const [name, src, row] of [
-    ["server.js", SERVER_JS, '<a href="/markets"'],
-    ["index.html", INDEX_HTML, '<a href="/markets"'],
+    ["server.js", SERVER_JS, '<a id="navComps" href="/bulk"'],
+    ["index.html", INDEX_HTML, '<a id="navComps" href="/bulk"'],
   ]) {
     const at = src.indexOf('class="navsec">Tools<');
     assert.ok(at > -1, name + " has no tools label — the rail's one grouping rule");
     const next = src.indexOf(row, at);
     assert.ok(next > at && next - at < 400,
-      name + " puts the label somewhere other than directly above Market explorer");
+      name + " puts the label somewhere other than directly above Comps");
   }
 
   // 2. It is rail-ONLY, and the default has to sit OUTSIDE the 900px guard.
@@ -173,7 +174,8 @@ test("neither rail has a Data or a Reports row, and both have Comps under Tools"
   // 2026-10-13 Comp report became Comps, a section (the member's comps at
   // /comps and the comp report tool at /bulk). The rail is Home, Messages,
   // Pipeline | Markets, Comps, Permits on BOTH sides. A row on one side only
-  // is the seam this file exists to catch.
+  // is the seam this file exists to catch. Since 2026-11-15 it is Comps,
+  // Markets, Permits, and the Comps row opens /bulk (Run a comp report).
   assert.ok(!INDEX_HTML.includes('id="menuVaultLink"'), "the app's rail grew a Data row back");
   assert.ok(!SERVER_JS.includes('id="navVault"'), "the shared rail grew a Data row back");
   assert.ok(!/>Your vault<|>Vault</.test(INDEX_HTML),
@@ -183,8 +185,8 @@ test("neither rail has a Data or a Reports row, and both have Comps under Tools"
   assert.ok(!SERVER_JS.includes('<a href="/desk#reports">'), "the shared rail grew its Reports row back");
   // Both say Comps for /comps, with the same id and icon, under the Tools
   // label; the shared rail marks it on /bulk too, the section's other tab.
-  assert.match(INDEX_HTML, /<span class="navsec">Tools<\/span>[\s\S]{0,4000}?id="navComps" href="\/comps"[\s\S]{0,600}?<span class="nvl">Comps</);
-  assert.match(SERVER_JS, /<a id="navComps" href="\/comps"\$\{current === "\/comps" \|\| current === "\/bulk" \? ' aria-current="page"' : ""\}>\$\{NAV_ICONS\.reports\}<span class="nvl">Comps<\/span><\/a>/);
+  assert.match(INDEX_HTML, /<span class="navsec">Tools<\/span>[\s\S]{0,4000}?id="navComps" href="\/bulk"[\s\S]{0,600}?<span class="nvl">Comps</);
+  assert.match(SERVER_JS, /<a id="navComps" href="\/bulk"\$\{current === "\/comps" \|\| current === "\/bulk" \? ' aria-current="page"' : ""\}>\$\{NAV_ICONS\.reports\}<span class="nvl">Comps<\/span><\/a>/);
   assert.ok(!/<span class="nvl">Comp report</.test(INDEX_HTML + SERVER_JS), "a rail still says Comp report");
 });
 
@@ -744,7 +746,7 @@ test("every rail icon in the app is the server's drawing", () => {
     ["pipeline", '<a id="navPipe" href="/pipeline"'],
     ["sites", '<a id="navSites" href="/sites"'],
     ["markets", '<a href="/markets"'],
-    ["reports", '<a id="navComps" href="/comps"'],
+    ["reports", '<a id="navComps" href="/bulk"'],
     ["permits", '<a href="/permits"'],
   ]) {
     const at = INDEX_HTML.indexOf(rowStart);

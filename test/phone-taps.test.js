@@ -95,6 +95,7 @@ const FILES = {
   "permits-page.js": read("permits-page.js"),
   "permit-compare.js": read("permit-compare.js"),
   "market-rank-page.js": read("market-rank-page.js"),
+  "messages-page.js": read("messages-page.js"),
   "server.js": read("server.js"),
   "index.html": read("index.html"),
 };
@@ -121,11 +122,28 @@ const OVERLAYS = [
   ["permits-page.js", ".pt-cmp", 10, 6, "the heading's own line"],
   ["permit-compare.js", ".pc-page .kicker a", 12, 8, "over the page's title, which is no control"],
   ["market-rank-page.js", ".rke-list a", 6, 0, "a row's own 5px padding and its hairline"],
+  // An open chat's own buttons, and a row's More (2026-11-15).
+  ["messages-page.js", ".msg-head .msg-btn", 8, 4, "the header's own 14px padding; its buttons stand 10px apart"],
+  ["messages-page.js", "#msgBack", 8, 12, "the header's 16px side padding on its left, 10px to the title on its right"],
+  ["messages-page.js", "#msgRBack", 8, 12, "the same header, on a report"],
+  ["messages-page.js", ".msg-unsend", 8, 4, "its own message's line; it stands 8px from the edge"],
+  ["messages-page.js", ".msg-more", 7, 7, "a 30px button in the 48px slot the row keeps clear for it"],
 ];
 
 // Hosts that are positioned by their own rule elsewhere in the sheet, and so
 // need no `position:relative` in the block.
-const ALREADY_PLACED = { ".vd-mapx": /\.vd-mapx\{position:absolute;/ };
+const ALREADY_PLACED = {
+  ".vd-mapx": /\.vd-mapx\{position:absolute;/,
+  ".msg-unsend": /\.msg-unsend\{position:absolute;/,
+  ".msg-more": /\.msg-more\{position:absolute;/,
+};
+// Hosts positioned by ANOTHER selector's rule in the same block: the id is a
+// button of that family in the markup, so the family's position:relative is
+// its own. Each entry names the rule and the markup that makes it true.
+const PLACED_BY = {
+  "#msgBack": [".msg-head .msg-btn", /<div class="msg-head">\s*<button class="msg-btn sm" id="msgBack"/],
+  "#msgRBack": [".msg-head .msg-btn", /<div class="msg-head">\s*<button class="msg-btn sm" id="msgRBack"/],
+};
 
 test("every touch overlay stands on a positioned control, in the same block", () => {
   const seen = new Set();
@@ -135,13 +153,21 @@ test("every touch overlay stands on a positioned control, in the same block", ()
         for (const sel of sels) {
           if (!/::after$/.test(sel)) continue;
           const host = sel.replace(/::after$/, "");
-          const overlay = declsFor(block, sel);
+          // A host positioned by its family also takes the family's overlay
+          // and only moves its edges.
+          const overlay = Object.assign({}, PLACED_BY[host] ? declsFor(block, PLACED_BY[host][0] + "::after") : {}, declsFor(block, sel));
           assert.equal(overlay.content, '""', name + ": " + sel + " draws nothing without content");
           assert.equal(overlay.position, "absolute", name + ": " + sel + " must be absolute, or it pushes its control's text");
           seen.add(name + " " + host);
           if (ALREADY_PLACED[host]) {
             assert.match(src, ALREADY_PLACED[host], name + ": " + host + " is no longer placed by its own rule");
             assert.equal(declsFor(block, host).position, undefined, name + ": " + host + " is absolute; position:relative here would drop it into the page's flow");
+            continue;
+          }
+          if (PLACED_BY[host]) {
+            const [family, markup] = PLACED_BY[host];
+            assert.equal(declsFor(block, family).position, "relative", name + ": " + family + " no longer positions " + host);
+            assert.match(src, markup, name + ": " + host + " is no longer a " + family + " in the markup, so nothing positions it");
             continue;
           }
           assert.equal(declsFor(block, host).position, "relative",
@@ -168,7 +194,7 @@ test("no touch overlay reaches further than the room measured around its control
   }
 });
 
-test("the three controls that take real room under a finger", () => {
+test("the controls that take real room under a finger", () => {
   // The comp set's Clear: on a phone the set's buttons wrap 8px apart, so an
   // overlay tall enough to help would lie over the row above. Padding moves
   // it instead.
@@ -186,6 +212,10 @@ test("the three controls that take real room under a finger", () => {
   for (const sel of [".bulk input[type=text]", ".bulk input[type=number]"]) {
     assert.deepEqual(declsFor(bulk, sel), fields, "/bulk's " + sel + " and its selects share a row and must share a height");
   }
+  // A chat's Send and Attach are 40px under a finger (27 before): Send is
+  // the one button a chat cannot do without.
+  const msgs = coarseBlocks(FILES["messages-page.js"]).join("\n");
+  assert.equal(declsFor(msgs, ".msg-actions .msg-btn")["min-height"], "40px");
 });
 
 test("the overlays are under a finger only, and each control they name is still in its page", () => {
@@ -209,4 +239,6 @@ test("the overlays are under a finger only, and each control they name is still 
   has("permits-page.js", '<a class="pt-cmp" href="/permits/compare">');
   has("permit-compare.js", '<div class="kicker"><a href="/permits">');
   has("market-rank-page.js", '<ol class="rke-list">');
+  has("messages-page.js", 'class="msg-btn sm msg-unsend"');
+  has("messages-page.js", 'class="msg-btn primary sm" id="msgSend"');
 });

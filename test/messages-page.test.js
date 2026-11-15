@@ -544,3 +544,60 @@ test("the menu, the About card and the rename box all back out on Escape, before
   assert.match(block, /if \(state\.menu \|\| state\.info\) \{[\s\S]{0,80}e\.stopPropagation\(\);/);
   assert.match(block, /if \(state\.renameKey\) \{[\s\S]{0,80}e\.stopPropagation\(\);/);
 });
+
+test("on a phone an open chat is one screen: the stream scrolls inside it and the box to type in is in view (2026-11-15)", () => {
+  // It was as tall as its messages. The page opened on the oldest one and
+  // the composer sat under all of them: 1,450px down with eleven messages.
+  const html = renderMessagesBody({ s: 200, j: {} });
+  const css = html.slice(html.indexOf("<style>"), html.indexOf("</style>")).replace(/\/\*[\s\S]*?\*\//g, "");
+  const CHAT = '\\.msg-page\\.on-thread:not\\(\\[data-view="reports"\\]\\)';
+  const narrow = css.match(/@media \(max-width:900px\)\{[\s\S]*?\n\}/);
+  assert.ok(narrow, "the one-pane block moved");
+  // A fixed height, the grid's one row held to it (an auto row grows with
+  // its content and the page's overflow:hidden would cut it off), and the
+  // screen as it is now (dvh) after the fallback (vh), never before it.
+  assert.match(narrow[0], new RegExp(CHAT + "\\{grid-template-rows:minmax\\(0,1fr\\);min-height:0;margin-bottom:8px;\\s*height:calc\\(100vh - 16px\\);height:calc\\(100dvh - 16px\\)\\}"));
+  assert.match(narrow[0], new RegExp(CHAT + " \\.msg-main\\{min-height:0;overflow-y:auto\\}"));
+  assert.match(css, /\.msg-stream\{flex:1;overflow-y:auto;min-height:0;/, "the stream no longer scrolls inside the chat");
+  // With the phone bar under it: 54px of bar (server.js RAIL_CSS), 8px above
+  // the chat and 8px between the two, and the safe area the bar also keeps.
+  const bar = css.match(/@media screen and \(max-width:899px\)\{\s*html\.nav-rail \.msg-page[\s\S]*?\n\}/);
+  assert.ok(bar, "the chat lost its rule for the phone bar");
+  assert.match(bar[0], new RegExp("html\\.nav-rail " + CHAT + "\\{\\s*height:calc\\(100vh - 70px - env\\(safe-area-inset-bottom,0px\\)\\);height:calc\\(100dvh - 70px - env\\(safe-area-inset-bottom,0px\\)\\)\\}"));
+  const rail = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  assert.match(rail, /html\.nav-rail body\{padding-bottom:calc\(54px \+ env\(safe-area-inset-bottom,0px\)\)\}/, "the phone bar is no longer 54px: the chat's 70px is 54 + 8 + 8");
+  // The Feedback button floats over the corner Send is in: put away while a
+  // chat is open, and Send moved clear of it where :has() is not understood.
+  assert.match(bar[0], new RegExp("html:has\\(" + CHAT + "\\) \\.tninja\\{display:none\\}"));
+  assert.match(bar[0], /@supports not selector\(:has\(a\)\)\{ html\.nav-rail \.msg-page\.on-thread \.msg-actions\{margin-right:36px\} \}/);
+  // Chats only. A report's pane has no scroller of its own, so a fixed
+  // height there would cut the report off under the page's overflow:hidden.
+  for (const m of css.matchAll(/([^{}]*\.on-thread[^{}]*)\{[^}]*(?:height:calc|grid-template-rows)/g)) {
+    assert.match(m[1], /:not\(\[data-view="reports"\]\)/, "a fixed height reaches the Reports pane: " + m[1].trim());
+  }
+  // In the page's flow. A fixed box is not scrolled by a phone's keyboard,
+  // so the composer would sit behind it.
+  assert.ok(!/\.msg-page[^{}]*\{[^}]*position:fixed/.test(css), "the open chat is position:fixed");
+
+  // The script half: both ways a chat opens bring it to the top of the
+  // screen, and opening a report (whose pane is as tall as it needs) does not.
+  const js = scriptOf(html);
+  assert.equal((js.match(/\$\("msgPage"\)\.className = "msg-page on-thread"; fitThread\(\);/g) || []).length, 2,
+    "a chat opens without being brought to the top of the screen");
+  assert.equal((js.match(/"msg-page on-thread"/g) || []).length, 3, "a fourth way into a pane: decide whether it is a chat");
+  const src = js.match(/function fitThread\(\)\{[\s\S]*?\n  \}/);
+  assert.ok(src, "fitThread moved");
+  const run = (matches, top, y) => {
+    const calls = [];
+    const win = { pageYOffset: y, scrollTo: (a, b) => calls.push([a, b]),
+      matchMedia: (q) => { assert.equal(q, "(max-width: 900px)", "fitThread asks a different width than the stylesheet's one-pane rule"); return { matches }; } };
+    new Function("window", "$", src[0] + "; fitThread();")(win, (id) => { assert.equal(id, "msgPage"); return { getBoundingClientRect: () => ({ top }) }; });
+    return calls;
+  };
+  assert.deepEqual(run(true, 297, 0), [[0, 289]], "the chat is not brought to 8px under the top of the screen");
+  assert.deepEqual(run(true, -40.4, 500), [[0, 452]], "scrolled past it, the chat is not brought back");
+  assert.deepEqual(run(true, 5, 0), [[0, 0]], "it asked to scroll above the page");
+  assert.deepEqual(run(false, 297, 0), [], "a wide screen was scrolled: there the chat is beside the list");
+  // A browser with no matchMedia is left alone, never thrown at.
+  new Function("window", "$", src[0] + "; fitThread();")({}, () => ({}));
+});

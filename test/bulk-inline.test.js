@@ -654,3 +654,202 @@ test("the page's heading names are bulk.js's own", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(mountRunView().run.listHeaders)),
     { address: BULK.ADDRESS_HEADERS, city: BULK.CITY_HEADERS, state: BULK.STATE_HEADERS });
 });
+
+// ---------------------------------------------------------------------------
+// One screen (2026-11-15, the owner's pick of Draft D of the Run a report
+// drafts: "everything needs to fit on the page at first glance and it needs
+// to be simplified", and "make the CSV run again rename and delete in a 3
+// dot click thingy").
+//
+// The run view is executed against the stand-in page again, because what it
+// promises is in what it draws: one line per address, a menu per earlier
+// run, a ledger that closes under an open run.
+// ---------------------------------------------------------------------------
+const doneRun = (over) => ({
+  id: "r1", status: "done", total: 12, done_count: 12, property_type: "Industrial", months: 24,
+  label: "Q3 portfolio review", created_at: "2026-10-23T18:04:00Z",
+  summary: { valued: 12, total: 12, low: 47420000, likely: 50445000, high: 52250000 }, ...over,
+});
+
+test("an earlier run is one line, and its four actions are behind a three-dot menu", () => {
+  const v = mountRunView();
+  v.run.init({ onRunAgain: () => {} });
+  v.run.setJobs([doneRun(), doneRun({ id: "r2", label: null, status: "running", done_count: 3, summary: null })]);
+  const html = v.el("bkPast").innerHTML;
+  const rows = html.split("<tr>").slice(1);
+  assert.equal(rows.length, 2);
+  // The menu: a real button that says what it is, and the four actions in it.
+  assert.match(rows[0], /<button type="button" class="mn-btn" aria-haspopup="true" aria-expanded="false" aria-label="More for Q3 portfolio review">/);
+  const menu = rows[0].slice(rows[0].indexOf('class="mn-menu hide"'));
+  assert.deepEqual([...menu.matchAll(/<a [^>]*>([^<]+)<\/a>/g)].map((m) => m[1]),
+    ["Download CSV", "Run again", "Rename", "Delete"]);
+  assert.match(menu, /href="\/api\/bulk\/export\.csv\?id=r1"/);
+  // The same hooks the row's handlers have always bound.
+  for (const hook of ['data-again="r1"', 'data-rename="r1"', 'data-del="r1"']) assert.ok(menu.includes(hook), hook);
+  // Nothing outside the menu still offers them.
+  assert.doesNotMatch(rows[0].slice(0, rows[0].indexOf('class="mn"')), /Rename|Delete|Run again|CSV/);
+  // A run still going offers what it has finished and its name, and neither
+  // Run again nor Delete.
+  const live = rows[1].slice(rows[1].indexOf('class="mn-menu hide"'));
+  assert.deepEqual([...live.matchAll(/<a [^>]*>([^<]+)<\/a>/g)].map((m) => m[1]), ["Download CSV", "Rename"]);
+  // One line: the day in words, the value without its low and high (those
+  // are on the run, a click away), a tick where a pill said Done.
+  assert.ok(rows[0].includes("Oct 23"), "the date is said in words");
+  assert.equal(html.includes("2026-10-23"), false, "the stored timestamp is not what a member reads");
+  assert.ok(rows[0].includes("$50,445,000"));
+  assert.equal(rows[0].includes("$47,420,000"), false, "the ledger no longer carries each run's range");
+  assert.match(rows[0], /class="tick" role="img" aria-label="Done"/);
+  assert.match(rows[1], /class="chip run">running</);
+  assert.equal(v.el("bkPastN").textContent, "2");
+});
+
+test("a run is one line per address, with the range in its own column", () => {
+  const v = mountRunView();
+  const items = [
+    { id: "a", status: "done", address: "1201 W Idaho St, Boise, ID", value_low: 3600000, value_likely: 3825000,
+      value_high: 3950000, psf_mid: 105, size_sqft: 36500, size_source: "county records", sale_comps: 5, trimmed: true,
+      recent_item_id: "rec1", cached: true },
+    { id: "b", status: "done", address: "9320 W Barnes Dr, Boise, ID", psf_mid: 99, sale_comps: 5, trimmed: true,
+      error: "No building size found." },
+    { id: "c", status: "failed", address: "2850 S Eagle Rd, Meridian, ID", error: "Comp search is temporarily unavailable." },
+  ];
+  v.run.showRun({ job: liveJob({ status: "done", total: 3, done_count: 3 }), items });
+  const html = v.el("bkRows").innerHTML;
+  assert.deepEqual([...html.slice(0, html.indexOf("</thead>")).matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]),
+    ["", "Address", "Likely value", "Range", "$/SF", "Size", "Sale comps", "Status"]);
+  const rows = html.slice(html.indexOf("<tbody>")).split("<tr>").slice(1);
+  assert.match(rows[0], /<td class="n c-v">\$3,825,000<\/td><td class="n c-r">\$3,600,000 – \$3,950,000<\/td>/);
+  // A size reads 36,500, and says where it came from beside it.
+  assert.match(rows[0], /value="36,500"/);
+  assert.match(rows[0], /<span class="src">county records<\/span>/);
+  assert.match(rows[0], /class="tick" role="img" aria-label="Done"/);
+  assert.ok(rows[0].includes('<a href="/?recent=rec1">'), "the address still opens its report");
+  // A row with no size is asked for one, and still lines up.
+  assert.match(rows[1], /value="" placeholder="add size"/);
+  assert.match(rows[1], /<span class="src"><\/span>/);
+  // A failed row keeps its word and its Retry.
+  assert.match(rows[2], /class="chip bad">failed</);
+  assert.match(rows[2], /class="retry" data-retry="c">Retry</);
+  assert.match(rows[2], /<td class="n c-s">—<span class="src"><\/span><\/td>/);
+});
+
+test("the view says on its own container that a run is on screen, and closes the ledger under it", () => {
+  const v = mountRunView();
+  const on = new Set();
+  v.el("bkJobDeck").parentNode = { classList: { toggle(c, yes) { if (yes) on.add(c); else on.delete(c); } } };
+  v.run.setJobs([doneRun()]);
+  assert.deepEqual([...on], [], "nothing is open before a run is drawn");
+  v.run.showRun({ job: liveJob({ status: "done", total: 1, done_count: 1 }), items: [{ ...oneRow[0], status: "done" }] });
+  assert.deepEqual([...on], ["bk-open"], "an open run is marked, and the ledger under it starts closed");
+  assert.equal(v.el("bkPastTg").attrs["aria-expanded"], "false");
+  // The stylesheet is what closes it, keyed on exactly those two classes.
+  assert.match(MOD.BULK_RUN_CSS, /\.bk-run \.bk-open:not\(\.bk-past-open\) #bkPastDeck \.pastw\{display:none\}/);
+  // The heading is a real button, and the list sits in the wrapper it hides.
+  const view = MOD.renderBulkRunMarkup({ past: true });
+  assert.match(view, /<button type="button" class="pasttg" id="bkPastTg" aria-expanded="true">Earlier runs/);
+  assert.match(view, /<div class="pastw"><table class="runs">/);
+  // This module still knows no form: /bulk folds its own on the class.
+  assert.match(MOD.BULK_CSS, /\.bulk \.bk-open:not\(\.bk-form\) \.desk,\.bulk \.bk-open:not\(\.bk-form\) \.lede\{display:none\}/);
+});
+
+test("the form folds while a run is on screen, and comes back when asked", () => {
+  const js = MOD.BULK_JS;
+  const runAt = js.indexOf("function run(){");
+  const run = js.slice(runAt, js.indexOf("function runAgain", runAt));
+  assert.match(run, /\.then\(function\(d\)\{\s*foldForm\(\);/, "starting a run folds the form");
+  const again = js.slice(js.indexOf("function runAgain"), js.indexOf("function fillTypes"));
+  assert.ok(again.includes("showForm();"), "Run again fills a form the member can see");
+  // New report is the run view's button and this page's to answer; the app
+  // page has no form, so there it stays hidden.
+  const view = MOD.renderBulkRunMarkup({ past: false });
+  assert.match(view, /<button type="button" class="btn sm ghost hide" id="bkNew">New report<\/button>/);
+  assert.equal(MOD.BULK_RUN_JS.includes("bkNew"), false, "the run view must not show a button only /bulk can answer");
+  assert.match(js, /var nw=\$\("bkNew"\);\s*if\(nw\)\{\s*nw\.className="btn sm ghost";/);
+  // An address handed over from Home or Sites is never hidden behind a run.
+  assert.match(js, /if\(pre&&!\$\("bulkText"\)\.value\)\{showForm\(true\);/);
+  // Executed: a form kept over one run folds when another is on screen, and
+  // one kept for a hand-over stays until a run is started from it.
+  const at = js.indexOf("var formFor=null;");
+  const src = js.slice(at, js.indexOf("\nfunction onRunState", at));
+  const hookAt = js.indexOf("function onRunState(job,items){");
+  const hook = js.slice(hookAt, js.indexOf("\n}", hookAt) + 2);
+  const mount = (openJob) => {
+    const cls = new Set();
+    const ctx = {
+      $: () => ({ classList: { add: (c) => cls.add(c), remove: (c) => cls.delete(c) } }),
+      BULKRUN: { state: () => ({ job: openJob }), msg() {} },
+      refreshCount() {}, singleJob: null, singleSite: null, location: {},
+    };
+    vm.runInNewContext(src + "\n" + hook, ctx);
+    return { ctx, shown: () => cls.has("bk-form") };
+  };
+  const a = mount({ id: "j1" });
+  a.ctx.showForm();
+  assert.equal(a.shown(), true);
+  a.ctx.onRunState({ id: "j1", status: "done" }, []);
+  assert.equal(a.shown(), true, "the run it was opened over is still the one on screen");
+  a.ctx.onRunState({ id: "j2", status: "done" }, []);
+  assert.equal(a.shown(), false, "another run on screen folds it");
+  const b = mount(null);
+  b.ctx.showForm(true);
+  b.ctx.onRunState({ id: "live", status: "running" }, []);
+  assert.equal(b.shown(), true, "a handed-over address stays in view when a running job attaches");
+  b.ctx.foldForm();
+  assert.equal(b.shown(), false);
+});
+
+test("the form is short, keeps every field, and the note still says what a figure is", () => {
+  const page = MOD.renderBulkPageBody({ s: 200, j: { types: [], jobs: [] } });
+  assert.equal(page.includes('class="dhead"'), false, "the head row is back");
+  // The count and the two links share the label's line by the stylesheet;
+  // in the markup they follow the box, so Tab reaches the box first.
+  const order = ['<label for="bulkText">', 'id="count"', 'id="bulkText"', 'id="pickFile"', 'id="useExample"'].map((x) => page.indexOf(x));
+  assert.ok(order.every((n) => n > -1), "the address row lost a part");
+  assert.deepEqual([...order].sort((x, y) => x - y), order, "the address row's markup order changed");
+  assert.match(MOD.BULK_CSS, /\.bulk \.addr \.links\{grid-column:3;grid-row:1;justify-self:end\}/);
+  assert.match(MOD.BULK_CSS, /\.bulk \.desk textarea\{min-height:72px/);
+  assert.ok(MOD.BULK_JS.includes('box.style.height=Math.min(box.scrollHeight+2,420)+"px"'), "the box no longer grows with a list");
+  // CLAUDE.md's rule, on the one sentence the note is now.
+  assert.match(page, /<p class="foot">Every figure is an automated estimate from comparable sales, not an appraisal\./);
+  // The red button takes the fill red: the link red lightens on a dark page
+  // and white words on it were pale pink.
+  assert.match(MOD.BULK_CSS, /\.bulk button\.go\{[^}]*background:var\(--red-fill\)/);
+});
+
+test("rules meant for other pages no longer reach the run's tables", () => {
+  const css = MOD.BULK_RUN_CSS;
+  // A note under a figure carried the site's 22px bottom margin.
+  assert.match(css, /\.bk-run \.sub\{[^}]*margin:2px 0 0;max-width:none\}/);
+  // The row number sat in a 180px column, and the table could not be
+  // narrower than 640px, which is why it slid off a phone.
+  assert.match(css, /\.bk-run td:first-child,\.bk-run th:first-child\{min-width:0\}/);
+  assert.match(css, /\.bk-run table\{width:100%;min-width:0;/);
+  // The size box lost its outline to the form's borderless-field rule, which
+  // is scoped to the form now.
+  assert.match(MOD.BULK_CSS, /\.bulk \.desk textarea,\.bulk \.desk input\[type=text\],\.bulk \.desk input\[type=number\],\.bulk \.desk select\{/);
+  assert.match(css, /\.bk-run input\.szin\{[^}]*border:1px solid transparent/);
+  // A phone gets a card per address.
+  assert.match(css, /@media \(max-width:640px\)\{[\s\S]*\.bk-run #bkRows thead,\.bk-run \.runs thead\{display:none\}/);
+});
+
+test("the menus and the run's own buttons work on both pages, and Escape stays on the page", () => {
+  const js = MOD.BULK_RUN_JS;
+  // index.html mounts this view and never calls init(), so the first draw
+  // binds the view's own controls too.
+  const at = js.indexOf("function renderJob(){");
+  assert.match(js.slice(at, at + 80), /drawProgress\(\);\s*wire\(\);/);
+  const wire = js.slice(js.indexOf("function wire(){"), js.indexOf("\n// Says, on the view's own container"));
+  assert.ok(wire.includes('$("bkCancel")') && wire.includes('$("bkAddAll")'), "Cancel and Add to portfolio are bound once, in wire()");
+  assert.ok(wire.includes("if(wired)return;"), "and only once");
+  // The header sends an unclaimed Escape back a page, so a menu's Escape
+  // claims the key, from the capturing phase (both listeners are on the
+  // document and the header's was bound first).
+  assert.match(wire, /document\.addEventListener\("keydown",function\(e\)\{\s*if\(e\.key!=="Escape"\)return;[\s\S]*?e\.preventDefault\(\);\s*closeMenus\(\);\s*\},true\);/);
+  // A page with no document listeners (the stand-in) must not throw.
+  assert.doesNotThrow(() => mountRunView().run.showRun({ job: liveJob(), items: oneRow }));
+  // The run's own menu holds what is asked for least, on both pages.
+  for (const view of [MOD.renderBulkRunMarkup({ past: true }), MOD.renderBulkInlineBlock()]) {
+    const menu = view.slice(view.indexOf('aria-label="More for this run"'), view.indexOf("</p>", view.indexOf('aria-label="More for this run"')));
+    assert.ok(menu.includes('id="bkAddAll"') && menu.includes('href="/desk">Go to Home'), "the run's menu lost an item");
+  }
+});

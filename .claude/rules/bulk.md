@@ -293,3 +293,71 @@ paths:
   report's loading card counts down from the same pace** (the same day): it
   is the first event of `/api/comps`' progress stream, and its rules are in
   search-pipeline.md under "Live search progress".
+
+- **One screen (2026-11-15; the owner's pick of Draft D of the Run a report
+  drafts, https://claude.ai/artifact/1xVfPSSr7SdVFfnjK3oy6p: "everything
+  needs to fit on the page at first glance and it needs to be simplified",
+  and "make the CSV run again rename and delete in a 3 dot click thingy").**
+  Measured on a 1440 by 800 window against the stand-in database: a finished
+  eight-address run ended 2,109px down the page and ends at 781px; the form
+  with three earlier runs under it ended at 1,100px and ends at 748px. Where
+  the notes above say the form is most of a screen, the ledger carries each
+  run's range, or a run's actions are links, read it as history. Rules:
+  - **The page shows the form or a run.** `renderJob` marks the run view's
+    own container `.bk-open` while a run is drawn (`syncOpen`; `#app` on
+    /bulk, `#bkInline` on the app page) and /bulk's stylesheet hides `.desk`
+    and the lede on it. The run view still knows no form. `.bk-form` is
+    /bulk's own class and keeps the form over a run: **New report**
+    (`#bkNew`, in the shared markup, shown and answered only by `BULK_JS`),
+    Run again, and an address handed over by `?address=` (`showForm(true)`,
+    kept until a run is started from the form, so a running job attaching at
+    load never hides it). `formFor` says for how long; starting a run folds
+    it (`foldForm`).
+  - **Under an open run, Earlier runs is one closed line** (`#bkPastTg`, a
+    real button with `aria-expanded`; `.bk-past-open` opens it and a
+    different run on screen closes it again). With no run open the list is
+    always shown and the button does nothing.
+  - **A three-dot menu (`menu()`, `.mn`).** One per earlier run (Download
+    CSV, Run again, Rename, Delete: the same `data-again` / `data-rename` /
+    `data-del` hooks the handlers always bound) and one on the open run (Add
+    valued rows to portfolio, Go to Home, and the app page's Earlier runs
+    link). ONE document listener opens and closes all of them, bound in
+    `wire()`. **Escape claims the key** (`preventDefault`, from the capturing
+    phase): the header's own listener sends an unclaimed Escape back a page.
+    A ledger with a menu open is not redrawn under the pointer (`pastStale`;
+    a running job redraws every four seconds). The earlier-runs table sits
+    in `.pastw`, which does NOT scroll sideways, because a scrolling box
+    clips the menu; under 640px the table is cards.
+  - **`wire()` binds the view's own controls once, from `init()` and from
+    the first draw.** index.html mounts this view and never calls `init()`,
+    so until this its Cancel and Add to portfolio were bound to nothing.
+  - **One line per address.** The range is its own column, a size reads
+    `36,500` with its source beside it in a fixed-width `.src` every row has
+    (so the figures line up), and a finished row is a tick (`rowStatus`; the
+    word stays as its `aria-label`). The cells carry classes (`c-n c-a c-v
+    c-r c-p c-s c-c c-st`, and `r-*` in the ledger) because the phone layout
+    places them by name.
+  - **Four site-wide rules are answered in `BULK_RUN_CSS`** and come back if
+    removed: `.sub`'s 22px bottom margin, `td:first-child`'s 180px,
+    `table`'s 640px floor (why the table slid off a phone) and `th`'s wash.
+    The form's borderless-field rule is scoped to `.bulk .desk`, or it
+    strips the size box's outline again.
+  - **The form:** no head row; the count and the two links share the
+    label's line by the stylesheet's grid and follow the box in the markup
+    (Tab reaches the box first); the box is three lines and grows with a
+    list to 420px (`refreshCount`). The red button is `--red-fill` (the link
+    red lightens on a dark page: white words on pale pink).
+  - **The buttons are the canon's** (`.btn.sm.ghost`), on both pages.
+    `renderJob` writes those class names; a link in a menu takes no class,
+    or `hide`.
+  - **The note at the bottom is one sentence** and must keep saying
+    "automated estimate ... not an appraisal". The sentence about addresses
+    with no priced sale comps went (the owner's pick; the row itself says
+    it).
+  - `.wrap>.cs-tabs` and `body main.wrap` in `BULK_CSS` reach outside
+    `.bulk` on purpose (the section tabs' margin, and the page's top padding
+    from 641px up). Only /bulk ships them.
+  A phone still scrolls: one screen is a laptop promise, and a long list
+  scrolls anywhere (eight addresses fit, fifty do not). Tests: the last
+  block of `test/bulk-inline.test.js`. The five drafts are at the link
+  above; the before-and-after pictures are linked from the pull request.

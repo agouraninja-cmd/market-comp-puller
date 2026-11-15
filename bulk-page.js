@@ -36,6 +36,11 @@
 //      through an injected callback (BULKRUN.init({onState})) and each page
 //      owns its own button and cap copy.
 //
+// ONE SCREEN (2026-11-15, the owner's pick of Draft D). The page shows the
+// form or a run: the run view marks its own container .bk-open while a run is
+// drawn, and /bulk's stylesheet folds the form on that class, so rule 3
+// holds. .claude/rules/bulk.md, "One screen", has the rules.
+//
 // It renders a BODY, not a document: server.js dresses it in marketShell(), so
 // the header, footer, theme boot and account chrome are the site's shared ones
 // rather than a second copy. That is the /brokers-firms pattern.
@@ -57,68 +62,188 @@ function esc(s) {
 // block paints correctly on /bulk (where MARKET_CSS supplies the vars) and on
 // index.html (where nothing does) — see rule 2 in the header.
 const BULK_RUN_CSS = `
-.bk-run .deck{margin:0 0 28px}
-.bk-run .deckrule{display:flex;align-items:baseline;justify-content:space-between;gap:16px;
-  border-bottom:1px solid var(--ink,#1A2433);padding-bottom:6px;margin:0 0 14px}
-.bk-run .deckrule h2{font-size:var(--text-title,19px);font-weight:600;margin:0;letter-spacing:-.01em;
+/* The run view (2026-11-15, the owner's pick of Draft D, "One screen"):
+   one line per address, the run's actions beside its name, the totals in one
+   slim band, a three-dot menu for what is used least. Four rules here answer
+   site-wide rules that reach this table on /bulk and were never meant for
+   it: .sub's 22px bottom margin, the first column's 180px, the table's 640px
+   floor (why it slid off a phone) and th's wash. State them here or they
+   come back. */
+.bk-run .deck{margin:26px 0 0}
+.bk-run .deckrule{display:flex;align-items:baseline;gap:6px 14px;flex-wrap:wrap;
+  border-bottom:1px solid var(--ink,#1A2433);padding-bottom:9px;margin:0 0 12px}
+.bk-run .deckrule h2{font-size:18px;font-weight:600;margin:0;letter-spacing:-.01em;line-height:1.3;
   color:var(--ink,#1A2433)}
-.bk-run .msg{font-size:var(--text-small,13px);margin:12px 0 0;color:var(--ink,#1A2433)}
+.bk-run .msg{font-size:var(--text-small,13px);margin:14px 0 0;color:var(--ink,#1A2433)}
+.bk-run .msg:empty{display:none}
 .bk-run .msg.bad{color:var(--red-deep,#991B1B)}
 .bk-run .notes{margin:12px 0 0;padding:10px 12px;border:1px solid var(--line,#E4E2DA);border-radius:var(--r-md,6px);
   font-size:var(--text-small,13px);color:var(--ink,#1A2433)}
 .bk-run .notes ul{margin:6px 0 0;padding-left:18px}
-.bk-run .acts{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px}
+/* The open run is a two-column grid so its actions sit on the heading's line
+   while staying after the totals in the markup (both pages share it). */
+.bk-run #bkJobDeck{display:grid;grid-template-columns:minmax(0,1fr) auto}
+.bk-run #bkJobDeck>*{grid-column:1 / -1;min-width:0}
+.bk-run #bkJobDeck>.deckrule{grid-column:1;grid-row:1}
+.bk-run #bkJobDeck>.acts{grid-column:2;grid-row:1}
+.bk-run .acts{display:flex;align-items:flex-end;justify-content:flex-end;gap:8px;flex-wrap:wrap;
+  margin:0 0 12px;padding:0 0 9px 14px;border-bottom:1px solid var(--ink,#1A2433)}
+.bk-run .acts #bkCancel{color:var(--err-text,#7F1D1D);border-color:var(--err-rule,#F0C7C7)}
 .bk-run button.lnk,.bk-run a.lnk{background:none;border:0;padding:0;font:inherit;font-size:var(--text-small,13px);
   color:var(--red,#B91C1C);cursor:pointer;text-decoration:underline}
-.bk-run .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;
-  background:var(--line,#E4E2DA);border:1px solid var(--line,#E4E2DA);border-radius:var(--r-md,6px);overflow:hidden;margin:0 0 16px}
-.bk-run .strip div{background:var(--paper,#FBFBF9);padding:10px 12px}
-.bk-run .strip .k{font-size:var(--text-tiny,11px);letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#1A2433)}
-.bk-run .strip .v{font-size:17px;font-variant-numeric:tabular-nums;color:var(--ink,#1A2433)}
-.bk-run table{width:100%;border-collapse:collapse;font-size:var(--text-small,13px);color:var(--ink,#1A2433)}
-.bk-run th{text-align:left;font-size:var(--text-tiny,11px);letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#1A2433);
-  font-weight:500;padding:6px 8px;border-bottom:1px solid var(--ink,#1A2433)}
-.bk-run td{padding:7px 8px;border-bottom:1px solid var(--line,#E4E2DA);vertical-align:top}
-.bk-run td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.bk-run td a{color:var(--red,#B91C1C)}
-.bk-run .chip{display:inline-block;font-size:var(--text-tiny,11px);letter-spacing:.06em;text-transform:uppercase;
-  padding:1px 7px;border:1px solid var(--line,#E4E2DA);border-radius:99px;color:var(--ink,#1A2433)}
-.bk-run .chip.run{border-color:var(--red,#B91C1C);color:var(--red,#B91C1C)}
-.bk-run .chip.bad{border-color:var(--red-deep,#991B1B);color:var(--red-deep,#991B1B)}
-/* A finished row earns the site's green (the ok-* tokens, theme.js), so a
-   table of done rows reads as done at a glance rather than as a column of
-   identical grey pills. */
+.bk-run .sub{color:var(--ink,#1A2433);font-size:var(--text-label,12px);line-height:1.45;margin:2px 0 0;max-width:none}
+.bk-run span.sub{margin:0}
+/* The totals: one slim band, the range on one line. */
+.bk-run .strip{display:flex;flex-wrap:wrap;background:var(--card,#fff);border:1px solid var(--edge,#D8D4C9);
+  border-radius:var(--r-md,6px);overflow:hidden;margin:0 0 8px}
+.bk-run .strip>div{flex:1 1 auto;padding:8px 16px 9px;border-left:1px solid var(--line,#E4E2DA);margin-left:-1px}
+.bk-run .strip .k{font-size:var(--text-tiny,11px);letter-spacing:.08em;text-transform:uppercase;font-weight:600;
+  margin-bottom:1px;color:var(--ink,#1A2433)}
+.bk-run .strip .v{font-size:var(--text-lead,15px);font-weight:600;letter-spacing:-.02em;line-height:1.35;
+  white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink,#1A2433)}
+.bk-run .strip>div:first-child .v{font-size:var(--text-subhead,20px);line-height:1.2}
+/* The tables. */
+.bk-run table{width:100%;min-width:0;border-collapse:collapse;font-size:var(--text-small,13px);color:var(--ink,#1A2433)}
+.bk-run th{text-align:left;font-size:var(--text-tiny,11px);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink,#1A2433);font-weight:600;padding:7px 12px;background:none;white-space:nowrap;vertical-align:bottom;
+  border-bottom:1px solid var(--ink,#1A2433)}
+.bk-run td{padding:9px 12px;border-top:0;border-bottom:1px solid var(--line,#E4E2DA);vertical-align:top;
+  line-height:1.45;color:var(--ink,#1A2433)}
+.bk-run tbody tr:last-child td{border-bottom:0}
+.bk-run td:first-child,.bk-run th:first-child{min-width:0}
+.bk-run th.n,.bk-run td.n{text-align:right}
+.bk-run td.n{font-variant-numeric:tabular-nums;white-space:nowrap}
+.bk-run th.c-n,.bk-run td.c-n{width:30px;padding-left:4px;padding-right:0}
+.bk-run td.c-a{width:36%}
+.bk-run td.c-v,.bk-run .fig{font-weight:600}
+.bk-run th.c-s{padding-right:106px}
+.bk-run td.c-st,.bk-run td.r-st{white-space:nowrap}
+.bk-run td.c-st .sub,.bk-run td.r-st .sub{margin-left:6px}
+/* Red is for the button and for what needs you: an address and a run's name
+   are the row's title, in ink. */
+.bk-run td a{color:var(--ink,#1A2433);font-weight:600;text-decoration:none}
+.bk-run td a:hover{text-decoration:underline;text-underline-offset:3px}
+.bk-run td a.retry{color:var(--red,#B91C1C);font-weight:500;text-decoration:underline;text-underline-offset:3px;margin-left:8px}
+/* Status: one small pill, a dot carrying its colour. A finished row is a
+   tick instead, so a table of done rows is not a column of identical pills. */
+.bk-run .chip{display:inline-flex;align-items:center;gap:6px;padding:2px 9px 2px 8px;font-size:var(--text-label,12px);
+  font-weight:500;line-height:1.5;text-transform:capitalize;white-space:nowrap;
+  border:1px solid var(--line,#E4E2DA);border-radius:99px;color:var(--ink,#1A2433)}
+.bk-run .chip::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:currentColor}
+.bk-run .chip.run{border-color:var(--warn-rule,#EDDFB0);background:var(--warn-bg,#FBF3DC);color:var(--warn-text,#8A6D1A)}
+.bk-run .chip.bad{border-color:var(--err-rule,#F0C7C7);background:var(--err-bg,#FCF1EF);color:var(--err-text,#7F1D1D)}
 .bk-run .chip.ok{border-color:var(--ok-rule,#BFE5D2);background:var(--ok-bg,#E7F5EE);color:var(--ok-text,#06603A)}
-.bk-run .strip .v{font-weight:600;letter-spacing:-.02em;font-size:var(--text-subhead,20px);font-variant-numeric:tabular-nums}
-.bk-run .sub{color:var(--ink,#1A2433);font-size:var(--text-label,12px)}
-/* Earlier runs is a ledger (2026-09-04 evening): a table with the same
-   headers as the rows table above it, not a list of links. */
-.bk-run .runs td a{font-weight:500}
+.bk-run .tick{display:inline-block;width:16px;height:16px;vertical-align:-3px;background:var(--ok-text,#06603A);
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/contain no-repeat}
 .bk-run .hide{display:none}
+.bk-run #bkJobDeck.hide{display:none}
 /* The size cell is an input rather than a button-then-field, because a bulk
    run's usual gap IS the size and one click should not stand between a member
-   and fixing it. Borderless until focus so a table of them still reads as a
-   table. */
-.bk-run input.szin{width:88px;padding:2px 4px;font:inherit;font-size:var(--text-small,13px);text-align:right;
+   and fixing it. Borderless until hover so a table of them still reads as a
+   table; where the figure came from sits beside it in a fixed width, so the
+   figures line up. */
+.bk-run input.szin{width:76px;padding:1px 4px;margin:-2px 0 0;font:inherit;font-size:var(--text-small,13px);text-align:right;
   color:var(--ink,#1A2433);background:transparent;border:1px solid transparent;border-radius:var(--r-sm,4px);
   font-variant-numeric:tabular-nums}
-.bk-run input.szin:hover{border-color:var(--line,#E4E2DA)}
+.bk-run input.szin:hover{border-color:var(--edge,#D8D4C9)}
 .bk-run input.szin:focus{border-color:var(--red,#B91C1C);background:var(--paper,#FBFBF9);outline:none}
-.bk-run input.szin::placeholder{color:var(--red,#B91C1C);opacity:1}
+.bk-run input.szin::placeholder{color:var(--red,#B91C1C);opacity:1;font-weight:600}
 .bk-run input.szin[disabled]{color:var(--ink,#1A2433)}
+.bk-run td.c-s .src{display:inline-block;width:86px;margin-left:8px;text-align:left;font-size:var(--text-label,12px)}
+/* Earlier runs: one line each. */
+.bk-run .runs .dt{margin-left:10px}
+.bk-run .runs .pn{display:none}
+.bk-run .runs td.r-act{width:40px;padding-top:5px;padding-bottom:5px}
+.bk-run .pasttg{display:inline-flex;align-items:center;gap:8px;margin:0;padding:0;border:0;background:none;
+  font:inherit;color:inherit;letter-spacing:inherit;text-align:left;cursor:default}
+.bk-run .pastn,.bk-run .chev{display:none}
+/* Under an open run the ledger is one closed line, opened by a click. */
+.bk-run .bk-open #bkJobDeck{margin-top:14px}
+.bk-run .bk-open #bkPastDeck{margin-top:10px}
+.bk-run .bk-open #bkPastDeck .deckrule{display:block;margin:0;padding:0;border:1px solid var(--line,#E4E2DA);
+  border-radius:var(--r-md,6px);background:var(--card,#fff)}
+.bk-run .bk-open .pasttg{display:flex;width:100%;padding:9px 14px;cursor:pointer;font-size:var(--text-compact,14px)}
+.bk-run .bk-open .pastn{display:inline;font-size:var(--text-small,13px);font-weight:400}
+.bk-run .bk-open .chev{display:block;margin-left:auto;width:8px;height:8px;border-right:1.5px solid var(--ink,#1A2433);
+  border-bottom:1.5px solid var(--ink,#1A2433);transform:rotate(45deg) translate(-2px,-2px)}
+.bk-run .bk-open.bk-past-open .chev{transform:rotate(225deg) translate(-2px,-2px)}
+.bk-run .bk-open:not(.bk-past-open) #bkPastDeck .pastw{display:none}
+.bk-run .bk-open.bk-past-open #bkPastDeck .deckrule{margin-bottom:6px}
+/* The three-dot menu: what a run or a row is asked for least. */
+.bk-run .mn{position:relative;display:inline-block}
+.bk-run .mn-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;
+  border:1px solid transparent;border-radius:var(--r-md,6px);background:none;color:var(--ink,#1A2433);cursor:pointer;
+  vertical-align:middle}
+.bk-run .mn-btn:hover,.bk-run .mn-btn[aria-expanded="true"]{background:var(--wash,#F5F4EF);border-color:var(--edge,#D8D4C9)}
+.bk-run .mn-btn:focus-visible{outline:2px solid var(--red,#B91C1C);outline-offset:2px}
+.bk-run .acts .mn-btn{width:32px;height:32px;border-color:var(--edge,#D8D4C9);border-radius:var(--r-lg,8px);
+  background:var(--card,#fff)}
+.bk-run .mn-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:30;min-width:172px;padding:4px;text-align:left;
+  white-space:nowrap;background:var(--card,#fff);border:1px solid var(--edge,#D8D4C9);border-radius:var(--r-lg,8px);
+  box-shadow:0 2px 6px rgba(15,23,42,.08),0 14px 30px -12px rgba(15,23,42,.38)}
+.bk-run .mn-menu.hide{display:none}
+.bk-run .mn-menu a{display:block;padding:7px 10px;border-radius:5px;font-size:var(--text-small,13px);font-weight:500;
+  color:var(--ink,#1A2433);text-decoration:none}
+.bk-run .mn-menu a.hide{display:none}
+.bk-run .mn-menu a:hover,.bk-run .mn-menu a:focus-visible{background:var(--wash,#F5F4EF);text-decoration:none;outline:none}
+.bk-run .mn-menu a.danger{color:var(--red-deep,#991B1B);border-top:1px solid var(--line,#E4E2DA);border-radius:0 0 5px 5px;
+  margin-top:4px;padding-top:9px}
+@media (pointer:coarse){
+  .bk-run .mn-btn{width:34px;height:34px}
+  .bk-run .mn-menu a{padding:10px 12px}
+}
 /* The time-left bar (2026-11-10). What it is doing on the left, how long is
    left on the right, the bar under both. Full ink like the rest of the run
    view, and no display on .prog itself, so .hide above still hides it. The
    fill moves for a second at a time because drawProgress() sets a new width
    every second; without motion it steps instead. */
-.bk-run .prog{margin:0 0 18px;scroll-margin:96px 0}
+.bk-run .prog{margin:0 0 12px;scroll-margin:96px 0}
 .bk-run .prog-top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;
-  margin:0 0 8px;font-size:var(--text-small,13px);line-height:1.4;color:var(--ink,#1A2433)}
+  margin:0 0 6px;font-size:var(--text-small,13px);line-height:1.4;color:var(--ink,#1A2433)}
 .bk-run .prog-what{font-weight:600}
 .bk-run .prog-left{font-variant-numeric:tabular-nums}
 .bk-run .prog-track{height:8px;border-radius:99px;background:var(--line,#E4E2DA);overflow:hidden}
 .bk-run .prog-fill{height:100%;width:0;border-radius:99px;background:var(--red,#B91C1C);transition:width 1s linear}
 @media (prefers-reduced-motion:reduce){.bk-run .prog-fill{transition:none}}
+/* A phone gets a card per address, never a table that scrolls sideways. */
+@media (max-width:640px){
+  .bk-run #bkJobDeck>.deckrule{grid-column:1 / -1;border-bottom:0;padding-bottom:0;margin-bottom:8px}
+  .bk-run #bkJobDeck>.acts{grid-column:1 / -1;grid-row:2;justify-content:flex-start;padding:0 0 10px}
+  .bk-run .strip>div{flex:1 1 40%;padding:8px 14px;border-top:1px solid var(--line,#E4E2DA);margin-top:-1px}
+  .bk-run #bkRows thead,.bk-run .runs thead{display:none}
+  .bk-run #bkRows,.bk-run #bkRows tbody,.bk-run .runs,.bk-run .runs tbody{display:block}
+  .bk-run #bkRows tr{display:grid;grid-template-columns:22px 1fr 1fr 1fr;column-gap:10px;row-gap:5px;padding:11px 0;
+    border-bottom:1px solid var(--line,#E4E2DA)}
+  .bk-run #bkRows tr:last-child,.bk-run .runs tr:last-child{border-bottom:0}
+  .bk-run #bkRows td{display:block;padding:0;border:0;width:auto;text-align:left;white-space:normal}
+  .bk-run #bkRows td.c-n{grid-column:1;grid-row:1}
+  .bk-run #bkRows td.c-a{grid-column:2 / 4;grid-row:1;font-size:var(--text-compact,14px)}
+  .bk-run #bkRows td.c-st{grid-column:4;grid-row:1;text-align:right}
+  .bk-run #bkRows td.c-v{grid-column:2;grid-row:2;font-size:var(--text-lead,15px);white-space:nowrap}
+  .bk-run #bkRows td.c-r{grid-column:3 / 5;grid-row:2;align-self:end;white-space:nowrap}
+  .bk-run #bkRows td.c-p{grid-column:2;grid-row:3}
+  .bk-run #bkRows td.c-s{grid-column:3;grid-row:3}
+  .bk-run #bkRows td.c-c{grid-column:4;grid-row:3}
+  .bk-run #bkRows td.c-p::before,.bk-run #bkRows td.c-s::before,.bk-run #bkRows td.c-c::before{display:block;
+    font-size:var(--text-tiny,11px);letter-spacing:.08em;text-transform:uppercase;font-weight:600;margin-bottom:2px}
+  .bk-run #bkRows td.c-p::before{content:"$/SF"}
+  .bk-run #bkRows td.c-s::before{content:"Size"}
+  .bk-run #bkRows td.c-c::before{content:"Sale comps"}
+  .bk-run input.szin{text-align:left;margin-left:-5px}
+  .bk-run td.c-s .src{display:block;width:auto;margin:0}
+  .bk-run .runs tr{display:grid;grid-template-columns:minmax(0,1fr) auto 34px;column-gap:10px;row-gap:3px;padding:10px 0;
+    border-bottom:1px solid var(--line,#E4E2DA)}
+  .bk-run .runs td{display:block;padding:0;border:0;width:auto;text-align:left;white-space:normal}
+  .bk-run .runs td.r-name{grid-column:1;grid-row:1;font-size:var(--text-compact,14px)}
+  .bk-run .runs td.r-val{grid-column:2;grid-row:1;text-align:right}
+  .bk-run .runs td.r-type{grid-column:1;grid-row:2}
+  .bk-run .runs td.r-n{display:none}
+  .bk-run .runs td.r-st{grid-column:2;grid-row:2;text-align:right}
+  .bk-run .runs td.r-act{grid-column:3;grid-row:1 / 3;width:auto;padding:0;align-self:center}
+  .bk-run .runs .dt{display:block;margin-left:0}
+  .bk-run .runs .pn{display:inline}
+}
 `;
 
 // The /bulk form's own styles — the paste box, the settings row, the gate.
@@ -132,34 +257,46 @@ const BULK_RUN_CSS = `
 // .strip idiom) says the allowance as figures rather than a footnote.
 const BULK_CSS = `
 .bulk{max-width:1100px}
-.bulk .lede{color:var(--ink);font-size:var(--text-compact);line-height:1.55;margin:6px 0 0;max-width:62ch}
-.bulk .top{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+/* One screen (2026-11-15): the top of the page takes less room. These two
+   reach outside .bulk on purpose and only this page ships them. */
+.wrap>.cs-tabs{margin-bottom:14px}
+@media (min-width:641px){body main.wrap{padding-top:24px}}
+.bulk .lede{color:var(--ink);font-size:var(--text-small);line-height:1.55;margin:0}
+.bulk .top>div{display:flex;align-items:baseline;gap:4px 18px;flex-wrap:wrap}
 .bulk .top h1{margin:0}
 /* The chamber. */
-.bulk .desk{margin-top:28px;border:1px solid var(--edge);border-radius:var(--r-md);background:var(--card);
+.bulk .desk{margin-top:14px;border:1px solid var(--edge);border-radius:var(--r-md);background:var(--card);
   box-shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px -18px rgba(15,23,42,.25);display:flex;flex-direction:column}
-.bulk .dhead{padding:11px 16px;border-bottom:1px solid var(--hair);display:flex;align-items:center;
-  justify-content:space-between;gap:16px}
 .bulk .dlab{font-size:var(--text-tiny);letter-spacing:.12em;text-transform:uppercase;color:var(--ink);font-weight:600;line-height:1.5}
-.bulk .count{font-size:var(--text-small);color:var(--ink)}
-.bulk .addr{padding:14px 16px 12px;display:flex;flex-direction:column;gap:6px}
+.bulk .count{font-size:var(--text-small);font-weight:600;color:var(--ink)}
+/* The label's line also carries the ready count and the two links. They
+   follow the box in the markup (Tab reaches the box first) and are placed
+   on its first row here. */
+.bulk .addr{padding:10px 16px;display:grid;grid-template-columns:auto auto minmax(0,1fr);align-items:center;gap:6px 12px}
+.bulk .addr label{margin:0;grid-column:1;grid-row:1}
+.bulk .addr .count{grid-column:2;grid-row:1}
+.bulk .addr .links{grid-column:3;grid-row:1;justify-self:end}
+.bulk .addr textarea{grid-column:1 / -1;grid-row:2}
 .bulk label{display:block;font-size:var(--text-tiny);letter-spacing:.1em;text-transform:uppercase;
   color:var(--ink);font-weight:600;margin:0 0 2px}
 .bulk label .opt{font-weight:400;letter-spacing:0;text-transform:none}
 /* Borderless fields: the card's hairlines draw the cells, so a box inside a
-   box would be two borders for one input. */
-.bulk textarea,.bulk input[type=text],.bulk input[type=number],.bulk select{width:100%;box-sizing:border-box;padding:2px 0;
+   box would be two borders for one input. Scoped to the form, so the run
+   view's size box keeps its own outline. */
+.bulk .desk textarea,.bulk .desk input[type=text],.bulk .desk input[type=number],.bulk .desk select{width:100%;box-sizing:border-box;padding:2px 0;
   font:inherit;font-size:var(--text-compact);color:var(--ink);background:transparent;border:0;outline:0}
-.bulk textarea{min-height:132px;resize:vertical;font-family:var(--mono);
+.bulk .desk textarea{min-height:72px;resize:vertical;font-family:var(--mono);
   font-size:var(--text-compact);line-height:1.7;padding:0}
-.bulk .links{display:flex;align-items:center;gap:18px;font-size:var(--text-small);flex-wrap:wrap}
+.bulk .links{display:flex;align-items:center;gap:18px;font-size:var(--text-small);flex-wrap:wrap;margin:0}
 .bulk .row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--hair)}
-.bulk .cell{padding:11px 16px;border-right:1px solid var(--hair)}
+.bulk .cell{padding:8px 16px;border-right:1px solid var(--hair)}
 .bulk .cell:last-child{border-right:0}
 .bulk .cell:focus-within{box-shadow:inset 0 0 0 2px var(--red)}
-.bulk .go-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;
+.bulk .go-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 16px;
   border-top:1px solid var(--hair);background:var(--wash);border-radius:0 0 6px 6px}
-.bulk button.go{flex:0 0 auto;background:var(--red);color:#fff;border:0;border-radius:var(--r-md);padding:12px 22px;
+/* --red-fill, not --red: the link red lightens on a dark page and white
+   words on it were pale pink. */
+.bulk button.go{flex:0 0 auto;background:var(--red-fill);color:#fff;border:0;border-radius:var(--r-md);padding:10px 20px;
   font:inherit;font-size:var(--text-compact);font-weight:600;cursor:pointer;box-shadow:0 4px 12px -6px rgba(185,28,28,.55)}
 /* Never dimmed (owner's call, 2026-09-04): "no parts of the bulk valuation
    dim". The button is solid red in every state; when it cannot run, the cost
@@ -168,8 +305,8 @@ const BULK_CSS = `
    call is why every muted colour in this file is full ink. */
 .bulk button.go[disabled]{cursor:default}
 .bulk .cost{color:var(--ink);font-size:var(--text-small);line-height:1.5;margin:0}
-.bulk .foot{margin-top:28px;padding-top:12px;border-top:1px solid var(--line);
-  color:var(--ink);font-size:var(--text-small);line-height:1.6;max-width:72ch}
+.bulk .foot{margin-top:14px;padding-top:10px;border-top:1px solid var(--line);
+  color:var(--ink);font-size:var(--text-label);line-height:1.6}
 /* The Tab hint's key cap. Inline in the button so the shortcut is named where
    the action is, rather than in a legend somebody has to go and find. */
 .bulk .kbd{display:inline-block;font-family:var(--mono);
@@ -180,7 +317,7 @@ const BULK_CSS = `
    the same .row/.cell cells the visible settings use. */
 .bulk details.more{border-top:1px solid var(--hair)}
 .bulk details.more summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:14px;
-  padding:11px 16px;user-select:none}
+  padding:8px 16px;user-select:none}
 .bulk details.more summary::-webkit-details-marker{display:none}
 .bulk details.more summary:hover{background:var(--wash)}
 .bulk .moreline{flex:1;font-size:var(--text-small);color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -190,22 +327,38 @@ const BULK_CSS = `
 .bulk .cell.wide{grid-column:1 / -1}
 .bulk .listnote{margin:0;padding:11px 16px;border-top:1px solid var(--hair);font-size:var(--text-small);line-height:1.5;color:var(--ink)}
 .bulk .listnote code{font-family:var(--mono);font-size:var(--text-label)}
+/* A run on screen folds the form away (2026-11-15): the page shows the form
+   or a run, so either fits one screen. .bk-open is the run view's own class,
+   on #app while a run is drawn; .bk-form is this page's, set by New report,
+   Run again and a handed-over address, and it keeps the form over the run. */
+.bulk .bk-open:not(.bk-form) .desk,.bulk .bk-open:not(.bk-form) .lede{display:none}
+.bulk .bk-form #bkNew{display:none}
 @media (max-width:760px){
   .bulk .row{grid-template-columns:1fr}
   .bulk .cell{border-right:0;border-bottom:1px solid var(--hair)}
   .bulk .cell:last-child{border-bottom:0}
 }
+@media (max-width:640px){
+  .bulk .top>div{display:block}
+  .bulk .lede{margin-top:4px}
+  .bulk .addr .links{grid-column:1 / -1;grid-row:3;justify-self:start}
+}
 /* Touch targets (2026-11-15). Under a finger the settings' fields are 36px
-   tall (26 before: 2px of padding around one line), and the two links under
+   tall (26 before: 2px of padding around one line), and the two links by
    the address box are reached 6px past their line, by an overlay that moves
-   nothing: 6px is the gap to the address box above, and the two links stand
-   18px apart, so no overlay lies over a neighbour. */
+   nothing: 6px is the gap between them and the address box, and the two
+   links stand 18px apart, so no overlay lies over a neighbour. */
 @media (pointer:coarse){
   .bulk input[type=text],.bulk input[type=number],.bulk select{padding-top:7px;padding-bottom:7px}
   .bulk .links .lnk{position:relative}
   .bulk .links .lnk::after{content:"";position:absolute;inset:-6px 0}
 }
 `;
+
+// The three dots of a menu's button. One drawing, in the markup here and in
+// the rows BULK_RUN_JS writes.
+const MENU_DOTS = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">' +
+  '<circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg>';
 
 /**
  * The run view's markup — message line, notes, the job deck, and either the
@@ -232,18 +385,21 @@ function renderBulkRunMarkup(opts) {
     </div>
     <div class="strip" id="bkTotals"></div>
     <p class="acts">
-      <button type="button" class="lnk hide" id="bkCancel">Cancel the rest</button>
-      <a class="lnk" id="bkDl" href="#" style="display:none">Download CSV</a>
-      <a class="lnk hide" id="bkAddAll" href="#">Add valued rows to portfolio</a>
+      <button type="button" class="btn sm ghost hide" id="bkNew">New report</button>
+      <button type="button" class="btn sm ghost hide" id="bkCancel">Cancel the rest</button>
+      <a class="btn sm ghost" id="bkDl" href="#" style="display:none">Download CSV</a>
+      <span class="mn"><button type="button" class="mn-btn" aria-haspopup="true" aria-expanded="false" aria-label="More for this run">${MENU_DOTS}</button><span class="mn-menu hide">
+      <a class="hide" id="bkAddAll" href="#">Add valued rows to portfolio</a>
       <a class="lnk" href="/desk">Go to Home</a>${past ? "" : `
-      <a class="lnk" href="/bulk">Earlier runs &rarr;</a>`}
+      <a class="lnk" href="/bulk">Earlier runs &rarr;</a>`}</span></span>
     </p>
     <div style="overflow-x:auto"><table id="bkRows"></table></div>
   </div>${past ? `
 
   <div class="deck hide" id="bkPastDeck">
-    <div class="deckrule"><h2>Earlier runs</h2></div>
-    <div style="overflow-x:auto"><table class="runs"><thead><tr><th>Run</th><th>Type &middot; lookback</th>
+    <div class="deckrule"><h2><button type="button" class="pasttg" id="bkPastTg" aria-expanded="true">Earlier runs
+      <span class="pastn" id="bkPastN"></span><span class="chev" aria-hidden="true"></span></button></h2></div>
+    <div class="pastw"><table class="runs"><thead><tr><th>Run</th><th>Type &middot; lookback</th>
       <th class="n">Addresses</th><th class="n">Portfolio value</th><th>Status</th><th class="n"></th></tr></thead>
       <tbody id="bkPast"></tbody></table></div>
   </div>` : ""}`;
@@ -304,16 +460,18 @@ function renderBulkPageBody(boot) {
     </div>
 
     <div class="desk">
-      <div class="dhead">
-        <span class="dlab">Value one property, or a list</span>
-        <span class="count" id="count"></span>
-      </div>
+      <!-- One screen (2026-11-15, the owner's pick of Draft D): no head row;
+           the ready count and the two links share the label's line (placed
+           there by the stylesheet; in the markup they follow the box, so Tab
+           reaches the box first), and the box starts three lines tall and
+           grows with a list (refreshCount). -->
       <div class="addr">
         <label for="bulkText">Address, or one per line</label>
+        <span class="count" id="count"></span>
         <textarea id="bulkText" spellcheck="false" placeholder="1201 W Idaho St, Boise, ID 83702
 4610 E Fairview Ave, Meridian, ID 83642
 900 N Cole Rd, Boise, ID"></textarea>
-        <p class="links" style="margin:0">
+        <p class="links">
           <input type="file" id="bulkFile" accept=".csv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="hide"/>
           <button type="button" class="lnk" id="pickFile">Upload a CSV, text or Excel file</button>
           <!-- A real button, not only a keyboard shortcut. Tab is the shortcut
@@ -410,10 +568,11 @@ function renderBulkPageBody(boot) {
 
     ${renderBulkRunMarkup({ past: true })}
 
-    <p class="foot">Every figure here is an automated estimate produced from comparable sales,
-      not an appraisal, and each one carries the same caveats as the report behind it — open a
-      row to see its comps and how the range was reached. Addresses with no
-      priced sale comps in the window are reported as such rather than valued at zero.</p>
+    <!-- One sentence since 2026-11-15 (the owner's pick of Draft D). It must
+         keep saying what a figure is: an automated estimate, never an
+         appraisal. -->
+    <p class="foot">Every figure is an automated estimate from comparable sales, not an appraisal.
+      Open a row to see its comps and how the range was reached.</p>
   </div>
 </div>
 <script>${BULK_RUN_JS.replace(/<\/script>/gi, "<\\/script>")}
@@ -446,6 +605,13 @@ var BULKRUN=(function(){
 var $=function(i){return document.getElementById(i);};
 var MAX=50,job=null,items=[],timer=null,allJobs=[],summary=null;
 var onState=null,onList=null,onRunAgain=null;
+// One screen (2026-11-15). openFor is the run on screen and pastOpen whether
+// the ledger under it has been opened; wired says the view's own controls
+// are bound; pastStale that the ledger was not redrawn under an open menu.
+var openFor=null,pastOpen=false,wired=false,pastStale=false;
+var DOTS='<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">'+
+  '<circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg>';
+var MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 // The time-left bar's state (2026-11-10). prog is the server's last answer
 // ({elapsed_ms,left_ms,late}, or null when it could not say) and progAt when
 // it arrived; the rest is the bar's own bookkeeping.
@@ -601,6 +767,89 @@ function firstAddress(text){
   return "";
 }
 
+// A row's status. A finished row is a tick, so a table of done rows is not a
+// column of identical pills; anything else keeps its word.
+function rowStatus(s){
+  return s==="done"?'<span class="tick" role="img" aria-label="Done" title="Done"></span>':statusChip(s);
+}
+
+// "Nov 12" from a stored timestamp, with the year only when it is not this
+// one. Read off the string, so the day is the one the server wrote.
+function dayWords(iso){
+  var m=/^(\\d{4})-(\\d\\d)-(\\d\\d)/.exec(String(iso||""));
+  if(!m)return "";
+  return MONTHS[Number(m[2])-1]+" "+Number(m[3])+(Number(m[1])!==new Date().getFullYear()?", "+m[1]:"");
+}
+
+// A three-dot menu: the button, and the items it opens. The click that opens
+// and closes every one of them is bound once, on the document (wire()).
+function menu(label,items){
+  return '<span class="mn"><button type="button" class="mn-btn" aria-haspopup="true" aria-expanded="false" aria-label="'+
+    esc(label)+'">'+DOTS+'</button><span class="mn-menu hide">'+items+"</span></span>";
+}
+function closeMenus(){
+  Array.prototype.forEach.call(document.querySelectorAll('.bk-run .mn-btn[aria-expanded="true"]'),function(b){
+    b.setAttribute("aria-expanded","false");
+    if(b.nextElementSibling)b.nextElementSibling.className="mn-menu hide";
+  });
+  if(pastStale){pastStale=false;renderPast();}
+}
+
+// The view's own controls, bound once. From init() and from the first draw:
+// index.html mounts this view without ever calling init(), and until
+// 2026-11-15 its Cancel and Add to portfolio were therefore bound to nothing.
+function wire(){
+  if(wired)return;
+  wired=true;
+  var aa=$("bkAddAll");
+  if(aa)aa.addEventListener("click",function(e){e.preventDefault();addAllToPortfolio();});
+  var c=$("bkCancel");
+  if(c)c.addEventListener("click",function(){
+    if(!job)return;
+    // Says what a cancel actually does. Searches already in flight are billed
+    // the moment they start, so promising to stop them would be a lie.
+    if(!confirm("Stop the addresses that have not started yet? Searches already running will finish."))return;
+    api("POST","/api/bulk/cancel",{id:job.id}).then(function(){poll(job.id,true);}).catch(function(){});
+  });
+  // Under an open run the ledger is one closed line; its heading opens it.
+  var tg=$("bkPastTg");
+  if(tg)tg.addEventListener("click",function(){if(!job)return;pastOpen=!pastOpen;syncOpen();});
+  if(!document.addEventListener)return;
+  document.addEventListener("click",function(e){
+    var t=e.target,btn=t&&t.closest?t.closest(".mn-btn"):null;
+    if(btn&&btn.closest(".bk-run")){
+      var was=btn.getAttribute("aria-expanded")==="true";
+      closeMenus();
+      if(!was){btn.setAttribute("aria-expanded","true");if(btn.nextElementSibling)btn.nextElementSibling.className="mn-menu";}
+      return;
+    }
+    closeMenus();
+  });
+  // Escape closes an open menu and says it used the key: the site's header
+  // sends an unclaimed Escape back a page. Capturing, because that listener
+  // is on the document too and was bound first.
+  document.addEventListener("keydown",function(e){
+    if(e.key!=="Escape")return;
+    if(!document.querySelectorAll('.bk-run .mn-btn[aria-expanded="true"]').length)return;
+    e.preventDefault();
+    closeMenus();
+  },true);
+}
+
+// Says, on the view's own container, whether a run is on screen (.bk-open)
+// and whether the ledger under it has been opened (.bk-past-open). /bulk
+// folds its form on the first; this module still knows no form exists.
+function syncOpen(){
+  var deck=$("bkJobDeck"),root=deck&&deck.parentNode,id=job?job.id:null;
+  if(id!==openFor){openFor=id;pastOpen=false;}
+  if(root&&root.classList){
+    root.classList.toggle("bk-open",Boolean(job));
+    root.classList.toggle("bk-past-open",Boolean(job)&&pastOpen);
+  }
+  var tg=$("bkPastTg");
+  if(tg&&tg.setAttribute)tg.setAttribute("aria-expanded",String(!job||pastOpen));
+}
+
 function statusChip(s){
   var cls=s==="running"?"chip run":(s==="failed"||s==="interrupted"||s==="cancelled")?"chip bad":s==="done"?"chip ok":"chip";
   return '<span class="'+cls+'">'+esc(s)+"</span>";
@@ -620,16 +869,17 @@ function renderTotals(sum){
 }
 
 function rowHtml(it,i){
-  var val=it.status==="done"&&Number(it.value_likely)>0
-    ? money(it.value_likely)+'<div class="sub">'+money(it.value_low)+" \\u2013 "+money(it.value_high)+"</div>"
-    : '<span class="sub">\\u2014</span>';
+  // One line per address (2026-11-15): the range has a column of its own.
+  var valued=it.status==="done"&&Number(it.value_likely)>0;
+  var val=valued?money(it.value_likely):"\\u2014";
+  var rng=valued?money(it.value_low)+" \\u2013 "+money(it.value_high):"\\u2014";
   var note=it.error?'<div class="sub">'+esc(it.error)+"</div>":"";
   // A FAILED row can be retried alone (2026-09-04): one new search for that
   // address, into the same row, once the run has stopped. Not offered on a
   // done-but-unvalued row — that answer came from the same search parameters
   // and would come back from cache; its fix is a longer lookback, a new run.
   var retry=(it.status==="failed"&&job&&job.status!=="running")
-    ? ' <a href="#" class="lnk" data-retry="'+esc(it.id)+'">Retry</a>':"";
+    ? '<a href="#" class="retry" data-retry="'+esc(it.id)+'">Retry</a>':"";
   // The address opens the stored report when there is one: the row is a
   // summary, and the evidence for it — the comps, the weighting, the trust
   // line — lives in the report itself. ?recent= and ?property= are both
@@ -651,26 +901,29 @@ function rowHtml(it,i){
   // $52,000 mobile home at $795,000), so correcting one matters as much as
   // supplying a missing one. Nothing else in the row is editable: the comps
   // are evidence, and this is the one input that was ours to get wrong.
+  // Where the size came from sits beside it, in a span every row has, so the
+  // figures line up whether or not a row has one.
   var sz;
   if(it.status!=="done"){
-    sz="\\u2014";
+    sz='\\u2014<span class="src"></span>';
   }else{
-    var szv=Number(it.size_sqft)>0?String(Math.round(it.size_sqft)):"";
+    var szv=Number(it.size_sqft)>0?Math.round(it.size_sqft).toLocaleString("en-US"):"";
     sz='<input class="szin" type="text" inputmode="numeric" data-id="'+esc(it.id)+'"'+
        ' value="'+esc(szv)+'" placeholder="add size" aria-label="Building size in square feet for '+esc(it.address)+'"/>'+
-       (szv?'<div class="sub">'+esc(it.size_source||"you")+"</div>":"");
+       '<span class="src">'+(szv?esc(it.size_source||"you"):"")+"</span>";
   }
   // Sale comps, not the comp count: the band comes from the sales, and a
   // lease-heavy report showing "10" would imply ten deals behind the number.
   var comps=Number(it.sale_comps)>0
-    ? String(it.sale_comps)+(it.trimmed?"":'<div class="sub">wide band</div>') : "\\u2014";
-  return "<tr><td class=\\"n\\">"+(i+1)+"</td>"+
-    "<td>"+addr+lbl+note+"</td>"+
-    "<td class=\\"n\\">"+val+"</td>"+
-    "<td class=\\"n\\">"+psf(it.psf_mid)+"</td>"+
-    "<td class=\\"n\\">"+sz+"</td>"+
-    "<td class=\\"n\\">"+comps+"</td>"+
-    "<td>"+statusChip(it.status)+(it.cached?' <span class="sub">cached</span>':"")+retry+"</td></tr>";
+    ? String(it.sale_comps)+(it.trimmed?"":' <span class="sub">wide band</span>') : "\\u2014";
+  return '<tr><td class="n c-n">'+(i+1)+"</td>"+
+    '<td class="c-a">'+addr+lbl+note+"</td>"+
+    '<td class="n c-v">'+val+"</td>"+
+    '<td class="n c-r">'+rng+"</td>"+
+    '<td class="n c-p">'+psf(it.psf_mid)+"</td>"+
+    '<td class="n c-s">'+sz+"</td>"+
+    '<td class="n c-c">'+comps+"</td>"+
+    '<td class="c-st">'+rowStatus(it.status)+(it.cached?'<span class="sub">cached</span>':"")+retry+"</td></tr>";
 }
 
 // Retry: one billed search, said before the click. The row goes back to the
@@ -771,6 +1024,8 @@ function paintProgress(box,pct,what,left){
 
 function renderJob(){
   drawProgress();
+  wire();
+  syncOpen();
   if(!job){$("bkJobDeck").className="deck hide";return;}
   $("bkJobDeck").className="deck";
   $("bkJobTitle").textContent=job.label||"This run";
@@ -778,10 +1033,10 @@ function renderJob(){
   $("bkJobMeta").innerHTML=esc(job.property_type)+" \\u00b7 "+focus+esc(String(job.months))+"-month lookback \\u00b7 "+
     statusChip(job.status)+' <span class="sub">'+job.done_count+" of "+job.total+" done</span>";
   renderTotals(summary||{total:items.length,valued:0,failed:0,low:0,likely:0,high:0});
-  $("bkRows").innerHTML="<thead><tr><th></th><th>Address</th><th>Likely value</th><th>$/SF</th>"+
-    "<th>Size</th><th>Sale comps</th><th>Status</th></tr></thead><tbody>"+
-    items.map(rowHtml).join("")+"</tbody>";
-  $("bkCancel").className=job.status==="running"?"lnk":"lnk hide";
+  $("bkRows").innerHTML='<thead><tr><th class="c-n"></th><th>Address</th><th class="n">Likely value</th>'+
+    '<th class="n">Range</th><th class="n">$/SF</th><th class="n c-s">Size</th><th class="n">Sale comps</th>'+
+    "<th>Status</th></tr></thead><tbody>"+items.map(rowHtml).join("")+"</tbody>";
+  $("bkCancel").className=job.status==="running"?"btn sm ghost":"btn sm ghost hide";
   bindSizeInputs();
   bindRetryLinks();
   renderPast();
@@ -795,7 +1050,7 @@ function renderJob(){
   // Offered only once the run has stopped and something was valued: an
   // affordance over nothing is a control that does nothing.
   var aa=$("bkAddAll");
-  if(aa)aa.className=(job.status!=="running"&&portfolioCandidates().length)?"lnk":"lnk hide";
+  if(aa)aa.className=(job.status!=="running"&&portfolioCandidates().length)?"":"hide";
 }
 
 // "Add valued rows to portfolio" (owner's call, 2026-09-04). A portfolio is
@@ -890,31 +1145,39 @@ function renderPast(){
   var rest=allJobs.filter(function(j){return !job||j.id!==job.id;});
   if(!rest.length){$("bkPastDeck").className="deck hide";return;}
   $("bkPastDeck").className="deck";
-  // A ledger row per run: name and date, type and lookback, the address
-  // count, the portfolio value (the list read's own BULK.summarize over the
-  // run's done rows, 2026-09-04 — the same arithmetic the strip shows, so the
-  // two cannot disagree; absent, not zero, when the read failed), the status
-  // chip, and its actions: CSV, Run again, Rename, Delete.
-  $("bkPast").innerHTML=rest.map(function(j){
+  var count=$("bkPastN");
+  if(count)count.textContent=String(rest.length);
+  // A menu open in the ledger is not redrawn from under the pointer (a
+  // running job redraws every four seconds); closeMenus() redraws it after.
+  var body=$("bkPast");
+  if(body.querySelectorAll&&body.querySelectorAll('.mn-btn[aria-expanded="true"]').length){pastStale=true;return;}
+  // A ledger row per run, on one line (2026-11-15): name and date, type and
+  // lookback, the address count, the portfolio value (the list read's own
+  // BULK.summarize over the run's done rows, 2026-09-04 — the same arithmetic
+  // the strip shows, so the two cannot disagree; absent, not zero, when the
+  // read failed; its low and high are on the run itself, a click away), the
+  // status, and a three-dot menu: Download CSV, Run again, Rename, Delete.
+  body.innerHTML=rest.map(function(j){
     var done=j.status==="done"||(j.status!=="running"&&j.done_count>=j.total&&j.total>0);
-    var s=j.summary;
+    var s=j.summary,name=j.label||j.property_type+" run";
     var val=s&&s.valued>0
-      ? '<span style="font-weight:500">'+money(s.likely)+'</span><div class="sub">'+money(s.low)+" \\u2013 "+money(s.high)+
-        (s.valued<j.total?" \\u00b7 "+s.valued+" of "+j.total+" valued":"")+"</div>"
+      ? '<span class="fig">'+money(s.likely)+"</span>"+
+        (s.valued<j.total?'<div class="sub">'+s.valued+" of "+j.total+" valued</div>":"")
       : '<span class="sub">\\u2014</span>';
     var acts=[];
-    if(done||j.done_count>0)acts.push('<a href="/api/bulk/export.csv?id='+encodeURIComponent(j.id)+'">CSV</a>');
+    if(done||j.done_count>0)acts.push('<a href="/api/bulk/export.csv?id='+encodeURIComponent(j.id)+'">Download CSV</a>');
     if(onRunAgain&&j.status!=="running")acts.push('<a href="#" data-again="'+esc(j.id)+'">Run again</a>');
     acts.push('<a href="#" data-rename="'+esc(j.id)+'">Rename</a>');
-    if(j.status!=="running")acts.push('<a href="#" data-del="'+esc(j.id)+'">Delete</a>');
-    return "<tr><td>"+'<a href="#" data-job="'+esc(j.id)+'">'+esc(j.label||j.property_type+" run")+"</a>"+
-      '<div class="sub">'+esc(String(j.created_at||"").slice(0,10))+"</div></td>"+
-      "<td>"+esc(j.property_type)+" \\u00b7 "+esc(String(j.months))+" months</td>"+
-      '<td class="n">'+j.total+"</td>"+
-      '<td class="n">'+val+"</td>"+
-      "<td>"+statusChip(j.status)+(j.status!=="running"&&j.done_count<j.total
-        ?' <span class="sub">'+(j.total-j.done_count)+" not valued</span>":"")+"</td>"+
-      '<td class="n" style="white-space:nowrap">'+acts.join(" \\u00b7 ")+"</td></tr>";}).join("");
+    if(j.status!=="running")acts.push('<a href="#" class="danger" data-del="'+esc(j.id)+'">Delete</a>');
+    return '<tr><td class="r-name"><a href="#" data-job="'+esc(j.id)+'">'+esc(name)+"</a>"+
+      '<span class="sub dt">'+esc(dayWords(j.created_at))+"</span></td>"+
+      '<td class="r-type">'+esc(j.property_type)+" \\u00b7 "+esc(String(j.months))+" months"+
+      '<span class="pn"> \\u00b7 '+j.total+(j.total===1?" address":" addresses")+"</span></td>"+
+      '<td class="n r-n">'+j.total+"</td>"+
+      '<td class="n r-val">'+val+"</td>"+
+      '<td class="r-st">'+rowStatus(j.status)+(j.status!=="running"&&j.done_count<j.total
+        ?'<span class="sub">'+(j.total-j.done_count)+" not valued</span>":"")+"</td>"+
+      '<td class="n r-act">'+menu("More for "+name,acts.join(""))+"</td></tr>";}).join("");
   var past=$("bkPast");
   Array.prototype.forEach.call(past.querySelectorAll("a[data-job]"),function(a){
     a.addEventListener("click",function(e){e.preventDefault();poll(a.getAttribute("data-job"),true);});});
@@ -1015,16 +1278,7 @@ function init(opts){
   onList=opts.onList||null;
   onRunAgain=opts.onRunAgain||null;
   if(opts.max)MAX=opts.max;
-  var aa=$("bkAddAll");
-  if(aa)aa.addEventListener("click",function(e){e.preventDefault();addAllToPortfolio();});
-  var c=$("bkCancel");
-  if(c)c.addEventListener("click",function(){
-    if(!job)return;
-    // Says what a cancel actually does. Searches already in flight are billed
-    // the moment they start, so promising to stop them would be a lie.
-    if(!confirm("Stop the addresses that have not started yet? Searches already running will finish."))return;
-    api("POST","/api/bulk/cancel",{id:job.id}).then(function(){poll(job.id,true);}).catch(function(){});
-  });
+  wire();
 }
 
 return {init:init,showRun:showRun,poll:poll,stop:stop,setJobs:setJobs,
@@ -1179,6 +1433,11 @@ function runSpan(n){
 
 function refreshCount(){
   parsedCount=Math.min(BULKRUN.countLines($("bulkText").value),MAX);
+  // The box starts three lines tall and grows with the list, to a point, so
+  // a pasted list is read rather than scrolled.
+  var box=$("bulkText");
+  box.style.height="";
+  if(box.value&&box.scrollHeight>box.clientHeight)box.style.height=Math.min(box.scrollHeight+2,420)+"px";
   $("count").textContent=parsedCount?parsedCount+" address"+(parsedCount===1?"":"es")+" ready":"";
   // The offer applies to an empty box only, so it leaves once there is
   // anything to lose — a control that would overwrite nothing is noise, and
@@ -1227,7 +1486,21 @@ function refreshCount(){
 // stays as a row with its reason, because a redirect to nothing would hide
 // the one line that says what went wrong. ran=1 tells the report it was just
 // run, so it is not introduced as a saved one being reopened (2026-10-21).
+// The form folds away while a run is on screen (2026-11-15): the run view
+// marks #app .bk-open and the stylesheet hides the form, so the page shows
+// the form or a run and either fits one screen. .bk-form keeps the form over
+// a run. formFor says for how long: a run's id (until another run is on
+// screen), or "*" (until a run is started from the form).
+var formFor=null;
+function showForm(sticky){
+  var st=BULKRUN.state();
+  formFor=sticky||!st.job?"*":st.job.id;
+  $("app").classList.add("bk-form");
+}
+function foldForm(){formFor=null;$("app").classList.remove("bk-form");}
+
 function onRunState(job,items){
+  if(formFor&&formFor!=="*"&&job&&job.id!==formFor)foldForm();
   refreshCount();
   if(!singleJob||!job||job.id!==singleJob||job.status==="running")return;
   singleJob=null;
@@ -1314,6 +1587,7 @@ function run(){
   var same=function(a){return String(a||"").trim().toLowerCase();};
   var siteFor=SITE&&parsedCount===1&&same($("bulkText").value)===same(SITE.address)?SITE.id:null;
   BULKRUN.api("POST","/api/bulk",body).then(function(d){
+    foldForm();
     var one=Boolean(d.job&&d.job.total===1);
     singleJob=one?d.job.id:null;
     singleSite=one?siteFor:null;
@@ -1354,6 +1628,8 @@ function runAgain(j,its){
   $("bulkFocus").value=j&&j.tx_focus?j.tx_focus:"both";
   $("bulkNote").value=(j&&j.note)||"";
   $("bulkLabel").value="";
+  // Over the run being looked at, until another run is on screen.
+  showForm();
   refreshCount();
   BULKRUN.msg("Filled in from "+((j&&j.label)||"that run")+". Change anything, then run it.",false);
   window.scrollTo({top:0,behavior:"smooth"});
@@ -1387,6 +1663,18 @@ function start(boot){
   if(d.pace)PACE=d.pace;
   TYPES=d.types||[];fillTypes();
   BULKRUN.init({max:MAX,onState:onRunState,onList:loadList,onRunAgain:runAgain});
+  // New report: the run view's button, this page's to show and to answer,
+  // because the run view knows no form. It brings the folded form back.
+  var nw=$("bkNew");
+  if(nw){
+    nw.className="btn sm ghost";
+    nw.addEventListener("click",function(){
+      showForm();
+      refreshCount();
+      window.scrollTo({top:0,behavior:"smooth"});
+      $("bulkText").focus();
+    });
+  }
   BULKRUN.setJobs(d.jobs||[]);
   var live=(d.jobs||[]).filter(function(j){return j.status==="running";})[0];
   if(live)BULKRUN.poll(live.id);
@@ -1408,7 +1696,7 @@ function start(boot){
   // an EMPTY box once and runs nothing, because every address is a billed
   // search and the member still presses the button.
   try{var pre=new URLSearchParams(location.search).get("address");
-    if(pre&&!$("bulkText").value){$("bulkText").value=String(pre).slice(0,200);refreshCount();$("bulkText").focus();}}catch(e){}
+    if(pre&&!$("bulkText").value){showForm(true);$("bulkText").value=String(pre).slice(0,200);refreshCount();$("bulkText").focus();}}catch(e){}
   $("bulkType").addEventListener("change",function(){renderSubjectFields($("bulkType").value);refreshPerAddress();});
   ["bulkSize","bulkAsking","bulkNoi","bulkCap","bulkLabel"].forEach(function(id){
     $(id).addEventListener("input",refreshMore);});

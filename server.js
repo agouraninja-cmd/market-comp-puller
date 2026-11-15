@@ -12084,14 +12084,15 @@ async function loadAppPage() {
 // shells — marketShell emits it, index.html receives it by marker, never a
 // hand-copy. The app's copy skips "/" and "/desk" because its own Workspace
 // row swaps views in place and a prerender of either would be thrown away,
-// and it keeps the member's comps warm (/comps, the vault until
-// 2026-10-13); every other page keeps the workspace warm,
+// and it keeps the Comps row's page warm (/comps, the vault until
+// 2026-10-13; /bulk, Run a comp report, since 2026-11-15, when the row
+// began opening there); every other page keeps the workspace warm,
 // since that is home. instant-nav.js has the rules.
 // `desktopToken` is how the script recognises the desktop app, which must take
 // the warm path its shell turns into a real prerender (instant-nav.js, THE
 // DESKTOP APP) rather than insert speculation rules Electron never honours.
 const INSTANT_NAV_SHELL = INSTANTNAV.bootScript({ warm: ["/desk"], desktopToken: INAPP_UA_TOKEN });
-const INSTANT_NAV_APP = INSTANTNAV.bootScript({ skip: ["/", "/desk"], warm: ["/comps"], desktopToken: INAPP_UA_TOKEN });
+const INSTANT_NAV_APP = INSTANTNAV.bootScript({ skip: ["/", "/desk"], warm: ["/bulk"], desktopToken: INAPP_UA_TOKEN });
 const INSTANT_NAV_MARKER = "<!--INSTANT_NAV-->";
 
 // Bulk valuation's run view, injected into index.html so a list pasted into
@@ -14202,31 +14203,33 @@ const marketBar = (signedIn = false, current = "") =>
   // inside the Tools dropdown above instead, and rendering both would put
   // two rows on one URL in the same bar. The comment sits ABOVE the label
   // rather than between it and the row, because test/nav-parity.test.js
-  // measures the SOURCE distance from the label to `<a href="/markets"`.
+  // measures the SOURCE distance from the label to the first row (Markets
+  // until 2026-11-15, Comps since).
+  // Comps is the FIRST Tools row, above Markets, since 2026-11-15 (owner's
+  // call); test/nav-parity.test.js measures the label-to-row distance to it,
+  // so the row's history sits here, above the label:
+  // /bulk had NO link anywhere on the site before 2026-08-29: not in a
+  // menu, not in a footer, not in a header. Its only inbound link was
+  // from inside itself, so a Pro member could only reach it by typing the
+  // URL or by pasting a multi-line list into the main search and
+  // discovering the mode by accident. A billed feature nobody can find is
+  // one nobody buys.
+  // Comp report, back under Tools (owner's call, 2026-10-08: "we are
+  // moving the comp report back to tools"). It left the rail for one day
+  // with Draft C, when Home's address box and its Reports tab ran one;
+  // both came off Home with this row's return. Every member, unlike the
+  // row before Draft C, which hid until /api/config said canBulkValue: a
+  // free member opening /bulk gets its upgrade card, the honest answer
+  // for a paid tool, and a hidden row would leave them no door at all now
+  // that nothing on Home runs a report. index.html carries the twin.
+  // Comps since 2026-10-13 (the owner: "change the report section and
+  // name it Comps"): the member's own comps at /comps and the comp report
+  // tool at /bulk (compsSectionTabs). Current on both. The row opens /bulk,
+  // Run a comp report, the section's first tab, since 2026-11-15.
   `<span class="navsec">Tools</span>` +
   (signedIn
-    ? `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>${NAV_ICONS.markets}<span class="nvl">Markets</span></a>`
-    : "") +
-  (signedIn
-    ? // /bulk had NO link anywhere on the site before 2026-08-29: not in a
-      // menu, not in a footer, not in a header. Its only inbound link was
-      // from inside itself, so a Pro member could only reach it by typing the
-      // URL or by pasting a multi-line list into the main search and
-      // discovering the mode by accident. A billed feature nobody can find is
-      // one nobody buys.
-      // Comp report, back under Tools (owner's call, 2026-10-08: "we are
-      // moving the comp report back to tools"). It left the rail for one day
-      // with Draft C, when Home's address box and its Reports tab ran one;
-      // both came off Home with this row's return. Every member, unlike the
-      // row before Draft C, which hid until /api/config said canBulkValue: a
-      // free member opening /bulk gets its upgrade card, the honest answer
-      // for a paid tool, and a hidden row would leave them no door at all now
-      // that nothing on Home runs a report. index.html carries the twin.
-      // Comps since 2026-10-13 (the owner: "change the report section and
-      // name it Comps"): the member's own comps at /comps, the row's
-      // address, and the comp report tool at /bulk, the section's second
-      // tab (compsSectionTabs). Current on both.
-      `<a id="navComps" href="/comps"${current === "/comps" || current === "/bulk" ? ' aria-current="page"' : ""}>${NAV_ICONS.reports}<span class="nvl">Comps</span></a>` +
+    ? `<a id="navComps" href="/bulk"${current === "/comps" || current === "/bulk" ? ' aria-current="page"' : ""}>${NAV_ICONS.reports}<span class="nvl">Comps</span></a>` +
+      `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>${NAV_ICONS.markets}<span class="nvl">Markets</span></a>` +
       // The Permit tracker (2026-09-24, owner's: "it should be under tools"),
       // the THIRD Tools row, after Comps (owner's order, same day).
       // Every member; index.html carries the twin row in the same place.

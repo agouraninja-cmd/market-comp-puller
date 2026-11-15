@@ -576,7 +576,7 @@ test("the desktop header is answered before anything else, and never by a normal
     serverSrc.indexOf("function aggregateStats("));
   assert.ok(!/redispatch|server\.emit/.test(fn), "no fallback to an unguarded render");
   assert.match(serverSrc, /bootScript\(\{ warm: \["\/desk"\], desktopToken: INAPP_UA_TOKEN \}\)/);
-  assert.match(serverSrc, /bootScript\(\{ skip: \["\/", "\/desk"\], warm: \["\/comps"\], desktopToken: INAPP_UA_TOKEN \}\)/);
+  assert.match(serverSrc, /bootScript\(\{ skip: \["\/", "\/desk"\], warm: \["\/bulk"\], desktopToken: INAPP_UA_TOKEN \}\)/);
 });
 
 test("the served script carries the warm path", () => {
@@ -733,8 +733,8 @@ test("both shells carry the script for a member, from one source", () => {
   const firstSrc = indexSrc.indexOf("<script src=");
   assert.ok(marker > 0 && marker < firstSrc, "the marker must precede the page's scripts");
   assert.match(serverSrc,
-    /const INSTANT_NAV_APP = INSTANTNAV\.bootScript\(\{ skip: \["\/", "\/desk"\], warm: \["\/comps"\],/,
-    "the app handles / and /desk in place (a prerender of either is thrown away) and keeps the vault warm");
+    /const INSTANT_NAV_APP = INSTANTNAV\.bootScript\(\{ skip: \["\/", "\/desk"\], warm: \["\/bulk"\],/,
+    "the app handles / and /desk in place (a prerender of either is thrown away) and keeps the Comps row's page (/bulk since 2026-11-15) warm");
   assert.match(serverSrc, /const INSTANT_NAV_SHELL = INSTANTNAV\.bootScript\(\{ warm: \["\/desk"\],/,
     "every other page keeps the workspace warm: it is home");
 });

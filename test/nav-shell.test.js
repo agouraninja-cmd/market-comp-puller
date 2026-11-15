@@ -269,7 +269,7 @@ test("the app page hides the four member places from a signed-out phone visitor,
     ["> nav > #navMessagesLink", '<a id="navMessagesLink" href="/messages"'],
     ["> nav > #navPipe", '<a id="navPipe" href="/pipeline"'],
     ["> nav > #navSites", '<a id="navSites" href="/sites"'],
-    ["> nav > #navComps", '<a id="navComps" href="/comps"'],
+    ["> nav > #navComps", '<a id="navComps" href="/bulk"'],
     ['> nav > a[href="/permits"]', '<a href="/permits"'],
   ]) {
     assert.ok(selectors.includes(SCOPE + " " + sel), `the signed-out phone header no longer hides ${sel}`);

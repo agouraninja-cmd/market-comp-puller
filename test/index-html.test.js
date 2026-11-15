@@ -4101,3 +4101,94 @@ test("the report tab's map re-measure survives the map being dropped under it", 
   page.tab("analysis");
   assert.equal(timer, null, "the analysis tab has no map to measure");
 });
+
+// ----------------------------------------------------------------------------
+// Size restatement (2026-11-15). valuation.js restates a commercial comp's
+// $/SF at the subject's size before the range is taken; the table still shows
+// the raw figure, so the adj mark has to carry the counted one and the reason.
+// ----------------------------------------------------------------------------
+
+test("the adj mark carries the figure a comp counts as, and names what moved it", () => {
+  const V = require("../valuation.js");
+  const asOf = Date.parse("2026-11-10T18:00:00Z");
+  const usd = (v) => "$" + Math.round(v).toLocaleString("en-US");
+  const noteFor = (type, trend, subjSF) => new Function(
+    "countedPsf", "asOfOf", "trendPctOf", "subjectSizeForMatch", "numericValue", "formatUsd",
+    liftFn("  function countedPsfOf(comp, meta, parsed) {") + liftFn("  function indexedPsfNote(comp, meta, parsed) {")
+    + "return (comp) => indexedPsfNote(comp, { type: " + JSON.stringify(type) + " }, { annual_price_trend_pct: " + JSON.stringify(trend) + " });")(
+    V.countedPsf, () => asOf, () => trend, () => subjSF, V.numericValue, usd);
+  const big = { transaction: "Sale", date: "Oct 2026", size_sqft: "80,000", price_per_sqft: "$100", source_type: "public_record" };
+  const old = { transaction: "Sale", date: "Nov 2024", size_sqft: "20,000", price_per_sqft: "$100", source_type: "public_record" };
+
+  // Size only: a comp four times the subject's size counts 4^0.2 higher.
+  const sized = noteFor("Industrial", null, 20000)(big);
+  assert.equal(sized, "Counts as $132/SF in the valuation, not $100/SF: restated at your 20,000 SF "
+    + "(this one is larger, and larger buildings sell for less per SF).");
+  assert.match(noteFor("Industrial", null, 320000)(big), /^Counts as \$76\/SF .*this one is smaller/);
+
+  // Time only keeps the sentence it always had, word for word.
+  assert.equal(noteFor("Industrial", 5, 20000)(old),
+    "Counts as $110/SF in the valuation: indexed from $100/SF to the report date at the market's +5%/yr trend.");
+
+  // Both: one figure, both reasons, in the order the math applies them.
+  const both = noteFor("Industrial", 5, 20000)(Object.assign({}, old, { size_sqft: "80,000" }));
+  assert.match(both, /^Counts as \$146\/SF in the valuation, not \$100\/SF: indexed to the report date at the market's \+5%\/yr trend, then restated at your 20,000 SF/);
+
+  // Nothing moved it: no mark. A house, a same-size comp, no subject size, a lease.
+  assert.equal(noteFor("Residential", null, 2000)(Object.assign({}, big, { size_sqft: "8,000" })), "");
+  assert.equal(noteFor("Industrial", null, 80000)(big), "");
+  assert.equal(noteFor("Industrial", null, 0)(big), "");
+  assert.equal(noteFor("Industrial", 5, 20000)(Object.assign({}, old, { transaction: "Lease" })), "");
+
+  // The figure on the mark is the figure the range was taken over.
+  const hero = V.valueFromComps([big], { subjectSF: 20000, asOf, trendPct: null, propertyType: "Industrial" });
+  assert.equal(usd(hero.psfMid), "$132");
+});
+
+test("the mechanics sentence and the legend say size-adjusted only when the math restated a comp", () => {
+  assert.match(html, /const sizeRestated = !!\(val && val\.sizeRestated > 0\);/);
+  assert.match(html, /restated at your building's size, `\s*\+ `because larger buildings sell for less per SF \(adj in the table shows each adjusted figure\)\./);
+  assert.match(html, /timed && sized \? "time- and size-adjusted" : sized \? "size-adjusted" : "time-adjusted"/);
+});
+
+test("under a size-restated band the ticks and the outlier chip both read the counted figure", () => {
+  // Raw ticks under a restated band put the whole tint past the last comp on
+  // the sample report (74,000 SF subject, every comp larger). The scatter and
+  // the chip are a pair, so they switch together, off one flag.
+  assert.match(html, /trimmed: val\.trimmed, restated: val\.sizeRestated > 0 \}/);
+  assert.match(html, /const restatedTicks = psfBand && psfBand\.restated\s*\? saleComps\.map\(\(x\) => \(countedPsf\(x\.comp, \{/);
+  assert.match(html, /renderCompScatter\(restatedTicks \|\| ppsfs, rr, \{[^}]*counted: !!restatedTicks,/);
+  assert.match(html, /const counted = currentPsfBand\.restated \? countedPsfOf\(comp, currentMeta, currentParsed\) : null;/);
+  assert.match(html, /VALUATION\.outlierOf\(counted \? counted\.value : salePsfOf\(comp\), currentPsfBand\)/);
+
+  // The scatter, run: restated ticks sit inside the axis with the band among
+  // them, and the note says the ticks are counted figures.
+  const nodes = {};
+  const el = (id) => (nodes[id] = nodes[id] || {
+    id, style: {}, textContent: "", innerHTML: "", className: "", children: [],
+    classList: { add() {}, remove() {} }, setAttribute(k, v) { this[k] = v; },
+    appendChild(c) { this.children.push(c); return c; },
+  });
+  const run = new Function("document", liftFn("  function renderCompScatter(values, band, opts) {") + "return renderCompScatter;")({
+    getElementById: el, createElement: () => ({ style: {}, className: "", textContent: "" }),
+  });
+  const band = { low: 112, mid: 122, high: 129, trimmed: true };
+  run([119, 119, 127, 131], band, { fmt: (v) => "$" + v + "/SF", unitPhrase: "$/SF", counted: true });
+  assert.match(nodes.ownerScatterNote.textContent, /at the \$\/SF it counts as at your building's size \(adj in the table\)\. /);
+  const tint = nodes.ownerScatterStrip.children.find((c) => c.className === "rd-scat-band");
+  assert.ok(parseFloat(tint.style.left) === 0 && parseFloat(tint.style.width) < 100, "the band starts at the axis and ends inside it");
+  run([105, 110, 115, 122], band, { fmt: (v) => "$" + v + "/SF", unitPhrase: "$/SF" });
+  assert.match(nodes.ownerScatterNote.textContent, /at its own \$\/SF\. /);
+});
+
+test("a restated Likely is labelled as the median at your size, on screen and in the Excel sheet", () => {
+  // The table footer prints the plain median of the $/SF column as "Median of
+  // N sale comps". Calling the restated figure "comp median" too put two
+  // medians 8% apart on the sample report.
+  assert.match(html, /\(psfBand && psfBand\.restated \? "median at your size" : "comp median"\)/);
+  assert.match(html, /\[currentPsfBand && currentPsfBand\.restated \? "Median \$\/SF at your size" : "Comp median \$\/SF", xlsxMoney\(lastValuation\.median_psf\)\]/);
+  // The portfolio snapshot posted to the server keeps exactly its four fields.
+  const snap = html.match(/lastValuation = \{\s*low: val\.low,\s*likely: val\.mid,\s*high: val\.high,\s*median_psf: [^}]*\};/);
+  assert.ok(snap, "the $/SF branch's lastValuation literal moved");
+  assert.doesNotMatch(snap[0], /restated/);
+});

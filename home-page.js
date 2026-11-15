@@ -45,10 +45,12 @@
 //      street address on GET /?auth=signup.
 //   4. THE SAMPLE REPORT IS ILLUSTRATIVE AND ITS ARITHMETIC HOLDS. Low, Likely
 //      and High are what valuation.js's valueFromComps returns for these five
-//      comps at 21,600 SF, the same call the real report makes: each comp
-//      weighted by its source tier and age (compWeight), the WEIGHTED 25th,
-//      50th and 75th percentile of $/SF, then heroRound to the nearest
-//      $25,000. Not the plain median and not the cheapest and dearest comp,
+//      comps at 21,600 SF, the same call the real report makes: each comp's
+//      $/SF restated at the subject's size (sizeRestateFactor, since
+//      2026-11-15: a commercial building bigger than the subject counts a
+//      little higher, a smaller one a little lower), weighted by its source
+//      tier and age (compWeight), the WEIGHTED 25th, 50th and 75th percentile
+//      of those figures, then heroRound to the nearest $25,000. Not the plain median and not the cheapest and dearest comp,
 //      which is what this rule claimed until 2026-10-07 while the page showed
 //      figures the product would never have produced. Dated mid-month as
 //      shown, no market trend, and the as-of date does not move the answer.
@@ -74,17 +76,21 @@ const SAMPLE_ADDRESS = "8780 White Oak Ave, Rancho Cucamonga, CA";
 const SAMPLE_SIZE_SQFT = "21,600";
 const SAMPLE_COMPS = [
   ["9020 Center Ave", "May 26", "21,400", "$233", "v", "Verified &middot; via Ridgeline CRE"],
-  ["11215 4th St", "Mar 26", "18,750", "$223", "p", "Public record"],
+  ["11215 4th St", "Mar 26", "18,750", "$225", "p", "Public record"],
   ["8933 Utica Ave", "Feb 26", "24,100", "$218", "li", "Listing"],
   ["10722 Arrow Route", "Dec 25", "19,900", "$214", "p", "Public record"],
   ["12190 6th St", "Nov 25", "26,300", "$204", "li", "Listing"],
 ];
 // The weighted median is $219 while the plain median of the five is $218:
-// the newer, better-sourced comps above it pull it up a dollar.
+// the newer, better-sourced comps above it pull it up a dollar. Each comp
+// counts at its $/SF restated to 21,600 SF (the 26,300 SF one at $212, not
+// $204), which is why Low is not simply the fourth comp's figure. 4th St was
+// $223 until the restatement shipped; $225 is what keeps every whole-dollar
+// $/SF times the size landing on the total beside it.
 const SAMPLE_RANGE = {
-  low: { value: "$4,600,000", psf: "$213" },
+  low: { value: "$4,575,000", psf: "$212" },
   mid: { value: "$4,725,000", psf: "$219" },
-  high: { value: "$4,900,000", psf: "$227" },
+  high: { value: "$4,875,000", psf: "$226" },
 };
 
 // The vault ledger under "For firms". Three rows, the first badged, because
@@ -464,8 +470,8 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<div class="hmtr med"><span class="hmmedlab">Weighted median of 5 sale comps</span>` +
     `<span>${SAMPLE_RANGE.mid.psf}</span><span class="hmarith">&times; ${SAMPLE_SIZE_SQFT} SF &asymp; ${SAMPLE_RANGE.mid.value}</span></div>` +
     `</div></div></div>` +
-    `<div class="hmfoot">Newer, better-sourced comps weigh more; Low and High bound the weighted ` +
-    `middle half. Your price and NOI never leave your browser.</div>` +
+    `<div class="hmfoot">Each comp is restated at this building&#39;s size; newer, better-sourced ones weigh ` +
+    `more; Low and High bound the weighted middle half. Your price and NOI never leave your browser.</div>` +
     `</div></section>` +
 
     // --- Band 3: the firm pitch --------------------------------------------

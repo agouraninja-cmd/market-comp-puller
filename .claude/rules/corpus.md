@@ -11,6 +11,8 @@ paths:
   - "test/market.test.js"
   - "test/deal-date.test.js"
   - "test/archive-first.test.js"
+  - "scripts/accuracy-lab.js"
+  - "test/accuracy-lab.test.js"
 ---
 # The comp corpus and retrieval
 
@@ -196,3 +198,47 @@ paths:
   a live search used), and the card says both of those things next to the
   numbers. Not a public accuracy claim — nothing from this ships to a
   marketing surface.
+  **It feeds the math year built (2026-11-15).** The live report weights by
+  vintage whenever it knows the subject's year, corpus rows carry one, and the
+  backtest passed neither, so the card graded a weighting no customer's report
+  runs. Passing it moved the headline 19.1% -> 17.9% with no change to the
+  product; read any figure from before that date with that in mind.
+- **The accuracy lab** (`scripts/accuracy-lab.js`, not a route; added
+  2026-11-15) is the bench the backtest was built for: the "second project"
+  its spec ends on. `node scripts/accuracy-lab.js <corpus.csv>` (the export is
+  HQ's **Comp corpus CSV** link, `/api/comp-corpus`) scores about thirty
+  candidate versions of the math over the same held-out sales and the same
+  peers as today's, through `BACKTEST.score`'s `valueFn` door (never passed by
+  `/api/accuracy`), and prints each against the baseline pair for pair.
+  `--by-type` breaks a change out per property type, `--only <text>` picks
+  variants, `--facts` prints the within-bucket size and time slopes the data
+  itself shows. Four things to know before trusting a line of its output:
+  - **A variant must beat the noise, and the noise is measured by market.**
+    Subjects in one market share peers, so the interval beside each change
+    resamples whole MARKETS; one that straddles zero is a coin flip. On the
+    2026-11-15 corpus (678 rows, 242 scored, 128 of them Boise houses) the
+    recency half-life, the size penalty's shape, the source weights, the
+    weight floor, a trend read off the comps and a different "Likely"
+    statistic ALL sat inside it. Only the size restatement cleared it, and
+    only for commercial buildings (report-and-valuation.md, flow 3g). Those
+    settings are not proven right; the corpus is too small and too
+    concentrated to say they are wrong.
+  - **Nothing is reimplemented.** A variant either wraps the production
+    composition or patches valuation.js's SOURCE TEXT, and a patch that does
+    not match exactly once throws, so a refactor cannot leave an experiment
+    quietly scoring the baseline under a new name (`test/accuracy-lab.test.js`
+    runs every patch).
+  - **The answer key is weaker than it looks.** Most `listing` rows from
+    July and August 2026 are asking or last-list prices dated as sales (the
+    `Active` / `Listed Mon YYYY` convention arrived 2026-08-13 and rows since
+    then are clean), Idaho is a non-disclosure state, and the whole corpus
+    holds fewer than ten `public_record` sales. So the lab can rank two
+    versions of the math against each other; it cannot yet say how far either
+    is from a closed price, and it cannot measure what an asking price is
+    worth as a comp. That needs closed sales, which means broker-verified or
+    public-record rows.
+  - **Band coverage is a product question, not a bug.** Low to High is the
+    weighted middle half of the comps by construction, so a real price lands
+    inside it a little under half the time (48%). The 15th-85th percentile
+    catches 62% at half again the width (45% of Likely against 31%). Left alone deliberately: widening the
+    range is the owner's call.

@@ -5534,7 +5534,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // so every call site below reads exactly as it did when these were local.
   const { numericValue, salePsfOf, heroRound,
           compAgeYears, yearOf, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf, askFit,
-          conditionSpread, unexplainedGain, conditionFit,
+          conditionSpread, unexplainedGain, conditionFit, countedPsf,
           parseRadiusMiles, defaultFreePassMiles } = VALUATION;
 
   // ----------------------------------------------------------------------------
@@ -7514,24 +7514,48 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     return { label: tier.label, cls: tier.cls, weight: w, reasons };
   }
 
-  // Disclosure for that time adjustment. The table deliberately shows each
+  // What one sale comp counts as in the range, read from valuation.js's
+  // countedPsf with the hero's own inputs: the same report date, trend,
+  // subject size and type valueFromComps is handed, so the "adj" mark, the
+  // outlier chip and the range can never be three readings of one comp.
+  function countedPsfOf(comp, meta, parsed) {
+    return countedPsf(comp, {
+      asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
+      subjectSF: subjectSizeForMatch(parsed), propertyType: meta && meta.type,
+    });
+  }
+
+  // Disclosure for the two adjustments. The table deliberately shows each
   // comp's RAW reported $/SF so the audit trail never moves, but the valuation
-  // uses the indexed figure — which means the number on screen and the number
-  // in the math can differ with nothing saying so. Where they do, the cell
-  // wears an "adj" mark carrying both figures. Sales only: leases are never
-  // indexed.
+  // uses the adjusted figure: indexed to the report date at the market's
+  // trend, and (commercial buildings, since 2026-11-15) restated at the
+  // subject's size. That means the number on screen and the number in the
+  // math can differ with nothing saying so. Where they do, the cell wears an
+  // "adj" mark carrying both figures and the reason. Sales only: leases are
+  // never adjusted.
   function indexedPsfNote(comp, meta, parsed) {
     if (String(comp.transaction || "").toLowerCase().startsWith("lease")) return "";
-    const raw = salePsfOf(comp);
-    if (!(raw > 0)) return "";
-    const f = trendFactor(comp, asOfOf(meta), trendPctOf(parsed));
+    const k = countedPsfOf(comp, meta, parsed);
+    if (!k || !isFinite(k.value)) return "";
     // Under half a percent rounds to the same displayed figure; a marker for a
-    // difference nobody can see is noise, not disclosure.
-    if (!isFinite(f) || Math.abs(f - 1) < 0.005) return "";
+    // difference nobody can see is noise, not disclosure. Each step is held to
+    // that bar on its own, so the sentence names only what moved the figure.
+    const timed = isFinite(k.trend) && Math.abs(k.trend - 1) >= 0.005;
+    const sized = isFinite(k.size) && Math.abs(k.size - 1) >= 0.005;
+    if (!timed && !sized) return "";
     const pct = Number(parsed && parsed.annual_price_trend_pct);
     const psf = (v) => formatUsd(v, { maximumFractionDigits: 0 }) + "/SF";
-    return `Counts as ${psf(raw * f)} in the valuation: indexed from ${psf(raw)} to the report date `
-      + `at the market's ${pct > 0 ? "+" : ""}${pct}%/yr trend.`;
+    const trendPart = `indexed to the report date at the market's ${pct > 0 ? "+" : ""}${pct}%/yr trend`;
+    const sf = Math.round(subjectSizeForMatch(parsed)).toLocaleString();
+    const csf = numericValue(comp.size_sqft);
+    const sizePart = `restated at your ${sf} SF (this one is ${csf > subjectSizeForMatch(parsed) ? "larger" : "smaller"}, `
+      + `and larger buildings sell for less per SF)`;
+    if (timed && !sized) {
+      return `Counts as ${psf(k.value)} in the valuation: indexed from ${psf(k.raw)} to the report date `
+        + `at the market's ${pct > 0 ? "+" : ""}${pct}%/yr trend.`;
+    }
+    return `Counts as ${psf(k.value)} in the valuation, not ${psf(k.raw)}: `
+      + (timed ? trendPart + ", then " : "") + sizePart + ".";
   }
 
   // Word mark on a Size or $/SF cell. † ‡ § read as gray glitches (and §
@@ -7653,6 +7677,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // so a tick can never sit outside the tint while the table's outlier chip
   // calls that same comp in-range.
   //
+  // ONE EXCEPTION, `opts.counted` (2026-11-15): when the band was taken over
+  // SIZE-RESTATED figures (commercial buildings, valuation.js
+  // sizeRestateFactor) the caller passes each comp's counted $/SF instead.
+  // A trend index nudges every comp the same way; a size restatement moves
+  // each one by its own amount, up to half again, and with raw ticks the whole
+  // tint sat past the last comp on the first report it was tried on. The note
+  // then says the ticks are counted figures and points at the table's adj
+  // mark, which carries both numbers. buildOutlierChip makes the same switch
+  // off the same flag (currentPsfBand.restated), so the pairing still holds.
+  //
   // The axis spans the comps, not the band. The band is the weighted
   // interquartile range (robustPpsfRange), so with 4+ comps roughly half of
   // them sit OUTSIDE it by construction — an axis clipped to Low-High would
@@ -7704,7 +7738,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("ownerScatterLo").textContent = fmt(lo);
     document.getElementById("ownerScatterHi").textContent = fmt(hi);
     document.getElementById("ownerScatterNote").textContent =
-      `Each gray tick is one of the ${vals.length} ${o.compNoun || "sale comps"} at its own ${o.unitPhrase}. `
+      `Each gray tick is one of the ${vals.length} ${o.compNoun || "sale comps"} at `
+      + (o.counted ? `the ${o.unitPhrase} it counts as at your building's size (adj in the table). ` : `its own ${o.unitPhrase}. `)
       + "The shaded span is the range above and the red mark is Likely, so the tighter the ticks cluster, "
       + "the firmer this estimate.";
     // The meaning lives entirely in mark positions, so the accessible name has
@@ -7973,8 +8008,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       subjectYear: subjectYearForMatch(parsed),
       ...weightOpts(meta, parsed),
     });
+    // `restated` rides along for the scatter and the outlier chip: when the
+    // band was taken over size-restated figures, both compare a comp's COUNTED
+    // $/SF against it instead of its displayed one (see renderCompScatter).
     const psfBand = val
-      ? { low: val.psfLow, mid: val.psfMid, high: val.psfHigh, trimmed: val.trimmed }
+      ? { low: val.psfLow, mid: val.psfMid, high: val.psfHigh, trimmed: val.trimmed, restated: val.sizeRestated > 0 }
       : null;
     currentPsfBand = psfBand;
     // The trust line is in two halves, and the split is the point.
@@ -7996,11 +8034,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const mechanics = [];
     // One quiet sentence disclosing the math, shared by both sales bases.
     const trendPct = parsed ? parsed.annual_price_trend_pct : null;
+    // val.sizeRestated counts the comps valueFromComps restated at the
+    // subject's size (commercial buildings with a known size), so the sentence
+    // appears exactly when the math did it.
+    const sizeRestated = !!(val && val.sizeRestated > 0);
     const weighNote = "Recent, similar-size, similar-vintage, nearby, same-price-tier, well-sourced comps count more"
       + (Number.isFinite(trendPct)
-        ? `; prices are indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend `
-          + `(adj in the table shows each indexed figure).`
-        : ".");
+        ? `; prices are indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend`
+          + (sizeRestated ? "" : ` (adj in the table shows each indexed figure).`)
+        : (sizeRestated ? "" : "."))
+      + (sizeRestated
+        ? `${Number.isFinite(trendPct) ? ", and" : "; each comp's $/SF is"} restated at your building's size, `
+          + `because larger buildings sell for less per SF (adj in the table shows each adjusted figure).`
+        : "");
     // Honest-uncertainty notes. Name the comps of a wholly different size
     // class (down-weighted, never hidden), and say plainly when only 2-3
     // comps back the range - below 4 there is no outlier trim, so the band
@@ -8362,7 +8408,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       };
       const ppsf0 = (v) => formatUsd(v, { maximumFractionDigits: 0 });   // $/SF reads as whole dollars
       setPpsf("ownerLowPpsf", "at " + ppsf0(rr.low) + "/SF");
-      setPpsf("ownerMidPpsf", "at " + ppsf0(rr.mid) + "/SF · comp median");
+      // "comp median" is what the table's own footer prints (the plain median
+      // of the $/SF column). Once the comps are restated at the subject's size
+      // this figure is no longer that one, and two "medians" eight percent
+      // apart on one report would have nothing saying which to believe.
+      setPpsf("ownerMidPpsf", "at " + ppsf0(rr.mid) + "/SF · "
+        + (psfBand && psfBand.restated ? "median at your size" : "comp median"));
       setPpsf("ownerHighPpsf", "at " + ppsf0(rr.high) + "/SF");
       const srcPhrase = sizeSource === "public_record" ? "from public records"
         : sizeSource === "listing" ? "from a listing"
@@ -8401,7 +8452,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         + (srcBits.length ? `, ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}`
         + sizeNote + smallNNote(ppsfs.length);
       trustEl.classList.remove("hidden");
-      renderCompScatter(ppsfs, rr, { fmt: (v) => ppsf0(v) + "/SF", unitPhrase: "$/SF" });
+      // Size-restated band: tick each comp where it COUNTS, with the inputs
+      // valueFromComps was just handed, so the ticks and the tint are one
+      // basis. Raw ticks under a restated band put the whole range off the end
+      // of the line whenever every comp is bigger (or smaller) than the subject.
+      const restatedTicks = psfBand && psfBand.restated
+        ? saleComps.map((x) => (countedPsf(x.comp, {
+          asOf: asOfOf(meta), trendPct: trendPctOf(parsed), subjectSF: sizeR, propertyType: meta.type,
+        }) || {}).value).filter((v) => v > 0)
+        : null;
+      renderCompScatter(restatedTicks || ppsfs, rr, {
+        fmt: (v) => ppsf0(v) + "/SF", unitPhrase: "$/SF", counted: !!restatedTicks,
+      });
 
       const entries = [{
         label: "Sales comparison approach",
@@ -21468,7 +21530,13 @@ async function renderMyDesk() {
       present.push(["size", "different size class than your " + noun + ", counts less"]);
     }
     if (comps.some((c) => indexedPsfNote(c, currentMeta, currentParsed))) {
-      present.push(["adj", "time-adjusted figure the valuation uses"]);
+      // Names only the adjustments this report actually made.
+      const ks = comps.map((c) => (String(c.transaction || "").toLowerCase().startsWith("lease")
+        ? null : countedPsfOf(c, currentMeta, currentParsed))).filter(Boolean);
+      const timed = ks.some((k) => Math.abs(k.trend - 1) >= 0.005);
+      const sized = ks.some((k) => Math.abs(k.size - 1) >= 0.005);
+      present.push(["adj", (timed && sized ? "time- and size-adjusted" : sized ? "size-adjusted" : "time-adjusted")
+        + " figure the valuation uses"]);
     }
     el.innerHTML = "";
     el.classList.toggle("hidden", present.length === 0);
@@ -21762,12 +21830,23 @@ async function renderMyDesk() {
   function buildOutlierChip(comp) {
     if (!currentPsfBand || isExcluded(comp) || comp.locked) return null;
     if (String(comp.transaction || "").toLowerCase().startsWith("lease")) return null;
-    const o = VALUATION.outlierOf(salePsfOf(comp), currentPsfBand);
+    // The same figure the hero's ticks plot, so a tick and its chip can never
+    // disagree (see the scatter's header): the DISPLAYED $/SF, or, when the
+    // band was taken over size-restated figures, the $/SF this comp COUNTS as.
+    // A warehouse twice the subject's size has a raw $/SF under the band and a
+    // counted one inside it; flagging it would send the curator after a comp
+    // the math has no quarrel with.
+    const counted = currentPsfBand.restated ? countedPsfOf(comp, currentMeta, currentParsed) : null;
+    const o = VALUATION.outlierOf(counted ? counted.value : salePsfOf(comp), currentPsfBand);
     if (!o) return null;
     const chip = document.createElement("span");
     chip.className = "rd-chip no-print no-capture whitespace-nowrap";
     chip.textContent = `${o.pct}% ${o.dir} the range`;
-    chip.title = `This sale sits ${o.pct}% ${o.dir} the ${formatUsd(currentPsfBand.low, { maximumFractionDigits: 0 })}-${formatUsd(currentPsfBand.high, { maximumFractionDigits: 0 })}/SF range the estimate uses. Worth a look; Exclude removes it from the math.`;
+    const bandText = `${formatUsd(currentPsfBand.low, { maximumFractionDigits: 0 })}-${formatUsd(currentPsfBand.high, { maximumFractionDigits: 0 })}/SF range the estimate uses`;
+    chip.title = (counted
+      ? `At your building's size this sale counts as ${formatUsd(counted.value, { maximumFractionDigits: 0 })}/SF, ${o.pct}% ${o.dir} the ${bandText}.`
+      : `This sale sits ${o.pct}% ${o.dir} the ${bandText}.`)
+      + " Worth a look; Exclude removes it from the math.";
     return chip;
   }
 
@@ -22873,7 +22952,11 @@ async function renderMyDesk() {
           ["Low", xlsxMoney(lastValuation.low)],
           ["Likely", xlsxMoney(lastValuation.likely)],
           ["High", xlsxMoney(lastValuation.high)],
-          ["Comp median $/SF", xlsxMoney(lastValuation.median_psf)],
+          // Restated at the subject's size, median_psf is not the median of
+          // the sheet's own $/SF column and must not be called that. Read off
+          // the band, not lastValuation: that object is posted to the server
+          // as a portfolio snapshot and must keep its four fields.
+          [currentPsfBand && currentPsfBand.restated ? "Median $/SF at your size" : "Comp median $/SF", xlsxMoney(lastValuation.median_psf)],
         ] : []),
         ...(sell && sell.value > 0 && (!lastValuation || Math.round(sell.value) !== Math.round(lastValuation.likely))
           ? [["Sell today (est.)", xlsxMoney(Math.round(sell.value))], ["Sell-today basis", sell.source]] : []),

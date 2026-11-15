@@ -137,6 +137,10 @@ function compFromRow(row, dy) {
     price_per_sqft: row.price_per_sqft,
     source_type: row.source_type,
     verified: row.verified,
+    // The live report weights by vintage whenever it knows the subject's year
+    // built, and corpus rows carry one. Until 2026-11-15 this left it off, so
+    // /admin graded a weighting no customer's report runs.
+    year_built: row.year_built,
   };
 }
 
@@ -179,6 +183,7 @@ function score(rows, opts) {
   const parseDealDate = o.parseDealDate;
   const minPeers = o.minPeers == null ? 3 : o.minPeers;
   const minSubjects = o.minSubjects == null ? 20 : o.minSubjects;
+  const valueFn = typeof o.valueFn === "function" ? o.valueFn : null;
 
   const pool = [];
   let unusable = 0;
@@ -234,12 +239,23 @@ function score(rows, opts) {
       // its single date-nearest row, so it enters the weighted band once.
       peers = dedupePeers(peers, subj.dy);
       if (peers.length < minPeers) { thinPeers += 1; return; }
-      const v = VALUATION.valueFromComps(peers.map((p) => p.comp), {
+      const peerComps = peers.map((p) => p.comp);
+      const valueOpts = {
         subjectSF: VALUATION.numericValue(subj.row.size_sqft),
         asOf: Date.parse(subj.comp.date),
         trendPct: null,
+        // null when the row has no year: the vintage factor is then neutral,
+        // exactly as it is on a report whose lookup found none.
+        subjectYear: VALUATION.yearOf(subj.row.year_built),
         propertyType: subj.row.property_type,
-      });
+      };
+      // `valueFn` is the accuracy lab's door (scripts/accuracy-lab.js): it
+      // scores a CANDIDATE change over the same subjects and the same peers so
+      // the two can be compared pair for pair. The /api/accuracy route never
+      // passes one, so what /admin reports is always the production math.
+      const v = valueFn
+        ? valueFn(peerComps, valueOpts, { subject: subj, peers })
+        : VALUATION.valueFromComps(peerComps, valueOpts);
       if (!v || !(v.psfMid > 0)) { thinPeers += 1; return; }
       claimed.push(subj);
       results.push({
@@ -247,6 +263,11 @@ function score(rows, opts) {
         absError: Math.abs(v.psfMid - subj.psf) / subj.psf,
         inBand: subj.psf >= v.psfLow && subj.psf <= v.psfHigh,
         bandWidth: (v.psfHigh - v.psfLow) / v.psfMid,
+        // Read only by the lab (`detail`), never by the /admin card.
+        market: subj.row.market,
+        key: subj.key,
+        signedError: (v.psfMid - subj.psf) / subj.psf,
+        peers: peers.length,
       });
     });
   });
@@ -259,6 +280,9 @@ function score(rows, opts) {
     Object.assign({ type: t }, summarize(results.filter((r) => r.type === t))));
 
   return {
+    // Per-subject rows, for the lab's paired comparisons. Opt-in so the
+    // /admin payload stays the four numbers and the breakdown.
+    ...(o.detail ? { subjects: results } : {}),
     scored: results.length,
     minSubjects,
     belowFloor,

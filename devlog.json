@@ -2,6 +2,12 @@
   {
     "date": "2026-11-15",
     "type": "improvement",
+    "title": "Commercial estimates account for your building’s size: the typical miss on held-out sales fell from 34% to 26%",
+    "details": "On Industrial, Office and Retail reports, each comp’s price per square foot is now restated at your building’s size before the range is taken, because larger buildings sell for less per square foot. Before, a comp twice your size was counted at its own $/SF and only weighed less once it was far off, so a 78,000 SF warehouse valued from much smaller buildings was quoted at their $159 to $481/SF when its own price was $101. Tested on 48 commercial sales the estimate had not seen (each one held out of the comp corpus and valued from the comps that sold before it): the median miss fell from 34% to 26%, and the estimate landed within 20% of the held-out price 40% of the time instead of 27%, in a narrower range. Many of the older held-out prices are asking prices, so read this as before against after, not as a public accuracy figure. Houses are unchanged, because the same test on 189 house sales showed no gain. In the report, the table marks each restated figure with adj (hover for both numbers), the tick chart under the value plots each comp where it counts, and Likely reads “median at your size”. The sample report on the home page moved by $25,000 at Low and High. Two things for whoever tunes this next: the accuracy card on /admin now weighs year built the way a live report does (its headline was 19.0% and reads about 16.7% with both changes), and scripts/accuracy-lab.js scores any change to the math against the corpus before it ships. It also showed that the recency, source and size-penalty settings were not worth changing: none of them beat chance on today’s 678 rows."
+  },
+  {
+    "date": "2026-11-15",
+    "type": "improvement",
     "title": "Number and email fields open the right keyboard on a phone",
     "details": "On a phone, the price, size, cap rate and year boxes in Your comps (the Add a comp form and the table’s cells), the size box on Log a BOV and the size and cap rate boxes on the comp submission form opened the letter keyboard, so you had to switch to numbers by hand. They now open the number keyboard. The boxes for inviting colleagues, sharing a report by email, a contact’s email and inviting someone in Messages open the email keyboard, with @ on it. Nothing changes on a computer."
   },

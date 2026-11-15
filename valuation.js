@@ -197,8 +197,8 @@
   //                estimates (mirrors the badge tiers)
   // Floored at 0.15 so no comp silently vanishes from a range it visibly sits
   // in. Missing data is neutral, never a penalty. `subjYear` is optional so
-  // callers that have no year (the accuracy backtest, a report whose lookup
-  // found none) keep the pre-vintage weights exactly. Missing distance is
+  // callers that have no year (a report whose lookup found none, a corpus row
+  // without one in the accuracy backtest) keep the pre-vintage weights exactly. Missing distance is
   // the same: a comp the map has not placed yet must not be punished.
   // `opts.propertyType` (or a 5th-arg string) switches the distance half-life
   // for Residential; omitted keeps the CRE 4-mile curve so existing callers
@@ -323,9 +323,58 @@
     return Math.pow(1 + pct / 100, Math.min(age, 3));
   }
 
+  // Restate a comp's $/SF at the SUBJECT's size.
+  //
+  // Big buildings trade for less per square foot than small ones, and
+  // compWeight only ever answered that by making an off-size comp count LESS.
+  // It still counted at its own $/SF. So a 78,000 SF warehouse valued from a
+  // 32,000, a 19,000 and a 2,000 SF building was quoted at their $159-$481/SF
+  // when its own price was $101, and inside the 0.5x-2x free pass a comp twice the
+  // subject's size was read as an exact match while understating it by about
+  // 13%. This is the adjustment an appraiser's grid makes on its size line:
+  // the comp's figure is moved to what a building of the subject's size would
+  // have fetched, and THEN weighted.
+  //
+  // $/SF is taken to scale as size^elasticity, so the factor is
+  // (subject / comp)^elasticity: at -0.2 a comp twice the subject's size
+  // counts about 15% higher, one half its size about 13% lower. The ratio is
+  // capped at 8x either way (a factor of 0.66 to 1.52), so a size from the
+  // wrong building cannot become a price.
+  //
+  // MEASURED, not chosen by feel (scripts/accuracy-lab.js over the 678-row
+  // corpus, 2026-11-15; hold-one-out, 48 Industrial, Office and Retail sales
+  // in 13 markets): median miss 34.1% -> 25.6%, within 20% of the held-out
+  // price 27% -> 40% of the time, better on 69% of them, in a range that got
+  // NARROWER (62% -> 48% of the likely figure) while catching that price
+  // more often (42% -> 48%). The held-out prices include asking prices (see
+  // corpus.md on the answer key), so this ranks before against after; it is
+  // not a distance from closed sales. The interval from resampling whole markets stays
+  // below zero (-14.9 to -0.5 points). Office alone 30.1% -> 22.9%,
+  // Industrial 40.2% -> 27.9%. -0.2 sits in the flat part of the curve: -0.15
+  // to -0.3 score within a point or two of it, and the slope fitted to each
+  // comp set on its own did no better than this one fixed figure.
+  //
+  // Commercial buildings only, and that is the data's call as well. On 189
+  // HOUSES the same restatement moved the median by a point and the mean by
+  // nothing, inside the noise at every strength: a bigger house on the same
+  // street is usually a better house too, which the size curve cannot see.
+  // Multifamily and Land are quoted per unit and per acre (a custom
+  // `readValue`, which this never touches) and had too few $/SF sales to
+  // measure, so they stay as they were until the corpus can say otherwise.
+  // Add a type here only with a lab run that clears the noise.
+  var SIZE_ELASTICITY = { Industrial: -0.2, Office: -0.2, Retail: -0.2 };
+  var SIZE_RESTATE_MAX_RATIO = 8;
+  function sizeRestateFactor(compSF, subjectSF, propType) {
+    if (!Object.prototype.hasOwnProperty.call(SIZE_ELASTICITY, propType)) return 1;
+    var c = Number(compSF), s = Number(subjectSF);
+    if (!(c > 0) || !(s > 0)) return 1;
+    var ratio = Math.min(SIZE_RESTATE_MAX_RATIO, Math.max(1 / SIZE_RESTATE_MAX_RATIO, s / c));
+    return Math.pow(ratio, SIZE_ELASTICITY[propType]);
+  }
+
   // The whole sequence, in one place: filter to sales, read each comp's value,
-  // index it to the report date, weight it, take the band, and apply the
-  // subject's size. index.html wrote this out three times and the harness in
+  // index it to the report date, restate it at the subject's size, weight it,
+  // take the band, and apply the subject's size. index.html wrote this out three times and the harness in
   // backtest.js would have been a fourth. It is the composition, not the
   // leaves, that has to be shared: leaves alone still let two callers disagree
   // about the ORDER of operations, which is exactly what an accuracy harness
@@ -343,6 +392,9 @@
     // spread. The typeof guard treats absent, explicitly-undefined, and
     // explicitly-non-function all the same way: fall back to salePsfOf.
     const readValue = typeof o.readValue === "function" ? o.readValue : salePsfOf;
+    // The size curve is a statement about $/SF. A per-unit or per-acre basis
+    // (a custom readValue) has its own, unmeasured one and is left alone.
+    const perSF = readValue === salePsfOf;
     const sf = o.subjectSF;
     const isRange = sf && typeof sf === "object";
     const sizeMin = Number(isRange ? sf.min : sf) || 0;
@@ -355,14 +407,19 @@
       .filter((x) => x.v > 0);
     if (!items.length) return null;
 
-    const rr = robustPpsfRange(items.map((x) => ({
-      v: x.v * trendFactor(x.comp, o.asOf, o.trendPct),
-      w: compWeight(x.comp, o.asOf, sizeMid, o.subjectYear, {
-        propertyType: o.propertyType,
-        radiusMiles: o.radiusMiles,
-        subjectPsf: o.subjectPsf,
-      }),
-    })));
+    let sizeRestated = 0;
+    const rr = robustPpsfRange(items.map((x) => {
+      const sizeF = perSF ? sizeRestateFactor(numericValue(x.comp.size_sqft), sizeMid, o.propertyType) : 1;
+      if (sizeF !== 1) sizeRestated += 1;
+      return {
+        v: x.v * trendFactor(x.comp, o.asOf, o.trendPct) * sizeF,
+        w: compWeight(x.comp, o.asOf, sizeMid, o.subjectYear, {
+          propertyType: o.propertyType,
+          radiusMiles: o.radiusMiles,
+          subjectPsf: o.subjectPsf,
+        }),
+      };
+    }));
 
     return {
       psfLow: rr.low, psfMid: rr.mid, psfHigh: rr.high,
@@ -372,7 +429,28 @@
       n: items.length,
       trimmed: rr.trimmed,
       raw: items.map((x) => x.v),
+      // How many comps counted at a restated $/SF, so a caller can say so.
+      sizeRestated,
     };
+  }
+
+  // The $/SF one sale comp COUNTS as: its reported figure, indexed to the
+  // report date and restated at the subject's size. The table shows the raw
+  // figure so the audit trail never moves; this is the one the band is taken
+  // over, for the "adj" mark that discloses the difference and for anything
+  // that compares a comp against the band. Same two factors, in the same
+  // order, as valueFromComps: this must stay a reading of it, never a second
+  // opinion.
+  function countedPsf(comp, opts) {
+    const o = opts || {};
+    const raw = salePsfOf(comp || {});
+    if (!(raw > 0)) return null;
+    const sf = o.subjectSF;
+    const isRange = sf && typeof sf === "object";
+    const sizeMid = ((Number(isRange ? sf.min : sf) || 0) + (Number(isRange ? sf.max : sf) || 0)) / 2;
+    const trend = trendFactor(comp, o.asOf, o.trendPct);
+    const size = sizeRestateFactor(numericValue(comp.size_sqft), sizeMid, o.propertyType);
+    return { raw, value: raw * trend * size, trend, size };
   }
 
   // How the subject's own size sits against the sizes the comps actually cover.
@@ -653,6 +731,7 @@
     parseRadiusMiles, radiusClaimContradicted, RADIUS_CLAIM_SLACK,
     priceTierFactor, PRICE_TIER_RATIO,
     compWeight, trendFactor,
+    sizeRestateFactor, SIZE_ELASTICITY, SIZE_RESTATE_MAX_RATIO, countedPsf,
     valueFromComps, outlierOf, OUTLIER_PCT, subjectSizeFit, askFit,
     conditionSpread, unexplainedGain, conditionFit, CONDITION_RANK,
   };

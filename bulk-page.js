@@ -195,6 +195,16 @@ const BULK_CSS = `
   .bulk .cell{border-right:0;border-bottom:1px solid var(--hair)}
   .bulk .cell:last-child{border-bottom:0}
 }
+/* Touch targets (2026-11-15). Under a finger the settings' fields are 36px
+   tall (26 before: 2px of padding around one line), and the two links under
+   the address box are reached 6px past their line, by an overlay that moves
+   nothing: 6px is the gap to the address box above, and the two links stand
+   18px apart, so no overlay lies over a neighbour. */
+@media (pointer:coarse){
+  .bulk input[type=text],.bulk input[type=number],.bulk select{padding-top:7px;padding-bottom:7px}
+  .bulk .links .lnk{position:relative}
+  .bulk .links .lnk::after{content:"";position:absolute;inset:-6px 0}
+}
 `;
 
 /**

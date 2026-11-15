@@ -415,6 +415,8 @@ const COMPARE_CSS =
   ".pc-page [hidden]{display:none!important}" +
   ".pc-page .kicker{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}" +
   ".pc-page .kicker a{color:var(--ink-3)}.pc-page .kicker a:hover{color:var(--ink)}" +
+  // Under a finger the 14px way back is reached 12px past its line (2026-11-15).
+  "@media (pointer:coarse){.pc-page .kicker a{position:relative}.pc-page .kicker a::after{content:\"\";position:absolute;inset:-12px -8px}}" +
   ".pc-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1.5px solid var(--ink);padding-bottom:6px;margin-bottom:10px}" +
   ".pc-head h1{margin:0;font-weight:600;font-size:24px;letter-spacing:-.02em;color:var(--ink)}" +
   ".pc-when{font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}" +

@@ -134,6 +134,9 @@ table.rk td.num,table.rk th.num{text-align:right;font-variant-numeric:tabular-nu
 .rke-n{color:var(--ink-3);font-size:var(--text-label);font-variant-numeric:tabular-nums;min-width:.9rem}
 .rke-list a{color:var(--ink);font-weight:600;flex:1;min-width:0}
 .rke-list a:hover{color:var(--red)}
+/* Under a finger a city's link is its whole 34px row, not its 22px line
+   (2026-11-15): an overlay over the row's own padding, moving nothing. */
+@media (pointer:coarse){.rke-list a{position:relative}.rke-list a::after{content:"";position:absolute;inset:-6px 0}}
 .rke-s{font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:var(--text-small)}
 .rke-more{margin:12px 0 0;font-size:var(--text-compact)}
 .rke-foot{grid-column:1;font-size:var(--text-label);color:var(--ink-3);margin:12px 0 0}

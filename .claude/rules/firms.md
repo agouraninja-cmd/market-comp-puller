@@ -231,12 +231,69 @@ paths:
   - **Under a finger** Send and Attach are 40px tall (27 before), and Back,
     Conversation, Comps, People, More, New, Unsend and a row's ⋯ take
     overlays (app-shell.md, "Touch targets").
-  - **The same is true on a computer and was left alone**: a long
-    conversation there is also a long page with the composer at its foot
-    (`.msg-page` has a min-height and no height above 900px). It needs its
-    own pictures.
-  Held by `test/messages-page.test.js` (the last test runs `fitThread`) and
-  `test/phone-taps.test.js`.
+  - **The same was true on a computer until the next day** (below).
+  Held by `test/messages-page.test.js` (the test of that name runs
+  `fitThread`) and `test/phone-taps.test.js`.
+  **One screen on a computer, and a reader who is not moved** (2026-11-16,
+  the owner: "improve the messages feature and page"; no migration; pictures
+  at https://claude.ai/artifact/QwMfSvsmU6rRANdUuSAAma). With 22 messages the page
+  was 2,090px tall, opened on the oldest message and had the composer 1,500px
+  down. Eight things, all in messages-page.js:
+  - **`@media (min-width:901px)` gives `.msg-page` a height**:
+    `max(460px, 100dvh - var(--msg-top,170px) - 16px)`, one `minmax(0,1fr)`
+    row and `min-height:0` on both columns (the phone rule's reasons). BOTH
+    views: a report's pane scrolls inside `.msg-rbody` here, unlike a phone.
+    `--msg-top` is where the page starts, written by **`sizePage()`** from
+    `ungate()`, `resize`, `load` and `visibilitychange` (a page built ahead
+    of a click is measured when shown); an answer outside 40-600px is
+    dropped and the 170px fallback stands. The intro above is `120ch` wide
+    (two lines, was four at `66ch`).
+  - **`paintStream(html, mode, fresh)` is the ONLY thing that sets the
+    stream's scroll**, for both kinds of chat (a test counts
+    `el.scrollTop = el.scrollHeight` at one). `"open"`: the newest message,
+    or the New line 12px under the top when the unread run is taller than
+    the pane. `"bottom"`: the reader's own message came back. `"older"`
+    (`renderStream(true)`): earlier pages laid in above. Otherwise stay at
+    the newest if the reader was within 80px of it, and if not, leave them
+    there and add `fresh` to **`#msgNewPill`** ("2 new messages"), which goes
+    on a press or on scrolling down. Before this every redraw jumped to the
+    newest, and `renderExternalStream` runs on EVERY poll, so a deal room
+    took a reader out of its history every 15 seconds. The pill must stay
+    the stream's next sibling: its rule pulls it up by its own height + 10px.
+  - **The New line** (`.msg-newline`, `NEW_LINE`): `firstUnreadId` counts
+    `state.openUnread` messages from other people back from the newest.
+    That number is the list row's `unread`, taken in `openThread` /
+    `openExternal` BEFORE the read that marks the chat read, so there is no
+    second read and no server change. Sending clears it.
+  - **Drafts are per chat** (`state.drafts["kind:id"] = { text, attach }`,
+    `holdDraft` / `takeDraft` / `dropDraft` / `draftLine`). One box used to
+    serve every chat, so words typed to one person followed the reader into
+    the next chat. Held on leaving a chat, on Back and on every keystroke;
+    dropped on Send and Delete; the list row shows `Draft:` (through
+    `esc()`) for any chat but the open one. The WORDS only (never the comps)
+    are also in `sessionStorage` under `cnMsgDrafts:<user id>`, read once
+    after the first list read (which is what says whose they are), so
+    another account in the same tab is never handed them. No request ever
+    carries a draft. A discovery door's `applyDraft` still wins over it.
+  - **`clock()` for a message's time, `when()` for the list.** `when()`
+    answers an earlier day with its date, so under "Saturday, Nov 14" every
+    message said "Nov 14". A day heading in another year now carries it.
+  - **`dealDay()`**: a comp's `2026-08-14` reads "Aug 14, 2026" on its card
+    and in the picker, built from its own three numbers and never
+    `Date.parse` (midnight UTC is the day before, west of Greenwich).
+  - **`myInitial()`**: the reader's own circle took its letter from the
+    word "You". `GET /api/messages` now sends `me.name` (both answers).
+  - **`#msgNewPanel` is under the New button**, above the search box (it
+    was the column's last child, under every chat). Styled by its id,
+    because the script assigns the panel's `className` whole. The header's
+    first tab says **Chat** (was Conversation: on a phone it left the
+    person's name 68px).
+  Saving a comp from a message marks the card in place; it used to re-read
+  the whole conversation. Six tests at the foot of
+  `test/messages-page.test.js` run the pure halves (`paintStream`,
+  `firstUnreadId`, the draft functions, `dealDay`, `sizePage`).
+  **Not built:** photos in the circles, typing or read receipts, and a
+  hint that Shift+Enter is a new line.
   **Deleting a conversation** (2026-09-26, no migration; owner's ask, Draft
   C of the drafts at https://claude.ai/artifact/2yqGKYAyv4n8mrFD5ZtHHF).
   `POST /api/messages/delete {threadId}` deletes a FIRM conversation **for the

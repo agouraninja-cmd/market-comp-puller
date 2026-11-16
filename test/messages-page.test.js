@@ -229,7 +229,10 @@ test("a discovery door seeds the composer through the URL, and nothing is posted
   // Applied when a thread opens — text into the box, the comp into the tray
   // — and only through the picker's own rule (the comp must be in the
   // sender's vault), so a comp id in a URL buys nothing the button could not.
-  const open = js.slice(js.indexOf("function openThread(id, push, jump){"), js.indexOf("function openThread(id, push, jump){") + 600);
+  // The whole of openThread, up to the function after it (it was the first
+  // 600 characters until 2026-11-16, when keeping each chat's own draft made
+  // the function longer than that).
+  const open = js.slice(js.indexOf("function openThread(id, push, jump){"), js.indexOf("function readThread("));
   assert.match(open, /applyComposerMode\(\);\s*applyDraft\(\);/, "the draft is not applied when a thread opens");
   const apply = js.slice(js.indexOf("function applyDraft(){"), js.indexOf("function openThread("));
   assert.match(apply, /\$\("msgInput"\)\.value = d\.text/);
@@ -600,4 +603,273 @@ test("on a phone an open chat is one screen: the stream scrolls inside it and th
   assert.deepEqual(run(false, 297, 0), [], "a wide screen was scrolled: there the chat is beside the list");
   // A browser with no matchMedia is left alone, never thrown at.
   new Function("window", "$", src[0] + "; fitThread();")({}, () => ({}));
+});
+
+// ---------------------------------------------------------------------------
+// One screen on a computer, and a reader who is not moved (2026-11-16)
+// ---------------------------------------------------------------------------
+// Pulls one function out of the emitted script by name. Every function in
+// that script closes with a brace at two spaces, and nothing inside one does.
+const fnOf = (js, name) => {
+  const m = js.match(new RegExp("function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\n  \\}"));
+  assert.ok(m, name + " moved");
+  return m[0];
+};
+
+test("on a computer Messages is one screen: the list and the chat scroll inside it (2026-11-16)", () => {
+  // It was as tall as the open conversation: it opened on the oldest message
+  // and the box to type in sat under all of them, 1,500px down with 22.
+  const html = renderMessagesBody({ s: 200, j: {} });
+  const css = html.slice(html.indexOf("<style>"), html.indexOf("</style>")).replace(/\/\*[\s\S]*?\*\//g, "");
+  const wide = css.match(/@media \(min-width:901px\)\{\s*\.msg-page\{[\s\S]*?\n\}/);
+  assert.ok(wide, "the one-screen block for a computer moved");
+  // As tall as the window under the page's own heading, never shorter than
+  // a usable chat; the plain-vh line first, for a browser without max().
+  assert.match(wide[0], /\.msg-page\{grid-template-rows:minmax\(0,1fr\);min-height:0;margin-bottom:16px;\s*height:calc\(100vh - 186px\);height:max\(460px,calc\(100dvh - var\(--msg-top,170px\) - 16px\)\)\}/);
+  assert.match(wide[0], /\.msg-side,\.msg-main\{min-height:0\}/, "a column may grow past the page again");
+  // Both lists and both right-hand panes scroll inside themselves.
+  assert.match(css, /\.msg-threads\{flex:1;overflow-y:auto;min-height:0\}/);
+  assert.match(css, /\.msg-stream\{flex:1;overflow-y:auto;min-height:0;/);
+  assert.match(css, /\.msg-rbody\{flex:1;overflow-y:auto;min-height:0;/, "a report's pane would be cut off at the page's foot");
+
+  // Where the page starts is measured, because the heading wraps differently
+  // at every width; an answer that cannot be right falls back to the 170px.
+  const js = scriptOf(html);
+  const run = (top, y, hidden) => {
+    const calls = [];
+    const el = { hidden: !!hidden, getBoundingClientRect: () => ({ top }),
+      style: { setProperty: (k, v) => calls.push([k, v]), removeProperty: (k) => calls.push([k, null]) } };
+    new Function("window", "$", fnOf(js, "sizePage") + "; sizePage();")({ pageYOffset: y }, () => el);
+    return calls;
+  };
+  assert.deepEqual(run(167.6, 0), [["--msg-top", "168px"]]);
+  assert.deepEqual(run(-32, 200), [["--msg-top", "168px"]], "a scrolled page measured a different start");
+  assert.deepEqual(run(0, 0), [["--msg-top", null]], "a page that is not laid out yet was believed");
+  assert.deepEqual(run(168, 0, true), [], "a hidden page was measured");
+  assert.match(fnOf(js, "ungate"), /\$\("msgPage"\)\.hidden = false;\s*sizePage\(\);/, "the page is not measured when it is shown");
+  assert.match(js, /window\.addEventListener\("resize", sizePage\);/);
+});
+
+test("a redraw leaves a reader where they are, and says what arrived (2026-11-16)", () => {
+  // Every redraw used to end at the newest message, and a deal room is
+  // redrawn on every poll: fifteen seconds into reading back, the page took
+  // the reader away.
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  const src = ["atBottom", "showPill", "toNewest", "paintStream"].map((n) => fnOf(js, n)).join("\n");
+  const make = ({ top, height = 2000, view = 500, line = null, question = false, grows = 0 }) => {
+    const pill = { textContent: "", className: "" };
+    const stream = {
+      scrollHeight: height, clientHeight: view, scrollTop: top,
+      set innerHTML(v) { this.scrollHeight += grows; },
+      querySelector: (sel) => sel === ".msg-newline" ? line
+        : (sel === ".msg-unsendq" && question ? { scrollIntoView() {} } : null),
+      getBoundingClientRect: () => ({ top: 100 }),
+    };
+    const state = { unseen: 0 };
+    const paint = new Function("state", "$", src + "; return paintStream;")(state,
+      (id) => id === "msgNewPill" ? pill : stream);
+    return { stream, pill, state, paint };
+  };
+  // Scrolled up, and two messages arrive from somebody else: not moved, told.
+  let c = make({ top: 300 });
+  c.paint("<x>", "", 2);
+  assert.equal(c.stream.scrollTop, 300, "a reader scrolled up in the history was moved");
+  assert.equal(c.pill.className, "msg-newpill");
+  assert.equal(c.pill.textContent, "2 new messages ↓");
+  c.paint("<x>", "", 1);
+  assert.equal(c.pill.textContent, "3 new messages ↓", "a second arrival replaced the count instead of adding to it");
+  // Already at the newest: stay there, and say nothing.
+  c = make({ top: 1480 });
+  c.paint("<x>", "", 1);
+  assert.equal(c.stream.scrollTop, 2000);
+  assert.equal(c.pill.className, "msg-newpill msg-hide");
+  // The reader's own message always lands at the newest.
+  c = make({ top: 300 });
+  c.paint("<x>", "bottom", 0);
+  assert.equal(c.stream.scrollTop, 2000);
+  // A redraw with nothing new (a deal room's poll) moves nobody.
+  c = make({ top: 300 });
+  c.paint("<x>", "", 0);
+  assert.equal(c.stream.scrollTop, 300);
+  assert.equal(c.pill.className, "", "a redraw with nothing new touched the note");
+  // ...and leaves a note that is already up saying what it said.
+  c.paint("<x>", "", 2);
+  c.paint("<x>", "", 0);
+  assert.equal(c.pill.textContent, "2 new messages ↓");
+  assert.equal(c.pill.className, "msg-newpill");
+  // Older messages laid in above: the same distance from the foot.
+  c = make({ top: 300, grows: 600 });
+  c.paint("<x>", "older", 0);
+  assert.equal(c.stream.scrollTop, 900);
+  // Opening: the newest message, unless what is unread starts above the
+  // screen, and then the "New" line, 12px under the top.
+  c = make({ top: 0 });
+  c.paint("<x>", "open", 0);
+  assert.equal(c.stream.scrollTop, 2000);
+  c = make({ top: 0, line: { getBoundingClientRect: () => ({ top: -400 }) } });
+  c.paint("<x>", "open", 0);
+  assert.equal(c.stream.scrollTop, 2000 - 400 - 100 - 12);
+  // The Unsend question keeps its own rule: where the reader was, in view.
+  c = make({ top: 300, question: true });
+  c.paint("<x>", "", 0);
+  assert.equal(c.stream.scrollTop, 300);
+
+  // Both kinds of chat go through it, and nothing else sets the stream's end.
+  assert.match(fnOf(js, "renderStream"), /paintStream\(html, mode, fresh\);/);
+  assert.match(fnOf(js, "renderExternalStream"), /paintStream\(html, mode, fresh\);/);
+  assert.equal((js.match(/el\.scrollTop = el\.scrollHeight;/g) || []).length, 1, "something outside toNewest jumps to the newest message");
+  // The reads say which it was: opened, the reader's own, or somebody else's.
+  assert.match(fnOf(js, "readThread"), /renderStream\(first \? "open" : \(mineIn \? "bottom" : ""\), first \? 0 : added\);/);
+  assert.match(fnOf(js, "readExternal"), /renderExternalStream\(first \? "open" : \(mineIn \? "bottom" : ""\), first \? 0 : added\);/);
+  // The note goes away when pressed, and when the reader scrolls down to it.
+  assert.match(js, /\$\("msgNewPill"\)\.addEventListener\("click", toNewest\);/);
+  assert.match(js, /if \(state\.unseen && atBottom\(this\)\) showPill\(0\);/);
+  // Saving a comp marks its card where it stands; it used to read the whole
+  // conversation again, which is a jump to the newest message.
+  const save = js.slice(js.indexOf('api("POST", "/api/messages/comp/save"'), js.indexOf('$("msgTray").addEventListener'));
+  assert.doesNotMatch(save, /readThread\(true\)/);
+  assert.match(save, /cs\[k\]\.savedByMe = true/);
+});
+
+test("the New line is where the unread messages start, from the count the list showed (2026-11-16)", () => {
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  const first = new Function(fnOf(js, "firstUnreadId") + "; return firstUnreadId;")();
+  const mine = (m) => m.mine;
+  const list = [
+    { id: "1" }, { id: "2", mine: true }, { id: "3" }, { id: "4", unsent: true }, { id: "5", mine: true }, { id: "6" },
+  ];
+  assert.equal(first(list, 0, mine), "", "nothing unread drew a line");
+  assert.equal(first(list, 1, mine), "6");
+  assert.equal(first(list, 2, mine), "3", "the reader's own messages and an unsent one were counted as unread");
+  assert.equal(first(list, 9, mine), "1", "more unread than is loaded: the line goes above the oldest one held");
+  assert.equal(first([], 3, mine), "");
+  // The count is taken from the list's row BEFORE the read that marks it
+  // read, and the line is drawn above that message in both kinds of chat.
+  assert.match(fnOf(js, "openThread"), /state\.openUnread = listed \? \(Number\(listed\.unread\) \|\| 0\) : 0;/);
+  assert.match(fnOf(js, "openExternal"), /state\.openUnread = was \? \(Number\(was\.unread\) \|\| 0\) : 0;/);
+  assert.match(fnOf(js, "renderStream"), /if \(state\.newFrom && m\.id === state\.newFrom\) \{\s*html \+= NEW_LINE;\s*lastWho = "";/);
+  assert.match(fnOf(js, "renderExternalStream"), /state\.newFrom && it2\.m\.id === state\.newFrom\) \{\s*html \+= NEW_LINE;\s*lastWho = "";/);
+  // Answering it takes the line away.
+  assert.match(fnOf(js, "afterSend"), /state\.newFrom = "";/);
+});
+
+test("what you were typing stays with its chat, and the list says Draft (2026-11-16)", () => {
+  // One box served every chat: a message started to one person was still in
+  // it after opening another, a keystroke from the wrong recipient.
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  const src = ["draftKey", "storeDrafts", "loadDrafts", "dropDraft", "holdDraft", "takeDraft", "draftLine"]
+    .map((n) => fnOf(js, n)).join("\n");
+  const store = new Map();
+  const sessionStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+  };
+  const box = { value: "" };
+  const state = { me: "u-1", openKind: "internal", openId: "t-ben", attach: [], drafts: {} };
+  const api = new Function("state", "$", "sessionStorage", "renderTray", "growInput",
+    src + "; return { holdDraft, takeDraft, draftLine, dropDraft, loadDrafts };")(
+    state, () => box, sessionStorage, () => {}, () => {});
+
+  box.value = "half a thought\nfor Ben";
+  state.attach = [{ id: "c1", address: "1 Main St" }];
+  api.holdDraft();
+  // Moving to another chat: its own (empty) draft, never Ben's.
+  state.openId = "t-eli";
+  api.takeDraft();
+  assert.equal(box.value, "", "what was typed to one person followed the reader into another chat");
+  assert.deepEqual(state.attach, [], "a comp attached for one person followed the reader into another chat");
+  assert.equal(api.draftLine("internal", "t-ben"), "half a thought for Ben");
+  assert.equal(api.draftLine("internal", "t-eli"), "", "the open chat's own row said Draft");
+  assert.equal(api.draftLine("external", "t-ben"), "", "a deal room and a firm chat with one id shared a draft");
+  // And back: the words and the comp.
+  api.holdDraft();
+  state.openId = "t-ben";
+  api.takeDraft();
+  assert.equal(box.value, "half a thought\nfor Ben");
+  assert.deepEqual(state.attach, [{ id: "c1", address: "1 Main St" }]);
+  // Only the words are kept past the page, under the reader's own id.
+  assert.deepEqual(JSON.parse(store.get("cnMsgDrafts:u-1")), { "internal:t-ben": "half a thought\nfor Ben" });
+  const next = { me: "u-1", openKind: "internal", openId: "", attach: [], drafts: {} };
+  new Function("state", "sessionStorage", src + "; loadDrafts();")(next, sessionStorage);
+  assert.deepEqual(next.drafts, { "internal:t-ben": { text: "half a thought\nfor Ben", attach: [] } });
+  const other = { me: "u-2", openKind: "internal", openId: "", attach: [], drafts: {} };
+  new Function("state", "sessionStorage", src + "; loadDrafts();")(other, sessionStorage);
+  assert.deepEqual(other.drafts, {}, "another account in the same tab was handed these drafts");
+  // An emptied box is no draft, and nothing is left behind in storage.
+  box.value = "   ";
+  state.attach = [];
+  api.holdDraft();
+  assert.equal(api.draftLine("internal", "t-eli"), "");
+  assert.equal(store.has("cnMsgDrafts:u-1"), false);
+  // A comp with no words still counts, and says so.
+  state.attach = [{ id: "c1", address: "1 Main St" }, { id: "c2", address: "2 Main St" }];
+  box.value = "";
+  api.holdDraft();
+  state.openId = "t-eli";
+  assert.equal(api.draftLine("internal", "t-ben"), "2 comps attached");
+  // Storage that throws (a private window) costs the convenience only.
+  const broken = { getItem() { throw new Error("no"); }, setItem() { throw new Error("no"); }, removeItem() { throw new Error("no"); } };
+  new Function("state", "$", "sessionStorage", src + "; holdDraft(); loadDrafts();")(
+    { me: "u-1", openKind: "internal", openId: "t", attach: [], drafts: {} }, () => ({ value: "x" }), broken);
+
+  // Wired in: both ways a chat opens hold the old chat's words and take the
+  // new one's; Back, Send and Delete each do their half; typing keeps it.
+  for (const name of ["openThread", "openExternal"]) {
+    assert.match(fnOf(js, name), /if \(!same\) holdDraft\(\);[\s\S]*if \(!same\) takeDraft\(\);/, name + " carries the box across chats");
+  }
+  assert.match(fnOf(js, "afterSend"), /dropDraft\(draftKey\(\)\);/, "a sent message is still listed as a draft");
+  assert.match(fnOf(js, "deleteThread"), /dropDraft\(\(room \? "external" : "internal"\) \+ ":" \+ id\);/);
+  assert.match(js, /\$\("msgBack"\)\.addEventListener\("click", function\(\)\{\s*closeDelBar\(\);[\s\S]{0,120}holdDraft\(\);/);
+  assert.match(js, /\$\("msgInput"\)\.addEventListener\("input", function\(\)\{[\s\S]{0,260}holdDraft\(\);/);
+  // The draft is drawn through esc(), like everything a person typed.
+  assert.match(fnOf(js, "threadRowHtml"), /'<span class="msg-draft">Draft:<\/span> ' \+ esc\(draft\)/);
+  // It never leaves the browser: no request carries it.
+  assert.doesNotMatch(src, /api\(|fetch\(/);
+});
+
+test("inside a conversation a message says its time, a deal says its date, and you are your own initial (2026-11-16)", () => {
+  const html = renderMessagesBody({ s: 200, j: {} });
+  const js = scriptOf(html);
+  // Under "Saturday, Nov 14" every message used to say "Nov 14".
+  assert.match(fnOf(js, "renderStream"), /'<span class="msg-time">' \+ esc\(clock\(m\.createdAt\)\)/);
+  assert.match(fnOf(js, "renderExternalStream"), /'<span class="msg-time">' \+ esc\(clock\(it2\.at\)\)/);
+  assert.match(fnOf(js, "clock"), /toLocaleTimeString\(\[\], \{ hour: "numeric", minute: "2-digit" \}\)/);
+  // The list keeps when(): one stamp there has to say the day too.
+  assert.match(fnOf(js, "threadRowHtml"), /esc\(when\(t\.lastMessageAt\)\)/);
+  // A stored 2026-08-14 reads "Aug 14, 2026" in every time zone: built from
+  // its own numbers, never parsed as midnight UTC.
+  const dealDay = new Function(fnOf(js, "dealDay") + "; return dealDay;")();
+  assert.equal(dealDay("2026-08-14"), "Aug 14, 2026");
+  assert.equal(dealDay("2026-01-01"), "Jan 1, 2026");
+  assert.equal(dealDay("2026-03-04T00:00:00.000Z"), "Mar 4, 2026");
+  assert.equal(dealDay("Q3 2026"), "Q3 2026", "a date in another shape was dropped");
+  assert.equal(dealDay(""), "");
+  assert.doesNotMatch(fnOf(js, "dealDay"), /Date\.parse/);
+  assert.match(fnOf(js, "compCard"), /esc\(dealDay\(c\.dealDate\)\)/);
+  assert.match(fnOf(js, "extCompCard"), /esc\(dealDay\(s\.deal_date\)\)/);
+  // "You" was drawn with a Y in the circle, for every reader.
+  assert.match(fnOf(js, "renderStream"), /esc\(m\.mine \? myInitial\(\) : initial\(name\)\)/);
+  assert.match(fnOf(js, "renderExternalStream"), /esc\(name === "You" \? myInitial\(\) : initial\(name\)\)/);
+  const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  assert.equal((server.match(/me: \{ id: String\(g\.user\.id\), email: String\(g\.user\.email \|\| ""\), name: String\(g\.user\.name \|\| ""\) \}/g) || []).length, 2,
+    "the list read no longer says the reader's own name, in both of its answers");
+});
+
+test("New conversation opens under its button, above the list (2026-11-16)", () => {
+  // It was the last thing in the column, under every chat: off the screen on
+  // a laptop and a scroll away on a phone.
+  const html = renderMessagesBody({ s: 200, j: {} });
+  const markup = html.slice(html.indexOf("</style>"), html.indexOf("<script>"));
+  const at = (id) => { const i = markup.indexOf('id="' + id + '"'); assert.notEqual(i, -1, id); return i; };
+  assert.ok(at("msgNewBtn") < at("msgNewPanel"), "the panel is above its own button");
+  assert.ok(at("msgNewPanel") < at("msgFilter"), "the panel is under the search box again");
+  assert.ok(at("msgNewPanel") < at("msgThreads"), "the panel is under the list again");
+  const css = html.slice(html.indexOf("<style>"), html.indexOf("</style>")).replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.match(css, /#msgNewPanel\{flex:0 0 auto;border-top:0;border-bottom:1px solid var\(--line\);max-height:min\(60vh,440px\)\}/);
+  // The note about new messages follows the stream directly: its stylesheet
+  // rule pulls it up over the stream's foot by its own height and gap.
+  assert.match(markup, /<div class="msg-stream" id="msgStream"><\/div>\s*(?:<!--[\s\S]*?-->\s*)?<button class="msg-newpill msg-hide" id="msgNewPill" type="button"><\/button>/);
+  assert.match(css, /\.msg-newpill\{align-self:center;position:relative;z-index:2;flex:0 0 auto;height:32px;margin:-42px 0 10px;/);
+  assert.match(css, /\.msg-newpill\{height:40px;margin-top:-50px\}/, "under a finger the note is no longer 40px tall, pulled up by 40 + 10");
 });

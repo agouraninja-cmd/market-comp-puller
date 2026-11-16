@@ -282,6 +282,24 @@ function renderMessagesBody(boot) {
 .msg-unsendq{margin:4px 0 10px 44px;max-width:560px;padding:11px 14px 12px;background:var(--wash);
   border:1px solid var(--edge);border-radius:var(--r-lg)}
 .msg-unsent{align-self:center;font-size:var(--text-label);font-style:italic;color:var(--ink-3);padding:6px 0 4px}
+/* Where what you have not read starts (2026-11-16): one line across the
+   conversation, drawn once when the chat opens, from the count the list
+   already showed on its row. */
+.msg-newline{display:flex;align-items:center;gap:10px;margin:12px 0 6px;font-size:var(--text-tiny);font-weight:700;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--red)}
+.msg-newline:before,.msg-newline:after{content:"";flex:1;height:1px;background:var(--red);opacity:.35}
+/* Messages that arrived while the reader was scrolled up in the history. The
+   conversation stays where they are reading and this says so; pressing it,
+   or scrolling down, goes to the newest. It follows the stream in the markup
+   and is pulled up over its foot by exactly its own height and gap, so it
+   moves nothing when it shows. */
+.msg-newpill{align-self:center;position:relative;z-index:2;flex:0 0 auto;height:32px;margin:-42px 0 10px;
+  border:1px solid var(--edge);border-radius:20px;background:var(--card);color:var(--ink);font:inherit;
+  font-size:var(--text-label);font-weight:600;padding:0 14px;cursor:pointer;
+  box-shadow:0 8px 20px -10px rgba(15,23,42,.5)}
+.msg-newpill:hover{border-color:var(--ink-3)}
+/* A message you started in a chat and left there. */
+.msg-draft{font-weight:600;color:var(--red)}
 
 /* --- a comp inside a message -------------------------------------------- */
 .msg-comp{border:1px solid var(--edge);border-radius:var(--r-lg);padding:10px 12px;margin:6px 0;
@@ -344,6 +362,11 @@ function renderMessagesBody(boot) {
 .msg-panel input[type=text]{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:var(--r-md);
   padding:7px 10px;font:inherit;font-size:var(--text-small);margin-bottom:8px;background:var(--card);color:var(--ink)}
 .msg-panelfoot{display:flex;gap:8px;align-items:center;margin-top:10px}
+/* New conversation opens under the button that opens it (2026-11-16). It
+   used to open at the foot of the list, under every chat: off the screen on
+   a laptop, and a scroll away on a phone. An id, because the script assigns
+   this panel's className whole. */
+#msgNewPanel{flex:0 0 auto;border-top:0;border-bottom:1px solid var(--line);max-height:min(60vh,440px)}
 
 .msg-hide{display:none!important}
 
@@ -450,8 +473,26 @@ function renderMessagesBody(boot) {
   #msgBack::after,#msgRBack::after{inset:-8px -6px -8px -12px}
   .msg-more::after{inset:-7px}
   .msg-actions .msg-btn{min-height:40px;padding-left:16px;padding-right:16px}
+  .msg-newpill{height:40px;margin-top:-50px}
 }
 @media (min-width:901px){ #msgBack,#msgRBack{display:none} }
+/* On a computer Messages is ONE SCREEN too (2026-11-16; a phone has been
+   since 2026-11-15). The page was as tall as the open conversation: it opened
+   on the oldest message and the box to type in sat under all of them, 1,500px
+   down with twenty-two. Now the page is as tall as the window under its own
+   heading, the list and the conversation each scroll inside it, the newest
+   message is in view and the composer never leaves the screen.
+   --msg-top is where the page starts, measured by the script (sizePage): the
+   heading above it wraps differently at every width. 170px is the fallback
+   for a browser that has not measured yet. The one grid row is minmax(0,1fr)
+   for the phone rule's reason: an auto row grows with its content and the
+   page's overflow:hidden would cut the composer off. Both views: a report's
+   pane scrolls inside itself here (.msg-rbody), as the two lists do. */
+@media (min-width:901px){
+  .msg-page{grid-template-rows:minmax(0,1fr);min-height:0;margin-bottom:16px;
+    height:calc(100vh - 186px);height:max(460px,calc(100dvh - var(--msg-top,170px) - 16px))}
+  .msg-side,.msg-main{min-height:0}
+}
 </style>
 
 <!-- THIS IS THE READER'S INBOX, not the firm's noticeboard (owner's, 2026-09-01).
@@ -466,7 +507,9 @@ function renderMessagesBody(boot) {
   <h1 style="margin:0 0 4px">Messages</h1>
   <!-- Reports joined on 2026-10-08, from Home's Reports tab: a shared report
        is correspondence too, somebody sent it to somebody. -->
-  <p style="margin:0;color:var(--ink-2);max-width:66ch;font-size:14px;line-height:1.6">
+  <!-- Wide enough to be two lines on a computer, not four (2026-11-16): the
+       page under it is as tall as the window that is left. -->
+  <p style="margin:0;color:var(--ink-2);max-width:120ch;font-size:14px;line-height:1.6">
     Message the people you work with, and the people outside your firm you
     share comps with. Anything you send is kept in the conversation, so a deal
     you talk about stays on the record. Reports holds every comp report sent
@@ -491,22 +534,8 @@ function renderMessagesBody(boot) {
       <span class="msg-grow"></span>
       <button class="msg-btn sm" id="msgNewBtn" type="button">New</button>
     </div>
-    <div class="msg-search"><input id="msgFilter" type="search" placeholder="Search" autocomplete="off">
-      <!-- The shelf's type filter: Reports only, and only once the shelf is
-           long enough to need one (report-inbox.js MIN_FILTER). It narrows
-           the firm's shelf and nothing else. -->
-      <select id="msgShelfType" class="msg-hide" aria-label="Show the firm shelf's reports of one type">
-        <option value="">Shelf: every type</option>
-        <option value="Industrial">Shelf: Industrial</option>
-        <option value="Office">Shelf: Office</option>
-        <option value="Retail">Shelf: Retail</option>
-        <option value="Multifamily">Shelf: Multifamily</option>
-        <option value="Land">Shelf: Land</option>
-        <option value="Residential">Shelf: Residential</option>
-      </select>
-    </div>
-    <div class="msg-threads" id="msgThreads" role="tabpanel" aria-labelledby="msgViewChats"></div>
-    <div class="msg-threads" id="msgReports" role="tabpanel" aria-labelledby="msgViewReports"></div>
+    <!-- The New panel sits HERE, under the button that opens it, since
+         2026-11-16. It was the last thing in the column, under every chat. -->
     <!-- PEOPLE FIRST. The box searches colleagues; it used to be a channel
          name with "leave blank for a direct message" under it, so typing a
          label for a conversation with one person silently made a CHANNEL
@@ -557,6 +586,22 @@ function renderMessagesBody(boot) {
         <span class="msg-hint" id="msgNewMsg"></span>
       </div>
     </div>
+    <div class="msg-search"><input id="msgFilter" type="search" placeholder="Search" autocomplete="off">
+      <!-- The shelf's type filter: Reports only, and only once the shelf is
+           long enough to need one (report-inbox.js MIN_FILTER). It narrows
+           the firm's shelf and nothing else. -->
+      <select id="msgShelfType" class="msg-hide" aria-label="Show the firm shelf's reports of one type">
+        <option value="">Shelf: every type</option>
+        <option value="Industrial">Shelf: Industrial</option>
+        <option value="Office">Shelf: Office</option>
+        <option value="Retail">Shelf: Retail</option>
+        <option value="Multifamily">Shelf: Multifamily</option>
+        <option value="Land">Shelf: Land</option>
+        <option value="Residential">Shelf: Residential</option>
+      </select>
+    </div>
+    <div class="msg-threads" id="msgThreads" role="tabpanel" aria-labelledby="msgViewChats"></div>
+    <div class="msg-threads" id="msgReports" role="tabpanel" aria-labelledby="msgViewReports"></div>
     <!-- The firm, as CONTEXT rather than as the headline. It was the biggest
          thing on this column and it is not whose page this is. -->
     <div class="msg-firm" id="msgFirmLine"></div>
@@ -569,7 +614,9 @@ function renderMessagesBody(boot) {
         <h2 id="msgTitle">Select a conversation</h2>
         <div class="sub" id="msgSub"></div>
       </div>
-      <button class="msg-btn sm" id="msgTabChat" type="button" aria-pressed="true">Conversation</button>
+      <!-- "Chat", not "Conversation" (2026-11-16): on a phone the longer
+           word left the person's name 68px, and it read "Ben Ok…". -->
+      <button class="msg-btn sm" id="msgTabChat" type="button" aria-pressed="true">Chat</button>
       <button class="msg-btn sm" id="msgTabComps" type="button" aria-pressed="false">Comps</button>
       <button class="msg-btn sm msg-hide" id="msgPeopleBtn" type="button">People</button>
       <!-- The open chat's More menu: the same three things as a row's (About
@@ -581,6 +628,10 @@ function renderMessagesBody(boot) {
     <div class="msg-delbar msg-hide" id="msgDelBar" role="group" aria-label="Delete this conversation"></div>
     <div class="msg-note msg-hide" id="msgNote"></div>
     <div class="msg-stream" id="msgStream"></div>
+    <!-- "2 new messages", when they arrive while the reader is scrolled up
+         in the history (2026-11-16). Directly after the stream, which its
+         stylesheet rule depends on. -->
+    <button class="msg-newpill msg-hide" id="msgNewPill" type="button"></button>
     <!-- The guest list of an EXTERNAL conversation: who is in it, whether
          they have opened it, inviting somebody, removing somebody, and closing
          the deal out. This panel is what lets the vault's hubs deck retire —
@@ -730,8 +781,37 @@ ${REPORT_INBOX_SRC}
     var yday = new Date(now.getTime() - 86400000);
     if (d.toDateString() === now.toDateString()) return "Today";
     if (d.toDateString() === yday.toDateString()) return "Yesterday";
-    return d.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+    // Another year says which: "Tuesday, Nov 4" twice in one long
+    // conversation was two different days.
+    return d.toLocaleDateString([], d.getFullYear() === now.getFullYear()
+      ? { weekday: "long", month: "short", day: "numeric" }
+      : { weekday: "long", month: "short", day: "numeric", year: "numeric" });
   }
+  // The time of day, for a message INSIDE a conversation (2026-11-16). The
+  // day is already the heading the message sits under, and when() answers an
+  // earlier day with its date: every message under "Saturday, Nov 14" said
+  // "Nov 14", so nobody could tell morning from evening. when() stays for
+  // the list, where one stamp has to say both.
+  function clock(iso){
+    var t = Date.parse(iso || "");
+    if (!isFinite(t)) return "";
+    return new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+  // A deal's date as a person writes it: "Aug 14, 2026" for the stored
+  // 2026-08-14. Built from its own three numbers, never Date.parse, which
+  // reads a bare date as midnight UTC and shows the day before to anybody
+  // west of Greenwich. Anything that is not that shape is shown as it came.
+  function dealDay(s){
+    var m = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(s || ""));
+    if (!m) return String(s || "");
+    var d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    if (isNaN(d.getTime())) return String(s);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }
+  // The reader's own initial, for their own messages. They are labelled
+  // "You", and the circle beside them used to take its letter from that
+  // word: every reader was "Y".
+  function myInitial(){ return initial(state.meName || state.me2 || "You"); }
   function api(method, url, body){
     var opts = { method: method, credentials: "same-origin", headers: { accept: "application/json" } };
     if (body !== undefined) {
@@ -757,6 +837,7 @@ ${REPORT_INBOX_SRC}
   function ungate(){
     $("msgGate").style.display = "none";
     $("msgPage").hidden = false;
+    sizePage();
   }
 
   // --- the thread list ----------------------------------------------------
@@ -793,18 +874,27 @@ ${REPORT_INBOX_SRC}
   }
   function openExternal(id, push, jump){
     closeDelBar();
+    // What was being typed stays with the chat it was typed in (drafts,
+    // below); opening the chat that is already open leaves the box alone.
+    var same = state.openKind === "external" && state.openId === id;
+    if (!same) holdDraft();
     state.openKind = "external";
     state.openId = id;
     // A closed room opened from a link is drawn on the list, not folded away.
     var was = findRoom(id);
     if (was && was.closed) state.showClosed = true;
+    // How many messages the list said were unread, before this read marks
+    // them read: where the "New" line goes.
+    state.openUnread = was ? (Number(was.unread) || 0) : 0;
+    state.newFrom = "";
+    showPill(0);
     state.cursor = "";
     state.messages = [];
     state.unsendId = "";
     state.unsendErr = "";
     state.extItems = [];
     state.extPeopleList = [];
-    state.attach = [];
+    if (!same) takeDraft();
     state.canWriteExt = false;
     $("msgPeoplePanel").className = "msg-panel msg-hide";
     renderTray();
@@ -844,13 +934,22 @@ ${REPORT_INBOX_SRC}
       state.canWriteExt = j.canWrite === true;
       if ($("msgPeoplePanel").className.indexOf("msg-hide") < 0) renderPeoplePanel();
       var fresh = j.messages || [];
+      // added: what other people wrote since the last read. mineIn: the
+      // reader's own message came back, which always goes to the newest.
+      var added = 0, mineIn = false;
+      var isMine = function(m){ return !!state.me2 && String(m.author || "").toLowerCase() === state.me2; };
       if (fresh.length) {
         var have = {};
         for (var i = 0; i < state.messages.length; i++) have[state.messages[i].id] = true;
-        for (var k = 0; k < fresh.length; k++) if (!have[fresh[k].id]) state.messages.push(fresh[k]);
+        for (var k = 0; k < fresh.length; k++) {
+          if (have[fresh[k].id]) continue;
+          state.messages.push(fresh[k]);
+          if (isMine(fresh[k])) mineIn = true; else added++;
+        }
       }
+      if (first) state.newFrom = firstUnreadId(state.messages, state.openUnread, isMine);
       if (j.cursor) state.cursor = j.cursor;
-      if (state.tab === "chat") renderExternalStream();
+      if (state.tab === "chat") renderExternalStream(first ? "open" : (mineIn ? "bottom" : ""), first ? 0 : added);
       applyComposerMode();
       // The server stamped this read as seen, so the badge is already off on
       // its side; this clears the local copy without waiting for the poll.
@@ -862,7 +961,7 @@ ${REPORT_INBOX_SRC}
     var s = item.snapshot || {};
     var facts = [];
     if (s.transaction) facts.push('<span>' + esc(String(s.transaction).charAt(0).toUpperCase() + String(s.transaction).slice(1)) + '</span>');
-    if (s.deal_date) facts.push('<span>' + esc(s.deal_date) + '</span>');
+    if (s.deal_date) facts.push('<span>' + esc(dealDay(s.deal_date)) + '</span>');
     if (s.price) facts.push('<span><b>' + esc(money(s.price)) + '</b></span>');
     if (s.size_sqft) facts.push('<span>' + esc(num(s.size_sqft)) + ' SF</span>');
     if (s.price_per_sqft) facts.push('<span>' + esc(money(s.price_per_sqft)) + '/SF</span>');
@@ -880,10 +979,11 @@ ${REPORT_INBOX_SRC}
       '<div class="foot">' + foot + '</div>' +
     '</div>';
   }
-  function renderExternalStream(){
+  function renderExternalStream(mode, fresh){
     if (!state.messages.length && !state.extItems.length) {
       $("msgStream").innerHTML = '<div class="msg-empty"><h3>Nothing here yet</h3>' +
         '<p>Say something, or send a comp across.</p></div>';
+      showPill(0);
       return;
     }
     // One stream: what was said AND what was sent, in the order it happened.
@@ -917,6 +1017,12 @@ ${REPORT_INBOX_SRC}
       var t = Date.parse(it2.at || "") || 0;
       var authorEmail = it2.kind === "msg" ? it2.m.author : it2.it.addedBy;
       var name = extName(authorEmail);
+      // Where what the reader has not read starts. The message under the
+      // line carries its name again, never a continuation of the one above.
+      if (it2.kind === "msg" && state.newFrom && it2.m.id === state.newFrom) {
+        html += NEW_LINE;
+        lastWho = "";
+      }
       var cont = authorEmail === lastWho && t - lastAt < 5 * 60 * 1000;
       lastWho = authorEmail; lastAt = t;
       var body = "";
@@ -931,16 +1037,17 @@ ${REPORT_INBOX_SRC}
         body = extCompCard(it2.it);
       }
       html += '<div class="msg-line' + (cont ? " cont" : "") + '">' +
-        '<span class="msg-av">' + esc(initial(name)) + '</span>' +
+        '<span class="msg-av">' + esc(name === "You" ? myInitial() : initial(name)) + '</span>' +
         '<div class="msg-body">' +
           (cont ? "" : '<div class="msg-meta"><span class="msg-author">' + esc(name) + '</span>' +
-            '<span class="msg-time">' + esc(when(it2.at)) + '</span></div>') +
+            '<span class="msg-time">' + esc(clock(it2.at)) + '</span></div>') +
           body +
         '</div></div>';
     }
-    var el = $("msgStream");
-    el.innerHTML = html;
-    el.scrollTop = el.scrollHeight;
+    // The room is redrawn on EVERY poll (its comps arrive whole each time),
+    // and it used to end at the newest message every time: fifteen seconds
+    // into reading back through a deal, the page took the reader away.
+    paintStream(html, mode, fresh);
   }
   // --- The guest list ------------------------------------------------------
   function currentPeopleEmails(){
@@ -1113,7 +1220,9 @@ ${REPORT_INBOX_SRC}
     $("msgSub").textContent = state.openKind === "external" ? extSub(t) : threadSub(t);
   }
 
-  function threadRowHtml(t, attr, current, sub, line, side){
+  // draft: what the reader started typing in this chat and left there. It
+  // takes the preview's place, marked, so a half-written message is findable.
+  function threadRowHtml(t, attr, current, sub, line, side, draft){
     var chan = t.kind === "channel";
     return '<button class="msg-row' + (t.unread ? " is-unread" : "") + '" type="button"' +
       ' ' + attr + '="' + esc(t.id) + '"' + (current ? ' aria-current="true"' : "") + '>' +
@@ -1127,7 +1236,9 @@ ${REPORT_INBOX_SRC}
           ? '<span class="msg-deal"><span class="msg-dealname">' + esc(line || "") + '</span>' +
             (side ? '<span class="msg-from">' + esc(side) + '</span>' : "") + '</span>'
           : "") +
-        '<span class="msg-prev">' + esc(sub) + '</span>' +
+        '<span class="msg-prev">' + (draft
+          ? '<span class="msg-draft">Draft:</span> ' + esc(draft)
+          : esc(sub)) + '</span>' +
       '</span>' +
       (t.unread ? '<span class="msg-unread">' + (t.unread > 99 ? "99+" : t.unread) + '</span>' : "") +
       '</button>';
@@ -1153,7 +1264,7 @@ ${REPORT_INBOX_SRC}
     if (askingHere("internal", t)) return confirmHtml(t, "row", "internal");
     if (renamingHere("internal", t)) return renameHtml(t, "row", "internal");
     return rowWrap("internal", t, threadRowHtml(t, "data-thread", current,
-      t.preview || "No messages yet", t.nickname ? t.label : "", ""));
+      t.preview || "No messages yet", t.nickname ? t.label : "", "", draftLine("internal", t.id)));
   }
   // A deal room. It says which deal it is, and a room somebody else started
   // says "Invited you" (the owner's report, 2026-10-02: two rooms from the
@@ -1162,7 +1273,7 @@ ${REPORT_INBOX_SRC}
     if (askingHere("external", x)) return confirmHtml(x, "row", "external");
     if (renamingHere("external", x)) return renameHtml(x, "row", "external");
     return rowWrap("external", x, threadRowHtml(x, "data-external", current,
-      x.preview || "No messages yet", dealLine(x), x.owner ? "" : "Invited you"));
+      x.preview || "No messages yet", dealLine(x), x.owner ? "" : "Invited you", draftLine("external", x.id)));
   }
   // The one question every door asks. It says whose copy goes, because that
   // is the thing a person pressing Delete on a shared conversation cannot
@@ -1297,6 +1408,7 @@ ${REPORT_INBOX_SRC}
       state.confirmId = "";
       state.delBar = false;
       state.staleBefore = state.listSeq;
+      dropDraft((room ? "external" : "internal") + ":" + id);
       if (room) state.external = state.external.filter(function(x){ return x.id !== id; });
       else state.threads = state.threads.filter(function(t){ return t.id !== id; });
       if (state.openKind === (room ? "external" : "internal") && state.openId === id) {
@@ -1308,6 +1420,10 @@ ${REPORT_INBOX_SRC}
         state.messages = [];
         state.attach = [];
         renderTray();
+        // What was being typed in it goes with it.
+        $("msgInput").value = "";
+        growInput();
+        showPill(0);
         $("msgPeoplePanel").className = "msg-panel msg-hide";
         $("msgPage").className = "msg-page";
         $("msgTitle").textContent = "Select a conversation";
@@ -1660,7 +1776,7 @@ ${REPORT_INBOX_SRC}
     var s = c.snapshot || {};
     var facts = [];
     if (s.transaction) facts.push('<span>' + esc(String(s.transaction).charAt(0).toUpperCase() + String(s.transaction).slice(1)) + '</span>');
-    if (c.dealDate) facts.push('<span>' + esc(c.dealDate) + '</span>');
+    if (c.dealDate) facts.push('<span>' + esc(dealDay(c.dealDate)) + '</span>');
     else facts.push('<span>Undated</span>');
     if (s.price) facts.push('<span><b>' + esc(money(s.price)) + '</b></span>');
     if (s.size_sqft) facts.push('<span>' + esc(num(s.size_sqft)) + ' SF</span>');
@@ -1688,19 +1804,172 @@ ${REPORT_INBOX_SRC}
     '</div>';
   }
 
+  // --- where the reader is in a conversation (2026-11-16) -------------------
+  // Every redraw used to end at the newest message. That was invisible while
+  // a conversation was as tall as the page (there was nothing to scroll), and
+  // wrong the day it became one screen: a colleague's message, or the deal
+  // room's fifteen-second poll, pulled a reader out of the history they had
+  // scrolled up to read. One painter for both kinds of chat now decides:
+  //   "open"    the chat was just opened: the newest message, or the "New"
+  //             line when what is unread is taller than the screen;
+  //   "bottom"  the reader's own message came back: the newest message;
+  //   "older"   earlier messages were laid in above: hold the reader still;
+  //   otherwise stay at the newest if they were there, and if they were not,
+  //             leave them where they are and say how many arrived.
+  function atBottom(el){ return el.scrollHeight - el.scrollTop - el.clientHeight < 80; }
+  function showPill(n){
+    state.unseen = n > 0 ? n : 0;
+    var p = $("msgNewPill");
+    p.textContent = state.unseen === 1 ? "1 new message \\u2193" : state.unseen + " new messages \\u2193";
+    p.className = state.unseen ? "msg-newpill" : "msg-newpill msg-hide";
+  }
+  function toNewest(){
+    var el = $("msgStream");
+    el.scrollTop = el.scrollHeight;
+    showPill(0);
+  }
+  function paintStream(html, mode, fresh){
+    var el = $("msgStream");
+    var stuck = atBottom(el), top = el.scrollTop, fromBottom = el.scrollHeight - el.scrollTop;
+    el.innerHTML = html;
+    var q = el.querySelector(".msg-unsendq");
+    if (q) { el.scrollTop = top; try { q.scrollIntoView({ block: "nearest" }); } catch (e) {} return; }
+    if (mode === "older") { el.scrollTop = el.scrollHeight - fromBottom; return; }
+    if (mode === "open") {
+      toNewest();
+      var line = el.querySelector(".msg-newline");
+      if (line) {
+        var above = line.getBoundingClientRect().top - el.getBoundingClientRect().top;
+        if (above < 0) el.scrollTop = Math.max(0, el.scrollTop + above - 12);
+      }
+      return;
+    }
+    if (mode === "bottom" || stuck) { toNewest(); return; }
+    el.scrollTop = top;
+    if (fresh > 0) showPill(state.unseen + fresh);
+  }
+  // The first message the reader has not read: n messages from other people,
+  // counted back from the newest. n is the number the list showed on the
+  // chat's row before it was opened, so no second read and no clock decide
+  // it. "" when nothing is unread.
+  var NEW_LINE = '<div class="msg-newline" role="separator" aria-label="New messages">New</div>';
+  function firstUnreadId(list, n, mine){
+    n = Number(n) || 0;
+    var id = "";
+    for (var i = list.length - 1; i >= 0 && n > 0; i--) {
+      var m = list[i];
+      if (!m || m.unsent || mine(m)) continue;
+      id = m.id;
+      n--;
+    }
+    return id;
+  }
+
+  // --- drafts: what you were typing stays with its chat (2026-11-16) --------
+  // The box to type in was one box for every chat: a message started to one
+  // person was still in it after opening another, a keystroke from being
+  // sent to the wrong one. Now each chat keeps its own, comps attached
+  // included, and the list says "Draft:" on a chat that has one.
+  // The words (never the comps) are also kept in sessionStorage under the
+  // reader's own id, so a visit to another page and back does not lose a
+  // message half written. That is this tab only and it ends with the tab;
+  // nothing is sent anywhere, and a failed read or write costs the
+  // convenience and nothing else.
+  state.drafts = {};
+  function draftKey(){ return state.openId ? state.openKind + ":" + state.openId : ""; }
+  function storeDrafts(){
+    if (!state.me) return;
+    try {
+      var out = {}, any = false;
+      for (var k in state.drafts) {
+        if (state.drafts[k] && String(state.drafts[k].text || "").trim()) { out[k] = state.drafts[k].text; any = true; }
+      }
+      if (any) sessionStorage.setItem("cnMsgDrafts:" + state.me, JSON.stringify(out));
+      else sessionStorage.removeItem("cnMsgDrafts:" + state.me);
+    } catch (e) {}
+  }
+  function loadDrafts(){
+    try {
+      var o = JSON.parse(sessionStorage.getItem("cnMsgDrafts:" + state.me) || "null");
+      if (!o || typeof o !== "object") return;
+      for (var k in o) {
+        if (typeof o[k] === "string" && o[k].trim() && !state.drafts[k]) state.drafts[k] = { text: o[k].slice(0, 4000), attach: [] };
+      }
+    } catch (e) {}
+  }
+  function dropDraft(key){
+    if (!key || !state.drafts[key]) return;
+    delete state.drafts[key];
+    storeDrafts();
+  }
+  // Remember what is in the box for the chat that is open.
+  function holdDraft(){
+    var k = draftKey();
+    if (!k) return;
+    var text = $("msgInput").value;
+    if (text.trim() || state.attach.length) state.drafts[k] = { text: text, attach: state.attach.slice() };
+    else delete state.drafts[k];
+    storeDrafts();
+  }
+  // Put the open chat's own draft in the box, or empty it.
+  function takeDraft(){
+    var d = state.drafts[draftKey()];
+    $("msgInput").value = d ? d.text : "";
+    state.attach = d ? d.attach.slice() : [];
+    renderTray();
+    growInput();
+  }
+  // The list's line for a chat with a draft. Never the open chat: its draft
+  // is in the box, on screen.
+  function draftLine(kind, id){
+    if (state.openKind === kind && state.openId === id) return "";
+    var d = state.drafts[kind + ":" + id];
+    if (!d) return "";
+    var text = String(d.text || "").replace(/\\s+/g, " ").trim();
+    if (text) return text.length > 120 ? text.slice(0, 119) + "\\u2026" : text;
+    var n = (d.attach || []).length;
+    return n ? (n === 1 ? "1 comp attached" : n + " comps attached") : "";
+  }
+  function growInput(){
+    var el = $("msgInput");
+    el.style.height = "auto";
+    if (el.value) el.style.height = Math.min(el.scrollHeight, 180) + "px";
+  }
+
+  // --- the page is as tall as the window under its heading (2026-11-16) ----
+  // The stylesheet's rule for a computer needs to know where the page starts,
+  // and the heading above it wraps differently at every width. Measured when
+  // the page is shown and when the window changes; an answer that cannot be
+  // right (the page not laid out yet) is dropped, and the stylesheet's own
+  // 170px stands in. It writes one custom property and nothing else.
+  function sizePage(){
+    try {
+      var el = $("msgPage");
+      if (el.hidden) return;
+      var top = Math.round(el.getBoundingClientRect().top + (window.pageYOffset || 0));
+      if (top >= 40 && top <= 600) el.style.setProperty("--msg-top", top + "px");
+      else el.style.removeProperty("--msg-top");
+    } catch (e) {}
+  }
+
   // --- the stream ---------------------------------------------------------
-  // keep: the stream grew at the TOP (older messages laid in), so hold the
-  // reader where they are instead of dropping them to the newest message.
-  function renderStream(keep){
+  // mode is paintStream's: "open", "bottom", "older" (true, from the read of
+  // earlier pages: the stream grew at the TOP, so the reader is held where
+  // they are), or nothing. fresh is how many messages from other people this
+  // draw adds.
+  function renderStream(mode, fresh){
     if (state.tab === "comps") return;
+    if (mode === true) mode = "older";
     if (!state.openId) {
       $("msgStream").innerHTML = '<div class="msg-empty"><h3>Select a conversation</h3>' +
         (state.firm ? '<p>Or start a new one with somebody at your firm.</p>' : "") + '</div>';
+      showPill(0);
       return;
     }
     if (!state.messages.length) {
       $("msgStream").innerHTML = '<div class="msg-empty"><h3>Nothing here yet</h3>' +
         '<p>Say something, or send a comp across.</p></div>';
+      showPill(0);
       return;
     }
     var html = "", lastDay = "", lastWho = "", lastAt = 0;
@@ -1717,6 +1986,12 @@ ${REPORT_INBOX_SRC}
       // is the fallback it already uses, restated here for a payload written
       // before authorName existed.
       var name = m.mine ? "You" : (m.authorName || String(m.author || "").split("@")[0] || "A colleague");
+      // Where what the reader has not read starts. The message under the
+      // line carries its name again, never a continuation of the one above.
+      if (state.newFrom && m.id === state.newFrom) {
+        html += NEW_LINE;
+        lastWho = "";
+      }
       // An unsent message is one quiet line where it was, for everybody. The
       // server sends it with no body and no comps. The next message starts a
       // block of its own, so it never reads as a continuation of nothing.
@@ -1736,10 +2011,10 @@ ${REPORT_INBOX_SRC}
       var canU = canUnsendNow(m);
       var asking = canU && state.unsendId === m.id;
       html += '<div class="msg-line' + (cont ? " cont" : "") + (canU ? " can-unsend" : "") + (asking ? " is-asking" : "") + '">' +
-        '<span class="msg-av">' + esc(initial(name)) + '</span>' +
+        '<span class="msg-av">' + esc(m.mine ? myInitial() : initial(name)) + '</span>' +
         '<div class="msg-body">' +
           (cont ? "" : '<div class="msg-meta"><span class="msg-author">' + esc(name) + '</span>' +
-            '<span class="msg-time">' + esc(when(m.createdAt)) + '</span></div>') +
+            '<span class="msg-time">' + esc(clock(m.createdAt)) + '</span></div>') +
           (m.body ? '<div class="msg-text">' + esc(m.body) + '</div>' : "") +
           comps +
         '</div>' +
@@ -1748,13 +2023,7 @@ ${REPORT_INBOX_SRC}
         '</div>';
       if (asking) html += unsendQuestion(m);
     }
-    var el = $("msgStream");
-    var fromBottom = el.scrollHeight - el.scrollTop;
-    el.innerHTML = html;
-    var q = el.querySelector(".msg-unsendq");
-    if (q) { try { q.scrollIntoView({ block: "nearest" }); } catch (e) {} }
-    else if (keep === true) el.scrollTop = el.scrollHeight - fromBottom;
-    else el.scrollTop = el.scrollHeight;
+    paintStream(html, mode, fresh);
     scheduleUnsendExpiry();
   }
 
@@ -1885,9 +2154,12 @@ ${REPORT_INBOX_SRC}
     $("msgComposer").className = tab === "chat" ? "msg-composer" : "msg-composer msg-hide";
     $("msgTray").className = tab === "chat" ? "msg-comp-tray" : "msg-comp-tray msg-hide";
     if (tab === "chat") {
-      if (state.openKind === "external") renderExternalStream(); else renderStream();
+      // Back from Comps the stream is still scrolled wherever that list was,
+      // which says nothing about the conversation: the newest message.
+      if (state.openKind === "external") renderExternalStream("bottom"); else renderStream("bottom");
       return;
     }
+    showPill(0);
     if (state.openKind === "external") {
       // A deal room's comps are already in hand — the hub read carries its
       // items whole on every poll — so the tab renders from state rather than
@@ -1955,15 +2227,24 @@ ${REPORT_INBOX_SRC}
   function openThread(id, push, jump){
     if (state.openId !== id) closeDelBar();
     if (!state.openRow || state.openRow.id !== id) state.openRow = null;
+    // What was being typed stays with the chat it was typed in (drafts,
+    // above); opening the chat that is already open leaves the box alone.
+    var same = state.openKind === "internal" && state.openId === id;
+    if (!same) holdDraft();
     state.openKind = "internal";
     state.openId = id;
+    // How many messages the list said were unread, before this read marks
+    // them read: where the "New" line goes.
+    var listed = findThread(id);
+    state.openUnread = listed ? (Number(listed.unread) || 0) : 0;
+    state.newFrom = "";
+    showPill(0);
     state.cursor = "";
     state.messages = [];
     state.unsendId = "";
     state.unsendErr = "";
     state.extItems = [];
-    state.attach = [];
-    renderTray();
+    if (!same) takeDraft();
     applyComposerMode();
     applyDraft();
     setTab("chat");
@@ -2010,11 +2291,19 @@ ${REPORT_INBOX_SRC}
         // Ids, not positions: an optimistic local echo and the server's own
         // copy of the same message must not both render.
         var have = {};
+        // added: what other people wrote since the last read. mineIn: the
+        // reader's own message came back, which always goes to the newest.
+        var added = 0, mineIn = false;
         for (var i = 0; i < state.messages.length; i++) have[state.messages[i].id] = true;
-        for (var k = 0; k < fresh.length; k++) if (!have[fresh[k].id]) state.messages.push(fresh[k]);
-        renderStream();
+        for (var k = 0; k < fresh.length; k++) {
+          if (have[fresh[k].id]) continue;
+          state.messages.push(fresh[k]);
+          if (fresh[k].mine) mineIn = true; else if (!fresh[k].unsent) added++;
+        }
+        if (first) state.newFrom = firstUnreadId(state.messages, state.openUnread, function(m){ return m.mine; });
+        renderStream(first ? "open" : (mineIn ? "bottom" : ""), first ? 0 : added);
       } else if (first || changed) {
-        renderStream();
+        renderStream(first ? "open" : "");
       }
       if (j.cursor) state.cursor = j.cursor;
       markRead();
@@ -2119,6 +2408,11 @@ ${REPORT_INBOX_SRC}
       var j = o.j || {};
       state.me = (j.me && j.me.id) || "";
       state.me2 = String((j.me && j.me.email) || "").toLowerCase();
+      // The reader's own name, for the circle beside their own messages.
+      state.meName = String((j.me && j.me.name) || "");
+      // Drafts kept from before this page was left, once: the first list
+      // read is what says whose they are.
+      if (state.me && !state.draftsRead) { state.draftsRead = true; loadDrafts(); }
       state.firm = j.firm || null;
       state.external = j.external || [];
       // Everyone at the firm except the reader. Pending invitees ride along
@@ -2178,6 +2472,10 @@ ${REPORT_INBOX_SRC}
     $("msgInput").value = "";
     $("msgInput").style.height = "auto";
     state.attach = [];
+    // Sent, so it is no longer a draft, and the reader has now answered
+    // whatever was under the "New" line.
+    dropDraft(draftKey());
+    state.newFrom = "";
     renderTray();
     $("msgPicker").className = "msg-panel msg-hide";
     $("msgPickMsg").textContent = "";
@@ -2260,7 +2558,7 @@ ${REPORT_INBOX_SRC}
         '<input type="checkbox" data-pick="' + esc(c.id) + '"' + (chosen[c.id] ? " checked" : "") + '>' +
         '<span class="who">' + esc(c.address) +
           '<span class="sub"> · ' + esc(c.property_type || "") +
-          (c.deal_date ? " · " + esc(c.deal_date) : "") +
+          (c.deal_date ? " · " + esc(dealDay(c.deal_date)) : "") +
           (c.price ? " · " + esc(money(c.price)) : "") + '</span>' +
         '</span></label></div>';
     }
@@ -2944,8 +3242,16 @@ ${REPORT_INBOX_SRC}
       if (o.s !== 200) { btn.disabled = false; btn.textContent = "Save to my comps"; note((o.j && o.j.error) || "Couldn't save that comp.", true); return; }
       // The vault list this page may already be holding is now stale.
       state.vault = null;
-      if (state.tab === "comps") setTab("comps");
-      else { state.cursor = ""; state.messages = []; readThread(true); }
+      if (state.tab === "comps") { setTab("comps"); return; }
+      // The card is marked where it stands. This used to read the whole
+      // conversation again, which sent a reader who had scrolled up to save
+      // an old comp back to the newest message.
+      var saved = btn.getAttribute("data-save");
+      for (var i = 0; i < state.messages.length; i++) {
+        var cs = state.messages[i].comps || [];
+        for (var k = 0; k < cs.length; k++) if (cs[k].id === saved) cs[k].savedByMe = true;
+      }
+      renderStream();
     });
   });
   $("msgTray").addEventListener("click", function(e){
@@ -3132,6 +3438,13 @@ ${REPORT_INBOX_SRC}
   $("msgTabComps").addEventListener("click", function(){ if (state.openId) setTab("comps"); });
   $("msgBack").addEventListener("click", function(){
     closeDelBar();
+    // What was typed stays with this chat, and the list says "Draft:".
+    holdDraft();
+    $("msgInput").value = "";
+    state.attach = [];
+    renderTray();
+    growInput();
+    showPill(0);
     $("msgPage").className = "msg-page";
     state.openId = "";
     state.openKind = "internal";
@@ -3200,14 +3513,27 @@ ${REPORT_INBOX_SRC}
   $("msgInput").addEventListener("input", function(){
     this.style.height = "auto";
     this.style.height = Math.min(this.scrollHeight, 180) + "px";
+    // Kept as it is typed, so leaving the page does not lose it.
+    holdDraft();
   });
+  // New messages that arrived while the reader was scrolled up: pressing the
+  // note goes to them, and so does scrolling down to them.
+  $("msgNewPill").addEventListener("click", toNewest);
+  $("msgStream").addEventListener("scroll", function(){
+    if (state.unseen && atBottom(this)) showPill(0);
+  });
+  // The page is as tall as the window: measured again when the window
+  // changes, and once everything above it (fonts included) has loaded.
+  window.addEventListener("resize", sizePage);
+  window.addEventListener("load", sizePage);
   $("msgInput").addEventListener("keydown", function(e){
     // Enter sends, Shift+Enter is a newline — every messenger's contract, and
     // the textarea is deliberately multi-line so the other half works.
     if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); send(); }
   });
   document.addEventListener("visibilitychange", function(){
-    if (!document.hidden) { state.lastActive = Date.now(); tick(); }
+    // A page built ahead of a click is measured when it is shown.
+    if (!document.hidden) { sizePage(); state.lastActive = Date.now(); tick(); }
   });
   ["keydown", "pointerdown", "focus"].forEach(function(ev){
     document.addEventListener(ev, markActive, true);

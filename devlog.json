@@ -1,6 +1,18 @@
 [
   {
     "date": "2026-11-16",
+    "type": "improvement",
+    "title": "Messages fits one screen on a computer, and keeps your place",
+    "details": "On a computer a long conversation made the whole page long: it opened on the oldest message and the box to type in was a long scroll down. Messages is now as tall as your window. The list and the conversation scroll inside it, the newest message is in view, and the box to type in never leaves the screen. If you scroll up to read back and somebody writes, you stay where you are and a note says “2 new messages”; a deal room used to pull you back to the bottom every fifteen seconds. A line marked New shows where the messages you have not read start. Each message shows the time it was sent (earlier days used to repeat the date), a comp’s date reads “Aug 14, 2026”, and your own messages show your initial instead of a Y."
+  },
+  {
+    "date": "2026-11-16",
+    "type": "fix",
+    "title": "A message you started typing stays with its chat",
+    "details": "The box to type in was shared by every chat, so a message started to one person was still sitting in it after you opened someone else’s chat, one keystroke from going to the wrong person. Each chat now keeps its own unsent message and attached comps, the list marks that chat “Draft:”, and the words are still there if you visit another page and come back. New conversation also opens under its button now; it used to open at the bottom of the list, off the screen on a laptop."
+  },
+  {
+    "date": "2026-11-16",
     "type": "fix",
     "title": "Run a report and Sites open without the footer in view",
     "details": "On a short page the dark footer sat at the bottom of the window the moment you opened Run a report or Sites. Both pages now fill at least one screen, so the footer waits below the fold until you scroll."

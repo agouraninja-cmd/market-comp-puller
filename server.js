@@ -31048,7 +31048,7 @@ const server = http.createServer((req, res) =>
           return sendJson(res, 200, {
             ok: true,
             firm: null,
-            me: { id: String(g.user.id), email: String(g.user.email || "") },
+            me: { id: String(g.user.id), email: String(g.user.email || ""), name: String(g.user.name || "") },
             external,
             canAttachComps: ent.canUseVault === true,
             people: [],
@@ -31121,7 +31121,9 @@ const server = http.createServer((req, res) =>
         return sendJson(res, 200, {
           ok: true,
           firm: { id: g.orgId, name: (org && org.name) || "", kind: ORG.kindOf(org) },
-          me: { id: String(g.user.id), email: String(g.user.email || "") },
+          // The name is for the circle beside the reader's own messages, which
+          // took its letter from the word "You" until 2026-11-16.
+          me: { id: String(g.user.id), email: String(g.user.email || ""), name: String(g.user.name || "") },
           external,
           // The Attach control is not rendered without this — the Buy-button
           // rule. Attaching reads a vault, so it is the vault's own gate, and

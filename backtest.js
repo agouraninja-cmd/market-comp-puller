@@ -235,6 +235,11 @@ function score(rows, opts) {
       // history, not a look-ahead. (Design spec 2026-08-06: "dated on or
       // before the subject's deal_date".)
       let peers = group.filter((p) => !isSameProperty(subj, p) && p.dy <= subj.dy);
+      // Every harvested copy, before the collapse below. Read only by the
+      // accuracy lab, to measure what counting one building several times
+      // does: the radius blend does exactly that, since it dedupes on the
+      // exact address|date|price string and a re-dated copy differs.
+      const everyCopy = peers;
       // Collapse a building that itself was harvested more than once down to
       // its single date-nearest row, so it enters the weighted band once.
       peers = dedupePeers(peers, subj.dy);
@@ -254,7 +259,7 @@ function score(rows, opts) {
       // the two can be compared pair for pair. The /api/accuracy route never
       // passes one, so what /admin reports is always the production math.
       const v = valueFn
-        ? valueFn(peerComps, valueOpts, { subject: subj, peers })
+        ? valueFn(peerComps, valueOpts, { subject: subj, peers, everyCopy })
         : VALUATION.valueFromComps(peerComps, valueOpts);
       if (!v || !(v.psfMid > 0)) { thinPeers += 1; return; }
       claimed.push(subj);

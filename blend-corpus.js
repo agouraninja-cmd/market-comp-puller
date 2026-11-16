@@ -198,6 +198,51 @@ function samePriceTier(extraPsf, subjectPsf) {
   return Math.abs(Math.log2(extraPsf / subjectPsf)) <= Math.log2(RESIDENTIAL_PRICE_TIER_RATIO);
 }
 
+// MANUFACTURED HOMES ARE THEIR OWN MARKET (2026-11-16). A mobile home in a park
+// usually sells without the ground under it (the lot is rented), so its $/SF
+// is a different figure from a house's: the corpus holds Boise manufactured
+// homes at $61-$158/SF a mile from houses at $300-$600. Every one of the seven
+// worst misses in the accuracy lab's hold-one-out run (+219% to +574%) was a
+// manufactured home valued off houses, because the lab pools a whole market.
+// The live search keeps them apart (no harvested report has ever mixed the
+// two), so the place they meet in a customer's report is HERE: a 1-mile circle
+// in west Boise holds both, and the price-tier test above only fires when the
+// subject has an asking price, which an owner's valuation usually does not.
+//
+// Keeping each kind to its own peers, in the lab: median miss 16.7% -> 15.6%,
+// mean 23.9% -> 21.7%, better on 64% of the 121 sales it moved, a narrower
+// range catching the price slightly more often. The interval from resampling
+// whole markets just touches zero, so this is principle the data leans
+// toward, not a proven size of effect (corpus.md, "The accuracy lab").
+//
+// The address says it ("Trailer 20", "Spc 14", "Space 3"), or the words do.
+// Not "Lot": a numbered lot is as often a land parcel ("W Neff St LOT 3"). On
+// the 2026-11-15 corpus this marks exactly the eight manufactured homes among
+// 260 residential rows, and nothing else.
+const MANUFACTURED_WORDS_RE = /\b(manufactured|mobile[\s-]?homes?|single[\s-]?wides?|double[\s-]?wides?)\b/i;
+const MANUFACTURED_UNIT_RE = /(?:^|[\s,#])(?:trailer|trlr|spc|space)\.?\s*#?\s*[a-z]?\d/i;
+
+function isManufacturedHome(row) {
+  if (!row || typeof row !== "object") return false;
+  const address = String(row.address || "");
+  return MANUFACTURED_UNIT_RE.test(address)
+    || MANUFACTURED_WORDS_RE.test(address + " " + String(row.notes || ""));
+}
+
+// Which kind the SEARCH is pricing: true, false, or null when nothing says.
+// The subject's own address wins ("6728 W Fairview Ave Trailer 51"); else most
+// of the search's own comps decide, since the model picked them for this
+// subject (a mobile home typed without its space number still comes back with
+// mobile-home comps). No comps and a plain address is unknown, and unknown
+// filters nothing, the same rule as a missing ask above.
+function searchIsManufactured(report, subjectAddress) {
+  if (isManufacturedHome({ address: subjectAddress })) return true;
+  const own = (Array.isArray(report && report.comps) ? report.comps : [])
+    .filter((c) => c && typeof c === "object");
+  if (!own.length) return null;
+  return own.filter(isManufacturedHome).length * 2 > own.length;
+}
+
 function lookbackCutoffFrac(months, now) {
   const d = now instanceof Date ? now : new Date(now);
   if (!Number.isFinite(d.getTime())) return null;
@@ -255,6 +300,7 @@ function blendNearbyComps(report, rows, opts) {
     ? Number(o.radiusMiles)
     : radiusMilesFor(o.propertyType, o.marketNote);
   const subjectPsf = o.propertyType === "Residential" ? impliedSubjectPsf(report, o) : 0;
+  const manufactured = o.propertyType === "Residential" ? searchIsManufactured(report, o.subjectAddress) : null;
   const txFocus = o.txFocus === "sales" || o.txFocus === "leases" ? o.txFocus : null;
 
   const comps = Array.isArray(report.comps) ? report.comps : [];
@@ -274,6 +320,7 @@ function blendNearbyComps(report, rows, opts) {
     if (!(mi <= radius)) continue;
     if (subjectKey && normAddr(row.address) === subjectKey) continue;
     if (subjectPsf > 0 && !samePriceTier(salePsfOf(row), subjectPsf)) continue;
+    if (manufactured !== null && isManufacturedHome(row) !== manufactured) continue;
     const shaped = toReportComp(row);
     if (!shaped) continue;
     const key = keyOf(shaped);
@@ -326,6 +373,8 @@ module.exports = {
   parseRadiusMiles,
   impliedSubjectPsf,
   samePriceTier,
+  isManufacturedHome,
+  searchIsManufactured,
   salePsfOf,
   FIELD_MAP,
   attachCompDistances,

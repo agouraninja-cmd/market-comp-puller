@@ -55,7 +55,19 @@ paths:
   already sit inside that named circle, distance cannot separate them —
   Residential extras more than 1.5× the subject's implied $/SF (ask ÷ size)
   are dropped, and `compWeight` floors the same miss so the IQR cannot be
-  outvoted by the cheaper majority. Missing ask is neutral. They join
+  outvoted by the cheaper majority. Missing ask is neutral.
+  **Manufactured homes and houses stay apart (2026-11-16).** A Residential
+  extra whose kind differs from the search's is skipped, ask or no ask. The
+  kind is `isManufacturedHome` (a trailer or space number in the address, or
+  the words manufactured, mobile home, single- or double-wide; not "Lot",
+  which names land parcels too) and the search's is `searchIsManufactured`:
+  the subject's address, else most of the search's own comps, else unknown,
+  which filters nothing. A mobile home in a park usually sells without its
+  lot, so its $/SF is a different figure: Boise's run $61-$158 a mile from
+  houses at $300-$600. The live search never mixed the two in any harvested
+  report; the mile circle was where they met, and the price-tier test above
+  needs an ask an owner's valuation rarely has. Lab figures are under "The
+  accuracy lab". Commercial blends never read the kind. They join
   the table and the Low / Likely / High math; a free report turns extras
   into `locked_basis` so the dollar range still matches Pro.
   Harvest Census-geocodes new rows before the insert (fire-and-forget with
@@ -243,3 +255,22 @@ paths:
     time (48%). It is now the 15th-85th percentile, which catches 62% at half
     again the width (45% of Likely against 31%); 10th-90th would catch 70% at
     57%. See report-and-valuation.md, flow 3h, for what had to move with it.
+  - **The worst misses are the market pool, not the math (2026-11-16).** The
+    backtest's peers are every sale of the type in the MARKET, where a live
+    report's are the search's own comps plus saved deals inside a mile (houses)
+    or ten (commercial). So its biggest misses are pairings no report makes:
+    all seven above +200% were Boise manufactured homes valued off Boise
+    houses, and Austin's +57% to +166% are one neighborhood's $264-$310/SF
+    houses valued off another's $486-$653. The export carries no lat/lng, so
+    the lab cannot pool by distance the way production does; adding the two
+    columns to `/api/comp-corpus` is what would let it. What the 2026-11-16
+    session tried, all on the 2026-11-15 corpus and none clearing the noise:
+    manufactured homes and houses kept apart, -1.2 points (90%: -1.6 to 0.0),
+    better on 64% of the 121 sales it moved, mean miss 23.9% -> 21.7%, ADOPTED
+    in the radius blend on principle (see "Manufactured homes" above);
+    leased vs vacant commercial matched, -0.3 on the 15 it moved, not adopted;
+    cap-rate-priced sales kept apart, worse for Industrial, not adopted; and
+    every harvested copy of a building counted, which scored no worse, if
+    anything a point better: collapsing re-dated copies in the blend is NOT an
+    accuracy fix, though it would tidy the comp table (both variants stay in
+    the lab so the next session does not re-run the question as new).

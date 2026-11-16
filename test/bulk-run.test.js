@@ -424,6 +424,43 @@ test("an internal caller is handed the call's real spend, and a cache hit is not
     "a cached search cost nothing — reporting zeros would halve the average cost of any run that hit the cache");
 });
 
+test("a report says when its comps were found and under which method, and a cache hit keeps the original", async (t) => {
+  // The browser's "Generated" date is the day the page was drawn, so a report
+  // served from the 30-day cache used to read as today's. The stamp is written
+  // once, before the cache write, and a cache hit must hand back that same
+  // moment — a lender's file is dated by when the comps were found.
+  const ctx = await bootAll();
+  t.after(() => ctx.stop());
+  const srv = await shared.boot({
+    ACCOUNT_WALL: "off", PRO_ENABLED: "on",
+    SUPABASE_URL: ctx.db.url, SUPABASE_SERVICE_KEY: "service-key",
+    SEARCH_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "test-key",
+    STREAM_ANTHROPIC: "off", SEARCH_API_URL: ctx.stub.url,
+    ADMIN_KEY: "admin-secret",
+  });
+  t.after(() => srv.stop());
+
+  const ask = (address) => fetch(srv.base + "/api/comps", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-admin-key": "admin-secret" },
+    body: JSON.stringify({ address, type: "Industrial", months: 24 }),
+  }).then((r) => r.json());
+
+  const t0 = Date.now();
+  const fresh = await ask("7 Ledger Row, Boise, ID 83702");
+  const foundAt = Date.parse(fresh.generated_at);
+  assert.ok(Number.isFinite(foundAt), "a fresh report carries generated_at as a real date");
+  assert.ok(foundAt >= t0 - 1000 && foundAt <= Date.now() + 1000, "and it is the moment of the search");
+  assert.equal(fresh.method_version, require("../valuation").METHOD_VERSION);
+
+  await new Promise((r) => setTimeout(r, 25));
+  const before = ctx.stub.calls.length;
+  const cached = await ask("7 Ledger Row, Boise, ID 83702");
+  assert.equal(ctx.stub.calls.length, before, "the second ask is a cache hit");
+  assert.equal(cached.generated_at, fresh.generated_at, "a cache hit keeps the ORIGINAL moment, not the moment it was served");
+  assert.equal(cached.method_version, fresh.method_version);
+});
+
 test("a search that fails costs the row, not the run", async (t) => {
   // One bad address must never stop the rest of the list — the watchlist
   // digest's rule, and here the other forty-nine are owed their answer.

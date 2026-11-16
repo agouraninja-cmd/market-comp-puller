@@ -8,7 +8,7 @@
 // WHY THIS FILE EXISTS. home-page.js's rule 4 promised that the sample's
 // arithmetic holds, and until 2026-10-07 it did not: the page
 // showed a plain median and the dearest comp as High ($5,140,000 at $238/SF),
-// while valueFromComps on those same comps returns a weighted interquartile
+// while valueFromComps on those same comps returned a weighted interquartile
 // band ($4,975,000 at ~$231/SF), and two of the three totals were off
 // heroRound's $25,000 grid. Nothing ran the real function against the page,
 // so nothing noticed. This does, and it fails the build the next time a comp
@@ -50,7 +50,7 @@ const valueAt = (asOf) => VALUATION.valueFromComps(comps, { subjectSF: SF, asOf,
 
 test("the sample's Low, Likely and High are what valueFromComps returns", () => {
   const r = valueAt(Date.parse("2026-10-07"));
-  assert.ok(r && r.trimmed, "five comps take the weighted interquartile band, not the full spread");
+  assert.ok(r && r.trimmed, "five comps take the weighted trimmed band, not the full spread");
   for (const [key, total, psf] of [["low", r.low, r.psfLow], ["mid", r.mid, r.psfMid], ["high", r.high, r.psfHigh]]) {
     assert.equal(SAMPLE_RANGE[key].value, usd(total), key + ": the page's total is not the product's");
     assert.equal(SAMPLE_RANGE[key].psf, usd(Math.round(psf)), key + ": the page's $/SF is not the product's");

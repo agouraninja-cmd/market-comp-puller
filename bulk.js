@@ -465,7 +465,7 @@ function valueFromReport(report, opts) {
     comp_count: comps.length,
     lease_comps: comps.length - saleComps.length,
     // Below four sale comps the band is the full observed spread rather than
-    // the interquartile one (see robustPpsfRange). That is a materially
+    // the trimmed middle 70% (see robustPpsfRange). That is a materially
     // weaker number and the page says so, so it has to ride out of here.
     trimmed: val.trimmed === true,
   };

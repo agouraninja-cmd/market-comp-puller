@@ -4,7 +4,7 @@
 //
 // Nothing here touches a database. Fixtures are built so the arithmetic is
 // exact: peers share a deal date and a size, which makes their weights equal
-// and the quartiles independent of the weighting.
+// and the percentiles independent of the weighting.
 
 const test = require("node:test");
 const assert = require("node:assert");
@@ -51,7 +51,7 @@ function row(over) {
 // Four peers at 100/200/300/400 dated 2026-01, and one subject at 250 dated
 // 2026-06. With minPeers 4 the peers cannot score each other (each sees only
 // three), so exactly one subject scores and its numbers are hand-checkable:
-// equal weights -> quartiles 150 / 250 / 350 against an actual of 250.
+// equal weights -> a band of 110 / 250 / 390 against an actual of 250.
 function fixture() {
   return [
     row({ address: "1 A St", price_per_sqft: "100" }),
@@ -70,10 +70,10 @@ test("score holds a subject out and grades it against its peers", () => {
   assert.equal(r.belowFloor, false);
   // Predicted mid 250 against an actual of 250.
   assert.equal(r.medianAbsError, 0);
-  // 250 sits inside 150..350.
+  // 250 sits inside 110..390.
   assert.equal(r.bandCoverage, 1);
-  // (350 - 150) / 250
-  assert.ok(Math.abs(r.medianBandWidth - 0.8) < 1e-9, "got " + r.medianBandWidth);
+  // (390 - 110) / 250
+  assert.ok(Math.abs(r.medianBandWidth - 1.12) < 1e-9, "got " + r.medianBandWidth);
 });
 
 test("score skips a subject without enough peers, and says how many", () => {
@@ -160,7 +160,7 @@ test("a disqualified first copy of a building does not block a scoreable second 
 // fails against that old normAddress; it must pass against the fixed one.
 test("a spelling-variant duplicate of the subject cannot peer with or duplicate-score itself", () => {
   // The peers are the subject's own size, so the size restatement is neutral
-  // and the arithmetic stays the hand-checkable 150 / 250 / 350.
+  // and the arithmetic stays the hand-checkable 110 / 250 / 390.
   const peers = [
     row({ market: "Caldwell, ID", address: "1 Warehouse Row", deal_date: "2026-01", size_sqft: "56000", price_per_sqft: "100" }),
     row({ market: "Caldwell, ID", address: "2 Warehouse Row", deal_date: "2026-01", size_sqft: "56000", price_per_sqft: "200" }),

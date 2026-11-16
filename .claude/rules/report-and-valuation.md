@@ -628,6 +628,36 @@ and exporting each slide to PNG (a PowerShell one-liner, no dependency).
      every whole-dollar $/SF times the size still lands on the total beside
      it, which `test/home-page.test.js` enforces.
 
+3h. **Low to High is the weighted 15th-85th percentile, the middle 70%
+   (2026-11-16; the owner's call).** `robustPpsfRange` took the quartiles
+   until then, which hold the middle half of the comps by construction and so
+   held the held-out price 48% of the time over 242 scored sales; a reader
+   takes "Low" and "High" for bounds. 15-85 holds it 62% of the time (houses
+   64%, commercial 54%) at a median width of 45% of Likely against 31%.
+   **Likely is the median and did not move on any report.** Under four sale
+   comps the band is still the full spread. Leases are untouched:
+   `rentFromComps` takes plain quartiles and its copy still says "the middle
+   half". `BAND_LOW_PCT` / `BAND_HIGH_PCT` are the two numbers, and three
+   things are tied to them:
+   - **The spread verdict's bars.** "The comps agree closely / A typical
+     spread / a wide range" reads `(high - low) / mid`, and its bars (0.15,
+     0.35) were set against the quartiles. The wider band runs about 1.54x as
+     wide over the same comps, so the sales bars are now 0.23 and 0.54. Left
+     alone, 70% of comp sets changed verdict and nearly all of them read
+     "wide", which was found on the sample report's picture, not in a test.
+     The lease verdict keeps 0.15 / 0.35.
+   - **Every sentence that names the share.** "the middle 70% of these comps
+     still spans" (the condition-spread line) and the home page's "Low and
+     High bound the weighted middle 70%". `test/index-html.test.js` derives
+     the 70 from the constants, so a band change fails the build until the
+     copy follows. "The middle range of N sale comps" names no share and
+     stands.
+   - **home-page.js's sample** (rule 4 there): $4,550,000 / $4,725,000 /
+     $5,000,000. No comp had to move this time.
+   The outlier chip still flags a comp 25% past the nearest band edge, so a
+   wider band flags fewer comps; that is the chip agreeing with the range the
+   page shows, and it was left that way on purpose.
+
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High
    range from sale-comp $/SF (leases are excluded even on mixed searches) ×

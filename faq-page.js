@@ -86,7 +86,7 @@ function faqEntries(pricing = {}) {
     //     "Only N sale comps back this range, so it shows the full observed
     //     spread - treat it as a rough guide", and robustPpsfRange stops
     //     trimming, so the band really is the full spread rather than a
-    //     narrower interquartile one.
+    //     narrower trimmed one (the middle 70%).
     //   - "drop it and the range recalculates" is the curation path:
     //     includedComps() feeds the math, and excluding a comp moves the hero
     //     and re-renders the trust line with its "N of M" count.

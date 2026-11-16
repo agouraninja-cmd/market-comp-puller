@@ -7691,10 +7691,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // mark, which carries both numbers. buildOutlierChip makes the same switch
   // off the same flag (currentPsfBand.restated), so the pairing still holds.
   //
-  // The axis spans the comps, not the band. The band is the weighted
-  // interquartile range (robustPpsfRange), so with 4+ comps roughly half of
-  // them sit OUTSIDE it by construction — an axis clipped to Low-High would
-  // hide half the evidence, which is the opposite of the point.
+  // The axis spans the comps, not the band. The band is the weighted middle
+  // 70% (robustPpsfRange, 15th-85th since 2026-11-16), so with 4+ comps
+  // roughly a third of them sit OUTSIDE it by construction — an axis clipped
+  // to Low-High would hide that evidence, which is the opposite of the point.
   //
   // Draws nothing unless the caller's band is `trimmed` (exactly the "4 or
   // more comps" condition: below it the band IS the full observed spread, so
@@ -8437,8 +8437,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const pubN = saleComps.filter((x) => compTier(x.comp) === "public_record").length;
       const verN = saleComps.filter((x) => compTier(x.comp) === "verified").length;
       const spreadRatio = rr.mid > 0 ? (rr.high - rr.low) / rr.mid : 0;
-      const spreadPhrase = spreadRatio <= 0.15 ? "The comps agree closely."
-        : spreadRatio <= 0.35 ? "A typical spread for this market."
+      // The verdict is about how far the COMPS disagree, so it has to say the
+      // same thing about the same comps whichever percentiles bound the band.
+      // The bars were 0.15 and 0.35 against the interquartile band. The
+      // 15th-85th band over the same comps runs about 1.54x as wide (2.07
+      // against 1.35 standard deviations; 1.52x measured over 213 comp sets),
+      // so the bars moved with it on 2026-11-16. Left where they were, 70% of
+      // those comp sets changed verdict and 198 of the 213 read "wide".
+      // ⚠ Tied to valuation.js's BAND_LOW_PCT / BAND_HIGH_PCT: change the band
+      // and rescale these. The lease branch below keeps 0.15 / 0.35, because
+      // rentFromComps still takes the quartiles.
+      const spreadPhrase = spreadRatio <= 0.23 ? "The comps agree closely."
+        : spreadRatio <= 0.54 ? "A typical spread for this market."
         : "The comps span a wide range, so treat the midpoint loosely.";
       const srcBits = [];
       if (pubN) srcBits.push(`${pubN} from public records`);
@@ -8839,12 +8849,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const cond = conditionSpread(currentPsfBand, subjSFMid);
       if (cond) {
         const psf0 = (v) => formatUsd(v, { maximumFractionDigits: 0 });
-        // "The middle half spans", not "these comps sold from": psfLow/psfHigh
-        // are the weighted interquartile band of trend-indexed values, which
-        // is what the ledger's own $/SF sub-labels and the basis line's
+        // "The middle 70% spans", not "these comps sold from": psfLow/psfHigh
+        // are the weighted 15th-85th percentile band of trend-indexed values,
+        // which is what the ledger's own $/SF sub-labels and the basis line's
         // "middle range of N sale comps" already quote. "Sold from" would
-        // claim these were literal sale prices.
-        trustEl.textContent += ` Once size, age and distance are accounted for, the middle half of these comps still spans `
+        // claim these were literal sale prices. It said "the middle half"
+        // while the band was the quartiles; the share is robustPpsfRange's,
+        // so the two move together or this sentence is untrue.
+        trustEl.textContent += ` Once size, age and distance are accounted for, the middle 70% of these comps still spans `
           + `${psf0(cond.psfLow)} to ${psf0(cond.psfHigh)}/SF`
           + (cond.swing > 0
             ? ` — a ${formatUsd(cond.swing, { maximumFractionDigits: 0 })} swing on this ${assetNoun(meta.type)}'s size`

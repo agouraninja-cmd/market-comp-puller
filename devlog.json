@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-11-16",
+    "type": "improvement",
+    "title": "Low to High is a wider range that holds the answer more often",
+    "details": "Low and High used to bound the middle half of the comps, so the figure a building actually went for fell between them only about half the time: 48% of 242 held-out sales. They now bound the middle 70% (the 15th to 85th percentile), which caught 62% of the same sales: 64% on houses and 54% on commercial buildings, where comps disagree more. The range is about half again as wide. On the in-app sample report it went from $8,325,000 – $9,525,000 to $7,850,000 – $9,750,000, and the home page’s sample now reads $4,550,000 to $5,000,000. Likely did not move on any report. The line that says whether the comps agree closely was rescaled so the same comps still get the same verdict, and the sentence that named “the middle half” now says “the middle 70%”. Lease reports are unchanged. Saved and shared reports show the wider range the next time they are opened."
+  },
+  {
     "date": "2026-11-15",
     "type": "improvement",
     "title": "Commercial estimates account for your building’s size: the typical miss on held-out sales fell from 34% to 26%",

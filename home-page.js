@@ -49,8 +49,9 @@
 //      $/SF restated at the subject's size (sizeRestateFactor, since
 //      2026-11-15: a commercial building bigger than the subject counts a
 //      little higher, a smaller one a little lower), weighted by its source
-//      tier and age (compWeight), the WEIGHTED 25th, 50th and 75th percentile
-//      of those figures, then heroRound to the nearest $25,000. Not the plain median and not the cheapest and dearest comp,
+//      tier and age (compWeight), the WEIGHTED 15th, 50th and 85th percentile
+//      of those figures (the middle 70%; the quartiles until 2026-11-16),
+//      then heroRound to the nearest $25,000. Not the plain median and not the cheapest and dearest comp,
 //      which is what this rule claimed until 2026-10-07 while the page showed
 //      figures the product would never have produced. Dated mid-month as
 //      shown, no market trend, and the as-of date does not move the answer.
@@ -88,9 +89,9 @@ const SAMPLE_COMPS = [
 // $223 until the restatement shipped; $225 is what keeps every whole-dollar
 // $/SF times the size landing on the total beside it.
 const SAMPLE_RANGE = {
-  low: { value: "$4,575,000", psf: "$212" },
+  low: { value: "$4,550,000", psf: "$211" },
   mid: { value: "$4,725,000", psf: "$219" },
-  high: { value: "$4,875,000", psf: "$226" },
+  high: { value: "$5,000,000", psf: "$231" },
 };
 
 // The vault ledger under "For firms". Three rows, the first badged, because
@@ -471,7 +472,7 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<span>${SAMPLE_RANGE.mid.psf}</span><span class="hmarith">&times; ${SAMPLE_SIZE_SQFT} SF &asymp; ${SAMPLE_RANGE.mid.value}</span></div>` +
     `</div></div></div>` +
     `<div class="hmfoot">Each comp is restated at this building&#39;s size; newer, better-sourced ones weigh ` +
-    `more; Low and High bound the weighted middle half. Your price and NOI never leave your browser.</div>` +
+    `more; Low and High bound the weighted middle 70%. Your price and NOI never leave your browser.</div>` +
     `</div></section>` +
 
     // --- Band 3: the firm pitch --------------------------------------------

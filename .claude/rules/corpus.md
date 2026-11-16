@@ -237,8 +237,9 @@ paths:
     is from a closed price, and it cannot measure what an asking price is
     worth as a comp. That needs closed sales, which means broker-verified or
     public-record rows.
-  - **Band coverage is a product question, not a bug.** Low to High is the
-    weighted middle half of the comps by construction, so a real price lands
-    inside it a little under half the time (48%). The 15th-85th percentile
-    catches 62% at half again the width (45% of Likely against 31%). Left alone deliberately: widening the
-    range is the owner's call.
+  - **Band coverage was a product question, and the owner answered it
+    (2026-11-16).** Low to High was the weighted middle half of the comps by
+    construction, so a held-out price landed inside it a little under half the
+    time (48%). It is now the 15th-85th percentile, which catches 62% at half
+    again the width (45% of Likely against 31%); 10th-90th would catch 70% at
+    57%. See report-and-valuation.md, flow 3h, for what had to move with it.

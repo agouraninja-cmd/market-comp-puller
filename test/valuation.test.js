@@ -68,18 +68,35 @@ test("robustPpsfRange with two comps shows the raw spread, untrimmed", () => {
   assert.equal(rr.trimmed, false);
 });
 
-test("robustPpsfRange with four comps trims to weighted quartiles", () => {
+test("robustPpsfRange with four comps trims to the weighted 15th and 85th percentile", () => {
+  // Equal weights sit at 12.5 / 37.5 / 62.5 / 87.5% of the way along, so the
+  // 15th is a tenth of the way from the first comp to the second, and the
+  // 85th nine tenths of the way from the third to the fourth.
   const rr = V.robustPpsfRange([100, 200, 300, 400].map((v) => ({ v, w: 1 })));
-  assert.equal(rr.low, 150);
+  assert.equal(rr.low, 110);
   assert.equal(rr.mid, 250);
-  assert.equal(rr.high, 350);
+  assert.equal(rr.high, 390);
   assert.equal(rr.trimmed, true);
 });
 
 test("robustPpsfRange accepts bare numbers as weight-1 items", () => {
   const rr = V.robustPpsfRange([100, 200, 300, 400]);
-  assert.equal(rr.low, 150);
-  assert.equal(rr.high, 350);
+  assert.equal(rr.low, 110);
+  assert.equal(rr.high, 390);
+});
+
+test("the band is the middle 70%: wider than the quartiles, narrower than the full spread", () => {
+  assert.equal(V.BAND_LOW_PCT, 0.15);
+  assert.equal(V.BAND_HIGH_PCT, 0.85);
+  // Twenty evenly spaced comps, 5 to 100: the quartiles would be 25.5 and
+  // 75.5, the raw spread 5 and 100.
+  const rr = V.robustPpsfRange(Array.from({ length: 20 }, (_, i) => (i + 1) * 5));
+  assert.ok(Math.abs(rr.low - 17.5) < 1e-9, "15th percentile, got " + rr.low);
+  assert.ok(Math.abs(rr.high - 87.5) < 1e-9, "85th percentile, got " + rr.high);
+  assert.equal(rr.mid, 52.5);
+  // One freak comp still cannot set the High.
+  const freak = V.robustPpsfRange([100, 102, 104, 106, 108, 110, 112, 114, 116, 900]);
+  assert.ok(freak.high < 120, "a trophy sale must not become the High, got " + freak.high);
 });
 
 test("compAgeYears is zero for a same-day comp and capped at five years", () => {
@@ -400,16 +417,16 @@ test("tierOf reads the verified flag first, then the source type", () => {
 
 test("valueFromComps composes the weighted, trimmed range and the totals", () => {
   // Four same-day, same-size, public-record comps: equal weights, so the
-  // quartiles are exact and independent of the weighting.
+  // percentiles are exact and independent of the weighting.
   const comps = [100, 200, 300, 400].map((psf) =>
     comp({ price_per_sqft: String(psf), address: psf + " Main St" }));
   const v = V.valueFromComps(comps, { subjectSF: 10000, asOf: AS_OF, trendPct: null });
-  assert.equal(v.psfLow, 150);
+  assert.equal(v.psfLow, 110);
   assert.equal(v.psfMid, 250);
-  assert.equal(v.psfHigh, 350);
-  assert.equal(v.low, 1500000);
+  assert.equal(v.psfHigh, 390);
+  assert.equal(v.low, 1100000);
   assert.equal(v.mid, 2500000);
-  assert.equal(v.high, 3500000);
+  assert.equal(v.high, 3900000);
   assert.equal(v.n, 4);
   assert.equal(v.trimmed, true);
 });
@@ -420,9 +437,11 @@ test("valueFromComps spans a size RANGE the way the hero does", () => {
   const v = V.valueFromComps(comps, {
     subjectSF: { min: 8000, max: 12000 }, asOf: AS_OF, trendPct: null,
   });
-  assert.equal(v.low, 150 * 8000);    // low $/SF x the SMALLEST size
-  assert.equal(v.mid, 250 * 10000);   // mid $/SF x the MIDPOINT size
-  assert.equal(v.high, 350 * 12000);  // high $/SF x the LARGEST size
+  assert.equal(v.low, V.heroRound(110 * 8000));    // low $/SF x the SMALLEST size
+  assert.equal(v.mid, V.heroRound(250 * 10000));   // mid $/SF x the MIDPOINT size
+  assert.equal(v.high, V.heroRound(390 * 12000));  // high $/SF x the LARGEST size
+  assert.equal(v.low, 880000);
+  assert.equal(v.high, 4675000, "390 x 12,000 is 4,680,000, on heroRound's $25,000 grid");
 });
 
 test("valueFromComps drops leases, which are a different unit", () => {
@@ -444,9 +463,9 @@ test("valueFromComps takes an alternate value extractor for $/unit bases", () =>
     subjectSF: 0, asOf: AS_OF, trendPct: null,
     readValue: (c) => V.numericValue(c.price_per_unit),
   });
-  assert.equal(v.psfLow, 150000);
+  assert.equal(v.psfLow, 110000);
   assert.equal(v.psfMid, 250000);
-  assert.equal(v.psfHigh, 350000);
+  assert.equal(v.psfHigh, 390000);
 });
 
 test("valueFromComps returns null when nothing carries a usable value", () => {
@@ -467,9 +486,9 @@ test("valueFromComps falls back to salePsfOf when readValue is not a function", 
     { subjectSF: 10000, asOf: AS_OF, trendPct: null, readValue: undefined });
   const omitted = V.valueFromComps(comps, { subjectSF: 10000, asOf: AS_OF, trendPct: null });
   assert.deepEqual(withUndefined, omitted);
-  assert.equal(withUndefined.psfLow, 150);
+  assert.equal(withUndefined.psfLow, 110);
   assert.equal(withUndefined.psfMid, 250);
-  assert.equal(withUndefined.psfHigh, 350);
+  assert.equal(withUndefined.psfHigh, 390);
 });
 
 test("outlierOf: inside the band and at the edges is null", () => {

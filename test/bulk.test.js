@@ -255,7 +255,7 @@ test("no size is not the same answer as no comps", () => {
 
 test("`trimmed` reports which band a row is actually showing", () => {
   // Below four sale comps the band is the full observed spread rather than
-  // the weighted interquartile one — a materially weaker number, and the page
+  // the weighted trimmed one — a materially weaker number, and the page
   // has to be able to say which one it is looking at.
   const thin = { ...REPORT, comps: [REPORT.comps[0], REPORT.comps[1]] };
   assert.equal(BULK.valueFromReport(thin, { asOf: ASOF }).trimmed, false);

@@ -4192,3 +4192,50 @@ test("a restated Likely is labelled as the median at your size, on screen and in
   assert.ok(snap, "the $/SF branch's lastValuation literal moved");
   assert.doesNotMatch(snap[0], /restated/);
 });
+
+test("the copy that names the range's share of the comps agrees with the band valuation.js takes", () => {
+  // The band went from the quartiles to the 15th-85th percentile on
+  // 2026-11-16. Every sentence that says how much of the comp set Low to High
+  // holds has to say the band's own share, or it is untrue the day one moves.
+  const V = require("../valuation.js");
+  const share = Math.round((V.BAND_HIGH_PCT - V.BAND_LOW_PCT) * 100);
+  assert.equal(share, 70);
+  assert.match(html, new RegExp("the middle " + share + "% of these comps still spans"));
+  assert.doesNotMatch(html, /the middle half of these comps/);
+  const home = require("../home-page.js").renderHomePageBody({ pricing: { minSeats: 2, firmSeat: 0, monthly: 0 } });
+  assert.match(home, new RegExp("Low and High bound the weighted middle " + share + "%\."));
+  // Leases are a different range with its own rule (rentFromComps, plain
+  // quartiles), and its sentence still says so.
+  assert.match(html, /middle half of them; rates quoted monthly/);
+});
+
+test("the spread verdict says the same thing about the same comps under the wider band", () => {
+  // "The comps agree closely" is a statement about the comps, not about which
+  // percentiles bound the range. The bars were set against the quartiles; the
+  // 15th-85th band runs about 1.54x as wide over the same comps, so with the
+  // old bars nearly every report read "wide".
+  const sale = html.match(/const spreadPhrase = spreadRatio <= (0\.\d+) \? "The comps agree closely\."\s*: spreadRatio <= (0\.\d+) \? "A typical spread for this market\."/g);
+  assert.equal(sale.length, 2, "one verdict for sales, one for leases");
+  assert.match(sale[0], /<= 0\.23 [\s\S]*<= 0\.54 /, "sales: the bars for the 15th-85th band");
+  assert.match(sale[1], /<= 0\.15 [\s\S]*<= 0\.35 /, "leases: rentFromComps still takes the quartiles");
+
+  // Run it: a comp set at each old bar lands on the same side of each new one.
+  const V = require("../valuation.js");
+  const quartiles = (vals) => {
+    const s = vals.slice().sort((a, b) => a - b), n = s.length;
+    const q = (p) => { const x = p * n - 0.5, i = Math.max(0, Math.min(n - 2, Math.floor(x))); return s[i] + (x - i) * (s[i + 1] - s[i]); };
+    return (q(0.75) - q(0.25)) / q(0.5);
+  };
+  const verdict = (r, close, typical) => (r <= close ? "close" : r <= typical ? "typical" : "wide");
+  // Twelve comps on a bell curve around $100/SF, at five amounts of scatter.
+  const z = [-1.6, -1.1, -0.75, -0.5, -0.25, -0.08, 0.08, 0.25, 0.5, 0.75, 1.1, 1.6];
+  const widthOf = (sd) => { const b = V.robustPpsfRange(z.map((k) => 100 + k * sd)); return (b.high - b.low) / b.mid; };
+  for (const [sd, want] of [[5, "close"], [9, "close"], [16, "typical"], [22, "typical"], [40, "wide"]]) {
+    assert.equal(verdict(quartiles(z.map((k) => 100 + k * sd)), 0.15, 0.35), want, "fixture, sd " + sd);
+    assert.equal(verdict(widthOf(sd), 0.23, 0.54), want, "new band, sd " + sd);
+  }
+  // And the old bars would have moved two of the five: comps that agree
+  // closely read as merely typical, and a typical set as wide.
+  assert.equal(verdict(widthOf(9), 0.15, 0.35), "typical");
+  assert.equal(verdict(widthOf(22), 0.15, 0.35), "wide");
+});

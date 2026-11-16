@@ -48,11 +48,27 @@
 
   // Robust $/SF range for the value hero. A single freak comp (a trophy sale,
   // a distressed flip) used to blow the Low/High wide open because they were
-  // the literal min and max. With 4+ comps this instead takes the
-  // interquartile band (25th-75th percentile) around the median, so outliers
-  // can't dominate the headline; below that there is nothing to trust as an
-  // outlier, so the full observed spread stands instead, and `trimmed` says
-  // which case fired.
+  // the literal min and max. With 4+ comps this instead takes a trimmed band
+  // around the median, the weighted 15th to 85th percentile (the middle 70%),
+  // so outliers can't dominate the headline; below that there is nothing to
+  // trust as an outlier, so the full observed spread stands instead, and
+  // `trimmed` says which case fired.
+  //
+  // WHY 15-85 AND NOT THE QUARTILES. Until 2026-11-16 this was the
+  // interquartile band (25th-75th), which holds the middle half of the comps
+  // by construction, and so held the answer about half the time: over 242
+  // held-out sales (scripts/accuracy-lab.js) the real figure landed between
+  // Low and High 48% of the time. A reader takes "Low" and "High" for bounds,
+  // and a bound that fails every other time is not one. 15-85 catches 62% at
+  // a median width of 45% of Likely against 31% (houses 64%; commercial 54%,
+  // where the comps simply disagree more). 10-90 catches 70% at 57%, most of
+  // the way back to the raw min and max this function exists to avoid. The
+  // owner's call, made with those figures in hand. Likely is the median
+  // either way and did not move.
+  //
+  // With only four to six comps the 15th and 85th sit close to the cheapest
+  // and dearest of them: that is the honest reading of so few, and
+  // `trimmed` still says an outlier trim was applied.
   //
   // Accepts plain numbers (each weighs 1) or {v, w} items: the percentiles
   // are weighted, so a stale, off-size, or weakly-sourced comp pulls the band
@@ -60,6 +76,7 @@
   // the center of its weight span on the cumulative scale, with linear
   // interpolation between neighbors, so equal weights reproduce the familiar
   // evenly-spaced percentile positions.
+  var BAND_LOW_PCT = 0.15, BAND_HIGH_PCT = 0.85;
   function robustPpsfRange(vals) {
     const items = vals
       .map((x) => (typeof x === "number" ? { v: x, w: 1 } : x))
@@ -76,7 +93,7 @@
       const t = (p - pos[i]) / (pos[i + 1] - pos[i]);
       return items[i].v + t * (items[i + 1].v - items[i].v);
     };
-    if (n >= 4) return { low: q(0.25), mid: q(0.5), high: q(0.75), trimmed: true };
+    if (n >= 4) return { low: q(BAND_LOW_PCT), mid: q(0.5), high: q(BAND_HIGH_PCT), trimmed: true };
     return { low: items[0].v, mid: q(0.5), high: items[n - 1].v, trimmed: false };
   }
 
@@ -561,7 +578,7 @@
   // would be the one figure in the hero with no source standing behind it.
   //
   // Requires `trimmed` (4+ sale comps). Below that the band is the raw observed
-  // spread rather than an interquartile one, so it measures how scattered a
+  // spread rather than the trimmed middle 70%, so it measures how scattered a
   // tiny sample is, not what this market pays for condition — index.html's
   // smallNNote already covers that case in its own words.
   //
@@ -725,7 +742,7 @@
   }
 
   return {
-    numericValue, salePsfOf, robustPpsfRange, heroRound,
+    numericValue, salePsfOf, robustPpsfRange, BAND_LOW_PCT, BAND_HIGH_PCT, heroRound,
     TIER_WEIGHT, tierOf, compDateMs, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
     defaultFreePassMiles,
     parseRadiusMiles, radiusClaimContradicted, RADIUS_CLAIM_SLACK,

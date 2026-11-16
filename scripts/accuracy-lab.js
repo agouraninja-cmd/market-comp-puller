@@ -119,7 +119,7 @@ function patchedValuation(patches) {
 const SRC = {
   recency: "if (age !== null) w *= Math.pow(0.5, age / 2);",
   size: "if (octaves > 1) w *= Math.pow(0.5, octaves - 1);",
-  band: "if (n >= 4) return { low: q(0.25), mid: q(0.5), high: q(0.75), trimmed: true };",
+  band: "if (n >= 4) return { low: q(BAND_LOW_PCT), mid: q(0.5), high: q(BAND_HIGH_PCT), trimmed: true };",
   thin: "return { low: items[0].v, mid: q(0.5), high: items[n - 1].v, trimmed: false };",
   floor: "return Math.max(0.15, w);",
   tiers: "listing: 0.85, news: 0.7, estimate: 0.5",
@@ -241,8 +241,8 @@ add({ name: "size: no penalty", group: "size", patches: [[SRC.size, ""]] });
 
 add({ name: "vintage weighting OFF (year built)", group: "vintage", both: withoutVintage });
 
-[[0.2, 0.8], [0.15, 0.85], [0.1, 0.9]].forEach(([lo, hi]) => add({
-  name: "band " + lo * 100 + "th-" + hi * 100 + "th pct (now 25-75)", group: "band",
+[[0.25, 0.75], [0.2, 0.8], [0.1, 0.9]].forEach(([lo, hi]) => add({
+  name: "band " + lo * 100 + "th-" + hi * 100 + "th pct (now 15-85)", group: "band",
   patches: [[SRC.band, "if (n >= 4) return { low: q(" + lo + "), mid: q(0.5), high: q(" + hi + "), trimmed: true };"]],
 }));
 
@@ -254,7 +254,7 @@ const MID = {
 Object.keys(MID).forEach((k) => add({
   name: "likely = " + k + " (now the median)", group: "mid",
   patches: [
-    [SRC.band, "if (n >= 4) return { low: q(0.25), mid: " + MID[k] + ", high: q(0.75), trimmed: true };"],
+    [SRC.band, "if (n >= 4) return { low: q(BAND_LOW_PCT), mid: " + MID[k] + ", high: q(BAND_HIGH_PCT), trimmed: true };"],
     [SRC.thin, "return { low: items[0].v, mid: " + MID[k] + ", high: items[n - 1].v, trimmed: false };"],
   ],
 }));

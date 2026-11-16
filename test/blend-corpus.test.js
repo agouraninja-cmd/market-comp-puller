@@ -416,6 +416,76 @@ test("Residential extras 2x off the asking $/SF are dropped even inside a mile",
   assert.equal(out.comps[1].address, "9 Peer St, Boise, ID");
 });
 
+// ---------------------------------------------------------------------------
+// Manufactured homes and houses stay apart (2026-11-16)
+//
+// A mobile home on a rented lot sells without its land, so its $/SF is not a
+// house's. The live search keeps them apart; the blend's mile circle did not,
+// and the price-tier test only fires when the subject has an asking price.
+// ---------------------------------------------------------------------------
+const { isManufacturedHome, searchIsManufactured } = require("../blend-corpus");
+
+const house = (over = {}) => row({
+  ll: offsetMiles(BOISE, 0.5), address: "1404 N Orchard St, Boise, ID 83706",
+  price_or_rate: "$560,000", size_sqft: "1450", price_per_sqft: "386", ...over,
+});
+const trailer = (over = {}) => row({
+  ll: offsetMiles(BOISE, 0.4), address: "6728 W Fairview Ave Trailer 20, Boise, ID 83704",
+  price_or_rate: "$28,000", size_sqft: "460", price_per_sqft: "61",
+  notes: "Mobile home on a rented lot.", ...over,
+});
+const houseComp = { address: "2010 W Franklin St, Boise, ID", date: "Apr 2026", price_or_rate: "$610,000", size_sqft: "1600" };
+const trailerComp = { address: "7701 W Ustick Rd Trailer 59, Boise, ID", date: "Mar 2026", price_or_rate: "$53,000", size_sqft: "720", notes: "Manufactured home on a leased lot." };
+
+test("isManufacturedHome reads a trailer or space number, or the words, and nothing else", () => {
+  assert.equal(isManufacturedHome({ address: "6728 W Fairview Ave Trailer 20, Boise, ID" }), true);
+  assert.equal(isManufacturedHome({ address: "100 Park Way Spc 14, Meridian, ID" }), true);
+  assert.equal(isManufacturedHome({ address: "100 Park Way Space 3, Meridian, ID" }), true);
+  assert.equal(isManufacturedHome({ address: "1238 N Sable Ln, Boise, ID", notes: "Manufactured home in Maple Grove Estates." }), true);
+  assert.equal(isManufacturedHome({ address: "5 A St", notes: "Double-wide on its own acre." }), true);
+  assert.equal(isManufacturedHome({ address: "1404 N Orchard St, Boise, ID" }), false);
+  // A street NAMED with the word, a numbered lot, a suite, an apartment: not a mobile home.
+  assert.equal(isManufacturedHome({ address: "12 Trailer Ridge Rd, Boise, ID" }), false);
+  assert.equal(isManufacturedHome({ address: "88 Space Center Dr, Houston, TX" }), false);
+  assert.equal(isManufacturedHome({ address: "W Neff St LOT 3, Boise, ID" }), false);
+  assert.equal(isManufacturedHome({ address: "2201 L St NW Apt 704, Washington, DC" }), false);
+  assert.equal(isManufacturedHome(null), false);
+});
+
+test("searchIsManufactured: the subject's address wins, else most of the search's own comps, else unknown", () => {
+  assert.equal(searchIsManufactured(report({ comps: [houseComp] }), "6728 W Fairview Ave Trailer 51, Boise, ID"), true);
+  assert.equal(searchIsManufactured(report({ comps: [trailerComp, trailerComp, houseComp] }), "1238 N Sable Ln, Boise, ID"), true);
+  assert.equal(searchIsManufactured(report({ comps: [houseComp, trailerComp] }), "1404 N Orchard St, Boise, ID"), false);
+  assert.equal(searchIsManufactured(report({ comps: [] }), "1404 N Orchard St, Boise, ID"), null);
+});
+
+test("a house search with no ask takes the saved house nearby, not the mobile home beside it", () => {
+  const rep = report({ comps: [houseComp] });
+  const out = blendNearbyComps(rep, [trailer(), house()], { ...OPTS, propertyType: "Residential" });
+  assert.equal(out.corpus_count, 1);
+  assert.equal(out.comps[1].address, "1404 N Orchard St, Boise, ID 83706");
+});
+
+test("a mobile-home search takes the saved mobile home, not the houses a mile around it", () => {
+  const rep = report({ comps: [trailerComp] });
+  const out = blendNearbyComps(rep, [house(), trailer()], {
+    ...OPTS, propertyType: "Residential", subjectAddress: "6728 W Fairview Ave Trailer 51, Boise, ID 83704",
+  });
+  assert.equal(out.corpus_count, 1);
+  assert.equal(out.comps[1].address, "6728 W Fairview Ave Trailer 20, Boise, ID 83704");
+});
+
+test("with no comps and a plain address nothing says which kind, so both join", () => {
+  const out = blendNearbyComps(report({ comps: [] }), [house(), trailer()], { ...OPTS, propertyType: "Residential" });
+  assert.equal(out.corpus_count, 2);
+});
+
+test("commercial blends never read the kind: a former manufactured-home plant is still a warehouse comp", () => {
+  const plant = row({ notes: "Former manufactured home plant, 29,400 SF." });
+  const out = blendNearbyComps(report(), [plant], { ...OPTS, propertyType: "Industrial" });
+  assert.equal(out.corpus_count, 1);
+});
+
 test("Residential extras of any price join when there is no ask to compare", () => {
   const cheap = row({
     ll: offsetMiles(BOISE, 0.4),

@@ -2,6 +2,12 @@
   {
     "date": "2026-11-16",
     "type": "improvement",
+    "title": "A house is no longer valued off the mobile homes down the street",
+    "details": "When a report adds saved deals from within a mile of a house, it now leaves out manufactured and mobile homes, and a mobile home’s report leaves out the houses around it. A mobile home in a park usually sells without the land under it, so it trades for a fraction of a house’s price per square foot ($61–$158 against $300–$600 in west Boise), and one or two of them in a house’s comps pulled the estimate down. Before, this was only caught when the house had an asking price to compare against, which an owner’s valuation usually doesn’t. In our accuracy test, keeping the two apart cut the typical miss from 16.7% to 15.6% and the average from 23.9% to 21.7%; the test set is still small, so that is a lean in the right direction rather than a proven size of gain. Commercial reports are unchanged."
+  },
+  {
+    "date": "2026-11-16",
+    "type": "improvement",
     "title": "Low to High is a wider range that holds the answer more often",
     "details": "Low and High used to bound the middle half of the comps, so the figure a building actually went for fell between them only about half the time: 48% of 242 held-out sales. They now bound the middle 70% (the 15th to 85th percentile), which caught 62% of the same sales: 64% on houses and 54% on commercial buildings, where comps disagree more. The range is about half again as wide. On the in-app sample report it went from $8,325,000 – $9,525,000 to $7,850,000 – $9,750,000, and the home page’s sample now reads $4,550,000 to $5,000,000. Likely did not move on any report. The line that says whether the comps agree closely was rescaled so the same comps still get the same verdict, and the sentence that named “the middle half” now says “the middle 70%”. Lease reports are unchanged. Saved and shared reports show the wider range the next time they are opened."
   },

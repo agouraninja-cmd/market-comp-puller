@@ -40,6 +40,7 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..");
 const BACKTEST = require(path.join(ROOT, "backtest.js"));
 const VALUATION = require(path.join(ROOT, "valuation.js"));
+const BLEND = require(path.join(ROOT, "blend-corpus.js"));
 const { parseDealDate } = require(path.join(ROOT, "deal-date.js"));
 
 // ---- reading rows ---------------------------------------------------------
@@ -265,6 +266,31 @@ add({ name: "listing weight 1.0 (now 0.85)", group: "tier",
   patches: [[SRC.tiers, "listing: 1, news: 0.7, estimate: 0.5"]] });
 add({ name: "weight floor 0.05 (now 0.15)", group: "floor",
   patches: [[SRC.floor, "return Math.max(0.05, w);"]] });
+
+// One building, harvested several times (a re-dated listing, a re-spelled
+// street), entering the math once per copy. The backtest collapses copies
+// before valuing; the radius blend does not (it dedupes on the exact
+// address|date|price string, and a re-dated copy differs in the date). On the
+// 2026-11-15 corpus counting every copy scored no worse, if anything a point
+// better inside the noise: a building several searches found is likely a real,
+// well-documented one. So collapsing copies in the blend is NOT an accuracy
+// fix, and this line is here to say so before someone ships it as one.
+add({ name: "every harvested copy counted (as the radius blend does)", group: "copies",
+  comps: (comps, opts, ctx) => ctx.everyCopy.map((p) => p.comp) });
+
+// Manufactured homes and houses kept to their own kind, with the radius
+// blend's own test (blend-corpus.js isManufacturedHome; adopted there
+// 2026-11-16). The backtest pools a whole market, so here the rule filters
+// the peers; when fewer than three of the subject's kind remain it leaves them
+// all, standing in for the live report, whose own comps stay whatever the
+// blend skips. A row the test cannot read as manufactured counts as a house.
+add({ name: "manufactured homes and houses kept apart (the radius blend since 2026-11-16)", group: "kind",
+  comps: (comps, opts, ctx) => {
+    if (ctx.subject.row.property_type !== "Residential") return comps;
+    const mine = BLEND.isManufacturedHome(ctx.subject.row);
+    const keep = comps.filter((c, i) => BLEND.isManufacturedHome(ctx.peers[i].row) === mine);
+    return keep.length >= 3 ? keep : comps;
+  } });
 
 
 function valueFnFor(variant) {

@@ -2,6 +2,12 @@
   {
     "date": "2026-11-16",
     "type": "improvement",
+    "title": "The comp corpus download includes each deal’s map location",
+    "details": "The Comp corpus CSV on HQ now ends with each saved deal’s latitude and longitude. Our accuracy test used to compare a building only with every other sale in its city; with locations it can compare it with the deals within a mile (houses) or ten miles (commercial), the way a real report does, and it can test how much distance should count. Nothing changes in reports."
+  },
+  {
+    "date": "2026-11-16",
+    "type": "improvement",
     "title": "A house is no longer valued off the mobile homes down the street",
     "details": "When a report adds saved deals from within a mile of a house, it now leaves out manufactured and mobile homes, and a mobile home’s report leaves out the houses around it. A mobile home in a park usually sells without the land under it, so it trades for a fraction of a house’s price per square foot ($61–$158 against $300–$600 in west Boise), and one or two of them in a house’s comps pulled the estimate down. Before, this was only caught when the house had an asking price to compare against, which an owner’s valuation usually doesn’t. In our accuracy test, keeping the two apart cut the typical miss from 16.7% to 15.6% and the average from 23.9% to 21.7%; the test set is still small, so that is a lean in the right direction rather than a proven size of gain. Commercial reports are unchanged."
   },

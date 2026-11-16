@@ -13,8 +13,10 @@
 // today's, pair for pair, so "is a 1.5-year half-life better than 2?" has an
 // answer that is a number.
 //
-// Feed it the corpus export (/admin -> Downloads -> Comp corpus), a
-// comp-corpus.jsonl, or several of either. Nothing here is on any request
+// Feed it the corpus export (HQ, /hq -> "Comp corpus CSV"), a
+// comp-corpus.jsonl, or several of either. Exports from 2026-11-16 on carry
+// lat/lng, which the distance variants need; an older one runs, but they
+// cannot move anything. Nothing here is on any request
 // path, nothing is written, and nothing leaves the machine.
 //
 // THREE RULES FOR READING IT
@@ -292,6 +294,39 @@ add({ name: "manufactured homes and houses kept apart (the radius blend since 20
     return keep.length >= 3 ? keep : comps;
   } });
 
+// Distance, the way a live report sees it. The backtest pools every sale of
+// the type in the MARKET; a report pools the search's own comps plus saved
+// deals inside the radius blend's circle (1 mile for houses, 10 for
+// commercial), and compWeight discounts a comp past that circle. Both need
+// coordinates, which the corpus export carries since 2026-11-16: an export
+// from before that, or a row never geocoded, has none, and these variants
+// then move nothing (the run prints how many rows have a point).
+//
+// withDistance stamps `distance_mi` from the two points, the same field and
+// the same rounding attachCompDistances writes on a live report, so
+// valuation.js's own distance term runs unchanged. withinBlendRadius then
+// keeps the peers inside blend-corpus.js's radiusMilesFor; with fewer than
+// three inside it leaves them all, standing in for the live report's own
+// search comps, which no circle removes. A peer with no point is outside.
+function withDistance(comps, opts, ctx) {
+  const subj = BLEND.parseCoords(ctx.subject.row);
+  if (!subj) return comps;
+  return comps.map((c, i) => {
+    const ll = BLEND.parseCoords(ctx.peers[i].row);
+    if (!ll) return c;
+    return Object.assign({}, c, { distance_mi: Math.round(BLEND.milesBetween(subj, ll) * 10) / 10 });
+  });
+}
+function withinBlendRadius(comps, opts, ctx) {
+  const radius = BLEND.radiusMilesFor(ctx.subject.row.property_type);
+  const keep = comps.filter((c) => c.distance_mi != null && c.distance_mi <= radius);
+  return keep.length >= 3 ? keep : comps;
+}
+add({ name: "distance weighting on (as a live report weights a located comp)", group: "distance",
+  comps: withDistance });
+add({ name: "peers inside the radius blend's circle, weighted by distance", group: "distance",
+  comps: (comps, opts, ctx) => withinBlendRadius(withDistance(comps, opts, ctx), opts, ctx) });
+
 
 function valueFnFor(variant) {
   const V = variant.patches ? patchedValuation(variant.patches) : VALUATION;
@@ -465,6 +500,9 @@ function main(argv) {
   console.log(rows.length + " rows read; " + base.scored + " sales scored across "
     + new Set(base.subjects.map((s) => s.market)).size + " markets. Skipped: " + JSON.stringify(base.skipped));
   if (base.scored < 20) console.log("!! Under 20 scored sales: everything below is noise. Do not tune against it.");
+  const located = rows.filter((r) => BLEND.parseCoords(r)).length;
+  console.log("Rows with a map point: " + located + " of " + rows.length
+    + (located ? "" : " (an export from before 2026-11-16 has no lat/lng: the distance variants cannot move anything)"));
 
   if (flags.facts) {
     console.log("\nWhat the data says (within-bucket, sales only):");
@@ -514,5 +552,6 @@ if (require.main === module) main(process.argv.slice(2));
 
 module.exports = {
   parseCsv, dedupeRows, patchedValuation, sizeAdjusted, sizeAdjustedLocal, peerTrendPct, summarize, pairedChange, compare, facts,
+  withDistance, withinBlendRadius,
   VARIANTS, SRC,
 };

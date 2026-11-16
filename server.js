@@ -28220,13 +28220,20 @@ const server = http.createServer((req, res) =>
   }
 
   // --- Comp corpus download (CSV). Disabled unless ADMIN_KEY is set. ---
+  // lat/lng LAST (2026-11-16), so every column before them keeps its place for
+  // anyone reading by position; outreach.js and the lab read by header. They
+  // are what lets scripts/accuracy-lab.js pool and weight peers by distance
+  // the way a live report does (the radius blend, compWeight's distance term)
+  // instead of by whole market. Both columns are in migration 001, so naming
+  // them cannot 400 this read into the file-only fallback. Public deals'
+  // geocodes only: this route reads comp_corpus, never a vault table.
   if (req.method === "GET" && req.url.split("?")[0] === "/api/comp-corpus") {
     return sendCsvDownload(req, res, "comp_corpus", COMP_CORPUS_FILE,
       ["ts", "property_type", "market", "address", "transaction", "deal_date",
        "size_sqft", "price_or_rate", "price_per_sqft", "cap_rate",
        ...ALL_TYPE_COMP_FIELDS,
        "tenancy", "year_built", "notes", "source_url", "source_type",
-       "verified"], "comp-corpus.csv");
+       "verified", "lat", "lng"], "comp-corpus.csv");
   }
 
   // --- Tells the front-end whether a password is required ---

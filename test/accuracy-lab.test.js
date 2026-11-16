@@ -113,3 +113,47 @@ test("compare pairs a candidate's subjects with the baseline's by market, type a
   const cand = [{ market: "A", type: "Industrial", key: "1 a st", absError: 0.1 }, { market: "B", type: "Industrial", key: "9 z st", absError: 0.5 }];
   assert.deepEqual(LAB.compare(base, cand), [{ market: "A", type: "Industrial", base: 0.2, cand: 0.1 }]);
 });
+
+// Distance (2026-11-16): the export carries lat/lng, and these two leaves turn
+// them into what a live report has: a stamped distance_mi that valuation.js's
+// own distance term reads, and the radius blend's circle.
+const BOISE = { lat: 43.615, lng: -116.2023 };
+const north = (mi) => ({ lat: String(BOISE.lat + mi / 69), lng: String(BOISE.lng) });
+const distCtx = (type, peerMiles) => ({
+  subject: { row: { property_type: type, lat: String(BOISE.lat), lng: String(BOISE.lng) } },
+  peers: peerMiles.map((mi) => ({ row: mi == null ? {} : north(mi) })),
+});
+
+test("withDistance stamps miles from the two points, and leaves an unplaced peer alone", () => {
+  const ctx = distCtx("Residential", [0.5, 4, null]);
+  const out = LAB.withDistance([comp(), comp(), comp()], {}, ctx);
+  assert.equal(out[0].distance_mi, 0.5);
+  assert.equal(out[1].distance_mi, 4);
+  assert.equal("distance_mi" in out[2], false);
+  // Production's own weighting reads it: four miles out is past the house
+  // free pass, so it counts for less than the half-mile comp.
+  assert.ok(VALUATION.compWeight(out[1], AS_OF, 10000, null, { propertyType: "Residential" })
+    < VALUATION.compWeight(out[0], AS_OF, 10000, null, { propertyType: "Residential" }));
+  const noSubject = { subject: { row: { property_type: "Residential" } }, peers: ctx.peers };
+  assert.equal(LAB.withDistance([comp()], {}, noSubject)[0].distance_mi, undefined);
+});
+
+test("withinBlendRadius keeps the blend's circle: a mile for houses, ten for commercial", () => {
+  const houses = distCtx("Residential", [0.3, 0.6, 0.9, 3, 8]);
+  const near = LAB.withinBlendRadius(LAB.withDistance(houses.peers.map(() => comp()), {}, houses), {}, houses);
+  assert.deepEqual(near.map((c) => c.distance_mi), [0.3, 0.6, 0.9]);
+  const sheds = distCtx("Industrial", [0.3, 0.6, 0.9, 3, 8, 14]);
+  const inTen = LAB.withinBlendRadius(LAB.withDistance(sheds.peers.map(() => comp()), {}, sheds), {}, sheds);
+  assert.deepEqual(inTen.map((c) => c.distance_mi), [0.3, 0.6, 0.9, 3, 8]);
+});
+
+test("withinBlendRadius leaves every peer when fewer than three sit inside, and no point is outside", () => {
+  const ctx = distCtx("Residential", [0.4, 5, null, 9]);
+  const all = LAB.withDistance(ctx.peers.map(() => comp()), {}, ctx);
+  assert.equal(LAB.withinBlendRadius(all, {}, ctx).length, 4);
+});
+
+test("the lab carries both distance variants", () => {
+  const names = LAB.VARIANTS.filter((v) => v.group === "distance").map((v) => v.name);
+  assert.equal(names.length, 2);
+});

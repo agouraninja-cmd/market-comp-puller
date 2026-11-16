@@ -42,7 +42,9 @@ paths:
   raw-data layer that broker verification and future retrieval features build
   on; the DDL lives in `migrations/001-comp-corpus.sql` (+ `004` for the
   per-type columns).
-  `GET /api/comp-corpus` downloads it as CSV (requires `ADMIN_KEY`).
+  `GET /api/comp-corpus` downloads it as CSV (requires `ADMIN_KEY`); its last
+  two columns are each deal's `lat`, `lng` (since 2026-11-16, for the
+  accuracy lab's distance variants).
   **Radius blend (2026-08-14).** At serialization, inside `gate()` and
   **before** `gateReport()`, `blendNearbyComps` folds in harvested deals of
   the same property type whose date is inside the lookback, that have
@@ -261,10 +263,9 @@ paths:
     or ten (commercial). So its biggest misses are pairings no report makes:
     all seven above +200% were Boise manufactured homes valued off Boise
     houses, and Austin's +57% to +166% are one neighborhood's $264-$310/SF
-    houses valued off another's $486-$653. The export carries no lat/lng, so
-    the lab cannot pool by distance the way production does; adding the two
-    columns to `/api/comp-corpus` is what would let it. What the 2026-11-16
-    session tried, all on the 2026-11-15 corpus and none clearing the noise:
+    houses valued off another's $486-$653. The 2026-11-15 export carried no
+    lat/lng, so the lab could not pool by distance the way production does.
+    What the 2026-11-16 session tried, all on the 2026-11-15 corpus and none clearing the noise:
     manufactured homes and houses kept apart, -1.2 points (90%: -1.6 to 0.0),
     better on 64% of the 121 sales it moved, mean miss 23.9% -> 21.7%, ADOPTED
     in the radius blend on principle (see "Manufactured homes" above);
@@ -274,3 +275,18 @@ paths:
     anything a point better: collapsing re-dated copies in the blend is NOT an
     accuracy fix, though it would tidy the comp table (both variants stay in
     the lab so the next session does not re-run the question as new).
+  - **Distance needs an export from 2026-11-16 on.** `/api/comp-corpus` now
+    ends with `lat`, `lng` (appended, so no earlier column moves; both are in
+    migration 001, so naming them cannot 400 the read into the file-only
+    fallback; `test/comp-corpus-export-run.test.js`). Two variants use them:
+    "distance weighting on" stamps `distance_mi` from the two points, the
+    field and rounding `attachCompDistances` writes, so valuation.js's own
+    distance term runs; "peers inside the radius blend's circle" then keeps
+    only peers within `radiusMilesFor` (1 mile houses, 10 commercial), or all
+    of them when fewer than three are inside, standing in for the search's own
+    comps. The run prints "Rows with a map point: N of M"; on an older export
+    that is 0 and both variants move nothing. Not yet run on a real export:
+    re-download from HQ once this is deployed. If the circle variant clears
+    the noise, the backtest itself (and so `/admin`'s figure) should pool that
+    way too, the same argument as feeding it year built on 2026-11-15; the
+    `/api/accuracy` read would then have to select lat/lng as well.

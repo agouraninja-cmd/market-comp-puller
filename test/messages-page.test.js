@@ -849,11 +849,38 @@ test("inside a conversation a message says its time, a deal says its date, and y
   assert.match(fnOf(js, "compCard"), /esc\(dealDay\(c\.dealDate\)\)/);
   assert.match(fnOf(js, "extCompCard"), /esc\(dealDay\(s\.deal_date\)\)/);
   // "You" was drawn with a Y in the circle, for every reader.
-  assert.match(fnOf(js, "renderStream"), /esc\(m\.mine \? myInitial\(\) : initial\(name\)\)/);
-  assert.match(fnOf(js, "renderExternalStream"), /esc\(name === "You" \? myInitial\(\) : initial\(name\)\)/);
+  assert.match(fnOf(js, "renderStream"), /circle\(m\.mine \? myInitial\(\) : initial\(name\), m\.userId, m\.author\)/);
+  assert.match(fnOf(js, "renderExternalStream"), /circle\(name === "You" \? myInitial\(\) : initial\(name\), "", authorEmail\)/);
   const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
   assert.equal((server.match(/me: \{ id: String\(g\.user\.id\), email: String\(g\.user\.email \|\| ""\), name: String\(g\.user\.name \|\| ""\) \}/g) || []).length, 2,
     "the list read no longer says the reader's own name, in both of its answers");
+});
+
+test("a colleague's photo is in their circle, through the firm's own gated route (2026-11-16)", () => {
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  const state = { photos: { "u-ben": "/api/org/person/photo?org=o1&id=m-ben&v=r1" }, photosByEmail: { "ben@firm.example": "/p?x=\"1" }, me: "u-me" };
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const api = new Function("state", "esc", [fnOf(js, "photoFor"), fnOf(js, "circle"), fnOf(js, "rowPerson")].join("\n") +
+    "; return { circle, rowPerson };")(state, esc);
+  // The letter stays under the picture, and a picture that fails removes
+  // itself: a circle is never empty.
+  assert.equal(api.circle("B", "u-ben", ""),
+    '<span class="msg-av has-photo">B<img src="/api/org/person/photo?org=o1&amp;id=m-ben&amp;v=r1" alt="" loading="lazy" onerror="this.remove()"></span>');
+  // Nobody on the roster with a photo (a client, a leaver): the letter alone.
+  assert.equal(api.circle("J", "u-gone", "jordan@client.example"), '<span class="msg-av">J</span>');
+  // A deal room knows people by address; the address is escaped on its way in.
+  assert.match(api.circle("B", "", "Ben@Firm.example"), /src="\/p\?x=&quot;1"/);
+  // A row shows the other person of a direct message, never a group's.
+  assert.equal(api.rowPerson({ kind: "dm", members: [{ userId: "u-me" }, { userId: "u-ben" }] }), "u-ben");
+  assert.equal(api.rowPerson({ kind: "channel", members: [{ userId: "u-me" }, { userId: "u-ben" }] }), "");
+  assert.equal(api.rowPerson({ kind: "dm", members: [{ userId: "u-me" }, { userId: "u-ben", left: true }] }), "");
+  // The address is built only from the roster's own member id and photo
+  // revision, for the firm the list read named: /api/org/person/photo stays
+  // the one decider of who may see a face.
+  assert.match(js, /if \(!p\.userId \|\| !p\.memberId \|\| !p\.photoRev \|\| !j\.firm\) return;\s*var src = "\/api\/org\/person\/photo\?org=" \+ encodeURIComponent\(j\.firm\.id\) \+ "&id=" \+ encodeURIComponent\(p\.memberId\)/);
+  const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  assert.match(server, /memberId: pending \? "" : String\(r\.id \|\| ""\),\s*photoRev: pending \? "" : String\(\(u && u\.avatar_rev\) \|\| ""\),/,
+    "an invitation is sent with a photo, or the roster lost its photo fields");
 });
 
 test("New conversation opens under its button, above the list (2026-11-16)", () => {

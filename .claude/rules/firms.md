@@ -292,8 +292,20 @@ paths:
   the whole conversation. Six tests at the foot of
   `test/messages-page.test.js` run the pure halves (`paintStream`,
   `firstUnreadId`, the draft functions, `dealDay`, `sizePage`).
-  **Not built:** photos in the circles, typing or read receipts, and a
-  hint that Shift+Enter is a new line.
+  **Photos in the circles** (2026-11-16, the owner: "add profile photos
+  beside messages"; no migration). `rosterFor` now sends `memberId` and
+  `photoRev` for JOINED people (it selects `users.avatar_rev`, a column
+  `memberPeople` already names), and the page builds
+  `/api/org/person/photo?org=&id=&v=` from them (`state.photos` by user id,
+  `state.photosByEmail` for a deal room, which knows people by address).
+  That route stays the one gate on a colleague's face. `circle(letter,
+  userId, email)` draws every message's circle and a direct message's row;
+  the letter stays under the `<img>`, which removes itself on error, so a
+  circle is never empty. No photo for a group row, a client in a deal room,
+  a leaver (not on the roster) or a reader with no firm. Not done: the New
+  panel's people rows and the About card.
+  **Not built:** typing or read receipts, and a hint that Shift+Enter is a
+  new line.
   **Deleting a conversation** (2026-09-26, no migration; owner's ask, Draft
   C of the drafts at https://claude.ai/artifact/2yqGKYAyv4n8mrFD5ZtHHF).
   `POST /api/messages/delete {threadId}` deletes a FIRM conversation **for the

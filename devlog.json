@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-16",
+    "type": "fix",
+    "title": "Run a report and Sites open without the footer in view",
+    "details": "On a short page the dark footer sat at the bottom of the window the moment you opened Run a report or Sites. Both pages now fill at least one screen, so the footer waits below the fold until you scroll."
+  },
+  {
+    "date": "2026-11-16",
     "type": "improvement",
     "title": "The comp corpus download includes each deal’s map location",
     "details": "The Comp corpus CSV on HQ now ends with each saved deal’s latitude and longitude. Our accuracy test used to compare a building only with every other sale in its city; with locations it can compare it with the deals within a mile (houses) or ten miles (commercial), the way a real report does, and it can test how much distance should count. Nothing changes in reports."

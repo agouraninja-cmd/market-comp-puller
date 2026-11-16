@@ -38,6 +38,10 @@ function renderSitesBody(boot) {
   const bootJson = boot ? JSON.stringify(boot).replace(/</g, "\\u003c") : "null";
   return `<style>
 .sp-page,.sp-page *{box-sizing:border-box}
+/* The footer starts below the first screen (2026-11-16, the owner: "when you
+   first click on a tab the blue footer isn't in the frame"). marketShell's
+   outer main is the one that pushes it; a short board left it on screen. */
+body>main.wrap{min-height:100vh}
 .sp-page{margin:24px 0 48px}
 .sp-page .kicker{font-size:var(--text-tiny);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
 .sp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;border-bottom:1.5px solid var(--ink);padding-bottom:8px;margin-top:4px}

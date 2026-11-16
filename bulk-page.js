@@ -261,6 +261,11 @@ const BULK_CSS = `
    reach outside .bulk on purpose and only this page ships them. */
 .wrap>.cs-tabs{margin-bottom:14px}
 @media (min-width:641px){body main.wrap{padding-top:24px}}
+/* The footer starts below the first screen (2026-11-16, the owner: "when you
+   first click on a tab the blue footer isn't in the frame"). marketShell's
+   body is a flex column that pins the footer to the foot of a short page, so
+   on this one-screen page it showed on arrival. */
+body>main.wrap{min-height:100vh}
 .bulk .lede{color:var(--ink);font-size:var(--text-small);line-height:1.55;margin:0}
 .bulk .top>div{display:flex;align-items:baseline;gap:4px 18px;flex-wrap:wrap}
 .bulk .top h1{margin:0}

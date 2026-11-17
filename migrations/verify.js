@@ -230,6 +230,8 @@ const COLUMNS = [
   // Missing either is not a degraded hub, it is a 400 on every read — which
   // is the intended loud failure, but only if someone can see it named here.
   ["hub_participants",  ["token_hash", "removed_at", "role"],    "024-messaging-hub.sql"],
+  // 063 is probed (hubNamesReady), so its absence only means no names.
+  ["hub_participants",  ["name"],                                "063-hub-guest-names.sql"],
   ["hub_items",         ["snapshot", "private", "source_ref"],   "024-messaging-hub.sql"],
   // 026 is the one migration in this list whose absence breaks the WRITE
   // path rather than a read: logEvent inserts these two columns, and

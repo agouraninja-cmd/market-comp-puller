@@ -301,7 +301,8 @@ test("a broker and a client work one requirement end to end", async (t) => {
     assert.equal(h.items[0].status, "shortlist",
       "a poll carries the items, or a shortlist is invisible until somebody reloads");
     // The owner-only guest list, and what it is for: who has opened the link.
-    assert.deepEqual(h.people, [{ email: TENANT.email, role: "tenant", opened: true }]);
+    // name: the one the broker gave them (063), "" for none.
+    assert.deepEqual(h.people, [{ email: TENANT.email, role: "tenant", opened: true, name: "" }]);
   });
 
   await t.test("the client adds a building they found themselves", async () => {

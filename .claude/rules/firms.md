@@ -362,6 +362,23 @@ paths:
   - Internal / External headings read **Your firm / Clients**; the intro
     is one line; New is the red button; the report's facts are tiles.
   Pinned at the foot of `test/messages-page.test.js`.
+  **A deal room guest's name** (2026-11-17, the owner: "fix the deal room
+  client name showing their email"; migration **`063-hub-guest-names.sql`,
+  deploy order SOFT**). A guest with no account was named by the start of
+  their address everywhere. `hub_participants.name` is the name the room's
+  OWNER types: `PUT /api/hub/participants` and `POST /api/hubs` take
+  `names: { address: name }` (`guestNamesFrom`: `validateNickname`'s rules,
+  over 80 refused not cut, "" clears, absent leaves names alone). Renaming is
+  the PUT with the list unchanged, so nobody is mailed. The list route's
+  people name is account name, then this name, then the address's start
+  (`given` carries this name alone); `GET /api/hub`'s owner-only `people`
+  carry `name` and the answer says `guestNames`. **Probed** like 061
+  (`hubNamesReady`, re-checked every five minutes): before 063 no read or
+  write names the column and the page shows no name boxes. On the page: a
+  "Their name, optional" box under the People panel's invite box and in the
+  New panel when exactly one outside address is picked, and Add name /
+  Rename on each guest row (an edit row in its place; Enter saves, Escape
+  backs out). Proven in `test/hub-guest-names-run.test.js`.
   **Deleting a conversation** (2026-09-26, no migration; owner's ask, Draft
   C of the drafts at https://claude.ai/artifact/2yqGKYAyv4n8mrFD5ZtHHF).
   `POST /api/messages/delete {threadId}` deletes a FIRM conversation **for the

@@ -5455,5 +5455,11 @@
     "type": "improvement",
     "title": "Messages looks better",
     "details": "Each person has their own colour circle, group chats show two faces instead of a #, the open chat shows who it is with, Chat and Comps are real tabs, and the box to type in is one line with + Comp and Send beside it. A new member sees a card to start their first conversation instead of an empty box to type into, and the paragraph under the title is one line."
+  },
+  {
+    "date": "2026-11-17",
+    "type": "fix",
+    "title": "Deal room clients can have a name",
+    "details": "A client invited to a deal room without a CompNinja account was shown by the start of their email address (\"jordan\"). The broker can now type the client's name when inviting them, or add or change it later from the People panel, and the list, the conversation and its messages use that name. A client's own account name still comes first."
   }
 ]

@@ -418,6 +418,9 @@ function renderMessagesBody(boot) {
 .msg-pick .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .msg-pick .sub{color:var(--ink-faint);font-size:var(--text-label)}
 .msg-door{margin:4px 0 8px}
+/* Naming a guest, in place of their row (2026-11-17). */
+.msg-nameedit input{flex:1;min-width:0;margin:0!important}
+.msg-pick .who b{font-weight:600;color:var(--ink)}
 /* The always-there invite row. Muted until a real email is typed, at which
    point renderNewPeople replaces it with the ordinary checkbox row. It is a
    button because it does something (focuses the box and says what to type),
@@ -644,6 +647,10 @@ function renderMessagesBody(boot) {
            set of comps with you", which reads fine. -->
       <input id="msgNewAbout" class="msg-hide" type="text" maxlength="200"
         placeholder="What's this about? Optional. They see it.">
+      <!-- The guest's name, when exactly one outside address is picked
+           (2026-11-17, migration 063). -->
+      <input id="msgNewName" class="msg-hide" type="text" maxlength="80"
+        placeholder="Their name, optional">
       <!-- The vault's hub form carried these two (2026-09-04, when that form
            came out and this became the only way to start a deal room).
            Optional, like the line above. The area becomes the room's market
@@ -721,6 +728,10 @@ function renderMessagesBody(boot) {
       <h3>People in this conversation</h3>
       <div id="msgPeopleList"></div>
       <input id="msgPeopleAdd" type="text" inputmode="email" autocapitalize="off" placeholder="Invite somebody by email" autocomplete="off">
+      <!-- Their name (2026-11-17, migration 063): what the room and its
+           messages call a guest with no account, instead of the start of
+           their address. Shown only once names can be saved. -->
+      <input id="msgPeopleName" class="msg-hide" type="text" maxlength="80" placeholder="Their name, optional" autocomplete="off">
       <div class="msg-panelfoot">
         <button class="msg-btn primary sm" id="msgPeopleGo" type="button">Send invite</button>
         <button class="msg-btn sm" id="msgPeopleDone" type="button">Done</button>
@@ -1046,6 +1057,8 @@ ${REPORT_INBOX_SRC}
       // append, deduped by id against an optimistic double-read.
       state.extItems = j.items || [];
       state.extPeopleList = j.people || [];
+      // Whether a guest can be given a name yet (migration 063 run).
+      state.guestNames = j.guestNames === true;
       state.canWriteExt = j.canWrite === true;
       if ($("msgPeoplePanel").className.indexOf("msg-hide") < 0) renderPeoplePanel();
       var fresh = j.messages || [];
@@ -1176,14 +1189,29 @@ ${REPORT_INBOX_SRC}
       html = '<div class="msg-hint" style="margin-bottom:8px">Nobody has been invited yet. ' +
         'Add an email below and they get a private link — no account needed.</div>';
     }
+    var naming = !closed && state.guestNames === true;
     for (var i = 0; i < state.extPeopleList.length; i++) {
       var p = state.extPeopleList[i];
-      html += '<div class="msg-pick"><span class="who">' + esc(p.email) +
+      if (naming && state.nameEdit === p.email) {
+        // Naming a guest, in place of their row.
+        html += '<div class="msg-pick msg-nameedit"><input type="text" id="msgGuestName" maxlength="80" value="' + esc(p.name || "") + '"' +
+          ' placeholder="Name for ' + esc(p.email) + '" autocomplete="off">' +
+          '<button class="msg-btn primary sm" type="button" data-save-name="' + esc(p.email) + '">Save</button>' +
+          '<button class="msg-btn sm" type="button" data-cancel-name="1">Cancel</button></div>';
+        continue;
+      }
+      var shown = extName(p.email);
+      var named = shown && shown !== p.email.split("@")[0];
+      html += '<div class="msg-pick"><span class="who">' + (named ? '<b>' + esc(shown) + '</b> ' : "") + esc(p.email) +
         '<span class="sub"> · ' + (p.opened ? "has opened it" : "hasn't opened it yet") + '</span></span>' +
+        (naming ? '<button class="msg-btn sm" type="button" data-name-person="' + esc(p.email) + '">' + (p.name ? "Rename" : "Add name") + '</button>' : "") +
         (closed ? "" : '<button class="msg-btn sm" type="button" data-remove-person="' + esc(p.email) + '">Remove</button>') +
         '</div>';
     }
     $("msgPeopleList").innerHTML = html;
+    var nameIn = $("msgPeopleList").querySelector("#msgGuestName");
+    if (nameIn) { try { nameIn.focus(); } catch (e) {} }
+    $("msgPeopleName").className = naming ? "" : "msg-hide";
     $("msgPeopleAdd").disabled = closed;
     $("msgPeopleGo").disabled = closed;
     $("msgCloseHub").className = closed ? "msg-btn sm msg-hide" : "msg-btn sm";
@@ -1230,15 +1258,39 @@ ${REPORT_INBOX_SRC}
     // WHOLESALE, the route's contract: the full list plus the newcomer.
     // Re-sending the people already on it re-mails nobody (the route's own
     // rule), so add costs exactly one invitation.
-    api("PUT", "/api/hub/participants", { id: state.openId, emails: currentPeopleEmails().concat([email]) })
+    api("PUT", "/api/hub/participants", { id: state.openId, emails: currentPeopleEmails().concat([email]),
+      names: guestNameFor(email, $("msgPeopleName").value) })
       .then(function(o){
         $("msgPeopleGo").disabled = false;
         if (o.s !== 200) { $("msgPeopleMsg").textContent = (o.j && o.j.error) || "Couldn't invite them."; return; }
         $("msgPeopleAdd").value = "";
+        $("msgPeopleName").value = "";
         state.extLinks = o.j;
         state.extLinks.id = state.openId;
         $("msgPeopleMsg").textContent = o.j.emailed ? "Invited — they've been emailed their link." : "";
         readExternal(false).then(function(){ renderPeoplePanel(); refreshList(true); });
+      });
+  }
+  // A guest's name as the routes take it: { address: name }, or undefined
+  // when there is nothing to send (no address, or a blank box on an invite).
+  function guestNameFor(email, name){
+    name = String(name || "").replace(/\\s+/g, " ").trim();
+    if (!email || !name) return undefined;
+    var out = {};
+    out[email] = name.slice(0, 80);
+    return out;
+  }
+  // Give a guest a name, or change it. The same owner-only list route, the
+  // list unchanged, so nobody is mailed; an empty box clears the name.
+  function saveGuestName(email){
+    var names = {};
+    names[email] = String(($("msgPeopleList").querySelector("#msgGuestName") || {}).value || "").replace(/\\s+/g, " ").trim().slice(0, 80);
+    api("PUT", "/api/hub/participants", { id: state.openId, emails: currentPeopleEmails(), names: names })
+      .then(function(o){
+        if (o.s !== 200) { $("msgPeopleMsg").textContent = (o.j && o.j.error) || "Couldn't save that name."; return; }
+        state.nameEdit = "";
+        $("msgPeopleMsg").textContent = "";
+        refreshList(true).then(function(){ readExternal(false).then(function(){ renderPeoplePanel(); refreshHeader(); }); });
       });
   }
   function removePerson(email){
@@ -2927,6 +2979,7 @@ ${REPORT_INBOX_SRC}
     // room whoever else is in it.
     var external = state.pickedExt.length > 0;
     $("msgNewAbout").className = external ? "" : "msg-hide";
+    $("msgNewName").className = state.pickedExt.length === 1 ? "" : "msg-hide";
     $("msgNewMeta").className = external ? "msg-newmeta" : "msg-newmeta msg-hide";
     $("msgNewGo").textContent = external
       ? "Start external conversation"
@@ -3018,6 +3071,7 @@ ${REPORT_INBOX_SRC}
     state.pickedExt = [];
     $("msgNewSearch").value = "";
     $("msgNewAbout").value = "";
+    $("msgNewName").value = "";
     $("msgNewArea").value = "";
     $("msgNewType").value = "";
     $("msgNewMsg").textContent = "";
@@ -3050,6 +3104,7 @@ ${REPORT_INBOX_SRC}
         subjectAddress: ($("msgNewArea").value || "").trim(),
         propertyType: $("msgNewType").value || "",
         participants: emails,
+        names: guestNameFor(state.pickedExt.length === 1 ? state.pickedExt[0] : "", $("msgNewName").value),
       })
         .then(function(o){
           $("msgNewGo").disabled = false;
@@ -3718,7 +3773,20 @@ ${REPORT_INBOX_SRC}
   $("msgPeopleAdd").addEventListener("keydown", function(e){
     if (e.key === "Enter") { e.preventDefault(); invitePerson(); }
   });
+  $("msgPeopleName").addEventListener("keydown", function(e){
+    if (e.key === "Enter") { e.preventDefault(); invitePerson(); }
+  });
+  $("msgPeopleList").addEventListener("keydown", function(e){
+    if (e.target.id !== "msgGuestName") return;
+    if (e.key === "Enter") { e.preventDefault(); saveGuestName(state.nameEdit); }
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); state.nameEdit = ""; renderPeoplePanel(); }
+  });
   $("msgPeopleList").addEventListener("click", function(e){
+    var nb = e.target.closest("[data-name-person]");
+    if (nb) { state.nameEdit = nb.getAttribute("data-name-person"); renderPeoplePanel(); return; }
+    var sv = e.target.closest("[data-save-name]");
+    if (sv) { saveGuestName(sv.getAttribute("data-save-name")); return; }
+    if (e.target.closest("[data-cancel-name]")) { state.nameEdit = ""; renderPeoplePanel(); return; }
     var btn = e.target.closest("[data-remove-person]");
     if (!btn) return;
     var email = btn.getAttribute("data-remove-person");

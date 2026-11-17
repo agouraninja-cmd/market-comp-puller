@@ -6380,51 +6380,58 @@ async function externalThreadsFor(user) {
   const byEmail = new Map();
   const emails = [...new Set(parts.filter((p) => !p.removed_at)
     .map((p) => MSG.normalizeEmail(p.email)).filter(Boolean))];
-  if (emails.length) {
-    try {
-      const users = await sbRequest("GET",
-        `users?email=in.(${pgInList(emails)})&select=email,name&limit=${emails.length}`);
-      for (const u of users || []) byEmail.set(MSG.normalizeEmail(u.email), u.name || "");
-    } catch (err) {
-      console.error("External name read failed (emails still label the rows):", err.message);
-    }
-  }
-
   // The brokers behind the guest rows, by user id rather than by email: a
   // hub names its owner that way, and a room whose owner account is gone
   // simply has nobody to name it after (the hub's own "ownerless" state).
   const owners = new Map();
-  if (ownerIds.length) {
-    try {
-      const rows = await sbRequest("GET",
-        `users?id=in.(${pgInList(ownerIds)})&select=id,name,email&limit=${ownerIds.length}`);
-      for (const u of rows || []) {
-        owners.set(String(u.id), { email: MSG.normalizeEmail(u.email), name: u.name || "" });
-      }
-    } catch (err) {
-      console.error("External owner read failed (the room still lists):", err.message);
-    }
-  }
+
+  // The two name reads and every room's preview read go out TOGETHER
+  // (2026-11-16). The previews were a serial loop — one ~100ms round trip
+  // per room, up to 50 in a row — and this list rides every Messages load
+  // and every 15-second poll, so a broker with a few dozen deal rooms
+  // waited seconds for the page. The firm side fixed the same shape on
+  // 2026-09-04. Each read keeps its own catch: one failing costs its own
+  // polish and never the list.
+  const [, , previews] = await Promise.all([
+    emails.length
+      ? sbRequest("GET",
+        `users?email=in.(${pgInList(emails)})&select=email,name&limit=${emails.length}`)
+        .then((users) => { for (const u of users || []) byEmail.set(MSG.normalizeEmail(u.email), u.name || ""); })
+        .catch((err) => console.error("External name read failed (emails still label the rows):", err.message))
+      : null,
+    ownerIds.length
+      ? sbRequest("GET",
+        `users?id=in.(${pgInList(ownerIds)})&select=id,name,email&limit=${ownerIds.length}`)
+        .then((rows) => {
+          for (const u of rows || []) {
+            owners.set(String(u.id), { email: MSG.normalizeEmail(u.email), name: u.name || "" });
+          }
+        })
+        .catch((err) => console.error("External owner read failed (the room still lists):", err.message))
+      : null,
+    // Recent notes only: the preview and the unread count both live in the
+    // tail of the conversation, and the thread itself is read through
+    // /api/hub when opened. Capped, so a long-running deal costs the same as
+    // a new one.
+    Promise.all(rooms.map((room) => sbRequest("GET",
+      `hub_messages?hub_id=eq.${encodeURIComponent(room.hub.id)}&deleted_at=is.null` +
+      `&select=author_email,body,created_at&order=created_at.desc&limit=30`)
+      .then((rows) => rows || [])
+      .catch((err) => {
+        console.error("External preview read failed (the row stays):", err.message);
+        return [];
+      }))),
+  ]);
 
   const seenBy = new Map(notify.map((n) => [String(n.hub_id), n.seen_at]));
   const mineBy = new Map(notify.map((n) => [String(n.hub_id), n]));
   // When the reader was invited, for "Brad Keller invited you on Sep 12".
   const invitedAtBy = new Map((invitedRows || []).map((r) => [String(r.hub_id || ""), r.invited_at || null]));
   const out = [];
-  for (const room of rooms) {
+  for (let ri = 0; ri < rooms.length; ri++) {
+    const room = rooms[ri];
     const h = room.hub;
-    // Recent notes only: the preview and the unread count both live in the
-    // tail of the conversation, and the thread itself is read through
-    // /api/hub when opened. Capped, so a long-running deal costs the same as
-    // a new one.
-    let msgs = [];
-    try {
-      msgs = (await sbRequest("GET",
-        `hub_messages?hub_id=eq.${encodeURIComponent(h.id)}&deleted_at=is.null` +
-        `&select=author_email,body,created_at&order=created_at.desc&limit=30`)) || [];
-    } catch (err) {
-      console.error("External preview read failed (the row stays):", err.message);
-    }
+    const msgs = previews[ri] || [];
     const latest = msgs[0] || null;
     // Deleted from this reader's list, and nobody has written since: off the
     // list (messaging.js, roomListed). Everybody else's list is untouched.
@@ -31068,7 +31075,19 @@ const server = http.createServer((req, res) =>
       (async () => {
         const g = await openMessaging({ firmOptional: true });
         if (!g) return;
-        const ent = await entitlementsFor(req);
+        // The plan check and the deal-room list do not depend on the firm
+        // reads below, so they start NOW and run beside them (2026-11-16);
+        // they used to wait their turn, and the External list's own reads
+        // came last of all. Each promise gets a handler on the spot: a
+        // rejection nobody is awaiting yet would otherwise be an unhandled
+        // one, which ends the process. Awaiting `entP` later still throws
+        // into this route's catch, exactly as the old inline await did.
+        const entP = entitlementsFor(req);
+        entP.catch(() => {});
+        const extP = externalThreadsFor(g.user).then(
+          (rows) => ({ rows }),
+          (err) => ({ rows: [], err }));
+        const ent = await entP;
 
         // A reader with no firm has no internal side at all, so the firm
         // reads are skipped rather than asked with an empty id. They are
@@ -31077,16 +31096,15 @@ const server = http.createServer((req, res) =>
         // side to show. Somebody who has never been in a firm and has never
         // been sent comps sees exactly the wall they saw before.
         if (!g.orgId) {
-          let external = [];
-          try {
-            external = await externalThreadsFor(g.user);
-          } catch (err) {
+          const ext = await extP;
+          if (ext.err) {
             // The same fail-open stance as the firm path, one step further
             // out: with no firm there is nothing else on this page, so a hub
             // read that dies must not be reported as "you are in no firm".
-            console.error("External conversations read failed (no firm):", err.message);
+            console.error("External conversations read failed (no firm):", ext.err.message);
             return sendJson(res, 503, { error: "Couldn't load your messages. Please try again in a minute." });
           }
+          const external = ext.rows;
           // Rooms they deleted from their list are still rooms they are in: a
           // client who deleted every one of theirs gets an empty list, never
           // the "Messages are for your firm" wall. Since Messages holds the
@@ -31120,8 +31138,10 @@ const server = http.createServer((req, res) =>
         const memberRows = await msgThreadMemberRows(threads.map((t) => t.id));
         // ONE name lookup for every member of every thread, not one per
         // thread: this route already loops, and a per-thread read would turn a
-        // 15-second poll into a read per conversation.
-        const names = await namesFor(memberRows);
+        // 15-second poll into a read per conversation. Started here and
+        // awaited beside the previews below, which need nothing from it.
+        const namesP = namesFor(memberRows);
+        namesP.catch(() => {});
         const byThread = new Map();
         for (const m of memberRows) {
           const k = String(m.thread_id);
@@ -31147,8 +31167,11 @@ const server = http.createServer((req, res) =>
         // Each read starts where the READER'S copy starts: a conversation
         // they deleted previews, counts and lists only what was said after
         // (messaging.js, "Deleting a conversation").
-        const recents = await Promise.all(readable.map(({ t, mineRow }) =>
-          msgMessageRows(t.id, MSG.historyStart(t, mineRow), { tail: true })));
+        const [recents, names] = await Promise.all([
+          Promise.all(readable.map(({ t, mineRow }) =>
+            msgMessageRows(t.id, MSG.historyStart(t, mineRow), { tail: true }))),
+          namesP,
+        ]);
         const out = readable.map(({ t, rows, mineRow }, i) => {
           const recent = recents[i];
           // Deleted, and nobody has written since: off this reader's list,
@@ -31161,15 +31184,12 @@ const server = http.createServer((req, res) =>
           });
           return threadPayload(t, rows, g.user.id, latest, unread, names, nicknames.get(String(t.id)));
         }).filter(Boolean);
-        // The deal rooms this member owns, as External conversations. Its own
-        // try: a hub read failing must cost the External section and never
-        // the firm's own messages.
-        let external = [];
-        try {
-          external = await externalThreadsFor(g.user);
-        } catch (err) {
-          console.error("External conversations read failed (internal list unaffected):", err.message);
-        }
+        // The deal rooms this member owns, as External conversations, read
+        // since the top of this route. A hub read failing costs the External
+        // section and never the firm's own messages.
+        const ext = await extP;
+        if (ext.err) console.error("External conversations read failed (internal list unaffected):", ext.err.message);
+        const external = ext.rows;
         return sendJson(res, 200, {
           ok: true,
           firm: { id: g.orgId, name: (org && org.name) || "", kind: ORG.kindOf(org) },
@@ -31310,8 +31330,9 @@ const server = http.createServer((req, res) =>
         const q = new URL(req.url, "http://localhost").searchParams;
         const id = (q.get("id") || "").trim();
         if (!id) return sendJson(res, 400, { error: "Which conversation?" });
-        const thread = await msgThreadRow(id, g.orgId);
-        const rows = await msgThreadMemberRows([id]);
+        // Together (2026-11-16): neither read needs the other, and the verdict
+        // below needs both before anything is sent.
+        const [thread, rows] = await Promise.all([msgThreadRow(id, g.orgId), msgThreadMemberRows([id])]);
         const mineRow = MSG.memberRowOf(rows, g.user.id);
         const verdict = MSG.canReadThread({ thread, orgId: g.orgId, memberRow: mineRow });
         if (!verdict.ok) {
@@ -31354,7 +31375,18 @@ const server = http.createServer((req, res) =>
         const beforeRaw = q.get("since") ? "" : (q.get("before") || "");
         const before = Number.isFinite(Date.parse(beforeRaw)) ? beforeRaw : "";
         const firstRead = !q.get("since") && !before;
-        const messages = await msgMessageRows(id, since, { tail: firstRead, before });
+        // Everything that depends only on the verdict goes out at once
+        // (2026-11-16): the messages, the names, the reader's own name for the
+        // chat (first read only) and the unsent ids (polls only). Only the
+        // comps and their save receipts genuinely wait — on the messages and
+        // then on the comps.
+        const start = MSG.historyStart(thread, mineRow);
+        const [messages, names, nickname, unsentRows] = await Promise.all([
+          msgMessageRows(id, since, { tail: firstRead, before }),
+          namesFor(rows),
+          firstRead ? msgNicknameFor(id, g.user.id) : "",
+          q.get("since") ? msgUnsentSince(id, since) : [],
+        ]);
         // An unsent message's comps are not drawn in the conversation (they
         // stay on the Comps tab), so they are not read for it either.
         const comps = await msgCompRowsForMessages(
@@ -31379,21 +31411,16 @@ const server = http.createServer((req, res) =>
             mine: String(c.shared_by || "") === String(g.user.id),
           });
         }
-        const names = await namesFor(rows);
         // On a poll, the messages taken back since the browser last read, so
         // an open conversation swaps them for the marker too. Not on the first
         // read, which already carries every marker in `messages`.
-        const start = MSG.historyStart(thread, mineRow);
-        const unsent = q.get("since")
-          ? (await msgUnsentSince(id, since)).filter((m) => MSG.afterHistoryStart(m, start)).map((m) => String(m.id))
-          : [];
+        const unsent = unsentRows.filter((m) => MSG.afterHistoryStart(m, start)).map((m) => String(m.id));
         const nowMs = Date.now();
         return sendJson(res, 200, {
           ok: true,
           // The reader's own name for it on the FIRST read only: the page heads
           // the conversation from that read, and a poll never re-heads it.
-          thread: threadPayload(thread, rows, String(g.user.id), null, 0, names,
-            firstRead ? await msgNicknameFor(id, g.user.id) : ""),
+          thread: threadPayload(thread, rows, String(g.user.id), null, 0, names, nickname),
           messages: messages.map((m) => {
             const mine = String(m.user_id || "") === String(g.user.id);
             const base = {

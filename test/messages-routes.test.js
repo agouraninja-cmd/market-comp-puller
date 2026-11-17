@@ -305,3 +305,20 @@ test("the header's Escape-goes-back shortcut never fires while somebody is typin
   assert.match(block, /closest\("input,textarea,select,\[contenteditable\]"\)\)return;/,
     "Escape inside a text box still leaves the page");
 });
+
+test("the External list reads every room's preview together, never one room at a time", () => {
+  // The deal-room previews were a serial loop — one database round trip per
+  // room, up to 50 in a row — on every Messages load and every 15-second
+  // poll, which is what made the page slow to open (2026-11-16). Every
+  // room's read now goes out together; this keeps an await from creeping
+  // back into the per-room loop.
+  const SERVER_JS = read("server.js");
+  const start = SERVER_JS.indexOf("async function externalThreadsFor(");
+  assert.notEqual(start, -1, "externalThreadsFor has moved; this guard checks nothing");
+  const body = SERVER_JS.slice(start, SERVER_JS.indexOf("\nasync function ", start + 10));
+  assert.match(body, /Promise\.all\(rooms\.map\(/);
+  const at = body.indexOf("for (let ri = 0; ri < rooms.length");
+  assert.notEqual(at, -1, "the per-room loop has moved; this guard checks nothing");
+  assert.doesNotMatch(body.slice(at), /\bawait\b/,
+    "an await inside the per-room loop makes the list serial again");
+});

@@ -107,6 +107,17 @@ How it fits together (the site's half is instant-nav.js, THE DESKTOP APP):
   the app has no auto-update, and `desktop-v1.1.0` is the first release
   with it.
 
+**1.2.0 (2026-11-17): the camera.** Settings' "Take a selfie" (accounts.md)
+needs the camera, and macOS refuses it to an app whose Info.plist has no
+`NSCameraUsageDescription`, so `mac.extendInfo` carries one. Electron grants
+the page's camera request itself: main.js sets no permission handler, so
+the site's own `Permissions-Policy: camera=(self)` and the browser-style
+prompt are the gate. **When the Mac build is ever signed for notarization**,
+the hardened runtime that comes with signing also needs the
+`com.apple.security.device.camera` entitlement (plus electron-builder's three
+defaults in a custom `entitlements.mac.plist`), or the camera silently fails.
+Unsigned, as today, it needs neither.
+
 **A door you are already through is hidden** (2026-08-20; `INAPP_BOOT` /
 `INAPP_UA_TOKEN` in server.js, `test/inapp-nav.test.js`). Inside the desktop
 app or an installed PWA, the Explore menu drops "Download the app". Nothing

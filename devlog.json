@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-17",
+    "type": "improvement",
+    "title": "Desktop app 1.2.0: Take a selfie works on a Mac",
+    "details": "A new desktop app release. The Mac app now tells macOS why it may use the camera, which macOS requires before Take a selfie can open it. Windows and Linux get the same release. Download it again from the Download page to update."
+  },
+  {
+    "date": "2026-11-17",
     "type": "fix",
     "title": "The red marker for the page you’re on no longer runs into Messages",
     "details": "In the left sidebar, the red stripe that shows which page you’re on sat inside the box and touched the M of Messages, the widest word there. It now sits flush on the sidebar’s outer edge, a little taller, on every page."

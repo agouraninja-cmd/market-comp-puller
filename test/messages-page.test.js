@@ -967,3 +967,23 @@ test("the composer is one line, and Chat and Comps are tabs", () => {
   // The header's circle is a computer's; a phone gives the name the room.
   assert.match(css.match(/@media \(max-width:900px\)\{[\s\S]*?\n\}/)[0], /\.msg-headav\{display:none\}/);
 });
+
+test("a deal room guest can be named, once the server says names can be saved (063)", () => {
+  const html = renderMessagesBody({ s: 200, j: {} });
+  const js = scriptOf(html);
+  assert.match(js, /state\.guestNames = j\.guestNames === true;/);
+  const panel = fnOf(js, "renderPeoplePanel");
+  assert.match(panel, /var naming = !closed && state\.guestNames === true;/);
+  assert.match(panel, /\$\("msgPeopleName"\)\.className = naming \? "" : "msg-hide";/);
+  // Every typed value is escaped on its way into the row.
+  assert.match(panel, /value="' \+ esc\(p\.name \|\| ""\) \+ '"/);
+  // A blank box on an invitation sends no name at all.
+  const guestNameFor = new Function(fnOf(js, "guestNameFor") + "; return guestNameFor;")();
+  assert.equal(guestNameFor("a@b.example", "   "), undefined);
+  assert.deepEqual(guestNameFor("a@b.example", "  Ana   Ruiz "), { "a@b.example": "Ana Ruiz" });
+  assert.equal(guestNameFor("", "Ana"), undefined);
+  // Renaming sends the list unchanged, so nobody is mailed.
+  assert.match(fnOf(js, "saveGuestName"), /emails: currentPeopleEmails\(\), names: names/);
+  assert.match(html, /id="msgPeopleName" class="msg-hide"/);
+  assert.match(html, /id="msgNewName" class="msg-hide"/);
+});

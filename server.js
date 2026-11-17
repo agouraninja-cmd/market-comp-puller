@@ -2379,6 +2379,43 @@ async function sitesV2Ready() {
   return sitesSchema.ready;
 }
 
+// --- A deal room guest's name, migration 063 (2026-11-17) --------------------
+// A guest invited by address with no account was named by the start of that
+// address: nothing else about them was stored. hub_participants.name is the
+// name the BROKER types for them, when inviting or later from the People
+// panel. PROBED like 061, so code deployed before 063 keeps every deal room
+// working and simply offers no names.
+const hubNamesSchema = { ready: null, at: 0 };
+async function hubNamesReady() {
+  if (!DB_CONFIGURED) return false;
+  if (hubNamesSchema.ready === true) return true;
+  if (hubNamesSchema.ready === false && Date.now() - hubNamesSchema.at < SITES_SCHEMA_RECHECK_MS) return false;
+  try {
+    await sbRequest("GET", "hub_participants?select=name&limit=1");
+    hubNamesSchema.ready = true;
+  } catch (err) {
+    if (!isMissingColumn(err)) { console.error("Deal room names probe failed (names wait):", err.message); return false; }
+    hubNamesSchema.ready = false;
+  }
+  hubNamesSchema.at = Date.now();
+  return hubNamesSchema.ready;
+}
+// The names a request gives for guests, keyed by address. null when the
+// request named nobody (leave every stored name alone); an empty string
+// clears one. MSG.validateNickname's rules (one line, no control characters,
+// at most 80); a name over them is dropped, not cut.
+function guestNamesFrom(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out = new Map();
+  for (const [k, v] of Object.entries(raw).slice(0, 20)) {
+    const addr = HUB.normalizeEmail(k);
+    if (!addr || (typeof v !== "string" && v !== null)) continue;
+    const ok = MSG.validateNickname(v == null ? "" : v);
+    if (ok.ok) out.set(addr, ok.name || null);
+  }
+  return out;
+}
+
 // The firm a member's deals can be shared with: the one they are an active
 // member of (ORG.membershipOf, the rule messagingFirmOf applies), with its
 // name and kind. null means no firm. A failed membership read THROWS rather
@@ -6349,6 +6386,7 @@ async function externalThreadsFor(user) {
 
   let parts = [];
   let notify = [];
+  const namesOk = mineIds.length ? await hubNamesReady() : false;
   try {
     [parts, notify] = await Promise.all([
       // ONLY the rooms this member owns. See the header: a guest row carries
@@ -6356,7 +6394,7 @@ async function externalThreadsFor(user) {
       mineIds.length
         ? sbRequest("GET",
           `hub_participants?hub_id=in.(${pgInList(mineIds)})` +
-          `&select=hub_id,email,invited_at,first_viewed_at,removed_at&limit=1000`)
+          `&select=hub_id,email,invited_at,first_viewed_at,removed_at${namesOk ? ",name" : ""}&limit=1000`)
         : Promise.resolve([]),
       // The reader's own seen stamps (040) — the hub's read mark, which is why
       // opening a conversation from the inbox clears its badge: GET /api/hub
@@ -6447,7 +6485,10 @@ async function externalThreadsFor(user) {
           const e = MSG.normalizeEmail(p.email);
           return {
             email: e,
-            name: MSG.displayName({ name: byEmail.get(e), email: e }),
+            // Their own account's name first, then the one the broker gave
+            // them (063), then the start of their address.
+            name: MSG.displayName({ name: byEmail.get(e) || p.name, email: e }),
+            given: String(p.name || ""),
             hasAccount: byEmail.has(e),
             invitedAt: p.invited_at || null,
             opened: Boolean(p.first_viewed_at),
@@ -6672,9 +6713,10 @@ async function getHubRow(hubId) {
 }
 
 async function getHubParticipants(hubId) {
+  const namesOk = await hubNamesReady();
   return (await sbRequest("GET",
     `hub_participants?hub_id=eq.${encodeURIComponent(hubId)}` +
-    `&select=id,email,role,user_id,token_hash,invited_at,first_viewed_at,last_seen_at,removed_at` +
+    `&select=id,email,role,user_id,token_hash,invited_at,first_viewed_at,last_seen_at,removed_at${namesOk ? ",name" : ""}` +
     `&order=invited_at.asc&limit=50`)) || [];
 }
 
@@ -32242,9 +32284,12 @@ const server = http.createServer((req, res) =>
           // notification reality).
           const invites = emails.map((email) => ({ email, token: newHubToken() }));
           if (invites.length) {
+            // A name the broker typed for a guest (063), once the column exists.
+            const names = (await hubNamesReady()) ? guestNamesFrom(b.names) : null;
             await sbRequest("POST", "hub_participants",
               invites.map((i) => ({
                 hub_id: id, email: i.email, role: "tenant", token_hash: sha256Hex(i.token),
+                ...(names && names.get(i.email) ? { name: names.get(i.email) } : {}),
               })), { prefer: "return=minimal" });
           }
 
@@ -32471,7 +32516,12 @@ const server = http.createServer((req, res) =>
                   email: p.email,
                   role: p.role,
                   opened: !!p.first_viewed_at,
+                  // The name the broker gave them (063), "" for none.
+                  name: String(p.name || ""),
                 })),
+              // Whether names can be saved yet (063 run); the page offers the
+              // name boxes only then.
+              guestNames: await hubNamesReady(),
             } : {}),
             // Unconditional, now that a poll carries them too. It was a
             // conditional spread while `since` could suppress the list;
@@ -32840,16 +32890,27 @@ const server = http.createServer((req, res) =>
             .map((e) => HUB.normalizeEmail(e)).filter(Boolean))].slice(0, 20);
           const existing = g.participants;
           const invites = [];
+          // Names for the people on the list (063): given with an invitation,
+          // or later from the People panel. Only once the column exists.
+          const names = (await hubNamesReady()) ? guestNamesFrom(b.names) : null;
 
           for (const email of wanted) {
             const row = existing.find((p) => HUB.normalizeEmail(p.email) === email);
+            const named = !!names && names.has(email);
             if (!row) {
               const token = newHubToken();
               invites.push({ email, token });
               await sbRequest("POST", "hub_participants", [{
                 hub_id: id, email, role: "tenant", token_hash: sha256Hex(token),
+                ...(named && names.get(email) ? { name: names.get(email) } : {}),
               }], { prefer: "return=minimal" });
-            } else if (row.removed_at) {
+              continue;
+            }
+            if (named && (row.name || null) !== names.get(email)) {
+              await sbRequest("PATCH", `hub_participants?id=eq.${encodeURIComponent(row.id)}`,
+                { name: names.get(email) }, { prefer: "return=minimal" });
+            }
+            if (row.removed_at) {
               // Re-inviting someone previously removed issues a NEW token: the
               // old link was revoked and must stay revoked, or "removed" would
               // only mean "removed until I change my mind about someone else".

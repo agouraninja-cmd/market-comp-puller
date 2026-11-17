@@ -3,6 +3,8 @@ paths:
   - "search-provider-*.js"
   - "report-parse.js"
   - "link-check.js"
+  - "comp-fit.js"
+  - "test/comp-fit*.test.js"
   - "run-eval.js"
   - "eval-score.js"
   - "eval-set.json"
@@ -425,6 +427,78 @@ with the key and update the constant — an earlier model ID was retired.
   error. Counts ride a `link_check` analytics event packed into the `source`
   column (the analytics schema is fixed). Link rot on existing corpus rows
   deliberately does nothing; the sweep is deferred (see the spec).
+  **Parked domains count as dead (2026-11-17).** The check is a GET now,
+  not a HEAD: it reads the first 16 KB of a 2xx page (`readBodyHead`) and
+  `LINKCHECK.isParked` calls it dead when the page names a parking service
+  or a domain sale, or when a redirect goes to a parking host or GoDaddy's
+  `/lander`. A parked domain answers 200 to every path, so the old check
+  called innovatecre.com/recent-transactions live and a condo comp cited to
+  it kept its Listing badge. `applySourceLinkCheck` now returns the dead
+  URLs, which the comp-fit step sets aside (below).
+  **Comp fit and the wider search (2026-11-17; `comp-fit.js`, the
+  owner's ask after checking a report by hand: 76 Inverness Dr E, Englewood
+  CO, 32,000 SF, valued on two 7,200 SF buildings, a condo unit with a
+  parked source, and comps 9 miles out, four comps in all).** Runs in
+  `getComps` right after the link check (`refineComps`), so the cache, the
+  harvest, the snapshot and every viewer see one kept set. Rules:
+  - **Four reasons a comp is set aside** (moved to `report.set_aside` with
+    a `set_aside` reason, never valued): `dead_source` (link-check's dead
+    URLs), `unit` (a condo/unit/suite SALE against a whole-building
+    Industrial, Office, Retail or Multifamily subject; a suite lease stays),
+    `size` (Industrial, Office, Retail only: under 0.4x or over 2.5x the
+    subject's SF, wider than the prompt's 0.5x-2x ask on purpose), and
+    `distance` (not Residential: past 8 miles, or the typed radius if
+    larger, but only once 4 kept comps sit within 5 miles). Broker-verified
+    comps are never touched.
+  - **The floor.** Size and distance never leave fewer than 3 priced sales:
+    the closest-fitting cut ones come back. Dead sources and unit sales
+    never do.
+  - **Distances come from Census at search time** (`placeCompsForFit`): the
+    model stopped returning comp coordinates in 2026-07, so the server had
+    no idea how far a comp was. One 3-second budget for the batch, 16 comps
+    at most, the subject geocoded first (the corrected address when there
+    is one), the model's `subject_lat/lng` second. An unplaced comp is never
+    cut for distance. The `distance_mi` it writes rides the cache and is
+    what `attachCompDistances` then keeps.
+  - **The wider search.** When fewer than 4 priced sales in the 0.5x-2x
+    band are left (`needsWiderSearch`: Industrial/Office/Retail, size known,
+    not leases-only), ONE more billed call in lane `"wider"` (comps-only,
+    `widerSearchGuidance`): sales of whole buildings in the band, nearest
+    first, widening outward only as far as needed, with every address
+    already in hand (kept AND set aside, at most 30) listed as "do not
+    return". Its comps get the same link check, placement and fit, then
+    merge (new addresses only, capped at the ask) and the whole set is
+    fitted again. `report.wider_search = { added }`. It costs a second
+    search on thin reports; `COMP_WIDER_SEARCH=off` is its own rollback,
+    and `test/helpers/boot.js` turns it off for every suite but its own,
+    since it would otherwise add a provider call to every stub report.
+  - **A viewer gets counts, never the comps.** `finishReportForViewer`
+    replaces `rep` with `COMPFIT.stripSetAside(rep)` before anything reads
+    it (the radius blend reads `rep`, so stripping `merged` alone leaked
+    them, which the run test caught); `set_aside_counts` stays and
+    index.html's `#setAsideNotice` says it in a sentence under the table
+    (printed and photographed, like the private notice). Harvest takes the
+    set-aside `size`/`distance` comps too (real deals, good for another
+    subject), never `dead_source`/`unit`.
+  - **The prompt asks for the same things** (WHOLE BUILDINGS, NEAREST
+    FIRST, REAL SOURCES ONLY, and the SIZE FIT line names the 0.4x/2.5x
+    cut), so the model stops spending searches on rows we will cut. Prompt
+    rules are requests; `comp-fit.js` is the guarantee.
+  - **A typed city can be wrong.** The prompt asks for
+    `subject_address_corrected` when the address names the wrong city for
+    its street and state; `normalizeCorrectedAddress` (report-parse.js)
+    keeps it only with the same street number and the same state and a real
+    difference. index.html's `adoptCorrectedAddress` makes it the report's
+    address (header, map, save, re-run), keeps the typed one as
+    `meta.addressTyped` for a "Corrected from …" chip, and
+    `maybePublishMarketSnapshot` files under the corrected address on all
+    three exits, so a typo can never publish a /market/ page.
+  - `COMP_FIT=off` rolls back the whole step (no placement, no fit, no
+    wider search). Tests: `test/comp-fit.test.js` (the rules, the page's
+    sentence and adoption, the wiring by source),
+    `test/comp-fit-run.test.js` (a real server and a stub provider: the
+    Inverness shape fitted, searched wider and served as counts),
+    `test/link-check.test.js`, `test/report-parse.test.js`.
   **Cached**: identical requests
   within a 30-day TTL (7 days until 2026-08-03 — widened as a cost lever) are
   served from the `search_cache` layer (Supabase table

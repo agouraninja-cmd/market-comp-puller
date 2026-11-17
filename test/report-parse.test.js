@@ -729,3 +729,31 @@ test("expandComp lets long keys win and passes junk through unchanged", () => {
   const arr = [1];
   assert.equal(RP.expandComp(arr), arr, "never throws on junk — returns it unchanged");
 });
+
+// --- normalizeCorrectedAddress (2026-11-17) ------------------------------------
+// "76 Inverness Dr E, Inglewood, CO" was typed on a BOV form; the building is
+// in Englewood, Colorado.
+test("normalizeCorrectedAddress keeps a researched city fix with the same number and state", () => {
+  const p = { subject_address_corrected: "76 Inverness Dr E, Englewood, CO 80112" };
+  RP.normalizeCorrectedAddress(p, "76 Inverness Dr E, Inglewood, CO");
+  assert.equal(p.subject_address_corrected, "76 Inverness Dr E, Englewood, CO 80112");
+});
+
+test("normalizeCorrectedAddress drops a different building, another state, or no real change", () => {
+  const typed = "76 Inverness Dr E, Inglewood, CO";
+  const drop = (fixed, t = typed) => {
+    const p = { subject_address_corrected: fixed };
+    RP.normalizeCorrectedAddress(p, t);
+    return "subject_address_corrected" in p;
+  };
+  assert.equal(drop("78 Inverness Dr E, Englewood, CO"), false, "different street number");
+  assert.equal(drop("76 Inverness Dr E, Inglewood, CA"), false, "different state");
+  assert.equal(drop("76 INVERNESS DR E, INGLEWOOD, CO 80112"), false, "case and a ZIP are not a correction");
+  assert.equal(drop("76 Inverness Dr E, Inglewood, CO, USA"), false);
+  assert.equal(drop(""), false);
+  assert.equal(drop("Englewood, CO", "Inglewood, CO"), false, "no street number to pin it to");
+  assert.equal(drop("76 Inverness Dr E, Englewood, CO " + "x".repeat(200)), false, "too long");
+  const none = {};
+  RP.normalizeCorrectedAddress(none, typed);
+  assert.equal("subject_address_corrected" in none, false);
+});

@@ -1,0 +1,218 @@
+// comp-fit.js: which comps value THIS property, and when to search wider.
+// The fixture is the report that started it (2026-11-17): a 32,000 SF
+// industrial building at 76 Inverness Dr E, Englewood CO, valued on two
+// ~7,200 SF buildings, a condo unit cited to a parked domain, and comps
+// ~9 miles off.
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const FIT = require("../comp-fit");
+
+const PARKED = "https://innovatecre.com/recent-transactions";
+
+function inverness() {
+  return {
+    subject_size_sqft: "32000",
+    comps: [
+      { address: "9500 E Easter Ave, Centennial, CO", transaction: "Sale", size_sqft: "7,200", price_or_rate: "$1,900,000", source_type: "listing", source_url: "https://example.com/a", distance_mi: 3.1 },
+      { address: "9510 E Easter Ave, Centennial, CO", transaction: "Sale", size_sqft: "7,260", price_or_rate: "$1,950,000", source_type: "listing", source_url: "https://example.com/b", distance_mi: 3.2 },
+      { address: "67 Inverness Dr E, Unit C, Englewood, CO", transaction: "Sale", size_sqft: "30,000", price_or_rate: "$6,000,000", source_type: "listing", source_url: PARKED, distance_mi: 0.1 },
+      { address: "4900 Ward Rd, Wheat Ridge, CO", transaction: "Sale", size_sqft: "40,000", price_or_rate: "$9,600,000", source_type: "news", source_url: "https://example.com/d", distance_mi: 9.2 },
+    ],
+  };
+}
+
+test("the Inverness report: unit/dead source and the two tiny buildings are set aside, the floor keeps a number", () => {
+  const r = inverness();
+  const out = FIT.applyCompFit(r, { subjectSqft: 32000, propertyType: "Industrial", subjectAddress: "76 Inverness Dr E, Englewood, CO", deadUrls: new Set([PARKED]) });
+  // The dead-sourced condo is cut for its source first (that reason wins).
+  assert.equal(r.set_aside.find((c) => c.address.includes("67 Inverness")).set_aside, "dead_source");
+  // Only one priced sale is left on size alone, so the floor brings back the
+  // two small ones rather than leave a report with no number...
+  assert.equal(r.comps.length, 3);
+  // ...and that thin set is exactly what asks for a wider search.
+  assert.equal(FIT.goodSaleCount(r, 32000), 1);
+  assert.equal(FIT.needsWiderSearch(r, { propertyType: "Industrial", txFocus: "both", subjectSqft: 32000 }), true);
+  assert.deepEqual(out.counts, { dead_source: 1 });
+  assert.deepEqual(r.set_aside_counts, { dead_source: 1 });
+});
+
+test("once right-sized sales exist, off-size comps are cut and stay cut", () => {
+  const r = inverness();
+  r.comps.push(
+    { address: "1 A St, Englewood, CO", transaction: "Sale", size_sqft: "28,000", price_or_rate: "$7,000,000", distance_mi: 1 },
+    { address: "2 B St, Englewood, CO", transaction: "Sale", size_sqft: "35,000", price_or_rate: "$8,500,000", distance_mi: 2 },
+  );
+  FIT.applyCompFit(r, { subjectSqft: 32000, propertyType: "Industrial", deadUrls: [PARKED] });
+  const cutSizes = r.set_aside.filter((c) => c.set_aside === "size").map((c) => c.size_sqft);
+  assert.deepEqual(cutSizes.sort(), ["7,200", "7,260"]);
+  assert.equal(r.comps.every((c) => !/Easter/.test(c.address)), true);
+  assert.equal(FIT.goodSaleCount(r, 32000), 3);
+  // Three right-sized sales is still under WIDER_SEARCH_BELOW (4); a fourth ends the hunt.
+  assert.equal(FIT.needsWiderSearch(r, { propertyType: "Industrial", subjectSqft: 32000 }), true);
+  r.comps.push({ address: "3 C St, Englewood, CO", transaction: "Sale", size_sqft: "33,000", price_or_rate: "$8,000,000" });
+  assert.equal(FIT.needsWiderSearch(r, { propertyType: "Industrial", subjectSqft: 32000 }), false);
+});
+
+test("a far comp is cut only when enough near ones stand in for it", () => {
+  const near = (i) => ({ address: `${i} Near St, Englewood, CO`, transaction: "Sale", size_sqft: "30000", price_or_rate: "$7,000,000", distance_mi: 1 + i / 10 });
+  const far = { address: "9 Far Rd, Golden, CO", transaction: "Sale", size_sqft: "30000", price_or_rate: "$7,000,000", distance_mi: 9.2 };
+  const thin = { comps: [near(1), near(2), far] };
+  FIT.applyCompFit(thin, { subjectSqft: 32000, propertyType: "Industrial" });
+  assert.equal(thin.comps.includes(far), true, "with 2 near comps the 9-mile one stays");
+  const full = { comps: [near(1), near(2), near(3), near(4), far] };
+  FIT.applyCompFit(full, { subjectSqft: 32000, propertyType: "Industrial" });
+  assert.equal(full.comps.includes(far), false);
+  assert.equal(full.set_aside[0].set_aside, "distance");
+  // A typed radius wider than the cut keeps comps inside it.
+  const typed = { comps: [near(1), near(2), near(3), near(4), far] };
+  FIT.applyCompFit(typed, { subjectSqft: 32000, propertyType: "Industrial", radiusMiles: 15 });
+  assert.equal(typed.comps.includes(far), true);
+  // An unplaced comp is never cut for distance.
+  const unplaced = { comps: [near(1), near(2), near(3), near(4), { ...far, distance_mi: undefined }] };
+  FIT.applyCompFit(unplaced, { subjectSqft: 32000, propertyType: "Industrial" });
+  assert.equal(unplaced.comps.length, 5);
+});
+
+test("unit sales: cut against a whole building, kept as leases and for a unit subject", () => {
+  assert.equal(FIT.unitOf("67 Inverness Dr E, Unit C, Englewood, CO 80112"), "Unit C");
+  assert.equal(FIT.unitOf("400 Main St Suite 200, Boise, ID"), "Suite 200");
+  assert.equal(FIT.unitOf("12 Oak Ave #4, Boise, ID"), "#4");
+  // A building in a park is a whole building; a ZIP is not a "#".
+  assert.equal(FIT.unitOf("5600 Building C Way, Denver, CO 80239"), null);
+  assert.equal(FIT.unitOf("100 Industrial Pkwy Building 3, Denver, CO"), null);
+  assert.equal(FIT.unitOf("76 Inverness Dr E, Englewood, CO 80112"), null);
+  assert.equal(FIT.unitOf("1200 United Ave, Denver, CO"), null);
+  assert.equal(FIT.isUnitSale({ address: "5 Elm St, Denver, CO", transaction: "Sale", notes: "Office condo sale" }), true);
+
+  const sale = { address: "10 X St Suite 5, Denver, CO", transaction: "Sale", size_sqft: "30000", price_or_rate: "$5,000,000" };
+  const lease = { address: "11 X St Suite 6, Denver, CO", transaction: "Lease", size_sqft: "30000", price_per_sqft: "$12" };
+  const r = { comps: [sale, lease] };
+  FIT.applyCompFit(r, { subjectSqft: 30000, propertyType: "Office", subjectAddress: "1 Y St, Denver, CO" });
+  assert.deepEqual(r.comps, [lease]);
+  assert.equal(r.set_aside[0].set_aside, "unit");
+  const unitSubject = { comps: [sale] };
+  FIT.applyCompFit(unitSubject, { subjectSqft: 30000, propertyType: "Office", subjectAddress: "1 Y St Suite 9, Denver, CO" });
+  assert.deepEqual(unitSubject.comps, [sale]);
+});
+
+test("dead sources and unit sales never come back under the floor; verified comps are never touched", () => {
+  const r = { comps: [
+    { address: "1 A St, Denver, CO", transaction: "Sale", size_sqft: "30000", price_or_rate: "$5,000,000", source_url: PARKED },
+    { address: "2 B St Unit 4, Denver, CO", transaction: "Sale", size_sqft: "30000", price_or_rate: "$5,000,000" },
+    { address: "3 C St, Denver, CO", transaction: "Sale", size_sqft: "1000", price_or_rate: "$500,000", verified: true, source_url: PARKED },
+  ] };
+  FIT.applyCompFit(r, { subjectSqft: 30000, propertyType: "Industrial", deadUrls: [PARKED] });
+  assert.deepEqual(r.comps.map((c) => c.address), ["3 C St, Denver, CO"]);
+  assert.deepEqual(r.set_aside_counts, { dead_source: 1, unit: 1 });
+});
+
+test("types the size rule does not apply to, and a missing subject size, cut nothing for size", () => {
+  const tiny = { address: "1 A St, Boise, ID", transaction: "Sale", size_sqft: "800", price_or_rate: "$300,000" };
+  for (const type of ["Residential", "Land", "Multifamily"]) {
+    const r = { comps: [{ ...tiny }] };
+    FIT.applyCompFit(r, { subjectSqft: 30000, propertyType: type });
+    assert.equal(r.comps.length, 1, type);
+  }
+  const r = { comps: [{ ...tiny }] };
+  FIT.applyCompFit(r, { subjectSqft: 0, propertyType: "Industrial" });
+  assert.equal(r.comps.length, 1);
+  assert.equal(FIT.needsWiderSearch(r, { propertyType: "Industrial", subjectSqft: 0 }), false);
+  assert.equal(FIT.needsWiderSearch({ comps: [] }, { propertyType: "Industrial", subjectSqft: 30000, txFocus: "leases" }), false);
+  assert.equal(FIT.needsWiderSearch({ comps: [] }, { propertyType: "Residential", subjectSqft: 2000 }), false);
+});
+
+test("the wider search's comps merge without repeats, including ones already set aside", () => {
+  const r = inverness();
+  FIT.applyCompFit(r, { subjectSqft: 32000, propertyType: "Industrial", deadUrls: [PARKED] });
+  const known = FIT.knownAddresses(r);
+  assert.equal(known.some((a) => a.includes("67 Inverness")), true, "set-aside addresses are excluded from the wider search too");
+  const wider = { currency: "USD", comps: [
+    { address: "67 INVERNESS DR E UNIT C, ENGLEWOOD, CO", transaction: "Sale" },
+    { address: "1 New St, Englewood, CO", transaction: "Sale", size_sqft: "30000", price_or_rate: "$7,000,000" },
+    { address: "1 New St, Englewood, CO", transaction: "Sale", size_sqft: "30000", price_or_rate: "$7,000,000" },
+  ] };
+  assert.equal(FIT.mergeWiderComps(r, wider, 12), 1);
+  assert.equal(FIT.mergeWiderComps(r, { currency: "CAD", comps: [{ address: "2 X St, Toronto, ON" }] }, 12), 0);
+  assert.equal(FIT.mergeWiderComps(r, { comps: [{ address: "3 Cap St, Denver, CO" }] }, r.comps.length), 0, "capped at maxComps");
+});
+
+test("set-aside comps: only size and distance are harvested, and a viewer gets counts, never the comps", () => {
+  const r = inverness();
+  r.comps.push(
+    { address: "1 A St, Englewood, CO", transaction: "Sale", size_sqft: "28,000", price_or_rate: "$7,000,000" },
+    { address: "2 B St, Englewood, CO", transaction: "Sale", size_sqft: "35,000", price_or_rate: "$8,500,000" },
+  );
+  FIT.applyCompFit(r, { subjectSqft: 32000, propertyType: "Industrial", deadUrls: [PARKED] });
+  const harvest = FIT.harvestableSetAside(r);
+  assert.deepEqual(harvest.map((c) => c.set_aside).sort(), ["size", "size"]);
+  const served = FIT.stripSetAside(r);
+  assert.equal("set_aside" in served, false);
+  assert.deepEqual(served.set_aside_counts, { dead_source: 1, size: 2 });
+  assert.equal(Array.isArray(r.set_aside), true, "the cached object keeps its list");
+  const plain = { comps: [] };
+  assert.equal(FIT.stripSetAside(plain), plain);
+});
+
+test("server.js wires the fit inside getComps, strips set_aside at serialization, and harvests the right ones", () => {
+  const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "server.js"), "utf8");
+  const getComps = src.slice(src.indexOf("async function getComps("), src.indexOf("function progressFor("));
+  // Both paths: after the link check, before the report is returned (and so
+  // before the cache write, the harvest and the snapshot in runCompSearch).
+  assert.equal((getComps.match(/await refineComps\(/g) || []).length, 2);
+  assert.ok(getComps.indexOf("applySourceLinkCheck(report") < getComps.indexOf("refineComps(report"));
+  const viewer = src.slice(src.indexOf("async function finishReportForViewer("), src.indexOf("async function runCompSearch("));
+  assert.match(viewer, /rep = COMPFIT\.stripSetAside\(rep\);\s*let merged = rep;/);
+  // Before the first read of `rep` past the internal exit (the radius blend).
+  assert.ok(viewer.indexOf("rep = COMPFIT.stripSetAside(rep)") < viewer.indexOf("blendNearbyComps(rep"));
+  const harvest = src.slice(src.indexOf("async function harvestComps("), src.indexOf("async function harvestComps(") + 3000);
+  assert.match(harvest, /COMPFIT\.harvestableSetAside\(payload\)/);
+  // The rollbacks exist and the wider search is its own lane.
+  assert.match(src, /process\.env\.COMP_FIT/);
+  assert.match(src, /process\.env\.COMP_WIDER_SEARCH/);
+  assert.match(src, /const compsOnly = lane === "records" \|\| lane === "wider";/);
+  // A corrected address names the market a snapshot publishes under.
+  assert.equal((src.match(/maybePublishMarketSnapshot\(typeOk, [a-z.]*subject_address_corrected \|\| addressOk/gi) || []).length, 3);
+});
+
+// index.html's half: the set-aside sentence and the corrected address, run
+// out of the page's own source.
+function pageFn(name) {
+  const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "index.html"), "utf8");
+  const start = src.indexOf(`function ${name}(`);
+  assert.ok(start > 0, name + " is in index.html");
+  let depth = 0, i = src.indexOf("{", start);
+  for (; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}" && --depth === 0) break;
+  }
+  return src.slice(start, i + 1);
+}
+
+test("the page says what was set aside, in counts, and nothing when nothing was", () => {
+  const say = new Function(pageFn("setAsideSentence") + "; return setAsideSentence;")();
+  assert.equal(say(null, null), "");
+  assert.equal(say({}, { added: 0 }), "");
+  assert.equal(say({ size: 1 }), "We left out 1 comp the search found: 1 was a very different size from your property.");
+  assert.equal(say({ size: 2, unit: 1, dead_source: 1 }, { added: 3 }),
+    "We left out 4 comps the search found: 2 were a very different size from your property; 1 was a condo or unit sale rather than a whole building; and 1 cited a source page that was dead or a parked domain. A second, wider search added 3 sales closer to your property's size.");
+  assert.equal(say({ distance: 2 }), "We left out 2 comps the search found: 2 were farther away than closer sales we found.");
+  assert.equal(say({}, { added: 1 }), "A second, wider search added 1 sale closer to your property's size.");
+  assert.equal(say({ size: "<b>" }), "", "a non-number is no count");
+});
+
+test("the page adopts a corrected address once and keeps what was typed", () => {
+  const box = { value: "76 Inverness Dr E, Inglewood, CO" };
+  const document = { getElementById: (id) => (id === "address" ? box : null) };
+  const adopt = new Function("document", pageFn("adoptCorrectedAddress") + "; return adoptCorrectedAddress;")(document);
+  const meta = { address: "76 Inverness Dr E, Inglewood, CO" };
+  const parsed = { subject_address_corrected: "76 Inverness Dr E, Englewood, CO 80112" };
+  adopt(parsed, meta);
+  assert.equal(meta.address, "76 Inverness Dr E, Englewood, CO 80112");
+  assert.equal(meta.addressTyped, "76 Inverness Dr E, Inglewood, CO");
+  assert.equal(box.value, "76 Inverness Dr E, Englewood, CO 80112");
+  adopt(parsed, meta);   // a re-render
+  assert.equal(meta.addressTyped, "76 Inverness Dr E, Inglewood, CO");
+  const plain = { address: "1 A St, Boise, ID" };
+  adopt({}, plain);
+  assert.deepEqual(plain, { address: "1 A St, Boise, ID" });
+});

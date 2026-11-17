@@ -88,7 +88,10 @@ async function startStubProvider(opts) {
       let asked = "";
       try {
         const sent = JSON.parse(body || "{}");
-        asked = JSON.stringify(sent).slice(0, 4000);
+        // 12000, not 4000: the prompt's comp-fit rules (2026-11-17) pushed
+        // the subject details past the old cut, and this records what was
+        // asked, it does not test how long the prompt is.
+        asked = JSON.stringify(sent).slice(0, 12000);
       } catch (_) { /* the count is what matters */ }
       calls.push({ asked });
       if (wait) await wait();

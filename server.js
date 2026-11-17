@@ -231,6 +231,9 @@ const EXPLOREADDR = require("./explore-addresses");
 // Dead-at-birth source-link check rules. Pure and tested, like the modules
 // above; server.js owns the network half (checkSourceLinks below).
 const LINKCHECK = require("./link-check");
+// Which comps are good enough to value this property, and when to search
+// wider (2026-11-17). Rules and history in comp-fit.js's header.
+const COMPFIT = require("./comp-fit");
 // Valuation backtest — hold-one-out accuracy scoring over the comp corpus.
 // Pure and tested, like the three modules above; server.js owns the database
 // read, the memo and the route (GET /api/accuracy).
@@ -8695,7 +8698,11 @@ async function harvestComps(type, searchAddress, payload) {
       return;
     }
     await seedCorpusSeen();
-    const comps = payload && Array.isArray(payload.comps) ? payload.comps : [];
+    // Comps set aside for THIS subject's size or distance are still real
+    // deals, and a good comp for some other building (comp-fit.js's
+    // HARVESTABLE_REASONS); a dead source or a condo unit is not harvested.
+    const comps = (payload && Array.isArray(payload.comps) ? payload.comps : [])
+      .concat(COMPFIT.harvestableSetAside(payload));
     const rows = [];
     for (const c of comps) {
       if (!HARVEST.shouldHarvest(c)) {
@@ -9174,6 +9181,28 @@ const LANE_GUIDANCE = {
   records: `SEARCH ANGLE - START WITH NEWS, PRESS AND PUBLIC RECORDS: a second analyst is working this same property from brokerage listing sites in parallel, and your results will be merged with theirs, so favour sources they are less likely to reach. Begin with transaction coverage and records: local business journals and trade press reporting sales and leases, brokerage and owner press releases, REIT and institutional investor disclosures, and county assessor, recorder, deed or property-tax records and open-data portals. This is a preference, not a restriction: if those sources run dry before you have enough comparable properties, widen to any source you like, including listing sites, rather than coming back short. A real comp from the "wrong" source is far more useful than a missing one.`,
 };
 
+// The wider search's instructions (refineComps, comp-fit.js). It runs only
+// when the first search left fewer than COMPFIT.WIDER_SEARCH_BELOW priced,
+// size-matched sales, and only with the subject's size known, so the band is
+// always a real number. The addresses already in hand (kept AND set aside)
+// are listed so it spends its searches on new deals, not on rediscovering
+// the ones the fit step just cut. Capped at 30 lines: a prompt is not the
+// place for a long list, and the merge dedupes anyway.
+function widerSearchGuidance(type, subjectSizeSqft, extra) {
+  const s = Number(subjectSizeSqft) || 0;
+  const lo = Math.round(s * COMPFIT.BAND_MIN).toLocaleString("en-US");
+  const hi = Math.round(s * COMPFIT.BAND_MAX).toLocaleString("en-US");
+  const exclude = (extra && Array.isArray(extra.exclude) ? extra.exclude : []).slice(0, 30);
+  return [
+    `WIDER SEARCH FOR SIZE-MATCHED SALES: an earlier pass on this property found too few closed sales of buildings like it. Your only job is to find more closed SALES of whole ${type.toLowerCase()} buildings between ${lo} and ${hi} SF (the target is about ${s.toLocaleString("en-US")} SF).`,
+    `Start in the target's own submarket and work outward step by step (the neighbouring submarkets first, then the wider metro), going only as far as you must to find them. A sale 2 miles away beats one 10 miles away; a sale of the right size 12 miles away beats a building a quarter of the size next door.`,
+    `Never return a condo, unit or suite sale (an address with Unit, Suite, Ste or #, or a deal described as a condo): the target is a whole building. Only return a deal you can tie to a page you actually opened that states it; never cite a page you did not open, and never a page that only lists a brokerage's "recent transactions" without the deal's own details.`,
+    exclude.length
+      ? `Already in hand, so do NOT return any of these again:\n${exclude.map((a) => `- ${a}`).join("\n")}`
+      : "",
+  ].filter(Boolean).join("\n");
+}
+
 const EXTRACT_PROMPT = `You extract commercial real estate comparable transactions from a deals table (CoStar, ARGUS, CMA, MLS, or similar). The table may arrive as a PDF, as a screenshot, or as a photograph of a printed sheet. Return ONLY a JSON array of objects. No markdown, no keys wrapping the array.
 
 Each object may only use these keys: ${VAULT.EXTRACT_KEYS.join(", ")}.
@@ -9193,12 +9222,14 @@ Rules:
 - Record the street portion of an address exactly as printed. When the document names the city but omits the state, append the state only when the document itself proves it (its letterhead, its market name, its other rows), written as "City, ST". Never guess a state the document does not support, and never append a city the document does not name.
 - Do not include a verified flag or a source_url.`;
 
-function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, corpusListed, subjectDetails, lane = "solo") {
+function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, corpusListed, subjectDetails, lane = "solo", extra = null) {
   // The records lane contributes comps (and the subject size, which lives in
   // assessor data) only — the primary lane owns every market-level figure and
   // all of the narrative, so the report has one coherent voice and one set of
   // market numbers rather than two that have to be reconciled.
-  const compsOnly = lane === "records";
+  // The "wider" lane (2026-11-17, refineComps) is comps-only too: a second
+  // look for size-matched sales after the first came back thin.
+  const compsOnly = lane === "records" || lane === "wider";
   const typeGuidance = {
     Industrial:  "Focus on warehouse/distribution/flex space. Report price/SF for sales and NNN $/SF/yr for leases.",
     Office:      "Focus on office buildings/suites. Report price/SF for sales and full-service or NNN $/SF/yr for leases, building class (A/B/C) in notes.",
@@ -9327,6 +9358,12 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `TARGET PROPERTY:`,
     `- Address: ${address}`,
     `- Property type: ${type}`,
+    // A typed city can be wrong (2026-11-17: "76 Inverness Dr E, Inglewood,
+    // CO" from a BOV form; Inglewood is in California, the building is in
+    // Englewood, Colorado). Research the real property and hand back its
+    // address; normalizeCorrectedAddress (report-parse.js) only accepts an
+    // answer with the same street number and state.
+    compsOnly ? "" : `- If this address is misspelled or names the wrong city for that street and state (for example "Inglewood, CO" for a building in Englewood, CO), research the property at its real location, search its real market for comps, and put its correct full address, as public records print it, in "subject_address_corrected". Otherwise leave "subject_address_corrected" as "".`,
     subjectSizeSqft ? `- Approximate building size: ${subjectSizeSqft.toLocaleString("en-US")} SF` : "",
     note ? `- Market note / radius: ${note}` : `- Market note / radius: (none specified — pick the radius to fit the market; see RADIUS below)`,
     // Calibrate the comp search radius to market density (a user suggestion):
@@ -9394,7 +9431,17 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
       subjectSizeSqft
         ? ` (${subjectSizeSqft.toLocaleString("en-US")} SF, so roughly ${Math.round(subjectSizeSqft / 2).toLocaleString("en-US")} to ${(subjectSizeSqft * 2).toLocaleString("en-US")} SF)`
         : ` (once you determine the target's size)`
-    } where the market offers them - a small building and a very large one trade at different $/SF. If you must include comps materially larger or smaller to reach 3, keep them, but say so in "summary".`,
+    } where the market offers them - a small building and a very large one trade at different $/SF. If you must include comps materially larger or smaller to reach 3, keep them, but say so in "summary". A comp under 40% or over 2.5 times the target's size is a different size class: we set those aside before valuing, so search further out for a right-sized sale rather than returning one.`,
+    // The three rules below (2026-11-17) came from one report: a 32,000 SF
+    // Englewood CO building valued on two 7,200 SF buildings, a condo unit
+    // cited to a parked domain, and two comps 9 miles off in another
+    // submarket. comp-fit.js enforces them after the fact; asking here is
+    // what keeps the model from spending its searches on rows we will cut.
+    type === "Residential" ? "" :
+      `WHOLE BUILDINGS: the target is a whole building, so never return a condo, unit or suite SALE (an address with Unit, Suite, Ste or #, or a deal described as a condo) as a sale comp; those are set aside before valuing. A lease of a suite is fine.`,
+    type === "Residential" ? "" :
+      `NEAREST FIRST: among comparable sales, prefer the ones in the target's own submarket and the nearest to it. Do not include a comp in a different submarket many miles away while comparable sales closer to the target exist.`,
+    `REAL SOURCES ONLY: cite only a page you actually opened that states the deal itself (a listing, a deal announcement, a news article, a public record). Never cite a brokerage's generic "recent transactions" page, a page that did not load, or a domain that is parked or for sale; a comp whose source is dead is set aside. If you cannot tie a deal to a working page, leave it out.`,
     // Bedroom count is not in the valuation math (beds_baths is a display
     // field), so the prompt is the only place a 2-bed can be stopped from
     // pulling a 4-bed headline. Same "fewer local matches beat a padded
@@ -9422,6 +9469,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // with the wrong product; residential sources are already named in
     // typeGuidance (assessor + recently-sold listing pages).
     type === "Residential" ? "" : (LANE_GUIDANCE[lane] || ""),
+    lane === "wider" ? widerSearchGuidance(type, subjectSizeSqft, extra) : "",
     compsOnly ? `` : `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
     // $/SF used to be REQUIRED on every sale comp and is arithmetic we already
     // do: reconcilePricePerSqft derives price ÷ size server-side and has always
@@ -9504,6 +9552,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
       `  "annual_price_trend_pct": "",`,
       `  "search_radius": "",`,
       `  "transactions_reviewed": "",`,
+      `  "subject_address_corrected": "",`,
       `  "price_discovery": { "direction": "", "note": "" }`,
     ]),
     `}`,
@@ -10208,7 +10257,7 @@ async function extractFileOnce(fileBase64, mediaType) {
   }
 }
 
-async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, lane = "solo", maxUses = null, onProgress = null, stats = null) {
+async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, lane = "solo", maxUses = null, onProgress = null, stats = null, promptExtra = null) {
   // Resolved once: the same number feeds the API's search budget AND the
   // derived call deadline, so the two can never disagree.
   const searchUses = maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses;
@@ -10223,7 +10272,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     model: MODEL,
     prompt: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps,
                         subjectSizeSqft, corpus && corpus.comps, corpus && corpus.nearby,
-                        corpus && corpus.listed, subjectDetails, lane),
+                        corpus && corpus.listed, subjectDetails, lane, promptExtra),
     maxComps,
     searchUses,
     stream: useStream,
@@ -10463,6 +10512,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
                     normalizeConditions(
                       expandCompKeys(parseCompJson(raw, stats), type)), type))))))),
       new Date()));
+    RPARSE.normalizeCorrectedAddress(parsed, address);
     return scrubUnearnedVerifiedClaims(
       attachVerifiedAttribution(parsed, verifiedComps));
   };
@@ -10563,6 +10613,28 @@ function mergeLaneReports(primary, records, maxComps) {
 // ---------------------------------------------------------------------------
 const LINK_CHECK_BUDGET_MS = 2500;   // total, shared by every URL in the batch
 const LINK_CHECK_MAX_URLS = 12;
+const LINK_CHECK_BODY_BYTES = 16 * 1024;   // enough for a parking page's tell, never a whole page
+
+// The first `max` bytes of a response body as text, then stop. A failure
+// reads as "" (no evidence of parking), never as a throw.
+async function readBodyHead(res, max) {
+  try {
+    if (!res.body || typeof res.body.getReader !== "function") return "";
+    const reader = res.body.getReader();
+    const chunks = [];
+    let n = 0;
+    while (n < max) {
+      const { done, value } = await reader.read();
+      if (done || !value) break;
+      chunks.push(Buffer.from(value));
+      n += value.length;
+    }
+    try { await reader.cancel(); } catch (_) {}
+    return Buffer.concat(chunks).subarray(0, max).toString("utf8");
+  } catch (_) {
+    return "";
+  }
+}
 const LINK_CHECK_UA = "CompNinjaLinkCheck/1.0 (+https://compninja.co)";
 
 // dns.promises.lookup takes no AbortSignal, so a slow or unreachable
@@ -10627,13 +10699,18 @@ async function checkSourceLinks(comps) {
         // through LINKCHECK.verdictFor unchanged and counts as "live" — the
         // original URL did answer, and under-claiming death matches the
         // doctrine.
+        //
+        // GET, not HEAD, since 2026-11-17: a parked domain answers 200 to
+        // every path, and only its first few KB say "this domain is for
+        // sale" (LINKCHECK.isParked). The read stops at
+        // LINK_CHECK_BODY_BYTES and the rest is cancelled, so a large page
+        // costs no more than a small one.
         const opts = { redirect: "manual", signal: controller.signal, headers: { "user-agent": LINK_CHECK_UA } };
-        let r = await fetch(url, { ...opts, method: "HEAD" });
-        if (r.status === 405) {
-          r = await fetch(url, { ...opts, method: "GET" });
-          try { if (r.body) await r.body.cancel(); } catch (_) {}
-        }
-        verdicts[url] = LINKCHECK.verdictFor({ status: r.status });
+        const r = await fetch(url, { ...opts, method: "GET" });
+        const location = r.headers && typeof r.headers.get === "function" ? (r.headers.get("location") || "") : "";
+        const body = r.status >= 200 && r.status < 300 ? await readBodyHead(r, LINK_CHECK_BODY_BYTES) : "";
+        try { if (r.body && !r.bodyUsed) await r.body.cancel(); } catch (_) {}
+        verdicts[url] = LINKCHECK.verdictFor({ status: r.status, location, body });
       } catch (_) { /* abort, TLS, socket: unknown */ }
     }));
     clearTimeout(timer);
@@ -10643,12 +10720,16 @@ async function checkSourceLinks(comps) {
   }
 }
 
+// Returns the set of source URLs found dead (or parked), which the comp-fit
+// step (comp-fit.js) sets aside. Always a Set, empty on any failure.
 async function applySourceLinkCheck(report, type, address) {
+  const deadUrls = new Set();
   try {
     const comps = report && Array.isArray(report.comps) ? report.comps : [];
-    if (!comps.length) return;
+    if (!comps.length) return deadUrls;
     const { verdicts, checked, blocked } = await checkSourceLinks(comps);
-    if (checked + blocked === 0) return;   // nothing checkable cited
+    for (const [u, v] of Object.entries(verdicts)) if (v === "dead") deadUrls.add(u);
+    if (checked + blocked === 0) return deadUrls;   // nothing checkable cited
     const vals = Object.values(verdicts);
     const dead = vals.filter((v) => v === "dead").length;
     const live = vals.filter((v) => v === "live").length;
@@ -10664,6 +10745,7 @@ async function applySourceLinkCheck(report, type, address) {
   } catch (err) {
     console.warn("Source link check skipped:", err && err.message);
   }
+  return deadUrls;
 }
 
 async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, corpus = { comps: [], coverage: 0, fresh: false }, subjectDetails = {}, onProgress = null, stats = null) {
@@ -10700,13 +10782,117 @@ async function getComps(address, type, note, months, maxComps, txFocus, subjectS
     // Dead-at-birth link check runs on the FINISHED report, inside getComps,
     // so /api/comps and the Explorer both inherit it and every downstream
     // surface (cache, harvest, snapshot, gate, share) sees the same badges.
-    await applySourceLinkCheck(merged, type, address);
+    const dead = await applySourceLinkCheck(merged, type, address);
+    await refineComps(merged, { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, deadUrls: dead, onProgress, stats });
     return merged;
   }
 
   const report = await solo((attempt) => callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "solo", null, progressFor(onProgress, attempt), stats), onProgress, stats);
-  await applySourceLinkCheck(report, type, address);
+  const dead = await applySourceLinkCheck(report, type, address);
+  await refineComps(report, { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, deadUrls: dead, onProgress, stats });
   return report;
+}
+
+// ---------------------------------------------------------------------------
+// Comp fit and the wider search (2026-11-17). Rules live in comp-fit.js; this
+// is the I/O half. It runs inside getComps, after the link check and before
+// the report is returned, so the cache, the harvest, the market snapshot and
+// every viewer see the same kept set (never-break rule 2: nothing here is
+// per-viewer, it is the report itself).
+//
+//   1. placeCompsForFit: a distance for every comp the Census geocoder can
+//      place (the subject from Census first, the model's own subject_lat/lng
+//      second). The model no longer returns comp coordinates (maps.md), so
+//      without this the server had no idea a comp was 9 miles out. One
+//      budget for the batch; what has not answered by then stays unplaced,
+//      and an unplaced comp is never cut for distance.
+//   2. COMPFIT.applyCompFit: sets aside dead-source, unit, off-size and (when
+//      nearer ones exist) far comps.
+//   3. When the kept set is too thin (COMPFIT.needsWiderSearch), ONE more
+//      billed call (lane "wider") for size-matched sales, widening outward
+//      from the subject only as far as needed and told every address already
+//      in hand. Its comps go through the same link check and fit, then are
+//      merged and the whole set is fitted again (more near comps can now cut
+//      a far one).
+//
+// COMP_FIT=off and COMP_WIDER_SEARCH=off are the two rollbacks, separately,
+// because the second costs money and the first does not. Every failure here
+// is the report as it was: never a lost report over a refinement.
+// ---------------------------------------------------------------------------
+const COMP_FIT = !/^(0|off|false|no)$/i.test(String(process.env.COMP_FIT || ""));
+const COMP_WIDER_SEARCH = !/^(0|off|false|no)$/i.test(String(process.env.COMP_WIDER_SEARCH || ""));
+const COMP_PLACE_BUDGET_MS = 3000;
+const COMP_PLACE_MAX = 16;
+const WIDER_SEARCH_USES = 6;
+
+async function placeCompsForFit(report, address) {
+  const comps = report && Array.isArray(report.comps) ? report.comps : [];
+  if (!comps.length) return;
+  const found = new Map();   // comp -> miles, applied only for what finished in time
+  let timer;
+  const deadline = new Promise((resolve) => { timer = setTimeout(resolve, COMP_PLACE_BUDGET_MS); if (timer.unref) timer.unref(); });
+  const work = (async () => {
+    const census = await geocodeCensus(address).catch(() => null);
+    const subject = RADIUSBLEND.parseCoords(census) || RADIUSBLEND.coordsFromReport(report);
+    if (!subject) return;
+    await Promise.all(comps.slice(0, COMP_PLACE_MAX).map(async (c) => {
+      if (!c || typeof c !== "object") return;
+      if (c.distance_mi != null && c.distance_mi !== "") return;
+      if (!/^\s*\d/.test(String(c.address || ""))) return;
+      const ll = RADIUSBLEND.parseCoords(await geocodeCensus(c.address).catch(() => null));
+      if (!ll) return;
+      const mi = RADIUSBLEND.milesBetween(subject, ll);
+      if (Number.isFinite(mi) && mi >= 0) found.set(c, Math.round(mi * 10) / 10);
+    }));
+  })().catch(() => {});
+  await Promise.race([work, deadline]);
+  clearTimeout(timer);
+  for (const [c, mi] of found) c.distance_mi = mi;
+}
+
+async function refineComps(report, ctx) {
+  if (!COMP_FIT || !report || !Array.isArray(report.comps)) return;
+  const { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails,
+          deadUrls, onProgress, stats } = ctx;
+  try {
+    const subjectSqft = Number(subjectSizeSqft) > 0 ? Number(subjectSizeSqft)
+      : (GATE.numericValue(report.subject_size_sqft) || 0);
+    const fitOpts = (dead) => ({
+      subjectSqft, propertyType: type, subjectAddress: address, deadUrls: dead,
+      radiusMiles: RADIUSBLEND.parseRadiusMiles(note),
+    });
+    // A corrected address is where the building really is; the typed one may
+    // name a city the geocoder cannot find, or the wrong one.
+    const placeAt = report.subject_address_corrected || address;
+    await placeCompsForFit(report, placeAt);
+    const first = COMPFIT.applyCompFit(report, fitOpts(deadUrls));
+    if (first.setAside) {
+      console.log(`🎯 Comp fit: set aside ${first.setAside} of ${first.setAside + first.kept} comp(s) — ${JSON.stringify(first.counts)} — ${address}`);
+    }
+    if (!COMP_WIDER_SEARCH || !COMPFIT.needsWiderSearch(report, { propertyType: type, txFocus, subjectSqft })) return;
+
+    const have = COMPFIT.goodSaleCount(report, subjectSqft);
+    const ask = Math.max(4, Math.min(8, (Number(maxComps) || 8) - report.comps.length));
+    console.log(`🔭 Wider search: only ${have} size-matched priced sale(s) kept; asking for ${ask} more — ${address}`);
+    if (typeof onProgress === "function") {
+      try { onProgress({ phase: "search", n: 1, query: "Looking wider for sales closer to your size", attempt: 1 }); } catch (_) {}
+    }
+    const wider = await callAnthropicOnce(address, type, note, months, ask, "sales", [], subjectSqft,
+      { comps: [] }, subjectDetails, "wider", WIDER_SEARCH_USES, null, stats,
+      { exclude: COMPFIT.knownAddresses(report) })
+      .catch((err) => { console.warn("Wider search failed; keeping the first search's comps.", err && err.message); return null; });
+    if (!wider || !Array.isArray(wider.comps) || !wider.comps.length) return;
+    const widerDead = await applySourceLinkCheck(wider, type, address);
+    await placeCompsForFit(wider, placeAt);
+    COMPFIT.applyCompFit(wider, fitOpts(widerDead));
+    const added = COMPFIT.mergeWiderComps(report, wider, maxComps);
+    const allDead = new Set([...(deadUrls || []), ...widerDead]);
+    COMPFIT.applyCompFit(report, fitOpts(allDead));
+    report.wider_search = { added };
+    console.log(`🔭 Wider search added ${added} comp(s); ${COMPFIT.goodSaleCount(report, subjectSqft)} size-matched priced sale(s) now — ${address}`);
+  } catch (err) {
+    console.warn("Comp fit skipped:", err && err.message);
+  }
 }
 
 // Stamps every progress event with which attempt produced it, so the client can
@@ -10801,6 +10987,14 @@ async function finishReportForViewer(rep, ctx) {
   // for a free visitor instead of printing their addresses. Vault
   // blend stays last: brokers are Pro, and a private row must never
   // become a public locked_basis row.
+  //
+  // The comps the fit step set aside (comp-fit.js) are whole comps, address
+  // and source and all, so they leave here as counts only
+  // (`set_aside_counts` stays): handing them over would print comps past the
+  // paywall's limit. A copy, never a write to the cached object.
+  // `rep` itself is replaced, not just `merged`: the radius blend below
+  // reads `rep`.
+  rep = COMPFIT.stripSetAside(rep);
   let merged = rep;
   if (CORPUS_RADIUS) {
     const subject = RADIUSBLEND.coordsFromReport(rep)
@@ -10943,7 +11137,7 @@ async function runCompSearch({
     reconcilePricePerSqft(cached);
     console.log(`Cache hit (no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk}`);
     logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, plan });
-    maybePublishMarketSnapshot(typeOk, addressOk, cached);
+    maybePublishMarketSnapshot(typeOk, cached.subject_address_corrected || addressOk, cached);
     harvestComps(typeOk, addressOk, cached);
     return { report: cached, kind: "cache", callStats };
   }
@@ -10962,7 +11156,7 @@ async function runCompSearch({
     // Side effects mirror a direct cache hit, fed the PARENT payload —
     // the harvester dedupes, and the fuller comp list is the better feed.
     logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, source: "derived", plan });
-    maybePublishMarketSnapshot(typeOk, addressOk, dw.parent);
+    maybePublishMarketSnapshot(typeOk, dw.parent.subject_address_corrected || addressOk, dw.parent);
     harvestComps(typeOk, addressOk, dw.parent);
     return { report: dw.derived, kind: "derived", callStats };
   }
@@ -11075,7 +11269,9 @@ async function runCompSearch({
     duration_ms: billedMs, searches: callStats.searches, out_tokens: callStats.out_tokens, rescue: callStats.rescue });
   // The same figure, kept in memory for the comp report's time-left bar.
   noteSearchPace(billedMs);
-  maybePublishMarketSnapshot(typeOk, addressOk, result);
+  // A corrected address (normalizeCorrectedAddress) names the real market:
+  // a typo'd city must never publish a /market/ page of its own.
+  maybePublishMarketSnapshot(typeOk, result.subject_address_corrected || addressOk, result);
   harvestComps(typeOk, addressOk, result);
   return { report: result, kind: "fresh", callStats };
 }

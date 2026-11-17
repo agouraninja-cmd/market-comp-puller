@@ -105,3 +105,40 @@ test("applyLinkVerdicts ignores live/unknown verdicts and tolerates junk shapes"
   assert.equal(LC.applyLinkVerdicts({}, {}), 0);
   assert.equal(LC.applyLinkVerdicts(null, null), 0);
 });
+
+// --- Parked domains (2026-11-17) ----------------------------------------------
+// innovatecre.com/recent-transactions answered 200 with a parking page, so a
+// condo comp cited to it kept its "Listing" badge in the 76 Inverness Dr E
+// report. A parked page is no source; it counts as dead.
+test("a parked or for-sale domain is dead even when it answers 200", () => {
+  const parkedBodies = [
+    "<html><body><h1>innovatecre.com</h1><p>This domain may be for sale!</p></body></html>",
+    "<title>Buy this domain</title>",
+    "<script>window.park = \"eyJ1dWlkIjoi\";</script>",
+    "<script>window.location.href=\"/lander\"</script>",
+    "<a href=\"https://www.hugedomains.com/domain_profile.cfm?d=x\">Buy now</a>",
+    "<p>This domain has expired. Renew it now.</p>",
+    "<p>Parked free, courtesy of GoDaddy.com</p>",
+  ];
+  for (const body of parkedBodies) {
+    assert.equal(LC.verdictFor({ status: 200, body }), "dead", body);
+  }
+  assert.equal(LC.verdictFor({ parked: true }), "dead");
+});
+
+test("a redirect to a parking or domain-sale host, or GoDaddy's /lander hop, is dead", () => {
+  assert.equal(LC.verdictFor({ status: 302, location: "/lander" }), "dead");
+  assert.equal(LC.verdictFor({ status: 301, location: "https://www.dan.com/buy-domain/x.com" }), "dead");
+  assert.equal(LC.verdictFor({ status: 302, location: "https://sedoparking.com/x" }), "dead");
+  // An ordinary redirect is still live (the original URL answered).
+  assert.equal(LC.verdictFor({ status: 301, location: "https://www.example.com/new-path" }), "live");
+  // Label-bounded, like BLOCKED_HOSTS: notdan.com is not dan.com.
+  assert.equal(LC.verdictFor({ status: 301, location: "https://notdan.com/x" }), "live");
+});
+
+test("a real listing page that says 'for sale' is not mistaken for a parked domain", () => {
+  const listing = "<h1>Industrial building for sale</h1><p>32,000 SF warehouse for sale in Englewood, CO. Sale price $6,400,000.</p>";
+  assert.equal(LC.verdictFor({ status: 200, body: listing }), "live");
+  assert.equal(LC.verdictFor({ status: 200, body: "" }), "live");
+  assert.equal(LC.isParked({ status: 200 }), false);
+});

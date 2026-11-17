@@ -145,7 +145,18 @@ test("the deals sit in their stage's column; passed fold away; owned are Home's"
   // A card says what a developer reads first, and a deadline inside a week is hot.
   const a = cols[0].byClass("sp-card")[0];
   assert.match(a.textContent, /Meridian, ID 83642/);
-  assert.match(a.textContent, /18\.4 ac · \$3\.45M · \$188K\/ac/);
+  // The asking price leads, the acres and price per acre follow (2026-11-17),
+  // and the property type is tagged beside the street.
+  assert.equal(a.byClass("sp-cp")[0].textContent, "$3.45M");
+  assert.equal(a.byClass("sp-cs")[0].textContent, "18.4 ac · $188K/ac");
+  assert.equal(a.byClass("sp-ty")[0].textContent, "Land");
+  // With no price the acres lead, and with neither nothing does.
+  const [withPrice, bare] = cols[2].byClass("sp-card");
+  assert.equal(withPrice.byClass("sp-cp")[0].textContent, "$2.88M");
+  assert.equal(bare.byClass("sp-cn").length, 0, "no price and no acres: no figure line");
+  const acresOnly = run({ s: 200, sites: [deal({ asking_price: null })], today: TODAY, firm: DEV }).ids.spBoard.byClass("sp-card")[0];
+  assert.equal(acresOnly.byClass("sp-cp")[0].textContent, "18.4 ac");
+  assert.equal(acresOnly.byClass("sp-cs").length, 0);
   assert.match(a.textContent, /LOI due · Oct 15/);
   assert.equal(a.byClass("hot").length, 1);
   // The figures across the deals in play (the passed and the owned are not).
@@ -209,6 +220,7 @@ test("an empty list is an invitation, and the add form takes deals only", () => 
   ids.spEmptyAdd.fire("click");
   const form = ids.spAdd.all().find((e) => e.tagName === "FORM");
   assert.ok(form, "the add form did not open");
+  assert.equal(ids.spEmpty.hidden, true, "the invitation stays under the form it opened");
   assert.ok(!ids.spAdd.all().some((e) => e.getAttribute("role") === "radiogroup"), "/sites offers \"I own it\": that is Home's");
   assert.match(ids.spAdd.textContent, /Add property/);
 });

@@ -481,3 +481,47 @@ test("roomListed: a deleted room stays off the list until somebody writes after 
   // An unreadable message time never brings a room back.
   assert.equal(MSG.roomListed({ hiddenAt: hid, latestAt: "not a date" }), false);
 });
+
+// ---------------------------------------------------------------------------
+// Seen, and typing (2026-11-16)
+// ---------------------------------------------------------------------------
+test("read marks are the other people still in the chat who have opened it", () => {
+  const rows = [
+    { user_id: "me", last_read_at: "2026-11-16T10:00:00.000Z", left_at: null },
+    { user_id: "ben", last_read_at: "2026-11-16T10:05:00.000Z", left_at: null },
+    { user_id: "cara", last_read_at: null, left_at: null },
+    { user_id: "gone", last_read_at: "2026-11-16T10:06:00.000Z", left_at: "2026-11-16T11:00:00.000Z" },
+  ];
+  assert.deepEqual(MSG.readMarks(rows, "me"), [{ userId: "ben", at: "2026-11-16T10:05:00.000Z" }],
+    "the reader's own mark, somebody who never opened it, or a leaver was reported");
+  assert.deepEqual(MSG.readMarks(null, "me"), []);
+});
+
+test("Seen is said only for a message somebody read at or after it was sent", () => {
+  const sentAt = "2026-11-16T10:00:00.000Z";
+  const before = { userId: "ben", at: "2026-11-16T09:59:59.000Z" };
+  const after = { userId: "ben", at: "2026-11-16T10:00:01.000Z" };
+  assert.equal(MSG.seenLine({ sentAt, marks: [before], others: 1 }), "", "a read from before the message counted");
+  assert.equal(MSG.seenLine({ sentAt, marks: [after], others: 1 }), "Seen");
+  assert.equal(MSG.seenLine({ sentAt, marks: [{ userId: "ben", at: sentAt }], others: 1 }), "Seen");
+  // A group says how many, and "everyone" only when it is.
+  const cara = { userId: "cara", at: "2026-11-16T10:02:00.000Z" };
+  assert.equal(MSG.seenLine({ sentAt, marks: [after, before], others: 3 }), "Seen by 1");
+  assert.equal(MSG.seenLine({ sentAt, marks: [after, cara], others: 3 }), "Seen by 2");
+  assert.equal(MSG.seenLine({ sentAt, marks: [after, cara], others: 2 }), "Seen by everyone");
+  assert.equal(MSG.seenLine({ sentAt: "not a date", marks: [after], others: 1 }), "");
+  assert.equal(MSG.seenLine({ sentAt, marks: null, others: 1 }), "");
+});
+
+test("typing is true for seven seconds, and never the reader's own", () => {
+  const now = 1_000_000;
+  const marks = new Map([["me", now - 1000], ["ben", now - 2000], ["cara", now - MSG.TYPING_TTL_MS - 1], ["dev", now + 5000]]);
+  assert.deepEqual(MSG.typingNow(marks, { now, userId: "me" }), ["ben"],
+    "the reader, a stale mark or a mark from the future was reported as typing");
+  assert.deepEqual(MSG.typingNow(undefined, { now, userId: "me" }), []);
+  assert.ok(MSG.TYPING_PING_MS < MSG.TYPING_TTL_MS, "a person still typing would flicker off between two pings");
+  assert.equal(MSG.typingLine([]), "");
+  assert.equal(MSG.typingLine(["Ben Okafor"]), "Ben is typing…");
+  assert.equal(MSG.typingLine(["Ben Okafor", "Cara Whitfield"]), "Ben and Cara are typing…");
+  assert.equal(MSG.typingLine(["A", "B", "C"]), "Several people are typing…");
+});

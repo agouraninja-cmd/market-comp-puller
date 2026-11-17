@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-16",
+    "type": "feature",
+    "title": "Seen and typing in Messages",
+    "details": "Under the last message you sent in a firm chat, “Seen” appears once the other person has had the chat open; a group says “Seen by 2” or “Seen by everyone”. While a colleague is writing, “Ben is typing…” shows beside the Attach button, and their message now arrives within a few seconds of being sent instead of up to fifteen. This is for chats inside your firm; conversations with clients outside it are unchanged."
+  },
+  {
+    "date": "2026-11-16",
     "type": "improvement",
     "title": "Profile photos beside messages",
     "details": "A colleague who has added a profile photo now shows it beside their messages and on their chat in the list, and your own photo shows beside yours. Anyone without a photo, and clients in a conversation outside the firm, keep the circle with their initial. Photos are still only shown to people in the same firm."

@@ -48,6 +48,9 @@ const REPORT_INBOX_SRC = fs.readFileSync(path.join(__dirname, "report-inbox.js")
 // The firm shelf's saved view per shop kind (a development shop opens on
 // Land), from org-access.js's own map: the server's copy, never a hand copy.
 const ORG = require("./org-access");
+// The wording of "Seen" and "is typing" is messaging.js's, emitted into the
+// page's script from the functions themselves (2026-11-16).
+const MSG = require("./messaging");
 const SHELF_SAVED_VIEW = Object.fromEntries(Object.entries(ORG.SHOP_COPY).map(([k, v]) => [k, v.shelfType || ""]));
 
 // The bin on a firm row and in a conversation's header. One copy: the
@@ -302,6 +305,10 @@ function renderMessagesBody(boot) {
 .msg-newpill:hover{border-color:var(--ink-3)}
 /* A message you started in a chat and left there. */
 .msg-draft{font-weight:600;color:var(--red)}
+/* "Seen", under the reader's own latest message. It keeps its height empty,
+   so the conversation does not move when somebody reads it. */
+.msg-seen{margin-left:44px;min-height:16px;font-size:var(--text-tiny);color:var(--ink-faint)}
+#msgTyping{font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 
 /* --- a comp inside a message -------------------------------------------- */
 .msg-comp{border:1px solid var(--edge);border-radius:var(--r-lg);padding:10px 12px;margin:6px 0;
@@ -666,6 +673,7 @@ function renderMessagesBody(boot) {
       <div class="msg-actions">
         <button class="msg-btn sm msg-hide" id="msgAttach" type="button">Attach a comp</button>
         <span class="msg-hint msg-hide" id="msgMailNote">They get an email about new messages</span>
+        <span class="msg-hint" id="msgTyping" aria-live="polite"></span>
         <span class="msg-grow"></span>
         <span class="msg-hint" id="msgSendMsg"></span>
         <button class="msg-btn primary sm" id="msgSend" type="button">Send</button>
@@ -908,6 +916,7 @@ ${REPORT_INBOX_SRC}
     state.openUnread = was ? (Number(was.unread) || 0) : 0;
     state.newFrom = "";
     showPill(0);
+    clearTyping();
     state.cursor = "";
     state.messages = [];
     state.unsendId = "";
@@ -2033,6 +2042,12 @@ ${REPORT_INBOX_SRC}
       // every line makes a short back-and-forth unreadable.
       var cont = m.author === lastWho && t - lastAt < 5 * 60 * 1000;
       lastWho = m.author; lastAt = t;
+      if (lastMineId === null) {
+        lastMineId = "";
+        for (var z = state.messages.length - 1; z >= 0; z--) {
+          if (state.messages[z].mine && !state.messages[z].unsent) { lastMineId = state.messages[z].id; break; }
+        }
+      }
       var comps = "";
       for (var k = 0; k < (m.comps || []).length; k++) comps += compCard(m.comps[k]);
       var canU = canUnsendNow(m);
@@ -2049,9 +2064,80 @@ ${REPORT_INBOX_SRC}
           ' title="Unsend (for 15 minutes after you send)">Unsend</button>' : "") +
         '</div>';
       if (asking) html += unsendQuestion(m);
+      // Under the reader's own latest message: who has seen it (filled by
+      // paintSeen, and again by each poll, without redrawing anything).
+      if (m.id === lastMineId) html += '<div class="msg-seen" data-seen="' + esc(m.createdAt) + '"></div>';
     }
     paintStream(html, mode, fresh);
+    paintSeen();
     scheduleUnsendExpiry();
+  }
+
+  // --- seen, and typing (2026-11-16) ----------------------------------------
+  // The wording is messaging.js's own two functions, emitted here from the
+  // module the tests run, never a copy that can drift.
+  function str(v){ return String(v == null ? "" : v); }
+  ${MSG.seenLine.toString()}
+  ${MSG.typingLine.toString()}
+  var lastMineId = null;
+  state.reads = [];
+  state.typing = [];
+  // The other people still in the open firm chat.
+  function otherMembers(){
+    var row = state.openRow;
+    return ((row && row.members) || []).filter(function(p){ return p.userId !== state.me && !p.left; });
+  }
+  // "Seen" under the reader's own latest message, from the read marks the
+  // thread read carries. Sets one line's text and moves nothing: the line
+  // keeps its height whether or not it says anything.
+  function paintSeen(){
+    lastMineId = null;
+    var el = $("msgStream").querySelector("[data-seen]");
+    if (!el) return;
+    el.textContent = state.openKind === "internal"
+      ? seenLine({ sentAt: el.getAttribute("data-seen"), marks: state.reads, others: otherMembers().length })
+      : "";
+  }
+  // "Ben is typing" in the composer's own row, so nothing moves when it
+  // comes and goes.
+  function paintTyping(){
+    var names = [], people = otherMembers();
+    for (var i = 0; i < state.typing.length; i++) {
+      for (var k = 0; k < people.length; k++) if (people[k].userId === state.typing[i]) names.push(people[k].name);
+    }
+    $("msgTyping").textContent = typingLine(names);
+  }
+  function clearTyping(){ state.typing = []; state.reads = []; $("msgTyping").textContent = ""; }
+  // Says "I am typing", at most every TYPING_PING ms while keys are going in
+  // a firm chat. A deal room's guests may have no account to tell.
+  var TYPING_PING = ${MSG.TYPING_PING_MS};
+  var lastTypingPing = 0;
+  function pingTyping(){
+    if (state.openKind !== "internal" || !state.openId || !$("msgInput").value.trim()) return;
+    var now = Date.now();
+    if (now - lastTypingPing < TYPING_PING) return;
+    lastTypingPing = now;
+    api("POST", "/api/messages/typing", { threadId: state.openId });
+  }
+  // Asks who is typing, every three seconds, under the poll's own rules (a
+  // hidden or idle tab asks nothing) and only with a firm chat on screen. It
+  // reads memory on the server and marks nothing read. When somebody who
+  // was typing stops, they have most likely sent: read the chat now rather
+  // than at the next fifteen-second poll.
+  function typingTick(){
+    if (document.hidden || Date.now() - state.lastActive > IDLE_MS || state.view !== "chats" ||
+        state.tab !== "chat" || state.openKind !== "internal" || !state.openId) {
+      if (state.typing.length) { state.typing = []; paintTyping(); }
+      return;
+    }
+    var id = state.openId;
+    api("GET", "/api/messages/typing?thread=" + encodeURIComponent(id)).then(function(o){
+      if (o.s !== 200 || state.openKind !== "internal" || state.openId !== id) return;
+      var was = state.typing.length;
+      state.typing = (o.j && o.j.typing) || [];
+      paintTyping();
+      if (was && !state.typing.length) readThread(false);
+    });
   }
 
   // --- unsending a message --------------------------------------------------
@@ -2266,6 +2352,7 @@ ${REPORT_INBOX_SRC}
     state.openUnread = listed ? (Number(listed.unread) || 0) : 0;
     state.newFrom = "";
     showPill(0);
+    if (!same) clearTyping();
     state.cursor = "";
     state.messages = [];
     state.unsendId = "";
@@ -2314,6 +2401,8 @@ ${REPORT_INBOX_SRC}
         var was = findMessage(gone[g]);
         if (was && !was.unsent) { markUnsent(was); changed = true; }
       }
+      // Who has read up to when, before anything is drawn from it.
+      state.reads = j.reads || [];
       if (fresh.length) {
         // Ids, not positions: an optimistic local echo and the server's own
         // copy of the same message must not both render.
@@ -2331,6 +2420,9 @@ ${REPORT_INBOX_SRC}
         renderStream(first ? "open" : (mineIn ? "bottom" : ""), first ? 0 : added);
       } else if (first || changed) {
         renderStream(first ? "open" : "");
+      } else {
+        // A quiet poll still brings read marks: "Seen" appears in place.
+        paintSeen();
       }
       if (j.cursor) state.cursor = j.cursor;
       markRead();
@@ -2397,6 +2489,10 @@ ${REPORT_INBOX_SRC}
   function startPolling(){
     if (state.poll) clearInterval(state.poll);
     state.poll = setInterval(tick, 15000);
+    // Who is typing is worth nothing fifteen seconds late: its own, lighter
+    // question, every three (typingTick).
+    if (state.typingPoll) clearInterval(state.typingPoll);
+    state.typingPoll = setInterval(typingTick, 3000);
   }
 
   // --- the list read ------------------------------------------------------
@@ -3552,6 +3648,7 @@ ${REPORT_INBOX_SRC}
     this.style.height = Math.min(this.scrollHeight, 180) + "px";
     // Kept as it is typed, so leaving the page does not lose it.
     holdDraft();
+    pingTyping();
   });
   // New messages that arrived while the reader was scrolled up: pressing the
   // note goes to them, and so does scrolling down to them.

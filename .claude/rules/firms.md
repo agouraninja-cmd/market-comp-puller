@@ -304,8 +304,35 @@ paths:
   circle is never empty. No photo for a group row, a client in a deal room,
   a leaver (not on the roster) or a reader with no firm. Not done: the New
   panel's people rows and the About card.
-  **Not built:** typing or read receipts, and a hint that Shift+Enter is a
-  new line.
+  **Seen and typing** (2026-11-16, the owner: "add seen and typing
+  indicators"; no migration; firm chats only). Rules in `messaging.js`
+  (`readMarks`, `seenLine`, `typingNow`, `typingLine`, `TYPING_PING_MS` 3s,
+  `TYPING_TTL_MS` 7s); the page emits `seenLine` and `typingLine` from the
+  module itself (`MSG.seenLine.toString()`), never a copy.
+  - **Seen is `last_read_at`**, which the thread read already stamps on
+    every read from a visible tab. `GET /api/messages/thread` sends `reads`
+    (other active members who have opened it; never the caller's own row,
+    never a leaver) on every read, polls included. The page draws one
+    `.msg-seen[data-seen]` line under the reader's own latest message and
+    `paintSeen()` fills it; it keeps its height empty, so nothing moves.
+    A direct message says "Seen", a group "Seen by 2" / "Seen by everyone".
+  - **Typing is this process's memory** (`MSG_TYPING` in server.js) and is
+    never written to the database. `POST /api/messages/typing {threadId}`
+    after the full `canPostToThread` check; `GET ?thread=` for the page's
+    3-second `typingTick`. A caller proven in the thread within a minute
+    (`MSG_TYPING_OK`, set only after a yes) costs one session read; anyone
+    else gets the full check and one 404. Sending clears the sender's mark.
+    One web instance serves the site (render.yaml): a second would know
+    only its own typists, so move this to a shared store before scaling out.
+  - **The line is `#msgTyping` in the composer's row**, so it moves nothing.
+    `typingTick` follows the poll's rules (hidden or idle tab asks nothing)
+    and when somebody who was typing stops it calls `readThread(false)`,
+    so their message arrives in about 3 seconds instead of up to 15.
+  - A deal room has neither: its guests may have no account, and its People
+    panel already says who has opened it.
+  Proven in `test/messages-run.test.js` ("seen and typing") and
+  `test/messaging.test.js`.
+  **Not built:** a hint that Shift+Enter is a new line.
   **Deleting a conversation** (2026-09-26, no migration; owner's ask, Draft
   C of the drafts at https://claude.ai/artifact/2yqGKYAyv4n8mrFD5ZtHHF).
   `POST /api/messages/delete {threadId}` deletes a FIRM conversation **for the

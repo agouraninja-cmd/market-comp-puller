@@ -6048,6 +6048,50 @@ async function msgThreadRow(threadId, orgId) {
   return (rows && rows[0]) || null;
 }
 
+// Who is typing, in THIS PROCESS'S MEMORY and nowhere else (messaging.js,
+// "Seen, and typing"): threadId -> Map(userId -> when they last said so).
+// One web instance serves the site (render.yaml), so one map is the whole
+// truth; a second instance would each know only its own typists, and a
+// restart forgets everything, both of which cost a line that is true for
+// seven seconds. Nothing here is ever written to the database.
+//
+// MSG_TYPING_OK remembers, for a minute, that a user was just proven to be
+// in a thread ("userId:threadId" -> expiry), so the page's three-second
+// typing poll costs a session read and not the four reads a full check
+// takes. It is only ever SET after canReadThread said yes, and what it
+// unlocks is a list of user ids in a conversation that person was reading a
+// minute ago. Both maps are swept when they grow.
+const MSG_TYPING = new Map();
+const MSG_TYPING_OK = new Map();
+function msgTypingAllow(userId, threadId) {
+  if (MSG_TYPING_OK.size > 5000) {
+    const now = Date.now();
+    for (const [k, exp] of MSG_TYPING_OK) if (exp < now) MSG_TYPING_OK.delete(k);
+  }
+  MSG_TYPING_OK.set(String(userId) + ":" + String(threadId), Date.now() + 60000);
+}
+function msgTypingAllowed(userId, threadId) {
+  return (MSG_TYPING_OK.get(String(userId) + ":" + String(threadId)) || 0) > Date.now();
+}
+function msgTypingMark(threadId, userId) {
+  const id = String(threadId);
+  if (MSG_TYPING.size > 2000) {
+    const now = Date.now();
+    for (const [k, marks] of MSG_TYPING) {
+      for (const [u, at] of marks) if (now - at > MSG.TYPING_TTL_MS) marks.delete(u);
+      if (!marks.size) MSG_TYPING.delete(k);
+    }
+  }
+  if (!MSG_TYPING.has(id)) MSG_TYPING.set(id, new Map());
+  MSG_TYPING.get(id).set(String(userId), Date.now());
+}
+function msgTypingClear(threadId, userId) {
+  const marks = MSG_TYPING.get(String(threadId));
+  if (!marks) return;
+  marks.delete(String(userId));
+  if (!marks.size) MSG_TYPING.delete(String(threadId));
+}
+
 // Everyone in a thread, LEAVERS INCLUDED. messaging.js filters them (its
 // activeMembers), and a leaver's name still has to render beside the messages
 // they wrote — org_members' roster read makes the same call for the same
@@ -31280,6 +31324,9 @@ const server = http.createServer((req, res) =>
           }
           return sendJson(res, 404, { error: "That conversation isn't yours.", code: verdict.reason });
         }
+        // Proven to be in this thread: the typing poll may skip the full
+        // check for the next minute (MSG_TYPING_OK).
+        msgTypingAllow(g.user.id, id);
         // READING A THREAD IS READING IT. Stamped here rather than left to the
         // browser's own POST /api/messages/read, which is the hub's rule
         // (stampHubSeen runs on every GET /api/hub) and for its reason: a
@@ -31374,6 +31421,9 @@ const server = http.createServer((req, res) =>
             };
           }),
           unsent,
+          // Who else has read up to when (messaging.js, "Seen"), on every
+          // read: a poll is how "Seen" appears under a message already sent.
+          reads: MSG.readMarks(rows, g.user.id),
           // SERVER-ISSUED, never a browser clock — the hub's rule. Echoes the
           // cursor it was given when nothing new arrived, so a quiet poll does
           // not rewind the conversation.
@@ -31456,6 +31506,8 @@ const server = http.createServer((req, res) =>
           thread, orgId: g.orgId, memberRow: MSG.memberRowOf(rows, g.user.id),
         });
         if (!verdict.ok) return sendJson(res, 404, { error: "That conversation isn't yours." });
+        // Sending is the end of typing: the line goes with the message.
+        msgTypingClear(id, g.user.id);
 
         // The comps, if any. Ids are read back from broker_comps SCOPED BY
         // user_id — the hub's vault-send rule — so a member can only ever
@@ -31594,6 +31646,59 @@ const server = http.createServer((req, res) =>
       })().catch((err) => {
         console.error("Unread count failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't count your unread conversations." });
+      });
+      return;
+    }
+
+    // --- POST|GET /api/messages/typing — "Ben is typing…" --------------------
+    // (2026-11-16; rules in messaging.js, the store is MSG_TYPING above.)
+    // POST {threadId} says the caller is typing, after the full check every
+    // write here makes. GET ?thread= answers who else is, for the page's
+    // three-second poll: a caller proven to be in the thread within the last
+    // minute costs a session read; anybody else gets the full check. One 404
+    // for every refusal, the thread routes' rule. Firm chats only: a deal
+    // room's guests may have no account to be typing as. Neither writes to
+    // the database, and neither marks anything read.
+    if ((req.method === "POST" || req.method === "GET") && msgPath === "/api/messages/typing") {
+      (async () => {
+        const post = req.method === "POST";
+        let id = "";
+        if (post) {
+          const body = await readMsgBody(2e3);
+          id = String((body && body.threadId) || "").trim();
+        } else {
+          id = (new URL(req.url, "http://localhost").searchParams.get("thread") || "").trim();
+        }
+        if (!id || id.length > 80) return sendJson(res, 400, { error: "Which conversation?" });
+        let userId = "";
+        const quick = post ? null : await getSessionUser(req);
+        if (quick && msgTypingAllowed(quick.id, id)) {
+          userId = String(quick.id);
+        } else {
+          const g = await openMessaging();
+          if (!g) return;
+          const thread = await msgThreadRow(id, g.orgId);
+          const rows = await msgThreadMemberRows([id]);
+          const verdict = MSG.canPostToThread({
+            thread, orgId: g.orgId, memberRow: MSG.memberRowOf(rows, g.user.id),
+          });
+          if (!verdict.ok) return sendJson(res, 404, { error: "That conversation isn't yours." });
+          userId = String(g.user.id);
+          msgTypingAllow(userId, id);
+        }
+        if (post) {
+          if (rateLimited("msgtyping:" + clientIp(req), 60)) return sendJson(res, 200, { ok: true });
+          msgTypingMark(id, userId);
+          return sendJson(res, 200, { ok: true });
+        }
+        return sendJson(res, 200, {
+          ok: true,
+          typing: MSG.typingNow(MSG_TYPING.get(id), { now: Date.now(), userId }),
+        });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Typing route failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't update that conversation." });
       });
       return;
     }

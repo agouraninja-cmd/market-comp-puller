@@ -1114,3 +1114,64 @@ test("a conversation past one page reads from its recent end, and pages back", a
   assert.deepEqual(poll.messages.map((m) => m.body), ["message #206"]);
   assert.equal(poll.earlier, false, "a poll never claims older pages");
 });
+
+test("seen and typing: read marks ride the thread read, and typing lives in memory for the people in the chat", async (t) => {
+  const ctx = await bootWithDb(seedTables());
+  t.after(() => ctx.stop());
+  const B = ctx.srv.base;
+  const post = async (user, url, body) => {
+    const r = await fetch(B + url, as(user, { method: "POST", body: JSON.stringify(body || {}) }));
+    return { s: r.status, j: await r.json().catch(() => ({})) };
+  };
+  const get = async (user, url) => {
+    const r = await fetch(B + url, as(user));
+    return { s: r.status, j: await r.json().catch(() => ({})) };
+  };
+  const made = await post(BRAD, "/api/messages/thread", { memberIds: [MIKE.id] });
+  assert.equal(made.s, 201);
+  const id = made.j.thread.id;
+  assert.equal((await post(BRAD, "/api/messages/send", { threadId: id, body: "Did you see the Kanan comp?" })).s, 201);
+
+  // SEEN. Mike has not opened it: Brad's read carries no mark of his.
+  let brad = await get(BRAD, "/api/messages/thread?id=" + id);
+  assert.equal(brad.s, 200);
+  assert.deepEqual(brad.j.reads, [], "somebody who never opened the chat has a read mark");
+  // Mike opens it; the stamp is fire-and-forget, so wait for it to land.
+  assert.equal((await get(MIKE, "/api/messages/thread?id=" + id)).s, 200);
+  const sentAt = brad.j.messages[0].createdAt;
+  let marks = [];
+  for (let i = 0; i < 40 && !marks.length; i++) {
+    brad = await get(BRAD, "/api/messages/thread?id=" + id + "&since=" + encodeURIComponent(brad.j.cursor));
+    marks = brad.j.reads || [];
+    if (!marks.length) await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.equal(marks.length, 1, "a poll never brought Mike's read mark");
+  assert.equal(marks[0].userId, MIKE.id);
+  assert.ok(Date.parse(marks[0].at) >= Date.parse(sentAt), "the mark is from before the message");
+  // Mike's own read never carries his own mark, only Brad's.
+  const mike = await get(MIKE, "/api/messages/thread?id=" + id);
+  assert.deepEqual(mike.j.reads.map((m) => m.userId), [BRAD.id]);
+
+  // TYPING. Nobody is, until somebody says so.
+  assert.deepEqual((await get(BRAD, "/api/messages/typing?thread=" + id)).j.typing, []);
+  assert.equal((await post(MIKE, "/api/messages/typing", { threadId: id })).s, 200);
+  assert.deepEqual((await get(BRAD, "/api/messages/typing?thread=" + id)).j.typing, [MIKE.id]);
+  assert.deepEqual((await get(MIKE, "/api/messages/typing?thread=" + id)).j.typing, [], "the reader was told they are typing");
+  // Sending ends it.
+  assert.equal((await post(MIKE, "/api/messages/send", { threadId: id, body: "Yes, strong one." })).s, 201);
+  assert.deepEqual((await get(BRAD, "/api/messages/typing?thread=" + id)).j.typing, []);
+
+  // The walls: a colleague who is not in the chat, somebody at another
+  // firm, and nobody at all learn nothing and can say nothing.
+  assert.equal((await post(MIKE, "/api/messages/typing", { threadId: id })).s, 200);
+  for (const stranger of [DANA, RIVAL]) {
+    assert.equal((await get(stranger, "/api/messages/typing?thread=" + id)).s, 404, stranger.name + " read who is typing");
+    assert.equal((await post(stranger, "/api/messages/typing", { threadId: id })).s, 404, stranger.name + " said they are typing");
+  }
+  assert.equal((await fetch(B + "/api/messages/typing?thread=" + id)).status, 401);
+  assert.deepEqual((await get(BRAD, "/api/messages/typing?thread=" + id)).j.typing, [MIKE.id],
+    "a refused caller changed who is typing");
+  assert.equal((await get(BRAD, "/api/messages/typing")).s, 400);
+  // It is memory: nothing about typing was written anywhere.
+  assert.ok(!JSON.stringify(ctx.tables).includes("typing"));
+});

@@ -566,7 +566,74 @@ function roomListed({ hiddenAt, latestAt } = {}) {
   return Number.isFinite(last) && last > hid;
 }
 
+// ---------------------------------------------------------------------------
+// Seen, and typing (2026-11-16, the owner: "add seen and typing indicators")
+// ---------------------------------------------------------------------------
+
+// SEEN is the read mark every member row already carries (last_read_at),
+// shown to the OTHER people in the conversation. No new column: the thread
+// read stamps it on every read from a visible tab, so "seen" means the chat
+// was open on somebody's screen, which is what the word promises.
+//
+// Who has read up to when, for one reader: everybody else still in the
+// conversation who has opened it at all. Never the reader's own row (they
+// know what they have read), never a leaver (canReadThread refuses them, so
+// their mark stopped meaning anything the day they left).
+function readMarks(memberRows, userId) {
+  const me = str(userId).trim();
+  return activeMembers(memberRows)
+    .filter((m) => str(m.user_id) !== me && Number.isFinite(Date.parse(str(m.last_read_at))))
+    .map((m) => ({ userId: str(m.user_id), at: str(m.last_read_at) }));
+}
+
+// The line under the reader's own latest message. A direct message says
+// "Seen"; a group says how many, or "Seen by everyone". "" when nobody has.
+// `others` is how many other people are in the conversation.
+function seenLine({ sentAt, marks, others } = {}) {
+  const t = Date.parse(str(sentAt));
+  if (!Number.isFinite(t)) return "";
+  const n = (Array.isArray(marks) ? marks : [])
+    .filter((m) => m && Date.parse(str(m.at)) >= t).length;
+  const total = Number(others) || 0;
+  if (!n) return "";
+  if (total <= 1) return "Seen";
+  return n >= total ? "Seen by everyone" : "Seen by " + n;
+}
+
+// TYPING is held in the server's memory and nowhere else: it is true for a
+// few seconds and worth nothing afterwards, so it is not a row. A restart
+// forgets it, which costs one "is typing" line. The page says "I am typing"
+// at most every TYPING_PING_MS while keys are going, and a mark older than
+// TYPING_TTL_MS is nobody typing.
+const TYPING_PING_MS = 3000;
+const TYPING_TTL_MS = 7000;
+
+// Who is typing in one conversation right now, for one reader: user ids,
+// never the reader's own. `marks` is a Map of userId -> when they last said
+// so; `now` is passed in, this file reads no clock.
+function typingNow(marks, { now, userId } = {}) {
+  const me = str(userId).trim();
+  const out = [];
+  if (!marks || typeof marks.forEach !== "function") return out;
+  marks.forEach((at, id) => {
+    if (str(id) === me) return;
+    if (Number(now) - Number(at) <= TYPING_TTL_MS && Number(now) >= Number(at)) out.push(str(id));
+  });
+  return out;
+}
+
+// The line itself, from the first names of whoever is typing.
+function typingLine(names) {
+  const list = (Array.isArray(names) ? names : [])
+    .map((n) => str(n).trim().split(/\s+/)[0]).filter(Boolean);
+  if (!list.length) return "";
+  if (list.length === 1) return list[0] + " is typing…";
+  if (list.length === 2) return list[0] + " and " + list[1] + " are typing…";
+  return "Several people are typing…";
+}
+
 module.exports = {
+  readMarks, seenLine, TYPING_PING_MS, TYPING_TTL_MS, typingNow, typingLine,
   KINDS, MAX_BODY, MAX_TITLE, MAX_COMPS_PER_MESSAGE, MAX_THREAD_MEMBERS, PAGE_SIZE,
   MAX_NICKNAME, validateNickname, roomListed,
   normalizeEmail, cleanText, kindOf, displayName,

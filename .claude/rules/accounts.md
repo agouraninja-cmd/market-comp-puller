@@ -196,6 +196,25 @@ paths:
   knows to fetch `GET /api/account/avatar`. File fallback stores both on
   the user object in `account-store.json`. PUT/DELETE `/api/account/avatar`;
   empty body is how Remove works. Not Pro-gated.
+  **Take a selfie (2026-11-17).** Settings' Account section has "Take a
+  selfie" beside Change photo: the front camera of a laptop or phone, in
+  place in the panel (`#selfieBox`): a round mirrored live preview, Take
+  photo, then the still with Use this photo / Retake / Cancel. The shot goes
+  through `squareAvatarJpeg` (the one crop-and-shrink, shared with a chosen
+  file, saved mirrored as the preview showed it) and `saveAvatar`, so the
+  server sees exactly the PUT an upload makes and `account-avatar.js` is
+  unchanged. Four rules: the camera is asked for in ONE place
+  (`startSelfie`, on a click, `facingMode: "user"`, `audio: false`); every
+  exit calls `stopSelfie` (Use, Cancel, and `closeSettingsModal`, which
+  Close, Escape and a click outside all reach), and a stream that arrives
+  after the panel closed is stopped on arrival; a browser with no camera API
+  gets `#selfieFile` (`capture="user"`, a phone's own front camera); and the
+  site's Permissions-Policy is **`camera=(self)`** (it was `camera=()`,
+  which blocked this outright; `security-headers.js`), so no third-party
+  frame can use it. The Mac desktop build carries
+  `NSCameraUsageDescription` (`desktop-app/package.json`), which macOS
+  requires before an app may open the camera. Tests:
+  `test/account-selfie.test.js`, `test/security-headers.test.js`.
 
 ## Confirming an email address (2026-11-10; migration 062)
 

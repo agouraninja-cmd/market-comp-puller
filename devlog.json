@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-17",
+    "type": "feature",
+    "title": "Take a selfie for your profile photo",
+    "details": "Settings now has a Take a selfie button beside Change photo. It opens your laptop’s or phone’s front camera right in the panel, shows a round preview, and lets you take the shot, retake it, or use it as your profile picture. The camera turns off as soon as you save, cancel or close Settings, and nothing but the saved photo leaves your browser."
+  },
+  {
+    "date": "2026-11-17",
     "type": "improvement",
     "title": "A cleaner Sites page",
     "details": "Sites got a design pass. The figures across your deals are now four tiles, and the next deadline's tile shows its countdown. Each stage column is numbered and edged in a shade that deepens from Prospect to Entitlements. A deal's card leads with its asking price, tags the property type, puts the next deadline on a line of its own, and marks its left edge in red when that deadline is a week or less away. An open deal sits in one card under the board, the add form has its own card and title, and Passed folds into a card too. Before your first deal, the page shows a preview of the board, what each deal keeps, and the button to add one."

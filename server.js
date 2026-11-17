@@ -13148,8 +13148,11 @@ const RAIL_CSS = `
   html.nav-rail .hdr nav>a:hover{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink-4)}
   html.nav-rail .hdr nav>a[aria-current="page"]{background:var(--card);color:var(--ink);font-weight:600;
     box-shadow:inset 0 0 0 1px var(--edge)}
-  html.nav-rail .hdr nav>a[aria-current="page"]::before{content:"";position:absolute;left:4px;top:50%;width:0;height:20px;
-    margin-top:-10px;border-left:3px solid var(--red);border-radius:2px}
+  /* Flush with the rail's outer edge (the row's 8px margin), not floating
+     inside the rounded card, where it read as a stray line (owner, 2026-11-17).
+     ⚠ twin of index.html's rd-appbar rule. */
+  html.nav-rail .hdr nav>a[aria-current="page"]::before{content:"";position:absolute;left:-8px;top:50%;width:0;height:28px;
+    margin-top:-14px;border-left:3px solid var(--red);border-radius:0 3px 3px 0}
   html.nav-rail .hdr nav>a:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
   html.nav-rail .hdr nav>.navsec{font-size:0;height:1px;margin:7px 22px 8px;padding:0;border:0;background:var(--edge)}
   html.nav-rail .hdr nav>a.btn.sm{display:none}

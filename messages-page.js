@@ -96,10 +96,19 @@ function renderMessagesBody(boot) {
 .msg-page .kicker{font-size:var(--text-tiny);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
 /* One grid, two panes above 900px and one below it. The pane that shows on a
    phone is decided by a class on the wrapper, never by a media query alone —
-   a query cannot know whether the reader has opened a thread yet. */
+   a query cannot know whether the reader has opened a thread yet.
+   EDGE TO EDGE since 2026-11-17 (the owner: "fill up the whole section not
+   just in a box"). It was a bordered, rounded card 1,120px wide at most,
+   centred under a Messages heading, with the page's paper showing on every
+   side. Now it is the whole space right of the rail (above the phone bar on
+   a phone): no border, no corners, no gutter. main.wrap gives up its width
+   and padding for this page only (the rule below; this stylesheet ships on
+   no other page). The loading and sign-in notes in #msgGate are .msg-empty,
+   which centres itself and keeps its own 24px each side. */
+body>main.wrap{max-width:none;padding:0}
 .msg-page{display:grid;grid-template-columns:var(--rail) 1fr;gap:0;
-  border:1px solid var(--edge);border-radius:var(--r-lg);overflow:hidden;
-  background:var(--card);min-height:min(74vh,720px);margin:24px 0 48px}
+  border:0;border-radius:0;overflow:hidden;
+  background:var(--card);min-height:min(74vh,720px);margin:0}
 .msg-side{border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0;background:var(--card)}
 .msg-main{display:flex;flex-direction:column;min-width:0}
 .msg-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);min-height:60px}
@@ -507,7 +516,10 @@ function renderMessagesBody(boot) {
 /* Below 900px the two panes become one. .msg-page.on-thread is what says
    which of them is showing — the reader's own navigation, not the viewport. */
 @media (max-width:900px){
-  .msg-page{grid-template-columns:1fr;min-height:min(80vh,640px)}
+  /* The list fills the screen under the top bar (2026-11-17), so the
+     footer starts below the first screen rather than halfway up it. */
+  .msg-page{grid-template-columns:1fr;min-height:min(80vh,640px);
+    min-height:calc(100dvh - var(--msg-top,56px))}
   .msg-headav{display:none}
   .msg-side{border-right:0}
   .msg-page .msg-main{display:none}
@@ -525,17 +537,21 @@ function renderMessagesBody(boot) {
      opens, the browser scrolls a field in the flow into view by itself and
      does not for one inside a fixed box. dvh is the screen as it is now
      (address bar showing or not); vh is the fallback and is only too tall.
-     Chats only: a report's pane has no scroller of its own and would be cut. */
-  .msg-page.on-thread:not([data-view="reports"]){grid-template-rows:minmax(0,1fr);min-height:0;margin-bottom:8px;
-    height:calc(100vh - 16px);height:calc(100dvh - 16px)}
+     Chats only: a report's pane has no scroller of its own and would be cut.
+     The whole screen since 2026-11-17, when the page lost its border: the
+     8px above and below were there to show the box's edge. */
+  .msg-page.on-thread:not([data-view="reports"]){grid-template-rows:minmax(0,1fr);min-height:0;
+    height:100vh;height:100dvh}
   .msg-page.on-thread:not([data-view="reports"]) .msg-main{min-height:0;overflow-y:auto}
   .msg-page.on-thread:not([data-view="reports"]) .msg-stream{min-height:120px}
 }
 /* The same chat with the phone bar under it (server.js RAIL_CSS, 54px and
-   the safe area): 8px above the chat, 8px between it and the bar. */
+   the safe area): from the top of the screen down to the bar. The list
+   stops at the bar too. */
 @media screen and (max-width:899px){
+  html.nav-rail .msg-page{min-height:calc(100dvh - var(--msg-top,56px) - 54px - env(safe-area-inset-bottom,0px))}
   html.nav-rail .msg-page.on-thread:not([data-view="reports"]){
-    height:calc(100vh - 70px - env(safe-area-inset-bottom,0px));height:calc(100dvh - 70px - env(safe-area-inset-bottom,0px))}
+    height:calc(100vh - 54px - env(safe-area-inset-bottom,0px));height:calc(100dvh - 54px - env(safe-area-inset-bottom,0px))}
   /* The round Feedback button floats over the corner the Send button is in.
      In an open chat it is put away (it is back on the list of chats); where
      a browser cannot ask "is a chat open" from here, Send moves clear of it. */
@@ -572,10 +588,14 @@ function renderMessagesBody(boot) {
    for a browser that has not measured yet. The one grid row is minmax(0,1fr)
    for the phone rule's reason: an auto row grows with its content and the
    page's overflow:hidden would cut the composer off. Both views: a report's
-   pane scrolls inside itself here (.msg-rbody), as the two lists do. */
+   pane scrolls inside itself here (.msg-rbody), as the two lists do.
+   Down to the foot of the window since 2026-11-17, when the heading above
+   went and the page lost its border: beside the rail it starts at the top
+   of the screen (--msg-top 0), under the top bar of the rollback shell
+   wherever that ends. */
 @media (min-width:901px){
-  .msg-page{grid-template-rows:minmax(0,1fr);min-height:0;margin-bottom:16px;
-    height:calc(100vh - 186px);height:max(460px,calc(100dvh - var(--msg-top,170px) - 16px))}
+  .msg-page{grid-template-rows:minmax(0,1fr);min-height:0;
+    height:100vh;height:max(460px,calc(100dvh - var(--msg-top,0px)))}
   .msg-side,.msg-main{min-height:0}
 }
 </style>
@@ -586,19 +606,13 @@ function renderMessagesBody(boot) {
      rather than as their own. The firm is the CONTEXT for who you can reach;
      it is not whose page this is. Nothing about the access rules changed with
      the wording - a thread is still firm-scoped and still walled twice. -->
-<section style="padding:28px 0 0">
-  <!-- ONE heading. The eyebrow above this said Messages too, directly over an
-       h1 saying Messages, under a rail row saying Messages. -->
-  <h1 style="margin:0 0 4px">Messages</h1>
-  <!-- Reports joined on 2026-10-08, from Home's Reports tab: a shared report
-       is correspondence too, somebody sent it to somebody. -->
-  <!-- One line on a computer (2026-11-17; two from 2026-11-16, four
-       before): the page under it is as tall as the window that is left. -->
-  <p style="margin:0;color:var(--ink-2);font-size:14px;line-height:1.6">
-    Talk with the people at your firm and the clients you share comps with.
-    Reports holds every comp report sent to you or shared with your firm.
-  </p>
-</section>
+<!-- NO HEADING ON SCREEN since 2026-11-17 (the owner: "it doesn't have to
+     say messages because it already says it on the left bar"). The rail row
+     and the tab's title both say Messages, and the line under it ("Talk with
+     the people at your firm…") went with it: the Chats and Reports tabs say
+     what the page holds. The h1 stays for a screen reader, which reads a
+     page by its headings, and is the only thing left of that section. -->
+<h1 class="vh">Messages</h1>
 
 <div class="msg-page" id="msgPage" hidden>
   <aside class="msg-side">
@@ -1708,15 +1722,17 @@ ${REPORT_INBOX_SRC}
   }
   // On a phone an open chat is one screen tall (the stylesheet's
   // .msg-page.on-thread rule), so opening one brings it to the top of the
-  // screen: the page's title and intro are above it, and without this the
-  // box to type in would still be a scroll away. Only where the two panes
-  // are one (the stylesheet's own 900px). It writes nothing but the scroll
-  // position, so a page built ahead of a click may run it.
+  // screen: the top bar is above it, and without this the box to type in
+  // would still be a scroll away. Flush with the top since 2026-11-17 (8px
+  // under it before, to show the box's edge; the page has none now). Only
+  // where the two panes are one (the stylesheet's own 900px). It writes
+  // nothing but the scroll position, so a page built ahead of a click may
+  // run it.
   function fitThread(){
     try {
       if (!window.matchMedia("(max-width: 900px)").matches) return;
       var r = $("msgPage").getBoundingClientRect();
-      window.scrollTo(0, Math.max(0, Math.round(r.top + (window.pageYOffset || 0) - 8)));
+      window.scrollTo(0, Math.max(0, Math.round(r.top + (window.pageYOffset || 0))));
     } catch (e) {}
   }
   function splitKey(key){
@@ -2206,14 +2222,18 @@ ${REPORT_INBOX_SRC}
   // The stylesheet's rule for a computer needs to know where the page starts,
   // and the heading above it wraps differently at every width. Measured when
   // the page is shown and when the window changes; an answer that cannot be
-  // right (the page not laid out yet) is dropped, and the stylesheet's own
-  // 170px stands in. It writes one custom property and nothing else.
+  // right is dropped, and the stylesheet's own fallback stands in. It writes
+  // one custom property and nothing else.
+  // 0 is a real answer since 2026-11-17: with no heading above it the page
+  // starts at the top of the screen beside the rail. So "not laid out yet"
+  // is told by the page having no height, not by a top under 40px.
   function sizePage(){
     try {
       var el = $("msgPage");
       if (el.hidden) return;
-      var top = Math.round(el.getBoundingClientRect().top + (window.pageYOffset || 0));
-      if (top >= 40 && top <= 600) el.style.setProperty("--msg-top", top + "px");
+      var r = el.getBoundingClientRect();
+      var top = Math.round(r.top + (window.pageYOffset || 0));
+      if (r.height > 0 && top >= 0 && top <= 600) el.style.setProperty("--msg-top", top + "px");
       else el.style.removeProperty("--msg-top");
     } catch (e) {}
   }

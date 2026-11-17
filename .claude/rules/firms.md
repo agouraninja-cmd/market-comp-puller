@@ -362,6 +362,26 @@ paths:
   - Internal / External headings read **Your firm / Clients**; the intro
     is one line; New is the red button; the report's facts are tiles.
   Pinned at the foot of `test/messages-page.test.js`.
+  **Edge to edge, no heading** (2026-11-17, the owner: "make the messages
+  page fill up the whole section not just in a box. and it doesn't have to
+  say messages because it already says it on the left bar"; page only).
+  - **No heading on screen.** The h1 and the intro line under it went; an
+    `<h1 class="vh">Messages</h1>` (MARKET_CSS's visually hidden class) stays
+    for a screen reader. The Chats / Reports tabs say what the page holds.
+  - **`body>main.wrap{max-width:none;padding:0}`** in the page's own
+    stylesheet (it ships on no other page): the page is the whole space
+    right of the rail, with no border, corners or margin. `#msgGate` is
+    `.msg-empty`, which keeps its own gutter.
+  - **A computer**: `height:max(460px, 100dvh - var(--msg-top,0px))`, no
+    bottom gap. Beside the rail the page starts at 0, so **`sizePage()`
+    now believes 0** and tells "not laid out yet" by the page having no
+    height (it dropped anything under 40px before).
+  - **A phone**: the list fills the screen under the top bar
+    (`100dvh - --msg-top`, minus the 54px bar and safe area under
+    `nav-rail`), an open chat is `100dvh` (`- 54px` and the safe area with
+    the bar; it was `- 16px` / `- 70px`), and **`fitThread()`** brings it
+    flush with the top (8px under it before, to show the box's edge).
+  Pinned in `test/messages-page.test.js` (the two one-screen tests).
   **A deal room guest's name** (2026-11-17, the owner: "fix the deal room
   client name showing their email"; migration **`063-hub-guest-names.sql`,
   deploy order SOFT**). A guest with no account was named by the start of

@@ -2,6 +2,12 @@
   {
     "date": "2026-11-17",
     "type": "improvement",
+    "title": "Messages fills the whole screen",
+    "details": "Messages was a bordered box in the middle of the page under a big \"Messages\" heading. The heading and the line under it are gone (the sidebar already says Messages), and your chats and the conversation now run edge to edge, from the sidebar to the right side of the window and from the top to the bottom. On a phone the list and an open chat fill the screen above the bottom bar."
+  },
+  {
+    "date": "2026-11-17",
+    "type": "improvement",
     "title": "Desktop app 1.2.0: Take a selfie works on a Mac",
     "details": "A new desktop app release. The Mac app now tells macOS why it may use the camera, which macOS requires before Take a selfie can open it. Windows and Linux get the same release. Download it again from the Download page to update."
   },

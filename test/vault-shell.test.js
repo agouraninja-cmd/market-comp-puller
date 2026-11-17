@@ -278,8 +278,9 @@ test("a member page's own title rule names no Georgia", () => {
     assert.match(body, /font-weight:600/, `${file}: ${sel} is not the title weight`);
   }
   // Messages' title carried a size of its own inline (26px), which out-ranked
-  // every rule.
-  assert.match(read("messages-page.js"), /<h1 style="margin:0 0 4px">Messages<\/h1>/);
+  // every rule. Since 2026-11-17 it is not on screen at all (the rail says
+  // Messages): only a screen reader's copy, with no style of its own.
+  assert.match(read("messages-page.js"), /<h1 class="vh">Messages<\/h1>/);
 });
 
 test("a member page's own headings and figures name no Georgia", () => {

@@ -558,17 +558,18 @@ test("on a phone an open chat is one screen: the stream scrolls inside it and th
   assert.ok(narrow, "the one-pane block moved");
   // A fixed height, the grid's one row held to it (an auto row grows with
   // its content and the page's overflow:hidden would cut it off), and the
-  // screen as it is now (dvh) after the fallback (vh), never before it.
-  assert.match(narrow[0], new RegExp(CHAT + "\\{grid-template-rows:minmax\\(0,1fr\\);min-height:0;margin-bottom:8px;\\s*height:calc\\(100vh - 16px\\);height:calc\\(100dvh - 16px\\)\\}"));
+  // screen as it is now (dvh) after the fallback (vh), never before it. The
+  // whole screen since 2026-11-17, when the page lost its border.
+  assert.match(narrow[0], new RegExp(CHAT + "\\{grid-template-rows:minmax\\(0,1fr\\);min-height:0;\\s*height:100vh;height:100dvh\\}"));
   assert.match(narrow[0], new RegExp(CHAT + " \\.msg-main\\{min-height:0;overflow-y:auto\\}"));
   assert.match(css, /\.msg-stream\{flex:1;overflow-y:auto;min-height:0;/, "the stream no longer scrolls inside the chat");
-  // With the phone bar under it: 54px of bar (server.js RAIL_CSS), 8px above
-  // the chat and 8px between the two, and the safe area the bar also keeps.
+  // With the phone bar under it: down to the 54px bar (server.js RAIL_CSS)
+  // and the safe area the bar also keeps (54 + 8 + 8 until 2026-11-17).
   const bar = css.match(/@media screen and \(max-width:899px\)\{\s*html\.nav-rail \.msg-page[\s\S]*?\n\}/);
   assert.ok(bar, "the chat lost its rule for the phone bar");
-  assert.match(bar[0], new RegExp("html\\.nav-rail " + CHAT + "\\{\\s*height:calc\\(100vh - 70px - env\\(safe-area-inset-bottom,0px\\)\\);height:calc\\(100dvh - 70px - env\\(safe-area-inset-bottom,0px\\)\\)\\}"));
+  assert.match(bar[0], new RegExp("html\\.nav-rail " + CHAT + "\\{\\s*height:calc\\(100vh - 54px - env\\(safe-area-inset-bottom,0px\\)\\);height:calc\\(100dvh - 54px - env\\(safe-area-inset-bottom,0px\\)\\)\\}"));
   const rail = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
-  assert.match(rail, /html\.nav-rail body\{padding-bottom:calc\(54px \+ env\(safe-area-inset-bottom,0px\)\)\}/, "the phone bar is no longer 54px: the chat's 70px is 54 + 8 + 8");
+  assert.match(rail, /html\.nav-rail body\{padding-bottom:calc\(54px \+ env\(safe-area-inset-bottom,0px\)\)\}/, "the phone bar is no longer 54px: the chat stops 54px from the foot of the screen");
   // The Feedback button floats over the corner Send is in: put away while a
   // chat is open, and Send moved clear of it where :has() is not understood.
   // The composer's own padding since it became one line (2026-11-17): its
@@ -599,9 +600,11 @@ test("on a phone an open chat is one screen: the stream scrolls inside it and th
     new Function("window", "$", src[0] + "; fitThread();")(win, (id) => { assert.equal(id, "msgPage"); return { getBoundingClientRect: () => ({ top }) }; });
     return calls;
   };
-  assert.deepEqual(run(true, 297, 0), [[0, 289]], "the chat is not brought to 8px under the top of the screen");
-  assert.deepEqual(run(true, -40.4, 500), [[0, 452]], "scrolled past it, the chat is not brought back");
-  assert.deepEqual(run(true, 5, 0), [[0, 0]], "it asked to scroll above the page");
+  // Flush with the top since 2026-11-17 (8px under it before, to show the
+  // box's edge; the page has no border now).
+  assert.deepEqual(run(true, 297, 0), [[0, 297]], "the chat is not brought to the top of the screen");
+  assert.deepEqual(run(true, -40.4, 500), [[0, 460]], "scrolled past it, the chat is not brought back");
+  assert.deepEqual(run(true, -5, 0), [[0, 0]], "it asked to scroll above the page");
   assert.deepEqual(run(false, 297, 0), [], "a wide screen was scrolled: there the chat is beside the list");
   // A browser with no matchMedia is left alone, never thrown at.
   new Function("window", "$", src[0] + "; fitThread();")({}, () => ({}));
@@ -625,28 +628,34 @@ test("on a computer Messages is one screen: the list and the chat scroll inside 
   const css = html.slice(html.indexOf("<style>"), html.indexOf("</style>")).replace(/\/\*[\s\S]*?\*\//g, "");
   const wide = css.match(/@media \(min-width:901px\)\{\s*\.msg-page\{[\s\S]*?\n\}/);
   assert.ok(wide, "the one-screen block for a computer moved");
-  // As tall as the window under the page's own heading, never shorter than
-  // a usable chat; the plain-vh line first, for a browser without max().
-  assert.match(wide[0], /\.msg-page\{grid-template-rows:minmax\(0,1fr\);min-height:0;margin-bottom:16px;\s*height:calc\(100vh - 186px\);height:max\(460px,calc\(100dvh - var\(--msg-top,170px\) - 16px\)\)\}/);
+  // As tall as the window under wherever the page starts, never shorter
+  // than a usable chat; the plain-vh line first, for a browser without
+  // max(). Down to the window's foot since 2026-11-17 (no heading above it
+  // and no border round it: beside the rail it starts at the top, 0px).
+  assert.match(wide[0], /\.msg-page\{grid-template-rows:minmax\(0,1fr\);min-height:0;\s*height:100vh;height:max\(460px,calc\(100dvh - var\(--msg-top,0px\)\)\)\}/);
   assert.match(wide[0], /\.msg-side,\.msg-main\{min-height:0\}/, "a column may grow past the page again");
   // Both lists and both right-hand panes scroll inside themselves.
   assert.match(css, /\.msg-threads\{flex:1;overflow-y:auto;min-height:0\}/);
   assert.match(css, /\.msg-stream\{flex:1;overflow-y:auto;min-height:0;/);
   assert.match(css, /\.msg-rbody\{flex:1;overflow-y:auto;min-height:0;/, "a report's pane would be cut off at the page's foot");
 
-  // Where the page starts is measured, because the heading wraps differently
-  // at every width; an answer that cannot be right falls back to the 170px.
+  // Where the page starts is measured, because what is above it (the top
+  // bar of the rollback shell, a notice) differs; an answer that cannot be
+  // right falls back to the stylesheet's. 0 is a real answer since
+  // 2026-11-17: a page with no height is the one not laid out yet.
   const js = scriptOf(html);
-  const run = (top, y, hidden) => {
+  const run = (top, y, hidden, height) => {
     const calls = [];
-    const el = { hidden: !!hidden, getBoundingClientRect: () => ({ top }),
+    const el = { hidden: !!hidden, getBoundingClientRect: () => ({ top, height: height == null ? 700 : height }),
       style: { setProperty: (k, v) => calls.push([k, v]), removeProperty: (k) => calls.push([k, null]) } };
     new Function("window", "$", fnOf(js, "sizePage") + "; sizePage();")({ pageYOffset: y }, () => el);
     return calls;
   };
   assert.deepEqual(run(167.6, 0), [["--msg-top", "168px"]]);
   assert.deepEqual(run(-32, 200), [["--msg-top", "168px"]], "a scrolled page measured a different start");
-  assert.deepEqual(run(0, 0), [["--msg-top", null]], "a page that is not laid out yet was believed");
+  assert.deepEqual(run(0, 0), [["--msg-top", "0px"]], "a page at the top of the screen, beside the rail, was not believed");
+  assert.deepEqual(run(0, 0, false, 0), [["--msg-top", null]], "a page that is not laid out yet was believed");
+  assert.deepEqual(run(-10, 0), [["--msg-top", null]], "a start above the document was believed");
   assert.deepEqual(run(168, 0, true), [], "a hidden page was measured");
   assert.match(fnOf(js, "ungate"), /\$\("msgPage"\)\.hidden = false;\s*sizePage\(\);/, "the page is not measured when it is shown");
   assert.match(js, /window\.addEventListener\("resize", sizePage\);/);

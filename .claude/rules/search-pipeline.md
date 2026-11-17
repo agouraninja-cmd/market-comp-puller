@@ -8,6 +8,10 @@ paths:
   - "eval-set.json"
   - "scripts/compare-thinking.js"
   - "scripts/verify-gemini-stream.js"
+  - "truth-score.js"
+  - "truth-set.json"
+  - "scripts/truth-test.js"
+  - "test/truth-*.test.js"
   - "test/search-provider-*.test.js"
   - "test/report-parse.test.js"
   - "test/link-check.test.js"
@@ -340,6 +344,103 @@ paths:
 with the key and update the constant — an earlier model ID was retired.
 
 **Measuring a model or prompt change** (2026-08-09, contamination doors closed and a database refusal added 2026-08-10). `run-eval.js` puts the 12 fixed targets in `eval-set.json` through real searches and scores each report with the pure, tested `eval-score.js` (priced sale comps and whether a valuation was possible at all, provenance weighted with `valuation.js`'s own `TIER_WEIGHT`, aggregate-address and out-of-window and off-market rates, narrative lengths against the 2026-08-03 caps, wall clock). It is a SCORECARD, not an assertion suite: nothing has a pass/fail threshold, because a dozen stochastic searches are noisy, and the product is `--compare` between two runs. Summaries land in `docs/evals/`, timestamped in the filename so a same-day, same-label rerun can never silently clobber a possibly-good baseline (committed, so history accumulates); raw reports go to the git-ignored `eval-runs/`. Several things make it trustworthy and must not be undone. The run sends `fresh: true`, an internal-only flag that skips BOTH cache read paths (the exact hit and the derivable-window one), because a cached report would score the model that wrote it and report a false "no difference". Before every run the runner also wipes two local files and records both in the summary: `comp-corpus.jsonl` (`corpusWiped`), because `corpusRowsForMarket` reads that file fallback even with no database configured, so a previous run's harvest would otherwise hand the next run corpus coverage and a smaller search budget; and `subject-sizes.json` (`subjectSizesWiped`), because no eval target supplies `subjectSizeSqft`, so a previous run's building-size lookup would otherwise be found by `findKnownSubjectSize`, again shrinking the search budget and also silently backfilling `subject_size_sqft` regardless of what the run's own model did. The subject-size wipe is not the whole fix: `findKnownSubjectSize` also keeps an in-memory `subjectSizesMem` Map that a file delete cannot clear, so **the server must be restarted, not just have its files wiped, between two runs that are being compared** (the corpus read hits disk on every call with no in-memory layer, so it does not need this). A model comparison already forces a restart because `MODEL` is read once at server startup; this restart rule mainly matters for an A/A run pair meant to measure noise, where nothing else would force one. Before spending anything, the runner also probes the target with `GET /api/stats` (the admin key) and reads `introRequests.db`: a confirmed `true`, a failed probe, or the field simply missing all refuse the run and name the risk, because isolation (`SUPABASE_URL` blank on the server under test) is enforced only by however that server was launched, and a database the runner can see is a database it would both write into and read stale corpus coverage from; only a confirmed `false` proceeds. `EVAL_SKIP_DB_CHECK=1` is the deliberate override for someone who has already verified the database really is disposable. And the runner must target a server started from a separate worktree with `SUPABASE_URL` blank, so every write lands in that worktree's own fallback files instead of production's corpus, market pages, and cache: on Windows this is a documented trap, because in PowerShell `$env:SUPABASE_URL = ""` DELETES the variable rather than emptying it, so server.js's `.env` loader (which only fills vars that are `undefined`) silently restores whatever the worktree's own `.env` holds. Copy ONLY the `ANTHROPIC_API_KEY` line into the eval worktree's `.env`, never the whole file, and prefer a `node -e` launcher that sets `process.env.SUPABASE_URL = ""` (and `SUPABASE_SERVICE_KEY`) explicitly before requiring `./server.js`. A full run costs about $4.30, a model comparison about $8.60. The accuracy backtest (`/api/accuracy`) is the other half of the picture and answers a different question: it scores the reconciliation math over comps already harvested, never what a search found.
+
+**The truth test: the whole tool against a real closed price (2026-11-17; the
+owner: "Create the best way to test the market Comp Puller accuracy").** The
+two instruments above each hold something fixed. `run-eval.js` scores a
+search on proxies (comp count, provenance) and has no answer key. The
+backtest and the accuracy lab (corpus.md) grade the math over comps already
+saved, most of them asking prices. Neither can answer "this building sold for
+$5,250,000; what did CompNinja say?" This does.
+`node scripts/truth-test.js` reads an answer key of buildings with a known
+CLOSED price, runs a real `/api/comps` search on each address, values the
+report with the hero's own arithmetic, and prints the miss. Without `--yes`
+it prints the plan and the bill and spends nothing; `--only 2` proves the
+plumbing; `--rescore <run.json>` re-scores a saved run for free; `--compare
+a.json b.json` pairs two runs building for building; `--typed-size` sends
+each building's true size the way an owner who knows it would; `--thinking
+low` matches production. The scoring is the pure `truth-score.js`
+(`test/truth-score.test.js`); the runner's promises are executed against a
+real server and a stub provider in `test/truth-test-run.test.js`.
+- **The answer key is two files.** `truth-set.json` (committed) holds sales
+  whose price is public. `truth-set.private.json` (git-ignored; start it with
+  `--init-private`) holds closed deals whose price is not, which in a
+  non-disclosure state like Idaho is all of them, and is where a broker's own
+  closings go. The truth file is the test: key every price from the closing
+  document or the public record, never from a CompNinja report. A bad entry
+  (no street number, a price with no date, the same building twice) stops the
+  run before anything is spent. `truth-set.json` shipped with NO sales: the
+  cloud session that built this could not open a single source page (its
+  network allowed only our own hosts), so the thirteen candidates it found
+  sit under `leads`, which the runner never runs, each with a link and what
+  still has to be read off the page.
+- **The number scored is the number a customer sees.** The value is
+  `BULK.valueFromReport` (renderOwnerHero reduced to its arithmetic over
+  valuation.js), with the hero's two-priced-sales bar. Land is valued per
+  acre, ⚠ mirroring index.html's `altBasisRange` (bulk.js has no such
+  branch, and salePsfOf refuses a figure under $1/SF, which is most raw
+  land). The lookback is each type's `RECOMMENDED_LOOKBACK`, ⚠ mirrored as
+  `LOOKBACK_MONTHS`; a test reads index.html and compares the two. The
+  request is the customer's default (12 comps, sales and leases, no size
+  typed), sent as an internal caller with `fresh: true`.
+- **The price never leaves the machine.** A request carries the address, the
+  type and the window. The closed price is read only by truth-score.js after
+  the report is back; in a prompt it would be the answer. The run test reads
+  every request off the wire and fails if a price is in one.
+- **The building never prices itself.** A comp that IS the subject (the same
+  street line through backtest.js's `normAddress`, or the same price beside
+  the same size or closing month) is removed before valuing and counted.
+  Price alone is not enough: two pads do both sell for $2,000,000.
+- **Peeking is measured, not assumed away.** The search looks up the
+  subject's own last sale on purpose (`subject_last_sale`), so for a sale the
+  web already holds the model usually knows the answer, even though the math
+  never reads it. Each row records whether it did (`knewPrice`: the found
+  sale within 2% of the truth, or a removed comp) and the scorecard splits
+  the miss on it. The clean figures come from the private file (prices the
+  web does not hold) and from **open entries**: a building entered with no
+  `sale_price` is searched and its prediction stored; when it closes, fill
+  the price in and `--rescore` that run. The stored valuation is held
+  against a price that did not exist when it was made (`prospective`), and
+  no search runs again.
+- **Every building gets a new server with a new empty `DATA_DIR`.** One
+  server for the run was the first build, and it leaked: a search harvests
+  its comps and the next search in that market is handed them by corpus-first
+  retrieval, so building two's prompt carried building one's findings,
+  building one's own sale among them, and the score depended on the order of
+  the file. Found by a test that expected two identical reports to value the
+  same. So every report is a COLD search: no saved comps, no cache, no
+  remembered size. That is the floor a production report starts from, not a
+  copy of production, which also blends in saved deals nearby (the radius
+  blend does not run for an internal caller at all).
+- **It cannot reach production.** Each server is started with
+  `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` assigned empty (never deleted: the
+  `.env` loader refills an undefined one, run-eval.js's trap), a key only the
+  run knows as `ADMIN_KEY`, and mail and Stripe blanked, and must answer
+  `introRequests.db === false` on `/api/stats` before a search is sent.
+- **What it prints.** Per building: sold for, Low / Likely / High, the miss,
+  and whether the price fell in the range. Then the appraisal industry's
+  reading of an automated valuation, the names the backtest already uses:
+  median miss with a 90% interval (resampling buildings), the share within
+  10% and 20%, the lean (median SIGNED miss), how often the price landed
+  between Low and High, and the hit rate (could it put a dollar range on the
+  building at all). Then where the miss comes from: the same comps with the
+  TRUE size typed in (the hero multiplies the size, so a wrong lookup is the
+  whole error), the size lookup's own miss, and a reading that uses only
+  comps dated on or before the closing, valued at the closing (no
+  look-ahead; needs three). Under 20 scored sales the headline is printed
+  with a warning, the backtest's floor.
+- **What is saved.** The full run, reports included, under the git-ignored
+  `eval-runs/truth-<label>-<stamp>/run.json`, which `--rescore` reads. A
+  summary under `docs/evals/` to commit, in which a private entry keeps its
+  percentages and loses its address, market, price and every dollar figure
+  (`TRUTH.publicRow`; a dollar estimate beside its percentage error is the
+  price). Its id is kept, so the private stub asks for neutral ids.
+- **Cost.** One billed search per building: about $0.03 on Gemini, about
+  $0.36 on Anthropic. The real spend is read off each report's `_call`.
+- **Not built, on purpose.** Running each building several times to measure
+  the model's own wobble (the interval covers the sample, not the model). A
+  card on `/admin`. Per-unit valuation for multifamily with no size (the
+  hero's fallback when a member types a unit count; the test types nothing).
 
 ## Architecture
 

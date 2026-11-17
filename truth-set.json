@@ -1,0 +1,34 @@
+{
+  "_how": "The answer key for scripts/truth-test.js: buildings that actually SOLD, with the closed price. THE TRUTH FILE IS THE TEST. Key every figure from the public record or the page that states it, never from a CompNinja report, or the scorecard grades the tool against itself. Only sales whose price is PUBLIC belong in this file, because it is committed; a closed deal whose price is not public goes in truth-set.private.json (git-ignored; start it with: node scripts/truth-test.js --init-private). Single properties only, arms-length, closed: no portfolios, auctions, foreclosures, ground leases, partial interests, or asking prices. Changing or removing an entry breaks comparison with older runs in docs/evals, so add rather than edit.",
+  "_fields": {
+    "id": "short, lowercase, unique, never reused: elgin-ind-01",
+    "address": "123 Main St, City, ST 12345 (must start with the street number and end City, ST)",
+    "type": "Industrial | Office | Retail | Multifamily | Land | Residential",
+    "sale_price": "the CLOSED price as a plain number: 5250000. Leave it and sale_date out for a building that has not closed yet; its prediction is stored, and filling them in later scores it with --rescore",
+    "sale_date": "the closing month, YYYY-MM (or YYYY-MM-DD)",
+    "size_sqft": "building square feet (the lot, for Land). Optional, but without it the size lookup cannot be graded",
+    "units": "Multifamily only, optional",
+    "lot_acres": "Land only, optional",
+    "source": "the page or record that states the price",
+    "checked": "true once a person has opened the source and confirmed price, address, size and date",
+    "months": "optional: a lookback window other than that type's default",
+    "note": "anything a careful reader should know"
+  },
+  "sales": [],
+  "_leads_how": "NOT part of the test, and never run. These came from search-result summaries on 2026-11-17; nobody has opened the pages, and the summaries' dates were unreliable. To use one: open the link, read the price, street address, size and closing month off the page itself, confirm it closed in the last 18 months as a single-property arms-length sale, then write it into \"sales\" above with \"checked\": true and delete it here. If the page disagrees with the line below, the page wins.",
+  "leads": [
+    { "type": "Industrial", "where": "Elgin, IL", "said": "$24.8M, 442,601 SF", "needs": "street address, closing month", "url": "https://rebusinessonline.com/lee-associates-brokers-24-8m-sale-of-industrial-building-in-elgin-illinois/" },
+    { "type": "Industrial", "where": "West Chester, OH", "said": "$8M, 76,501 SF flex", "needs": "street address, closing month (may be too recent to have closed)", "url": "https://rebusinessonline.com/cbre-arranges-8m-sale-of-flex-industrial-property-in-southwest-ohio/" },
+    { "type": "Office", "where": "2300 E Katella Ave, Anaheim, CA", "said": "$15.1M, about 69,032 SF", "needs": "closing month", "url": "https://rebusinessonline.com/cbre-arranges-sale-of-69032-sf-office-property-in-anaheim-california/" },
+    { "type": "Office", "where": "4500 Salisbury Rd, Jacksonville, FL", "said": "$14.7M, 151,815 SF", "needs": "closing month", "url": "https://rebusinessonline.com/nai-hallmark-arranges-14-7m-sale-of-butler-pointe-office-building-in-jacksonville/" },
+    { "type": "Office", "where": "1054 S De Anza Blvd, San Jose, CA", "said": "$9.7M, 31,701 SF", "needs": "closing month", "url": "https://rebusinessonline.com/marcus-millichap-brokers-sale-of-31701-sf-multi-tenant-office-building-in-san-jose-california/" },
+    { "type": "Office", "where": "20 Park Rd, Burlingame, CA", "said": "$5.4M, 6,815 SF", "needs": "closing month", "url": "https://rebusinessonline.com/matthews-real-estate-brokers-sale-of-6815-sf-office-property-in-burlingame-california/" },
+    { "type": "Retail", "where": "Santa Clarita, CA", "said": "$27.5M, 120,559 SF center on 12.6 acres", "needs": "street address, closing month", "url": "https://rebusinessonline.com/srs-real-estate-brokers-27-5m-sale-of-value-add-retail-property-in-santa-clarita-california/" },
+    { "type": "Retail", "where": "Middleburg, FL", "said": "$8.4M, 17,400 SF", "needs": "street address, closing month", "url": "https://rebusinessonline.com/marcus-millichap-brokers-8-4m-sale-of-retail-center-in-metro-jacksonville/" },
+    { "type": "Retail", "where": "Derby, CT", "said": "$15.4M, 170,683 SF", "needs": "street address, closing month", "url": "https://rebusinessonline.com/ipa-brokers-15-4m-sale-of-shopping-center-in-derby-connecticut/" },
+    { "type": "Multifamily", "where": "Belmont, CA", "said": "$20.2M; 38 or 39 units (the summary showed both)", "needs": "street address, unit count, building SF, closing month", "url": "https://rebusinessonline.com/marcus-millichap-brokers-20-2m-sale-of-el-dorado-apartments-in-belmont-california/" },
+    { "type": "Multifamily", "where": "Wausau, WI", "said": "$15M, 75 units", "needs": "street address, building SF, closing month", "url": "https://rebusinessonline.com/marcus-millichap-brokers-15m-sale-of-multifamily-property-in-wausau-wisconsin/" },
+    { "type": "Multifamily", "where": "Birmingham, AL", "said": "$5.6M, 141 units", "needs": "street address, building SF, closing month", "url": "https://rebusinessonline.com/marcus-millichap-brokers-5-6m-sale-of-apartment-community-in-birmingham/" },
+    { "type": "Land", "where": "Waterloo, WI", "said": "$1.1M, 10.7 acres", "needs": "street address or parcel address, closing month", "url": "https://rebusinessonline.com/cbre-arranges-sale-of-development-site-for-96-unit-multifamily-project-in-waterloo-wisconsin/" }
+  ]
+}

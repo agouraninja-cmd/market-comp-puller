@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-11-17",
+    "type": "feature",
+    "title": "A truth test: real reports held against real closed prices",
+    "details": "There is now one command that answers “this building sold for $5,250,000; what did CompNinja say it was worth?” It reads an answer key of buildings with a known closed price, runs the real report on each address, and prints how far Likely landed from the price, how often the price fell between Low and High, which way the estimates lean, and how much of the miss came from the size lookup rather than the comps. It also says how often the search had already found the building’s own sale, removes that sale from the comps before valuing, and can store a prediction for a building that has not closed yet and score it later. Each building is searched on its own throwaway server with no database, so nothing reaches production and one building’s findings cannot help the next. The closed price is never sent anywhere. Until now the accuracy tools graded the math and the search separately, and mostly against asking prices. The answer key starts with six sales read off published articles (four offices and two retail centers), with seven more waiting on a street address; the best additions are closed deals whose prices are not public, which go in a private file that is never committed. Run it with: node scripts/truth-test.js"
+  },
+  {
     "date": "2026-11-16",
     "type": "feature",
     "title": "Seen and typing in Messages",

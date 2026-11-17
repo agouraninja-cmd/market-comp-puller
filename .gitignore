@@ -17,6 +17,10 @@ server.err.log
 # Raw per-target reports from run-eval.js (the committed summary lives in docs/evals/)
 eval-runs/
 
+# The truth test's private answer key (scripts/truth-test.js): closed deals
+# whose price is not public record. Addresses and prices; never commit.
+truth-set.private.json
+
 # Before/after design screenshots (scripts/shot.js) — regenerate, never commit
 screenshots/
 

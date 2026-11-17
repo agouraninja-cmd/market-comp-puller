@@ -149,7 +149,9 @@ session that never reads it.
     `boundaryStyle`; `BULK_SUBJECT_FIELDS` / `TYPE_SUBJECT_FIELDS`; the vault
     page's refusal needles; home-map.js `PERMIT_STAGES` / `tidyCaps` and
     permits-page.js `STAGE_NAMES` / `tidy`; index.html's `houseNumberOf` /
-    `unitDesignatorOf` and building-photo.js's copies). Grep for ⚠ before changing either side.
+    `unitDesignatorOf` and building-photo.js's copies; index.html's
+    `RECOMMENDED_LOOKBACK` / `altBasisRange` and truth-score.js's
+    `LOOKBACK_MONTHS` / `landPerAcre`). Grep for ⚠ before changing either side.
 12. **Nothing mails or sweeps on a timer.** The watchlist digest, the trial
     emails and the permit sweep are `ADMIN_KEY`-gated routes driven from
     outside the process. A ledger is marked only after the send, and opening
@@ -460,7 +462,7 @@ gone. Document a new feature in its area's file, not here.
 
 | File | What it holds | Loads when Claude opens |
 |---|---|---|
-| `search-pipeline.md` | `POST /api/comps`, prompt, cache, live progress (SSE), providers, `MODEL`, `THINKING_LEVEL`, measuring a model change (`run-eval.js`), upstream health, the source-link check, flows 1 and 5 (parsing, currency) | `search-provider-*.js`, `report-parse.js`, `link-check.js`, `run-eval.js`, `eval-*` |
+| `search-pipeline.md` | `POST /api/comps`, prompt, cache, live progress (SSE), providers, `MODEL`, `THINKING_LEVEL`, measuring a model change (`run-eval.js`), the truth test (`scripts/truth-test.js`: real reports against real closed prices), upstream health, the source-link check, flows 1 and 5 (parsing, currency) | `search-provider-*.js`, `report-parse.js`, `link-check.js`, `run-eval.js`, `eval-*`, `truth-*` |
 | `corpus.md` | the comp corpus and its health alarm, corpus-first retrieval, radius blend, archive-first, metro matching, on-market listings, `/api/corpus-comps`, the accuracy backtest | `corpus-*.js`, `blend-corpus.js`, `backtest.js`, `market.js`, `deal-date.js` |
 | `report-and-valuation.md` | the report front end: search form, valuation math and hero, flows 2–4 and 3a–3f, private comps on screen and in exports, PowerPoint export, the Collateral Check card | `index.html`, `valuation.js`, `comp-gate.js`, `market-snapshot.js`, `collateral-check.js` |
 | `billing.md` | Pro tier, trial, prices, free allowance, passkeys, admin access, branding, trial emails, `/api/config`, `/pricing` | `entitlements.js`, `stripe.js`, `branding.js`, `trial-notices.js`, `pricing-page.js` |

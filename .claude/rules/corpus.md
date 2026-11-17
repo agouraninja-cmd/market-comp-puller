@@ -211,7 +211,9 @@ paths:
   fresh search) and runs untrended (corpus rows do not store the market trend
   a live search used), and the card says both of those things next to the
   numbers. Not a public accuracy claim — nothing from this ships to a
-  marketing surface.
+  marketing surface. Since 2026-11-17 the question it cannot answer (how far
+  a real report lands from a real closed price, search included) has its own
+  instrument: the truth test, `scripts/truth-test.js`, in search-pipeline.md.
   **It feeds the math year built (2026-11-15).** The live report weights by
   vintage whenever it knows the subject's year, corpus rows carry one, and the
   backtest passed neither, so the card graded a weighting no customer's report

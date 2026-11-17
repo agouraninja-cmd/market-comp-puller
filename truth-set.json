@@ -1,0 +1,137 @@
+{
+  "_how": "The answer key for scripts/truth-test.js: buildings that actually SOLD, with the closed price. THE TRUTH FILE IS THE TEST. Key every figure from the public record or the page that states it, never from a CompNinja report, or the scorecard grades the tool against itself. Only sales whose price is PUBLIC belong in this file, because it is committed; a closed deal whose price is not public goes in truth-set.private.json (git-ignored; start it with: node scripts/truth-test.js --init-private). Single properties only, arms-length, closed: no portfolios, auctions, foreclosures, ground leases, partial interests, or asking prices. Changing or removing an entry breaks comparison with older runs in docs/evals, so add rather than edit.",
+  "_fields": {
+    "id": "short, lowercase, unique, never reused: elgin-ind-01",
+    "address": "123 Main St, City, ST 12345 (must start with the street number and end City, ST)",
+    "type": "Industrial | Office | Retail | Multifamily | Land | Residential",
+    "sale_price": "the CLOSED price as a plain number: 5250000. Leave it and sale_date out for a building that has not closed yet; its prediction is stored, and filling them in later scores it with --rescore",
+    "sale_date": "the closing month, YYYY-MM (or YYYY-MM-DD)",
+    "size_sqft": "building square feet (the lot, for Land). Optional, but without it the size lookup cannot be graded",
+    "units": "Multifamily only, optional",
+    "lot_acres": "Land only, optional",
+    "source": "the page or record that states the price",
+    "checked": "true once a person has opened the source and confirmed price, address, size and date",
+    "months": "optional: a lookback window other than that type's default",
+    "note": "anything a careful reader should know"
+  },
+  "sales": [
+    {
+      "id": "anaheim-off-01",
+      "address": "2300 E Katella Ave, Anaheim, CA",
+      "type": "Office",
+      "sale_price": 15100000,
+      "sale_date": "2026-03",
+      "size_sqft": 69032,
+      "source": "https://rebusinessonline.com/cbre-arranges-sale-of-69032-sf-office-property-in-anaheim-california/",
+      "checked": false,
+      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+    },
+    {
+      "id": "jax-off-01",
+      "address": "4500 Salisbury Rd, Jacksonville, FL",
+      "type": "Office",
+      "sale_price": 14700000,
+      "sale_date": "2026-07",
+      "size_sqft": 151815,
+      "source": "https://rebusinessonline.com/nai-hallmark-arranges-14-7m-sale-of-butler-pointe-office-building-in-jacksonville/",
+      "checked": false,
+      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+    },
+    {
+      "id": "sanjose-off-01",
+      "address": "1054 S De Anza Blvd, San Jose, CA",
+      "type": "Office",
+      "sale_price": 9700000,
+      "sale_date": "2025-06",
+      "size_sqft": 31701,
+      "source": "https://rebusinessonline.com/marcus-millichap-brokers-sale-of-31701-sf-multi-tenant-office-building-in-san-jose-california/",
+      "checked": false,
+      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+    },
+    {
+      "id": "burlingame-off-01",
+      "address": "20 Park Rd, Burlingame, CA",
+      "type": "Office",
+      "sale_price": 5400000,
+      "sale_date": "2025-05",
+      "size_sqft": 6815,
+      "source": "https://rebusinessonline.com/matthews-real-estate-brokers-sale-of-6815-sf-office-property-in-burlingame-california/",
+      "checked": false,
+      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+    },
+    {
+      "id": "santaclarita-ret-01",
+      "address": "23126 Valencia Blvd, Santa Clarita, CA",
+      "type": "Retail",
+      "sale_price": 27500000,
+      "sale_date": "2026-09",
+      "size_sqft": 120559,
+      "source": "https://rebusinessonline.com/srs-real-estate-brokers-27-5m-sale-of-value-add-retail-property-in-santa-clarita-california/",
+      "checked": false,
+      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record. The article gives the center as 23126-23170 Valencia Blvd; 80 percent leased at sale."
+    },
+    {
+      "id": "middleburg-ret-01",
+      "address": "1690 Jeremiah St, Middleburg, FL",
+      "type": "Retail",
+      "sale_price": 8400000,
+      "sale_date": "2026-04",
+      "size_sqft": 17400,
+      "source": "https://rebusinessonline.com/marcus-millichap-brokers-8-4m-sale-of-retail-center-in-metro-jacksonville/",
+      "checked": false,
+      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+    }
+  ],
+  "_leads_how": "NOT part of the test, and never run. Each article below was opened on 2026-11-17 and its price and size are as the article states them, but the article gives NO STREET ADDRESS, and a search needs one. To use one: find the property's street address (the county assessor, or the broker's listing), then write it into \"sales\" above and delete it here.",
+  "leads": [
+    {
+      "type": "Industrial",
+      "where": "Elgin, IL",
+      "said": "$24.8M, 442,601 SF, article dated 2026-06",
+      "needs": "street address",
+      "url": "https://rebusinessonline.com/lee-associates-brokers-24-8m-sale-of-industrial-building-in-elgin-illinois/"
+    },
+    {
+      "type": "Industrial",
+      "where": "Liberty Office Park, West Chester, OH",
+      "said": "$8M, 76,501 SF flex, article dated 2026-11",
+      "needs": "street address",
+      "url": "https://rebusinessonline.com/cbre-arranges-8m-sale-of-flex-industrial-property-in-southwest-ohio/"
+    },
+    {
+      "type": "Retail",
+      "where": "Derby Shopping Center, Derby, CT",
+      "said": "$15.4M, 170,683 SF, article dated 2026-03",
+      "needs": "street address",
+      "url": "https://rebusinessonline.com/ipa-brokers-15-4m-sale-of-shopping-center-in-derby-connecticut/"
+    },
+    {
+      "type": "Multifamily",
+      "where": "El Dorado Apartments, Belmont, CA",
+      "said": "$20.2M, 39 units, article dated 2026-05",
+      "needs": "street address, building SF",
+      "url": "https://rebusinessonline.com/marcus-millichap-brokers-20-2m-sale-of-el-dorado-apartments-in-belmont-california/"
+    },
+    {
+      "type": "Multifamily",
+      "where": "The Apartments at Riverlife, Wausau, WI",
+      "said": "$15M, 75 units, 72,177 rentable SF, article dated 2026-07",
+      "needs": "street address",
+      "url": "https://rebusinessonline.com/marcus-millichap-brokers-15m-sale-of-multifamily-property-in-wausau-wisconsin/"
+    },
+    {
+      "type": "Multifamily",
+      "where": "Pineview Pointe Apartments, Birmingham, AL",
+      "said": "$5.6M, 141 units, article dated 2026-01",
+      "needs": "street address, building SF",
+      "url": "https://rebusinessonline.com/marcus-millichap-brokers-5-6m-sale-of-apartment-community-in-birmingham/"
+    },
+    {
+      "type": "Land",
+      "where": "Waterloo, WI",
+      "said": "$1.1M, 10.7 acres, article dated 2026-10",
+      "needs": "street or parcel address",
+      "url": "https://rebusinessonline.com/cbre-arranges-sale-of-development-site-for-96-unit-multifamily-project-in-waterloo-wisconsin/"
+    }
+  ]
+}

@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-16",
+    "type": "improvement",
+    "title": "A tidier Market Explorer",
+    "details": "The Markets page now has one title, Market Explorer, with the city search right under it; before, a member read the public site’s headline and then a second title in a box. The search box, the type menu and the Search button are one height, so their labels line up. The Board, the rankings and the search share the same corners and spacing. The list of markets has its own heading, Browse markets, with the filter box beside it, and what the filter answers (the count, or the offer to build a market) appears under the box. On a phone, a property with no value yet no longer shows stray dashes. The “Get my free valuation” block at the bottom is gone for members; it is for visitors, and the public page is unchanged."
+  },
+  {
+    "date": "2026-11-16",
     "type": "feature",
     "title": "Seen and typing in Messages",
     "details": "Under the last message you sent in a firm chat, “Seen” appears once the other person has had the chat open; a group says “Seen by 2” or “Seen by everyone”. While a colleague is writing, “Ben is typing…” shows beside the Attach button, and their message now arrives within a few seconds of being sent instead of up to fifteen. This is for chats inside your firm; conversations with clients outside it are unchanged."

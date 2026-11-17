@@ -5443,5 +5443,11 @@
     "type": "fix",
     "title": "Messages opens faster",
     "details": "The Messages list read each deal room’s latest messages one room at a time, after all of the firm’s own reads had finished, so someone with a few dozen deal rooms waited seconds for the page and for every 15-second refresh. Those reads now all go out at once, and opening a conversation runs its reads side by side too."
+  },
+  {
+    "date": "2026-11-17",
+    "type": "improvement",
+    "title": "Messages looks better",
+    "details": "Each person has their own colour circle, group chats show two faces instead of a #, the open chat shows who it is with, Chat and Comps are real tabs, and the box to type in is one line with + Comp and Send beside it. A new member sees a card to start their first conversation instead of an empty box to type into, and the paragraph under the title is one line."
   }
 ]

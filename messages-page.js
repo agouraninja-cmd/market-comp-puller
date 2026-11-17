@@ -71,6 +71,10 @@ const INFO_SVG = '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" st
 const PEN_SVG = '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" ' +
   'stroke-width="1.5" stroke-linejoin="round" aria-hidden="true">' +
   '<path d="M4 16l.8-3.2L13.3 4.3a1.5 1.5 0 012.1 0l.3.3a1.5 1.5 0 010 2.1l-8.5 8.5L4 16z"/></svg>';
+// The composer's comp button (2026-11-17): a plus, and the word on a
+// computer.
+const PLUS_SVG = '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>';
 const CHEV_SVG = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" ' +
   'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>';
 
@@ -103,35 +107,63 @@ function renderMessagesBody(boot) {
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .msg-head .sub{font-size:var(--text-label);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;max-width:none}
 .msg-grow{flex:1;min-width:0}
+/* Who the open chat is with, beside its name. A computer only: on a phone
+   the name needs the room. */
+.msg-headav{flex:0 0 38px;display:flex}
+.msg-headav .msg-av{flex:0 0 38px}
+/* Chat and Comps are tabs (2026-11-17): the one you are on is underlined in
+   red, on the header's bottom edge. They stay buttons, so the script, the
+   touch overlay and aria-pressed are what they were. */
+#msgMain .msg-head{gap:12px;min-height:64px}
+#msgTabChat,#msgTabComps{border:0;border-radius:0;background:none;align-self:stretch;margin:0 0 -14px;
+  padding:8px 6px 20px;border-bottom:2px solid transparent;color:var(--ink-3);font-weight:600;font-size:var(--text-compact)}
+#msgTabChat:hover,#msgTabComps:hover{color:var(--ink);background:none}
+#msgTabChat[aria-pressed="true"],#msgTabComps[aria-pressed="true"]{border-bottom-color:var(--red);color:var(--ink)}
 
 /* --- the thread list --------------------------------------------------- */
 /* Internal / External group labels. Labels, not tabs: both groups are always
    on screen, and the label exists so you always know which side of the wall a
    row is on before you click it. */
-.msg-sect{padding:12px 14px 4px;font-size:var(--text-tiny);letter-spacing:.14em;
+.msg-sect{padding:12px 8px 6px;font-size:var(--text-tiny);letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink-faint);font-weight:600}
-.msg-sect+.msg-row{border-top:1px solid var(--hair)}
 /* A note written about one specific comp, tagged with the building it is
    about. */
 .msg-about{font-size:var(--text-tiny);color:var(--ink-faint);margin-bottom:1px}
 
 /* The firm, quietly, at the foot of the column. */
-.msg-firm{border-top:1px solid var(--hair);padding:9px 14px;font-size:var(--text-label);
+.msg-firm{border-top:1px solid var(--line);padding:9px 14px;font-size:var(--text-label);
   color:var(--ink-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Used by the New panel's people rows. */
 .msg-sub{display:block;font-size:var(--text-label);color:var(--ink-3);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;margin-top:1px}
-.msg-search{padding:10px 12px;border-bottom:1px solid var(--hair)}
-.msg-search input{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:var(--r-md);
-  padding:7px 10px;font:inherit;font-size:var(--text-small);background:var(--paper);color:var(--ink)}
+.msg-search{padding:4px 12px 8px}
+.msg-search input{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:var(--r-pill);
+  padding:7px 14px;font:inherit;font-size:var(--text-small);background:var(--wash);color:var(--ink)}
+/* The list is rounded rows inside an 8px margin, with no rules between them
+   (Draft A of the Messages drafts, 2026-11-17). */
 .msg-threads{flex:1;overflow-y:auto;min-height:0}
+#msgThreads,#msgReports{padding:0 8px 8px}
 .msg-row{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;
-  padding:11px 14px;border:0;border-bottom:1px solid var(--hair);background:transparent;
+  padding:10px;margin:1px 0;border:0;border-radius:var(--r-lg);background:transparent;
   cursor:pointer;font:inherit;color:var(--ink)}
 .msg-row:hover{background:var(--wash)}
 .msg-row[aria-current="true"]{background:var(--wash-2);box-shadow:inset 3px 0 0 var(--red)}
-.msg-av{flex:0 0 34px;width:34px;height:34px;border-radius:50%;background:var(--slab);color:#fff;
-  font-size:var(--text-label);font-weight:600;display:flex;align-items:center;justify-content:center;text-transform:uppercase}
+.msg-av{flex:0 0 38px;width:38px;height:38px;border-radius:50%;background:var(--slab);color:#fff;
+  font-size:var(--text-small);font-weight:600;display:flex;align-items:center;justify-content:center;text-transform:uppercase}
+/* A colour per person (2026-11-17), picked from their account by tint() in
+   the script, so one person is one colour everywhere on the page. The reader
+   keeps the navy circle. Only the site's paired tokens, so dark mode needs
+   nothing here. */
+.msg-av.t0{background:var(--ok-bg);color:var(--ok-text);font-weight:700}
+.msg-av.t1{background:var(--warn-bg);color:var(--warn-text);font-weight:700}
+.msg-av.t2{background:var(--bv-bg);color:var(--bv-text);font-weight:700}
+.msg-av.t3{background:var(--est-bg);color:var(--est-text);font-weight:700}
+.msg-av.t4{background:var(--wash-2);color:var(--ink-2);font-weight:700}
+/* A group chat shows two of its people instead of a #. */
+.msg-av.msg-duo{position:relative;background:transparent}
+.msg-duo .msg-av{position:absolute;width:64%;height:64%;font-size:var(--text-tiny);box-shadow:0 0 0 2px var(--card)}
+.msg-duo .msg-av:first-child{left:0;top:0}
+.msg-duo .msg-av+.msg-av{right:0;bottom:0}
 .msg-av.has-photo{position:relative;overflow:hidden}
 .msg-av.has-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;max-width:none}
 .msg-av.chan{background:var(--wash-2);color:var(--ink-2);border:1px solid var(--edge)}
@@ -149,6 +181,7 @@ function renderMessagesBody(boot) {
 .msg-unread{flex:0 0 auto;min-width:19px;height:19px;padding:0 6px;border-radius:var(--r-xl);background:var(--red-fill);
   color:#fff;font-size:var(--text-tiny);font-weight:600;display:flex;align-items:center;justify-content:center}
 .msg-row.is-unread .msg-name{font-weight:700}
+.msg-row.is-unread .msg-when{color:var(--red);font-weight:600}
 .msg-row.is-unread .msg-prev{color:var(--ink-body)}
 
 /* --- who a chat is with (2026-10-02, Draft A with Draft C's names) -------- */
@@ -160,8 +193,8 @@ function renderMessagesBody(boot) {
 .msg-from{flex:0 0 auto;font-size:var(--text-tiny);font-weight:600;color:var(--ink-3);border:1px solid var(--edge);
   border-radius:var(--r-sm);padding:0 5px;line-height:16px;background:var(--card)}
 /* Closed deal rooms, folded under one heading at the foot of the list. */
-.msg-fold{display:flex;align-items:center;gap:6px;width:100%;padding:12px 14px 10px;border:0;
-  border-top:1px solid var(--hair);background:none;font:inherit;font-size:var(--text-tiny);letter-spacing:.14em;
+.msg-fold{display:flex;align-items:center;gap:6px;width:100%;padding:12px 8px 8px;border:0;
+  background:none;font:inherit;font-size:var(--text-tiny);letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink-faint);font-weight:600;cursor:pointer;text-align:left}
 .msg-fold:hover{color:var(--ink-2)}
 .msg-fold .msg-count{letter-spacing:0;color:var(--ink-3);background:var(--wash);border-radius:9px;padding:0 6px;line-height:16px}
@@ -177,7 +210,6 @@ function renderMessagesBody(boot) {
    screen has no hover and no right-click, so there it is always drawn and the
    row keeps room for it. */
 .msg-rowwrap{position:relative}
-.msg-sect+.msg-rowwrap>.msg-row,.msg-sect+.msg-confirm{border-top:1px solid var(--hair)}
 .msg-more{position:absolute;right:10px;top:50%;margin-top:-15px;width:30px;height:30px;
   display:flex;align-items:center;justify-content:center;padding:0;border:1px solid transparent;
   border-radius:var(--r-md);background:transparent;color:var(--ink-3);cursor:pointer;
@@ -191,7 +223,7 @@ function renderMessagesBody(boot) {
 .msg-rowwrap:has(:focus-visible) .msg-when,.msg-rowwrap:has(:focus-visible) .msg-unread{visibility:hidden}
 @media (hover:none){
   .msg-more{opacity:1;pointer-events:auto}
-  .msg-rowwrap .msg-row{padding-right:48px}
+  .msg-rowwrap .msg-row{padding-right:46px}
   .msg-rowwrap:hover .msg-when,.msg-rowwrap:hover .msg-unread{visibility:visible}
 }
 
@@ -261,18 +293,18 @@ function renderMessagesBody(boot) {
 .msg-confirm-go .msg-hint{color:var(--red)}
 
 /* --- the stream --------------------------------------------------------- */
-.msg-stream{flex:1;overflow-y:auto;min-height:0;padding:16px;display:flex;flex-direction:column;gap:2px}
-.msg-day{align-self:center;font-size:var(--text-tiny);color:var(--ink-faint);background:var(--wash);
-  border:1px solid var(--hair);border-radius:20px;padding:3px 12px;margin:14px 0 8px}
-.msg-line{display:flex;gap:10px;padding:2px 0}
+.msg-stream{flex:1;overflow-y:auto;min-height:0;padding:12px 24px 16px;display:flex;flex-direction:column;gap:2px}
+.msg-day{align-self:center;font-size:var(--text-tiny);font-weight:600;color:var(--ink-3);margin:18px 0 10px}
+.msg-line{display:flex;gap:12px;padding:4px 0}
+.msg-line .msg-av{flex-basis:34px;width:34px;height:34px}
 .msg-line .msg-av{margin-top:2px}
 .msg-line.cont{padding-top:0}
 .msg-line.cont .msg-av{visibility:hidden;height:0;margin:0}
 .msg-body{min-width:0;flex:1}
 .msg-meta{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
-.msg-author{font-weight:600;font-size:var(--text-small)}
+.msg-author{font-weight:600;font-size:var(--text-compact)}
 .msg-time{font-size:var(--text-tiny);color:var(--ink-faint)}
-.msg-text{font-size:var(--text-compact);color:var(--ink-body);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
+.msg-text{font-size:var(--text-lead);color:var(--ink-body);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}
 /* Unsend (2026-09-29, Draft A). Only a message you sent in the last fifteen
    minutes carries the button, so almost every line is untouched. The button
    shows on hover or focus with a mouse and is always drawn under (hover:none),
@@ -284,7 +316,7 @@ function renderMessagesBody(boot) {
 .msg-unsend{position:absolute;right:8px;top:3px;opacity:0;pointer-events:none;font-size:var(--text-label);padding:3px 9px}
 .msg-line.can-unsend:hover .msg-unsend,.msg-unsend:focus-visible,.msg-line.is-asking .msg-unsend{opacity:1;pointer-events:auto}
 @media (hover:none){ .msg-unsend{opacity:1;pointer-events:auto} }
-.msg-unsendq{margin:4px 0 10px 44px;max-width:560px;padding:11px 14px 12px;background:var(--wash);
+.msg-unsendq{margin:4px 0 10px 46px;max-width:560px;padding:11px 14px 12px;background:var(--wash);
   border:1px solid var(--edge);border-radius:var(--r-lg)}
 .msg-unsent{align-self:center;font-size:var(--text-label);font-style:italic;color:var(--ink-3);padding:6px 0 4px}
 /* Where what you have not read starts (2026-11-16): one line across the
@@ -307,32 +339,48 @@ function renderMessagesBody(boot) {
 .msg-draft{font-weight:600;color:var(--red)}
 /* "Seen", under the reader's own latest message. It keeps its height empty,
    so the conversation does not move when somebody reads it. */
-.msg-seen{margin-left:44px;min-height:16px;font-size:var(--text-tiny);color:var(--ink-faint)}
+.msg-seen{margin-left:46px;min-height:16px;font-size:var(--text-tiny);color:var(--ink-faint)}
 #msgTyping{font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 
 /* --- a comp inside a message -------------------------------------------- */
-.msg-comp{border:1px solid var(--edge);border-radius:var(--r-lg);padding:10px 12px;margin:6px 0;
-  background:var(--paper);max-width:520px}
-.msg-comp h4{margin:0 0 2px;font-size:var(--text-compact);font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.msg-comp{border:1px solid var(--edge);border-radius:var(--r-lg);padding:12px 14px;margin:8px 0;
+  background:var(--card);max-width:480px;box-shadow:0 1px 2px rgba(15,23,42,.06)}
+.msg-comp h4{margin:0 0 2px;font-size:var(--text-lead);font-weight:600;color:var(--ink);overflow-wrap:anywhere}
 .msg-comp .facts{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:var(--text-label);color:var(--ink-3);margin:4px 0 8px}
-.msg-comp .facts b{font-weight:600;color:var(--ink-body)}
+.msg-comp .facts b{font-weight:600;color:var(--ink);font-size:var(--text-compact)}
 .msg-comp .foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .msg-saved{font-size:var(--text-label);color:var(--ok-text);font-weight:500}
-.msg-chip{display:inline-block;font-size:var(--text-tiny);letter-spacing:.04em;text-transform:uppercase;
-  color:var(--ink-3);border:1px solid var(--edge);border-radius:var(--r-sm);padding:1px 6px}
+.msg-chip{display:inline-block;font-size:var(--text-tiny);letter-spacing:.04em;text-transform:uppercase;font-weight:600;
+  color:var(--ink-2);background:var(--wash-2);border-radius:var(--r-sm);padding:1px 6px}
 
 /* --- composer ------------------------------------------------------------ */
 .msg-comp-tray{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 8px}
+.msg-comp-tray:empty{padding:0}
 .msg-tag{display:inline-flex;align-items:center;gap:6px;font-size:var(--text-label);background:var(--wash);
   border:1px solid var(--edge);border-radius:20px;padding:3px 6px 3px 10px;color:var(--ink-body);max-width:100%}
 .msg-tag span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .msg-tag button{appearance:none;border:0;background:transparent;cursor:pointer;color:var(--ink-3);
   font-size:var(--text-compact);line-height:1;padding:0 2px}
-.msg-composer{border-top:1px solid var(--line);padding:12px 16px 14px;background:var(--card)}
-.msg-composer textarea{width:100%;box-sizing:border-box;resize:none;border:1px solid var(--edge);
-  border-radius:var(--r-lg);padding:10px 12px;font:inherit;font-size:var(--text-compact);line-height:1.5;
-  background:var(--paper);color:var(--ink);min-height:44px;max-height:180px}
-.msg-actions{display:flex;align-items:center;gap:8px;margin-top:8px}
+/* ONE line (2026-11-17): + Comp, the words, Send. The actions row keeps its
+   markup and steps aside (display:contents), so its buttons are this grid's
+   own cells and its notes take a second row under the words only when they
+   say something. */
+.msg-composer{border-top:1px solid var(--line);padding:12px 16px;background:var(--card);
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:end;gap:6px 10px}
+.msg-composer textarea{grid-column:2;grid-row:1;width:100%;box-sizing:border-box;resize:none;border:1px solid var(--edge);
+  border-radius:var(--r-lg);padding:11px 14px;font:inherit;font-size:var(--text-compact);line-height:1.5;
+  background:var(--card);color:var(--ink);min-height:44px;max-height:180px}
+.msg-actions{display:contents}
+.msg-actions .msg-grow{display:none}
+#msgAttach{grid-column:1;grid-row:1}
+#msgSend{grid-column:3;grid-row:1;padding-left:20px;padding-right:20px;font-weight:600}
+#msgAttach,#msgSend{height:44px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+#msgAttach svg{display:block}
+.msg-composer:has(#msgAttach.msg-hide) textarea{grid-column:1/3}
+#msgMailNote,#msgTyping,#msgSendMsg{grid-row:2;grid-column:2;font-size:var(--text-label)}
+#msgSendMsg{justify-self:end}
+#msgTyping:empty,#msgSendMsg:empty{display:none}
+@media (max-width:640px){ #msgAttach{width:44px;padding:0;font-size:0;gap:0} }
 .msg-hint{font-size:var(--text-label);color:var(--ink-faint)}
 
 /* --- empty states, notices ----------------------------------------------- */
@@ -340,6 +388,25 @@ function renderMessagesBody(boot) {
 .msg-empty h3{margin:0 0 6px;font-size:var(--text-lead);color:var(--ink);font-weight:600}
 .msg-empty p{margin:0 0 14px;line-height:1.6}
 .msg-note{font-size:var(--text-small);padding:8px 16px;color:var(--ink-3)}
+/* A first visit (2026-11-17): no conversation yet, so the pane on the right
+   stops looking like one. No header, no box to type into; a card saying
+   what to do, with the reader's colleagues one press away. */
+.msg-page[data-first] #msgMain .msg-head,.msg-page[data-first] #msgComposer,.msg-page[data-first] #msgTray{display:none}
+.msg-welcome{max-width:520px;margin:auto;text-align:center;padding:24px}
+.msg-wicon{width:56px;height:56px;border-radius:16px;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;
+  background:var(--wash-2);color:var(--ink-2)}
+.msg-welcome h3{margin:0 0 6px;font-size:var(--text-subhead);font-weight:600;color:var(--ink);letter-spacing:-.01em}
+.msg-welcome p{margin:0 auto 18px;max-width:44ch;font-size:var(--text-compact);line-height:1.6;color:var(--ink-3)}
+.msg-mates{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin:0 0 18px;text-align:left}
+.msg-mate{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--edge);border-radius:var(--r-lg);
+  background:var(--card);font:inherit;color:var(--ink);cursor:pointer;min-width:0}
+.msg-mate:hover{border-color:var(--ink-3)}
+.msg-mate b{display:block;font-size:var(--text-compact);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msg-mate small{display:block;font-size:var(--text-label);color:var(--ink-3)}
+.msg-mate>span:last-child{min-width:0}
+.msg-wacts{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+/* The list's own Start button is for a phone, where the card is not on screen. */
+@media (min-width:901px){ .msg-start{display:none} }
 .msg-note.bad{color:var(--red);font-weight:500}
 
 /* --- picker / new-thread panels ------------------------------------------ */
@@ -406,10 +473,15 @@ function renderMessagesBody(boot) {
 .msg-sline{padding:0 14px 8px;font-size:var(--text-label);color:var(--ink-3)}
 .msg-sline.bad{color:var(--red)}
 /* The open report. */
-.msg-rbody{flex:1;overflow-y:auto;min-height:0;padding:20px 22px 28px}
-.msg-rfacts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:7px 18px;margin:0 0 20px;font-size:var(--text-compact)}
-.msg-rfacts dt{color:var(--ink-3)}
-.msg-rfacts dd{margin:0;color:var(--ink);overflow-wrap:anywhere}
+.msg-rbody{flex:1;overflow-y:auto;min-height:0;padding:22px 24px 28px}
+/* The facts as a row of tiles, each label over its value (2026-11-17). The
+   list is still dt, dd, dt, dd: column flow over two rows pairs them. */
+.msg-rfacts{display:grid;grid-template-rows:auto auto;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:0 1px;
+  margin:0 0 20px;font-size:var(--text-compact);background:var(--line);border:1px solid var(--line);border-radius:var(--r-lg);
+  overflow:hidden;max-width:620px}
+.msg-rfacts dt,.msg-rfacts dd{background:var(--card)}
+.msg-rfacts dt{padding:10px 14px 0;font-size:var(--text-tiny);letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--ink-faint)}
+.msg-rfacts dd{margin:0;padding:2px 14px 10px;color:var(--ink);font-weight:600;overflow-wrap:anywhere}
 .msg-racts{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 20px}
 .msg-racts a.msg-btn{text-decoration:none;display:inline-flex;align-items:center}
 .msg-rsec{border-top:1px solid var(--hair);padding-top:14px;margin-top:4px}
@@ -433,6 +505,7 @@ function renderMessagesBody(boot) {
    which of them is showing — the reader's own navigation, not the viewport. */
 @media (max-width:900px){
   .msg-page{grid-template-columns:1fr;min-height:min(80vh,640px)}
+  .msg-headav{display:none}
   .msg-side{border-right:0}
   .msg-page .msg-main{display:none}
   .msg-page.on-thread .msg-side{display:none}
@@ -464,7 +537,7 @@ function renderMessagesBody(boot) {
      In an open chat it is put away (it is back on the list of chats); where
      a browser cannot ask "is a chat open" from here, Send moves clear of it. */
   html:has(.msg-page.on-thread:not([data-view="reports"])) .tninja{display:none}
-  @supports not selector(:has(a)){ html.nav-rail .msg-page.on-thread .msg-actions{margin-right:36px} }
+  @supports not selector(:has(a)){ html.nav-rail .msg-page.on-thread .msg-composer{padding-right:52px} }
 }
 /* Touch targets (2026-11-15; app-shell.md). An open chat's own buttons were
    27px tall: Back, Conversation, Comps, People, More, each message's Unsend,
@@ -516,13 +589,11 @@ function renderMessagesBody(boot) {
   <h1 style="margin:0 0 4px">Messages</h1>
   <!-- Reports joined on 2026-10-08, from Home's Reports tab: a shared report
        is correspondence too, somebody sent it to somebody. -->
-  <!-- Wide enough to be two lines on a computer, not four (2026-11-16): the
-       page under it is as tall as the window that is left. -->
-  <p style="margin:0;color:var(--ink-2);max-width:120ch;font-size:14px;line-height:1.6">
-    Message the people you work with, and the people outside your firm you
-    share comps with. Anything you send is kept in the conversation, so a deal
-    you talk about stays on the record. Reports holds every comp report sent
-    to you, shared with your firm, or sent by you.
+  <!-- One line on a computer (2026-11-17; two from 2026-11-16, four
+       before): the page under it is as tall as the window that is left. -->
+  <p style="margin:0;color:var(--ink-2);font-size:14px;line-height:1.6">
+    Talk with the people at your firm and the clients you share comps with.
+    Reports holds every comp report sent to you or shared with your firm.
   </p>
 </section>
 
@@ -541,7 +612,7 @@ function renderMessagesBody(boot) {
         <button type="button" role="tab" id="msgViewReports" aria-selected="false" aria-controls="msgReports" tabindex="-1">Reports<span class="msg-vn" id="msgViewReportsN"></span></button>
       </div>
       <span class="msg-grow"></span>
-      <button class="msg-btn sm" id="msgNewBtn" type="button">New</button>
+      <button class="msg-btn primary sm" id="msgNewBtn" type="button">New</button>
     </div>
     <!-- The New panel sits HERE, under the button that opens it, since
          2026-11-16. It was the last thing in the column, under every chat. -->
@@ -619,6 +690,7 @@ function renderMessagesBody(boot) {
   <div class="msg-main" id="msgMain">
     <div class="msg-head">
       <button class="msg-btn sm" id="msgBack" type="button" aria-label="Back to conversations">‹</button>
+      <span class="msg-hide" id="msgHeadAv" aria-hidden="true"></span>
       <div class="msg-grow" style="min-width:0">
         <h2 id="msgTitle">Select a conversation</h2>
         <div class="sub" id="msgSub"></div>
@@ -671,7 +743,7 @@ function renderMessagesBody(boot) {
     <div class="msg-composer" id="msgComposer">
       <textarea id="msgInput" rows="1" placeholder="Write a message" maxlength="4000"></textarea>
       <div class="msg-actions">
-        <button class="msg-btn sm msg-hide" id="msgAttach" type="button">Attach a comp</button>
+        <button class="msg-btn sm msg-hide" id="msgAttach" type="button" aria-label="Attach a comp" title="Attach a comp">${PLUS_SVG}Comp</button>
         <span class="msg-hint msg-hide" id="msgMailNote">They get an email about new messages</span>
         <span class="msg-hint" id="msgTyping" aria-live="polite"></span>
         <span class="msg-grow"></span>
@@ -834,9 +906,23 @@ ${REPORT_INBOX_SRC}
   function photoFor(userId, email){
     return (userId && state.photos[userId]) || (email && state.photosByEmail[String(email).toLowerCase()]) || "";
   }
-  function circle(letter, userId, email){
+  // A colour per person (2026-11-17), from whatever names them most firmly:
+  // their account, else their address, else the name shown. The same key is
+  // the same colour on every row, message and header. Five of the site's
+  // paired tints; the reader's own circle stays navy.
+  function tint(key){
+    key = String(key || "").toLowerCase();
+    if (!key) return "";
+    var h = 7;
+    for (var i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+    return " t" + (h % 5);
+  }
+  function isMe(userId, email){
+    return (!!userId && userId === state.me) || (!!email && !!state.me2 && String(email).toLowerCase() === state.me2);
+  }
+  function circle(letter, userId, email, name){
     var src = photoFor(userId, email);
-    if (!src) return '<span class="msg-av">' + esc(letter) + '</span>';
+    if (!src) return '<span class="msg-av' + (isMe(userId, email) ? "" : tint(userId || email || name)) + '">' + esc(letter) + '</span>';
     return '<span class="msg-av has-photo">' + esc(letter) +
       '<img src="' + esc(src) + '" alt="" loading="lazy" onerror="this.remove()"></span>';
   }
@@ -1243,6 +1329,7 @@ ${REPORT_INBOX_SRC}
   }
   // The open chat's heading, after its name changed.
   function refreshHeader(){
+    paintHeadAv();
     var t = state.openKind === "external" ? extRow() : findThread(state.openId);
     if (!t) return;
     $("msgTitle").textContent = chatName(t);
@@ -1253,16 +1340,101 @@ ${REPORT_INBOX_SRC}
   // takes the preview's place, marked, so a half-written message is findable.
   // Whose photo a row shows: the other person in a direct message. A group
   // and a deal room have no one person, so they keep their letter.
+  // A group chat's circle: two of the other people in it, overlapping,
+  // where a # used to be.
+  function groupCircle(t){
+    var others = (t.members || []).filter(function(m){ return m.userId !== state.me && !m.left; });
+    if (!others.length) return '<span class="msg-av chan">#</span>';
+    var one = function(m){ return '<span class="msg-av' + tint(m.userId || m.email) + '">' + esc(initial(m.name || m.email)) + '</span>'; };
+    return '<span class="msg-av msg-duo">' + one(others[0]) + (others[1] ? one(others[1]) : "") + '</span>';
+  }
+  // Whose colour a deal room's circle takes: its first guest, or for a
+  // guest, the broker it is named after.
+  function roomKey(x){
+    var p = (x.people || [])[0];
+    return (p && p.email) || x.label || "";
+  }
+  // The circle a chat is drawn with, on its row and in its header.
+  function chatCircle(t, external){
+    if (external) return circle(initial(t.label), "", "", roomKey(t));
+    if (t.kind === "channel") return groupCircle(t);
+    return circle(initial(t.label), rowPerson(t), "", t.label);
+  }
+  // The open chat's circle beside its name (a computer only; the stylesheet
+  // hides it on a phone).
+  function paintHeadAv(){
+    var el = $("msgHeadAv");
+    if (!el) return;
+    var ext = state.openKind === "external";
+    var t = !state.openId ? null : (ext ? extRow() : (findThread(state.openId) || state.openRow));
+    if (!t) { el.className = "msg-hide"; el.innerHTML = ""; return; }
+    el.className = "msg-headav";
+    el.innerHTML = chatCircle(t, ext);
+  }
+  // A first visit (2026-11-17): a member of a firm with no chat open and
+  // nothing on either list. The right-hand pane said "Select a conversation"
+  // over an empty space and a working box to type into, with nobody on the
+  // other end. Now it is a card: what Messages is for, up to four colleagues
+  // to press, and the two ways to start. data-first on the page hides the
+  // header and the composer; it is an attribute because the chat code
+  // rewrites the page's className whole.
+  function paintFirst(){
+    var first = !!state.listed && !!state.firm && !state.noFirm && !state.openId &&
+      !state.threads.length && !state.external.length;
+    var page = $("msgPage");
+    if (!first) {
+      // Somebody wrote first: the card goes, and the pane says what it says
+      // for any list with nothing open.
+      if (page.hasAttribute("data-first")) {
+        page.removeAttribute("data-first");
+        if ($("msgStream").querySelector(".msg-welcome")) renderStream();
+      }
+      return;
+    }
+    page.setAttribute("data-first", "");
+    if ($("msgStream").querySelector(".msg-welcome")) return;
+    var mates = joinedPeople().filter(function(p){ return p.userId !== state.me; }).slice(0, 4);
+    $("msgStream").innerHTML = '<div class="msg-welcome">' +
+      '<div class="msg-wicon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.5" stroke-linejoin="round"><path d="M4 5.5h16v10H9l-5 4v-14z"/><path d="M8 9.5h8M8 12.5h5" stroke-linecap="round"/></svg></div>' +
+      '<h3>Start your first conversation</h3>' +
+      '<p>Message anyone at ' + esc(state.firm.name || "your firm") +
+        (state.canAttach === true ? ", or invite a client to a deal room by email" : "") +
+        '. Comps you send stay in the conversation.</p>' +
+      (mates.length ? '<div class="msg-mates">' + mates.map(function(p){
+        return '<button type="button" class="msg-mate" data-first="' + esc(p.userId) + '">' +
+          circle(initial(p.name), p.userId, p.email, p.name) +
+          '<span><b>' + esc(p.name || p.email) + '</b><small>Message ' + esc(firstName(p.name || p.email)) + '</small></span></button>';
+      }).join("") + '</div>' : "") +
+      '<div class="msg-wacts"><button class="msg-btn primary" type="button" data-first="new">New conversation</button>' +
+        (state.canAttach === true ? '<button class="msg-btn" type="button" data-first="invite">Invite a client</button>' : "") +
+      '</div></div>';
+  }
+  // A press on the card: open the New panel, with the colleague already
+  // picked, or ready for an email. It sends nothing; the person still
+  // presses Start (the discovery doors' rule).
+  function firstPick(what){
+    openNewPanel();
+    if (what === "invite") {
+      $("msgNewMsg").textContent = "Type their email address, then press Start.";
+      return;
+    }
+    if (what !== "new" && joinedPeople().some(function(p){ return p.userId === what; })) {
+      state.picked = [what];
+      renderNewChips();
+      renderNewPeople();
+      $("msgNewMsg").textContent = "Press Start to message " + pickedName(what) + ".";
+    }
+  }
   function rowPerson(t){
     if (t.kind !== "dm") return "";
     var other = (t.members || []).filter(function(m){ return m.userId !== state.me && !m.left; })[0];
     return other ? other.userId : "";
   }
   function threadRowHtml(t, attr, current, sub, line, side, draft){
-    var chan = t.kind === "channel";
     return '<button class="msg-row' + (t.unread ? " is-unread" : "") + '" type="button"' +
       ' ' + attr + '="' + esc(t.id) + '"' + (current ? ' aria-current="true"' : "") + '>' +
-      (chan ? '<span class="msg-av chan">#</span>' : circle(initial(t.label), rowPerson(t), "")) +
+      chatCircle(t, attr === "data-external") +
       '<span class="msg-rowbody">' +
         '<span class="msg-rowtop">' +
           '<span class="msg-name">' + esc(chatName(t)) + '</span>' +
@@ -1737,6 +1909,8 @@ ${REPORT_INBOX_SRC}
     return String(t.preview || "").toLowerCase().indexOf(q) >= 0;
   }
   function renderThreads(){
+    paintHeadAv();
+    paintFirst();
     var q = ($("msgFilter").value || "").trim();
     var all = state.threads.slice();
     if (state.openKind === "internal" && state.openRow && state.openRow.id === state.openId &&
@@ -1758,7 +1932,9 @@ ${REPORT_INBOX_SRC}
         '<div class="msg-empty"><h3>No conversations yet</h3>' +
         '<p>' + (state.firm
           ? "Start one with somebody at your firm. Everything you send stays here."
-          : "Everything shared with you shows up here.") + '</p></div>';
+          : "Everything shared with you shows up here.") + '</p>' +
+        (state.firm ? '<p><button class="msg-btn primary msg-start" type="button" data-first="new">Start a conversation</button></p>' : "") +
+        '</div>';
       return;
     }
     if (!list.length && !ext.length) {
@@ -1773,12 +1949,14 @@ ${REPORT_INBOX_SRC}
     // (a client) does not get a lone "External" heading over a firm they are
     // not in.
     var both = list.length > 0 && ext.length > 0;
-    if (both) html += '<div class="msg-sect">Internal</div>';
+    // "Your firm" and "Clients" since 2026-11-17 (Internal and External
+    // before): a deal room is a client's.
+    if (both) html += '<div class="msg-sect">Your firm</div>';
     for (var i = 0; i < list.length; i++) {
       var t = list[i];
       html += internalRowHtml(t, state.openKind === "internal" && t.id === state.openId);
     }
-    if (both) html += '<div class="msg-sect">External</div>';
+    if (both) html += '<div class="msg-sect">Clients</div>';
     // CLOSED deal rooms fold under one heading at the foot of the list
     // (2026-10-02). They used to look exactly like open ones until opened.
     // A search unfolds it, so a match is never hidden behind it.
@@ -2515,7 +2693,7 @@ ${REPORT_INBOX_SRC}
         state.external = [];
         state.people = [];
         ungate();
-        $("msgNewBtn").className = "msg-btn sm msg-hide";
+        $("msgNewBtn").className = "msg-btn primary sm msg-hide";
         $("msgFirmLine").textContent = "";
         applyComposerMode();
         renderThreads();
@@ -2571,10 +2749,10 @@ ${REPORT_INBOX_SRC}
       // goes quiet rather than failing when pressed. New opens firm threads,
       // so it is the first thing to go.
       if (!state.firm) {
-        $("msgNewBtn").className = "msg-btn sm msg-hide";
+        $("msgNewBtn").className = "msg-btn primary sm msg-hide";
         $("msgFirmLine").textContent = "Deal rooms shared with you";
       } else {
-        $("msgNewBtn").className = "msg-btn sm";
+        $("msgNewBtn").className = "msg-btn primary sm";
         // The firm as a quiet line at the foot of the column, not as the
         // headline. Counts only people who have actually joined, because a
         // pending invitation is not somebody you can talk to.
@@ -2990,11 +3168,11 @@ ${REPORT_INBOX_SRC}
     var key = r.kind + ":" + r.id;
     var av, sub, extra = "";
     if (r.kind === "in") {
-      av = '<span class="msg-av">' + esc(initial(r.from || "?")) + '</span>';
+      av = '<span class="msg-av' + tint(r.from) + '">' + esc(initial(r.from || "?")) + '</span>';
       sub = [r.type, r.from ? "from " + r.from : ""].filter(Boolean).join(" \\u00b7 ");
       if (r.isNew) extra = '<span class="msg-new">New</span>';
     } else if (r.kind === "shelf") {
-      av = '<span class="msg-av">' + esc(initial(r.mine ? "You" : (r.sharedBy || "?"))) + '</span>';
+      av = '<span class="msg-av' + (r.mine ? "" : tint(r.sharedBy)) + '">' + esc(initial(r.mine ? "You" : (r.sharedBy || "?"))) + '</span>';
       sub = [r.type, r.mine ? "shared by you" : (r.sharedBy ? "shared by " + r.sharedBy : "")].filter(Boolean).join(" \\u00b7 ");
     } else {
       av = '<span class="msg-av link">' + LINK_SVG + '</span>';
@@ -3333,6 +3511,8 @@ ${REPORT_INBOX_SRC}
     renderReports();
   });
   $("msgThreads").addEventListener("click", function(e){
+    var fp = e.target.closest("[data-first]");
+    if (fp) { firstPick(fp.getAttribute("data-first")); return; }
     // A row's More button opens its menu, and a second press closes it.
     var more = e.target.closest("[data-more]");
     if (more) {
@@ -3358,6 +3538,8 @@ ${REPORT_INBOX_SRC}
     if (row) openThread(row.getAttribute("data-thread"), true);
   });
   $("msgStream").addEventListener("click", function(e){
+    var fp = e.target.closest("[data-first]");
+    if (fp) { firstPick(fp.getAttribute("data-first")); return; }
     var un = e.target.closest("[data-unsend]");
     if (un) {
       var uid = un.getAttribute("data-unsend");

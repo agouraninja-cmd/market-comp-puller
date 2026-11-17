@@ -369,11 +369,13 @@ real server and a stub provider in `test/truth-test-run.test.js`.
   closings go. The truth file is the test: key every price from the closing
   document or the public record, never from a CompNinja report. A bad entry
   (no street number, a price with no date, the same building twice) stops the
-  run before anything is spent. `truth-set.json` shipped with NO sales: the
-  cloud session that built this could not open a single source page (its
-  network allowed only our own hosts), so the thirteen candidates it found
-  sit under `leads`, which the runner never runs, each with a link and what
-  still has to be read off the page.
+  run before anything is spent. `truth-set.json` starts with six sales (four
+  offices, two retail centers, in California and Florida), each read off its
+  rebusinessonline.com article on 2026-11-17: the price is the article's
+  rounded figure and the date is the article's month, and none is marked
+  `checked`, which is a person's confirmation against the county record.
+  Seven more sit under `leads`, which the runner never runs: their articles
+  state a price and no street address, and a search needs one.
 - **The number scored is the number a customer sees.** The value is
   `BULK.valueFromReport` (renderOwnerHero reduced to its arithmetic over
   valuation.js), with the hero's two-priced-sales bar. Land is valued per

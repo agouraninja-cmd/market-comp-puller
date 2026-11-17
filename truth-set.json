@@ -14,21 +14,124 @@
     "months": "optional: a lookback window other than that type's default",
     "note": "anything a careful reader should know"
   },
-  "sales": [],
-  "_leads_how": "NOT part of the test, and never run. These came from search-result summaries on 2026-11-17; nobody has opened the pages, and the summaries' dates were unreliable. To use one: open the link, read the price, street address, size and closing month off the page itself, confirm it closed in the last 18 months as a single-property arms-length sale, then write it into \"sales\" above with \"checked\": true and delete it here. If the page disagrees with the line below, the page wins.",
+  "sales": [
+    {
+      "id": "anaheim-off-01",
+      "address": "2300 E Katella Ave, Anaheim, CA",
+      "type": "Office",
+      "sale_price": 15100000,
+      "sale_date": "2026-03",
+      "size_sqft": 69032,
+      "source": "https://rebusinessonline.com/cbre-arranges-sale-of-69032-sf-office-property-in-anaheim-california/",
+      "checked": false,
+      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+    },
+    {
+      "id": "jax-off-01",
+      "address": "4500 Salisbury Rd, Jacksonville, FL",
+      "type": "Office",
+      "sale_price": 14700000,
+      "sale_date": "2026-07",
+      "size_sqft": 151815,
+      "source": "https://rebusinessonline.com/nai-hallmark-arranges-14-7m-sale-of-butler-pointe-office-building-in-jacksonville/",
+      "checked": false,
+      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+    },
+    {
+      "id": "sanjose-off-01",
+      "address": "1054 S De Anza Blvd, San Jose, CA",
+      "type": "Office",
+      "sale_price": 9700000,
+      "sale_date": "2025-06",
+      "size_sqft": 31701,
+      "source": "https://rebusinessonline.com/marcus-millichap-brokers-sale-of-31701-sf-multi-tenant-office-building-in-san-jose-california/",
+      "checked": false,
+      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+    },
+    {
+      "id": "burlingame-off-01",
+      "address": "20 Park Rd, Burlingame, CA",
+      "type": "Office",
+      "sale_price": 5400000,
+      "sale_date": "2025-05",
+      "size_sqft": 6815,
+      "source": "https://rebusinessonline.com/matthews-real-estate-brokers-sale-of-6815-sf-office-property-in-burlingame-california/",
+      "checked": false,
+      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+    },
+    {
+      "id": "santaclarita-ret-01",
+      "address": "23126 Valencia Blvd, Santa Clarita, CA",
+      "type": "Retail",
+      "sale_price": 27500000,
+      "sale_date": "2026-09",
+      "size_sqft": 120559,
+      "source": "https://rebusinessonline.com/srs-real-estate-brokers-27-5m-sale-of-value-add-retail-property-in-santa-clarita-california/",
+      "checked": false,
+      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record. The article gives the center as 23126-23170 Valencia Blvd; 80 percent leased at sale."
+    },
+    {
+      "id": "middleburg-ret-01",
+      "address": "1690 Jeremiah St, Middleburg, FL",
+      "type": "Retail",
+      "sale_price": 8400000,
+      "sale_date": "2026-04",
+      "size_sqft": 17400,
+      "source": "https://rebusinessonline.com/marcus-millichap-brokers-8-4m-sale-of-retail-center-in-metro-jacksonville/",
+      "checked": false,
+      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+    }
+  ],
+  "_leads_how": "NOT part of the test, and never run. Each article below was opened on 2026-11-17 and its price and size are as the article states them, but the article gives NO STREET ADDRESS, and a search needs one. To use one: find the property's street address (the county assessor, or the broker's listing), then write it into \"sales\" above and delete it here.",
   "leads": [
-    { "type": "Industrial", "where": "Elgin, IL", "said": "$24.8M, 442,601 SF", "needs": "street address, closing month", "url": "https://rebusinessonline.com/lee-associates-brokers-24-8m-sale-of-industrial-building-in-elgin-illinois/" },
-    { "type": "Industrial", "where": "West Chester, OH", "said": "$8M, 76,501 SF flex", "needs": "street address, closing month (may be too recent to have closed)", "url": "https://rebusinessonline.com/cbre-arranges-8m-sale-of-flex-industrial-property-in-southwest-ohio/" },
-    { "type": "Office", "where": "2300 E Katella Ave, Anaheim, CA", "said": "$15.1M, about 69,032 SF", "needs": "closing month", "url": "https://rebusinessonline.com/cbre-arranges-sale-of-69032-sf-office-property-in-anaheim-california/" },
-    { "type": "Office", "where": "4500 Salisbury Rd, Jacksonville, FL", "said": "$14.7M, 151,815 SF", "needs": "closing month", "url": "https://rebusinessonline.com/nai-hallmark-arranges-14-7m-sale-of-butler-pointe-office-building-in-jacksonville/" },
-    { "type": "Office", "where": "1054 S De Anza Blvd, San Jose, CA", "said": "$9.7M, 31,701 SF", "needs": "closing month", "url": "https://rebusinessonline.com/marcus-millichap-brokers-sale-of-31701-sf-multi-tenant-office-building-in-san-jose-california/" },
-    { "type": "Office", "where": "20 Park Rd, Burlingame, CA", "said": "$5.4M, 6,815 SF", "needs": "closing month", "url": "https://rebusinessonline.com/matthews-real-estate-brokers-sale-of-6815-sf-office-property-in-burlingame-california/" },
-    { "type": "Retail", "where": "Santa Clarita, CA", "said": "$27.5M, 120,559 SF center on 12.6 acres", "needs": "street address, closing month", "url": "https://rebusinessonline.com/srs-real-estate-brokers-27-5m-sale-of-value-add-retail-property-in-santa-clarita-california/" },
-    { "type": "Retail", "where": "Middleburg, FL", "said": "$8.4M, 17,400 SF", "needs": "street address, closing month", "url": "https://rebusinessonline.com/marcus-millichap-brokers-8-4m-sale-of-retail-center-in-metro-jacksonville/" },
-    { "type": "Retail", "where": "Derby, CT", "said": "$15.4M, 170,683 SF", "needs": "street address, closing month", "url": "https://rebusinessonline.com/ipa-brokers-15-4m-sale-of-shopping-center-in-derby-connecticut/" },
-    { "type": "Multifamily", "where": "Belmont, CA", "said": "$20.2M; 38 or 39 units (the summary showed both)", "needs": "street address, unit count, building SF, closing month", "url": "https://rebusinessonline.com/marcus-millichap-brokers-20-2m-sale-of-el-dorado-apartments-in-belmont-california/" },
-    { "type": "Multifamily", "where": "Wausau, WI", "said": "$15M, 75 units", "needs": "street address, building SF, closing month", "url": "https://rebusinessonline.com/marcus-millichap-brokers-15m-sale-of-multifamily-property-in-wausau-wisconsin/" },
-    { "type": "Multifamily", "where": "Birmingham, AL", "said": "$5.6M, 141 units", "needs": "street address, building SF, closing month", "url": "https://rebusinessonline.com/marcus-millichap-brokers-5-6m-sale-of-apartment-community-in-birmingham/" },
-    { "type": "Land", "where": "Waterloo, WI", "said": "$1.1M, 10.7 acres", "needs": "street address or parcel address, closing month", "url": "https://rebusinessonline.com/cbre-arranges-sale-of-development-site-for-96-unit-multifamily-project-in-waterloo-wisconsin/" }
+    {
+      "type": "Industrial",
+      "where": "Elgin, IL",
+      "said": "$24.8M, 442,601 SF, article dated 2026-06",
+      "needs": "street address",
+      "url": "https://rebusinessonline.com/lee-associates-brokers-24-8m-sale-of-industrial-building-in-elgin-illinois/"
+    },
+    {
+      "type": "Industrial",
+      "where": "Liberty Office Park, West Chester, OH",
+      "said": "$8M, 76,501 SF flex, article dated 2026-11",
+      "needs": "street address",
+      "url": "https://rebusinessonline.com/cbre-arranges-8m-sale-of-flex-industrial-property-in-southwest-ohio/"
+    },
+    {
+      "type": "Retail",
+      "where": "Derby Shopping Center, Derby, CT",
+      "said": "$15.4M, 170,683 SF, article dated 2026-03",
+      "needs": "street address",
+      "url": "https://rebusinessonline.com/ipa-brokers-15-4m-sale-of-shopping-center-in-derby-connecticut/"
+    },
+    {
+      "type": "Multifamily",
+      "where": "El Dorado Apartments, Belmont, CA",
+      "said": "$20.2M, 39 units, article dated 2026-05",
+      "needs": "street address, building SF",
+      "url": "https://rebusinessonline.com/marcus-millichap-brokers-20-2m-sale-of-el-dorado-apartments-in-belmont-california/"
+    },
+    {
+      "type": "Multifamily",
+      "where": "The Apartments at Riverlife, Wausau, WI",
+      "said": "$15M, 75 units, 72,177 rentable SF, article dated 2026-07",
+      "needs": "street address",
+      "url": "https://rebusinessonline.com/marcus-millichap-brokers-15m-sale-of-multifamily-property-in-wausau-wisconsin/"
+    },
+    {
+      "type": "Multifamily",
+      "where": "Pineview Pointe Apartments, Birmingham, AL",
+      "said": "$5.6M, 141 units, article dated 2026-01",
+      "needs": "street address, building SF",
+      "url": "https://rebusinessonline.com/marcus-millichap-brokers-5-6m-sale-of-apartment-community-in-birmingham/"
+    },
+    {
+      "type": "Land",
+      "where": "Waterloo, WI",
+      "said": "$1.1M, 10.7 acres, article dated 2026-10",
+      "needs": "street or parcel address",
+      "url": "https://rebusinessonline.com/cbre-arranges-sale-of-development-site-for-96-unit-multifamily-project-in-waterloo-wisconsin/"
+    }
   ]
 }

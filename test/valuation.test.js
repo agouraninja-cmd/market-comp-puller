@@ -961,3 +961,9 @@ test("countedPsf is the figure valueFromComps took the band over", () => {
   assert.equal(V.countedPsf(comp({ price_per_sqft: "", price_or_rate: "", size_sqft: "" }), opts), null);
   assert.equal(V.countedPsf(null, opts), null);
 });
+
+test("the method version is exported and well formed", () => {
+  // Printed on every report and export; server.js stamps it on a fresh report.
+  // Year.month.revision, so two versions sort the way they were issued.
+  assert.match(V.METHOD_VERSION, /^20\d\d\.(0[1-9]|1[0-2])\.\d+$/);
+});

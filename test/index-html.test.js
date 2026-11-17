@@ -4239,3 +4239,47 @@ test("the spread verdict says the same thing about the same comps under the wide
   assert.equal(verdict(widthOf(9), 0.15, 0.35), "typical");
   assert.equal(verdict(widthOf(22), 0.15, 0.35), "wide");
 });
+
+// ----------------------------------------------------------------------------
+// The credit file (2026-11-16): the printed report plus a Sources and record
+// page. These pin the three ways it could leak or mislead.
+// ----------------------------------------------------------------------------
+test("the credit file lists exportable comps only, and never builds HTML from report text", () => {
+  const fn = html.match(/function renderCreditFile\(\)[\s\S]*?\n  \}\n/);
+  assert.ok(fn, "index.html must define renderCreditFile()");
+  assert.match(fn[0], /exportableComps\(\)/, "rows come from exportableComps, so a private comp is never listed");
+  assert.doesNotMatch(fn[0], /includedComps\(\)/);
+  assert.match(fn[0], /privateIncludedCount\(\)/, "private comps are disclosed as a count");
+  const writes = fn[0].match(/innerHTML\s*=\s*[^;]+;/g) || [];
+  assert.deepEqual(writes, ['innerHTML = "";'], "only ever cleared: every string is set with textContent");
+  assert.match(fn[0], /source_url/, "each comp's source link is printed as text");
+  assert.match(fn[0], /CREDIT_FILE_DISCLAIMER/);
+});
+
+test("the credit file leaves the owner's analysis out and is drawn only for its own print", () => {
+  assert.match(html, /body\.credit-file #analysisSeam, body\.credit-file #tabAnalysis \{ display: none !important; \}/,
+    "the appendix carries the owner's NOI and DCF: private finances stay out of a lender's file");
+  assert.match(html, /body:not\(\.credit-file\) #creditFile \{ display: none !important; \}/,
+    "an ordinary Print / PDF must not grow the page");
+  const handler = html.match(/getElementById\("creditFileBtn"\)\.addEventListener[\s\S]{0,900}?\}\)\);/);
+  assert.ok(handler, "index.html must wire the credit file button");
+  assert.match(handler[0], /gatedExport\(/, "gated like every other export");
+  const draw = handler[0].indexOf("renderCreditFile()");
+  const print = handler[0].indexOf("window.print()");
+  assert.ok(draw !== -1 && draw < print, "the page is filled before the dialog opens");
+  assert.match(handler[0], /afterprint/, "the class is dropped when the print ends, not before");
+});
+
+test("the credit file's disclaimer says what the estimate is not", () => {
+  const m = html.match(/const CREDIT_FILE_DISCLAIMER = "([^"]+)";/);
+  assert.ok(m);
+  for (const needle of ["Not an appraisal", "not an evaluation", "not a broker opinion of value", "No one inspected", "verify independently"]) {
+    assert.ok(m[1].includes(needle), "disclaimer must say: " + needle);
+  }
+});
+
+test("the report header, CSV, Excel and PowerPoint all carry the server's stamp", () => {
+  assert.match(html, /function reportStamp\(parsed\)/);
+  const uses = html.match(/stampParts\(|reportStamp\(/g) || [];
+  assert.ok(uses.length >= 8, "header chips, CSV title, XLSX rows, PPTX slide and the credit file read it");
+});

@@ -872,6 +872,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       #chartWrap .ch-fade, #chartWrap .ch-pop {
         animation: none !important; opacity: 1 !important; transform: none !important;
       }
+      /* The credit file (2026-11-16): the same printed report with a "Sources
+         and record" page after it, and WITHOUT the owner's analysis appendix
+         (their NOI and DCF are private finances and no part of a lender's
+         file). body.credit-file is set only for the length of that one print. */
+      body:not(.credit-file) #creditFile { display: none !important; }
+      body.credit-file #creditFile { break-before: page; page-break-before: always; padding-top: 2mm; }
+      body.credit-file #analysisSeam, body.credit-file #tabAnalysis { display: none !important; }
+      #creditFile table { width: 100%; border-collapse: collapse; font-size: var(--text-tiny); }
+      #creditFile th, #creditFile td { text-align: left; vertical-align: top; padding: 4px 6px 4px 0; border-bottom: 1px solid #E4E2DA; }
+      #creditFile th { font-weight: 600; color: #1A2433; border-bottom: 1.5px solid #1A2433; }
+      #creditFile td.cf-url { word-break: break-all; color: #5A6473; }
+      #creditFile tr { break-inside: avoid; page-break-inside: avoid; }
+      #creditFile dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; font-size: var(--text-tiny); margin: 0 0 12px; }
+      #creditFile dt { color: #5A6473; }
+      #creditFile dd { margin: 0; color: #1A2433; }
     }
 
     /* ---------------- Research Desk landing system ---------------- */
@@ -4550,6 +4565,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
           Print / PDF
         </button>
+        <button id="creditFileBtn" title="The printed report plus a Sources and record page: every comp with its source link, when the comps were found and the method version. Leaves out your private analysis."
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-ink-mute bg-card hover:text-ink border border-edge rounded px-3 py-2.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg>
+          Credit file
+        </button>
         <button id="csvBtn"
           class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-ink-mute bg-card hover:text-ink border border-edge rounded px-3 py-2.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
@@ -5454,6 +5474,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           Prepared by CompNinja · Comparables are derived from publicly available data and are intended as a starting point, not a system of record. Independently verify before relying on them for underwriting.
         </p>
 
+        <!-- The credit file's "Sources and record" page. Filled by
+             renderCreditFile() at the moment of that print and shown only
+             while body.credit-file is set (see the print stylesheet). -->
+        <div id="creditFile" class="print-only"></div>
+
         <!-- Print footer -->
         <div class="print-only pt-3 mt-2 border-t border-line text-center text-xs text-ink-3">
           <!-- Filled by renderReportBrand(): the member's firm name and
@@ -6020,7 +6045,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     subj.className = "rd-chip rd-chip-subj mr-1.5 mt-1.5";
     subj.textContent = "Your property";
     metaBox.appendChild(subj);
-    metaParts(meta).concat(`Generated ${dateStr}`).forEach((part) => {
+    metaParts(meta).concat(`Generated ${dateStr}`, stampParts()).forEach((part) => {
       const chip = document.createElement("span");
       chip.className = "rd-chip mr-1.5 mt-1.5";
       chip.textContent = part;
@@ -7499,6 +7524,30 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // it ages (the old compAgeYears read this out of meta itself).
   function asOfOf(meta) {
     return meta && meta.generatedAt ? new Date(meta.generatedAt).getTime() : Date.now();
+  }
+  // What the SERVER stamped on the report when its comps were found
+  // (runCompSearch: generated_at, method_version). Distinct from
+  // meta.generatedAt, which is when this browser drew or saved the report: a
+  // cached report is drawn today from comps found up to 30 days ago, and a
+  // file that travels has to say which is which. Reports from before
+  // 2026-11-16 carry neither field, so both parts simply drop out. Display
+  // only: the weighting still measures ages from asOfOf above.
+  function reportStamp(parsed) {
+    const p = parsed || currentParsed || {};
+    const at = p.generated_at ? new Date(p.generated_at) : null;
+    return {
+      foundAt: at && !isNaN(at.getTime()) ? at : null,
+      method: typeof p.method_version === "string" ? p.method_version.trim().slice(0, 24) : "",
+    };
+  }
+  function stampParts(parsed) {
+    const st = reportStamp(parsed);
+    const parts = [];
+    if (st.foundAt) {
+      parts.push("Comps found " + st.foundAt.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }));
+    }
+    if (st.method) parts.push("Method " + st.method);
+    return parts;
   }
   function trendPctOf(parsed) {
     return parsed ? parsed.annual_price_trend_pct : null;
@@ -23030,6 +23079,7 @@ async function renderMyDesk() {
     }
     const title = currentMeta
       ? esc(`${currentMeta.address} | ${metaLine(currentMeta)} | Generated ${new Date(currentMeta.generatedAt || Date.now()).toLocaleDateString()}`
+          + stampParts().map((b) => ` | ${b}`).join("")
           + curationBits.map((b) => ` | ${b}`).join(""))
       : "";
     // The file travels on its own, and a reader who searched their OWN
@@ -23130,6 +23180,8 @@ async function renderMyDesk() {
         ["Type", currentMeta.type],
         ["Search", metaLine(currentMeta)],
         ["Generated", new Date(currentMeta.generatedAt || Date.now()).toLocaleString()],
+        ...(reportStamp().foundAt ? [["Comps found", reportStamp().foundAt.toLocaleString()]] : []),
+        ...(reportStamp().method ? [["Method version", reportStamp().method]] : []),
         ...(reportCurrency.code !== "USD" ? [[
           "Currency",
           showUsd && reportCurrency.rate
@@ -23618,6 +23670,7 @@ async function renderMyDesk() {
         if (parsed.transactions_reviewed) searchBits.push(`${parsed.transactions_reviewed} transactions reviewed`);
         if (parsed.search_radius) searchBits.push(`search radius ${parsed.search_radius}`);
         if (meta.months) searchBits.push(`last ${meta.months} month${meta.months === 1 ? "" : "s"}`);
+        stampParts(parsed).forEach((b) => searchBits.push(b.charAt(0).toLowerCase() + b.slice(1)));
         if (searchBits.length) {
           left.push(KICKER("THE SEARCH", { paraSpaceBefore: 8 }));
           left.push({ text: searchBits.join(" · "), options: { fontSize: 10, breakLine: true } });
@@ -24109,6 +24162,94 @@ async function renderMyDesk() {
     await ensureStaticMap();
     window.print();
     flashExportDone(document.getElementById("printBtn"), "Done");
+  }));
+
+  // ---- The credit file (2026-11-16) ----------------------------------------
+  // The printed report with one more page after it, "Sources and record": what
+  // a lender's file needs and the report's own pages do not spell out — every
+  // comp's source link AS TEXT (a printed badge cannot be clicked), when the
+  // comps were found, the method version, and the whole disclaimer.
+  // Rows come from exportableComps(), never includedComps(): a private comp
+  // counts in the value and is disclosed as a count, but is never listed
+  // (never-break rules 3 and 5). The analysis appendix is left out by the
+  // print stylesheet, so the owner's NOI never rides along (rule 6).
+  // Built with textContent only: every string here came from a model or a
+  // member.
+  const CREDIT_FILE_DISCLAIMER = "Automated estimate from recent comparable sales. Not an appraisal, not an evaluation under bank appraisal rules, and not a broker opinion of value. No one inspected the property. CompNinja is not a licensed appraiser or brokerage. Comparables derive from publicly available data: verify independently before relying on them for underwriting.";
+  function renderCreditFile() {
+    const box = document.getElementById("creditFile");
+    if (!box) return;
+    box.innerHTML = "";
+    if (!currentMeta) return;
+    const el = (tag, text, cls) => {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text != null) n.textContent = String(text);
+      return n;
+    };
+    box.appendChild(el("h2", "Sources and record", "font-brand"));
+
+    const st = reportStamp();
+    const fmtV = (v) => formatUsd(v, { maximumFractionDigits: 0 });
+    const when = (d) => d.toLocaleString(undefined, { year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+    const rows = exportableComps();
+    const cc = curationCounts();
+    const privOut = privateIncludedCount();
+    const facts = [
+      ["Property", currentMeta.address],
+      ["Search", metaLine(currentMeta)],
+    ];
+    if (lastValuation && lastValuation.likely > 0) {
+      facts.push(["Estimated value range", fmtV(lastValuation.low) + " to " + fmtV(lastValuation.high) + " (likely " + fmtV(lastValuation.likely) + ")"]);
+    }
+    facts.push(["Comps found", st.foundAt ? when(st.foundAt) : "Not recorded (report predates the record)"]);
+    facts.push(["Report drawn", when(new Date(currentMeta.generatedAt || Date.now()))]);
+    facts.push(["This copy printed", when(new Date())]);
+    facts.push(["Method version", st.method || "Not recorded (report predates the record)"]);
+    const counted = [rows.length + " listed below"];
+    if (privOut > 0) counted.push(privOut + " private comp" + (privOut === 1 ? "" : "s") + " counted in the value and not listed");
+    if (cc.excluded > 0) counted.push(cc.excluded + " excluded by the report owner");
+    if (cc.added > 0) counted.push(cc.added + " added by the report owner");
+    facts.push(["Comparables", counted.join("; ")]);
+    const dl = document.createElement("dl");
+    facts.forEach(([k, v]) => { dl.appendChild(el("dt", k)); dl.appendChild(el("dd", v)); });
+    box.appendChild(dl);
+
+    const table = document.createElement("table");
+    const head = document.createElement("tr");
+    ["#", "Address", "Date", "Type", "Price or rate", "Source confidence", "Source"].forEach((h) => head.appendChild(el("th", h)));
+    table.appendChild(head);
+    rows.forEach((comp) => {
+      const tr = document.createElement("tr");
+      const tier = SOURCE_TIERS[compTier(comp)] || {};
+      const url = String(comp.source_url || "").trim();
+      [comp._num, comp.address, comp.date, comp.transaction, displayMoney(comp.price_or_rate), tier.label || ""]
+        .forEach((v) => tr.appendChild(el("td", v == null ? "" : v)));
+      tr.appendChild(el("td", url || "No link recorded", "cf-url"));
+      table.appendChild(tr);
+    });
+    box.appendChild(table);
+
+    const present = new Set(rows.map((c) => compTier(c)).filter(Boolean));
+    const legend = Object.keys(SOURCE_TIERS).filter((k) => present.has(k))
+      .map((k) => SOURCE_TIERS[k].label + ": " + SOURCE_TIERS[k].legend).join(". ");
+    if (legend) box.appendChild(el("p", "Source confidence. " + legend + ".", "text-xs text-ink-3 mt-3"));
+    box.appendChild(el("p", CREDIT_FILE_DISCLAIMER, "text-xs text-ink-3 mt-3"));
+  }
+  document.getElementById("creditFileBtn").addEventListener("click", gatedExport(async () => {
+    await ensureStaticMap();
+    renderCreditFile();
+    document.body.classList.add("credit-file");
+    // afterprint, not the line after window.print(): some browsers return from
+    // print() before the dialog closes, and dropping the class early would
+    // print the ordinary report.
+    const done = () => {
+      document.body.classList.remove("credit-file");
+      window.removeEventListener("afterprint", done);
+    };
+    window.addEventListener("afterprint", done);
+    window.print();
+    flashExportDone(document.getElementById("creditFileBtn"), "Done");
   }));
 
   // Hero BOV CTA — always opens the modal (an explicit BOV request, not an

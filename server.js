@@ -270,6 +270,9 @@ const PFDELTA = require("./portfolio-delta");
 // finished report is worth as a portfolio row, and what the totals say. Pure;
 // server.js owns the job tables, the worker and the search itself.
 const BULK = require("./bulk");
+// Only for METHOD_VERSION, stamped on a fresh report in runCompSearch. The
+// value math itself still runs in the browser (and in bulk.js for a bulk row).
+const VALUATION = require("./valuation");
 const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
 const { renderBuildingsBody, renderBuildingSheetBody } = require("./buildings-page");
 const { renderPermitsBody } = require("./permits-page");
@@ -11051,6 +11054,14 @@ async function runCompSearch({
   // A fresh lookup (no memo, no typed size) is worth remembering for
   // every future search of this address. Fire-and-forget.
   if (!sizeOk && !knownSize) rememberSubjectSize(addressOk, result);
+  // WHEN the comps were found and UNDER WHICH METHOD, stamped once, here,
+  // before the cache write. That placement is the point: a cache hit (and a
+  // shorter window derived from a cached one) then carries the ORIGINAL
+  // moment, where the browser's "Generated" date is only the day the page was
+  // drawn — a 29-day-old cached report used to read as today's. Not
+  // viewer-specific, so it is safe upstream of the gate (never-break rule 2).
+  result.generated_at = new Date().toISOString();
+  result.method_version = VALUATION.METHOD_VERSION;
   // meta feeds the instant-badge address index; the Explorer's
   // market-level store below deliberately passes none.
   //

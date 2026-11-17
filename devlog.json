@@ -67,6 +67,12 @@
   },
   {
     "date": "2026-11-16",
+    "type": "feature",
+    "title": "Reports say when their comps were found, and there is a Credit file export",
+    "details": "Every new report now records the moment its comps were found and the version of the method that produced it, and shows both in the report header and in the CSV, Excel and PowerPoint exports. Until now a report served from the 30-day cache was dated the day it was opened, so comps found weeks ago could read as today’s. A new Credit file button prints the report with a Sources and record page after it: every comp with its source link written out, the value range, when the comps were found, the method version and the full disclaimer. It leaves out your private analysis and never lists a private comp. Reports made before today carry no record and say so."
+  },
+  {
+    "date": "2026-11-16",
     "type": "improvement",
     "title": "The comp corpus download includes each deal’s map location",
     "details": "The Comp corpus CSV on HQ now ends with each saved deal’s latitude and longitude. Our accuracy test used to compare a building only with every other sale in its city; with locations it can compare it with the deals within a mile (houses) or ten miles (commercial), the way a real report does, and it can test how much distance should count. Nothing changes in reports."

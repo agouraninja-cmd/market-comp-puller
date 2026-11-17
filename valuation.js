@@ -24,6 +24,13 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
+  // The method's version, printed on every report and export so a file that
+  // travels (a lender's credit file, a client's inbox) says which rules made
+  // its number. BUMP IT whenever a change can move a value or a comp's label:
+  // the weighting or band math in this file, the search prompt, the source
+  // labelling in corpus-audit.js, or the link check. Year.month.revision.
+  const METHOD_VERSION = "2026.11.1";
+
   function numericValue(str) {
     if (str == null) return NaN;
     const m = String(str).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
@@ -742,6 +749,7 @@
   }
 
   return {
+    METHOD_VERSION,
     numericValue, salePsfOf, robustPpsfRange, BAND_LOW_PCT, BAND_HIGH_PCT, heroRound,
     TIER_WEIGHT, tierOf, compDateMs, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
     defaultFreePassMiles,

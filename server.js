@@ -16542,10 +16542,18 @@ const MARKET_BUILD =
 // page opens; one that does not is built by the same route, with the same
 // checks (market-build.js's mountLookup). Members only, the same bytes for
 // every member, and never on the anonymous page, which is cached publicly.
+//
+// One title, not two (2026-11-16; the owner: "the market explorer seems a bit
+// messy"). A member's page opened with the public page's headline and its
+// "run a free valuation" pitch, and then this form's own "Market Explorer"
+// title in a card under it. The form's title IS the member's page title now
+// (MARKET_LOOKUP_HEAD, the h1 the form is labelled by), and the form is the
+// row of fields alone.
+const MARKET_LOOKUP_HEAD =
+  `<h1 id="mlookH">Market Explorer</h1>` +
+  `<p class="sub mlook-sub">Search any city and property type. If we have that market, its page opens. If we don&rsquo;t, we build it from recent sales, which takes about a minute.</p>`;
 const MARKET_LOOKUP =
   `<form class="mlook" id="mlook" aria-labelledby="mlookH">` +
-  `<h2 id="mlookH">Market Explorer</h2>` +
-  `<p class="mlook-sub">Search any city and property type. If we have that market, its page opens. If we don&rsquo;t, we build it from recent sales, which takes about a minute.</p>` +
   `<div class="mlook-row">` +
   `<label class="mlook-q"><span>City and state</span>` +
   `<input id="mlq" name="q" type="text" maxlength="80" autocomplete="off" placeholder="Tulsa, OK" required/></label>` +
@@ -16558,12 +16566,15 @@ const MARKET_LOOKUP =
   `</form>`;
 // No backticks in here: this is a template literal.
 const MARKET_BUILD_CSS = `
-.mlook{margin:6px 0 22px;border:1px solid var(--edge);border-radius:var(--r-xl);background:var(--card);box-shadow:var(--lift);padding:18px 20px}
-.mlook h2{margin:0;font-weight:600;font-size:var(--text-heading);line-height:1.2;color:var(--ink)}
-.mlook-sub{margin:4px 0 14px;font-size:var(--text-compact);color:var(--ink-3);max-width:72ch}
+.mlook{margin:0 0 24px;border:1px solid var(--edge);border-radius:var(--r-xl);background:var(--card);box-shadow:var(--lift);padding:18px 20px}
+p.sub.mlook-sub{margin:0 0 18px;max-width:72ch}
 .mlook-row{display:grid;grid-template-columns:minmax(0,1fr) 200px auto;gap:10px;align-items:end}
 .mlook-row label{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:var(--text-tiny);letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--ink-3)}
-.mlook-row input,.mlook-row select{box-sizing:border-box;width:100%;min-width:0;font:inherit;font-size:var(--text-input);letter-spacing:0;text-transform:none;font-weight:400;color:var(--ink);background:var(--card);border:1px solid var(--edge);border-radius:var(--r-md);padding:9px 12px}
+/* One height for the box, the menu and the button: a text box and a select
+   given the same padding come out different heights, which left the two
+   labels on different lines and the button short of the box beside it. */
+.mlook-row input,.mlook-row select{box-sizing:border-box;width:100%;min-width:0;height:44px;font:inherit;font-size:var(--text-input);letter-spacing:0;text-transform:none;font-weight:400;color:var(--ink);background:var(--card);border:1px solid var(--edge);border-radius:var(--r-md);padding:0 12px}
+.mlook-row .btn{box-sizing:border-box;height:44px;padding-top:0;padding-bottom:0}
 .mlook-row input::placeholder{color:var(--ink-3)}
 .mlook-row input:focus,.mlook-row select:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
 .mlook .mbuild{max-width:none;margin-top:12px;background:var(--wash);box-shadow:none}
@@ -16571,6 +16582,32 @@ const MARKET_BUILD_CSS = `
   .mlook{padding:14px 12px}
   .mlook-row{grid-template-columns:minmax(0,1fr) auto}
   .mlook-q{grid-column:1/-1}
+}
+/* A member's page is a stack of sections, so they share one frame: the
+   rankings card takes The Board's corners, padding and heading size (it is
+   also on the public page and on /rankings, which keep their own), and every
+   section sits 24px from the next. These ride in the head BEFORE the page's
+   own stylesheet, so a rule that has to beat one of its rules names two
+   classes. */
+.rke{border-radius:var(--r-xl);padding:18px 20px;margin:0 0 24px}
+.rke h2{font-size:var(--text-heading);line-height:1.2}
+@media(max-width:720px){.rke{padding:14px 12px}}
+/* The directory under the rankings: a title, with the filter box on its row.
+   The box sat alone between two cards, naming nothing. */
+.mdir-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 16px;margin:8px 0 0}
+.mdir-head h2{margin:0;font-weight:600;font-size:var(--text-heading);line-height:1.2;color:var(--ink);letter-spacing:normal;text-transform:none}
+.mdir-head p{margin:4px 0 0;font-size:var(--text-compact);color:var(--ink-3)}
+.mdir-head .mfilter{margin:0;flex:0 1 440px;max-width:none}
+.mdir-head ~ .mcount:empty{min-height:0;margin:0}
+/* What the box answers with (the count, the offer to build a market) sits
+   under the box, on the right, not under the title on the left. */
+.mdir-head ~ .mcount{text-align:right}
+.mdir-head ~ .mbuild{box-sizing:border-box;max-width:440px;margin:10px 0 0 auto}
+.mdir-head ~ .mmap-card{margin-top:16px}
+@media (max-width:700px){
+  .mdir-head .mfilter{flex-basis:100%}
+  .mdir-head ~ .mcount{text-align:left}
+  .mdir-head ~ .mbuild{max-width:none}
 }
 .mbuild{max-width:520px;margin-top:4px;padding:14px 16px;border:1px solid var(--edge);border-radius:var(--r-lg);background:var(--card);box-shadow:var(--lift)}
 .mbuild[hidden]{display:none}
@@ -16607,7 +16644,7 @@ const BOARD_SECTION =
 // selectors, so an open market's comps table inside a row keeps its own.
 // No backticks in here: this is a template literal.
 const BOARD_CSS = `
-.bd{margin:6px 0 30px;border:1px solid var(--edge);border-radius:var(--r-xl);background:var(--card);box-shadow:var(--lift);padding:18px 20px 14px}
+.bd{margin:0 0 24px;border:1px solid var(--edge);border-radius:var(--r-xl);background:var(--card);box-shadow:var(--lift);padding:18px 20px 14px}
 .bd-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 16px;margin-bottom:12px}
 .bd-head h2{margin:0;font-weight:600;font-size:var(--text-heading);line-height:1.2;color:var(--ink)}
 .bd-sum{margin:4px 0 0;font-size:var(--text-compact);color:var(--ink-3)}
@@ -16690,7 +16727,7 @@ const BOARD_CSS = `
   .bd-row .bd-trend{grid-column:1;grid-row:2}
   .bd-row .bd-chg{grid-column:2;grid-row:2}
   .bd-row .bd-read{grid-column:1/-1;grid-row:3}
-  .bd-row .bd-read .bd-mute{display:none}
+  .bd-row .bd-read .bd-mute,.bd-row .bd-chg > .bd-mute,.bd-row .bd-nospark{display:none}
   .bd-row .bd-cv{display:none}
   .bd-open .bd-comps{min-width:520px}
 }
@@ -16913,11 +16950,21 @@ function renderMarketDirectoryHTML(signedIn) {
   // A member always gets the box, whatever the count: it is also where they
   // build a market that has no card yet (MARKET_BUILD below).
   const showFilter = slugs.length > 8 || signedIn;
+  const filterBox =
+    `<div class="mfilter">` +
+    `<label class="vh" for="mq">Filter markets</label>` +
+    `<input id="mq" type="search" autocomplete="off" placeholder="Filter by city, state, or type, e.g. warehouse Texas"/>` +
+    `</div>`;
+  // A member's directory has a title, and the filter box sits on its row
+  // (2026-11-16): under the Explorer, The Board and the rankings, a bare box
+  // between two cards did not say what it filtered. The public page is the
+  // filter box alone, byte for byte what it was.
   const filterUi = showFilter
-    ? `<div class="mfilter">` +
-      `<label class="vh" for="mq">Filter markets</label>` +
-      `<input id="mq" type="search" autocomplete="off" placeholder="Filter by city, state, or type, e.g. warehouse Texas"/>` +
-      `</div><div class="mcount" id="mcount" role="status" aria-live="polite"></div>` +
+    ? (signedIn
+        ? `<div class="mdir-head"><div><h2 id="mdirH">Browse markets</h2>` +
+          `<p>The markets that have a page, on the map and in the list under it.</p></div>${filterBox}</div>`
+        : filterBox) +
+      `<div class="mcount" id="mcount" role="status" aria-live="polite"></div>` +
       (signedIn ? `<div class="mbuild" id="mbuild" aria-live="polite" hidden></div>` : "")
     : "";
   const filterJs = showFilter
@@ -16947,8 +16994,12 @@ function renderMarketDirectoryHTML(signedIn) {
       `run();})();</script>`
     : "";
   const body =
-    `<h1>Commercial Real Estate Market Snapshots</h1>` +
-    `<p class="sub">Recent price-per-square-foot and cap-rate snapshots by market, built from real comparable sales. Pick a market, or run a free valuation for your own building.</p>` +
+    // A member's page is titled by what it is for, the Market Explorer; the
+    // public headline and its "run a free valuation" pitch are for a visitor.
+    (signedIn
+      ? MARKET_LOOKUP_HEAD
+      : `<h1>Commercial Real Estate Market Snapshots</h1>` +
+        `<p class="sub">Recent price-per-square-foot and cap-rate snapshots by market, built from real comparable sales. Pick a market, or run a free valuation for your own building.</p>`) +
     // The Board itself (2026-10-09; it was a door to /vault#board from
     // 2026-10-07): the owner's "stock portfolio watch list for properties
     // and markets", drawn by /board.js from the member's own reads, so this
@@ -16969,8 +17020,12 @@ function renderMarketDirectoryHTML(signedIn) {
     // After filterJs on purpose: its input listener runs first, so the build
     // offer reads the card count the filter just left on screen.
     (signedIn && showFilter ? MARKET_BUILD : "") +
-    `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
-    `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
+    // The owner funnel is for a visitor. A member's "/" is Home, which runs
+    // no valuation, so the button promised something the click did not do
+    // (a market PAGE already drops it for a member).
+    (signedIn ? "" :
+      `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
+      `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`);
   return marketShell({
     title: `${title} | CompNinja`, description, canonical, body, jsonLd, signedIn,
     // RANK_CSS rides along whenever the entry card is on the page: the card

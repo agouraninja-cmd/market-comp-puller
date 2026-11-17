@@ -28,6 +28,27 @@ paths:
 
 ## Architecture
 
+- **A member's /markets is its own page, titled Market Explorer (2026-11-16;
+  the owner: "the market explorer seems a bit messy").** Signed in,
+  `renderMarketDirectoryHTML` now differs from the public page in five ways,
+  all pinned in `test/public-pages.test.js`: the h1 is `MARKET_LOOKUP_HEAD`
+  ("Market Explorer" and the search's one sentence; the form `#mlook` is the
+  row of fields alone, labelled by that h1), not the public headline and its
+  "run a free valuation" pitch; the directory has a title row (`.mdir-head`,
+  "Browse markets") with the filter box on it, and the filter's count and
+  build offer sit under the box; the closing "Get my free valuation" block is
+  left off (a member's `/` is Home, which values nothing); the rankings card
+  takes The Board's corners, padding and heading size; every section is 24px
+  from the next. **The public page is byte for byte what it was** (checked by
+  diffing the served HTML against main), and stays that way: it is cached for
+  everyone. The member's rules live in `MARKET_BUILD_CSS`, which rides in the
+  head BEFORE `MARKET_CSS`, so a rule there that must beat one of the page's
+  own names two classes (`.mdir-head .mfilter`, `p.sub.mlook-sub`); it comes
+  after `RANK_CSS`, so `.rke` is overridden plainly. The search row's box,
+  menu and button share `height:44px`: a text box and a select given the same
+  padding come out different heights, which put the two labels on different
+  lines.
+
 - **Inter on /markets, for a member only (2026-11-13).** `/markets` and
   `/bulk` were the two rows of the rail whose pages did not load Inter, so
   the whole page, the rail's words included, fell back to the system font

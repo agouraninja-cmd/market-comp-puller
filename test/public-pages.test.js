@@ -459,7 +459,13 @@ test("a member's /markets opens with the Market Explorer form, and only a member
   assert.ok(at > 0, "no Market Explorer form on a member's /markets");
   assert.ok(at < member.indexOf('<section id="board"'), "the form sits above The Board");
   const form = member.slice(at, member.indexOf("</form>", at));
-  assert.match(form, /<h2 id="mlookH">Market Explorer<\/h2>/);
+  // 2026-11-16: the form's title is the page's title. It was an h2 in the
+  // card, under the public page's headline: two titles on one page.
+  assert.match(form, /^<form class="mlook" id="mlook" aria-labelledby="mlookH">/);
+  assert.ok(!/<h[1-6]/.test(form), "the form has a heading of its own again");
+  const h1 = member.indexOf('<h1 id="mlookH">Market Explorer</h1>');
+  assert.ok(h1 > 0 && h1 < at, "the Market Explorer title is not the page's h1, above the form");
+  assert.equal(member.split("<h1").length - 1, 1, "a member's /markets has one h1");
   assert.match(form, /<input id="mlq" name="q" type="text"[^>]*placeholder="Tulsa, OK"/);
   // The menu offers exactly the types the route builds, in its order.
   assert.deepEqual([...form.matchAll(/<option>([^<]+)<\/option>/g)].map((m) => m[1]), require("../market-build.js").TYPES);
@@ -474,6 +480,36 @@ test("a member's /markets opens with the Market Explorer form, and only a member
   const anon = await (await fetch(srv.base + "/markets")).text();
   assert.ok(!anon.includes('id="mlook"') && !anon.includes("mountLookup") && !anon.includes(".mlook{"),
     "the Market Explorer form on the public page, which is cached for everyone");
+});
+
+test("a member's /markets drops the visitor's pitch and titles its directory; the public page keeps both as they were", async (t) => {
+  // 2026-11-16 (the owner: "the market explorer seems a bit messy"). A member
+  // read the public headline and "run a free valuation" over their own tools,
+  // a filter box that sat alone between two cards, and a closing "Get my free
+  // valuation" button whose link, for them, is Home.
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+  const member = await (await fetch(srv.base + "/markets", { headers: SESSION })).text();
+  const anon = await (await fetch(srv.base + "/markets")).text();
+  // The visitor's words are the visitor's.
+  for (const pitch of ["Commercial Real Estate Market Snapshots</h1>", "run a free valuation", "Get my free valuation", "Have a specific property?"]) {
+    assert.ok(!member.includes(pitch), `a member's /markets still says "${pitch}"`);
+    assert.ok(anon.includes(pitch), `the public /markets lost "${pitch}"`);
+  }
+  // The directory has a title, the filter box is on its row, and both sit
+  // under the rankings and over the map.
+  const head = member.indexOf('<div class="mdir-head"><div><h2 id="mdirH">Browse markets</h2>');
+  assert.ok(head > 0, "no title on a member's directory");
+  const box = member.indexOf('<div class="mfilter">', head);
+  assert.ok(box > head && box < member.indexOf("</div></div>", head) + 12, "the filter box is not in the directory's title row");
+  assert.ok(head > member.indexOf('<section id="board"') && head < member.indexOf('class="grid"'));
+  assert.match(member, /\.mdir-head \.mfilter\{/, "the title row's styles ride with it");
+  // The public page is the bare filter box, and carries none of the member's styles.
+  assert.ok(!anon.includes("mdir-head") && !anon.includes("Browse markets"), "the member's directory title on the public page");
+  assert.ok(anon.includes('<div class="mfilter"><label class="vh" for="mq">Filter markets</label>'));
+  // The search row's three controls are one height, so its labels share a line.
+  assert.match(member, /\.mlook-row input,\.mlook-row select\{[^}]*height:44px/);
+  assert.match(member, /\.mlook-row \.btn\{[^}]*height:44px/);
 });
 
 test("a lost visitor gets a page, not a bare string", async (t) => {

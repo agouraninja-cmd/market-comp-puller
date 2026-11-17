@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-17",
+    "type": "fix",
+    "title": "The red marker for the page you’re on no longer runs into Messages",
+    "details": "In the left sidebar, the red stripe that shows which page you’re on sat inside the box and touched the M of Messages, the widest word there. It now sits flush on the sidebar’s outer edge, a little taller, on every page."
+  },
+  {
+    "date": "2026-11-17",
     "type": "feature",
     "title": "Take a selfie for your profile photo",
     "details": "Settings now has a Take a selfie button beside Change photo. It opens your laptop’s or phone’s front camera right in the panel, shows a round preview, and lets you take the shot, retake it, or use it as your profile picture. The camera turns off as soon as you save, cancel or close Settings, and nothing but the saved photo leaves your browser."

@@ -2,6 +2,12 @@
   {
     "date": "2026-11-16",
     "type": "improvement",
+    "title": "Profile photos beside messages",
+    "details": "A colleague who has added a profile photo now shows it beside their messages and on their chat in the list, and your own photo shows beside yours. Anyone without a photo, and clients in a conversation outside the firm, keep the circle with their initial. Photos are still only shown to people in the same firm."
+  },
+  {
+    "date": "2026-11-16",
+    "type": "improvement",
     "title": "Messages fits one screen on a computer, and keeps your place",
     "details": "On a computer a long conversation made the whole page long: it opened on the oldest message and the box to type in was a long scroll down. Messages is now as tall as your window. The list and the conversation scroll inside it, the newest message is in view, and the box to type in never leaves the screen. If you scroll up to read back and somebody writes, you stay where you are and a note says “2 new messages”; a deal room used to pull you back to the bottom every fifteen seconds. A line marked New shows where the messages you have not read start. Each message shows the time it was sent (earlier days used to repeat the date), a comp’s date reads “Aug 14, 2026”, and your own messages show your initial instead of a Y."
   },

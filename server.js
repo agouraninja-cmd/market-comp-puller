@@ -30932,7 +30932,7 @@ const server = http.createServer((req, res) =>
       if (emails.length) {
         try {
           const users = await sbRequest("GET",
-            `users?email=in.(${pgInList(emails)})&select=id,email,name&limit=${emails.length}`);
+            `users?email=in.(${pgInList(emails)})&select=id,email,name,avatar_rev&limit=${emails.length}`);
           for (const u of users || []) byEmail.set(ORG.normalizeEmail(u.email), u);
         } catch (err) {
           console.error("Messaging roster user read failed:", err.message);
@@ -30949,7 +30949,15 @@ const server = http.createServer((req, res) =>
         // button could only fail. A PENDING one is expected to have no account
         // yet (that is what the invitation is for), so it stays and is marked.
         if (!pending && !userId) continue;
-        out.push({ userId, email, name: MSG.displayName({ name: u && u.name, email }), pending });
+        // memberId and photoRev are for the photo beside a colleague's messages
+        // (2026-11-16): the page builds GET /api/org/person/photo from them,
+        // which stays the one gate on a colleague's face. Joined people only;
+        // an invitation has no photo to show.
+        out.push({
+          userId, email, name: MSG.displayName({ name: u && u.name, email }), pending,
+          memberId: pending ? "" : String(r.id || ""),
+          photoRev: pending ? "" : String((u && u.avatar_rev) || ""),
+        });
       }
       return out;
     };

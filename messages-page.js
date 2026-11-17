@@ -129,6 +129,8 @@ function renderMessagesBody(boot) {
 .msg-row[aria-current="true"]{background:var(--wash-2);box-shadow:inset 3px 0 0 var(--red)}
 .msg-av{flex:0 0 34px;width:34px;height:34px;border-radius:50%;background:var(--slab);color:#fff;
   font-size:var(--text-label);font-weight:600;display:flex;align-items:center;justify-content:center;text-transform:uppercase}
+.msg-av.has-photo{position:relative;overflow:hidden}
+.msg-av.has-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;max-width:none}
 .msg-av.chan{background:var(--wash-2);color:var(--ink-2);border:1px solid var(--edge)}
 .msg-rowbody{min-width:0;flex:1}
 .msg-rowtop{display:flex;align-items:baseline;gap:8px}
@@ -812,6 +814,24 @@ ${REPORT_INBOX_SRC}
   // "You", and the circle beside them used to take its letter from that
   // word: every reader was "Y".
   function myInitial(){ return initial(state.meName || state.me2 || "You"); }
+  // A colleague's profile photo in their circle (2026-11-16). The address
+  // is the firm's own gated route (GET /api/org/person/photo), built from
+  // the roster the list read sent, so who may see a face is still decided
+  // there and nowhere else. Only for people on that roster with a photo: a
+  // client in a deal room, a leaver and a reader with no firm keep their
+  // letter. The letter stays UNDER the picture, and a picture that fails to
+  // load removes itself, so a circle is never empty.
+  state.photos = {};
+  state.photosByEmail = {};
+  function photoFor(userId, email){
+    return (userId && state.photos[userId]) || (email && state.photosByEmail[String(email).toLowerCase()]) || "";
+  }
+  function circle(letter, userId, email){
+    var src = photoFor(userId, email);
+    if (!src) return '<span class="msg-av">' + esc(letter) + '</span>';
+    return '<span class="msg-av has-photo">' + esc(letter) +
+      '<img src="' + esc(src) + '" alt="" loading="lazy" onerror="this.remove()"></span>';
+  }
   function api(method, url, body){
     var opts = { method: method, credentials: "same-origin", headers: { accept: "application/json" } };
     if (body !== undefined) {
@@ -1037,7 +1057,7 @@ ${REPORT_INBOX_SRC}
         body = extCompCard(it2.it);
       }
       html += '<div class="msg-line' + (cont ? " cont" : "") + '">' +
-        '<span class="msg-av">' + esc(name === "You" ? myInitial() : initial(name)) + '</span>' +
+        circle(name === "You" ? myInitial() : initial(name), "", authorEmail) +
         '<div class="msg-body">' +
           (cont ? "" : '<div class="msg-meta"><span class="msg-author">' + esc(name) + '</span>' +
             '<span class="msg-time">' + esc(clock(it2.at)) + '</span></div>') +
@@ -1222,11 +1242,18 @@ ${REPORT_INBOX_SRC}
 
   // draft: what the reader started typing in this chat and left there. It
   // takes the preview's place, marked, so a half-written message is findable.
+  // Whose photo a row shows: the other person in a direct message. A group
+  // and a deal room have no one person, so they keep their letter.
+  function rowPerson(t){
+    if (t.kind !== "dm") return "";
+    var other = (t.members || []).filter(function(m){ return m.userId !== state.me && !m.left; })[0];
+    return other ? other.userId : "";
+  }
   function threadRowHtml(t, attr, current, sub, line, side, draft){
     var chan = t.kind === "channel";
     return '<button class="msg-row' + (t.unread ? " is-unread" : "") + '" type="button"' +
       ' ' + attr + '="' + esc(t.id) + '"' + (current ? ' aria-current="true"' : "") + '>' +
-      '<span class="msg-av' + (chan ? " chan" : "") + '">' + esc(chan ? "#" : initial(t.label)) + '</span>' +
+      (chan ? '<span class="msg-av chan">#</span>' : circle(initial(t.label), rowPerson(t), "")) +
       '<span class="msg-rowbody">' +
         '<span class="msg-rowtop">' +
           '<span class="msg-name">' + esc(chatName(t)) + '</span>' +
@@ -2011,7 +2038,7 @@ ${REPORT_INBOX_SRC}
       var canU = canUnsendNow(m);
       var asking = canU && state.unsendId === m.id;
       html += '<div class="msg-line' + (cont ? " cont" : "") + (canU ? " can-unsend" : "") + (asking ? " is-asking" : "") + '">' +
-        '<span class="msg-av">' + esc(m.mine ? myInitial() : initial(name)) + '</span>' +
+        circle(m.mine ? myInitial() : initial(name), m.userId, m.author) +
         '<div class="msg-body">' +
           (cont ? "" : '<div class="msg-meta"><span class="msg-author">' + esc(name) + '</span>' +
             '<span class="msg-time">' + esc(clock(m.createdAt)) + '</span></div>') +
@@ -2418,6 +2445,16 @@ ${REPORT_INBOX_SRC}
       // Everyone at the firm except the reader. Pending invitees ride along
       // and are marked; the New panel filters them out, because everything
       // that needs a real account filters on userId.
+      // Photos, for everyone on the roster with one, the reader included.
+      state.photos = {};
+      state.photosByEmail = {};
+      (j.people || []).forEach(function(p){
+        if (!p.userId || !p.memberId || !p.photoRev || !j.firm) return;
+        var src = "/api/org/person/photo?org=" + encodeURIComponent(j.firm.id) + "&id=" + encodeURIComponent(p.memberId) +
+          "&v=" + encodeURIComponent(p.photoRev);
+        state.photos[p.userId] = src;
+        if (p.email) state.photosByEmail[String(p.email).toLowerCase()] = src;
+      });
       state.people = (j.people || []).filter(function(p){ return p.userId !== state.me; });
       state.canAttach = j.canAttachComps === true;
       state.threads = j.threads || [];

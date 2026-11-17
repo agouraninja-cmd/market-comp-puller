@@ -273,7 +273,7 @@ test("the broker's controls hang off whose room it is, not off it being external
 test("a reader with no firm gets their rooms, and nothing that needs a firm", () => {
   const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
   // New opens firm threads. It goes away rather than failing when pressed.
-  assert.match(js, /if \(!state\.firm\) \{\s*\$\("msgNewBtn"\)\.className = "msg-btn sm msg-hide";/);
+  assert.match(js, /if \(!state\.firm\) \{\s*\$\("msgNewBtn"\)\.className = "msg-btn primary sm msg-hide";/);
   assert.match(js, /\$\("msgFirmLine"\)\.textContent = "Deal rooms shared with you";/);
   // The Internal / External headings are a way to tell two groups apart, so
   // they appear only when there are two — otherwise a client, external to a
@@ -571,8 +571,10 @@ test("on a phone an open chat is one screen: the stream scrolls inside it and th
   assert.match(rail, /html\.nav-rail body\{padding-bottom:calc\(54px \+ env\(safe-area-inset-bottom,0px\)\)\}/, "the phone bar is no longer 54px: the chat's 70px is 54 + 8 + 8");
   // The Feedback button floats over the corner Send is in: put away while a
   // chat is open, and Send moved clear of it where :has() is not understood.
+  // The composer's own padding since it became one line (2026-11-17): its
+  // actions row is display:contents, so a margin on it does nothing.
   assert.match(bar[0], new RegExp("html:has\\(" + CHAT + "\\) \\.tninja\\{display:none\\}"));
-  assert.match(bar[0], /@supports not selector\(:has\(a\)\)\{ html\.nav-rail \.msg-page\.on-thread \.msg-actions\{margin-right:36px\} \}/);
+  assert.match(bar[0], /@supports not selector\(:has\(a\)\)\{ html\.nav-rail \.msg-page\.on-thread \.msg-composer\{padding-right:52px\} \}/);
   // Chats only. A report's pane has no scroller of its own, so a fixed
   // height there would cut the report off under the page's overflow:hidden.
   for (const m of css.matchAll(/([^{}]*\.on-thread[^{}]*)\{[^}]*(?:height:calc|grid-template-rows)/g)) {
@@ -860,14 +862,15 @@ test("a colleague's photo is in their circle, through the firm's own gated route
   const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
   const state = { photos: { "u-ben": "/api/org/person/photo?org=o1&id=m-ben&v=r1" }, photosByEmail: { "ben@firm.example": "/p?x=\"1" }, me: "u-me" };
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const api = new Function("state", "esc", [fnOf(js, "photoFor"), fnOf(js, "circle"), fnOf(js, "rowPerson")].join("\n") +
+  const api = new Function("state", "esc", [fnOf(js, "photoFor"), fnOf(js, "tint"), fnOf(js, "isMe"), fnOf(js, "circle"), fnOf(js, "rowPerson")].join("\n") +
     "; return { circle, rowPerson };")(state, esc);
   // The letter stays under the picture, and a picture that fails removes
   // itself: a circle is never empty.
   assert.equal(api.circle("B", "u-ben", ""),
     '<span class="msg-av has-photo">B<img src="/api/org/person/photo?org=o1&amp;id=m-ben&amp;v=r1" alt="" loading="lazy" onerror="this.remove()"></span>');
-  // Nobody on the roster with a photo (a client, a leaver): the letter alone.
-  assert.equal(api.circle("J", "u-gone", "jordan@client.example"), '<span class="msg-av">J</span>');
+  // Nobody on the roster with a photo (a client, a leaver): the letter alone,
+  // in that person's colour (2026-11-17).
+  assert.match(api.circle("J", "u-gone", "jordan@client.example"), /^<span class="msg-av t[0-4]">J<\/span>$/);
   // A deal room knows people by address; the address is escaped on its way in.
   assert.match(api.circle("B", "", "Ben@Firm.example"), /src="\/p\?x=&quot;1"/);
   // A row shows the other person of a direct message, never a group's.
@@ -899,4 +902,68 @@ test("New conversation opens under its button, above the list (2026-11-16)", () 
   assert.match(markup, /<div class="msg-stream" id="msgStream"><\/div>\s*(?:<!--[\s\S]*?-->\s*)?<button class="msg-newpill msg-hide" id="msgNewPill" type="button"><\/button>/);
   assert.match(css, /\.msg-newpill\{align-self:center;position:relative;z-index:2;flex:0 0 auto;height:32px;margin:-42px 0 10px;/);
   assert.match(css, /\.msg-newpill\{height:40px;margin-top:-50px\}/, "under a finger the note is no longer 40px tall, pulled up by 40 + 10");
+});
+
+// ---------------------------------------------------------------------------
+// Draft A (2026-11-17, the owner's pick of the Messages drafts)
+// ---------------------------------------------------------------------------
+test("a colour per person: the same account is the same colour, and the reader stays navy", () => {
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  const state = { photos: {}, photosByEmail: {}, me: "u-me", me2: "me@firm.example" };
+  const esc = (s) => String(s);
+  const api = new Function("state", "esc", "initial", [fnOf(js, "photoFor"), fnOf(js, "tint"), fnOf(js, "isMe"),
+    fnOf(js, "circle"), fnOf(js, "groupCircle")].join("\n") + "; return { circle, tint, groupCircle };")(
+    state, esc, (s) => String(s || "?").charAt(0).toUpperCase());
+  // The account decides, else the address (any case), else the name.
+  assert.equal(api.circle("B", "u-ben", ""), api.circle("B", "u-ben", "other@x.example"));
+  assert.equal(api.tint("Ben@Firm.example"), api.tint("ben@firm.example"));
+  assert.match(api.circle("J", "", "", "jordan"), /class="msg-av t[0-4]"/);
+  assert.equal(api.tint(""), "", "a circle with nothing to key on took a colour anyway");
+  // The reader's own circle, by account or by address, is the navy one.
+  assert.equal(api.circle("S", "u-me", ""), '<span class="msg-av">S</span>');
+  assert.equal(api.circle("S", "", "ME@firm.example"), '<span class="msg-av">S</span>');
+  // Five colours, and they spread.
+  const seen = new Set(["u-a", "u-b", "u-c", "u-d", "u-e", "u-f", "u-g", "u-h"].map(api.tint));
+  assert.ok(seen.size >= 3, "eight people came out in " + seen.size + " colours");
+  for (const t of seen) assert.match(t, /^ t[0-4]$/);
+  // A group shows two of the OTHER people, never the reader, and a # only
+  // when nobody else is left in it.
+  const g = api.groupCircle({ kind: "channel", members: [{ userId: "u-me", name: "Me" },
+    { userId: "u-ben", name: "Ben" }, { userId: "u-pri", name: "Priya" }, { userId: "u-lena", name: "Lena" }] });
+  assert.match(g, /^<span class="msg-av msg-duo"><span class="msg-av t[0-4]">B<\/span><span class="msg-av t[0-4]">P<\/span><\/span>$/);
+  assert.equal(api.groupCircle({ members: [{ userId: "u-me" }, { userId: "u-x", left: true }] }), '<span class="msg-av chan">#</span>');
+  // Every tint class has its rule, from the site's paired tokens only.
+  const css = renderMessagesBody({ s: 200, j: {} });
+  for (let i = 0; i < 5; i++) assert.match(css, new RegExp("\\.msg-av\\.t" + i + "\\{background:var\\(--[a-z0-9-]+\\);color:var\\(--[a-z0-9-]+\\)"));
+});
+
+test("a first visit gets a card to start from, not a box to type into with nobody on the other end", () => {
+  const html = renderMessagesBody({ s: 200, j: {} });
+  const js = scriptOf(html);
+  const css = html.slice(html.indexOf("<style>"), html.indexOf("</style>"));
+  // Only a firm member with nothing on either list and nothing open.
+  assert.match(fnOf(js, "paintFirst"), /var first = !!state\.listed && !!state\.firm && !state\.noFirm && !state\.openId &&\s*!state\.threads\.length && !state\.external\.length;/);
+  // An attribute, because the chat code assigns the page's className whole.
+  assert.match(fnOf(js, "paintFirst"), /page\.setAttribute\("data-first", ""\)/);
+  assert.match(css, /\.msg-page\[data-first\] #msgMain \.msg-head,\.msg-page\[data-first\] #msgComposer,\.msg-page\[data-first\] #msgTray\{display:none\}/);
+  // Invite a client only for a member who can open a deal room.
+  assert.match(fnOf(js, "paintFirst"), /\(state\.canAttach === true \? '<button class="msg-btn" type="button" data-first="invite">Invite a client<\/button>' : ""\)/);
+  // A press opens the New panel and sends nothing: the person presses Start.
+  const pick = fnOf(js, "firstPick");
+  assert.match(pick, /openNewPanel\(\);/);
+  assert.doesNotMatch(pick, /api\(|startThread/);
+  assert.match(js, /var fp = e\.target\.closest\("\[data-first\]"\);\s*if \(fp\) \{ firstPick\(fp\.getAttribute\("data-first"\)\); return; \}/);
+  // The list re-decides on every draw, and the card goes once somebody writes.
+  assert.match(fnOf(js, "renderThreads"), /^function renderThreads\(\)\{\s*paintHeadAv\(\);\s*paintFirst\(\);/);
+});
+
+test("the composer is one line, and Chat and Comps are tabs", () => {
+  const html = renderMessagesBody({ s: 200, j: {} });
+  const css = html.slice(html.indexOf("<style>"), html.indexOf("</style>"));
+  assert.match(css, /\.msg-composer\{[^}]*display:grid;grid-template-columns:auto minmax\(0,1fr\) auto;/);
+  assert.match(css, /\.msg-actions\{display:contents\}/);
+  assert.match(html, /id="msgAttach" type="button" aria-label="Attach a comp" title="Attach a comp"><svg/);
+  assert.match(css, /#msgTabChat\[aria-pressed="true"\],#msgTabComps\[aria-pressed="true"\]\{border-bottom-color:var\(--red\);/);
+  // The header's circle is a computer's; a phone gives the name the room.
+  assert.match(css.match(/@media \(max-width:900px\)\{[\s\S]*?\n\}/)[0], /\.msg-headav\{display:none\}/);
 });

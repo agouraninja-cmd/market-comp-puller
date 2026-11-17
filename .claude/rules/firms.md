@@ -333,6 +333,35 @@ paths:
   Proven in `test/messages-run.test.js` ("seen and typing") and
   `test/messaging.test.js`.
   **Not built:** a hint that Shift+Enter is a new line.
+  **Draft A, the look (2026-11-17, the owner's pick of
+  https://claude.ai/artifact/EDfoxE8RvVgKEiZdfQshyT; no migration, page
+  only).** Same two panes and flat message lines, restyled:
+  - **A colour per person**: `tint(key)` hashes the account id, else the
+    address, else the name, to `.msg-av.t0`-`t4` (the site's paired
+    ok/warn/bv/est tokens and wash-2). `circle()` takes a 4th `name` arg
+    and never tints the reader (`isMe`: id or `state.me2`). A photo's
+    circle is untouched. Report rows tint by sender.
+  - **A group shows two of its other people** (`groupCircle`, `.msg-duo`);
+    `#` only when nobody else is left. `chatCircle` draws a row's and the
+    header's circle (`#msgHeadAv`, painted by `paintHeadAv` from
+    `renderThreads` and `refreshHeader`; hidden under 900px).
+  - **Chat / Comps are underlined tabs** (still buttons with aria-pressed).
+  - **The composer is one grid line**: `.msg-actions` is
+    `display:contents`, so Attach, the textarea and Send are its cells and
+    the notes take a second row only when filled. Because a margin on a
+    contents box does nothing, the no-`:has()` Feedback fallback is now
+    `.msg-composer{padding-right:52px}`. Attach reads "+ Comp" (just the
+    plus under 640px), its name "Attach a comp" by aria-label.
+  - **A first visit** (`paintFirst`, from `renderThreads`): a firm member
+    with nothing on either list and nothing open gets `data-first` on the
+    page (an attribute: the chat code assigns className whole), which hides
+    the header and composer, and a card with up to four colleagues, New
+    conversation and, for a member who can open a deal room, Invite a
+    client. Every press goes through `firstPick`, which opens the New panel
+    and sends nothing. The list's own Start button shows under 901px only.
+  - Internal / External headings read **Your firm / Clients**; the intro
+    is one line; New is the red button; the report's facts are tiles.
+  Pinned at the foot of `test/messages-page.test.js`.
   **Deleting a conversation** (2026-09-26, no migration; owner's ask, Draft
   C of the drafts at https://claude.ai/artifact/2yqGKYAyv4n8mrFD5ZtHHF).
   `POST /api/messages/delete {threadId}` deletes a FIRM conversation **for the

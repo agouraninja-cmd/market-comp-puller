@@ -29,6 +29,8 @@
       "target": [{ "target": "dmg", "arch": ["universal"] }],
       "artifactName": "CompNinja.${ext}",
       "category": "public.app-category.business",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
         "NSCameraUsageDescription": "CompNinja uses your camera only when you choose Take a selfie, to set your profile photo."
       }

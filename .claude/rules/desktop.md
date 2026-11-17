@@ -112,11 +112,20 @@ needs the camera, and macOS refuses it to an app whose Info.plist has no
 `NSCameraUsageDescription`, so `mac.extendInfo` carries one. Electron grants
 the page's camera request itself: main.js sets no permission handler, so
 the site's own `Permissions-Policy: camera=(self)` and the browser-style
-prompt are the gate. **When the Mac build is ever signed for notarization**,
-the hardened runtime that comes with signing also needs the
-`com.apple.security.device.camera` entitlement (plus electron-builder's three
-defaults in a custom `entitlements.mac.plist`), or the camera silently fails.
-Unsigned, as today, it needs neither.
+prompt are the gate. **The camera entitlement is in place for the day the
+Mac build is signed** (2026-11-17, the owner's call: "add the camera
+entitlement now too"). Signing for notarization brings the hardened runtime,
+under which the camera silently fails without
+`com.apple.security.device.camera`. `desktop-app/build/entitlements.mac.plist`
+grants it, and `mac.entitlements` and `mac.entitlementsInherit` both name it,
+because Chromium captures video in a helper process. That file REPLACES
+electron-builder's default entitlements rather than adding to them, so it
+also carries the default's three (`allow-jit`,
+`allow-unsigned-executable-memory`, `disable-library-validation`), without
+which a signed Electron will not start. Unsigned, as today, macOS reads none
+of it: the installers behave exactly as 1.2.0's, which is why no release was
+cut for it. `test/desktop-app.test.js` holds all four keys, the two paths and
+the camera sentence.
 
 **A door you are already through is hidden** (2026-08-20; `INAPP_BOOT` /
 `INAPP_UA_TOKEN` in server.js, `test/inapp-nav.test.js`). Inside the desktop

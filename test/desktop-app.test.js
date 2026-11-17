@@ -122,3 +122,25 @@ test("a hidden view is only ever the guarded page, shown only when nothing rides
     "active before shown: the shown page's own asks must be listened to");
   assert.match(swap, /setBackgroundThrottling\(true\)/, "on screen, it idles like any page again");
 });
+
+// The camera (1.2.0, Settings' "Take a selfie"). macOS needs the sentence it
+// shows when it asks, and, once the build is signed and runs under the
+// hardened runtime, the camera entitlement on the app AND its helpers
+// (Chromium captures video in a helper). A custom entitlements file replaces
+// electron-builder's default, so its three defaults must be in it too, or a
+// signed Electron will not start.
+test("the Mac build may use the camera, signed or not", () => {
+  const mac = pkg.build.mac;
+  assert.match(mac.extendInfo.NSCameraUsageDescription, /camera/i);
+  assert.equal(mac.entitlements, "build/entitlements.mac.plist");
+  assert.equal(mac.entitlementsInherit, mac.entitlements, "helpers need the camera entitlement too");
+  const plist = fs.readFileSync(path.join(root, "desktop-app", mac.entitlements), "utf8");
+  const granted = (key) => new RegExp(`<key>${key.replace(/\./g, "\\.")}</key>\\s*<true/>`).test(plist);
+  for (const key of [
+    "com.apple.security.device.camera",
+    "com.apple.security.cs.allow-jit",
+    "com.apple.security.cs.allow-unsigned-executable-memory",
+    "com.apple.security.cs.disable-library-validation",
+  ]) assert.ok(granted(key), `${key} must be granted`);
+  assert.ok(!/device\.(audio-input|microphone)/.test(plist), "nothing asks for the microphone");
+});

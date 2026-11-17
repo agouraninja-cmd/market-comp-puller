@@ -465,7 +465,23 @@ STARTS then can outlive the wait.
 > plus a fourth for a member not in a development firm. It is in
 > `TAB_PATHS` and `CTA_FREE_PAGES`, logs `sites_visit` through
 > `logPageVisit`, and writes nothing on load. `test/sites-page.test.js`
-> runs its script. The rules below that speak of the app marking Sites and
+> runs its script. **Its look since 2026-11-17** (the owner: "put more effort into making
+> the site look good. For now just improve the sites page"): the figures are
+> four tiles (`.sp-fig`, an icon each; the next deadline's tile takes its
+> countdown chip in the icon's corner); each column is numbered
+> (`.sp-step`) and edged along the top in its stage's `--sc`, a ramp from
+> `--ink-4` (Prospect) to `--ink` (Entitlements) set by `data-stage`, which
+> the empty invitation's preview and the open deal's card share; a card
+> leads with its asking price (`.sp-cp`, the acres when there is none),
+> tags the property type (`.sp-ty`), puts the next deadline over its day
+> (the ` · ` between them is a hidden `.sep`, so the text still reads "LOI
+> due · Oct 15") and draws a red left edge (`.urgent`) while that deadline
+> is a week or less out. The add form opens in a titled card and hides the
+> invitation while it is open. Icons are `createElementNS` paths
+> (`icon()`), never a CSS data URI. Before/after pictures were taken
+> against the stand-in database with a firm and deals seeded, because
+> `scripts/shot.js` boots with no database and `/sites` then shows only its
+> 503 wall. The rules below that speak of the app marking Sites and
 > swapping Home's tab in place are history: marketBar marks it on `/sites`
 > like any row, and index.html neither marks nor intercepts it.
 > Six rules:

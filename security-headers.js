@@ -46,9 +46,12 @@
 //    half-working one would blank the app the way a failed /valuation.js
 //    does. That is the remaining work, and it is its own change.
 //
-//  - Permissions-Policy: the page, and anything it loads, may not use the
-//    camera, the microphone, or the payment and USB APIs. None is used (photo
-//    uploads are a file picker; checkout is a redirect to Stripe).
+//  - Permissions-Policy: nothing may use the microphone, or the payment and
+//    USB APIs (none is used; checkout is a redirect to Stripe). The camera is
+//    allowed to OUR OWN origin only (`camera=(self)`, 2026-11-17): Settings'
+//    "Take a selfie" asks for it, after a click, for a profile photo. A
+//    frame from anywhere else still gets nothing, and the browser still asks
+//    the member before any page of ours can turn it on.
 
 const HSTS_MAX_AGE_SEC = 180 * 24 * 60 * 60;
 
@@ -59,7 +62,7 @@ const BASE_HEADERS = Object.freeze({
   "x-frame-options": "SAMEORIGIN",
   "referrer-policy": "strict-origin-when-cross-origin",
   "content-security-policy": CONTENT_SECURITY_POLICY,
-  "permissions-policy": "camera=(), microphone=(), payment=(), usb=()",
+  "permissions-policy": "camera=(self), microphone=(), payment=(), usb=()",
 });
 
 // Did this request reach the proxy over HTTPS? The FIRST value of

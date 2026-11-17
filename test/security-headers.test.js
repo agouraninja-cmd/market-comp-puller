@@ -23,7 +23,10 @@ test("the base headers say what the module's header comment promises", () => {
   assert.match(h["content-security-policy"], /frame-ancestors 'self'/);
   assert.match(h["content-security-policy"], /base-uri 'self'/);
   assert.match(h["content-security-policy"], /object-src 'none'/);
-  assert.match(h["permissions-policy"], /camera=\(\)/);
+  // The camera is ours alone (Settings' selfie); never a third party's, and
+  // never back to "*". The microphone stays off.
+  assert.match(h["permissions-policy"], /(^|, )camera=\(self\)(,|$)/);
+  assert.match(h["permissions-policy"], /(^|, )microphone=\(\)(,|$)/);
 });
 
 // Every page here runs inline scripts and styles. A script-src or style-src

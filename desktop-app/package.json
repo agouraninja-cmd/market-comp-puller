@@ -28,7 +28,10 @@
     "mac": {
       "target": [{ "target": "dmg", "arch": ["universal"] }],
       "artifactName": "CompNinja.${ext}",
-      "category": "public.app-category.business"
+      "category": "public.app-category.business",
+      "extendInfo": {
+        "NSCameraUsageDescription": "CompNinja uses your camera only when you choose Take a selfie, to set your profile photo."
+      }
     },
     "dmg": { "artifactName": "CompNinja.${ext}" },
     "linux": {

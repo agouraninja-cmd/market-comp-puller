@@ -1599,6 +1599,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-empty { font-size: var(--text-small); color: var(--ink-mute); margin-top: 8px; }
     .dk-msg { font-size: var(--text-small); color: var(--ink-2); margin-top: 8px; }
     .dk-msg.bad { color: var(--red); }
+    /* Settings' selfie camera. The preview is mirrored, as every front camera
+       app shows it, and the still is saved as seen. Round, because the photo
+       is shown in a circle everywhere it is used. */
+    .selfie-box { margin-top: 12px; padding: 12px; border: 1px solid var(--edge); border-radius: var(--r-lg); }
+    .selfie-box.hidden { display: none; }
+    .selfie-frame { position: relative; width: min(240px, 100%); aspect-ratio: 1 / 1; margin: 0 auto;
+      border-radius: 50%; overflow: hidden; background: var(--wash-2); }
+    .selfie-video, .selfie-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .selfie-video { transform: scaleX(-1); }
+    .selfie-still.hidden, .selfie-video.hidden { display: none; }
     .dk-more { display: inline-block; font-size: var(--text-small); color: var(--ink); margin-top: 8px; text-decoration: none; }
     .dk-more:hover { color: var(--red); }
     summary.dk-more { display: list-item; cursor: pointer; }
@@ -3048,6 +3058,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <button id="settingsAvatarBtn" type="button"
             class="text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5">Change photo</button>
+          <button id="settingsSelfieBtn" type="button"
+            class="text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5">Take a selfie</button>
           <button id="settingsAvatarRemove" type="button"
             class="hidden text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5">Remove photo</button>
           <button id="settingsSignOutBtn" type="button"
@@ -3055,6 +3067,31 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <button id="settingsDeleteBtn" type="button"
             class="text-sm font-medium text-red border border-edge hover:bg-err-bg rounded-lg px-3 py-1.5">Delete account…</button>
         </div>
+        <!-- Take a selfie (2026-11-17). The laptop's or phone's front camera,
+             in place in this panel: a live square preview, then the still, then
+             "Use this photo", which runs the same save as a chosen file
+             (squareAvatarJpeg -> saveAvatar). The camera is asked for only on
+             a click, and every way out (Use, Cancel, closing the panel)
+             turns it off. Where a page cannot reach the camera at all, the
+             button opens #selfieFile, whose capture="user" is a phone's own
+             front camera. Nothing here leaves the browser but the saved photo. -->
+        <div id="selfieBox" class="hidden selfie-box">
+          <div class="selfie-frame">
+            <video id="selfieVideo" class="selfie-video" autoplay playsinline muted></video>
+            <img id="selfieStill" class="selfie-still hidden" alt="Your selfie" />
+          </div>
+          <div class="mt-3 flex flex-wrap items-center justify-center gap-2">
+            <button id="selfieSnap" type="button" disabled
+              class="btn-live text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-3 py-1.5">Take photo</button>
+            <button id="selfieUse" type="button"
+              class="hidden btn-live text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-3 py-1.5">Use this photo</button>
+            <button id="selfieRetake" type="button"
+              class="hidden text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5">Retake</button>
+            <button id="selfieCancel" type="button"
+              class="text-sm font-medium text-ink border border-edge hover:bg-wash-2 rounded-lg px-3 py-1.5">Cancel</button>
+          </div>
+        </div>
+        <input type="file" accept="image/png,image/jpeg" capture="user" class="hidden" id="selfieFile" />
         <p id="settingsAvatarMsg" class="hidden text-sm mt-2"></p>
         <div id="settingsDeleteConfirm" class="hidden mt-3 border border-edge rounded-lg p-3">
           <p class="text-sm text-ink">This deletes your account, portfolio, The Board, and all of your comps. It can't be undone.</p>
@@ -14462,6 +14499,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
   function closeSettingsModal() {
     resetSettingsDeleteConfirm();
+    // A function declaration further down, so it is callable here; the
+    // camera must never outlive the panel it was opened in.
+    stopSelfie();
     document.getElementById("settingsModal").classList.add("hidden");
   }
   // The firm account panel (2026-09-03). It shows #deskFirm -- the section
@@ -14594,34 +14634,44 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         const img = new Image();
         img.onerror = () => reject(new Error("That file is not an image we can read."));
         img.onload = () => {
-          const side = Math.min(img.width || 1, img.height || 1);
-          const sx = Math.max(0, Math.round((img.width - side) / 2));
-          const sy = Math.max(0, Math.round((img.height - side) / 2));
-          const outSide = Math.min(AVATAR_PX, side);
-          const c = document.createElement("canvas");
-          c.width = outSide;
-          c.height = outSide;
-          const ctx = c.getContext("2d");
-          // JPEG has no alpha: fill white first so a transparent PNG does
-          // not encode its empty pixels as black.
-          ctx.fillStyle = "#fff";
-          ctx.fillRect(0, 0, outSide, outSide);
-          ctx.drawImage(img, sx, sy, side, side, 0, 0, outSide, outSide);
-          let q = 0.85;
-          let out = c.toDataURL("image/jpeg", q);
-          while (out.length > AVATAR_TARGET && q > 0.5) {
-            q -= 0.1;
-            out = c.toDataURL("image/jpeg", q);
-          }
-          if (out.length > AVATAR_TARGET) {
-            return reject(new Error("That photo is still too large after shrinking. Please choose a smaller image."));
-          }
-          resolve(out);
+          try { resolve(squareAvatarJpeg(img, img.width, img.height)); }
+          catch (ex) { reject(ex); }
         };
         img.src = String(fr.result || "");
       };
       fr.readAsDataURL(file);
     });
+  }
+
+  // The one crop-and-shrink, for a chosen file and a camera frame alike: the
+  // centre square, at most AVATAR_PX, as a JPEG under AVATAR_TARGET. `mirror`
+  // flips it left to right (a selfie is saved as the mirrored preview showed
+  // it). Throws a sentence for the member.
+  function squareAvatarJpeg(src, w, h, mirror) {
+    const side = Math.min(w || 1, h || 1);
+    const sx = Math.max(0, Math.round((w - side) / 2));
+    const sy = Math.max(0, Math.round((h - side) / 2));
+    const outSide = Math.min(AVATAR_PX, side);
+    const c = document.createElement("canvas");
+    c.width = outSide;
+    c.height = outSide;
+    const ctx = c.getContext("2d");
+    // JPEG has no alpha: fill white first so a transparent PNG does
+    // not encode its empty pixels as black.
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, outSide, outSide);
+    if (mirror) { ctx.translate(outSide, 0); ctx.scale(-1, 1); }
+    ctx.drawImage(src, sx, sy, side, side, 0, 0, outSide, outSide);
+    let q = 0.85;
+    let out = c.toDataURL("image/jpeg", q);
+    while (out.length > AVATAR_TARGET && q > 0.5) {
+      q -= 0.1;
+      out = c.toDataURL("image/jpeg", q);
+    }
+    if (out.length > AVATAR_TARGET) {
+      throw new Error("That photo is still too large after shrinking. Please choose a smaller image.");
+    }
+    return out;
   }
 
   function showAvatarMsg(text, isError) {
@@ -14656,6 +14706,128 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     try {
       const dataUri = await readAvatarFile(file);
       await saveAvatar(dataUri);
+    } catch (ex) {
+      showAvatarMsg(ex.message, true);
+    }
+  });
+  // Take a selfie (2026-11-17). selfieStream is the live camera, or null;
+  // stopSelfie is the one way it ends, and every exit calls it, so the
+  // camera light never stays on behind a closed panel.
+  let selfieStream = null;
+  let selfieShot = "";
+  function selfieShow(state) {
+    // "live": the preview and Take photo. "still": the shot, Use and Retake.
+    const live = state === "live";
+    document.getElementById("selfieVideo").classList.toggle("hidden", !live);
+    document.getElementById("selfieStill").classList.toggle("hidden", live);
+    document.getElementById("selfieSnap").classList.toggle("hidden", !live);
+    document.getElementById("selfieUse").classList.toggle("hidden", live);
+    document.getElementById("selfieRetake").classList.toggle("hidden", live);
+  }
+  function stopSelfie() {
+    if (selfieStream) {
+      try { selfieStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    }
+    selfieStream = null;
+    selfieShot = "";
+    const video = document.getElementById("selfieVideo");
+    if (video) video.srcObject = null;
+    const box = document.getElementById("selfieBox");
+    if (box) box.classList.add("hidden");
+  }
+  function selfieErrorText(ex) {
+    const name = ex && ex.name;
+    if (name === "NotAllowedError" || name === "SecurityError") {
+      return "Camera access was blocked. Allow the camera for this site in your browser's settings, then try again.";
+    }
+    if (name === "NotFoundError" || name === "OverconstrainedError") {
+      return "We couldn't find a camera on this device. You can choose a photo instead.";
+    }
+    if (name === "NotReadableError") {
+      return "Your camera is in use by another app. Close it and try again.";
+    }
+    return "We couldn't start your camera. You can choose a photo instead.";
+  }
+  async function startSelfie() {
+    showAvatarMsg("");
+    const md = navigator.mediaDevices;
+    if (!md || typeof md.getUserMedia !== "function") {
+      // No camera API here (an old browser, or a page not on HTTPS): a
+      // phone's file input with capture="user" still opens its front camera.
+      document.getElementById("selfieFile").click();
+      return;
+    }
+    stopSelfie();
+    const snap = document.getElementById("selfieSnap");
+    snap.disabled = true;
+    selfieShow("live");
+    document.getElementById("selfieBox").classList.remove("hidden");
+    try {
+      const stream = await md.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 1280 } },
+        audio: false,
+      });
+      // The panel was closed or Cancel pressed while the browser asked.
+      if (document.getElementById("selfieBox").classList.contains("hidden")) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      selfieStream = stream;
+      const video = document.getElementById("selfieVideo");
+      video.srcObject = stream;
+      try { await video.play(); } catch (_) {}
+      snap.disabled = false;
+      snap.focus({ preventScroll: true });
+    } catch (ex) {
+      stopSelfie();
+      showAvatarMsg(selfieErrorText(ex), true);
+    }
+  }
+  document.getElementById("settingsSelfieBtn").addEventListener("click", startSelfie);
+  document.getElementById("selfieSnap").addEventListener("click", () => {
+    const video = document.getElementById("selfieVideo");
+    if (!selfieStream || !video.videoWidth) return;
+    try {
+      selfieShot = squareAvatarJpeg(video, video.videoWidth, video.videoHeight, true);
+    } catch (ex) {
+      showAvatarMsg(ex.message, true);
+      return;
+    }
+    document.getElementById("selfieStill").src = selfieShot;
+    selfieShow("still");
+    document.getElementById("selfieUse").focus({ preventScroll: true });
+  });
+  document.getElementById("selfieRetake").addEventListener("click", () => {
+    selfieShot = "";
+    selfieShow("live");
+    document.getElementById("selfieSnap").focus({ preventScroll: true });
+  });
+  document.getElementById("selfieCancel").addEventListener("click", () => {
+    stopSelfie();
+    document.getElementById("settingsSelfieBtn").focus({ preventScroll: true });
+  });
+  document.getElementById("selfieUse").addEventListener("click", async (e) => {
+    const btn = e.target;
+    const shot = selfieShot;
+    if (!shot) return;
+    btn.disabled = true;
+    try {
+      await saveAvatar(shot);
+      stopSelfie();
+      showAvatarMsg("Saved.");
+    } catch (ex) {
+      showAvatarMsg(ex.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  document.getElementById("selfieFile").addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      await saveAvatar(await readAvatarFile(file));
+      showAvatarMsg("Saved.");
     } catch (ex) {
       showAvatarMsg(ex.message, true);
     }

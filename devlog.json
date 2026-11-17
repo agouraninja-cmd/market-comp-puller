@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-17",
+    "type": "improvement",
+    "title": "Desktop app 1.2.0: Take a selfie works on a Mac",
+    "details": "A new desktop app release. The Mac app now tells macOS why it may use the camera, which macOS requires before Take a selfie can open it. Windows and Linux get the same release. Download it again from the Download page to update."
+  },
+  {
+    "date": "2026-11-17",
     "type": "feature",
     "title": "Take a selfie for your profile photo",
     "details": "Settings now has a Take a selfie button beside Change photo. It opens your laptop’s or phone’s front camera right in the panel, shows a round preview, and lets you take the shot, retake it, or use it as your profile picture. The camera turns off as soon as you save, cancel or close Settings, and nothing but the saved photo leaves your browser."

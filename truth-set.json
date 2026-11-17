@@ -19,12 +19,12 @@
       "id": "anaheim-off-01",
       "address": "2300 E Katella Ave, Anaheim, CA",
       "type": "Office",
-      "sale_price": 15100000,
+      "sale_price": 15150000,
       "sale_date": "2026-03",
       "size_sqft": 69032,
-      "source": "https://rebusinessonline.com/cbre-arranges-sale-of-69032-sf-office-property-in-anaheim-california/",
-      "checked": false,
-      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+      "source": "https://www.cbre.com/press-releases/cbre-arranges-15-15-million-sale-of-anaheim-office-property",
+      "checked": true,
+      "note": "Exact price $15,150,000 from the seller's broker's (CBRE) release of 2026-03-18; REBusiness rounds it to $15.1M and The Registry SoCal (2026-03-23) to about $15.2M and names the seller as Lincoln Property Co. Address and 69,032 SF agree across all three. Confirmed 2026-11-17 against those published sources, not the county record. Price changed from 15100000 on 2026-11-17, before any run was committed."
     },
     {
       "id": "jax-off-01",
@@ -34,19 +34,19 @@
       "sale_date": "2026-07",
       "size_sqft": 151815,
       "source": "https://rebusinessonline.com/nai-hallmark-arranges-14-7m-sale-of-butler-pointe-office-building-in-jacksonville/",
-      "checked": false,
-      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+      "checked": true,
+      "note": "$14.7M, 4500 Salisbury Rd, 151,815 SF agree in REBusiness (2026-07-14) and CommercialSearch (2026-07-15, which names the seller as Acorn Property Holdings and a $9.6M Suncoast Credit Union loan to the buyer). Both give only the rounded price. Confirmed 2026-11-17 against those published sources, not the Duval County record."
     },
     {
       "id": "sanjose-off-01",
       "address": "1054 S De Anza Blvd, San Jose, CA",
       "type": "Office",
-      "sale_price": 9700000,
+      "sale_price": 9750000,
       "sale_date": "2025-06",
       "size_sqft": 31701,
-      "source": "https://rebusinessonline.com/marcus-millichap-brokers-sale-of-31701-sf-multi-tenant-office-building-in-san-jose-california/",
-      "checked": false,
-      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+      "source": "https://www.connectcre.com/stories/san-jose-office-acquisition-offers-income-upside/",
+      "checked": true,
+      "note": "Exact price $9,750,000 from ConnectCRE; REBusiness (2025-06-30) rounds it to $9.7M. Address and 31,701 SF agree. Confirmed 2026-11-17 against those published sources, not the county record. Price changed from 9700000 on 2026-11-17, before any run was committed."
     },
     {
       "id": "burlingame-off-01",
@@ -56,8 +56,8 @@
       "sale_date": "2025-05",
       "size_sqft": 6815,
       "source": "https://rebusinessonline.com/matthews-real-estate-brokers-sale-of-6815-sf-office-property-in-burlingame-california/",
-      "checked": false,
-      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+      "checked": true,
+      "note": "$5,400,000 exactly per the seller's broker's (Matthews) release, at a 3.12% cap rate, buyer Sazze Partners; REBusiness (2025-05-21) agrees on price, address, 6,815 SF and buyer. Matthews' release is dated 2025-07-21, after the article, so the May closing stands. Confirmed 2026-11-17 against those published sources, not the county record."
     },
     {
       "id": "santaclarita-ret-01",
@@ -68,18 +68,18 @@
       "size_sqft": 120559,
       "source": "https://rebusinessonline.com/srs-real-estate-brokers-27-5m-sale-of-value-add-retail-property-in-santa-clarita-california/",
       "checked": false,
-      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record. The article gives the center as 23126-23170 Valencia Blvd; 80 percent leased at sale."
+      "note": "Price, address and size read off the article on 2026-11-17. The article gives the center as 23126-23170 Valencia Blvd (a multi-building center, not one building); 80 percent leased at sale; buyer Avant Real Estate. NOT CONFIRMED: on 2026-11-17 no second published source for the price could be found (searched broker, trade press and listing sites). Needs the county record or the SRS release."
     },
     {
       "id": "middleburg-ret-01",
       "address": "1690 Jeremiah St, Middleburg, FL",
       "type": "Retail",
-      "sale_price": 8400000,
+      "sale_price": 8405000,
       "sale_date": "2026-04",
       "size_sqft": 17400,
-      "source": "https://rebusinessonline.com/marcus-millichap-brokers-8-4m-sale-of-retail-center-in-metro-jacksonville/",
-      "checked": false,
-      "note": "Price, address and size read off the article on 2026-11-17. The price is the article's rounded figure, and sale_date is the article's month (the closing may be a few weeks earlier). Not yet confirmed by a person against the county record."
+      "source": "https://www.marcusmillichap.com/news-events/press/2026/04/04-15-claytowncenter",
+      "checked": true,
+      "note": "Exact price $8,405,000 from the seller's broker's (Marcus & Millichap) release of 2026-04-15; REBusiness (2026-04-27) rounds it to $8.4M. Eight-suite center at Clay Town Center on 3.18 acres, BUILT IN 2025 and fully leased on new triple-net leases (Mattress Warehouse, Firehouse Subs, Domino's, Wingstop), so it trades on cap rate at about $483/SF: comps of older strip retail will read far low. Confirmed 2026-11-17 against those published sources, not the county record. Price changed from 8400000 on 2026-11-17, before any run was committed."
     }
   ],
   "_leads_how": "NOT part of the test, and never run. Each article below was opened on 2026-11-17 and its price and size are as the article states them, but the article gives NO STREET ADDRESS, and a search needs one. To use one: find the property's street address (the county assessor, or the broker's listing), then write it into \"sales\" above and delete it here.",

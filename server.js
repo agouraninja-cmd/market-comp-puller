@@ -228,6 +228,9 @@ const { isAggregateAddress } = AUDIT;
 // job (scripts/ship-chat.js) so the page and the Chat post count one way.
 const SHIPBOARD = require("./ship-board.js");
 const EXPLOREADDR = require("./explore-addresses");
+// The comp-report box's sample addresses: real buildings near the member that
+// nobody has searched yet (owner's, 2026-11-18). Pure; the route owns the reads.
+const SAMPLEADDR = require("./sample-addresses");
 // Dead-at-birth source-link check rules. Pure and tested, like the modules
 // above; server.js owns the network half (checkSourceLinks below).
 const LINKCHECK = require("./link-check");
@@ -4854,6 +4857,56 @@ async function cachedAddressKeys(addresses, type) {
     } catch (_) { /* no badge, never an error */ }
   }
   return hit;
+}
+
+// Which of these addresses has ANYBODY ever searched, as any property type?
+// The sample-address question (sample-addresses.js), and stricter than
+// cachedAddressKeys on purpose: no TTL cutoff and no type, because a building
+// searched once as Industrial a year ago is not "never looked up". Rows from
+// before migration 020 carry no address_key and cannot be matched; that is
+// the one blind spot. THROWS when the database cannot answer, so the caller
+// offers nothing rather than a sample it could not check.
+async function searchedAddressKeys(addresses) {
+  const keys = [...new Set((addresses || []).map(cacheAddressKey).filter(Boolean))];
+  const hit = new Set();
+  if (!keys.length) return hit;
+  const want = new Set(keys);
+  for (const k of cacheAddrIndex.keys()) {
+    const addr = k.slice(0, k.lastIndexOf("|"));
+    if (want.has(addr)) hit.add(addr);
+  }
+  if (DB_CONFIGURED) {
+    const list = keys.map((k) => `"${k.replace(/"/g, "")}"`).join(",");
+    const rows = await sbRequest("GET",
+      `search_cache?select=address_key&address_key=in.(${encodeURIComponent(list)})&limit=${keys.length * 4}`);
+    for (const row of Array.isArray(rows) ? rows : []) if (row.address_key) hit.add(row.address_key);
+  }
+  return hit;
+}
+
+// Corpus addresses for the sample picker: three columns, never
+// ALL_TYPE_COMP_FIELDS (a missing per-type column must not cost the samples),
+// and never corpusRowsForType (it schedules geocoding as a side effect).
+// `markets` empty means nationwide, newest first. Public corpus only — no
+// vault table is ever read here.
+async function corpusAddressRows({ markets, type, limit }) {
+  const cap = Math.max(1, Math.min(Number(limit) || 500, 1000));
+  const wanted = (markets || []).filter(Boolean);
+  let dbRows = [];
+  if (DB_CONFIGURED) {
+    try {
+      const filters = [];
+      if (wanted.length) filters.push(`market=in.(${pgInList(wanted)})`);
+      if (type) filters.push(`property_type=eq.${encodeURIComponent(type)}`);
+      dbRows = await sbRequest("GET",
+        `comp_corpus?${filters.join("&")}${filters.length ? "&" : ""}` +
+        `select=address,market,property_type&order=ts.desc&limit=${cap}`) || [];
+    } catch (e) { noteCorpusFailure("read", e); }
+  }
+  const want = new Set(wanted);
+  const fileRows = (await readRowsFromFile(COMP_CORPUS_FILE))
+    .filter((r) => r && (!want.size || want.has(r.market)) && (!type || r.property_type === type));
+  return [...dbRows, ...fileRows].slice(0, cap);
 }
 
 async function loadSearchCacheFile() {
@@ -28367,6 +28420,78 @@ const server = http.createServer((req, res) =>
       } catch (e) {
         console.error("explore-addresses error:", e.message);
         return sendJson(res, 200, { market, addresses: [] });
+      }
+    })();
+    return;
+  }
+
+  // --- Sample addresses for the comp-report box (owner's, 2026-11-18). Real
+  // street-numbered buildings from the public comp corpus, in the member's
+  // area (their properties, The Board, their recent searches; see
+  // sample-addresses.js for the weights), that NOBODY has searched yet: every
+  // sample somebody runs is a fresh search, and a fresh search is new comps.
+  // The deliberate opposite of the Address Explorer's cache-friendly list.
+  //
+  // Same gate as the Explorer (`canExploreAddresses`), for its reason: these
+  // are corpus addresses, and the corpus is the asset. Addresses ONLY, never a
+  // price or a date. A GET that writes nothing and logs nothing, so a page
+  // built ahead of the click (CLAUDE.md rule 15) may call it freely. Answers
+  // `{ addresses: [] }` on any failure, and the box keeps its fixed examples.
+  // `area` is the market the samples came from, or "" when the member's own
+  // markets had too few unsearched buildings and the list is nationwide.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/sample-addresses") {
+    const params = new URL(req.url, "http://localhost").searchParams;
+    const typeIn = String(params.get("type") || "").trim();
+    const typeOk = typeIn && Object.keys(TYPE_COMP_FIELDS).includes(typeIn) ? typeIn : "";
+    if (typeIn && !typeOk) return sendJson(res, 400, { error: "Unknown property type." });
+    const count = SAMPLEADDR.clampCount(params.get("count"));
+    (async () => {
+      const empty = { type: typeOk, area: "", addresses: [] };
+      try {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: "Not signed in." });
+        if (rateLimited("sampleaddr:" + user.id, 30)) return sendJson(res, 429, { error: "Too many requests." });
+        const ent = await entitlementsFor(req);
+        if (!ent.canExploreAddresses) return sendJson(res, 403, { error: "Not included in your plan.", upgrade: true });
+        const settle = (p) => p.then((v) => v || [], () => []);
+        const [recents, portfolio, watchlist] = await Promise.all([
+          settle(listRecents(user.id)), settle(listPortfolio(user.id)), settle(listWatchlist(user.id)),
+        ]);
+        const markets = SAMPLEADDR.areaMarkets({ recents, portfolio, watchlist });
+        // Probe the cache a slice at a time: most corpus buildings were never
+        // a subject, so the first slice usually fills the list.
+        const pick = async (rows) => {
+          const cands = SAMPLEADDR.sampleCandidates(rows, { type: typeOk, isAggregateAddress });
+          const out = [];
+          for (let i = 0; i < cands.length && i < 200 && out.length < count; i += 40) {
+            const slice = cands.slice(i, i + 40);
+            const searched = await searchedAddressKeys(slice.map((c) => c.address));
+            out.push(...SAMPLEADDR.pickUnsearched(slice, {
+              searched, addressKey: cacheAddressKey, count: count - out.length,
+            }));
+          }
+          return out;
+        };
+        let area = "";
+        let picked = [];
+        if (markets.length) {
+          picked = await pick(await corpusAddressRows({ markets, type: typeOk, limit: 600 }));
+          if (picked.length) area = markets[0];
+        }
+        if (picked.length < count) {
+          const have = new Set(picked.map((p) => cacheAddressKey(p.address)));
+          const wide = (await pick(await corpusAddressRows({ markets: [], type: typeOk, limit: 1000 })))
+            .filter((p) => !have.has(cacheAddressKey(p.address)));
+          picked = picked.concat(wide).slice(0, count);
+        }
+        return sendJson(res, 200, {
+          type: typeOk,
+          area,
+          addresses: picked.map((p) => ({ address: p.address, type: p.type, market: p.market })),
+        });
+      } catch (e) {
+        console.error("sample-addresses error:", e.message);
+        return sendJson(res, 200, empty);
       }
     })();
     return;

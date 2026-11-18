@@ -2,6 +2,12 @@
   {
     "date": "2026-11-18",
     "type": "improvement",
+    "title": "Example addresses are real buildings near you that nobody has looked up yet",
+    "details": "The example addresses in the Run a comp report box (and the ones Tab fills in) used to be the same three Boise addresses for everyone. Now they are real buildings from CompNinja's comp data in your own area (the cities of your properties, the markets on your Board and your recent searches), picked at random, and never one anybody has already searched. Every example you run is a fresh search, so it adds new comps instead of opening a saved report. With nothing to go on, or too few nearby, they come from anywhere in the country. Pro and trial accounts; everyone else keeps the fixed examples."
+  },
+  {
+    "date": "2026-11-18",
+    "type": "improvement",
     "title": "Every tab in the sidebar opens instantly, not just one",
     "details": "Each page used to build one tab ahead of the click (Home, or Run a comp report from Home), so the other tabs still waited on the server unless you rested the pointer on them first. Now every tab you can see is built ahead, one at a time after the page settles. Measured locally in Chrome, the tabs that used to wait about 200-250 ms now open in about 15 ms. Safari and Firefox get the server half of it. WARM_TABS=one puts back the old single tab."
   },

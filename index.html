@@ -20038,6 +20038,38 @@ async function renderMyDesk() {
   bindTabFillExample(document.getElementById("address"));
   bindTabFillExample(document.getElementById("lockAddress"));
 
+  // Real samples (owner's, 2026-11-18): buildings near this member that
+  // NOBODY has searched yet replace the five fixed examples, so a Tab-filled
+  // example is a fresh search and fresh comps (GET /api/sample-addresses; the
+  // rules are sample-addresses.js's). Asked for the first time the member
+  // reaches for the field, not on load: this page is Home too, built ahead of
+  // the click on every member page view, and mostly never shows this form.
+  // Signed out, a plan without the Explorer, or any failure keeps the five.
+  (function () {
+    const input = document.getElementById("address");
+    if (!input) return;
+    let asked = false;
+    const ask = () => {
+      if (asked) return;
+      asked = true;
+      fetch("/api/sample-addresses?count=5", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const list = ((d && d.addresses) || []).filter((a) => a && a.address && a.type);
+          if (!list.length) return;
+          ADDRESS_EXAMPLES.splice(0, ADDRESS_EXAMPLES.length,
+            ...list.map((a) => ({ ph: "e.g. " + a.address, type: a.type })));
+          // Swap the one showing now, so Tab fills a real sample straight away.
+          if (!input.value && exampleValueFromPlaceholder(input.placeholder)) {
+            input.placeholder = ADDRESS_EXAMPLES[0].ph;
+          }
+        })
+        .catch(() => {});
+    };
+    input.addEventListener("focus", ask, { once: true });
+    input.addEventListener("pointerenter", ask, { once: true });
+  })();
+
   // ----------------------------------------------------------------------------
   // Sample report — canned, illustrative data so visitors can see the product
   // instantly without spending a live search.

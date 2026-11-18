@@ -807,6 +807,54 @@ Read its header before touching it; the rules a future editor will trip on:
 
 ## Instant tab switching (2026-09-26)
 
+> **Every tab warm (2026-11-18, `WARM_TABS`).** Until this, one tab was
+> built ahead per page view (`/desk` from every marketShell page, `/bulk`
+> from the app), so one switch was instant and every other click got only
+> the head start its own press gave it. Now the page builds every rail row
+> the member can SEE: the likely one first, then the other `<nav>` rows in
+> the order they appear, one every `WARM_STAGGER_MS` (250), at most
+> `MAX_WARM` (6). Read "the likely next tab" and "the warm tab" below as
+> "the warm tabs". The rules:
+> - **`WARM_TABS`**: `all` (default) or `one`, the rollback to exactly the
+>   behaviour below (`warmAll: false` in `bootScript`). An unknown value
+>   exits at boot. The existing tests in `test/instant-nav.test.js` run as
+>   `one`; the "every tab" block runs as `all`.
+> - **Rows only.** The likely tab still counts from any rendered link, but
+>   the rest must be inside a `<nav>` and have client rects, so a hidden
+>   Pipeline (a development firm reads Sites) and an in-page link to a
+>   building are never warmed.
+> - **Lifetimes are unchanged and shared**: each lives `WARM_TTL_MS`, all
+>   are dropped when the page is hidden (and the queue stopped), all are
+>   dropped by a write, and the pointer entering the nav re-arms whichever
+>   expired, once. A hovered row is promoted, never built twice. Warm ones
+>   stay outside the hover FIFO, so a page can hold `MAX_WARM` +
+>   `MAX_LIVE` prerenders (Chrome allows ten immediate ones).
+> - **The desktop app still asks for one.** Its shell holds `MAX_VIEWS` (3)
+>   hidden views and evicts by its own rules; installed copies cannot be
+>   changed from the site, so more asks would only evict the likely tab.
+> - **The server cost is the point to watch.** A Chrome page view now
+>   costs up to five background renders instead of one (each a full page
+>   render with its database reads), and a Safari page view up to five
+>   `/api/warm` renders. `WARM_MAX_IN_FLIGHT` is 16 under `all` (8 under
+>   `one`): at 8 a second Safari member opening a page in the same moment
+>   got none of theirs. If the database or CPU shows it, `WARM_TABS=one` on
+>   Render is the lever.
+> - **Measured 2026-11-18**, in headless Chromium with no DevTools attached,
+>   behind a proxy that injects a timing script, against the stand-in
+>   database with 60 ms added to every database call (a seeded Pro member
+>   in a firm), resting 4 s on each page and then a quick click (pointer
+>   over, 100 ms, press, 80 ms, click), around Home, Messages, Markets,
+>   Permits, Run a comp report, Your comps, Pipeline, three laps. Before
+>   (`origin/main`, and `WARM_TABS=one`, which matched it): Chrome median
+>   204 ms, the four rows that were not the warm one 200-256 ms each (the
+>   press's head start only); after: every switch 11-19 ms, median 15. The
+>   switches that were already instant went from 7-9 ms to 11-17 ms: five
+>   pages held in the background cost the activation a few milliseconds.
+>   Safari's path (prerendering deleted before any page script): before
+>   median 79 ms with three rows at 176-256 ms; after median 48 ms, every
+>   switch 32-78 ms. These are local numbers and only the ratios carry
+>   over; the harness is not in the repo.
+
 The owner's ask: "make switching between tabs instantaneous — e.g. Workspace
 to Vault." Every rail tab is its own document and each waits on the database
 before it sends a byte (the workspace is also 1.38 MB of no-store HTML), so a

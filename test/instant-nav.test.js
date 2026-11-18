@@ -28,7 +28,10 @@ const ORIGIN = "https://compninja.co";
 const CFG = {
   tabs: NAV.TAB_PATHS, hold: NAV.HOLD_PATHS, reads: NAV.READ_POSTS, skip: [], warm: [], warmPath: NAV.WARM_PATH, dwellMs: NAV.DWELL_MS, maxLive: NAV.MAX_LIVE,
   ttlMs: NAV.TTL_MS, warmTtlMs: NAV.WARM_TTL_MS, warmDelayMs: NAV.WARM_DELAY_MS,
+  maxWarm: NAV.MAX_WARM, warmStaggerMs: NAV.WARM_STAGGER_MS,
 };
+// The tests below that do not pass `warmAll` run as WARM_TABS=one, the
+// rollback: one warm tab, exactly as before 2026-11-18.
 
 // A window with just enough of a DOM for instantNavBoot: listeners, a <head>
 // that holds scripts, the page's links, manual timers, and a fetch that
@@ -38,7 +41,7 @@ const CFG = {
 // `desktop: true` is the desktop app: an Electron that parses speculation
 // rules and has `document.prerendering`, and says so in its user agent.
 function stage({ path: at = "/comps", supports = true, prerendering = false, skip = [], warm = [],
-  links = [], readyState = "complete", hidden = false, safari = false, desktop = false } = {}) {
+  links = [], readyState = "complete", hidden = false, safari = false, desktop = false, warmAll = false } = {}) {
   if (safari) supports = false;
   const listeners = {};
   const winListeners = {};
@@ -73,7 +76,7 @@ function stage({ path: at = "/comps", supports = true, prerendering = false, ski
     clearTimeout(id) { const i = timers.findIndex((t) => t.id === id); if (i >= 0) timers.splice(i, 1); },
     addEventListener(type, fn) { (winListeners[type] = winListeners[type] || []).push(fn); },
   };
-  NAV.instantNavBoot({ ...CFG, skip, warm, desktopToken: "CompNinjaDesktop/" }, win);
+  NAV.instantNavBoot({ ...CFG, skip, warm, warmAll, desktopToken: "CompNinjaDesktop/" }, win);
   return {
     win, document, calls, listeners,
     fire(type, ev) {
@@ -284,6 +287,99 @@ test("a page that is itself a prerender warms nothing until it is shown", () => 
   s.fire("prerenderingchange");
   s.tick(NAV.WARM_DELAY_MS);
   assert.deepEqual(s.urls(), [ORIGIN + "/desk"]);
+});
+
+// --- WARM_TABS=all (2026-11-18): every row the member can see -------------
+
+const RAIL = ["/desk", "/messages", "/pipeline", "/bulk", "/markets", "/permits"];
+const railLinks = () => RAIL.map((p) => link(p));
+// Runs the stagger timers one at a time until the queue is empty.
+function drainWarm(s) {
+  s.tick(NAV.WARM_DELAY_MS);
+  for (let i = 0; i < 10; i++) s.tick(NAV.WARM_STAGGER_MS);
+}
+
+test("every tab: the likely next one first, then every other row, one at a time", () => {
+  const s = stage({ warmAll: true, path: "/markets", warm: ["/desk"], links: railLinks() });
+  s.tick(NAV.WARM_DELAY_MS);
+  assert.deepEqual(s.urls(), [ORIGIN + "/desk"], "the likely tab first, alone, so it lands soonest");
+  s.tick(NAV.WARM_STAGGER_MS);
+  assert.deepEqual(s.urls(), [ORIGIN + "/desk", ORIGIN + "/messages"], "then the next row, a stagger later");
+  drainWarm(s);
+  assert.deepEqual(s.urls(), ["/desk", "/messages", "/pipeline", "/bulk", "/permits"].map((p) => ORIGIN + p),
+    "every row but the page already showing");
+});
+
+test("every tab: rows the member cannot see and links outside the nav are not warmed", () => {
+  const s = stage({ warmAll: true, path: "/markets", warm: ["/desk"], links: [
+    link("/desk"), link("/pipeline", {}, { shown: false }), link("/sites"),
+    link("/buildings", {}, { inNav: false }),
+  ] });
+  drainWarm(s);
+  assert.deepEqual(s.urls(), [ORIGIN + "/desk", ORIGIN + "/sites"],
+    "a development firm's Sites, not the hidden Pipeline, and no in-page link");
+});
+
+test("every tab: never more than MAX_WARM, and hovers still have their own room", () => {
+  const many = [...railLinks(), link("/comps"), link("/sites"), link("/buildings")];
+  const s = stage({ warmAll: true, path: "/markets", warm: ["/desk"], links: many });
+  drainWarm(s);
+  assert.equal(s.urls().length, NAV.MAX_WARM);
+  s.fire("pointerdown", mouse(link("/buildings")));
+  s.fire("pointerdown", mouse(link("/sites")));
+  s.fire("pointerdown", mouse(link("/comps")));
+  assert.equal(s.urls().length, NAV.MAX_WARM + NAV.MAX_LIVE, "the warm ones sit outside the hover FIFO");
+});
+
+test("every tab: hiding the page lets go of all of them, and stops the queue", () => {
+  const s = stage({ warmAll: true, path: "/markets", warm: ["/desk"], links: railLinks() });
+  s.tick(NAV.WARM_DELAY_MS);
+  s.tick(NAV.WARM_STAGGER_MS);
+  assert.equal(s.urls().length, 2);
+  s.document.hidden = true;
+  s.fire("visibilitychange");
+  drainWarm(s);
+  assert.deepEqual(s.urls(), []);
+});
+
+test("every tab: they expire together, and reaching for the nav warms them again", () => {
+  const s = stage({ warmAll: true, path: "/markets", warm: ["/desk"], links: railLinks() });
+  drainWarm(s);
+  assert.equal(s.urls().length, 5);
+  s.tick(NAV.WARM_TTL_MS);
+  assert.deepEqual(s.urls(), [], "no standing poll");
+  s.fire("pointerover", mouse(NAV_GAP));
+  s.fire("pointerover", mouse(NAV_GAP));
+  drainWarm(s);
+  assert.equal(s.urls().length, 5, "rebuilt once, never twice");
+});
+
+test("every tab: a hovered row is promoted, not built twice", () => {
+  const s = stage({ warmAll: true, path: "/markets", warm: ["/desk"], links: railLinks() });
+  s.fire("pointerdown", mouse(link("/permits")));
+  drainWarm(s);
+  assert.equal(s.urls().filter((u) => u === ORIGIN + "/permits").length, 1);
+  s.tick(NAV.TTL_MS);
+  assert.ok(s.urls().includes(ORIGIN + "/permits"), "it lives the warm TTL now");
+});
+
+test("every tab, without prerendering: the server is asked for each, as warm", () => {
+  const s = stage({ warmAll: true, safari: true, path: "/markets", warm: ["/desk"], links: railLinks() });
+  drainWarm(s);
+  assert.deepEqual(warmPosts(s), ["/desk", "/messages", "/pipeline", "/bulk", "/permits"].map((p) => ({ path: p, warm: true })));
+});
+
+test("every tab: the desktop app still asks for one, its shell holds three views", () => {
+  const s = stage({ warmAll: true, desktop: true, path: "/markets", warm: ["/desk"], links: railLinks() });
+  drainWarm(s);
+  assert.deepEqual(warmPosts(s), [{ path: "/desk", warm: true }]);
+});
+
+test("WARM_TABS: all by default, one is the rollback, anything else exits", () => {
+  assert.ok(NAV.bootScript({}).includes('"warmAll":true'));
+  assert.ok(NAV.bootScript({ warmAll: false }).includes('"warmAll":false'));
+  assert.match(serverSrc, /process\.env\.WARM_TABS \|\| "all"/);
+  assert.match(serverSrc, /if \(!\["all", "one"\]\.includes\(WARM_TABS\)\) \{\n[^\n]*\n\s*process\.exit\(1\);/);
 });
 
 test("a prerender is let go after TTL_MS, so a click much later loads fresh", () => {
@@ -575,8 +671,8 @@ test("the desktop header is answered before anything else, and never by a normal
   const fn = serverSrc.slice(serverSrc.indexOf("function serveDesktopPreload("),
     serverSrc.indexOf("function aggregateStats("));
   assert.ok(!/redispatch|server\.emit/.test(fn), "no fallback to an unguarded render");
-  assert.match(serverSrc, /bootScript\(\{ warm: \["\/desk"\], desktopToken: INAPP_UA_TOKEN \}\)/);
-  assert.match(serverSrc, /bootScript\(\{ skip: \["\/", "\/desk"\], warm: \["\/bulk"\], desktopToken: INAPP_UA_TOKEN \}\)/);
+  assert.match(serverSrc, /bootScript\(\{ warm: \["\/desk"\], warmAll: WARM_ALL, desktopToken: INAPP_UA_TOKEN \}\)/);
+  assert.match(serverSrc, /bootScript\(\{ skip: \["\/", "\/desk"\], warm: \["\/bulk"\], warmAll: WARM_ALL, desktopToken: INAPP_UA_TOKEN \}\)/);
 });
 
 test("the served script carries the warm path", () => {

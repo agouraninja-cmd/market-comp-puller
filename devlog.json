@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-11-18",
+    "type": "improvement",
+    "title": "Every tab in the sidebar opens instantly, not just one",
+    "details": "Each page used to build one tab ahead of the click (Home, or Run a comp report from Home), so the other tabs still waited on the server unless you rested the pointer on them first. Now every tab you can see is built ahead, one at a time after the page settles. Measured locally in Chrome, the tabs that used to wait about 200-250 ms now open in about 15 ms. Safari and Firefox get the server half of it. WARM_TABS=one puts back the old single tab."
+  },
+  {
     "date": "2026-11-17",
     "type": "fix",
     "title": "Reports leave out comps that don't fit, and search wider when too few are left",

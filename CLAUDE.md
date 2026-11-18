@@ -161,7 +161,8 @@ session that never reads it.
 14. **Page routes match on the path without its query string** (`pagePath`);
     API routes keep their exact `req.url` matches. [workspace.md]
 15. **Member pages are built before anyone sees them** (instant tab
-    switching — the likely next tab on every page view: prerendered in
+    switching — every rail tab the member can see, on every page view,
+    since 2026-11-18 (`WARM_TABS=one` keeps only the likely next): prerendered in
     Chrome, rendered ahead on the server for Safari/Firefox, built in a
     hidden view by the desktop app's shell). A page writes
     only through `fetch`, which holds a non-GET until the page is shown
@@ -435,6 +436,7 @@ so they are trusted config and are never set in production.
 | `CORPUS_RADIUS`, `CORPUS_METRO`, `CORPUS_LISTED`, `ARCHIVE_FIRST` | on | `off` rolls back the radius blend, metro retrieval, on-market listings, archive-first | corpus.md |
 | `LEAD_METRO` | on | broker lead coverage matches across metro groups | vault.md |
 | `NAV_SHELL` | `rail` | signed-in chrome as a left rail; `bar` is the rollback | app-shell.md |
+| `WARM_TABS` | `all` | build every rail tab the member can see ahead of the click; `one` is the rollback (only the likely next tab); an unknown value exits at boot | app-shell.md |
 | `ADMIN_KEY_IN_URL` | off | `on` lets the six admin routes that used to take `?key=` take it again (the CSV downloads, `/api/stats`, `/api/admin/submissions`, `/api/corpus-audit`); the rollback for a forgotten bookmark, not a setting to leave on | billing.md |
 | `EXTERNAL_APP_SCRIPT` | on | serve index.html's megabyte of inline script as `/app.<hash>.js`, cached for a year; `off` is the rollback (script inline, as before) | workspace.md |
 | `SHUTDOWN_GRACE_SECONDS` | 280 | how long a stop (a deploy's SIGTERM, Ctrl+C, a crash) waits for requests in flight; the host's own shutdown delay is the real limit | app-shell.md |

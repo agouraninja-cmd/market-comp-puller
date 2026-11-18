@@ -35,6 +35,8 @@
 //     minute while the member is actually reaching for a tab — never a
 //     standing poll, and never for a link the member cannot see (the vault
 //     row is hidden without the entitlement, so it is never warmed for them).
+//     Since 2026-11-18 that is EVERY row the member can see, not one (EVERY
+//     TAB WARM below; WARM_TABS=one in server.js is the single-tab rollback).
 
 // A prerendered page is a real page that nobody has looked at yet, so three
 // rules keep it from acting as though somebody had:
@@ -115,6 +117,20 @@ const TTL_MS = 30 * 1000;
 const WARM_TTL_MS = 60 * 1000;
 // After `load`, so the warm-up never competes with the page being opened.
 const WARM_DELAY_MS = 1500;
+// EVERY TAB WARM (2026-11-18). One warm tab made one switch instant and left
+// the rest a plain load unless the member rested on a tab first, and most
+// clicks do not rest. So by default every rail row the member can see is
+// built ahead, not just the likely next one: the likely one first (cfg.warm),
+// then the nav's other rows in the order they appear, one every
+// WARM_STAGGER_MS so the renders do not all land on the server in the same
+// instant, at most MAX_WARM of them (the rail has six rows; Chrome holds ten
+// immediate prerenders a page). WARM_TABS=one in server.js puts back the
+// single warm tab. The desktop app always takes one: its shell holds three
+// hidden views (desktop-app/tab-pool.js MAX_VIEWS), installed copies cannot
+// be changed from here, and a pool that evicted its warm tabs to make room
+// for more warm tabs would be slower, not faster.
+const MAX_WARM = 6;
+const WARM_STAGGER_MS = 250;
 // Where a browser that cannot prerender asks for a page to be built early.
 const WARM_PATH = "/api/warm";
 // The server-side store for those pages. A workspace render is ~1.4 MB, so
@@ -491,16 +507,56 @@ function instantNavBoot(cfg, win) {
     return entry;
   }
 
-  var warmed = null;
-  function warm() {
-    if (d.hidden || d.prerendering || (warmed && live.indexOf(warmed) >= 0)) return;
+  function isWarm(url) {
+    for (var i = 0; i < live.length; i++) if (live[i].url === url && live[i].warm) return true;
+    return false;
+  }
+  function shownTabs(inNav) {
     var links = d.querySelectorAll("a[href]");
+    var out = [];
+    for (var k = 0; k < links.length; k++) {
+      if (inNav && !(links[k].closest && links[k].closest("nav"))) continue;
+      var t = target(links[k]);
+      if (t && out.indexOf(t) < 0 && links[k].getClientRects().length) out.push(t);
+    }
+    return out;
+  }
+  function warmList() {
+    var shown = shownTabs(false);
+    var urls = [];
     for (var i = 0; i < cfg.warm.length; i++) {
       var want = new w.URL(cfg.warm[i], w.location.href).href;
-      for (var k = 0; k < links.length; k++) {
-        if (target(links[k]) === want && links[k].getClientRects().length) { warmed = prerender(want, true); return; }
-      }
+      if (shown.indexOf(want) >= 0) { urls.push(want); break; }
     }
+    if (!cfg.warmAll || isDesktop) return urls;
+    var rows = shownTabs(true);
+    for (var j = 0; j < rows.length && urls.length < cfg.maxWarm; j++) {
+      if (urls.indexOf(rows[j]) < 0) urls.push(rows[j]);
+    }
+    return urls;
+  }
+  var warmTimer = 0;
+  var queue = [];
+  function warmNext() {
+    warmTimer = 0;
+    if (d.hidden || d.prerendering) { queue = []; return; }
+    while (queue.length && isWarm(queue[0])) queue.shift();
+    if (!queue.length) return;
+    prerender(queue.shift(), true);
+    if (queue.length) warmTimer = w.setTimeout(warmNext, cfg.warmStaggerMs);
+  }
+  function warm() {
+    if (d.hidden || d.prerendering || warmTimer) return;
+    var urls = warmList();
+    queue = [];
+    for (var i = 0; i < urls.length; i++) if (!isWarm(urls[i])) queue.push(urls[i]);
+    warmNext();
+  }
+  function dropWarm() {
+    w.clearTimeout(warmTimer);
+    warmTimer = 0;
+    queue = [];
+    for (var i = live.length - 1; i >= 0; i--) if (live[i].warm) drop(live[i]);
   }
   function armWarm() { w.setTimeout(warm, cfg.warmDelayMs); }
   function afterLoad() {
@@ -509,7 +565,7 @@ function instantNavBoot(cfg, win) {
   }
   if (d.prerendering) d.addEventListener("prerenderingchange", afterLoad, { once: true });
   else afterLoad();
-  d.addEventListener("visibilitychange", function () { if (d.hidden && warmed) drop(warmed); });
+  d.addEventListener("visibilitychange", function () { if (d.hidden) dropWarm(); });
 
   var pending = 0;
   var pendingUrl = "";
@@ -543,6 +599,9 @@ function bootScript(opts) {
     ttlMs: TTL_MS,
     warmTtlMs: WARM_TTL_MS,
     warmDelayMs: WARM_DELAY_MS,
+    warmAll: !(opts && opts.warmAll === false),
+    maxWarm: MAX_WARM,
+    warmStaggerMs: WARM_STAGGER_MS,
     warmPath: WARM_PATH,
     desktopToken: (opts && opts.desktopToken) || "",
   };
@@ -552,7 +611,7 @@ function bootScript(opts) {
 
 module.exports = {
   TAB_PATHS, HOLD_PATHS, READ_POSTS, DWELL_MS, MAX_LIVE, TTL_MS, WARM_TTL_MS, WARM_DELAY_MS,
-  WARM_PATH, WARM_MAX_BYTES, DESKTOP_PRELOAD_HEADER,
+  MAX_WARM, WARM_STAGGER_MS, WARM_PATH, WARM_MAX_BYTES, DESKTOP_PRELOAD_HEADER,
   desktopPreloadBoot, desktopPreloadScript, injectFirstInHead,
   isSpeculative, createVisitDeferrals, createWarmCache, visitTag, instantNavBoot, bootScript,
 };

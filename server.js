@@ -12380,8 +12380,18 @@ async function loadAppPage() {
 // `desktopToken` is how the script recognises the desktop app, which must take
 // the warm path its shell turns into a real prerender (instant-nav.js, THE
 // DESKTOP APP) rather than insert speculation rules Electron never honours.
-const INSTANT_NAV_SHELL = INSTANTNAV.bootScript({ warm: ["/desk"], desktopToken: INAPP_UA_TOKEN });
-const INSTANT_NAV_APP = INSTANTNAV.bootScript({ skip: ["/", "/desk"], warm: ["/bulk"], desktopToken: INAPP_UA_TOKEN });
+// WARM_TABS (2026-11-18): `all` (the default) builds every rail row the
+// member can see ahead, the likely next one first; `one` is the rollback to
+// the single warm tab above. An unknown value exits at boot (the NAV_SHELL
+// rule: a knob that seems to work and changes nothing is the worst outcome).
+const WARM_TABS = String(process.env.WARM_TABS || "all").trim().toLowerCase();
+if (!["all", "one"].includes(WARM_TABS)) {
+  console.error(`⛔ WARM_TABS="${WARM_TABS}" is not one of: all, one`);
+  process.exit(1);
+}
+const WARM_ALL = WARM_TABS === "all";
+const INSTANT_NAV_SHELL = INSTANTNAV.bootScript({ warm: ["/desk"], warmAll: WARM_ALL, desktopToken: INAPP_UA_TOKEN });
+const INSTANT_NAV_APP = INSTANTNAV.bootScript({ skip: ["/", "/desk"], warm: ["/bulk"], warmAll: WARM_ALL, desktopToken: INAPP_UA_TOKEN });
 const INSTANT_NAV_MARKER = "<!--INSTANT_NAV-->";
 
 // Bulk valuation's run view, injected into index.html so a list pasted into
@@ -18200,7 +18210,10 @@ const WARM_CACHE = INSTANTNAV.createWarmCache();
 const WARM_TAB_SET = new Set(INSTANTNAV.TAB_PATHS);
 const WARM_HEADER = "x-cn-warm";
 const WARM_MAX_BODY = 4 * 1024 * 1024;
-const WARM_MAX_IN_FLIGHT = 8;
+// Across every visitor. 16 since 2026-11-18 (8 before): with WARM_TABS=all
+// one Safari page view asks for up to six tabs, and at 8 a second member
+// opening a page at the same moment got none of theirs.
+const WARM_MAX_IN_FLIGHT = WARM_ALL ? 16 : 8;
 // How long a click will wait on a render already under way before giving up
 // on it and rendering fresh: joining must never be slower than not joining
 // by more than this, however that render is faring.

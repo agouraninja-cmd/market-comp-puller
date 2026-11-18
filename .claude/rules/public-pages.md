@@ -312,3 +312,50 @@ markets.md that says a public page has Georgia headings or loads no font.
   once, ahead of the stylesheet, with none of the member rules, and reads
   the public page files and the shared stylesheet for a serif.
   Rendered check: 13 public pages, every text element Inter, no serif.
+
+## The home page on a phone (2026-11-18)
+
+The owner: "Improve the landing page for Mobile". Built straight (the ask
+was to improve, not for options). All of it is CSS inside `HOME_CSS`'s two
+media blocks plus three small markup changes; **the desktop is unchanged**:
+a box-by-box layout comparison against the old code at 1280, 1024 and 900px
+found all 307 elements in the same place with the same styles, the one
+difference being "I‑15", 1.4px narrower for its non-breaking hyphen.
+(Screenshot hashes could not prove it in the cloud sandbox: two captures of
+the same code differ there, because the web font arrives through a proxy.)
+
+- **Under 900px** (`max-width:899.98px`): the value range puts **Likely
+  across the top and Low and High side by side under it** (`order:-1` on
+  `.hmrcell.mid`, so the DOM and a screen reader still read Low, Likely,
+  High; `test/home-page.test.js` pins that markup). The feature tiles are
+  two columns, not one, at tablet width.
+- **Under 660px** (`max-width:659.98px`, the phone block): **the sample's
+  two tables become two-line rows** — address and $/SF, then date, size and
+  source — instead of a 620px grid behind a sideways scroll nobody was told
+  about, which hid the $/SF and the source badge, the two things the page
+  sells. 660 and not 640 because the comp table is 620px plus the page's
+  two 16px gutters; at 640 it still scrolled by 14px. Rows are **flex, not
+  grid**, so a row whose second line cannot fit (the Verified badge names
+  its broker) wraps the badge to a third, right-aligned line rather than
+  running out of the card; the line break is the row's `::after`, a
+  zero-height item a full line wide. The hidden column heads' words come
+  back as generated text ("Sold ", "Closed ", " SF", "/SF"). "Your comps"
+  drops its "$/SF, size, date only" column on a phone: the footnote under
+  it says the same thing once. The intro's and closing band's buttons stack
+  full width (a flex column stretching them, so `.btn` is not restyled and
+  `test/components.test.js`'s list of six does not grow), capped at 420px.
+  The bands carry less padding, and the search row stacks here (it stacked
+  at 900px before).
+- **Markup**: `.hmcapx` marks a caption's aside that a phone drops (the
+  sample's city, since the address is the next line, and "source badged per
+  comp", since every row now shows its badge); two inline styles became
+  `.hmrlab` and `.hmdrvs` so the phone block can bring them to the card's
+  16px gutter; "I‑15" carries a non-breaking hyphen (U+2011), because at
+  phone width it broke across two lines.
+- **Checked**: no sideways overflow at 320, 360, 375, 390, 414, 430, 600,
+  640, 768, 899, 1024 and 1280px, and every value figure keeps at least 8px
+  of room in its cell at 320px. Dark mode needs nothing: every new rule is
+  a token. `test/home-page.test.js`'s last test pins the phone block, since
+  every rule in it is invisible on the desktop a review is done on.
+- **Not changed**: the shared signed-out header (two rows on a phone since
+  2026-11-14, app-shell.md) and the footer.

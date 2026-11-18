@@ -495,11 +495,14 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<div class="hmcol">` +
     `<div class="hmeye">Enterprise software for commercial real estate</div>` +
     `<div class="hmtwo">` +
-    `<div><h1>Data storage</h1><p>Keep all of your firm’s closed deals in one private place. ` +
-    `Upload them once and they appear in every report you run, labeled as yours.</p></div>` +
-    `<div><h2>Research</h2><p>A cited comp report on any commercial address in about a minute. ` +
+    // Research first (2026-11-18, the owner: "Have research before data
+    // storage"): it is the free door, and the comp finder below is its next
+    // step. The first column carries the page's one <h1>.
+    `<div><h1>Research</h1><p>A cited comp report on any commercial address in about a minute. ` +
     `Public records, listings and verified broker submissions, with the source disclosed on ` +
     `every line.</p></div>` +
+    `<div><h2>Data storage</h2><p>Keep all of your firm’s closed deals in one private place. ` +
+    `Upload them once and they appear in every report you run, labeled as yours.</p></div>` +
     `</div>` +
     // The first door on the page. A member already has an account, so theirs
     // goes to the workspace (public-pages.test.js's signup-door rule).

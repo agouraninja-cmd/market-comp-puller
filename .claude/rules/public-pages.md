@@ -359,3 +359,7 @@ the same code differ there, because the web font arrives through a proxy.)
   every rule in it is invisible on the desktop a review is done on.
 - **Not changed**: the shared signed-out header (two rows on a phone since
   2026-11-14, app-shell.md) and the footer.
+- **Research before Data storage** (the same day, the owner: "Have
+  research before data storage"). The intro pair is Research then Data
+  storage, on every width, and Research carries the page's one `<h1>`
+  (Data storage is the `<h2>`): the first column holds the main heading.

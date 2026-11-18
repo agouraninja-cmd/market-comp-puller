@@ -5497,5 +5497,11 @@
     "type": "improvement",
     "title": "The home page reads properly on a phone",
     "details": "On a phone the sample report's comp table hid its price per square foot and its source badges off the right edge of the card, and the value range was a tall stack with the answer in the middle. Each comp is now two lines (address and $/SF, then date, size and source), Likely leads the range with Low and High side by side under it, the buttons are full width, and the page carries less empty space. The desktop layout is unchanged."
+  },
+  {
+    "date": "2026-11-18",
+    "type": "improvement",
+    "title": "Research comes before Data storage on the home page",
+    "details": "The home page's opening pair now leads with Research (the free comp report) and follows with Data storage, on the left on a desktop and first on a phone. Research is now the page's main heading."
   }
 ]

@@ -1,0 +1,626 @@
+{
+  "kind": "truth-test",
+  "label": "first-six",
+  "ranAt": "2026-11-18T00:12:59.517Z",
+  "provider": "gemini",
+  "model": "gemini-3.7-flash",
+  "thinkingLevel": "low",
+  "focus": "both",
+  "typedSize": false,
+  "targetSelection": "whole set (6)",
+  "costUsd": 0.061950375,
+  "summary": {
+    "targets": 6,
+    "failed": 0,
+    "scored": 6,
+    "open": 0,
+    "unsized": 0,
+    "noValue": 0,
+    "hitRate": 1,
+    "minScored": 20,
+    "belowFloor": true,
+    "unchecked": 1,
+    "headline": {
+      "n": 6,
+      "medianAbsError": 0.06990672297449853,
+      "interval": {
+        "lo": 0.018518518518518517,
+        "hi": 0.26686976389946687
+      },
+      "within10": 0.5,
+      "within20": 0.6666666666666666,
+      "bias": 0.06990672297449853,
+      "rangeCoverage": 0.6666666666666666,
+      "medianRangeWidth": 0.6448572458667399
+    },
+    "trueSize": {
+      "n": 6,
+      "medianAbsError": 0.06990672297449853,
+      "interval": {
+        "lo": 0.018518518518518517,
+        "hi": 0.26686976389946687
+      },
+      "within10": 0.5,
+      "within20": 0.6666666666666666,
+      "bias": 0.06990672297449853,
+      "rangeCoverage": 0.6666666666666666,
+      "medianRangeWidth": 0.6448572458667399
+    },
+    "asOfSale": {
+      "n": 4,
+      "medianAbsError": 0.22390784706073225,
+      "interval": {
+        "lo": 0.027210884353741496,
+        "hi": 0.3075058275058275
+      },
+      "within10": 0.25,
+      "within20": 0.5,
+      "bias": 0.11184910327767471,
+      "rangeCoverage": 1,
+      "medianRangeWidth": 0.8140350877192983
+    },
+    "sizeLookup": {
+      "n": 6,
+      "medianAbsError": 0,
+      "within10": 1,
+      "missing": 0,
+      "wanted": 6
+    },
+    "peek": {
+      "ownSaleFound": 6,
+      "ownSaleMatched": 6,
+      "leakedComps": 0,
+      "targetsWithLeak": 0,
+      "knewPrice": {
+        "n": 6,
+        "medianAbsError": 0.06990672297449853,
+        "interval": {
+          "lo": 0.018518518518518517,
+          "hi": 0.26686976389946687
+        },
+        "within10": 0.5,
+        "within20": 0.6666666666666666,
+        "bias": 0.06990672297449853,
+        "rangeCoverage": 0.6666666666666666,
+        "medianRangeWidth": 0.6448572458667399
+      },
+      "didNotKnow": {
+        "n": 0,
+        "medianAbsError": null,
+        "interval": null,
+        "within10": null,
+        "within20": null,
+        "bias": null,
+        "rangeCoverage": null,
+        "medianRangeWidth": null
+      },
+      "prospective": {
+        "n": 0,
+        "medianAbsError": null,
+        "interval": null,
+        "within10": null,
+        "within20": null,
+        "bias": null,
+        "rangeCoverage": null,
+        "medianRangeWidth": null
+      }
+    },
+    "byType": [
+      {
+        "type": "Office",
+        "n": 4,
+        "medianAbsError": 0.02741107444077741,
+        "interval": {
+          "lo": 0.016061980347694634,
+          "hi": 0.26686976389946687
+        },
+        "within10": 0.75,
+        "within20": 0.75,
+        "bias": 0.024954536269953528,
+        "rangeCoverage": 0.75,
+        "medianRangeWidth": 0.49853852194398396
+      },
+      {
+        "type": "Retail",
+        "n": 2,
+        "medianAbsError": 0.17539127142934402,
+        "interval": {
+          "lo": 0.10350981558596074,
+          "hi": 0.24727272727272728
+        },
+        "within10": 0,
+        "within20": 0.5,
+        "bias": 0.17539127142934402,
+        "rangeCoverage": 0.5,
+        "medianRangeWidth": 1.276665383134386
+      }
+    ],
+    "worst": [
+      {
+        "id": "sanjose-off-01",
+        "type": "Office",
+        "error": 0.49743589743589745
+      },
+      {
+        "id": "santaclarita-ret-01",
+        "type": "Retail",
+        "error": 0.24727272727272728
+      },
+      {
+        "id": "middleburg-ret-01",
+        "type": "Retail",
+        "error": 0.10350981558596074
+      },
+      {
+        "id": "anaheim-off-01",
+        "type": "Office",
+        "error": 0.036303630363036306
+      },
+      {
+        "id": "burlingame-off-01",
+        "type": "Office",
+        "error": -0.018518518518518517
+      }
+    ]
+  },
+  "rows": [
+    {
+      "id": "anaheim-off-01",
+      "type": "Office",
+      "market": "Anaheim, CA",
+      "address": "2300 E Katella Ave, Anaheim, CA",
+      "private": false,
+      "checked": true,
+      "status": "scored",
+      "ranAt": 1794960808728,
+      "truth": {
+        "price": 15150000,
+        "date": "2026-03",
+        "size_sqft": 69032
+      },
+      "served": {
+        "low": 12600000,
+        "likely": 15700000,
+        "high": 23200000,
+        "basis": "sf",
+        "size_sqft": 69032,
+        "size_source": "public_record",
+        "sale_comps": 4,
+        "trimmed": true
+      },
+      "miss": {
+        "low": 12600000,
+        "likely": 15700000,
+        "high": 23200000,
+        "error": 0.036303630363036306,
+        "absError": 0.036303630363036306,
+        "inRange": true,
+        "rangeWidth": 0.6751592356687898,
+        "sale_comps": 4,
+        "trimmed": true,
+        "basis": "sf"
+      },
+      "trueSize": {
+        "low": 12600000,
+        "likely": 15700000,
+        "high": 23200000,
+        "error": 0.036303630363036306,
+        "absError": 0.036303630363036306,
+        "inRange": true,
+        "rangeWidth": 0.6751592356687898,
+        "sale_comps": 4,
+        "trimmed": true,
+        "basis": "sf"
+      },
+      "asOfSale": null,
+      "asOfComps": 2,
+      "size": {
+        "truth": 69032,
+        "found": 69032,
+        "error": 0
+      },
+      "ownSale": {
+        "found": true,
+        "price": 15150000,
+        "matches": true
+      },
+      "askFound": false,
+      "leakedComps": 0,
+      "knewPrice": true,
+      "comps": 4,
+      "saleComps": 4,
+      "typedSize": false,
+      "prospective": false,
+      "monthsSinceSale": 8.1
+    },
+    {
+      "id": "jax-off-01",
+      "type": "Office",
+      "market": "Jacksonville, FL",
+      "address": "4500 Salisbury Rd, Jacksonville, FL",
+      "private": false,
+      "checked": true,
+      "status": "scored",
+      "ranAt": 1794960838081,
+      "truth": {
+        "price": 14700000,
+        "date": "2026-07",
+        "size_sqft": 151815
+      },
+      "served": {
+        "low": 12200000,
+        "likely": 14900000,
+        "high": 15700000,
+        "basis": "sf",
+        "size_sqft": 151815,
+        "size_source": "listing",
+        "sale_comps": 5,
+        "trimmed": true
+      },
+      "miss": {
+        "low": 12200000,
+        "likely": 14900000,
+        "high": 15700000,
+        "error": 0.013605442176870748,
+        "absError": 0.013605442176870748,
+        "inRange": true,
+        "rangeWidth": 0.2348993288590604,
+        "sale_comps": 5,
+        "trimmed": true,
+        "basis": "sf"
+      },
+      "trueSize": {
+        "low": 12200000,
+        "likely": 14900000,
+        "high": 15700000,
+        "error": 0.013605442176870748,
+        "absError": 0.013605442176870748,
+        "inRange": true,
+        "rangeWidth": 0.2348993288590604,
+        "sale_comps": 5,
+        "trimmed": true,
+        "basis": "sf"
+      },
+      "asOfSale": {
+        "low": 11800000,
+        "likely": 14300000,
+        "high": 15900000,
+        "error": -0.027210884353741496,
+        "absError": 0.027210884353741496,
+        "inRange": true,
+        "rangeWidth": 0.2867132867132867,
+        "sale_comps": 4,
+        "trimmed": true,
+        "basis": "sf"
+      },
+      "asOfComps": 4,
+      "size": {
+        "truth": 151815,
+        "found": 151815,
+        "error": 0
+      },
+      "ownSale": {
+        "found": true,
+        "price": 14700000,
+        "matches": true
+      },
+      "askFound": false,
+      "leakedComps": 0,
+      "knewPrice": true,
+      "comps": 5,
+      "saleComps": 5,
+      "typedSize": false,
+      "prospective": false,
+      "monthsSinceSale": 4.1
+    },
+    {
+      "id": "sanjose-off-01",
+      "type": "Office",
+      "market": "San Jose, CA",
+      "address": "1054 S De Anza Blvd, San Jose, CA",
+      "private": false,
+      "checked": true,
+      "status": "scored",
+      "ranAt": 1794960870999,
+      "truth": {
+        "price": 9750000,
+        "date": "2025-06",
+        "size_sqft": 31701
+      },
+      "served": {
+        "low": 10600000,
+        "likely": 14600000,
+        "high": 15300000,
+        "basis": "sf",
+        "size_sqft": 31701,
+        "size_source": "listing",
+        "sale_comps": 4,
+        "trimmed": true
+      },
+      "miss": {
+        "low": 10600000,
+        "likely": 14600000,
+        "high": 15300000,
+        "error": 0.49743589743589745,
+        "absError": 0.49743589743589745,
+        "inRange": false,
+        "rangeWidth": 0.3219178082191781,
+        "sale_comps": 4,
+        "trimmed": true,
+        "basis": "sf"
+      },
+      "trueSize": {
+        "low": 10600000,
+        "likely": 14600000,
+        "high": 15300000,
+        "error": 0.49743589743589745,
+        "absError": 0.49743589743589745,
+        "inRange": false,
+        "rangeWidth": 0.3219178082191781,
+        "sale_comps": 4,
+        "trimmed": true,
+        "basis": "sf"
+      },
+      "asOfSale": {
+        "low": 9750000,
+        "likely": 13300000,
+        "high": 15000000,
+        "error": 0.3641025641025641,
+        "absError": 0.3641025641025641,
+        "inRange": true,
+        "rangeWidth": 0.39473684210526316,
+        "sale_comps": 3,
+        "trimmed": false,
+        "basis": "sf"
+      },
+      "asOfComps": 3,
+      "size": {
+        "truth": 31701,
+        "found": 31701,
+        "error": 0
+      },
+      "ownSale": {
+        "found": true,
+        "price": 9750000,
+        "matches": true
+      },
+      "askFound": false,
+      "leakedComps": 0,
+      "knewPrice": true,
+      "comps": 4,
+      "saleComps": 4,
+      "typedSize": false,
+      "prospective": false,
+      "monthsSinceSale": 17.1
+    },
+    {
+      "id": "burlingame-off-01",
+      "type": "Office",
+      "market": "Burlingame, CA",
+      "address": "20 Park Rd, Burlingame, CA",
+      "private": false,
+      "checked": true,
+      "status": "scored",
+      "ranAt": 1794960895344,
+      "truth": {
+        "price": 5400000,
+        "date": "2025-05",
+        "size_sqft": 6815
+      },
+      "served": {
+        "low": 3150000,
+        "likely": 5300000,
+        "high": 7800000,
+        "basis": "sf",
+        "size_sqft": 6815,
+        "size_source": "listing",
+        "sale_comps": 5,
+        "trimmed": true
+      },
+      "miss": {
+        "low": 3150000,
+        "likely": 5300000,
+        "high": 7800000,
+        "error": -0.018518518518518517,
+        "absError": 0.018518518518518517,
+        "inRange": true,
+        "rangeWidth": 0.8773584905660378,
+        "sale_comps": 5,
+        "trimmed": true,
+        "basis": "sf"
+      },
+      "trueSize": {
+        "low": 3150000,
+        "likely": 5300000,
+        "high": 7800000,
+        "error": -0.018518518518518517,
+        "absError": 0.018518518518518517,
+        "inRange": true,
+        "rangeWidth": 0.8773584905660378,
+        "sale_comps": 5,
+        "trimmed": true,
+        "basis": "sf"
+      },
+      "asOfSale": null,
+      "asOfComps": 1,
+      "size": {
+        "truth": 6815,
+        "found": 6815,
+        "error": 0
+      },
+      "ownSale": {
+        "found": true,
+        "price": 5400000,
+        "matches": true
+      },
+      "askFound": false,
+      "leakedComps": 0,
+      "knewPrice": true,
+      "comps": 5,
+      "saleComps": 5,
+      "typedSize": false,
+      "prospective": false,
+      "monthsSinceSale": 18.1
+    },
+    {
+      "id": "santaclarita-ret-01",
+      "type": "Retail",
+      "market": "Santa Clarita, CA",
+      "address": "23126 Valencia Blvd, Santa Clarita, CA",
+      "private": false,
+      "checked": false,
+      "status": "scored",
+      "ranAt": 1794960925741,
+      "truth": {
+        "price": 27500000,
+        "date": "2026-09",
+        "size_sqft": 120559
+      },
+      "served": {
+        "low": 27600000,
+        "likely": 34300000,
+        "high": 94100000,
+        "basis": "sf",
+        "size_sqft": 120559,
+        "size_source": "listing",
+        "sale_comps": 5,
+        "trimmed": true
+      },
+      "miss": {
+        "low": 27600000,
+        "likely": 34300000,
+        "high": 94100000,
+        "error": 0.24727272727272728,
+        "absError": 0.24727272727272728,
+        "inRange": false,
+        "rangeWidth": 1.9387755102040816,
+        "sale_comps": 5,
+        "trimmed": true,
+        "basis": "sf"
+      },
+      "trueSize": {
+        "low": 27600000,
+        "likely": 34300000,
+        "high": 94100000,
+        "error": 0.24727272727272728,
+        "absError": 0.24727272727272728,
+        "inRange": false,
+        "rangeWidth": 1.9387755102040816,
+        "sale_comps": 5,
+        "trimmed": true,
+        "basis": "sf"
+      },
+      "asOfSale": {
+        "low": 27000000,
+        "likely": 34400000,
+        "high": 83800000,
+        "error": 0.2509090909090909,
+        "absError": 0.2509090909090909,
+        "inRange": true,
+        "rangeWidth": 1.6511627906976745,
+        "sale_comps": 3,
+        "trimmed": false,
+        "basis": "sf"
+      },
+      "asOfComps": 3,
+      "size": {
+        "truth": 120559,
+        "found": 120559,
+        "error": 0
+      },
+      "ownSale": {
+        "found": true,
+        "price": 27500000,
+        "matches": true
+      },
+      "askFound": false,
+      "leakedComps": 0,
+      "knewPrice": true,
+      "comps": 5,
+      "saleComps": 5,
+      "typedSize": false,
+      "prospective": false,
+      "monthsSinceSale": 2.1
+    },
+    {
+      "id": "middleburg-ret-01",
+      "type": "Retail",
+      "market": "Middleburg, FL",
+      "address": "1690 Jeremiah St, Middleburg, FL",
+      "private": false,
+      "checked": true,
+      "status": "scored",
+      "ranAt": 1794960954723,
+      "truth": {
+        "price": 8405000,
+        "date": "2026-04",
+        "size_sqft": 17400
+      },
+      "served": {
+        "low": 6200000,
+        "likely": 9275000,
+        "high": 11900000,
+        "basis": "sf",
+        "size_sqft": 17400,
+        "size_source": "listing",
+        "sale_comps": 6,
+        "trimmed": true
+      },
+      "miss": {
+        "low": 6200000,
+        "likely": 9275000,
+        "high": 11900000,
+        "error": 0.10350981558596074,
+        "absError": 0.10350981558596074,
+        "inRange": true,
+        "rangeWidth": 0.6145552560646901,
+        "sale_comps": 6,
+        "trimmed": true,
+        "basis": "sf"
+      },
+      "trueSize": {
+        "low": 6200000,
+        "likely": 9275000,
+        "high": 11900000,
+        "error": 0.10350981558596074,
+        "absError": 0.10350981558596074,
+        "inRange": true,
+        "rangeWidth": 0.6145552560646901,
+        "sale_comps": 6,
+        "trimmed": true,
+        "basis": "sf"
+      },
+      "asOfSale": {
+        "low": 2675000,
+        "likely": 6750000,
+        "high": 11000000,
+        "error": -0.19690660321237358,
+        "absError": 0.19690660321237358,
+        "inRange": true,
+        "rangeWidth": 1.2333333333333334,
+        "sale_comps": 3,
+        "trimmed": false,
+        "basis": "sf"
+      },
+      "asOfComps": 3,
+      "size": {
+        "truth": 17400,
+        "found": 17400,
+        "error": 0
+      },
+      "ownSale": {
+        "found": true,
+        "price": 8405000,
+        "matches": true
+      },
+      "askFound": false,
+      "leakedComps": 0,
+      "knewPrice": true,
+      "comps": 6,
+      "saleComps": 6,
+      "typedSize": false,
+      "prospective": false,
+      "monthsSinceSale": 7.1
+    }
+  ]
+}

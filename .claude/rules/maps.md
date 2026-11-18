@@ -130,6 +130,49 @@ the building". Read this before the rest of the file, which it extends.
   aerial crop, so the property sat in the thumbnail's bottom-right corner.
   They are now cropped to their own size, centred.
 
+## The credit line on a phone (2026-11-18)
+
+The owner: "On mobile the citations for the map are too noticeable and make
+it ugly please fix it." Leaflet's credit line ("Leaflet | Tiles © Esri —
+Esri, HERE, Garmin, © OpenStreetMap contributors") was a white band of two
+lines of blue links across the foot of every map at phone width, the loudest
+thing on Home's 300px strip. **`map-credit.js`** (browser global
+`MAPCREDIT`, dual-exported, `maxAge: 0`; its header is the contract) turns
+it, under 640px of SCREEN only, into a small grey pill in the corner that
+folds into a round "i". Five rules:
+
+- **It folds only after it has been seen**: `SHOW_MS` (5 s) after the whole
+  line is on screen (an IntersectionObserver on the control itself, never
+  while the page is prerendered or hidden, rule 15), or at the first press
+  on the map. That is the licence's half: OpenStreetMap's attribution
+  guidelines accept a credit behind an "i" once it has shown unasked, and
+  Esri's own widget folds the same way. Do not make it start folded. A tap
+  on the "i" (or the pill) opens and folds it; opened by hand, the clock
+  leaves it alone; a link stays a link.
+- **The words are untouched**: each page's tile layer still supplies them
+  (BASEMAP_ATTRIB, CNBASE's ATTRIB, the Satellite layer's). On a phone the
+  flag is hidden and the links take the pill's grey.
+- **The "i" rides in the control's PREFIX** (`setPrefix`), because Leaflet
+  rewrites the control's innerHTML whenever a credit comes or goes (the theme
+  swap, Satellite, labels at zoom 6). The state lives on the container
+  (`cn-credit-closed`) and in the prefix string; a toggle edits both in place
+  and never re-renders, so keyboard focus stays on the button.
+- **One Leaflet init hook reaches every map** (`MAPCREDIT.hook(L)`,
+  idempotent). index.html and `LEAFLET_HEAD` load the file right after
+  leaflet.js and it hooks itself; /permits loads Leaflet lazily, so its head
+  loads the file first and `withLeaflet`'s onload calls the hook. A new page
+  that loads Leaflet must do one or the other.
+- **Not touched**: a desktop (the "i" is `display:none` outside the query),
+  and the report's print and PNG exports, which use the static raster with
+  its own credit (`SMAP_ATTRIB`).
+
+Tests: `test/map-credit.test.js` runs `attach` against stand-ins for Leaflet
+and the page (opens first, folds once seen, not before it is shown, a press
+on the map, the "i", a link, desktop, unload, a Leaflet re-render) and holds
+every page that loads Leaflet to loading it. Pictures were taken on the
+stand-in database with Leaflet from a local copy and drawn tiles (unpkg and
+Esri are not reachable from a cloud session).
+
 ## Configuration
 
 - `GOOGLE_MAPS_API_KEY` — optional; SET on Render since 2026-07-29 (key

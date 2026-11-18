@@ -2,6 +2,12 @@
   {
     "date": "2026-11-18",
     "type": "improvement",
+    "title": "Map credits fold into a small “i” on a phone",
+    "details": "On a phone, the line crediting the map's makers (Leaflet, Esri, OpenStreetMap) ran across the whole bottom of every map in two lines of blue links. It is now a small grey pill in the corner that folds into a round “i” a few seconds after it has been on screen, or as soon as you touch the map. Tap the “i” to read it again. It shows first so the credit is seen, as the map providers' terms ask. Desktop maps and the report's print and PNG exports are unchanged."
+  },
+  {
+    "date": "2026-11-18",
+    "type": "improvement",
     "title": "Every tab in the sidebar opens instantly, not just one",
     "details": "Each page used to build one tab ahead of the click (Home, or Run a comp report from Home), so the other tabs still waited on the server unless you rested the pointer on them first. Now every tab you can see is built ahead, one at a time after the page settles. Measured locally in Chrome, the tabs that used to wait about 200-250 ms now open in about 15 ms. Safari and Firefox get the server half of it. WARM_TABS=one puts back the old single tab."
   },

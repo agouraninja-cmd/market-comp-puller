@@ -15255,7 +15255,10 @@ const LEAFLET_HEAD =
   `<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>\n` +
   `<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>\n` +
   // No focus ring on a click-and-drag; ⚠ same hook as index.html's, see there.
-  `<script>if (window.L) L.Map.addInitHook(function () { var c = this.getContainer(); L.DomEvent.on(c, "pointerdown mousedown touchstart", function () { L.DomUtil.preventOutline(c); }); });</script>\n`;
+  `<script>if (window.L) L.Map.addInitHook(function () { var c = this.getContainer(); L.DomEvent.on(c, "pointerdown mousedown touchstart", function () { L.DomUtil.preventOutline(c); }); });</script>\n` +
+  // On a phone the credit line folds into an "i" once seen (map-credit.js);
+  // after leaflet.js, so it finds window.L and hooks every map.
+  `<script src="/map-credit.js"></script>\n`;
 
 // The /markets directory's momentum map: one pin per covered market, colored
 // by the same freshDirection read the Explorer dropdown and the market page's
@@ -33533,6 +33536,10 @@ const server = http.createServer((req, res) =>
     // through the global BLDGPHOTO, for Home's cards (index.html). Same
     // maxAge: 0 rule as the others.
     "/building-photo.js": { file: "building-photo.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // The map credit line folding into an "i" on a phone (2026-11-18),
+    // through the global MAPCREDIT: index.html, LEAFLET_HEAD and the /permits
+    // head load it. Same maxAge: 0 rule as the others.
+    "/map-credit.js": { file: "map-credit.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // The "Confirm your email" notice (2026-11-10), through the global
     // CONFIRMNOTICE: index.html loads it, and ACCOUNT_NAV_JS loads it on a
     // server-rendered page only for an account that has not confirmed. Same
@@ -34584,7 +34591,9 @@ const server = http.createServer((req, res) =>
         noindex: true,
         signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
         current: "/permits",
-        head: INTER_FONT_HEAD + `<style>${LEAFLET_DARK_CSS}</style><script>${BASEMAP_JS}</script>`,
+        // map-credit.js arrives before Leaflet here, so it only defines
+        // MAPCREDIT; permits-page.js's withLeaflet hooks it once Leaflet loads.
+        head: INTER_FONT_HEAD + `<style>${LEAFLET_DARK_CSS}</style><script>${BASEMAP_JS}</script><script src="/map-credit.js"></script>`,
         testerBadge: true,
         body: renderPermitsBody(boot) + visitTag,
       }));

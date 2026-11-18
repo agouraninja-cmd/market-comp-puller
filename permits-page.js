@@ -981,7 +981,9 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
     }
     var sc=document.createElement("script"); sc.src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
     // No focus ring on a click-and-drag; ⚠ same hook as index.html's, see there.
-    sc.onload=function(){ if(!window.L)return; L.Map.addInitHook(function(){ var c=this.getContainer(); L.DomEvent.on(c,"pointerdown mousedown touchstart",function(){ L.DomUtil.preventOutline(c); }); }); cb(); }; document.head.appendChild(sc);
+    // And the phone's folded credit line (map-credit.js, loaded by the page's
+    // head before Leaflet, so it waits to be told).
+    sc.onload=function(){ if(!window.L)return; L.Map.addInitHook(function(){ var c=this.getContainer(); L.DomEvent.on(c,"pointerdown mousedown touchstart",function(){ L.DomUtil.preventOutline(c); }); }); if(window.MAPCREDIT)MAPCREDIT.hook(L); cb(); }; document.head.appendChild(sc);
   }
   function cssVar(n,fb){ var v=getComputedStyle(document.documentElement).getPropertyValue(n); return (v&&v.trim())||fb; }
   function drawAreaMap(id,area){

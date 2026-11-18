@@ -430,6 +430,7 @@ so they are trusted config and are never set in production.
 | `SEARCH_PROVIDER` | `gemini` | `gemini` or `anthropic`; an unknown value exits at boot; `MODEL` overrides the model; `/healthz` reports what is live | search-pipeline.md |
 | `THINKING_LEVEL` | unset (production: `low`, set on Render) | Gemini reasoning depth — the largest wall-clock and cost lever | search-pipeline.md |
 | `STREAM_ANTHROPIC` | on | stream the search call | search-pipeline.md |
+| `COMP_FIT`, `COMP_WIDER_SEARCH` | on | set aside off-size, unit, dead-source and far comps before valuing (`comp-fit.js`); the second spends one more search when too few right-sized sales are left; `off` is each one's rollback | search-pipeline.md |
 | `PARALLEL_SEARCH` | off | two concurrent search lanes; measured and not worth it yet | search-pipeline.md |
 | `CORPUS_RADIUS`, `CORPUS_METRO`, `CORPUS_LISTED`, `ARCHIVE_FIRST` | on | `off` rolls back the radius blend, metro retrieval, on-market listings, archive-first | corpus.md |
 | `LEAD_METRO` | on | broker lead coverage matches across metro groups | vault.md |
@@ -460,7 +461,7 @@ gone. Document a new feature in its area's file, not here.
 
 | File | What it holds | Loads when Claude opens |
 |---|---|---|
-| `search-pipeline.md` | `POST /api/comps`, prompt, cache, live progress (SSE), providers, `MODEL`, `THINKING_LEVEL`, measuring a model change (`run-eval.js`), upstream health, the source-link check, flows 1 and 5 (parsing, currency) | `search-provider-*.js`, `report-parse.js`, `link-check.js`, `run-eval.js`, `eval-*` |
+| `search-pipeline.md` | `POST /api/comps`, prompt, cache, live progress (SSE), providers, `MODEL`, `THINKING_LEVEL`, measuring a model change (`run-eval.js`), upstream health, the source-link check, comp fit and the wider search, flows 1 and 5 (parsing, currency) | `search-provider-*.js`, `report-parse.js`, `link-check.js`, `comp-fit.js`, `run-eval.js`, `eval-*` |
 | `corpus.md` | the comp corpus and its health alarm, corpus-first retrieval, radius blend, archive-first, metro matching, on-market listings, `/api/corpus-comps`, the accuracy backtest | `corpus-*.js`, `blend-corpus.js`, `backtest.js`, `market.js`, `deal-date.js` |
 | `report-and-valuation.md` | the report front end: search form, valuation math and hero, flows 2–4 and 3a–3f, private comps on screen and in exports, PowerPoint export, the Collateral Check card | `index.html`, `valuation.js`, `comp-gate.js`, `market-snapshot.js`, `collateral-check.js` |
 | `billing.md` | Pro tier, trial, prices, free allowance, passkeys, admin access, branding, trial emails, `/api/config`, `/pricing` | `entitlements.js`, `stripe.js`, `branding.js`, `trial-notices.js`, `pricing-page.js` |

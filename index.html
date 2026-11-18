@@ -5025,6 +5025,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                renderPrivateNotice(); the CSV and XLSX say the same thing in
                their own title rows. -->
           <p id="privateNotice" class="hidden text-xs leading-6 text-ink-mute px-6 py-2.5 border-t border-hair"></p>
+          <!-- Comps the server set aside before valuing (comp-fit.js). Counts
+               only; printed with the report. Built by renderSetAsideNotice(). -->
+          <p id="setAsideNotice" class="hidden text-xs leading-6 text-ink-mute px-6 py-2.5 border-t border-hair"></p>
           <p class="hidden sm:block text-xs text-ink-3 px-6 py-2 border-t border-hair no-print">Click a column header to sort.</p>
           <!-- Add-your-own-comp form: client-only, never sent to the server. Hidden
                entirely for shared viewers (curationControlsAllowed() gate). -->
@@ -6008,6 +6011,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     return parts;
   }
+  // See renderResults' call. Mutates `meta` (the report's own record, which
+  // a save and a re-run read) and the address box when it still holds the
+  // typed address, so the next search does not repeat the typo.
+  function adoptCorrectedAddress(parsed, meta) {
+    if (!parsed || !meta) return;
+    const fixed = String(parsed.subject_address_corrected || "").trim();
+    if (!fixed || fixed === meta.address) return;
+    if (!meta.addressTyped) meta.addressTyped = meta.address;
+    const box = document.getElementById("address");
+    if (box && String(box.value || "").trim() === String(meta.address || "").trim()) box.value = fixed;
+    meta.address = fixed;
+  }
+
   function renderReportMeta(meta) {
     const metaBox = document.getElementById("reportMeta");
     if (!metaBox || !meta) return;
@@ -6020,6 +6036,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     subj.className = "rd-chip rd-chip-subj mr-1.5 mt-1.5";
     subj.textContent = "Your property";
     metaBox.appendChild(subj);
+    // The address was corrected from what was typed (adoptCorrectedAddress):
+    // say so once, so a reader who typed "Inglewood" sees why the header
+    // says Englewood instead of thinking the wrong building was valued.
+    if (meta.addressTyped && meta.addressTyped !== meta.address) {
+      const fix = document.createElement("span");
+      fix.className = "rd-chip mr-1.5 mt-1.5";
+      fix.textContent = `Corrected from “${meta.addressTyped}”`;
+      metaBox.appendChild(fix);
+    }
     metaParts(meta).concat(`Generated ${dateStr}`).forEach((part) => {
       const chip = document.createElement("span");
       chip.className = "rd-chip mr-1.5 mt-1.5";
@@ -13250,6 +13275,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const hasTx = currentComps.some((c) => c.transaction);
     document.getElementById("txFilter").style.display = hasTx ? "flex" : "none";
 
+    // A corrected address (2026-11-17; normalizeCorrectedAddress in
+    // report-parse.js, which holds it to the typed street number and state):
+    // "76 Inverness Dr E, Inglewood, CO" is the building in Englewood, CO.
+    // The report becomes the corrected address everywhere it is used from
+    // here on (the header, the map's subject pin, a save, a re-run), and the
+    // typed one is kept once, as `addressTyped`, for the header's chip. Runs
+    // again harmlessly on a saved or shared report that already took it.
+    adoptCorrectedAddress(parsed, meta);
     // Report header (reopened reports keep their original generation date)
     document.getElementById("reportAddress").textContent = meta.address;
     // Each meta part renders as a small chip — scans better than one dot-joined
@@ -21903,6 +21936,41 @@ async function renderMyDesk() {
     el.classList.remove("hidden");
   }
 
+  // The comps the search found and the server set aside before valuing
+  // (comp-fit.js, 2026-11-17): a very different size, a condo unit against a
+  // whole building, a dead or parked source, or farther out than closer
+  // sales. The server sends counts only (`set_aside_counts`), never the comps.
+  // Said on the page so a short table does not read as a thin search, and
+  // deliberately printed and photographed with the report, like the private
+  // notice above it. Text only, built from our own words and numbers.
+  function setAsideSentence(counts, wider) {
+    const c = counts && typeof counts === "object" ? counts : {};
+    const n = (k) => Math.max(0, Math.floor(Number(c[k]) || 0));
+    const parts = [];
+    if (n("size")) parts.push(`${n("size")} ${n("size") === 1 ? "was" : "were"} a very different size from your property`);
+    if (n("distance")) parts.push(`${n("distance")} ${n("distance") === 1 ? "was" : "were"} farther away than closer sales we found`);
+    if (n("unit")) parts.push(`${n("unit")} ${n("unit") === 1 ? "was a condo or unit sale" : "were condo or unit sales"} rather than a whole building`);
+    if (n("dead_source")) parts.push(`${n("dead_source")} cited a source page that was dead or a parked domain`);
+    const total = n("size") + n("distance") + n("unit") + n("dead_source");
+    const added = Math.max(0, Math.floor(Number(wider && wider.added) || 0));
+    let out = "";
+    if (total) {
+      // Semicolons: each reason carries its own count and clauses, and a
+      // comma list ran them together.
+      const list = parts.length > 1 ? parts.slice(0, -1).join("; ") + "; and " + parts[parts.length - 1] : parts[0];
+      out = `We left out ${total} comp${total === 1 ? "" : "s"} the search found: ${list}.`;
+    }
+    if (added) out += `${out ? " " : ""}A second, wider search added ${added} sale${added === 1 ? "" : "s"} closer to your property's size.`;
+    return out;
+  }
+  function renderSetAsideNotice() {
+    const el = document.getElementById("setAsideNotice");
+    if (!el) return;
+    const text = setAsideSentence(currentParsed && currentParsed.set_aside_counts, currentParsed && currentParsed.wider_search);
+    el.textContent = text;
+    el.classList.toggle("hidden", !text);
+  }
+
   function renderPrivateNotice() {
     const el = document.getElementById("privateNotice");
     if (!el) return;
@@ -22330,6 +22398,7 @@ async function renderMyDesk() {
     renderBadgeLegend();
     renderCompMarksLegend();
     renderPrivateNotice();
+    renderSetAsideNotice();
     renderFirmShareNotice();
     renderAutoShareNotice();
     renderSubjectRow();

@@ -529,7 +529,49 @@ function normalizeSubjectSize(parsed) {
   return parsed;
 }
 
+// The subject's corrected address (2026-11-17). A BOV form produced a report
+// titled "76 Inverness Dr E, Inglewood, CO": Inglewood is in California, the
+// building is in Englewood, Colorado. The prompt asks the model, which is
+// already researching the property, to hand back its real address when the
+// typed one is wrong. Model output headed for a report's title is held to:
+//   - the SAME leading street number as the typed address (a correction of
+//     the city, never a different building), and the typed address must have
+//     one: with no number there is nothing to pin the answer to;
+//   - the SAME two-letter state when the typed address names one (Englewood
+//     CO for Inglewood CO, never Inglewood CA, which is the other place the
+//     typo could mean and is a different building);
+//   - actually different (case, spacing, punctuation and a ZIP the typed one
+//     lacked do not count as a correction), and under 200 characters.
+// Anything else deletes the field. Never a guess at the typed address's
+// meaning: either the model's researched answer passes these or there is no
+// correction.
+function normalizeCorrectedAddress(parsed, typedAddress) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const raw = parsed.subject_address_corrected;
+  delete parsed.subject_address_corrected;
+  const fixed = String(raw == null ? "" : raw).replace(/\s+/g, " ").trim();
+  const typed = String(typedAddress == null ? "" : typedAddress).replace(/\s+/g, " ").trim();
+  if (!fixed || !typed || fixed.length > 200) return parsed;
+  const num = (a) => { const m = /^\s*(\d+)\b/.exec(a); return m ? m[1] : null; };
+  if (!num(typed) || num(typed) !== num(fixed)) return parsed;
+  // The state is the last standalone two-letter word, ignoring a ZIP tail.
+  const stateOf = (a) => {
+    const m = /,\s*([A-Za-z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?\s*(?:,\s*(?:USA|US|United States))?\s*$/i.exec(a);
+    return m ? m[1].toUpperCase() : null;
+  };
+  const ts = stateOf(typed);
+  if (ts && stateOf(fixed) !== ts) return parsed;
+  const bare = (a) => a.toLowerCase()
+    .replace(/,\s*(usa|us|united states)\s*$/, "")
+    .replace(/\s+\d{5}(?:-\d{4})?\s*$/, "")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+  if (bare(fixed) === bare(typed)) return parsed;
+  parsed.subject_address_corrected = fixed;
+  return parsed;
+}
+
 module.exports = {
+  normalizeCorrectedAddress,
   normalizeSubjectSize,
   extractFirstJsonObject,
   parseCompJson,

@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-17",
+    "type": "fix",
+    "title": "Reports leave out comps that don't fit, and search wider when too few are left",
+    "details": "A report on a 32,000 SF building in Englewood, CO was valued on two 7,200 SF buildings, a condo unit whose only source was a parked domain, and sales 9 miles away. Comps a very different size from your property, condo or unit sales against a whole building, comps whose source page is dead or a parked domain, and far comps when closer ones exist are now left out before the value is worked out, and the report says how many and why. When too few right-sized sales are left, CompNinja runs one more, wider search for them. A parked source no longer earns a Listing badge, and an address with the wrong city (Inglewood, CO for Englewood, CO) is corrected in the report's title."
+  },
+  {
+    "date": "2026-11-17",
     "type": "improvement",
     "title": "Messages fills the whole screen",
     "details": "Messages was a bordered box in the middle of the page under a big \"Messages\" heading. The heading and the line under it are gone (the sidebar already says Messages), and your chats and the conversation now run edge to edge, from the sidebar to the right side of the window and from the top to the bottom. On a phone the list and an open chat fill the screen above the bottom bar."

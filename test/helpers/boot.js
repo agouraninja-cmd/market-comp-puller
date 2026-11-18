@@ -201,6 +201,13 @@ async function bootOnce(env) {
       // would otherwise hold its child, and the run, for the production
       // default of 280 seconds. The drain's own suite sets what it needs.
       SHUTDOWN_GRACE_SECONDS: "2",
+      // The wider search (comp-fit.js, 2026-11-17), OFF by default here. On,
+      // it spends a second billed call whenever a report has fewer than four
+      // right-sized priced sales, which is every stub report in this suite,
+      // and suites that count provider calls or read the LAST call's budget
+      // would be measuring it instead of what they test. Its own suite
+      // (test/comp-fit-run.test.js) turns it on.
+      COMP_WIDER_SEARCH: "off",
       ...env,
     },
     // stderr is piped (stdout stays ignored: the startup banner is noise)

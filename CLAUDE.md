@@ -149,7 +149,8 @@ session that never reads it.
     `boundaryStyle`; `BULK_SUBJECT_FIELDS` / `TYPE_SUBJECT_FIELDS`; the vault
     page's refusal needles; home-map.js `PERMIT_STAGES` / `tidyCaps` and
     permits-page.js `STAGE_NAMES` / `tidy`; index.html's `houseNumberOf` /
-    `unitDesignatorOf` and building-photo.js's copies). Grep for ⚠ before changing either side.
+    `unitDesignatorOf` and building-photo.js's copies; index.html's
+    `touchPanMap` / BASEMAP_JS's `CNBASE.touchPan`). Grep for ⚠ before changing either side.
 12. **Nothing mails or sweeps on a timer.** The watchlist digest, the trial
     emails and the permit sweep are `ADMIN_KEY`-gated routes driven from
     outside the process. A ledger is marked only after the send, and opening

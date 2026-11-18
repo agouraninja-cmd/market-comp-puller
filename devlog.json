@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-18",
+    "type": "fix",
+    "title": "Swiping a page on a phone no longer stops dead or stutters",
+    "details": "Two causes, both measured in a phone-sized browser. A swipe that started on a map moved the map instead of the page, so the page looked frozen: on Home the map is the top half of the screen, and the same happened on Markets, the market pages, the comp report, Your comps and Permits. Now one finger scrolls the page and two fingers move the map, and dragging the map sideways with one finger says how. A map that fills the screen (the report's fullscreen map, Home beside the sidebar) still drags with one finger, and nothing changes with a mouse. And the comp report built its printable map picture a few seconds after opening, in one half-second burst that landed in the middle of a swipe; it now waits until the page stops moving and does the heavy part off the page's main work, so the swipe stays smooth."
+  },
+  {
+    "date": "2026-11-18",
     "type": "improvement",
     "title": "Every tab in the sidebar opens instantly, not just one",
     "details": "Each page used to build one tab ahead of the click (Home, or Run a comp report from Home), so the other tabs still waited on the server unless you rested the pointer on them first. Now every tab you can see is built ahead, one at a time after the page settles. Measured locally in Chrome, the tabs that used to wait about 200-250 ms now open in about 15 ms. Safari and Firefox get the server half of it. WARM_TABS=one puts back the old single tab."

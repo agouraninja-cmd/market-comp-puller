@@ -12,7 +12,20 @@ intent, the devlog states history.
 
 ## Now
 
-- **Re-check Search Console in a few days** (no code, ~5 minutes). Checked
+- **Three brokers who are not Chuck put their own book into the vault, and
+  the owner watches each of them do it** (September's month goal, carried
+  forward 2026-11-20; `docs/ROADMAP-2026-09.md` Week 4 is the script). None
+  of that file's boxes was ticked and no later month was planned, while the
+  devlog gained about 300 entries. In progress as of 2026-11-20. Everything
+  else under Now waits behind it.
+
+- **Attorney: broker-data privacy** (from "Open business questions" below,
+  which says it gates launch, not development). Brokers' private comps have
+  been in storage since 2026-08-06, so each onboarding above makes it less
+  hypothetical. Not code; one email.
+
+- **Search Console re-check: overdue since 2026-08-09** (no code, ~5
+  minutes; nothing recorded in `docs/SEO.md` after that date). Checked
   2026-08-09: **both `/` and `/how-it-works` are indexed** — but `/` was last
   crawled **2026-07-30**, before both the wall and the fix, so Google has seen
   neither and is holding pre-wall content. Indexing was requested for `/` that

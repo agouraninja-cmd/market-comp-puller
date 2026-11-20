@@ -5563,5 +5563,17 @@
     "type": "improvement",
     "title": "Research comes before Data storage on the home page",
     "details": "The home page's opening pair now leads with Research (the free comp report) and follows with Data storage, on the left on a desktop and first on a phone. Research is now the page's main heading."
+  },
+  {
+    "date": "2026-11-20",
+    "type": "fix",
+    "title": "Emails and broker profiles show info@compninja.co, not a personal address",
+    "details": "The signature on emails to leads and brokers, where their replies go, and the introduction link on public broker profiles all used the owner's private alert inbox. They now use the public contact address. Owner alerts default to a CompNinja address and are sent from the verified domain when one is set."
+  },
+  {
+    "date": "2026-11-20",
+    "type": "improvement",
+    "title": "The accuracy test can be graded against closed Massachusetts sales",
+    "details": "A new script turns Massachusetts public assessor records into an answer key of closed sale prices for the accuracy lab. First run: 2,924 sales in 16 cities, median miss 23.3%. Nothing changes in reports yet."
   }
 ]

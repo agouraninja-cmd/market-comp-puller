@@ -12,1623 +12,236 @@ paths:
   - "app-page.js"
   - "test/app-page.test.js"
 ---
-# The signed-in workspace
+# The signed-in Home (`/desk`)
 
-> **index.html's script is served as its own file (2026-11-14).** The file is
-> about 400 KB of markup and CSS and ONE inline script of about 1 MB, served
-> `no-store`, so the megabyte was downloaded again on every page view (Home,
-> the comp report page, every shared report). Now the page goes out with
-> `<script src="/app.<hash>.js"></script>` where the block was, and the block
-> is at that address, cached for a year. Measured at brotli 4: a page view
-> was about 400 KB over the wire and is about 106 KB; the script (about
-> 310 KB) is fetched once. `app-page.js` has the design and the rules;
-> `loadAppPage()` in `server.js` does the reading. What to know:
-> - **The split is at SERVE time. index.html on disk did not change**, and
->   must stay one file: the Tailwind build finds classes in its JS strings,
->   and the tests that read or run the page read it from disk.
-> - **The address is the content hash**, and the page (never cached) names
->   the exact one, so a browser cannot pair a page with a stale script.
->   Editing index.html still needs only a refresh: `loadAppPage()` remembers
->   its result until the file's size or modified time changes.
-> - **Only the one big plain `<script>` moves.** The small inline scripts
->   ahead of it, and everything the serve-time markers inject, stay inline
->   and still run first. If the big script ever gains an attribute, or there
->   is none big enough, the page is served whole (and a warning is logged).
-> - **Every serve-time marker must stay in the page half**, never inside the
->   script: a marker in the script would go out unfilled, or worse, be cached
->   for a year with one visitor's value. `test/app-page.test.js` pins the
->   list; a NEW marker belongs in that list.
-> - **A request for a hash that is not the current one gets the current
->   script, `no-store`**, never a 404 (a page from the old instance asking
->   the new one during a deploy). For those seconds an old page can run a
->   new script, as it already could with every other script file.
-> - **`EXTERNAL_APP_SCRIPT=off` is the rollback**: script inline, exactly as
->   before, and `/app.<hash>.js` answers 404.
-> - **A test about what the app DOES reads `servedApp()`**
->   (`test/helpers/served-app.js`: the page with its script put back), never
->   the page's text alone, which no longer holds the script. Three tests in
->   `test/routes.test.js` were moved to it; one of them (every
->   `getElementById` names a real id) would otherwise have kept passing
->   while checking nothing.
-> - **Proof that nothing changed for the visitor**: a test boots the server
->   both ways and requires page plus script, minus the one preload hint, to
->   equal the whole page byte for byte.
->
-> Not done, and not planned as one change: breaking index.html or server.js
-> into smaller source files. The standing rule in docs/ROADMAP.md is to
-> extract a module when its code is touched, with tests first.
+The signed-in member's Home: one list beside one map, drawn by `index.html`,
+plus how that page is served (`DESK_BOOT`, `AUTH_BOOT`, `/app.<hash>.js`).
+Full detail and history: `docs/rules-detail/workspace.md` — read the matching
+section there before a non-trivial change to this area.
 
-> **Customer-facing names (owner's call, 2026-10-04): "Home" and "Data".**
-> The firm space (`/desk`, and `/` for a member) is labelled **Home**, and the
-> personal space (`/vault`) is labelled **Data**; the rail reads Home · Data ·
-> Messages. Only the words a customer reads changed: URLs, routes, ids
-> (`navVault`, `menuVaultLink`, `deskGreeting`), tables (`broker_comps`) and
-> module names keep "desk"/"vault", and these notes still say "workspace" and
-> "vault" for the two spaces. Never put "Workspace" or "Vault" back in copy.
-> (Since 2026-10-07 the rail no longer has a Data row, and /vault's heading
-> read "Your properties and comps" until 2026-10-13, when there stopped
-> being a /vault page at all; see below.)
+## What exists now
 
-> **The list's type and its one left edge (2026-11-13; the owner, of the
-> panel beside the map: "there are too many different types of fonts and
-> font sizes and the layout is weird can you please fix it").** Read this
-> before the boxes below, which it amends: where they say a figure or a
-> group's name is Georgia, a label is in capitals, or a quiet Today is a
-> stack of cards in Next's shell, this is what the page does now. Built
-> straight (the ask was a fix, not options); the before-and-after pictures
-> are at https://claude.ai/artifact/63p8LpFQESKv3DEwG1HN9Q. Of the head
-> (the box below) only the greeting's face changed; where that box says
-> "the greeting 30px Georgia", it is 28px Inter now.
-> - **What was measured.** On an account like his (a firm of one, nine
->   properties, nothing due) the panel set two typefaces in nine sizes:
->   Georgia at 30 (the greeting), 24 (At a glance's figures and the opened
->   pane's value), 19 (a calendar leaf's day), 17 (a group's name), 15.5
->   ("No contacts yet") and 14 (a person's initials); Inter at 15, 14, 13,
->   12 and 11. A section's name was written three ways: capitals with wide
->   spacing ("AT A GLANCE", "NEXT"), a Georgia word ("Owned"), and capitals
->   over a black rule ("CONTACTS").
-> - **One typeface: the panel has no Georgia.** The first build (2026-11-13)
->   kept the greeting in Georgia as this page's title, like every member
->   page's `h1`, and asked the owner; his answer the next day was "make the
->   greeting Inter too". `.hm-title` is `--text-h1` (28px) at 600,
->   `-.02em`, and names no face. It stands on the 34px line the Georgia 30
->   stood on (`1.2143`, rounded up), so nothing under it moved and the
->   head's alignment tests are unchanged. At 30px a long greeting ("Good
->   afternoon, Christopher") broke in two in Inter, which is wider than
->   Georgia; at 28 it fits. Home was for a few hours the one rail page whose
->   title was not Georgia; the owner then had the others follow
->   (app-shell.md, "Member page titles"). The map's own
->   things (the card over a pin, the empty-map card) and the first-building
->   screen (`#hmFirst`, whose own greeting and heading are still Georgia)
->   keep their type: they are not the list.
-> - **Four sizes under the greeting.** 14 (`--text-compact`: a row's name, a
->   value, a sentence), 13 (`--text-small`: a row's second line, a helper
->   line, a button, a section's name), 12 (`--text-label`: a caption, a tag,
->   a count, the fine print) and 20 (`--text-subhead`: a figure, which is
->   `.hm-fig b` and the opened pane's `.hs-vb` and nothing else). Nothing in
->   the list is 11px (the tags and chips went from 11/600 to 12/500, their
->   padding a pixel less so a row is no taller) and nothing is in capitals.
->   The one 11px left on the panel is the firm's initials in the 28px tile
->   on a narrow phone, the head's rule.
-> - **One section label**, one rule at the foot of the Home sheet under
->   "The list's type": `.hm-bk, .hm-next-k, .hm-gh b, .hm-fold > summary`
->   and People's Contacts label, 13px/600 `--ink-2`, sentence case. None of
->   those may set a size, weight, face, case or colour in a rule of its own
->   (that is how there came to be three); a new section takes one of these
->   classes.
-> - **One left edge.** Today's quiet-day sections (`.hm-bc`) and Next
->   (`.hm-next`) are sections on the list's line, not cards: as cards their
->   words started 16px inside the line the head, the rows and the legal
->   line start on, and Today was the one tab drawn in boxes. No border, no
->   fill, no corner, no side padding; the 10px margin the head's test adds
->   up stays. A 1px `--line` rule parts one section from the next, drawn by
->   sibling rules that ask whether the one before SHOWS
->   (`.hm-bc:not(.hidden) ~ .hm-bc`, `.hm-brief:not(.hidden) ~ .hm-next`),
->   so a hidden section leaves no rule behind. Their rows lost the hairline
->   between each (a rule is for sections; the busy day's rows and the
->   property rows never had one).
-> - **A group's head on Properties** is its name and count on one line and
->   its note whole on the line under (`.hm-gh` wraps; `.hm-gh small` is
->   `flex: 0 0 100%`). Beside the name the Owned note broke in two ("your
->   numbers stay / private" hanging under the count). A rule parts a group
->   from the rows of the one above (`.hm-rows > .hm-gh:not(:first-child)`).
-> - **What the list borrows is restyled from the panel's side.** The pane
->   under a property is home-sites.css's, shared with /sites, which has its
->   own (Georgia) figures; the contacts are the desk's `.dk-` rules, which
->   other panels use. The list's versions are `.hm-panel .hs-…` and
->   `#hmPanePeople #deskContacts .dk-…` rules in index.html, so neither
->   changes for anybody else. Not brought over: `.hs-sl` on a phone under
->   420px (a stage's name, 11px so five stages fit across).
-> - **An owned row carries no "Owned" tag (2026-11-14, the owner: "remove
->   the Owned tag").** Every row under the Owned heading said Owned again
->   in green; `hmPropRow` now skips the chip for `stage === "owned"` as it
->   already did for `"firm"`, and for the same reason (the heading, like the
->   Firm tag, has said it). Who can see the row is still on every row. A
->   deal keeps its stage chip, which differs from row to row; the card over
->   a pin keeps "Owned", since no heading stands over it there; a passed
->   deal under the Passed fold still says Passed (not asked for). No other
->   words changed.
-> - Tests: `test/home-list-type.test.js` reads the Home sheet and holds it
->   to all four (the faces, the sizes, the label rule, the edge), telling the
->   list's rules from the map's by selector. Broken four ways to check it
->   (a Georgia avatar, an 11px helper line, a boxed section, a label back in
->   capitals): each went red. Pictures were taken on the stand-in database
->   (`cn_session` cookie; Leaflet from a local copy) in four situations: a
->   firm of one on a quiet day, a busy day with contacts, a development firm
->   with deals and later dates, and an opened property; desktop, dark, phone.
->   Georgia is not installed in a cloud session, so the greeting in those
->   pictures is a stand-in serif.
+- **Home** is `/desk`, and `/` for a signed-in member. `#homeMap` is the
+  first child of `#myDesk`: a list with tabs Today, Properties, People (the
+  URL fragment: bare path, `#properties`, `#people`) beside a Leaflet map
+  whose switch (`#hmLayers`) shows Properties or Permits, one at a time.
+  `drawHomeMap()` draws it; `resetHomeMap()` rides `hideAll`.
+- **`home-map.js`** (pure, dual-exported, global `HOMEMAP`, `maxAge: 0`): what
+  goes in the lists and on the map (`properties`, `agenda`, `scopeOf`,
+  `statusLine`, `landsHere`, `glance`, `later`, `movers`, `ownedTotal`,
+  `stacks`, `dealsOn`, `addWhere`, `readLayers`, `layerNotes`, `permitAt`,
+  `wheelGesture`).
+- **`home-sites.js`** (`HOMESITES`): the pane under a member's own row and
+  the add form in `#hmMineAdd`; `/home-sites.css` is shared with `/sites`.
+- **index.html, the list**: firm row `#hmFirmHead` (`drawFirmHead`,
+  `saveFirmLogo`, `#hmFirmGear` opens `openFirmModal`); greeting
+  (`deskGreetingFor`, `drawDeskClock`); find box `#hmFind`; quiet Today
+  `#hmBrief`; `#hmNext`; `#hmTodayEmpty`; start screen `#hmFirst`;
+  `#deskContacts` under People; `#buildingAddForm` behind "Add a property".
+- **index.html, the map**: `hmDrawPins`, `hmSetView`, `hmSelect`, `hmPin`;
+  permits from `GET /api/permits/map`.
+- **The fill**: `renderMyDesk` → `renderHomeFirm` (was `renderShares`) →
+  `renderDeskRest`, read through `bootFetch`. DOM-free reads
+  `readFirmBuildings()`, `renderDeskThreads()`, `readFirmCritical()` fill
+  `firmBuildings`, `deskThreadsStat`, `deskCritical`.
+- **The search view** (`showHomeView`): the one real `#compForm` and
+  `#historyDeck`.
+- **`server.js`**: `deskBootPayload` / `deskBootScript` (`<!--DESK_BOOT-->`,
+  `DESK_BOOT_URLS`, `DESK_BOOT_ORG_URLS`, `DESK_BOOT_DEADLINE_MS`);
+  `authBoot()` (`<!--AUTH_BOOT-->`); `pagePath`; `loadAppPage()` with
+  `app-page.js`; `orgLogoRevs`, `GET /api/org/logo`.
 
-> **The head of Home's list: one row for the firm, one line down the panel
-> (2026-11-13; the owner, with a picture of his own Home: "The middle bar
-> where it says Jacob Adler and good morning looks off can you make it look
-> professional and clean").** Read this before the boxes below, which it
-> amends: where they describe the firm header (a manager whose firm has no
-> logo getting "+ Add your firm's logo" under the shop line, the briefcase
-> button, the mark), this is what the page does now. Built straight (the ask
-> was a fix, not options); the before-and-after pictures are at
-> https://claude.ai/artifact/L2uA5NVcYuK4UjdGcRNDP1.
-> - **What was off**, read off his screenshot. His own account is the row's
->   hardest case: a firm named after its owner, one person, no logo, nothing
->   due. Four text colours in 60px (an ink name, an indigo shop kind that
->   read as a link and was not one, a grey head count, and a red third line,
->   "+ Add your firm's logo", the loudest thing on the panel and its least
->   urgent job). A row three lines tall with no logo and two with one, so
->   the mark and the button floated against a different block each time. The
->   head 28px in against the cards' 26 (16 against 18 away from the rail).
->   "Firm settings" a one-off grey button, 29px below the map's switch beside
->   it. An initials tile in solid ink that read as a second account picture
->   and, in dark mode, was the brightest thing on the screen.
-> - **How it was chosen.** Seven designs were applied to the live page as
->   prototypes (six from a panel, each told a direction, and one more) and
->   photographed in the same four situations: the owner's own, a firm with a
->   logo, a plain member of a firm with a long name on a busy day, and no
->   firm; desktop, dark and phone. Three judges compared them: on craft, on
->   the owner's eye, and on robustness and build. They picked three
->   different designs and agreed on nearly everything in them, which is what
->   shipped. Tried and left out, each for a reason: a tinted bar across the
->   panel and a full-width rule under it (a second surface he did not ask
->   for); the date in capitals; the firm in a card; the firm under the
->   greeting; "Firm settings" and Find as text on a rule (two controls that
->   stopped looking like the product's); and moving the LIST two pixels
->   instead of the head (it wraps "Firm buildings … list" on Properties, and
->   a test pins `.hm-body`'s padding). Four reviewers then went over the
->   build (code, tests, pictures, accessibility and words); what they found
->   is in the rules below. The last two reported after the first commit, and
->   their findings are the same day's second commit: the list's scrollbar,
->   the door's focus ring, the initials' tile, the saving message, and the
->   tests that 48 deliberate breakages got past.
-> - **The firm row is the panel's first block, outside `.hm-head`.**
->   `#hmFirmHead` and `#hmFirmMsg` are `.hm-panel`'s first two children, each
->   with its own gutters. With no firm there is no row, and the head under
->   it needs no rule that asks whether one is there (no sibling selector, no
->   negative margin kept in step with a padding). Every id kept its element
->   and its writer. `drawFirmHead(null)` also empties and hides `#hmFirmMsg`
->   (a "Saved." must not outlive the row it spoke for).
-> - **The saving message is the desk's own** (`class="dk-msg hm-fh-msg"`):
->   `.dk-msg` gives it its size and ink, and `saveFirmLogo`'s
->   `say(text, bad)` marks a refusal `bad`, the desk's red, as `buildingMsg`
->   and `contactsMsg` do. It was the facts' small grey for everything, so "Please
->   choose a PNG or JPEG image." read exactly as "Saved." did. `.hm-fh-msg`
->   is only its place (on the firm's text edge at every width) and an 18px
->   line; a colour on the RAIL's rule for it (three classes and an element)
->   out-ranks `.dk-msg.bad`, so none of its three rules may set one.
-> - **One band beside the rail.** The row starts 14px down and is 34px tall:
->   the rows of the map's Properties / Permits switch (`.hm-layers`, top
->   14px, 34px), centred a pixel under the rail's logo. The mark, the two
->   lines (an 18px name and a 16px line of facts) and "Firm settings" are
->   that one 34px box, so their tops and bottoms line up with the switch
->   across the panel's edge. A measured number, not a shared one: move the
->   switch and the test that reads both fails until the row follows. No
->   rule under the row and no fill behind it; 24px of paper sets it apart.
->   Away from the rail it starts 16px under the map strip.
-> - **Two lines in every state, ink and grey.** `drawFirmHead` writes the
->   facts as ELEMENTS (`em` for the shop, then `span.hm-fh-n` for the head
->   count or `button.hm-fh-logo` for the door), and the stylesheet draws the
->   dot AFTER each but the last, so a fact can drop out without leaving a
->   dot and one that wraps leaves its dot at the end of the line above. It
->   is the shop and ONE more thing: **while the logo's door is offered it
->   takes the head count's place** (three facts do not fit beside the
->   button, and the count is on People), and the count is back once a logo
->   is saved. A fact is never cut off: the line wraps whole facts first,
->   which it only does when a reader's own text spacing or font makes them
->   wider than the page ships them (WCAG 1.4.12; the old row wrapped too),
->   and a LONE fact wider than its column (very large text on a phone)
->   shrinks to the column and breaks between its words (`flex: 0 1 auto;
->   min-width: 0`). While it could do neither it ran on under "Firm
->   settings". Never an ellipsis. The name is `--text-compact`/600 with the whole of it
->   in `title` (a long one is cut with an ellipsis, never wrapped into the
->   button); the facts are `--ink-3`. Nothing in the row is red or indigo
->   but the focus ring.
-> - **The logo's door is still in words** (the owner's call of 2026-10-18):
->   "Add a logo", a `<button class="hm-fh-logo">` at the end of the facts
->   line, a step darker than the facts (`--ink-2`, 500) and underlined in
->   its own ink (a paler underline measured 1.5:1). Its press area reaches
->   down and sideways only: above it is the firm's name. To the left it
->   stops at the dot before it (4px): at 7px a click on the dot opened the
->   file picker. So does its box
->   (3px each side and 4px down, the same margins taken back so nothing
->   moves), and **the focus ring is drawn inside that box**
->   (`outline-offset: -2px`): a ring outside it put its top stroke in the
->   last two rows of the name's line, through the tail of every g, p and y.
->   Both press areas are an absolutely placed `::after`, the size of their
->   button only while it is `position: relative`: without that one
->   declaration a click anywhere on the panel opened the file picker, and no
->   test said so until a reviewer deleted it. The mark opens the
->   same file picker, and **while the door is offered the mark is out of
->   the tab order and hidden from a screen reader** (`tabIndex = -1`,
->   `aria-hidden`): two buttons for one job were two keyboard stops, and
->   the mark's spoken name did not contain its visible "JR". With a logo
->   saved (no door) the mark is the control again.
-> - **A redraw keeps the keyboard's place.** The mark and the door are
->   rebuilt on every draw, and Home draws again as each read lands, so the
->   focused one used to be thrown away with the focus. `drawFirmHead` notes
->   which had it and hands it to the new one: to the door while it is
->   offered, else to the mark (so saving a logo from the keyboard leaves
->   the focus on the mark that now changes it).
-> - **The mark says whether it can be pressed.** An owner's or admin's is a
->   button and is drawn like the button at the row's other end (`--card`,
->   an `--edge` border that darkens on hover, the 8px corner); a member's is
->   a span and is flat (`--wash-2`, `--line`, `--ink-2` letters). A border,
->   not an inset shadow, so a forced-colours mode keeps it. The logo stays
->   on white in both themes. The button's press area is 44px (an `::after`
->   that reaches past the tile), on a phone too. **The initials' tile is a
->   floor, not a size** (`min-width`, with 2px of padding each side, 1px on a
->   narrow phone): 34px square at the sizes the page ships ("WW", the widest
->   pair, is 27.3px of letters) and wider where a reader has raised the
->   browser's minimum font size, where the letters stood up to 9px outside
->   a fixed tile. A logo's tile keeps a said width: a picture fills its
->   tile and has none of its own to give.
-> - **"Firm settings" is the shared compact button** (`class="hm-btn
->   hm-fh-set"`), the one "+ Add a property" is, with the briefcase kept
->   beside its words (the owner chose it over a gear). `.hm-fh-set` adds
->   only a place and a whole-pixel height, and restates the hide class,
->   because `.hm-btn` sets a display (app-shell.md's "Hidden means hidden").
->   Its `aria-label` and `title` went: they said "Firm & branding" over a
->   label that says "Firm settings".
-> - **One line down the panel.** The head moved to the list's line: 26px
->   beside the rail (the body's 16px and the 10px every card and row
->   carries) and 18px away from it (8 and 10). Never the other way round
->   (above). `#deskLoading` follows beside the rail, so the stand-in does
->   not jump there.
-> - **The day, the greeting, the status, the find box.** Unchanged in words
->   and type: the date in sentence case, the greeting 30px Georgia, one
->   status sentence (now `text-wrap: balance`, so a two-line one breaks
->   evenly). Line boxes are whole pixels, 18 and 34 (they were 19.5 and
->   33.6), written as RATIOS of the text and rounded up in the last place
->   (`1.3847`, `1.1334`; the firm row's are `1.2858` and `1.3334`): a length
->   does not grow when a reader raises the browser's minimum font size, and
->   a ratio rounded down leaves the line a sixty-fourth of a pixel short,
->   which puts every edge under it between pixels. 24px from the firm row
->   to the date, 24 from the status to the find box, 12 from the find box to
->   the tabs (`.hm-head .hm-tabs`, from the head's side: the shared tabs'
->   own rule is components.js's). The find box's placeholder is `--ink-3`;
->   it was Tailwind's reset grey (`#9ca3af` in tailwind.css, 2.5:1 on the
->   box in light), the one text in the head that was not a token. On the
->   owner's screen the tabs' rule sits 277px down where it sat at 326 (28px
->   higher for a firm with a logo or for a member, whose row was already
->   two lines).
-> - **Narrow phones.** Under 450px the mark is 28px and the briefcase
->   leaves the button, which is the room the second line needs to stay
->   whole down to 375px. Under 372px the second line is ONE fact, whole,
->   with no dot: the door where it is offered (`small.has-door`), else the
->   shop.
-> - **Left alone, and worth knowing.** A wide wordmark logo is small in a
->   square tile (it was at 40px too). On a busy day the first row's card
->   still starts 4px under the tabs' rule and runs 10px past the line on
->   both sides: the list's, not the head's. The map's switch is a pixel
->   under the rail logo's centre. The first-building screen (`#hmFirst`)
->   has its own head and was not touched.
-> - **The list is as wide as the head with a scrollbar and without one.**
->   Where a scrollbar takes room (Chrome and Edge on Windows, which is the
->   owner's; Linux; a Mac with a mouse), the list's own bar took its 15px
->   out of the list whenever the list was taller than the panel: every
->   card, row and "+ Add a property" ended 15px short of the find box and
->   "Firm settings", and "Firm buildings … list" broke in two. On his
->   account that is the Properties tab in any window under about 1,270px
->   tall, and Today in one under about 740px. **No picture showed it, and none taken the usual
->   way will**: a headless browser draws no scrollbars (`scripts/shot.js`
->   passes `--hide-scrollbars`). To see it, launch Chromium with
->   `ignoreDefaultArgs: ["--hide-scrollbars"]`. `hmFitListBar()` cures it
->   with two writes on `.hm-body`: `scrollbar-gutter: stable`, so the bar's
->   room is kept whether or not the list scrolls and nothing moves when a
->   list starts or stops scrolling; and that room taken out of the list's
->   own right padding (16px becomes 1px beside a 15px bar), so the list is
->   the width the head is. **A bar wider than the padding is asked to be
->   the thin one** (`scrollbar-width: thin`, then measured again): that is a
->   17px bar in older Windows browsers and ANY bar once the page is zoomed
->   out, because zoom does not shrink the bar (15px is 18.75 of the page's
->   pixels at 80%, 30 at 50%). The first version kept it at its width and
->   took the padding to 0, so zoomed out the list ended short again, and a
->   list that does NOT scroll was short too, which it never was before; a
->   reviewer found it the day it shipped by zooming a real browser (an
->   emulated device scale scales the bar with the page and cannot show
->   it). Measured after: within a pixel from 67% to 175%, 4px short at 50%.
->   Both are written together, inline, and only
->   where a bar measures more than 0: a browser with no stable gutter is
->   left as it was (fitted once there, the padding would be wrong the next
->   time a list started or stopped scrolling), and where bars float over
->   the page (a phone, a Mac trackpad) nothing is written. One
->   ResizeObserver asks, on the list's BORDER box (first layout, a resize
->   or zoom, crossing 900px): writing the padding does not change that box,
->   so the observer cannot wake itself, which on the content box it would
->   every time. Away from the rail the page scrolls and not the list:
->   nothing is measured there (the observer fires on every tab change in
->   that layout) and what a fit wrote is taken back. Not covered: the KIND
->   of bar changing while Home is open and its box does not (a mouse
->   plugged into a Mac); the next resize heals it. It reads the list's
->   LEFT padding for the right's, so `.hm-body`'s two sides must stay one
->   number (three-value paddings; a test holds both rules to that).
-> - Tests: `test/home-head.test.js` RUNS `drawFirmHead` against a stand-in
->   document (no firm, an owner with and without a logo, a member with and
->   without one, a logo that fails to load, the roster landing late, the
->   keyboard's place across a redraw; until now only its source was
->   matched) and holds the stylesheet to the decisions above: the alignment
->   line added up from both rules, the band read off `.hm-layers`, the line
->   boxes computed from the scale, no red or indigo in the row, the two
->   marks, the button's class and name, the row's place in the markup, the
->   narrow rules. `test/desk-map-layers.test.js` pins the door's new words.
->   It also RUNS `saveFirmLogo` (a refused file, a refused read, a refused
->   save, a save that works, a refusal then a success) and `hmFitListBar`
->   (a bar that takes room with a list that fits and one that scrolls, a
->   bar wider than the padding, floating bars, the layout leaving the rail,
->   a list with no box). **The stylesheet half was hardened after a
->   reviewer broke the page 155 ways, one at a time: 48 left every suite
->   green.** What that taught, kept as rules of the file: `rule()` reads
->   one rule in one place, so each element the tests add up is also held
->   to the NUMBER of rules that end in it anywhere in the sheet (a second
->   `@media` block, a comma list or a longer selector moved the head with
->   everything green); a padding is three values said once (`[1]` of four
->   is the right side); the hue check walks whole rules and lets off only a
->   rule whose every selector is a focus ring; the stand-in's `focus()`
->   takes only a button that is in the document, as a browser does; and
->   `lineBox()` refuses a ratio rounded down instead of rounding it away.
->   Checks written against a breakage say "(broken to find)".
+## Rules and traps
 
-> **A free account's Home is an address list (2026-11-13, the owner's call:
-> "Follow the plan").** billing.md's rule ("Free My Desk is an address list,
-> Pro is the book of values"; `entitlements.js`'s `portfolioValues`; the
-> pricing table's Portfolio row) was only half kept: the opened pane asked
-> the plan, while the Properties rows, the Owned total, the map's value tags
-> and the map card showed a free account its estimates. The gate was lost
-> when Home became one map (2026-10-07) and the portfolio came back to it
-> (2026-10-13). Read this before the boxes below, which it amends where they
-> say the Owned group adds up or a row shows its value: that is Pro (and a
-> trial, a tester, the team, and a Pro-off deployment).
-> - **One gate, at the source.** `drawHomeMap` passes `hmRows` through
->   `HOMEMAP.withoutOwnValues` (home-map.js, pure, tested) when
->   `hmShowValues()` is false, on the line after `HOMEMAP.properties(...)`
->   and before anything reads the rows. Every value surface reads `hmRows`,
->   so the row, `ownedTotal`, `hmDrawPins`' tags and `hmSelect`'s card follow
->   with no check of their own. Never add a plan check to one of them; a new
->   writer of `hmRows` must go through the gate (a test counts the writers).
-> - **Only an owned row's estimate goes** (`value`, `valueNote`, `change` on
->   `group === "owned"`). A deal's asking price is a figure the member typed.
-> - **`hmShowValues()`** sits beside `hmCanVault` and reads
->   `proConfig.portfolioValues` inside try/catch (the temporal dead zone);
->   it fails closed, so a free member never sees a flash of values.
->   `hmSitesView` hands the pane the same answer. Presentation only (rule 1):
->   `GET /api/portfolio` still returns the member's own snapshots, and a
->   report they open still shows its value.
-> - **Said once.** The Owned head reads "Estimated values are part of Pro",
->   the pricing window's words ("Portfolio with estimated values"; a test
->   holds the two together), with "See plans" (`openPricingModal`) only where
->   Pro is on sale (`hmCanBuy`, `proConfig.billing`). Rows show status and
->   who can see them; the map shows dots.
-> - **A late or changed plan redraws Home.** `initGate` calls `drawHomeMap()`
->   again when `/api/config` lands after Home drew (no boot payload; no read
->   is repeated), and `refreshProConfig` already repaints the desk on a
->   checkout return.
-> - **The quiet Today reads the same rows.** The box below (merged the same
->   day) first nulled these values locally in `hmDrawBrief`; that copy is
->   deleted, and the brief reads `hmRows`, already gated.
-> - Tests: `test/home-map.test.js` (the rule), `test/desk-map-layers.test.js`
->   (the wiring). Before and after pictures were taken with a free account
->   on the stand-in database (`cn_session` cookie; Leaflet served from a
->   local copy, since unpkg is not reachable from a cloud session).
+**Copy and removed things**
+- Copy says "Home", never "Workspace" or "Vault"; ids, routes, tables and
+  module names keep "desk"/"vault".
+- No longer exist; do not reintroduce: a Comps tab or layer on Home or any
+  read of `GET /api/vault` there; a Reports tab or Sharing card (Messages'
+  Reports view now, report-inbox.js); a "Both" map view; a comp report door
+  on Home; links to `/vault…` or `?add=own`; the old Home (banner, skyline,
+  figure strip, agenda card, decks, buildings table, deal board, Your
+  permits); an "Owned" chip on rows under the Owned heading.
+- Saved `/desk#comps` goes to `/comps`, `/desk#reports` to `/messages#reports`.
+- `/run-report` answers but is in no nav. The footer's "Run a report" points
+  at `/` on purpose (`/bulk` would be a Pro gate for a stranger).
 
-> **A quiet day, and pins that land on each other (2026-11-13; the owner:
-> "Improve the UI of Compninja", with a screenshot of Home: nine properties,
-> nothing due, "Nothing needs you right now." under the greeting and again
-> as the whole of Today, an empty column, and five dots on a map of the
-> country).** Read this before the boxes below, which it amends: where they
-> say Today's empty pane is a paragraph or Next, and that every property is
-> its own pin, this is what happens now. Built straight, not from drafts
-> (the ask was to improve, not for options); the before-and-after pictures
-> are at https://claude.ai/artifact/8mNRLb3MkWod6NtT3pF8gH.
-> - **The status line's sentence is said once.** "Nothing needs you right
->   now." is `HOMEMAP.statusLine`'s, under the greeting. Nothing in
->   index.html writes it (a test strips the comments and looks), and
->   `#hmTodayEmpty` says only what lands on Today: `HOMEMAP.landsHere({
->   hasFirm, firmKind, leads })`, in the agenda's order, naming only the
->   kinds that can reach THIS member (messages and lease dates are a
->   firm's, deal dates a development firm's, BOV requests the Pipeline's;
->   it used to promise "your deal dates" to a broker shop and lease dates to
->   a member in no firm). `""` hides it. On a quiet day it is fine print
->   (`.hm-note`) under the cards; it still gives way to Next when Next is
->   all there is (`next && !brief`), Draft C's first-property Today.
-> - **`#hmBrief` is a quiet Today** (`hmDrawBrief()`, its one writer, called
->   from `drawHomeMap` before `hmDrawNext`): `!hmItems.length &&
->   hmRows.length`. Up to three sections (`.hm-bc`; cards in Next's shell
->   until the list's type box above, the same day), each only
->   when it has something to say, all from what Home already read (no fetch,
->   textContent only):
->   - **At a glance** (`#hmGlance`, from two properties up):
->     `HOMEMAP.glanceCells(HOMEMAP.glance({ rows, next }))`, at most three
->     figures. The count and where ("9 properties in 5 cities", one city is
->     named); ONE sum (the asking prices of a development firm's deals in
->     play, else what the member owns: "likely combined (8 of 9)", or
->     "likely value" for one; else the floor area on the list, a broker shop
->     that holds nothing itself); and the next date (`hmLater[0]`). The
->     owned sum is `HOMEMAP.ownedTotal`'s by construction and is written
->     with the formatter Properties' Owned heading uses (`HOMESITES.short`),
->     so the two tabs never disagree; its cell carries the "Only you" pill
->     (`scope`), every row's rule.
->   - **Coming up** (`#hmLater`): `HOMEMAP.later()`, the dates past the
->     "needs you" windows (a lease date further out than `LEASE_DAYS`, a
->     development firm's deal date further out than `DEAL_DAYS`), soonest
->     first, three at most (`HM_LATER_MAX`). They are the agenda's own rows
->     (`leaseItem` / `dealItem`, one builder each for both lists) with NO
->     number: a number is a pin, and a pin is a date that needs you. The day
->     is a calendar leaf (`.hm-cal`), "in 4 months" is `HOMEMAP.inAbout`, and
->     a row opens the card a Today row opens (`hmSelect(key, { item })`).
->     `hmLater` is `[]` whenever something needs the member, and sits with
->     the rest of Home's state above `resetHomeMap` (a `let` below a function
->     the boot path calls is a temporal dead zone throw).
->   - **What moved** (`#hmMoved`): `HOMEMAP.movers(rows)`, the member's own
->     values furthest from where they started, three at most, never one that
->     would print 0.0%. A row opens the building's card.
-> - **Values follow the plan here.** `hmShowValues()` reads
->   `proConfig.portfolioValues`, the working pane's flag (billing.md: a free
->   account's properties are an address list, Pro's carry their values).
->   Without it the glance is the count and nothing moved. Since the box
->   above, the gate is `drawHomeMap`'s (`HOMEMAP.withoutOwnValues`): the
->   brief reads `hmRows` and has no check of its own. `initGate` draws Home
->   again (`drawHomeMap()`, which repeats no read) when `/api/config`
->   answers after Home drew, which also fixes `hmCanLeads` missing that
->   race. The Properties rows, the Owned heading, the value tags and the map
->   card, which this box first recorded as "worth a decision", were decided
->   the same day: they follow the plan too.
-> - **Next leads with a property that has no value yet**
->   (`HOMEMAP.unvalued`, any account size, before Draft C's early-account
->   steps): "Get a value for 1100 Broadway", which opens that property's
->   pane (`hmOpenWork`) and runs nothing. `.hm-next`'s corner is
->   `--r-2xl` now, the brief's.
-> - **Pins that would land on each other are one stack**
->   (`hmDrawPropertyPins`, called by `hmDrawPins` after every located
->   property is `put` as the tab's subject, so the fit is unchanged).
->   `HOMEMAP.stacks(points, STACK_DOT | STACK_TAG)` groups the pins that
->   touch at the map's present zoom (pixels from `hmMap.project`; a dot is
->   round, Properties' value tag is wide; a point joins the first group
->   whose FIRST point it touches, so a line of pins never chains). One
->   property draws exactly as before. A stack is a white pill (`.hm-stk`): a
->   dot in the legend's colour for each kind inside, the count, and on
->   Properties `HOMEMAP.stackValue`'s sum, given only when it means one
->   thing: every property in the stack has a figure and they are all one
->   kind (an asking price and a likely value are never added, and a
->   building with no value is never left out of a total). Otherwise the
->   count alone. Its markup is class names and
->   figures; its words (`HOMEMAP.stackTitle`, "6 properties in the Boise
->   area. Click to zoom in.") are the marker's `title`, a DOM property,
->   because a town is text a person typed. A click `fitBounds` to its
->   properties up to the map's own max zoom; where zooming cannot part them
->   (one point, or already as close as it goes) it opens the first one's
->   card, which is what a click there did before. It never opens on hover
->   (`hmPin`'s `still`). `hmRestack` redraws on `zoomend`, after the current
->   task (`setTimeout 0`): `hmDrawPins`' own fit can fire `zoomend` before
->   it returns, and a draw inside a draw opened the day's first card twice.
->   On Today a dated row is its numbered pin, so its dot is neither drawn
->   nor counted into a stack beside it. Permit pins are not stacked.
-> - **Three small fixes.** `#hmFind` is transparent by id (the dark bridge
->   paints every input `--paper` with ten `:not()`s, which drew a darker
->   rectangle inside the find box's frame). Beside the rail `.hm-body` is a
->   column and `.hm-legal` has `margin-top: auto`, so the legal line rests
->   at the panel's foot under a short list. Away from the rail `.hm-body`'s
->   foot is 84px, so the last lines scroll clear of the round Feedback
->   button. And the People tab is hidden again for a member in no firm
->   (components.js's `hiddenRule`; app-shell.md).
-> - Tests: `test/home-map.test.js` (later, inAbout, glance, movers,
->   unvalued, landsHere, stacks, stackPlace/Title/Value) and
->   `test/desk-map-layers.test.js`'s last four blocks (the wiring).
+**Serving index.html**
+- index.html stays ONE file on disk: Tailwind finds classes in its JS
+  strings and tests read it from disk.
+- Only the one big plain `<script>` moves; give it an attribute and the page
+  is served whole with a logged warning.
+- Every serve-time marker stays in the page half, never inside the script (it
+  would be cached a year with one visitor's value). `test/app-page.test.js`
+  pins the list; add a new marker there.
+- A stale hash gets the current script `no-store`, never a 404.
+  `EXTERNAL_APP_SCRIPT=off` is the rollback.
+- A test of what the app DOES reads `servedApp()`
+  (`test/helpers/served-app.js`), never the page text alone.
+- A new page route matches on `pagePath` (`test/routes.test.js`).
+- Never 302 `/desk` to `/`: its links carry query strings (Stripe returns).
 
+**Boot (`AUTH_BOOT`, `DESK_BOOT`, one paint)**
+- The boot decision, `showDeskView` and `applySearchLock()` read
+  `looksSignedIn()`, never `currentUser` alone; `accountWall` is seeded from
+  the boot object. `/r/<id>` is excluded by name; `popstate` mirrors it.
+- `AUTH_BOOT` keys on cookie presence, safe only because index.html is
+  `no-store`. `refreshAccountUI()` must retire `cn-in`/`cn-locked` on every
+  path, or an expired session cannot sign back in. `test/auth-boot.test.js`.
+- `DESK_BOOT` (never for `/index.html` or `/r/<id>`) is never a second copy
+  of a read: each entry is the route's own answer over loopback with the
+  visitor's cookie. A 401 on `/api/account/me` drops the payload whole; one
+  deadline covers the fan-out; only status-200 JSON GETs under
+  `DESK_BOOT_MAX_BODY`, with the visitor's IP on `x-forwarded-for` and
+  `x-cn-desk-boot` so it cannot nest; `<` is escaped in the JSON.
+  `test/desk-boot-run.test.js`, `test/desk-boot.test.js` (hold the two URL
+  lists together).
+- `bootFetch` hands each embedded answer to its FIRST caller and deletes it:
+  never read a section's route twice; draw from state already parsed.
+- `initGate` must not re-run the desk fill (`refreshAccountUI`'s call is the
+  fill; `refreshProConfig` keeps the checkout-return repaint).
+- One paint (`test/desk-one-paint.test.js`): a repeat call for the same
+  identity never re-hides (`deskFilledFor`); a stale fill reveals nothing;
+  `renderDeskRest` returns its batch and swallows a rejection;
+  `DESK_FILL_MAX_MS` races it. Every early exit awaits the membership read
+  before `hideAll()`, or the in-flight read undoes the hide.
+- The desk branch alone sets `history.scrollRestoration = "manual"`
+  (`test/desk-scroll.test.js`).
+- A report yields Home at BOTH seams, `renderResults` and `beginAssembly`.
+- `showDeskView()` hides `#searchSection` and `#historyDeck`; the history
+  deck is revealed in exactly two places and hidden at three seams
+  (`test/index-html.test.js` counts both).
+- A pending landing address (`pendingLandingAddress.v1`) keeps a member on
+  the search view; the boot block only READS the key.
 
-> **A report opened from Home stands alone (2026-11-10, the owner: "when you
-> click on a property it will have the comp search with the value a building
-> card and stuff above it which I thought we removed").** Read this before
-> the notes below, which it amends: where they say every report door enters
-> through `leaveDesk()` → `showHomeView()`, that is now true of
-> `rerunHistory` alone (a Recent searches row's Re-run, on the search view).
-> - **`leaveDeskForReport()`** is how `openPortfolioItem` and
->   `openHistoryReport` leave Home (a property's "Open report" on Home or
->   The Board, `?property=`, `?recent=`, a /bulk run landing): the desk
->   hides and nothing else shows, so the report is the page. No pitch, no
->   "Value a building" chamber, no market explorer, no Recent searches. Not
->   on the desk (a Recent searches row on the search view itself) it does
->   nothing, and the form that row sits under stays.
-> - **`reportOnly`** is the state, declared beside `accountWall` (the same
->   temporal-dead-zone reason), `setReportOnly` its one writer, and
->   `applySearchLock` its one reader: `#searchSection` is hidden while it
->   is true. `showDeskView` and `showHomeView` clear it. The form is hidden,
->   never removed: every restore still writes it and the hero still reads it.
-> - **`#editDetailsBtn` ("Edit property details")** in the report's toolbar
->   shows only while the form is held back. It clears `reportOnly`, opens
->   `#subjectDetails` and scrolls to the form, because the size, asking
->   price, NOI and cap rate boxes there still re-render the value in place
->   and the report's own copy points at them ("edit Building size above").
-> - **Escape** on a report opened this way goes back to Home (`enterDesk`,
->   with `preventDefault` so the desk's own listener does not see the key),
->   and Escape on a signed-in member's Home does nothing: it used to
->   `leaveDesk()` onto the pitch and the chamber. The signed-out `/desk`
->   card still closes to the search view.
-> - **"Refresh value"** (`?property=&refresh=1`) runs without the form too
->   (the owner, the same day: "Yes, hide it there"). `refreshPortfolioItem`
->   no longer leaves the desk: it fills and submits the hidden form, so the
->   confirm dialog opens over Home. The submit handler calls
->   `leaveDeskForReport()` at the moment the search starts (a no-op on the
->   search view), so Home yields to the progress card and then the report.
->   `cancelConfirmModal` over Home: Escape or a click outside leaves Home
->   as it was and drops `pendingPortfolioRefresh`; "No, edit address" alone
->   brings the form up (no pitch). Out of free reports, the pricing dialog
->   opens over Home (`enterDesk`), not a bare page. A failed search shows
->   its error and Try again with no form; the rail is the way back.
-> - Tests: `test/report-from-home.test.js` executes the view functions
->   against a stand-in document.
+**Reports opened from Home**
+- `openPortfolioItem` and `openHistoryReport` leave through
+  `leaveDeskForReport()`; only `rerunHistory` uses `leaveDesk()` →
+  `showHomeView()`.
+- `reportOnly` is declared beside `accountWall` (temporal dead zone);
+  `setReportOnly` is its one writer, `applySearchLock` its one reader. The
+  form is hidden, never removed: restores write it and the hero reads it.
+- `refreshPortfolioItem` fills and submits the hidden form without leaving
+  Home. `test/report-from-home.test.js`.
 
-> **The vault is taken apart (2026-10-13, the owner: "the vault doesn't
-> even exist any more").** Read this before the boxes below, which it
-> amends: where they send a member to `/vault` (its Properties tab, its
-> `?add=own` form, `#book`), that is history. `/vault` redirects to `/comps`
-> (vault.md).
-> - **What a member owns is worked on Home, for everyone.** `hmWorkHere()`
->   no longer asks `HOMEMAP.dealsOn`: a row of the member's own
->   (`r.portfolioId`, or for a development firm a deal's `r.siteId`) opens
->   HOMESITES' pane in place under it, with the value, the change, the
->   chart of every check, the market since, the firm door, Open report,
->   Refresh value and Remove, all of which the vault's Properties tab held.
->   The map card's "Open in your properties →" (`/vault#properties`) is
->   gone; without home-sites.js a row of the member's own offers no door,
->   since there is no other page it opens on.
-> - **HOMESITES is told two more things** by `hmSitesView`: `deals()`
->   (HOMEMAP.dealsOn), so anyone outside a development firm gets the add
->   form as "I own it" alone, with no "I'm buying it" choice; and
->   `data().canSites` (`hmCanVault()`), so "Watch it on The Board instead",
->   a Tracking status that `/api/sites` refuses without Pro, is offered only
->   when it can be written.
-> - **`HOMEMAP.addWhere("own")` is "home" for everyone**, so `#hmAddOwn`
->   links `#properties` and opens the form in `#hmMineAdd`, and it hides
->   without home-sites.js (no other page would take it). Nothing reads
->   `?add=own` any more.
-> - **The Owned group adds up** (`HOMEMAP.ownedTotal`): "$12.04M likely
->   combined · your numbers stay private" once two owned buildings have a
->   value, with "(2 of 3)" when some have none. Written with
->   `HOMESITES.short`, so the sum agrees with the rows' own figures
->   (`HOMEMAP.money` rounds $12.04M to $12M). It was the Properties tab's
->   "Combined likely value".
-> - **A saved `/desk#comps`** goes to `/comps`. The rail row that was Comp
->   report is **Comps** (`#navComps`, `/comps`; app-shell.md); index.html
->   never serves `/comps` or `/bulk`, so it never marks that row.
+**Values and privacy**
+- One plan gate: `drawHomeMap` passes `hmRows` through
+  `HOMEMAP.withoutOwnValues` when `hmShowValues()` is false. Never add a plan
+  check to a value surface; a new writer of `hmRows` goes through the gate (a
+  test counts writers). Only an owned row's `value`, `valueNote`, `change`
+  go; a deal's asking price stays.
+- `hmShowValues()` reads `proConfig.portfolioValues` in try/catch and fails
+  closed. `initGate` redraws Home when `/api/config` lands late.
+- The Owned head's "Estimated values are part of Pro" is held to the pricing
+  window's words by a test; "See plans" only when `hmCanBuy`. The owned sum
+  is `HOMEMAP.ownedTotal` written with `HOMESITES.short` on both tabs.
+- Private addresses geocode only through `geocodeAddress(…, { noThirdParty:
+  true })`, at most 40 per view; `hmGeoTried` stops a retry loop. Photos only
+  through POST `/api/building-photo` (`hmPhoto` the one writer; an empty box
+  while loading, never the aerial; maps.md).
+- Every list is built with createElement/textContent. A stack's words go in
+  the marker's `title` (a DOM property), never markup.
+- `hmLoadLeads` must keep `?noseed=1`: without it that GET WRITES coverage.
+  `hmCanLeads = hmCanVault()` and not a development firm.
+- Reads that wait for the page to be shown (`hmWhenShown`), never in the
+  boot: permits, leads, the first screen's markets.
+- `GET /api/org` carries `logoAt`, never the logo (it ships in every
+  `DESK_BOOT`). `saveFirmLogo` READS `GET /api/org/branding` and PUTs it back
+  whole, because the PUT replaces the profile.
 
-> **Comps leave Home (2026-10-09, owner's call: "Remove Comps from the
-> Homepage").** Read this before the boxes below, which it amends: where they
-> describe a Comps tab, a Comps layer, `hmComps`, `hmLoadComps` or
-> `HOMEMAP.compRow`, that is history. A member's comps live on their own page,
-> `/vault` ("Your properties and comps"), and Home no longer lists, pins,
-> finds or reads them.
-> - **Tabs are Today, Properties, People.** `#hmTabComps`, `#hmPaneComps`
->   (its rows, empty card and "All your comps" link), the "Add comps" start
->   card (`#hmStartComps`), `hmCompRow`, the comp branch of `hmSelect` and its
->   `.hm-chip.deal` / `.hm-pip.comp` / legend CSS are DELETED from index.html.
->   The empty account's start cards are "Add a property" and, outside a firm,
->   "Bring your team".
-> - **The map's switch is two toggles, Properties and Permits.** `#hmLayerComps`
->   and `#hmLegendComps` are gone, and so is `.hm-layers button[hidden]`
->   (Comps was the only toggle that hid). In home-map.js `LAYERS` is
->   `["properties", "permits"]`, `tabLayer` names only Properties, and
->   `layerNotes` speaks for Permits alone; `readLayers` keeps only `LAYERS`, so
->   a browser that stored `comps: true` keeps its other choices and simply
->   drops that one. `hmLayerOn` is a plain read of the record.
-> - **No read of the member's book.** `GET /api/vault` was the Comps tab's
->   read (`hmLoadComps`); Home asks for it nowhere now. The vault's own flag
->   still gates Today's BOV requests, as **`hmCanVault`** (was `hmCanComps`):
->   `hmCanLeads = hmCanVault() && not a development firm`.
-> - **The find box** finds properties, contacts and (once read) permits; its
->   placeholder is "Find a property or person". The map is labelled "Map of
->   your properties and permits".
-> - **A saved `/desk#comps`** (the tab's address for two days) is
->   `location.replace`d to `/vault#book`, /vault's Comps tab, the way
->   `/desk#reports` goes to `/messages#reports`. Home's own address only.
-> - Pinned in `test/desk-map-layers.test.js` ("Home holds no comps") and
->   `test/home-map.test.js`.
+**The list**
+- One writer each: `drawHomeMap` (`#homeMap`), `drawFirmHead`, `hmDrawBrief`
+  (before `hmDrawNext`), `hmDrawNext`, `hmFirstShow` (`#hmFirst`,
+  `.hm-first-on`), `hmSetLayer` (`hmLayers`, `cn.home.layers` in try/catch),
+  `markNavCurrent` (`html.hm-page`), `setContactAddOpen`.
+- Home's state `let`s (e.g. `hmLater`) sit above `resetHomeMap`: below a
+  function the boot path calls is a temporal dead zone throw.
+- home-map.js: ONE row per property; every row says who can see it
+  (`scopeOf`); a property always shows a status. Deals only for a development
+  firm (`dealsOn(firmKind)`); a Tracking property is The Board's, not Home's;
+  a shared deal (migration 061) is listed only for its owner here.
+- "Nothing needs you right now." is `HOMEMAP.statusLine`'s alone; nothing in
+  index.html writes it (tested). Coming up rows carry no number.
+- `hmWorkHere()`: a member's own row opens `HOMESITES.pane(row)` in place;
+  without home-sites.js it offers no door and `#hmAddOwn` hides. `pane()`
+  returns the SAME element while the row is unchanged and `drawHomeMap` hands
+  focus back (`hmFocus`), so a redraw keeps a half-typed form. `hmReloadMine`
+  re-reads live, never the boot copy.
+- The first-building submit runs no search (`hmFirstGone`, `hmOpenFirmAdd` /
+  `hmOpenMineAdd`).
+- Type (`test/home-list-type.test.js`): no Georgia in the panel; sizes 14,
+  13, 12, and 20 for a figure only (`.hm-fig b`, `.hs-vb`); no capitals. One
+  section-label rule (`.hm-bk, .hm-next-k, .hm-gh b, .hm-fold > summary`,
+  Contacts' label): none sets size, weight, face, case or colour of its own.
+  `.hm-bc` and `.hm-next` are sections on the list's line, not cards.
+  Restyle borrowed `.hs-` / `.dk-` rules from the panel's side only
+  (`.hm-panel .hs-…`, `#hmPanePeople #deskContacts .dk-…`).
+- A class that sets `display` needs its own `.hidden` companion (`.hm-ch`,
+  `.hm-st`, `.hm-fh-set` over `.hm-btn`).
+- Firm row (`test/home-head.test.js`): `#hmFirmHead` and `#hmFirmMsg` are
+  `.hm-panel`'s first two children, outside `.hm-head`; `drawFirmHead(null)`
+  empties both. Its 14px/34px band is `.hm-layers`' (move the switch and the
+  row must follow). Never an ellipsis on a fact; no red or indigo but the
+  focus ring. No rule of `.hm-fh-msg` may set a colour (it out-ranks
+  `.dk-msg.bad`). The door and mark press areas are `::after` and need
+  `position: relative` on the button, or a click anywhere opens the file
+  picker. While the door shows, the mark is `tabIndex -1` and `aria-hidden`;
+  a redraw hands focus on. `#hmFirmGear` shows for EVERY member (the panel's
+  only door; `test/nav-parity.test.js`).
+- Head spacing: move the head, never the list (a test pins `.hm-body`'s
+  padding). Line boxes are ratios rounded UP, never lengths. `.hm-body`'s
+  left and right padding stay one number (`hmFitListBar` reads the left for
+  the right); its ResizeObserver watches the border box. `scripts/shot.js`
+  draws no scrollbars.
+- Contacts: capped at `COLLAPSE_AT`; add form ships closed; labelled
+  "Contacts"; `tenant_*` CSV aliases in `org-contacts.js` stay;
+  `/contacts` (the owner's ADMIN_KEY rolodex, migration 007) must never meet
+  this list. `.dk-row` rows stay FLAT (org-desk indexes children by
+  position).
 
-> **An empty Home asks for its first building (2026-10-18; the owner's pick,
-> Draft C "Start with an address" of the empty-Home drafts at
-> https://claude.ai/artifact/Xpnhf7uyNifbGfKpJgXopL, built as round one drew
-> it: "Just build C for now dont do C refined").** An account with nothing on
-> Home (`nothing` in `drawHomeMap`) used to get the list, an "Add a property"
-> card and a "Your map is empty" card over a bare map. Now:
-> - **`#hmFirst` is the start screen**, and `hmFirstShow(on)` its one writer
->   (and the only writer of `.hm-first-on` on `#homeMap`). It shows only when
->   there is somewhere to put the address (`hmFirstWays()`: the member's own
->   add form, `HOMEMAP.addWhere("own") === "home"` with home-sites.js, or a
->   firm) and somebody is signed in. At 900px and up beside the rail the list
->   hides and the card floats over the left of a full-width map, with a fade
->   from `--paper` under it; below that, or in the bar shell, the map is a
->   240px strip over the card. `#hmStart` and the map's empty card stay down
->   while it is up.
-> - **The card**: the day, the firm and its shop (when in one), the greeting
->   (`deskGreetingFor` + "."), "Where’s your first building?", one address box
->   with "Put it on the map", and, only for a firm member who also has their
->   own form, "I own it" / "It’s one of {firm}’s" (`hmFirstWho`). Under "Or
->   start somewhere else" three doors: the team (`openFirmModal`; "Invite your
->   team" in a firm, "Start a firm" outside one), Follow a market (`/markets`)
->   and See permits (`/permits`). The fine print is the automated-estimate
->   line.
-> - **Putting it on the map runs no search.** The submit sets `hmFirstGone`
->   (until `resetHomeMap`), redraws, opens Properties and hands the address to
->   the same opener the chooser uses: `hmOpenFirmAdd(address)` (the firm form,
->   `#buildingAddress`, focus on the type) or `hmOpenMineAdd("own", address)`
->   (home-sites.js's form, focus on its `property_type`). The member still
->   picks a type and saves, and a value comes from Refresh as before, which is
->   why the card says "One click gets it an automated value estimate" and not
->   that the value comes with the pin.
-> - **The map behind it is where CompNinja has market pages**: one ink dot
->   per city (`.hm-mkt`, `HOMEMAP.marketCities`, sized by its page count) and
->   a key, "40 market pages in 24 cities" (`HOMEMAP.marketsLine`) with
->   "Explore →" to `/markets`. Read once the page is shown
->   (`hmLoadMarkets`, `hmWhenShown`), from `GET /api/markets`, whose rows now
->   carry the momentum map's own `lat`/`lng` (markets.md). Public data only;
->   no address goes anywhere. `hmDrawPins` hands off to `hmDrawFirstMap()`
->   while the screen is up, fitted once per layout to the lower 48
->   (`HM_LOWER48`) clear of the card; leaving it resets the view.
-> - **After the first property**, Today's empty pane becomes **Next**
->   (`#hmNext`, `hmDrawNext(firm)` its one writer): with no Today items and one
->   to three rows, "Bring your team" outside a firm, "Invite your team / Share
->   {street} with {firm}" while the firm has one joined member, and "Follow
->   {town} {type}" to the held property's market page. Built with
->   textContent; the icon markup is static. A lone property's card opens on
->   the first view (with nothing on Today), and a map whose properties all sit
->   at one point fits no closer than `HM_ONE_ZOOM` (14), a neighbourhood
->   rather than a rooftop.
-> - **Smaller fixes from the same pass.** The firm header's mark lost its red
->   "+" badge; a manager of a firm with no logo gets "+ Add your firm’s logo"
->   (`.hm-fh-logo`, found by class, since its id never ships in the page)
->   under the shop line, and the briefcase button reads "Firm settings".
->   Today's foot offers "All lease dates" only when the firm has buildings and
->   "All conversations" only when there is one. The legend names only the
->   property kinds actually drawn. `#hmMapEmpty` reads "Add a property, and it
->   lands here as your first pin." Pinned in `test/desk-map-layers.test.js`,
->   `test/home-map.test.js` and `test/routes.test.js`.
+**The map**
+- The tabs choose the list, the switch chooses the map: a tab turns its
+  layer on once per arrival (`hmLayerTab`), never on a redraw. `readLayers`
+  keeps only `LAYERS` and turns both-on or both-off into Properties.
+- `hmDrawPins` fits to the tab's SUBJECT, never to permits switched on
+  around it. The first card opens only after the fit settles (`hmAfterMove`);
+  an open card re-pans after a refit (`hmPopup.update()`).
+- Never a silent empty layer: `#hmLayerNote` says why (permits.md).
+- Stacks: `stackValue` sums only when every property has a figure of one
+  kind. `hmRestack` runs on `zoomend` after `setTimeout 0` (a draw inside a
+  draw opened a card twice). Never opens on hover; permit pins are not
+  stacked.
+- `hmSelect` returns early for a map open of the card already up (it redraws
+  the pins under the pointer).
+- `hmOnWheel` is added BEFORE `L.map()`. The pinch drives Leaflet 1.9.4
+  private methods: a Leaflet upgrade must re-check `hmPinchStart`/`To`/`End`.
+  Home's map only; other maps keep `scrollWheelZoom: false`.
+  `.hm-map-empty` is `pointer-events: none`.
+- Tests: `test/desk-map-layers.test.js` (wiring), `test/home-map.test.js`
+  (rules), `test/building-photo.test.js`. `test/helpers/boot.js` points
+  `CENSUS_API_URL` at a closed port.
 
-> **The map's switch is Properties · Permits, one at a time (2026-10-16,
-> the owner: "remove both just make it so the only two options are
-> properties and permits").** `#hmLayerBoth` is gone; `HOMEMAP.VIEWS` is
-> `["properties", "permits"]`, and `readLayers` turns a stored both-on (or
-> both-off) into the default, Properties alone. Opening the Properties tab
-> while on Permits switches the map to Properties (`hmSetView(need, { draw:
-> false })`), and opening a permit from the find box switches it to
-> Permits. The box below is history where it says Both.
+## Where the detail is
 
-> **The map's switch was Properties · Permits · Both (2026-10-13, the
-> owner: "make it so you can switch from properties to permits but you can
-> show both at once").** `#hmLayers` holds three `data-view` buttons
-> (`#hmLayerProps`, `#hmLayerPermits`, `#hmLayerBoth`), exactly one
-> `aria-pressed`. The layers stay the record (`hmLayers`, `cn.home.layers`,
-> `hmSetLayer` its one writer); `HOMEMAP.layerView` reads it as a view and
-> `HOMEMAP.layersFor` is what a view writes. `hmSetView` sends each changed
-> layer through `hmSetLayer` (on before off) and draws once. There is no
-> "nothing" view: `readLayers` turns a stored both-off into the default.
-> Opening the Properties tab while on Permits still turns Properties on, so
-> the switch reads Both. Pinned in `test/home-map.test.js` and
-> `test/desk-map-layers.test.js`.
+Sections there open with a bold lead-in, not a heading. Grep
+`docs/rules-detail/workspace.md` for:
 
-> **The firm header (2026-10-13, owner's pick of Draft C; its look and its
-> place in the markup changed on 2026-11-13, see the box at the top; drafts page
-> https://claude.ai/artifact/1q1DwN7QqSSARgtkQQRJYT).** A firm member's Home
-> opens with a row naming the firm: its mark, its name, its shop
-> ("Development shop" / "Broker shop", `shopCopy(kind).label`, the words Firm
-> settings uses) and how many people have joined (`firmMembers` without the
-> pending ones; omitted until the roster lands). The date line under it no
-> longer carries the firm's name (`#hmFirm` is gone). `drawFirmHead(firm)` is
-> the one writer; `resetHomeMap` clears it; no firm, no row.
-> - **The mark is the firm's logo, else its initials.** The logo is the one in
->   the firm's report branding (`org_branding.logo_url`, 041), so a firm has
->   ONE logo and saving it anywhere shows it to everyone. `GET /api/org` now
->   carries `logoAt` per firm (the row's `updated_at`, "" for none) from
->   `orgLogoRevs`, which filters `logo_url=neq.` and selects two columns so
->   the logos themselves never ride a read that ships inside every Home page
->   (DESK_BOOT); fail-open. The image is `GET /api/org/logo?id=&v=<logoAt>`
->   (any active member, `memberOf`; bytes sniffed by `AVATAR.sniffImage`;
->   `immutable` when versioned), and a load error falls back to initials.
-> - **Owner/admin adds or changes it from the header.** For `canManage` the
->   mark is a button (a red + while there is no logo) that opens a file
->   picker; `saveFirmLogo` runs `readLogoFile` (the branding card's resizer),
->   READS `GET /api/org/branding` and PUTs it back with the new logo, because
->   that PUT replaces the profile whole and must not blank the name or phone
->   an admin typed in Firm settings. The header's button (`#hmFirmGear`)
->   opens the Firm & branding panel (`openFirmModal`).
->   Saving or removing the firm's branding in that panel
->   updates `logoAt` and redraws the header, so the two doors agree.
-> - **That button is the panel's only door (2026-10-13, owner's call).** The
->   account menu's "Firm & branding" row went on both sides of the rail
->   (`menuFirmBtn`, `navFirm`), so the button shows for EVERY member, not
->   only `canManage` (members reach the roster and Leave firm there), and its
->   icon is a briefcase: the old gear read as a sun. `/desk?firm=1` still
->   opens the panel (Messages' "Start a firm" links it); Home's "Bring your
->   team" card is the door for an account in no firm. Pinned in
->   `test/nav-parity.test.js`.
-
-> **Street photos on Home's cards (2026-10-09, owner's ask).** A property's
-> thumbnail and the map card show the building from the street, looked up BY
-> ADDRESS through our own POST `/api/building-photo` (Google behind it, the
-> owner's call; rule 7 names the route); the aerial is drawn where Google has
-> no good photo. While the answer comes in the card is an empty box, never the
-> aerial (2026-10-10, the owner: "it is showing birds eye view first, then the
-> building make it just show the building"). `hmPhoto` is the
-> one writer for both; a card scrolling into view asks for itself
-> (`hmPhotoSeen`), and `hmPhotoForget` drops the observer's hold on cards each
-> redraw throws away. A property with no coordinates yet can still have its
-> photo. The thumbnails are 48px crops (they were the top-left of a 96px
-> crop). Rules and privacy: maps.md, "Street photos instead of the aerial".
->
-> **A card opens with its building in it (2026-10-13, the owner: "is there a
-> way to have the pictures load immediately on the map instead of it being
-> gray first?").** Every `hmDrawPins` asks about every building on Home at
-> once (`hmPhotoAskAll`, the drawn pins in view first; permits only when
-> hovered or opened), then fetches the photos of the pins in view ahead
-> (`hmPhotoWarm`, `BLDGPHOTO.preload`): at most `HM_WARM_MAX` (40; 24 until the photo ceiling went to 120) a page,
-> skipping any a list thumbnail on screen is already loading
-> (`hmPhotoOnList`), and again on `moveend`. A pin under the pointer is
-> warmed too (`hmPin`'s `photoOf`, `hmPhotoHover`). Measured on a stand-in
-> Google at real-world latencies (40 properties, a fresh browser): a pin the
-> list was not showing went from ~1 s of empty box to ~5 ms; one past the
-> allowance from ~980 ms to ~750 ms, ~390 ms after a 350 ms hover. The map
-> card's photo is no longer `loading="lazy"` and asks first
-> (`fetchPriority`). Tests: `test/building-photo.test.js`.
-
-> **The map's layers, and Reports leaving Home (2026-10-08, owner's call).**
-> Read this before the box below, which it amends. The owner's words: Home
-> should "show where the properties, comps and permits are, and you can
-> filter what you want to see" (the layer switch Draft C drew and the build
-> left out); "the home and report sections are literally the exact same
-> thing. Remove the Report section", "remove the run a comp report section,
-> because we are moving the comp report back to tools", and "integrate the
-> rest of reports into messages". So:
-> - **Tabs are Today, Properties, Comps, People.** The Reports tab, its pane
->   and the whole Sharing card (`#deskSharing`, `syncShareCard`,
->   `renderFirmShelf`, `renderSharesTable`, `drawShareInbox`,
->   `renderDeskHubs`, `hubCreationAllowed`, `showHubInvites`, their CSS) are
->   DELETED from index.html; the three lists are Messages' Reports view now
->   (firms.md, "Reports in Messages"). `renderShares` is **`renderHomeFirm`**:
->   it no longer reads `/api/shares` first (so a shares outage no longer
->   hides a firm's buildings and contacts), it awaits `renderFirm()` and then
->   runs the same firm batch, with the contacts alone waiting on the
->   buildings. `/api/shares`, `/api/hubs` and `/api/org/shelf` left
->   `DESK_BOOT_URLS` / `DESK_BOOT_ORG_URLS`. A saved `/desk#reports` (the
->   rail's link for that one day) is `location.replace`d to
->   `/messages#reports`.
-> - **No comp report on Home.** The start card "Value any address / Run a
->   comp report" is gone ("Add a property" leads, red), and the find box
->   (placeholder "Find a property, comp or person") no longer offers "Run a
->   comp report on …"; an address that matches nothing says "To value a new
->   address, open Comp report under Tools." with a link to `/bulk`. The
->   rail's Comp report row is the door (app-shell.md).
-> - **The map's switch** (`#hmLayers`, over the map's top-left, where Draft C
->   drew it): three toggles, Properties / Comps / Permits, any mix on, each
->   `aria-pressed`. The rules are `home-map.js` (`readLayers`, `tabLayer`,
->   `permitPin`, `permitAt`, `layerNotes`, tested); the wiring is pinned in
->   `test/desk-map-layers.test.js`. `hmLayers` is the record and
->   **`hmSetLayer` its one writer** (button state, this browser's
->   `localStorage` copy under `cn.home.layers`, wrapped in try/catch, and the
->   pins). Default is Properties alone. Comps shows only to `hmCanComps()`
->   (and an old stored "on" never draws for anyone else, `hmLayerOn`);
->   Permits to every member, as public record. **The list's tabs choose the
->   list, the switch chooses the map**: opening Properties or Comps turns its
->   own layer on, once per arrival (`hmLayerTab`), never on a redraw, which
->   would undo the member's own switch; Today's numbered pins are its rows
->   and draw whatever the switch says.
-> - **Drawn around, never fitted to.** `hmDrawPins` fits to the tab's
->   SUBJECT (Today: its pins and the properties; Properties; Comps on its own
->   tab), never to comps or permits switched on around it, so a toggle never
->   yanks the map; with no subject it fits the whole drawing. The fit leaves
->   room for the switch and the legend (`hmFitOpts`, tighter on the phone
->   strip), and a card pans clear of both: the first card of the day opens
->   only once the fit has settled (`hmAfterMove`), and an open card re-pans
->   after any later refit (`hmPopup.update()`), because the map's panes sit
->   UNDER the switch and a pan asked for mid-animation is dropped.
-> - **Permits** come from **`GET /api/permits/map`** (permits.md): read once
->   the layer is on AND the page is shown (`hmWhenShown`, never in the boot),
->   `false` on a failed read. A permit is an amber square (`--warn-text`);
->   its card shows the type, the street and city, the portal's own status in
->   the tracker's colours (`.hm-chip.pm-<stage>`, the stage name as its
->   title), the filed date, what was filed and by whom, "At …, one of your
->   properties" (or the firm's) when `HOMEMAP.permitAt` matches a row, and
->   doors to `/permits` and the city's record (new tab, noopener). A
->   property's card names a permit filed there while the layer is on. The
->   find box finds permits once they are read.
-> - **`#hmLayerNote`** says, on the map, why a layer that is on draws
->   nothing where the member is looking (`HOMEMAP.layerNotes`, re-said on
->   `moveend`): a failed read, nothing filed, filings with no place yet, or
->   "No permits filed in this part of the map in the last 30 days.
->   CompNinja reads permits in Boise, Meridian and Nampa." with "Show them"
->   (fits to that layer). Never a silent empty layer (permits.md's §7).
-> - **Legend** names what is drawn: the property kinds while Properties is
->   on, "Your comps" and "Permits, last 30 days" when those put pins down.
-
-> **Home as one map (2026-10-07; Draft C of the Home and Data drafts, the
-> owner's pick, https://claude.ai/artifact/SkPtByefNY6JbwFAFWxRLY).** A
-> member's Home is ONE screen: a list on the left with tabs (Today,
-> Properties, Comps, Reports, People; Reports left on 2026-10-08, above) and
-> every property on a map on the right. Read this before anything below: most of the sections the notes
-> describe (the skyline banner, the figure cards, Needs you, the two columns,
-> the buildings table, the deal board, Your permits, the no-firm start cards)
-> were DELETED on 2026-10-07 — see "The old Home, deleted" at the end of this
-> box for what of them survives.
-> - **`#homeMap`** is the first child of `#myDesk`, so the one-paint hold
->   covers it. `drawHomeMap()` is its one writer; it draws only from what the
->   desk already parsed (`firmBuildings`, `deskCritical`, `deskThreadsStat`,
->   `firmContacts`, `firmMembers` (captured in `renderFirmMembers`),
->   `deskPortfolio` (captured in `renderMyDesk`)) plus two reads of its own:
->   `deskSites` (`GET /api/sites`, added to `DESK_BOOT_URLS`, read beside the
->   firm batch in `renderShares`) and `hmComps` (`GET /api/vault`, read only
->   once the page is SHOWN, never while prerendered, and only when
->   `canUseVault`). It is called after `drawDeskDates` in `renderShares`
->   (inside try/catch, so a fault never costs the rest of Home), after the
->   reveal in `renderMyDesk` (the map needs a laid-out box), and after the
->   comps and geocodes land. `resetHomeMap()` rides `hideAll`.
-> - **What goes in the lists is `home-map.js`** (pure, dual-exported, browser
->   global `HOMEMAP`, `maxAge: 0`, tested in `test/home-map.test.js`). Its
->   three rules: ONE row per property (a firm building, a deal and a holding
->   at the same street and city are one row that knows `firm` and `you`);
->   EVERY row says who can see it (`scopeOf`: firm / you / both, where both
->   reads "Firm" + "Your numbers"); a property always shows a STATUS and a
->   comp always shows its DEAL DATE and price per unit (the owner's wording:
->   a property is something you own, manage or are buying; a comp is a past
->   deal you value against).
-> - **The firm's working sections moved INTO the tabs rather than being
->   rewritten:** `#deskSharing` was the Reports tab's body (deleted on
->   2026-10-08 with the tab, above), `#deskContacts`
->   sits in People under the roster, and `#buildingAddForm` is behind
->   Properties' "Add a property" → "One of the firm's buildings". Every id and
->   writer is unchanged. The chooser's other two choices are the member's own
->   (`HOMEMAP.addWhere`, 2026-10-09): for a development firm's member both
->   open `home-sites.js`'s add form here; for anyone else "A deal you're
->   working on" is hidden and "A property you own" opens
->   `/vault?add=own#properties`, whose form vault-page.js opens on arrival
->   (see vault.md). The
->   empty account's "Add a property" start card switches to Properties with
->   the chooser open, so the start cards show on Today only. `.hm-ch` and
->   `.hm-st` set `display`, so each has a `.hidden` companion; without them
->   "Start a firm" and "One of the firm's buildings" showed to members they
->   did not apply to.
-> - **`html.hm-page`** is written by `markNavCurrent()` alone (a member's
->   Home showing): the content container loses its gutter and the footer
->   hides (the legal line is at the foot of the list). At 900px and up under
->   `nav-rail` the list and map share the viewport; below, or in the bar
->   shell, the map is a 300px strip above the list and the page scrolls.
-> - **A pin opens its card on hover (2026-10-13, the owner's ask)** where the
->   pointer can hover (`hmCanHover`); touch keeps tap-to-open. `hmPin` waits
->   `HM_HOVER_MS` (120ms) so a pointer crossing the map opens nothing, and
->   ignores hover while the map moves and for `HM_HOVER_SETTLE_MS` after
->   (`hmMoving`/`hmMovedAt`), so a card's own pan never opens the pin that
->   lands under a resting pointer. The card stays open (it has links); another
->   pin, the map or its × close it. `hmSelect` returns early for a map open of
->   the card already up, because it redraws the pins and a new one appears
->   under the pointer. Pinned in `test/desk-map-layers.test.js`.
-> - **Two fingers on a trackpad (2026-10-10, the owner's ask):** a swipe
->   pans Home's map and a pinch zooms it; a mouse wheel's notch still zooms
->   through Leaflet's own `scrollWheelZoom`. `HOMEMAP.wheelGesture` tells
->   them apart (ctrlKey is a pinch; lines, notches of 120 or a Mac mouse's
->   4.000244140625px steps are a mouse; anything else, or anything sideways,
->   is a swipe; a burst keeps its first event's kind so a swipe never zooms
->   mid-pan). `hmOnWheel` is added BEFORE `L.map()` so it runs ahead of
->   Leaflet's listener on the same element and stops it for a swipe or a
->   pinch. The pinch drives Leaflet 1.9.4's private TouchZoom path
->   (`_moveStart`, `_move` with `pinch: true`, `_animateZoom`) and settles on
->   a whole level (`pinchSnap`, so the raster labels stay sharp): a Leaflet
->   upgrade must re-check `hmPinchStart`/`To`/`End`. Safari pinches with
->   `gesture*` events (`hmOnGesture`), left to TouchZoom while a finger is on
->   a touch screen (`hmTouches`). `.hm-map-empty` is `pointer-events: none`,
->   so a pinch over the empty map's card zooms the map, not the page. Home's
->   map only: the report, market, vault and permit maps sit in scrolling
->   pages with `scrollWheelZoom: false`, where a swipe must scroll the page.
->   Pinned in `test/home-map.test.js` and `test/desk-map-layers.test.js`.
-> - **Tabs are the URL fragment** (`#properties`, `#comps`, `#people`;
->   Today is the bare path). Every tab is Home to `markNavCurrent` since
->   2026-10-08; for one day the rail's Reports row was `/desk#reports` and
->   was marked while that tab showed.
-> - **Privacy:** private addresses are geocoded only through
->   `geocodeAddress(…, { noThirdParty: true })` (our `/api/geocode`, rule 7),
->   at most 40 per view, and only for properties; comps use the coordinates
->   their import stored. `hmGeoTried` stops a retry loop (a miss is not
->   cached). Every list is built with createElement/textContent.
-> - **The find box** searches properties, comps and contacts in the browser
->   (and permits once read). Until 2026-10-08, for anything that started with
->   a street number, it offered "Run a comp report on …", which opened
->   `/bulk?address=` (bulk-page.js fills an EMPTY box and runs nothing;
->   every address is a billed search). That door is the rail's Comp report
->   row now.
-> - **Today holds new BOV requests** (the Pipeline's door now that it has no
->   rail row). `hmLoadLeads()` reads `GET /api/broker/leads?noseed=1` once
->   the page is shown (`hmWhenShown`, shared with the comps read), only for a
->   Pro member outside a development firm (`hmCanLeads`; a development firm
->   has no Pipeline). **`noseed=1` is load-bearing:** without it that GET
->   WRITES the member's coverage on a first open, and Home only reads, so a
->   broker whose Pipeline was never opened sees no requests on Home until it
->   is. `HOMEMAP.agenda` lists a request while it is inside `BOV_DAYS` (14)
->   and has no intro request, after messages and newest first, with no number
->   and no pin (the server already anonymized it: type, size, market, date).
->   The row opens `/pipeline` (`/vault#pipeline` until 2026-10-09, when
->   Pipeline became a rail row with a path of its own), and Today's foot
->   gains "Your BOV pipeline →".
-> - **Deals on Home, a development firm's only (2026-10-09, the owner's
->   call: "Development firms only and integrate it into the property section
->   of the home page").** `HOMEMAP.dealsOn(firmKind)` is the rule:
->   `properties()` lists a deal, `agenda()` dates one, and `addWhere()`
->   offers one, only when `firmKind` is "development" (both take
->   `firmKind` now). For that member, a row of their own (`r.siteId` or
->   `r.portfolioId`) opens a working pane in place under it
->   (`hmOpenWork` → `hmPlaceWork` → `HOMESITES.pane(row)`,
->   `home-sites.js`; vault.md's Sites box has what is in it), the map card
->   reads "Open the deal →"/"Open the property →" and opens that pane (a row
->   that is also the firm's keeps its building-sheet link and adds "Your
->   deal →"), Today's deal date opens it too, the chooser's two "Only you"
->   choices open the add form in `#hmMineAdd` instead of leaving Home, the
->   Buying heading carries the acres and asking total, and passed deals fold
->   under "Passed" (`HOMEMAP.passedDeals`, keyed `passed:<id>`, stage
->   chip "Passed"). Writes are plain fetches from `home-sites.js`; after
->   one, `hmReloadMine` re-reads `/api/sites` and `/api/portfolio`
->   (never the boot copy; a failed read keeps what was on screen, and
->   `portfolioKeys` is refreshed) and draws Home again. **A redraw keeps a
->   half-typed form:** `pane()` returns the SAME element while the row's
->   data is unchanged, and `drawHomeMap` notes the focus before it clears
->   the list (`hmFocus`) and hands it back. Everyone else's rows open the
->   map card only, as before; their deals are not listed (the deal wall that
->   took them is gone) and "A deal you're working on" is hidden. Without
->   `/sites.js` or `/home-sites.js` (`hmWorkHere`) the rows list and
->   open nothing, and neither "Only you" choice shows. `dealsHref` and
->   `addHref` are gone. **The rail's Sites row** (development firms only,
->   in Pipeline's place under Messages; app-shell.md) opened this tab
->   until 2026-10-12; it is `/sites` now, the deals alone on a stage board
->   (`sites-page.js`), and Home's Properties tab is only Home. The deal
->   pane's styles moved from index.html to `/home-sites.css`, which both
->   pages link. **A deal shared with the firm (2026-10-21, 061; vault.md's
->   "A deal can be shared" box)** is still listed only for its owner here:
->   home-map.js marks it `shared` (`sharedWith`: its `org_id` is the firm
->   the member is in NOW, `shareOrg`, so a deal still marked for a firm they
->   left reads as theirs alone) and its scope reads "Firm", and the pane
->   carries the switch and the deal's estimate. Colleagues' shared deals are
->   on `/sites`, never on Home; `data().share` (`deskSitesShare`, from
->   `GET /api/sites`' `share`) decides whether the switch and the add form's
->   "Share with {firm}" box are offered at all.
-> - **The Board is on the Markets page** (2026-10-09; markets.md): drawn on
->   `/markets` for a signed-in member, where its `.mboard` door was, and a
->   market page's "Add to The Board" has "Open The Board →" under it.
->   **A watched building is The Board's, not Home's:** `HOMEMAP.properties`
->   skips a held property whose newest status is Tracking (and no longer
->   lists it as a plain holding either), the Owned group is just "Owned",
->   `home-sites.js`'s add form offers "I'm buying it" and "I own it" only,
->   and an owned row's pane says "Watch it on The Board instead" (it moves
->   there and its pane closes).
-> - **The old Home, deleted (2026-10-07; it was hidden under `html.hm-page`
->   for the day Draft C shipped).** Gone from index.html with their CSS and
->   tests: the banner and skyline (`#deskHero`, `drawDeskSky`,
->   `drawDeskHome`, `resetDeskHero`, `firm-skyline.js` and its test, its
->   STATIC_FILES entry), the old find box (`renderDeskFind`), the figure
->   cards (`#deskStrip`, `drawFirmStrip`), Needs you and the dates card
->   (`#deskAgenda`, `#deskCritical`, `drawAgenda`), the decks and columns
->   (`.dk-cols`, `[data-deck]`, `refreshDeckVisibility`), the buildings
->   table, Conversations' rows, the deal board (`renderDealBoard`), Your
->   permits (`renderYourPermits`), the no-firm start cards
->   (`renderFirmEmpty`, `syncStartCards`) and the skeleton's old parts.
->   `/api/org/board` and `/api/org/permits` left `DESK_BOOT_ORG_URLS`
->   (nothing reads them now), and the follow-up the same day removed both
->   routes, `deal-board.js`, `yourPermitsFor`/`PERMIT_FILINGS.yourPermits`,
->   `OVERFLOW_AT`, and the buildings read's `home` (`firmHomeFor`,
->   `BUILDINGS.homeMarket`, the banner's city photo). What SURVIVES, because `drawHomeMap` reads it: the
->   reads, now DOM-free — `readFirmBuildings()` (was renderBuildings; fills
->   `firmBuildings` and syncs the shelf's "Add to firm" doors),
->   `renderDeskThreads()` (fills `deskThreadsStat` only), and
->   `readFirmCritical()`, whose answer `renderShares` stores in
->   `deskCritical` after the batch. `deskGreetingFor`, `drawDeskClock`
->   (writes `#hmTitle`/`#hmDay` and re-arms at noon, 5pm and midnight) and
->   `stopDeskClock` (hideAll's call) are the greeting. `#deskAvatarFile`
->   (the photo pipeline's input) moved out of the banner to the top of
->   `#deskView`. An add from the firm-building form or a shelf row's door
->   now goes through `refreshFirmBuildings()`, which redraws the map, so a
->   new building shows in Properties at once (before, only after a reload).
->   Everything below that describes the deleted sections is history.
-> - **Done:** the comp report's own "Your property" / "Comps Used" labels
->   shipped in #387 (report-and-valuation.md).
-
-> Moved verbatim from CLAUDE.md on 2026-09-25. Claude Code loads this file
-> when it opens a file matching `paths` above; read it by hand before changing
-> this area's code in `server.js`. The never-break rules stay in CLAUDE.md.
-> Add new notes for this area here, not there.
-
-## Architecture
-
-  **The Workspace read as one page (2026-09-02).** Slices 3–8 each placed
-  their own section by local reasoning; this was the first look at the whole,
-  and three things changed, each test-pinned. **Contacts is capped**: it was
-  the one firm section with no overflow rule (Buildings shows 8 and sends the
-  rest to `/buildings`, Conversations 5, the shelf grows a filter at 6), so
-  an imported spreadsheet rendered every row on the front page, up to 2,000,
-  with Membership, Sharing, Broker, Account and the search chamber below all
-  of them. It now shows `COLLAPSE_AT` rows and folds the rest behind "Show N
-  more" — `renderHistory`'s fold, not `/buildings`' subpage, because there is
-  no `/firm/contacts` yet and `/contacts` is the owner's ADMIN_KEY rolodex
-  that migration 007 says must never meet this list; the count line still
-  describes the whole list. **Its add/import form ships CLOSED** behind one
-  "+ Add or import" control, `setContactAddOpen` the single writer (the
-  vault's `#addSec` rule). **It is labelled "Contacts"**: "Tenant contacts"
-  was written for the tenant-rep shop kind, withdrawn 2026-08-31, and a broker
-  or development shop keeps a contact list too; the `tenant_*` CSV aliases in
-  `org-contacts.js` stay, since an old spreadsheet still has to import. And
-  **Recent searches moved from the top of the workspace to directly under the
-  Run-a-report chamber**, as that chamber's output — it was a personal list
-  above "Your firm" on a page the 2026-08-28 decision made firm-first. It is
-  its own `#historyDeck`, outside both `#deskView` (hidden wholesale on the
-  home view and on a report) and `#searchSection` (hidden by the wall's boot
-  CSS while the list still renders signed out), toggled at exactly the four
-  seams that change the view; `test/index-html.test.js` counts them. **Since
-  2026-09-04 it is off the workspace altogether, with the chamber** — see the
-  `GET /` bullet below: `showHomeView` is its one reveal. Contacts keeps its place — after the deal board, last in the deck since Membership & settings moved into the account menu’s Firm & branding panel on 2026-09-03 —
-  and Buildings stays first. Recorded for later, not built: a `/firm/contacts`
-  page for the fold's "See all". (The firm-level "needs attention" band that
-  sat in this sentence shipped on 2026-09-04 as the strip below.)
-  > **Retired 2026-10-07** — the strip, the buildings table and its add toggle, and the deal board described here were deleted with the old Home; the `.dk-row` family, plain-ink addresses and the closed add forms survive.
-  **The Ledger pass (2026-09-04; owner's pick from a two-direction design
-  canvas, "match /bulk and /vault").** Photographed populated with a seeded
-  firm — `test/helpers/fake-supabase.js` behind a CDP capture with a
-  `cn_session` cookie, since `scripts/shot.js` cannot sign in — the page had
-  no opening statement (a subtitle about where things are NOT, then an empty
-  address form), the same building drawn as a Georgia address on the shelf
-  and an underlined sans one in Buildings, meta 700px from its name at
-  10.5px, every address and action underlined, and building rows collapsing
-  to "4…" at 390px. Five things changed, all in index.html and all
-  test-pinned (`test/org-desk.test.js`, `test/index-html.test.js`,
-  `test/desk-boot*.test.js`):
-  - **`#deskStrip`** — four Georgia figures on a bordered card (bulk-page.js's
-    `.cap` idiom) as the first child of `#myDesk`: buildings on the board,
-    shelf reports this month, unread conversations, and lease dates due in
-    the next twelve months (red only when there is one; the soonest named).
-    Each cell links to its section. `drawFirmStrip()` is its one writer and
-    draws from state the section renderers ALREADY parsed (`firmBuildings`,
-    `firmShelfItems`, `deskThreadsStat`) plus exactly one read of its own —
-    `readFirmCritical()` on `/api/org/leases`, now in `DESK_BOOT_ORG_URLS`.
-    Never a second read of a section's route: `bootFetch` hands each embedded
-    answer to its FIRST caller and deletes it, so a re-read would cost a live
-    round trip on every first paint. The read starts beside the firm batch in
-    `renderShares` and is joined AFTER the pinned `Promise.all` literal, which
-    is untouched, so the strip lands in the one paint. A figure whose read
-    failed is a dash, never a zero; no firm or a failed buildings read hides
-    the strip whole. It sits OUTSIDE the decks so `refreshDeckVisibility`
-    cannot be held open by it.
-  - **One row family, `.dk-row`** (name line, `.dk-row-meta` under it by flex
-    ORDER, `.dk-row-act` words at the right) for buildings, conversations,
-    the shelf and contacts; `.dk-shelf-row` is retired and `.db-row` stays for
-    the deal board's figure rows only. Rows are FLAT — `org-desk` indexes a
-    row's children by position — and their TEXT is byte-identical.
-  - **Addresses are plain ink until hovered** (`a.dk-addr`, `.dk-row-name`),
-    everywhere including the shares table; actions are never underlined.
-  - **The Buildings add form ships CLOSED** behind `#buildingAddToggle`,
-    `setBuildingAddOpen` its single writer — the Contacts rule, which this
-    section never got. The deal board's By market / Shared by month sit
-    under `<details id="dealBoardMore" class="dk-fold">` and its explainer is
-    one sentence with the full caveat in `title`.
-  - **The subtitle is gone**; workspace copy moved off hex utilities onto
-    `.dk-copy`/`.dk-empty`/`.dk-msg` (token colours — the hexes were those
-    tokens' exact light values, so light mode did not move).
-  The rail's 224px sidebar and the phone bar are unchanged.
-  > **Retired 2026-10-07** — the agenda, the columns, the buildings table and the head's find box were deleted with the old Home.
-  **Draft 1: two columns (2026-09-24; the owner's pick from the workspace
-  redesign canvas).** The single 3,300px column became a top row and two
-  columns; every section kept its id and its own writer. Test-pinned in
-  `test/org-desk.test.js`'s last block:
-  - **The top row** is `#deskAgenda` ("Needs you": lease dates inside
-    `AGENDA_DAYS` = 90, then unread conversations, each with one next step),
-    full width under the figure cards since Draft C (below). `drawDeskDates(critical)` runs after
-    `drawFirmStrip` with the SAME leases answer and draws the agenda, the
-    new `#deskCritical` side card and the buildings' Next-date column — four
-    readings of one read, and no route of their own (bootFetch hands each
-    embedded answer to its first caller). The agenda hides with the strip.
-    "Nothing needs you" is said ONLY when both the leases and the threads
-    read came back — on the banner since Draft C, with the card hidden; a
-    failed read keeps the card up and names the read in `#deskAgendaNote`.
-    `.dk-top` is not a deck and must never carry `data-deck`.
-  - **Two columns, each a `[data-deck]`**: `.dk-main` holds `#deckFirm`
-    (no-firm body, Buildings, the shelf) and `#deckSharing`; `#deckSide`
-    holds Conversations, Critical dates, the deal board, Your permits and
-    Contacts as cards. The "Your firm"/"Sharing" deck headings are gone —
-    the columns are the grouping — and `refreshDeckVisibility` is unchanged:
-    an all-hidden side deck hides and the main column takes the width.
-    Spacing is a BOTTOM margin set in the style block, so a hidden first
-    section leaves no gap. Below 1180px the columns stack.
-  - **Buildings is a table** (`.dk-row.dk-brow`, still flat: name, meta,
-    five `.dk-bc` cells, the ⋯ `<details class="dk-menu">` holding "Open the
-    building sheet" and Remove). The Shelf and Next-date cells are filled by
-    `decorateBuildingRows()` from `firmShelfItems` (exact address, any case —
-    it can under-count, never over-count) and `deskCritical`. `.dk-btable` is
-    a size-query container: under 520px the same children reflow to an
-    address line over one line of figures.
-  - **The head** carries the firm and shop (`#deskFirmLine`) and one find box
-    (`#deskFind`) that searches `firmBuildings` (the whole board, not the
-    eight shown), `firmShelfItems` and `firmContacts` in the browser, terms
-    ANDed. It asks the server nothing. Everything new hides in
-    `renderShares`' `hideAll`.
-  > **Retired 2026-10-07** — the banner, its photograph, the figure cards and the start cards were deleted with the old Home (`/api/org/buildings` still sends `home`; nothing on Home reads it). The greeting and its clock survive over Home's list.
-  **Draft C: your city, pictured (2026-09-25; the owner's pick from three
-  drafts — the comparison page and the prototypes are in
-  `docs/designs/2026-09-25-workspace-drafts/`).** The Workspace read as
-  bland, and worst when empty: a heading, grey sentences, zeros. Same
-  sections, same ids, same writers; what changed is the look, and eight
-  rules hold it up (`test/org-desk.test.js`'s last block,
-  `test/org-buildings.test.js`, `test/org-buildings-run.test.js`):
-  - **The banner (`#deskHero`, class `dk-hero`) opens on the firm's home
-    city.** `GET /api/org/buildings` carries `home: { market, photo }`:
-    `market` is `BUILDINGS.homeMarket(rows)` (the market most of the board
-    is in; a tie goes to whichever reached the count first in the server's
-    order) over the WHOLE set, and `photo` is `firmHomeFor` in server.js
-    asking `MARKETHERO.heroFor` — the market pages' own decision, quality
-    grade and credit. **Photographs only**: heroFor's satellite fallback is
-    a market page's answer to "where is this", and Nampa (which has
-    coordinates and no photograph) is the test that the banner refuses it.
-    No photo means the drawn contour map (a CSS data URI on `.dk-hero-bg`),
-    never another city's skyline. It fails to "no photo", never to a 503.
-  - **`drawDeskHome(home)` takes only our own `/market-heroes/` files**,
-    drops a srcset naming anything else, links the credit only to
-    commons.wikimedia.org, and draws the credit ON the picture, as the market
-    pages do. `null` (no firm, a failed buildings read, a sign-out) takes it
-    down. The photo rides the buildings answer — no read of its own.
-  - **The banner sits on --slab, dark in both themes, so its text is literal
-    white** (FOOTER_DARK_CSS's reason). The picture is clipped in its own
-    layer (`.dk-hero-bg`), not by the banner, because the find box's results
-    drop out of it; and the banner has NO z-index, so the figure cards
-    (z 2) rest on its edge while the find results (z 40) still open over
-    them.
-  - **The greeting is a first name, on the browser's clock**
-    (`deskGreetingFor`, called by `drawDeskHead`): "Good morning, Brad", or
-    just "Good morning" when the account has no name — never a guess from
-    the email — and "Workspace" to nobody. The account circle stays in the
-    rail (the 2026-08-29 decision the header test still pins). The day sits
-    in the kicker beside the firm line. `resetDeskHero()` — called by
-    `hideAll` — puts the greeting, the status line and the picture back, so
-    no name or city outlives a session.
-  - **`#deskHeroSub` has one writer, `drawAgenda`**, because it is the one
-    place that knows whether its reads came back: the counts when something
-    is due; "Nothing needs you right now." when both reads came back empty
-    (and the agenda card hides — a box whose only sentence is "nothing" was
-    the bland page); "{Firm} is ready. Put your first building on the board
-    to begin." on an empty board; no line at all when a read failed (the
-    card stays up and names it); "Pick a place to start below." for a
-    member in no firm. It is status, not the subtitle removed on 2026-09-04.
-  - **The figure cards are `#deskStrip`, moved, not a new component**: first
-    in `#myDesk`, outside every deck, a negative top margin resting them on
-    the banner (reset when `#checkoutNotice` shows, so they never ride over
-    it). Same ids, same one writer; `drawFirmStrip` also marks a literal zero
-    `.zero` and never a dash, which is a failed read and keeps its ink. A
-    zero steps back only a shade, to --ink-2: at --ink-4 it looked disabled
-    rather than empty (the owner, 2026-09-25). The sub-line wraps to a
-    second line (a line clamp) rather than ending in an ellipsis, and the
-    empty copy is kept short enough to fit a phone's two lines ("Nothing due
-    in 12 months", "Nothing to read yet").
-  - **Empty sections are `.dk-ghost` previews**: faint rows drawn with
-    gradients (no text anywhere in them — a preview must never read as
-    data; `aria-hidden`) under one card with the next step. The ids are the
-    old empty paragraphs' ids and every renderer still only toggles
-    `hidden`. `.dk-ghost`, `.dk-start` and `.dk-hero-where` set `display`, so
-    each has its own `.hidden` rule (the `.dk-strip` trap). In a side card
-    the preview is dropped and the card lies flat.
-  - **A member in no firm gets three start cards (`#deskFirmEmpty`, class
-    `dk-start`)**: Explore a market (the /markets thumbnails, decorative
-    there and here); a second card `syncStartCards` picks by
-    `proConfig.canBulkValue` — the Comp report tool when this member has it,
-    the Permit tracker otherwise, so the card never opens onto a Pro gate.
-    **Not `firmState.canCreate`**: that is canUseOrg, which a vault-only beta
-    grant carries without the Comp report tool (Cursor Bugbot, PR #320). It
-    is called from renderFirmEmpty AND from refreshBillingUI beside the
-    rail's Comp report row, because /api/config can answer after the desk
-    drew. The third card is the firm door it has always been, label, copy
-    and button keeping their ids and words.
-  Colour comes only from existing status/badge tokens (`.dk-tone-*`: the
-  strip's icons, the side cards' head icons, the previews and the
-  buildings' type tags, `TYPE_TONES`), so dark mode needed nothing of its
-  own. No new Tailwind utility — everything is in the style block.
-  > **Retired 2026-10-07** — the skyline, `firm-skyline.js` and `test/firm-skyline.test.js` were deleted with the old Home.
-  **The firm's skyline (2026-09-25 evening; the owner's pick, Draft B of the
-  banner drafts at https://claude.ai/artifact/Ef7zJpN17C3wXg5xaakWCZ).** The
-  city photograph was the same picture every day, and only ~30 cities have
-  one, so most firms got the drawn map. Now the banner draws the firm
-  itself: one tower per building on the board. Height is the building's
-  size, lit windows are recent work on it, a red light is a lease date
-  inside 90 days, a crane is a building added this month, and the newest
-  rise on the right, so the skyline grows as the firm does. The sky follows
-  the time of day. (Draft C, "a building a day" — an aerial of one building
-  each morning — shipped for about an hour first, PR #326, and was replaced
-  by this at the owner's word; its code is in that PR's history.) Rules, all
-  tested (`test/firm-skyline.test.js`, `test/org-desk.test.js`'s last block):
-  - **The rules are the pure, dual-exported `firm-skyline.js`** (browser
-    global `SKYLINE`, `max-age: 0`, guarded with `typeof` — a missing file
-    leaves the city photograph, never a broken page). Oldest on the left;
-    height on a log scale against the firm's own largest building, floored at
-    60,000 SF so a board of small buildings is not a city of skyscrapers; a
-    building with no size stands at the board's median height and its
-    callout says no size. "Recent work" is deliberately narrow and the key's
-    tooltip says so: a report on the shelf naming the building (the Shelf
-    column's exact-address rule), the building added, or a lease date due,
-    in the last 30 days. CompNinja does not know revenue or deals won, so
-    the skyline never pretends to show either.
-  - **It reads ONLY what the desk parsed** — `firmBuildings`, `deskCritical`,
-    `firmShelfItems` — so it has no route (bootFetch's rule), and
-    `renderShares` calls `drawDeskSky()` once, after `drawDeskDates`. It
-    sits OVER the city photograph (`has-sky` hides it and its credit), so
-    no firm, a failed board read, a missing module or a sign-out
-    (`resetDeskHero` → `clearDeskSky`) leaves the old banner.
-  - **The towers are a layer ABOVE the words (z 1) with pointer events only
-    on the towers**, so the greeting and the find box stay clickable and a
-    tower stays hoverable; that is why the skyline starts right of the
-    widest line of text, measured with a Range (the heading and status line
-    are banner-wide block boxes). Each tower
-    is an SVG link to its building sheet with a spoken label; hover or focus
-    moves the callout (`#deskSkyCall`), leaving returns it to `focusOf` (the
-    soonest date, else nothing). On a phone the layer drops behind the
-    words, dims, and takes no pointer or tab stop.
-  - **The callout speaks unasked only about a date, and stands BESIDE its
-    tower** (the owner's #2, 2026-09-25). `focusOf` used to fall back to the
-    newest building, and a new firm's lone building always is new, so its
-    card sat over the skyline all day repeating what the crane says. It also
-    sat above the skyline under the find box, and a 292px banner has no
-    room for a card, a tower and its crane or red light in one column: the
-    marks ran into the card. `placeDeskSkyCall` now stands it on the ground
-    on whichever side of the tower has more room. It never goes left of the
-    first tower (the ⓘ) or past the edge, and it narrows (to 220px at the
-    least) rather than cover the tower it describes. Covering neighbours is
-    allowed, since that reads as a card in front of a skyline. A short
-    dashed tie joins the card to the tower's side. `deskSkyHoverId` keeps a
-    hovered tower's card up across a redraw (the desk re-rendering, the
-    banner resizing), which otherwise dropped it under the pointer.
-  - **The crane is drawn to be read, and the city line is not a pill** (the
-    owner's #6, 2026-09-25). The crane shared the red light's 1.1px hairline
-    and read as a stray mark, so `.sky-crane` is 1.5px with round caps. It
-    is a real tower crane (mast to a peak, jib and counter-jib, pendants, a
-    hook) with a filled weight and hook block (`.sky-crane-wt`), and the
-    legend's icon is the same shape. `.dk-hero-where` lost its border, fill
-    and padding: a pill looks like a button, and this one does nothing. A
-    test fails the build if any of the three comes back.
-  - **No colour rides in the markup the script builds.** The banner is dark
-    in both themes, so its colours are literal `rgba()` like the rest of it,
-    but they live in the style block as classes (`sky-win lit`, `sky-red`,
-    gradient stops as `stop-color` classes), and a test fails any hex or
-    rgba in the drawing code. The page stylesheet takes no custom
-    properties of its own (`theme.test.js`), so the horizon's gradient stop
-    is a fixed 79%, and the towers stand at that SAME share of the banner's
-    height (`DESK_SKY_HORIZON`), never a fixed distance from the bottom. It
-    shipped as "62px above the bottom", which is right only at the 292px
-    floor. A longer status line or a phone makes the banner taller, and the
-    ground then drew a few pixels under the horizon as a second line
-    (2026-09-25, from the owner's screenshot). The ground stroke spans only
-    the towers, with faded ends (a `userSpaceOnUse` gradient, since a flat
-    line has no bounding-box height). A test holds the three gradient stops
-    and the constant together.
-  - **Towers are glass, and `.on` is not hover.** `.on` marks the tower the
-    callout describes, and a lone building is ALWAYS that tower. So `.on`
-    only brightens the outline, and the lit-up fill belongs to a real
-    `:hover`/`:focus-visible`. Sharing one rule made a new firm's only
-    building sit in its hover state all day, as a solid block.
-  - **A skyline of one or two is drawn as a start** (`SKYLINE.isSparse` /
-    `sparseLayout`, below `SPARSE_BELOW` = 3). Drawn the ordinary way it was
-    one thin tower pinned to the right edge in an empty sky, which read as a
-    glitch. Now the real towers are drawn wider (heights still mean size),
-    beside faint dashed outlines of towers to come (`sky-ghost sky-soon`,
-    `aria-hidden`, fainter than the empty board's), and the group is centred
-    in its room. On a phone it is set against the right instead, since the
-    middle is under the greeting there.
-  - **No legend under the greeting** (2026-09-25). The count caption and the
-    key read as a chart's legend, not a welcome, so both live in a popover
-    (`#deskSkyKey`) behind a small ⓘ (`#deskSkyInfo`) that layoutDeskSky
-    stands on the ground just left of the first tower. Hover or focus opens
-    it in CSS, and a click pins it (`.open` + `aria-expanded`, the one writer
-    `setDeskSkyInfo`) for touch; Escape or focus leaving closes it. Hidden on
-    a phone and on an empty board.
-  - **A banner that changes size is laid out again** (a `ResizeObserver` on
-    `#deskHero`, beside the window-resize listener). The towers stand at a
-    share of the height, so a height read before the banner finished growing
-    left the ground floating above the horizon, measured at 80px for the
-    empty board on a phone, whose note sits in the flow.
-  - **Each property type is its own building** (the owner, 2026-09-26: "for
-    residential make it a house, and a different type of building for each
-    property type"). `SKYLINE.shapeFor` maps the vault's PROPERTY_TYPES:
-    Office → a tower with a stepped crown, Industrial → a sawtooth-roofed
-    warehouse with loading doors, Retail → a storefront (false front, sign,
-    striped awning, display windows), Multifamily → an apartment block with
-    balcony rails and a water tank, Residential → a house (pitched roof,
-    chimney, door, two windows and a gable window), Land → an open lot
-    (fence, a sign board that lights with work, a tree; land added this
-    month is drawn cleared, with no trees, so the crane's mast never runs
-    through a canopy — Cursor Bugbot on PR 338). No type, or one
-    the map has not met, is the plain tower. A test fails the build if a
-    type is added to PROPERTY_TYPES without a shape here. `PROPORTIONS`
-    says how each carries its size (towers grow up, warehouses and stores
-    grow out, a house stays house-sized), so size still decides every one.
-    **Lots stay out of the size scale** (their SF is ground, not floor
-    area, and a ten-acre parcel would otherwise shrink every building)
-    unless the board is all lots. `SKYLINE.lightsFor` replaces a raw
-    `windowPattern` read: a building with fewer than `FEW_WINDOWS` (8) is
-    dark when quiet and always shows one lit window when worked on.
-    `deskSkyBuilding` draws each shape and returns where the red light's
-    mast and the crane stand (a house's ridge; a lot's sign board, and its
-    crane on the ground). Every shape stands ONE `sky-body` rect on the
-    ground across its slot, FIRST, unrounded: the callout, the ground line
-    and the tests measure every shape by it. Roofs, crowns and parapets are
-    `sky-cap`, a shade more solid than the glass; the lot lights its fence
-    and tree on hover, over a clear `sky-hit` rect. The legend's key shows
-    the six shapes.
-  - **A squeezed callout may pass the first tower** (2026-09-26). A few
-    narrow buildings (a board of houses) stand together at the right edge,
-    leaving neither side room for even the 220px card, and it ran off the
-    banner. When neither side fits, `placeDeskSkyCall` lets it go left as
-    far as `x0`, lifted 34px above the ground so it clears the ⓘ, and the
-    leader's card end stays on the card.
-  - **The sky turns with the greeting**: `drawDeskClock`'s timer (noon, five,
-    midnight) calls `paintDeskSky`, guarded with `typeof`.
-  - **`test/helpers/boot.js` points `CENSUS_API_URL` at a closed local port by
-    default** (found while building Draft C): the Vault's import geocode sent
-    real addresses to the live service from any suite that stored one.
-  **The Sharing card (2026-10-06; Draft C of the sharing drafts at
-  https://claude.ai/artifact/Mv5i1eKECyYqJm5zyLnyXD, the owner's pick).**
-  HISTORY since 2026-10-08: the card left Home with its Reports tab, and its
-  three lists are Messages' Reports view (firms.md, "Reports in Messages"),
-  with these rules carried over in report-inbox.js. The
-  main column used to end in three sections whose names all began "Shared":
-  "Shared with <firm>" (the shelf), "Shared reports" (one table of links in
-  BOTH directions) and "Shared with you" (deal rooms a broker invited this
-  member into). A report and the deal room opened from it sat under two of
-  those headings with the same address on both, and a firm share showed twice
-  (on the shelf, and in the table under a "Shared with <firm>" chip). Now
-  `#deskSharing` is one "Sharing" section with three tabs (Home's Reports tab
-  since 2026-10-07; `#deckSharing` went with the decks).
-  Rules, all tested (`test/org-desk.test.js`'s last block,
-  `test/sharing-card-run.test.js`, the deal-room tests in
-  `test/index-html.test.js`):
-  - **Every pane kept its id and its one writer**: `#deskSharedWithFirm`
-    (renderFirmShelf), `#deskShares` (renderSharesTable) and the new
-    `#deskInbox` (drawShareInbox). A pane's `hidden` CLASS still means "does
-    not apply / its read failed" (the strip reads it); which tab is SHOWING is
-    the separate `dk-off` class, written only by `syncShareCard`, which also
-    owns the tab buttons (the `hidden` ATTRIBUTE), their counts and the card's
-    own visibility. Each writer calls it when it changes something. Its
-    counts live in its own `let`s beside renderShares, never in
-    `firmShelfItems`, which is declared far below.
-  - **Default tab**: the shelf for a member of a firm; else Sent to you when
-    anything was sent; else Your links. A tab the member picked stays picked
-    across re-renders until its pane goes away. (The strip's Shelf link that
-    opened the shelf tab went with the strip on 2026-10-07.)
-  - **Sent to you merges** (`mergeShareInbox`, pure): a deal room joins the
-    row of a report when the addresses match (case and punctuation aside) and
-    the senders do not disagree. A room alone gets its own row, titled by the
-    room. Rooms open in Messages, reports in a new tab, all text through
-    textContent. The tab's count turns red only for something unopened: a
-    report whose `viewedAt` is null (never merely missing), or a room not seen
-    since it last moved (closed rooms ask nothing). A failed rooms read stays
-    silent and keeps the pane's empty card down, never "nothing was sent to
-    you".
-  - **Your links is one direction** (what this member sent) and leaves out a
-    firm share on the shelf they can see (`orgId` equals `myFirm().id`); the
-    shelf gives their own rows a **Take down** (the same one-way revoke). A
-    firm share from a firm they have LEFT stays in Your links, the only place
-    left to turn it off. "Start a hub" is **Start a deal room** (the name
-    Messages uses) and is never offered on a firm share, which has nobody to
-    invite. Below 640px the table stacks each row so its buttons sit under it.
-  - **The server says who sent it**: `GET /api/shares`' `sharedWithMe` rows
-    carry `from` and `viewedAt`, `mine` rows carry `orgId`, and `GET /api/hubs`'
-    `theirs` rows carry `from` (see `sharing.md`).
-- `GET /` — serves `index.html`. **For a signed-in member `/` opens the
-  WORKSPACE, not the search page** (2026-08-28) — the firm's shelf, the deal
-  board and their own properties. That is the whole firm-first
-  reorganization, and three rules hold it up:
-  - **The search desk is OFF the workspace (owner's call, 2026-09-04), and
-    so is Recent searches.** From 2026-08-28 to 2026-09-04 `showDeskView()`
-    showed `#searchSection` under the firm decks, wearing a "Run a report"
-    deck header (`#searchDeckHead`, deleted with it), and `#historyDeck`
-    under that; the argument was that a member's home page must not lack an
-    address field. Two things changed the answer: the finder got a URL of its
-    own the same day (`/run-report`, PR #291), and the owner wants the
-    workspace to be the firm's record with **Bulk valuation as the
-    comp-report tool** — reached from the rail's Comp report row
-    and the red CTA on every server-rendered bar. (The workspace header
-    carried its own red `#deskRunReport` link to /bulk from 2026-09-04; it
-    came off on 2026-09-24, owner's call, as a third door to one place, so
-    the header is the heading alone.) **`/run-report` is in NO nav** (owner's call, the
-    same evening): it was a Tools row for one day, and a second "run a
-    report" door was two doors to one act. The route still answers but is
-    linked from nowhere: `bulk-page.js` linked it from its foot for a few
-    hours as the form with the inputs a bulk row lacked, and that evening
-    the bulk page took every one of those inputs (migration 051 — see the
-    Bulk valuation section), so the link went with its reason.
-    On `/bulk`, one address is a report: the button reads "Run the report", a
-    one-address run started on the page opens `/?recent=<id>` the moment it
-    lands (`singleJob`/`onRunState` in `BULK_JS`; a failed one stays as a row
-    with its reason, and a single run re-opened from "Earlier runs" is never
-    redirected), and the market-explorer chamber that sat beside the single
-    form is deliberately not carried over — `/markets` is that page. The
-    footer's "Run a report" link still points at `/`, on purpose: the footer
-    is one set of bytes for everybody, and for a stranger `/` is the home
-    page's comp finder while `/bulk` would be a Pro gate. So
-    `showDeskView()` HIDES `#searchSection` and `#historyDeck`; the history
-    deck is revealed in exactly two places, `showHomeView()` and the boot
-    block's home-stack branch (so the unadvertised `/run-report` shows it
-    under the finder, and `/r/<id>` never does), and three seams hide it (desk,
-    `beginAssembly`, `renderResults`; `test/index-html.test.js` counts both
-    lists). The form is not gone — it is the
-    REAL `#compForm`, not a compact copy: one form, one set of ids, read by
-    `targetRange()`, the footprint estimate, every report restore and the
-    confirm dialog — and every report door (`openPortfolioItem`,
-    `openHistoryReport`, `rerunHistory`, `?recent=`, `?property=`) still
-    enters through `leaveDesk()` → `showHomeView()`, which shows it. One
-    exception to the member-at-`/` boot rule came with this: a **pending
-    landing address** (`pendingLandingAddress.v1`, written by a market page's
-    "value a property here" form) keeps the member on the HOME view, because
-    consuming it into a hidden form would lose it; the boot block only READS
-    the key, the consumer below the auth bootstrap still clears it. Free
-    members note: `/bulk` is Pro-only (`canBulkValue`), so for them the
-    workspace door and the bar's CTA answer with the upgrade card; the
-    anonymous home page's comp finder and the wall's `/?auth=signup` door
-    are unchanged.
-  - **A report yields the workspace** rather than rendering under it, at BOTH
-    seams: `renderResults` and, up to a minute earlier, `beginAssembly`.
-    Without both, comps stream in below the firm shelf.
-  - **The boot decision reads `looksSignedIn()`, never `currentUser`** (it runs
-    before the account bootstrap resolves, so every member would see the
-    marketing stack for a beat), and **`/r/<id>` is excluded by name** — a
-    shared report is somebody else's link and must never open the reader's own
-    desk. `popstate` mirrors the same rule, so Back to `/` does not drop a
-    member on marketing.
-  **The workspace fills in ONE PAINT (2026-09-03).** It used to reveal itself
-  a section at a time — `renderMyDesk` unhid `#myDesk` on entry, every
-  renderer unhid its own section when its own fetch landed, and the fetches
-  ran as a chain ten deep (portfolio → shares → firm → buildings →
-  conversations → shelf → board → contacts). Filmed against the stand-in
-  database with a 60ms round trip, sections appeared at 0.6s, 0.9s, 1.3s,
-  1.8s, 2.3s, 2.6s, 2.9s and 3.2s; the owner described it as the page
-  inserting parts. Now the FIRST fill for an identity is held: `#myDesk`
-  stays hidden, `#deskLoading` (a `.skeleton` the shape of a deck) stands
-  in, and the desk is revealed once when `renderDeskRest`'s batch settles —
-  filmed the same way, everything appeared together at 1.7s, on the same 130
-  database requests. Four rules, all in `test/desk-one-paint.test.js`, which
-  EXECUTES `renderMyDesk` with renderers the test lands by hand: a later call
-  for the same identity repaints in place and never re-hides a desk already
-  on screen (`deskFilledFor`); a sign-out or a different sign-in mid-fill
-  means the stale fill reveals nothing; `renderDeskRest` returns its batch
-  and swallows a rejection, so a section added there is held for free and
-  can never hold the desk forever; and `DESK_FILL_MAX_MS` (8s) races the
-  batch, so a hung fetch shows what has landed rather than nothing. The
-  concurrency is the other half of the speed-up: `renderShares` starts the
-  membership read beside the shares read (every early exit awaits it before
-  `hideAll()`, or the in-flight read undoes the hide), and the firm-scoped
-  reads go out together — the shelf and the contacts wait for the buildings
-  (the "Add to firm" doors and the building_id → address map) and for
-  nothing else. `showDeskView` decides the sign-in card and the stand-in on
-  `looksSignedIn()` for the boot rule's own reason: on `currentUser` a
-  member's first frame was the "Sign in" card, filmed at 0.3s.
-  **The workspace's data ships WITH the page (2026-09-04; `DESK_BOOT`).**
-  One paint was still a paint AFTER the page: index.html ships one set of
-  bytes to everybody and then asks for its account, its config and a dozen
-  desk reads, so the desk could not exist before those round trips came
-  back — 1.7s in the film above, and no client-side change could move it,
-  because a browser cannot fetch what it has not yet been told to ask for.
-  The owner's ask was "instantly". So for a cookie holder on `/` or
-  `/desk` (never `/index.html`, never `/r/<id>`), `deskBootPayload` in
-  server.js asks the server's OWN routes over loopback with the visitor's
-  cookie — `DESK_BOOT_URLS` plus the six org-scoped URLs, all in ONE wave,
-  keyed by the firm the session resolves to in-process
-  (`activeMembershipsFor`, a hint that decides which URL strings to prefetch
-  and never access) — and `deskBootScript` embeds the answers at the
-  `<!--DESK_BOOT-->` marker in `<head>` as `window.DESK_BOOT`, keyed by the
-  exact URL. In index.html, **`bootFetch(url, init)`** hands each entry to
-  the first GET that would have fetched it and fetches live from then on;
-  `acctApi`, `initGate`'s config read, the account bootstrap and every desk
-  renderer read through it. Filmed at the same 60ms database delay: the
-  first frame after the document IS the finished workspace, and the page
-  makes no API request at all. Five rules, all in
-  `test/desk-boot-run.test.js` (a real server behind the fake PostgREST)
-  and `test/desk-boot.test.js` (bootFetch executed, the two URL lists held
-  together): **it is never a second copy of a read** — the embedded body is
-  the route's own answer to the same cookie, and the run test deep-equals
-  every entry against a live GET, so the session, entitlements, `openOrg`,
-  `memberOf` and every `user_id` scope apply by construction; **cookie
-  presence decides whether to try, the routes decide what it is worth** — a
-  dead session 401s on `/api/account/me` and the payload is dropped whole;
-  **one deadline (`DESK_BOOT_DEADLINE_MS`, 2500ms, env-overridable so a
-  test can prove the degrade) covers the whole fan-out**, past which the
-  page ships without whatever has not answered, and any URL missing is
-  simply fetched — every failure is the page as it was (sized against the
-  live deployment, where a Supabase round trip measured ~100ms from Render
-  and the slowest desk route answered in over a second, so a shorter
-  deadline would drop exactly the reads the desk then waits on from the
-  browser — and that per-query latency is worth checking against the two
-  regions before optimizing any route further); **only status-200
-  JSON GETs under `DESK_BOOT_MAX_BODY`**, with the visitor's IP on
-  `x-forwarded-for` (so per-IP limiters see the person, not 127.0.0.1) and
-  an `x-cn-desk-boot` header so a fan-out can never nest; and **`<` is
-  escaped in the JSON** so a contact named `</script>` cannot close the
-  script (exercised, not just asserted). The cost is TTFB: the page waits
-  on the desk's reads instead of the browser waiting for them a beat later,
-  which is the same wait moved earlier, minus a dozen browser round trips.
-  Found on the way and fixed: `initGate` re-ran the desk fill "once the
-  real Pro flag is in" although nothing the desk fills reads it any more,
-  so every desk read went out TWICE on every boot; `refreshAccountUI`'s
-  call is the fill now, and `refreshProConfig` keeps the checkout-return
-  repaint. Two routes measured from a member's browser were also fixed:
-  `GET /api/messages` read each thread's messages IN TURN (1.3-2.1s, the
-  slowest read on the workspace) and now reads them together, and
-  `GET /api/org` (560-1090ms) now runs the membership list and the
-  entitlements read side by side.
-  **A workspace load starts at the TOP (2026-09-04).** A consequence of
-  the payload: Chrome restores the scroll position across a reload once the
-  document is tall enough at load, and now it is — measured, a refresh from
-  1407px down came back at 1407px, the run-a-report chamber at the foot of
-  the workspace, so a member who had just searched and refreshed landed "at
-  the bottom". The boot block that opens the workspace sets
-  `history.scrollRestoration = "manual"` BEFORE the load event and scrolls
-  to the top once; only on that branch, so `/r/<id>` keeps the browser's
-  own behaviour. `test/desk-scroll.test.js` pins the one writer.
-  **`/desk` is kept working rather than redirected to `/`.** It is linked from
-  Stripe checkout returns *with a query string*, the watchlist digest, org
-  invite emails and `/bulk`; a 302 would drop the query and dead-end those.
-  Home moved by opening the same view, not by moving the URL. The five desk
-  decks now lead with **Your firm** (was third of five), and the label a person
-  reads is **Workspace** everywhere — prose says "your workspace" lowercase.
-  One duplicate is left undecided on purpose: for a member, `marketBar`'s
-  `Home` and the new `Workspace` link are the same destination. Suppressing
-  Home for members was tried and reverted — two tests defend that link for
-  signed-in visitors by name. See the comment on that line.
-  The same handler covers `/index.html`,
-  `/desk`, and `/r/<id>`, and matches on the **path only** (`req.url` split at
-  `?`). That matters: Stripe returns from checkout to `/desk?checkout=success`,
-  and an exact `req.url` match 404'd it — along with every campaign link to
-  `/?utm_source=…`. **Every page route now does the same** (2026-08-28):
-  `pagePath` is declared beside `staticPath` and is what `/markets`,
-  `/market/<slug>`, `/broker/<slug>`, `/market-preview/<slug>`,
-  `/how-it-works`, `robots.txt` and `sitemap.xml` match on — the first three
-  of those were still testing `req.url`, so Facebook's own `?fbclid=…` made
-  every shared market page a 404 for whoever clicked it. A new PAGE route
-  belongs on `pagePath`; the API routes deliberately keep their exact
-  `req.url` matches, since a client calls those by an address it constructs
-  rather than one a person shares. `test/routes.test.js` walks every public
-  page with a tag on the end and checks the canonical still points at the
-  clean URL, so the fix cannot trade a dead link for duplicate entries in
-  Search Console.
-  **It is templated three times at serve time**, and the third one varies by
-  visitor: `NAV_LINKS`, `INAPP_BOOT`, and — since 2026-08-23 —
-  **`authBoot()`** at an `<!--AUTH_BOOT-->` marker in `<head>`. That last one
-  exists because this file ships one set of bytes to everybody and then
-  corrects them from `/api/config` and `/api/account/me`, so until those
-  landed a signed-in member saw a signed-OUT app: measured with the account
-  read slowed, "Sign in" in the header at 78ms and — in the frame where
-  config had answered and the account read had not — the search form replaced
-  by the wall's signup card at 1170ms. A race, so it is worst when the
-  database is slow. It carries two facts, both free of a database read on a
-  route that runs on every page view: `ACCOUNT_WALL` (a server constant, so
-  exact) and session-cookie **presence** (the wall's own cheap rule twenty
-  lines above it). Four rules:
-  - **Keying on a cookie is safe here ONLY because index.html is
-    `no-store`.** `/how-it-works` does the same signed-in swap and has to
-    carry `vary: cookie` and drop its hour cache to do it; there is no cached
-    copy of this file to hand to the wrong visitor.
-  - **It is a stand-in, and index.html retires it.** `refreshAccountUI()` —
-    the one function that runs after `/api/account/me` on every path,
-    including the failed one — drops `cn-in`/`cn-locked` and writes the truth
-    itself. That is what makes the `!important` safe: left standing, an
-    expired session would keep the "Sign in" button hidden by CSS the JS
-    cannot reach, i.e. a member who cannot sign back in.
-  - **`applySearchLock()` reads `looksSignedIn()`, never `currentUser`
-    alone**, and `accountWall` is seeded from the boot object rather than
-    defaulting to false. That pair is what fixes the big flash — the card
-    appeared because that function ran once with the wall off and once with
-    it on. The hint is consulted only until `authKnown` flips.
-  - **Presentation only**, like everything else the wall drives: a forged
-    cookie buys the sight of an account menu with nothing behind it, because
-    every limit is still enforced server-side.
-  `test/auth-boot.test.js` pins the server half (the right classes for the
-  right visitor, in both wall states) and the index.html half (the marker,
-  the retirement, and that every id the boot CSS names still exists).
+- Served script: "script is served as its own file"
+- Names: "Customer-facing names"
+- Type: "The list's type and its one left edge"
+- Firm row, scrollbar: "The head of Home's list"; "The firm header"
+- Plan gate: "A free account's Home is an address list"
+- Quiet Today, stacks: "A quiet day, and pins that land"
+- Reports: "A report opened from Home stands alone"
+- Removed: "The vault is taken apart"; "Comps leave Home"
+- First screen, Next: "An empty Home asks for its first building"
+- Switch, permits: "The map's switch is Properties"; "The map's layers"
+- Photos: "Street photos on Home's cards"
+- Hover, trackpad, BOV, deals: "Home as one map"
+- Old Home (retired): "## Architecture" to "The Sharing card"
+- `/`, search view: "`GET /` — serves"
+- One paint: "fills in ONE PAINT"
+- Boot payload: "data ships WITH the page"
+- Scroll: "load starts at the TOP"
+- `/desk`, `pagePath`: "`/desk` is kept working"
+- `AUTH_BOOT`: "templated three times"

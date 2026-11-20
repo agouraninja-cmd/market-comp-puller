@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The CLOUD build's export options (.github/workflows/ios.yml), kept
+	     apart from ExportOptions.plist, which is the Mac build's (manual
+	     signing with a certificate in that Mac's keychain).
+
+	     A GitHub runner has no keychain identity, so this one signs
+	     AUTOMATICALLY with Apple's cloud-managed distribution certificate,
+	     authorised by the App Store Connect API key (Admin role required),
+	     and uploads straight to App Store Connect (destination: upload), so
+	     there is no separate altool step. The archive it exports is built
+	     with code signing off, which is what keeps it clear of the
+	     development-profile "your team has no devices" failure the Mac build
+	     hit on 2026-08-28. -->
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>destination</key>
+	<string>upload</string>
+	<key>teamID</key>
+	<string>ZRFN5C3645</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>uploadSymbols</key>
+	<true/>
+	<!-- The workflow sets the build number itself; Apple must not change it. -->
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+</dict>
+</plist>

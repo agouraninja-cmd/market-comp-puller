@@ -1254,7 +1254,13 @@ const GOOGLE_OAUTH_TOKEN_URL = (process.env.GOOGLE_OAUTH_TOKEN_URL || "").trim()
 // verified domain Resend only delivers to the address that owns the Resend
 // account, so sign up with the notify address itself.
 const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").trim();
-const LEAD_NOTIFY_EMAIL = (process.env.LEAD_NOTIFY_EMAIL || "agouraninja@gmail.com").trim();
+// LEAD_NOTIFY_EMAIL is the PRIVATE inbox the owner's alerts go to (new leads,
+// failed payments, crashes). It is never shown to anyone: until 2026-11-20 it
+// was also the signature on mail to leads and brokers, their reply-to, and a
+// mailto on every public broker profile, and its default was a personal
+// address written here in the source. What other people see is
+// PUBLIC_CONTACT_EMAIL (below, beside the brand entity).
+const LEAD_NOTIFY_EMAIL = (process.env.LEAD_NOTIFY_EMAIL || "jacobadler@compninja.co").trim();
 // From-address for mail to leads/brokers, e.g. `CompNinja <reports@domain.com>`.
 // Leave UNSET until a custom domain is verified in Resend — the free tier only
 // delivers to the account owner, so outbound mail silently no-ops without it.
@@ -8926,7 +8932,11 @@ async function sendEmail(to, subject, text, { from, replyTo, html } = {}) {
       method: "POST",
       headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
       body: JSON.stringify({
-        from: from || "CompNinja <onboarding@resend.dev>",
+        // An owner alert names no sender. Once a domain is verified
+        // (EMAIL_FROM) it leaves from there, because Resend's shared
+        // onboarding sender delivers ONLY to the address that owns the Resend
+        // account, which need not be LEAD_NOTIFY_EMAIL.
+        from: from || EMAIL_FROM || "CompNinja <onboarding@resend.dev>",
         to: [to],
         subject,
         text,
@@ -8955,7 +8965,8 @@ function notifyByEmail(subject, fields) {
   sendEmail(LEAD_NOTIFY_EMAIL, subject, text);
 }
 
-// Outbound mail to a lead or broker. Replies route to the owner. Every
+// Outbound mail to a lead or broker. Replies route to the public contact
+// address (PUBLIC_CONTACT_EMAIL), never the owner's private alert inbox. Every
 // outbound send gains the letterhead HTML part (email-shell.js) built from
 // the SAME text — the text stays the source of truth and the fallback part,
 // so a call site edits its copy in one place and plain-text clients lose
@@ -8964,7 +8975,7 @@ function notifyByEmail(subject, fields) {
 // deployment resolves FALSE rather than throwing: "we did not send it" and
 // "we tried and it bounced" are the same fact to a caller deciding whether to
 // show somebody a link they must now copy by hand.
-// replyTo DEFAULTS to the site owner and is overridable, which it was not
+// replyTo DEFAULTS to the public contact address and is overridable, which it was not
 // until hub note emails needed it. The default is right for a lead or a
 // broker introduction — those genuinely are conversations with CompNinja.
 // It is wrong for mail that relays one person's words to another: a tenant
@@ -8978,7 +8989,7 @@ async function sendOutboundEmail(to, subject, text, { replyTo } = {}) {
   }
   return sendEmail(to, subject, text, {
     from: EMAIL_FROM,
-    replyTo: replyTo || LEAD_NOTIFY_EMAIL,
+    replyTo: replyTo || PUBLIC_CONTACT_EMAIL,
     html: EMAILSHELL.renderEmailHtml(subject, text),
   });
 }
@@ -14837,7 +14848,7 @@ function renderBrokerProfileHTML(profile, subs, signedIn) {
       : `<span class="badge">${escHtml(m)}</span>`;
   }).join("");
 
-  const introHref = `mailto:${LEAD_NOTIFY_EMAIL}?subject=${encodeURIComponent(`Broker introduction: ${headline}`)}`;
+  const introHref = `mailto:${PUBLIC_CONTACT_EMAIL}?subject=${encodeURIComponent(`Broker introduction: ${headline}`)}`;
   const body =
     `<h1>${escHtml(headline)}</h1>` +
     `<p class="sub">Verified comp contributor${firm && display && display !== firm ? " · " + escHtml(display) : ""}: ` +
@@ -15958,7 +15969,7 @@ const MARKET_RESEARCH_JS = `(function(){
 // the LLC and the contact address get attached to a single entity instead of
 // being re-guessed per page. Two rules:
 //   - the contact email is the PUBLIC one (info@compninja.co), never
-//     LEAD_NOTIFY_EMAIL, which is the owner's personal inbox.
+//     LEAD_NOTIFY_EMAIL, which is the owner's private alert inbox.
 //   - `sameAs` is deliberately absent. It lists profiles the business
 //     actually controls; inventing one is a fabricated claim in public
 //     structured data. Add real URLs here when they exist.
@@ -22607,7 +22618,7 @@ const server = http.createServer((req, res) =>
               ``,
               `Questions? Just reply to this email.`,
               ``,
-              `CompNinja · ${LEAD_NOTIFY_EMAIL}`,
+              `CompNinja · ${PUBLIC_CONTACT_EMAIL}`,
             ].join("\n")
           );
         }
@@ -28605,7 +28616,7 @@ const server = http.createServer((req, res) =>
             ``,
             `Need to correct anything? Just reply to this email.`,
             ``,
-            `CompNinja · ${LEAD_NOTIFY_EMAIL}`,
+            `CompNinja · ${PUBLIC_CONTACT_EMAIL}`,
           ].join("\n")
         );
         return sendJson(res, 200, { ok: true });
@@ -28717,7 +28728,7 @@ const server = http.createServer((req, res) =>
               `using this same email address to see your submissions, watch when`,
               `reports cite your comps, and turn on a public broker profile.`,
               ``,
-              `CompNinja · ${LEAD_NOTIFY_EMAIL}`,
+              `CompNinja · ${PUBLIC_CONTACT_EMAIL}`,
             ].join("\n")
           );
         }

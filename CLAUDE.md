@@ -461,6 +461,15 @@ file.** A cross-reference inside one of them ("see X above", "flow 3") may
 point into a sibling file, so grep `.claude/rules/` rather than assuming it is
 gone. Document a new feature in its area's file, not here.
 
+**A rules file is being split in two (started 2026-11-20, `workspace.md`
+first).** These files grew to 800 KB, most of it dated history, and opening
+`index.html` loaded about 200 KB of it. The split: `.claude/rules/<area>.md`
+stays auto-loaded and SHORT (what exists now, every rule and trap, and where
+the detail is), and the full text moves verbatim to
+`docs/rules-detail/<area>.md`, which nothing loads; read the matching section
+there before a non-trivial change. A new rule goes in the short file; its
+story goes in the detail file. The other files are still whole.
+
 | File | What it holds | Loads when Claude opens |
 |---|---|---|
 | `search-pipeline.md` | `POST /api/comps`, prompt, cache, live progress (SSE), providers, `MODEL`, `THINKING_LEVEL`, measuring a model change (`run-eval.js`), upstream health, the source-link check, comp fit and the wider search, flows 1 and 5 (parsing, currency) | `search-provider-*.js`, `report-parse.js`, `link-check.js`, `comp-fit.js`, `run-eval.js`, `eval-*` |

@@ -51,14 +51,20 @@ paths:
   body said. Not a secret and authorizes nothing (`RESEND_API_KEY` still
   does), but it decides where mail is posted, so treat it as trusted config.
 - `LEAD_NOTIFY_EMAIL` — where those notifications go; defaults to
-  agouraninja@gmail.com.
+  jacobadler@compninja.co. It is the owner's PRIVATE alert inbox and is never
+  shown to anyone. Until 2026-11-20 it was also the signature on mail to
+  leads and brokers, their reply-to and the mailto on public broker profiles,
+  and its default was a personal address in the source; all three now use
+  `PUBLIC_CONTACT_EMAIL` (info@compninja.co). An owner alert is sent from
+  `EMAIL_FROM` when that is set, because Resend's shared onboarding sender
+  delivers only to the address that owns the Resend account.
 - `EMAIL_FROM` — optional, e.g. `CompNinja <reports@yourdomain.com>`. The single
   gate for OUTBOUND mail (to leads and brokers, not the owner): a BOV lead gets
   a follow-up with their report share link, and a broker gets a confirmation
   after submitting a comp. Leave UNSET until a custom domain is verified in
   Resend — the free tier only delivers to the owner, so without it these sends
   log `Outbound email skipped` and silently no-op. Replies go to
-  `LEAD_NOTIFY_EMAIL` (Resend `reply_to`).
+  `PUBLIC_CONTACT_EMAIL` (Resend `reply_to`) unless the caller names a person.
 
 ## Architecture
 

@@ -12,6 +12,8 @@ paths:
   - "test/deal-date.test.js"
   - "test/archive-first.test.js"
   - "scripts/accuracy-lab.js"
+  - "scripts/massgis-to-corpus.js"
+  - "test/massgis-to-corpus.test.js"
   - "test/accuracy-lab.test.js"
 ---
 # The comp corpus and retrieval
@@ -275,6 +277,30 @@ paths:
     anything a point better: collapsing re-dated copies in the blend is NOT an
     accuracy fix, though it would tidy the comp table (both variants stay in
     the lab so the next session does not re-run the question as new).
+  - **A closed-sale answer key now exists: Massachusetts (2026-11-20).**
+    `scripts/massgis-to-corpus.js <town.zip ...> > ma.csv` turns MassGIS's
+    free assessor tables (each parcel's LAST sale, LS_DATE and LS_PRICE,
+    beside use code, building area and year built; one zip per town, linked
+    from mass.gov's "MassGIS Data: Property Tax Parcels") into corpus-shaped
+    `public_record` rows the lab reads unchanged. Bench input only: nothing
+    is written to `comp_corpus`, and owner fields are never decoded
+    (`test/massgis-to-corpus.test.js`). The table has no arm's-length flag,
+    so a price floor, the price against the assessor's own value (0.4x to
+    2.5x) and a $/SF range stand in, and a deed that conveyed several parcels
+    is dropped whole; every drop is counted on stderr. First run, 16 cities,
+    sales from 2020 on, 3,132 rows, 2,924 scored: **median miss 23.3%**
+    (Multifamily 20.4%, Office 27.1%, Retail 35.0%, Industrial 37.3%), 22%
+    within 10%, 44% within 20%, Low to High holds 64%, and the bias is
+    -11.6: untrended, the math runs LOW in a rising market. That is the one
+    thing this key showed that the old one could not: "trend from the comps"
+    cleared the noise for the first time (-1.8 points, 90%: -3.0 to -0.6,
+    bias -11.6 to -2.6). Not adopted: a live report is trended by the model's
+    `market_trend`, which the backtest does not carry, so the finding is
+    "check what trend real reports are getting", not "change the math".
+    Limits: last sale only; building area is whatever each assessor records;
+    peers are the whole town, wider than a report's; no lat/lng (they are in
+    the parcel polygons); some towns' sale dates are stale (Framingham
+    yielded none).
   - **Distance needs an export from 2026-11-16 on.** `/api/comp-corpus` now
     ends with `lat`, `lng` (appended, so no earlier column moves; both are in
     migration 001, so naming them cannot 400 the read into the file-only

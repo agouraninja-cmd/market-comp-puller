@@ -3310,8 +3310,10 @@ test("buildPrompt writes the comps array before every market-level field", () =>
     for (const wantsSize of [false, true]) {
       for (const isLand of [false, true]) {
         const where = `compsOnly=${compsOnly} wantsSize=${wantsSize} isLand=${isLand}`;
-        const lines = new Function("compsOnly", "wantsSize", "isLand", "compShape",
-          "return [\n" + block + "];")(compsOnly, wantsSize, isLand, '{ "a": "" }');
+        // wantsConstruction: the commercial building types ask for the
+        // subject's construction beside its year built; Land never does.
+        const lines = new Function("compsOnly", "wantsSize", "isLand", "compShape", "wantsConstruction",
+          "return [\n" + block + "];")(compsOnly, wantsSize, isLand, '{ "a": "" }', !isLand);
         const text = lines.join("\n");
         const skeleton = text.slice(text.indexOf("{"));
         let shape;
@@ -3336,7 +3338,8 @@ test("buildPrompt writes the comps array before every market-level field", () =>
         // subject lookup or a unit declaration; a new one belongs below.
         const ALLOWED_ABOVE = new Set(["summary", "currency", "usd_rate",
           "subject_size_sqft", "subject_size_source", "subject_last_sale",
-          "subject_assessed", "subject_asking", "subject_year_built"]);
+          "subject_assessed", "subject_asking", "subject_year_built",
+          "subject_construction"]);
         for (const k of keys.slice(0, compsAt)) {
           assert.ok(ALLOWED_ABOVE.has(k),
             `"${k}" sits above "comps" and delays the live table (${where})`);

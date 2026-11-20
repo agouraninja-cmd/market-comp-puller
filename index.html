@@ -146,6 +146,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        leaflet.js: it hooks every map made later. ⚠ Also in server.js's
        LEAFLET_HEAD and the /permits head. -->
   <script src="/map-credit.js"></script>
+  <!-- Ctrl (Cmd on a Mac) + scroll zooms a map that sits in a scrolling
+       page; a plain scroll still scrolls the page (map-zoom.js has the
+       rules). ⚠ Also in server.js's LEAFLET_HEAD and the /permits head. -->
+  <script src="/map-zoom.js"></script>
   <style>
     /* ---- Colour tokens. MIRRORED FROM theme.js ⚠ ------------------------
        index.html is a static file server.js never templates, so unlike

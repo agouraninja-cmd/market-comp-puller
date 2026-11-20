@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-20",
+    "type": "feature",
+    "title": "Ctrl + scroll (⌘ + scroll on a Mac) zooms every map",
+    "details": "The report, market pages, Markets, Comps, Permits and the address dialog's maps now zoom with Ctrl/⌘ held and a scroll or a trackpad pinch. A plain scroll still scrolls the page and shows a short “Hold Ctrl and scroll to zoom the map” hint. Home's map already zoomed on a plain scroll and is unchanged."
+  },
+  {
+    "date": "2026-11-20",
     "type": "improvement",
     "title": "No more +/− zoom buttons on any map, desktop included",
     "details": "Every map is now made without Leaflet's zoom buttons (zoomControl: false), so they are gone on desktop as well as phones. Double-click, pinch, double-tap and (on Home) the scroll wheel still zoom. A test fails any new map that brings them back."

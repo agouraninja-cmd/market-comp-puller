@@ -49,6 +49,31 @@ Home's map is the top 45% of the screen and a 150px swipe on it moved the page
   /comps' empty map is static already (`dragging:false`) and is left alone.
   A new map in a scrolling page takes it too.
 
+## No zoom buttons; Ctrl + scroll zooms (2026-11-20)
+
+The owner: "Remove the plus and minus feature on the compninja mobile version
+on the map", then "remove the zoom buttons on desktop too", then "add the
+scroll zoom for the other maps as well".
+
+- **No map draws Leaflet's +/- buttons**, at any width: every `L.map(` call
+  passes `zoomControl: false`, and nothing adds `L.control.zoom`.
+  `test/map-zoom-buttons.test.js` fails a new map that leaves them on.
+- **`map-zoom.js`** (browser global `MAPZOOM`, dual-exported, `maxAge: 0`;
+  its header is the contract) gives every map made with `scrollWheelZoom:
+  false` (all but Home's) Ctrl + scroll zoom (Cmd on a Mac; a trackpad pinch
+  arrives with ctrlKey, so it zooms the map, not the page). It turns
+  Leaflet's own ScrollWheelZoom on and stops a PLAIN wheel in a window
+  capture listener before Leaflet sees it (`stopPropagation`, never
+  `preventDefault`), so the page still scrolls, and shows "Hold Ctrl and
+  scroll to zoom the map" over the map for 1.2 s. Skipped: Home (zooms on a
+  plain wheel already), `dragging: false` maps (/comps' empty map), and
+  `keyWheelZoom: false`. Loaded wherever map-credit.js is (index.html,
+  `LEAFLET_HEAD`, /permits' head and `withLeaflet`); if it fails to load, the
+  maps are what they were (no wheel zoom), never a trapped page.
+- Tests: `test/map-zoom.test.js` (stand-ins). Checked in Chromium with
+  Leaflet 1.9.4 and a real wheel: a plain wheel scrolled the page 200px and
+  left the zoom alone; Ctrl + wheel zoomed and the page did not move.
+
 ## Street photos instead of the aerial (2026-10-09)
 
 The owner: "show the actual pictures of buildings instead of the birds eye

@@ -108,7 +108,23 @@ jobs:
             exit 1
           fi
           mkdir -p "$RUNNER_TEMP/asc"
-          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8"
+          F="$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8"
+          # Pasted from Notepad on Windows the secret arrives with CRLF line
+          # endings, stray spaces, sometimes without the BEGIN/END lines or
+          # folded onto one line; xcodebuild then refuses it as
+          # "invalidPEMDocument" (hit on the first upload, 2026-11-20).
+          # Keep only the base64 body and rebuild a clean PEM around it.
+          BODY=$(printf '%s' "$ASC_KEY_P8" | tr -d '\r' \
+            | sed -e 's/-----[A-Z ]*-----//g' | tr -d ' \t\n')
+          if [ -z "$BODY" ] || ! printf '%s' "$BODY" | base64 -D >/dev/null 2>&1; then
+            echo "::error::ASC_KEY_P8 is not a .p8 private key. Paste the whole text of the AuthKey_XXXX.p8 file."
+            exit 1
+          fi
+          { echo "-----BEGIN PRIVATE KEY-----"
+            printf '%s' "$BODY" | fold -w 64; echo
+            echo "-----END PRIVATE KEY-----"; } > "$F"
+          # Shape only, never the key: a .p8 body is about 200 characters.
+          echo "Key file written: ${#BODY} base64 characters"
 
       - name: Sign and upload to App Store Connect
         if: env.UPLOAD == 'true'

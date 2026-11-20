@@ -12280,61 +12280,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ? { pinInk: "#E2E8F0", pinInkText: "#0F172A", pinEdge: "#0F172A", pinSubject: "#EF4444", aerialBg: "#1E293B" }
     : { pinInk: "#1e293b", pinInkText: "#fff",    pinEdge: "#fff",    pinSubject: "#DC2626", aerialBg: "#e2e8f0" };
 
-  // One finger scrolls the page, two move the map (2026-11-18, the owner:
-  // "When swiping up and down on mobile it looks like it freezes for a split
-  // second or glitches"). On a phone a Leaflet map with dragging on is
-  // touch-action: none, so a swipe that STARTED on it panned the map and the
-  // page stood still: on Home the map is the top 45% of the screen, and a
-  // swipe on it, on /markets' map or on the report's, moved the page 0px
-  // (Playwright, iPhone 13 emulation, real touch events). So on a touch-only
-  // screen (no hover, a coarse pointer: a phone or a tablet, never a laptop
-  // with a touch screen) dragging is off while the page around the map
-  // scrolls (`scrolls`, asked again by the returned function when that
-  // changes, such as the report map going fullscreen). touchZoom stays on,
-  // so the container is touch-action: pan-x pan-y and Leaflet's pinch, which
-  // moves the map with the fingers, is the two-finger pan. A sideways
-  // one-finger drag is somebody trying to move the map, and is told how.
-  // ⚠ MIRROR of CNBASE.touchPan in server.js's BASEMAP_JS (the market pages,
-  // /markets, /comps and /permits): the bodies are one text, held together
-  // by test/phone-scroll.test.js. ES5 for that reason.
-  function touchPanMap(map, scrolls) {
-    var coarse = false;
-    try { coarse = window.matchMedia("(hover: none) and (pointer: coarse)").matches; } catch (e) {}
-    if (!coarse || !map || !map.dragging || !map.getContainer) return function () {};
-    var el = map.getContainer();
-    function sync() {
-      if (!scrolls || scrolls()) map.dragging.disable();
-      else map.dragging.enable();
-    }
-    sync();
-    if (el.cnTouchPan) return sync;
-    el.cnTouchPan = true;
-    var x0 = 0, y0 = 0, told = false, timer = 0;
-    el.addEventListener("touchstart", function (e) {
-      told = false;
-      if (e.touches.length === 1) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }
-      else if (el.cnTip) el.cnTip.style.opacity = "0";
-    }, { passive: true });
-    el.addEventListener("touchmove", function (e) {
-      if (told || e.touches.length !== 1 || el.classList.contains("leaflet-touch-drag")) return;
-      var dx = Math.abs(e.touches[0].clientX - x0), dy = Math.abs(e.touches[0].clientY - y0);
-      if (dx < 24 || dx < dy * 1.5) return;
-      told = true;
-      if (!el.cnTip) {
-        el.cnTip = document.createElement("div");
-        el.cnTip.setAttribute("aria-hidden", "true");
-        el.cnTip.textContent = "Use two fingers to move the map";
-        el.cnTip.style.cssText = "position:absolute;top:0;right:0;bottom:0;left:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:0 24px;text-align:center;background:var(--slab);color:#ffffff;font:600 15px/1.4 Inter,system-ui,-apple-system,sans-serif;pointer-events:none;opacity:0;transition:opacity .2s";
-        el.appendChild(el.cnTip);
-        void el.cnTip.offsetWidth;
-      }
-      el.cnTip.style.opacity = ".88";
-      clearTimeout(timer);
-      timer = setTimeout(function () { el.cnTip.style.opacity = "0"; }, 1600);
-    }, { passive: true });
-    return sync;
-  }
-
   function renderMap(parsed, meta, isRetry) {
     const card = document.getElementById("mapCard");
     const gen = ++mapGeneration;
@@ -12381,9 +12326,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     card.classList.remove("hidden");
 
     mapInstance = L.map("compMap", { scrollWheelZoom: false });
-    // On a phone one finger scrolls the report past the map; fullscreen, the
-    // map is the page, so one finger drags it again (setMapFullscreen).
-    const syncMapTouch = touchPanMap(mapInstance, () => !document.getElementById("compMap").classList.contains("map-fullscreen"));
     // Two base views, switchable from the control in the top-right corner:
     // "Map" — Esri Light/Dark Gray Canvas, muted so the pins carry the color;
     // "Satellite" — Esri photorealistic imagery with a street/place label
@@ -12433,7 +12375,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         if (on) mapInstance.scrollWheelZoom.enable();
         else mapInstance.scrollWheelZoom.disable();
       }
-      syncMapTouch();
     };
     exitMapFullscreen = () => {
       if (document.getElementById("compMap").classList.contains("map-fullscreen")) setMapFullscreen(false);
@@ -17234,12 +17175,6 @@ async function renderMyDesk() {
     ["gesturestart", "gesturechange", "gestureend"].forEach((t) => el.addEventListener(t, hmOnGesture));
     ["touchstart", "touchend", "touchcancel"].forEach((t) => el.addEventListener(t, (e) => { hmTouches = e.touches.length; }, { passive: true }));
     hmMap = L.map(el, { zoomControl: false, scrollWheelZoom: true, worldCopyJump: true });
-    // Below 900px (or in the bar shell) the map is a strip at the top of a
-    // page that scrolls, and on a phone a swipe there must move the page
-    // (touchPanMap). Beside the rail the map is its own pane and the page
-    // does not scroll, so one finger drags it as before.
-    const hmTouch = touchPanMap(hmMap, () => !(document.documentElement.classList.contains("nav-rail") && window.matchMedia("(min-width: 900px)").matches));
-    try { window.matchMedia("(min-width: 900px)").addEventListener("change", hmTouch); } catch (_) {}
     L.control.zoom({ position: "topright" }).addTo(hmMap);
     hmBaseLayers = hmBasemap().addTo(hmMap);
     hmPinLayer = L.layerGroup().addTo(hmMap);
@@ -24698,8 +24633,6 @@ async function renderMyDesk() {
     } else {
       mapEl.classList.remove("hidden");
       confirmMapInstance = L.map("confirmMap", { scrollWheelZoom: false, zoomControl: false });
-      // The dialog scrolls on a phone: one finger scrolls it (touchPanMap).
-      touchPanMap(confirmMapInstance);
       streetBasemap().addTo(confirmMapInstance);
       const p = pinColors();
       const pinIcon = L.divIcon({

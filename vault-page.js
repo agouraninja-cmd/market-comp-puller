@@ -4115,8 +4115,6 @@ ${tabButtons}
     try{
       bmMap=L.map("bmMap",{scrollWheelZoom:false});
       window.CNBASE.add(bmMap);
-      // On a phone one finger scrolls the page past the map, two move it.
-      if(window.CNBASE.touchPan)window.CNBASE.touchPan(bmMap);
       bmLayer=L.layerGroup().addTo(bmMap);
       bmMap.setView([39.5,-98.5],4);
     }catch(e){

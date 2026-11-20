@@ -995,8 +995,6 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
       // itself on a map that has no view yet.
       map.fitBounds(L.latLng(area.lat,area.lng).toBounds(area.miles*1609.34*2),{padding:[24,24]});
       if(window.CNBASE)CNBASE.add(map);
-      // On a phone one finger scrolls the page past the map, two move it.
-      if(window.CNBASE&&CNBASE.touchPan)CNBASE.touchPan(map);
       var red=cssVar("--red-fill","#B91C1C"), grey=cssVar("--ink-3","#68707E"), card=cssVar("--card","#fff");
       L.circle([area.lat,area.lng],{radius:area.miles*1609.34,color:red,weight:2,fillColor:red,fillOpacity:0.06}).addTo(map);
       // Several permits at one address (a campus) are one dot with a count.

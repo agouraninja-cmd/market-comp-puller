@@ -1540,6 +1540,28 @@ function fillExamples(){
   return true;
 }
 
+// Real samples (owner's, 2026-11-18): buildings near this member that NOBODY
+// has searched yet replace the fixed examples, so every sample somebody runs
+// is a fresh search and fresh comps (GET /api/sample-addresses; the rules are
+// sample-addresses.js's). They go INTO the placeholder, which stays the one
+// source fillExamples reads. Per type, because the whole list runs as the one
+// type the select holds; a type with none puts the fixed examples back.
+var SAMPLES={},FIXED_SAMPLES=null;
+function loadSamples(){
+  var ta=$("bulkText"),type=$("bulkType").value||"";
+  if(FIXED_SAMPLES===null)FIXED_SAMPLES=ta.placeholder||"";
+  if(!type)return;
+  function show(list){
+    if($("bulkType").value!==type)return;   // the select moved on while this was loading
+    ta.placeholder=list&&list.length?list.join("\\n"):FIXED_SAMPLES;
+  }
+  if(SAMPLES[type]){show(SAMPLES[type]);return;}
+  BULKRUN.api("GET","/api/sample-addresses?count=3&type="+encodeURIComponent(type)).then(function(d){
+    var list=((d&&d.addresses)||[]).map(function(a){return a&&a.address;}).filter(Boolean);
+    SAMPLES[type]=list;show(list);
+  }).catch(function(){show(null);});
+}
+
 function loadList(){
   return BULKRUN.api("GET","/api/bulk").then(function(d){
     if(d.maxAddresses){MAX=d.maxAddresses;BULKRUN.setMax(MAX);}
@@ -1702,7 +1724,12 @@ function start(boot){
   // search and the member still presses the button.
   try{var pre=new URLSearchParams(location.search).get("address");
     if(pre&&!$("bulkText").value){showForm(true);$("bulkText").value=String(pre).slice(0,200);refreshCount();$("bulkText").focus();}}catch(e){}
-  $("bulkType").addEventListener("change",function(){renderSubjectFields($("bulkType").value);refreshPerAddress();});
+  $("bulkType").addEventListener("change",function(){renderSubjectFields($("bulkType").value);refreshPerAddress();loadSamples();});
+  // Only once the page is SEEN: this page is built ahead of the click on every
+  // member page view (rule 15), and a page nobody opens should not spend a
+  // corpus read and a cache probe on samples nobody will read.
+  if(document.prerendering)document.addEventListener("prerenderingchange",loadSamples,{once:true});
+  else loadSamples();
   ["bulkSize","bulkAsking","bulkNoi","bulkCap","bulkLabel"].forEach(function(id){
     $(id).addEventListener("input",refreshMore);});
   $("useExample").addEventListener("click",function(){fillExamples();});

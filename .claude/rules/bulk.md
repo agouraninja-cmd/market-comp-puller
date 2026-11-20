@@ -46,6 +46,47 @@ paths:
 
 ## Architecture
 
+- **The example addresses are unsearched buildings near the member
+  (2026-11-18, the owner: "the more searches that aren't in our cache the
+  more data we have. So make the sample addresses random addresses in their
+  area that haven't been looked up yet").** The DELIBERATE OPPOSITE of the
+  Address Explorer's cache-friendly list: a sample that is already cached
+  teaches us nothing, a fresh one is new comps for the corpus. Read this
+  before "spending" a sample on a cache hit.
+  - **`GET /api/sample-addresses?type=&count=`** (server.js, beside
+    `/api/explore-addresses`): signed in, `canExploreAddresses` (the
+    Explorer's gate, for its reason: corpus addresses are the asset), 30 a
+    window per member. Addresses only (`{ address, type, market }`), never a
+    price or a date, and `area` ("City, ST", or "" when nationwide). Any
+    failure answers 200 with `addresses: []` and the box keeps its fixed
+    examples. A GET that writes and logs nothing.
+  - **The rules are `sample-addresses.js`** (pure, tested in
+    `test/sample-addresses.test.js`): `areaMarkets` (a property 3, a Board
+    market 2, a recent search 1; the top three, then their metro siblings),
+    `sampleCandidates` (one street-numbered building with a "City, ST": no
+    quantity, range, "&" or aggregate; one per building; shuffled with an
+    injected random), `pickUnsearched`.
+  - **"Never looked up" is `searchedAddressKeys`**: any `search_cache` row
+    with that `address_key`, of ANY age and ANY type (stricter than
+    `cachedAddressKeys`, which is the TTL'd, per-type instant badge). Rows
+    from before migration 020 have no address_key and cannot be matched. It
+    THROWS when the database cannot answer, so the route offers nothing
+    rather than a sample it could not check. Probed 40 candidates at a time.
+  - **Public corpus only** (`corpusAddressRows`: three columns, never
+    `ALL_TYPE_COMP_FIELDS`, never `corpusRowsForType`, which geocodes as a
+    side effect). No vault table; the member's own recents, properties and
+    Board rows decide where to look and are never returned.
+    `test/sample-addresses-run.test.js` holds all of that against a real
+    server.
+  - **On `/bulk`** `loadSamples` writes the answer INTO the textarea's
+    placeholder, which stays the one source `fillExamples` reads (the
+    bulk-routes test's rule), per type (the whole list runs as one type), a
+    type with none putting the fixed examples back. It runs only once the
+    page is SHOWN (`prerenderingchange`): this page is built ahead on every
+    member page view. **On index.html** the five rotating `ADDRESS_EXAMPLES`
+    are replaced, typed, the first time the member focuses or points at the
+    address field, never on load (that page is Home too).
+
 - **Bulk valuation** (2026-08-21; migration `036-bulk-valuations.sql`, **run
   before deploying**; spec
   `docs/superpowers/specs/2026-08-21-bulk-valuation-design.md`). A Pro member

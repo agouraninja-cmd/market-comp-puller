@@ -36,10 +36,25 @@ function decodeValue(raw) {
 // a separator comma from a comma that arrived encoded inside a value — and
 // neither can the real thing. That is the whole reason pgInList() in server.js
 // encodes each value and leaves the separators literal.
+//
+// A comma INSIDE double quotes is part of the value, though: PostgREST's own
+// rule for reserved characters, and taught 2026-11-18 for the sample-address
+// probe, whose values are whole addresses ("1200 main st, boise, id"). Split
+// naively, every quoted address became three fragments and matched nothing.
+// Unquoted values split exactly as before.
 function parseInList(raw) {
   const inner = String(raw).replace(/^in\.\(/, "").replace(/\)$/, "");
   if (!inner) return [];
-  return inner.split(",").map(decodeValue);
+  const out = [];
+  let cur = "";
+  let quoted = false;
+  for (const ch of inner) {
+    if (ch === '"') quoted = !quoted;
+    if (ch === "," && !quoted) { out.push(cur); cur = ""; continue; }
+    cur += ch;
+  }
+  out.push(cur);
+  return out.map(decodeValue);
 }
 
 function matches(row, key, expr) {

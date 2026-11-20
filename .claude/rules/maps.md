@@ -16,6 +16,39 @@ paths:
 > this area's code in `server.js`. The never-break rules stay in CLAUDE.md.
 > Add new notes for this area here, not there.
 
+## One finger scrolls the page, two move the map (2026-11-18)
+
+The owner: "When swiping up and down on mobile it looks like it freezes for a
+split second or glitches". A Leaflet map with dragging on is `touch-action:
+none`, so on a phone a swipe that STARTED on a map moved the map and the page
+stood still. Measured in Playwright (iPhone 13 emulation, real touch events):
+Home's map is the top 45% of the screen and a 150px swipe on it moved the page
+0px; the same on /markets' map and the report's. Rules:
+
+- **`touchPanMap(map, scrolls)` in index.html and `CNBASE.touchPan` in
+  server.js's BASEMAP_JS are one text** (⚠, ES5, held together by
+  `test/phone-scroll.test.js`, which also runs it). On a touch-only screen
+  (`(hover: none) and (pointer: coarse)`: a phone or tablet, never a laptop
+  with a touch screen, never a narrow desktop window) it turns dragging off
+  while `scrolls()` says the page around the map scrolls (no `scrolls` means
+  always). touchZoom stays on, so the container is `touch-action: pan-x
+  pan-y` and Leaflet's pinch, which moves the map with the fingers, is the
+  two-finger pan. It returns `sync`, called again when that answer changes.
+- **Where the map is the page, one finger drags it**: the report map's
+  fullscreen (`setMapFullscreen` calls `syncMapTouch`), and Home beside the
+  rail at 900px and up (`hmTouch`, on a `(min-width: 900px)` change).
+- **A sideways one-finger drag shows "Use two fingers to move the map"** over
+  the map for 1.6s (`el.cnTip`, `pointer-events:none`, `aria-hidden`; white on
+  `--slab`, dark in both themes, allowlisted in both colour tests). A swipe up
+  or down is scrolling and is not told anything. Listeners are passive and
+  added once per element (`el.cnTouchPan`), because the report and /permits
+  rebuild their maps on the same element.
+- **Every map in a scrolling page calls it**: the report's (`compMap`), the
+  address dialog's (`confirmMap`), Home's, the market page's (`mktMap`),
+  /markets' (`mktsMap`), /comps' book map (`bmMap`) and /permits' area maps.
+  /comps' empty map is static already (`dragging:false`) and is left alone.
+  A new map in a scrolling page takes it too.
+
 ## Street photos instead of the aerial (2026-10-09)
 
 The owner: "show the actual pictures of buildings instead of the birds eye

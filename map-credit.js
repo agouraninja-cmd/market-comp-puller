@@ -24,6 +24,9 @@
 //     before it is on screen (the report's map, far down the page; a tab
 //     built ahead and shown later, CLAUDE.md rule 15) waits to be seen.
 //
+//   - The map's +/- zoom buttons are hidden (2026-11-20, the owner's call):
+//     a phone pinches or double-taps to zoom.
+//
 // What it does NOT touch: a desktop (the "i" is never drawn there and the
 // line is Leaflet's own), the print and PNG exports (they use a raster with
 // its own credit, SMAP_ATTRIB in index.html), and the credit's words (each
@@ -89,6 +92,11 @@
     "font-size:0;line-height:0;background:none;box-shadow:none}" +
     ".cn-credit.cn-credit-closed .cn-credit-i{visibility:visible;background:var(--card,#fff);" +
     "border:1px solid var(--edge,#d9dde3);box-shadow:0 1px 3px rgba(16,20,26,.16)}" +
+    // No +/- buttons on a phone (2026-11-20; the owner: "Remove the plus and
+    // minus feature on the compninja mobile version on the map"). A phone
+    // zooms with two fingers or a double tap, and the buttons covered the
+    // map's corner. Desktop keeps them.
+    ".leaflet-container .leaflet-control-zoom{display:none!important}" +
     "}";
 
   // The "i": a dot over a stem, drawn in the text colour.

@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-11-20",
+    "type": "improvement",
+    "title": "No more +/− zoom buttons on the map on a phone",
+    "details": "Every map (Home, the report, market pages, Comps, Permits) hides Leaflet’s zoom buttons under 640px wide. Pinch or double-tap zooms instead; desktop keeps the buttons."
+  },
+  {
     "date": "2026-11-18",
     "type": "fix",
     "title": "Swiping a page on a phone no longer stops dead or stutters",

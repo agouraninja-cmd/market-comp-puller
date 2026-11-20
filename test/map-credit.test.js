@@ -244,6 +244,14 @@ test("the style changes nothing outside a phone screen, and keeps every word", (
   assert.doesNotMatch(read("map-credit.js"), /removeAttribution|addAttribution|attributionControl\s*=\s*false/);
 });
 
+test("a phone has no +/- zoom buttons on the map; a desktop keeps them", () => {
+  const css = MC.CSS;
+  const media = "@media " + MC.PHONE + "{";
+  const inside = css.slice(css.indexOf(media));
+  assert.match(inside, /\.leaflet-container \.leaflet-control-zoom\{display:none!important\}/);
+  assert.doesNotMatch(css.slice(0, css.indexOf(media)), /leaflet-control-zoom/);
+});
+
 test("it writes nothing: no fetch, no storage (rule 15)", () => {
   const src = read("map-credit.js");
   assert.doesNotMatch(src, /fetch\(|sendBeacon|XMLHttpRequest|localStorage|sessionStorage|document\.cookie/);

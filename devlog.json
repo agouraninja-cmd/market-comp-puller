@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-11-20",
+    "type": "improvement",
+    "title": "Rest on a map for 2 seconds and a plain scroll zooms it; the scroll hint is gone",
+    "details": "Every map that used to need Ctrl/⌘ now also zooms on a plain scroll once the cursor has sat on it for 2 seconds. Scrolling the page restarts the clock, so scrolling past a map never starts zooming it. Ctrl/⌘ + scroll still zooms at once. The “Hold Ctrl and scroll to zoom the map” hint was removed."
+  },
+  {
     "date": "2026-11-19",
     "type": "improvement",
     "title": "Saved comps remember how the building is built",

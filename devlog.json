@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-18",
+    "type": "fix",
+    "title": "Swiping a page on a phone no longer stops dead or stutters",
+    "details": "Two causes, both measured in a phone-sized browser. A swipe that started on a map moved the map instead of the page, so the page looked frozen: on Home the map is the top half of the screen, and the same happened on Markets, the market pages, the comp report, Your comps and Permits. Now one finger scrolls the page and two fingers move the map, and dragging the map sideways with one finger says how. A map that fills the screen (the report's fullscreen map, Home beside the sidebar) still drags with one finger, and nothing changes with a mouse. And the comp report built its printable map picture a few seconds after opening, in one half-second burst that landed in the middle of a swipe; it now waits until the page stops moving and does the heavy part off the page's main work, so the swipe stays smooth."
+  },
+  {
+    "date": "2026-11-18",
     "type": "improvement",
     "title": "Example addresses are real buildings near you that nobody has looked up yet",
     "details": "The example addresses in the Run a comp report box (and the ones Tab fills in) used to be the same three Boise addresses for everyone. Now they are real buildings from CompNinja's comp data in your own area (the cities of your properties, the markets on your Board and your recent searches), picked at random, and never one anybody has already searched. Every example you run is a fresh search, so it adds new comps instead of opening a saved report. With nothing to go on, or too few nearby, they come from anywhere in the country. Pro and trial accounts; everyone else keeps the fixed examples."

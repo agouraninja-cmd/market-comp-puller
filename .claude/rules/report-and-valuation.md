@@ -22,6 +22,24 @@ paths:
 
 ## Architecture
 
+- **The printable map is built while the page is still (2026-11-18; the
+  owner: "When swiping up and down on mobile it looks like it freezes for a
+  split second").** `smapIdle(ensureStaticMap)` only STARTS the raster at
+  idle; the tiles then land whenever they land, and the stitch and the
+  `toDataURL` encode of the 2000x920 canvas ran in the last tile's load
+  event, a few seconds after a report opens, which is when somebody swipes
+  through it. Measured on the sample report in Chromium at 4x CPU slowdown
+  (iPhone 13 emulation): one 470ms task mid-swipe, every frame presented
+  without the page's own updates; after, no task over 50ms. Three changes in
+  `drawStaticMap` and its helpers: `await smapWhenStill()` before any canvas
+  work (300ms with no `scroll` event, `SMAP_STILL_MS`; an export button's
+  await is never kept waiting, since nobody scrolls while pressing one);
+  `smapTile` resolves after `img.decode()` (a tile that will not decode early
+  is still drawn); and `smapEncode` uses `canvas.toBlob` (Chrome encodes off
+  the main thread) read back through `FileReader`, so `#mapStatic`'s src is
+  still a WebP-or-PNG data URI and print, the PNG and the PowerPoint read it
+  as before. Held by `test/phone-scroll.test.js`, which runs both helpers.
+
 - **A report on a phone shows its estimate on the first screen (2026-11-14;
   the owner, of a phone audit: "yes fix both").** Under 640px the estimate's
   heading sat 578px down the report (646px at 320px wide): three rows of

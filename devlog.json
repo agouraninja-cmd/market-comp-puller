@@ -8,6 +8,12 @@
   {
     "date": "2026-11-20",
     "type": "improvement",
+    "title": "No more +/− zoom buttons on any map, desktop included",
+    "details": "Every map is now made without Leaflet's zoom buttons (zoomControl: false), so they are gone on desktop as well as phones. Double-click, pinch, double-tap and (on Home) the scroll wheel still zoom. A test fails any new map that brings them back."
+  },
+  {
+    "date": "2026-11-20",
+    "type": "improvement",
     "title": "No more +/− zoom buttons on the map on a phone",
     "details": "Every map (Home, the report, market pages, Comps, Permits) hides Leaflet’s zoom buttons under 640px wide. Pinch or double-tap zooms instead; desktop keeps the buttons."
   },

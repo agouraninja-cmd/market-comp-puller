@@ -15187,7 +15187,7 @@ const MARKET_MAP_JS = `(function(){
   // in the middle of it.
   function ensureMap(center) {
     if (map) return map;
-    map = L.map("mktMap", { scrollWheelZoom: false }).setView(center, 12);
+    map = L.map("mktMap", { zoomControl: false, scrollWheelZoom: false }).setView(center, 12);
     // Held rather than discarded: the theme swap below depends on it.
     tiles = CNBASE.add(map);
     try {
@@ -15340,7 +15340,7 @@ const MARKETS_DIR_MAP_JS = `(function(){
   // screenshot, and worst on the wide flat greys this basemap is made of.
   // The framing is solved by the FRAME instead: .mmap is tall enough that
   // the fit below lands a level up rather than falling back a whole level.
-  var map = L.map("mktsMap", { scrollWheelZoom: false }).setView([39.8, -98.6], 4);
+  var map = L.map("mktsMap", { zoomControl: false, scrollWheelZoom: false }).setView([39.8, -98.6], 4);
   var tiles = CNBASE.add(map);
   // The theme flip restyles the carved areas alongside the tile swap — their
   // colors are computed tokens, not CSS classes (an SVG path cannot wear

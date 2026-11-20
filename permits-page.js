@@ -990,7 +990,7 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
     var el=$(id); if(!el||!area)return;
     withLeaflet(function(){
       if(alMaps[id]){ alMaps[id].remove(); delete alMaps[id]; }
-      var map=L.map(el,{scrollWheelZoom:false}); alMaps[id]=map;
+      var map=L.map(el,{zoomControl:false,scrollWheelZoom:false}); alMaps[id]=map;
       // Framed from the point and the distance FIRST: a circle cannot measure
       // itself on a map that has no view yet.
       map.fitBounds(L.latLng(area.lat,area.lng).toBounds(area.miles*1609.34*2),{padding:[24,24]});

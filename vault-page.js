@@ -4113,7 +4113,7 @@ ${tabButtons}
     var L=window.L;
     if(!L||!window.CNBASE){ $("bmMapErr").textContent="The map could not load. Every comp is still in the list."; return false; }
     try{
-      bmMap=L.map("bmMap",{scrollWheelZoom:false});
+      bmMap=L.map("bmMap",{zoomControl:false,scrollWheelZoom:false});
       window.CNBASE.add(bmMap);
       bmLayer=L.layerGroup().addTo(bmMap);
       bmMap.setView([39.5,-98.5],4);

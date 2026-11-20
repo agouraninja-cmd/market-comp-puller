@@ -265,8 +265,8 @@ test("the server-rendered pages load it: LEAFLET_HEAD, and /permits for its lazy
   const block = head.slice(0, end);
   assert.ok(block.indexOf("leaflet.js") > 0 && block.indexOf('<script src="/map-credit.js"></script>') > block.indexOf("leaflet.js"));
   assert.ok(server.includes('"/map-credit.js": { file: "map-credit.js", type: "text/javascript; charset=utf-8", maxAge: 0 }'));
-  assert.match(server, /head: INTER_FONT_HEAD \+ `<style>\$\{LEAFLET_DARK_CSS\}<\/style><script>\$\{BASEMAP_JS\}<\/script><script src="\/map-credit\.js"><\/script>`/);
+  assert.match(server, /head: INTER_FONT_HEAD \+ `<style>\$\{LEAFLET_DARK_CSS\}<\/style><script>\$\{BASEMAP_JS\}<\/script><script src="\/map-credit\.js"><\/script><script src="\/map-zoom\.js"><\/script>`/);
   const permits = read("permits-page.js");
-  assert.match(permits, /sc\.onload=function\(\)\{[^\n]*if\(window\.MAPCREDIT\)MAPCREDIT\.hook\(L\); cb\(\);/,
+  assert.match(permits, /sc\.onload=function\(\)\{[^\n]*if\(window\.MAPCREDIT\)MAPCREDIT\.hook\(L\);[^\n]* cb\(\);/,
     "/permits loads Leaflet only when a map opens, so it hooks it then");
 });

@@ -82,6 +82,7 @@ const FIELD_MAP = {
   cap_rate: "cap_rate",
   tenancy: "tenancy",
   year_built: "year_built",
+  construction: "construction",
   notes: "notes",
   source_url: "source_url",
   source_type: "source_type",

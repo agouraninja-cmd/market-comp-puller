@@ -982,8 +982,9 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
     var sc=document.createElement("script"); sc.src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
     // No focus ring on a click-and-drag; ⚠ same hook as index.html's, see there.
     // And the phone's folded credit line (map-credit.js, loaded by the page's
-    // head before Leaflet, so it waits to be told).
-    sc.onload=function(){ if(!window.L)return; L.Map.addInitHook(function(){ var c=this.getContainer(); L.DomEvent.on(c,"pointerdown mousedown touchstart",function(){ L.DomUtil.preventOutline(c); }); }); if(window.MAPCREDIT)MAPCREDIT.hook(L); cb(); }; document.head.appendChild(sc);
+    // head before Leaflet, so it waits to be told), and Ctrl + scroll zoom
+    // (map-zoom.js, loaded the same way).
+    sc.onload=function(){ if(!window.L)return; L.Map.addInitHook(function(){ var c=this.getContainer(); L.DomEvent.on(c,"pointerdown mousedown touchstart",function(){ L.DomUtil.preventOutline(c); }); }); if(window.MAPCREDIT)MAPCREDIT.hook(L); if(window.MAPZOOM)MAPZOOM.hook(L); cb(); }; document.head.appendChild(sc);
   }
   function cssVar(n,fb){ var v=getComputedStyle(document.documentElement).getPropertyValue(n); return (v&&v.trim())||fb; }
   function drawAreaMap(id,area){
@@ -995,8 +996,6 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
       // itself on a map that has no view yet.
       map.fitBounds(L.latLng(area.lat,area.lng).toBounds(area.miles*1609.34*2),{padding:[24,24]});
       if(window.CNBASE)CNBASE.add(map);
-      // On a phone one finger scrolls the page past the map, two move it.
-      if(window.CNBASE&&CNBASE.touchPan)CNBASE.touchPan(map);
       var red=cssVar("--red-fill","#B91C1C"), grey=cssVar("--ink-3","#68707E"), card=cssVar("--card","#fff");
       L.circle([area.lat,area.lng],{radius:area.miles*1609.34,color:red,weight:2,fillColor:red,fillOpacity:0.06}).addTo(map);
       // Several permits at one address (a campus) are one dot with a count.

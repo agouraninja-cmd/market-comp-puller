@@ -146,6 +146,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        leaflet.js: it hooks every map made later. ⚠ Also in server.js's
        LEAFLET_HEAD and the /permits head. -->
   <script src="/map-credit.js"></script>
+  <!-- Ctrl (Cmd on a Mac) + scroll zooms a map that sits in a scrolling
+       page; a plain scroll still scrolls the page (map-zoom.js has the
+       rules). ⚠ Also in server.js's LEAFLET_HEAD and the /permits head. -->
+  <script src="/map-zoom.js"></script>
   <style>
     /* ---- Colour tokens. MIRRORED FROM theme.js ⚠ ------------------------
        index.html is a static file server.js never templates, so unlike
@@ -5648,9 +5652,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // year-built columns after Cap Rate — tenant quality moves pricing.
   // Residential drops tenancy: a house is not a NNN credit-tenant story, and
   // the empty-or-sparse column was a wide gap before Year Built.
+  // Construction (2026-11-19) follows Year Built on the commercial building
+  // types only — report-parse.js collectsConstruction is the server's list.
   const BUILDING_COLUMNS = [
-    { key: "tenancy",    label: "Tenancy",    numeric: false },
-    { key: "year_built", label: "Year Built", numeric: true  },
+    { key: "tenancy",      label: "Tenancy",      numeric: false },
+    { key: "year_built",   label: "Year Built",   numeric: true  },
+    { key: "construction", label: "Construction", numeric: false },
   ];
 
   // `txFocus` only ever changes a LABEL here, never which columns exist. On a
@@ -7523,6 +7530,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function subjectYearForMatch(parsed) {
     return yearOf((parsed || currentParsed || {}).subject_year_built);
   }
+  // The subject's construction type, as the server normalized it (or "").
+  function subjectConstructionForMatch(parsed) {
+    return String((parsed || currentParsed || {}).subject_construction || "");
+  }
 
   // The report date the weighting measures ages against. Anchored to the
   // report, not the wall clock, so a saved report's numbers do not drift as
@@ -7542,6 +7553,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       propertyType: meta && meta.type,
       radiusMiles: parseRadiusMiles(meta && meta.note),
       subjectPsf: (psf >= 1 && psf <= 100000) ? psf : 0,
+      subjectConstruction: subjectConstructionForMatch(parsed),
     };
   }
 
@@ -7565,6 +7577,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const ySub = subjectYearForMatch(parsed), yComp = yearOf(comp.year_built);
     if (ySub != null && yComp != null) {
       reasons.push(Math.abs(yComp - ySub) > 15 ? "different vintage" : "similar vintage");
+    }
+    if (opts.subjectConstruction && comp.construction) {
+      reasons.push(VALUATION.constructionMismatch(comp, opts.subjectConstruction)
+        ? "built differently" : "same construction");
     }
     const mi = numericValue(comp.distance_mi);
     if (mi >= 0 && Number.isFinite(mi)) {
@@ -12280,61 +12296,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ? { pinInk: "#E2E8F0", pinInkText: "#0F172A", pinEdge: "#0F172A", pinSubject: "#EF4444", aerialBg: "#1E293B" }
     : { pinInk: "#1e293b", pinInkText: "#fff",    pinEdge: "#fff",    pinSubject: "#DC2626", aerialBg: "#e2e8f0" };
 
-  // One finger scrolls the page, two move the map (2026-11-18, the owner:
-  // "When swiping up and down on mobile it looks like it freezes for a split
-  // second or glitches"). On a phone a Leaflet map with dragging on is
-  // touch-action: none, so a swipe that STARTED on it panned the map and the
-  // page stood still: on Home the map is the top 45% of the screen, and a
-  // swipe on it, on /markets' map or on the report's, moved the page 0px
-  // (Playwright, iPhone 13 emulation, real touch events). So on a touch-only
-  // screen (no hover, a coarse pointer: a phone or a tablet, never a laptop
-  // with a touch screen) dragging is off while the page around the map
-  // scrolls (`scrolls`, asked again by the returned function when that
-  // changes, such as the report map going fullscreen). touchZoom stays on,
-  // so the container is touch-action: pan-x pan-y and Leaflet's pinch, which
-  // moves the map with the fingers, is the two-finger pan. A sideways
-  // one-finger drag is somebody trying to move the map, and is told how.
-  // ⚠ MIRROR of CNBASE.touchPan in server.js's BASEMAP_JS (the market pages,
-  // /markets, /comps and /permits): the bodies are one text, held together
-  // by test/phone-scroll.test.js. ES5 for that reason.
-  function touchPanMap(map, scrolls) {
-    var coarse = false;
-    try { coarse = window.matchMedia("(hover: none) and (pointer: coarse)").matches; } catch (e) {}
-    if (!coarse || !map || !map.dragging || !map.getContainer) return function () {};
-    var el = map.getContainer();
-    function sync() {
-      if (!scrolls || scrolls()) map.dragging.disable();
-      else map.dragging.enable();
-    }
-    sync();
-    if (el.cnTouchPan) return sync;
-    el.cnTouchPan = true;
-    var x0 = 0, y0 = 0, told = false, timer = 0;
-    el.addEventListener("touchstart", function (e) {
-      told = false;
-      if (e.touches.length === 1) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }
-      else if (el.cnTip) el.cnTip.style.opacity = "0";
-    }, { passive: true });
-    el.addEventListener("touchmove", function (e) {
-      if (told || e.touches.length !== 1 || el.classList.contains("leaflet-touch-drag")) return;
-      var dx = Math.abs(e.touches[0].clientX - x0), dy = Math.abs(e.touches[0].clientY - y0);
-      if (dx < 24 || dx < dy * 1.5) return;
-      told = true;
-      if (!el.cnTip) {
-        el.cnTip = document.createElement("div");
-        el.cnTip.setAttribute("aria-hidden", "true");
-        el.cnTip.textContent = "Use two fingers to move the map";
-        el.cnTip.style.cssText = "position:absolute;top:0;right:0;bottom:0;left:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:0 24px;text-align:center;background:var(--slab);color:#ffffff;font:600 15px/1.4 Inter,system-ui,-apple-system,sans-serif;pointer-events:none;opacity:0;transition:opacity .2s";
-        el.appendChild(el.cnTip);
-        void el.cnTip.offsetWidth;
-      }
-      el.cnTip.style.opacity = ".88";
-      clearTimeout(timer);
-      timer = setTimeout(function () { el.cnTip.style.opacity = "0"; }, 1600);
-    }, { passive: true });
-    return sync;
-  }
-
   function renderMap(parsed, meta, isRetry) {
     const card = document.getElementById("mapCard");
     const gen = ++mapGeneration;
@@ -12381,9 +12342,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     card.classList.remove("hidden");
 
     mapInstance = L.map("compMap", { zoomControl: false, scrollWheelZoom: false });
-    // On a phone one finger scrolls the report past the map; fullscreen, the
-    // map is the page, so one finger drags it again (setMapFullscreen).
-    const syncMapTouch = touchPanMap(mapInstance, () => !document.getElementById("compMap").classList.contains("map-fullscreen"));
     // Two base views, switchable from the control in the top-right corner:
     // "Map" — Esri Light/Dark Gray Canvas, muted so the pins carry the color;
     // "Satellite" — Esri photorealistic imagery with a street/place label
@@ -12433,7 +12391,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         if (on) mapInstance.scrollWheelZoom.enable();
         else mapInstance.scrollWheelZoom.disable();
       }
-      syncMapTouch();
     };
     exitMapFullscreen = () => {
       if (document.getElementById("compMap").classList.contains("map-fullscreen")) setMapFullscreen(false);
@@ -17234,12 +17191,6 @@ async function renderMyDesk() {
     ["gesturestart", "gesturechange", "gestureend"].forEach((t) => el.addEventListener(t, hmOnGesture));
     ["touchstart", "touchend", "touchcancel"].forEach((t) => el.addEventListener(t, (e) => { hmTouches = e.touches.length; }, { passive: true }));
     hmMap = L.map(el, { zoomControl: false, scrollWheelZoom: true, worldCopyJump: true });
-    // Below 900px (or in the bar shell) the map is a strip at the top of a
-    // page that scrolls, and on a phone a swipe there must move the page
-    // (touchPanMap). Beside the rail the map is its own pane and the page
-    // does not scroll, so one finger drags it as before.
-    const hmTouch = touchPanMap(hmMap, () => !(document.documentElement.classList.contains("nav-rail") && window.matchMedia("(min-width: 900px)").matches));
-    try { window.matchMedia("(min-width: 900px)").addEventListener("change", hmTouch); } catch (_) {}
     hmBaseLayers = hmBasemap().addTo(hmMap);
     hmPinLayer = L.layerGroup().addTo(hmMap);
     hmMap.setView([39.6, -98.6], 4);
@@ -20210,11 +20161,11 @@ async function renderMyDesk() {
       "Owner-user demand from regional contractors keeps sub-$10M deals competitive",
     ],
     comps: [
-      { address: "2801 S Great Southwest Pkwy, Grand Prairie, TX", date: "Mar 2026", transaction: "Sale", size_sqft: "86,400", clear_height: "28 ft", dock_doors: "12 dock-high, 2 grade", price_or_rate: "$9,940,000", price_per_sqft: "$115", cap_rate: "", tenancy: "Single-tenant NNN - regional 3PL", year_built: "2019", notes: "Class B distribution; 2019 build with 130' truck court", source_url: "", lat: "32.6990", lng: "-97.0430", verified: true, verified_by: "Lonestar Industrial Advisors" },
-      { address: "4650 Mountain Creek Pkwy, Dallas, TX", date: "Jan 2026", transaction: "Sale", size_sqft: "152,000", clear_height: "32 ft", dock_doors: "24 dock-high", price_or_rate: "$16,700,000", price_per_sqft: "$110", cap_rate: "6.1%", tenancy: "Multi-tenant, 92% occupied", year_built: "2001", notes: "Cross-dock; sold to institutional buyer", source_url: "", source_type: "news", lat: "32.7020", lng: "-96.9510" },
-      { address: "1310 Avenue R, Grand Prairie, TX", date: "Nov 2025", transaction: "Lease", size_sqft: "42,750", clear_height: "24 ft", dock_doors: "8 dock-high", price_or_rate: "$7.25/SF/yr NNN", price_per_sqft: "", cap_rate: "", tenancy: "Single-tenant NNN - building products distributor", year_built: "1996", notes: "5-year lease; rear-load flex space", source_url: "", source_type: "listing", lat: "32.7330", lng: "-97.0110" },
-      { address: "2222 W Pioneer Pkwy, Arlington, TX", date: "Sep 2025", transaction: "Sale", size_sqft: "61,200", clear_height: "26 ft", dock_doors: "10 dock-high, 1 ramp", price_or_rate: "$6,400,000", price_per_sqft: "$105", cap_rate: "", tenancy: "Owner-user", year_built: "1988", notes: "Owner-user sale; includes 1.2 AC fenced yard", source_url: "", source_type: "public_record", lat: "32.7120", lng: "-97.1350" },
-      { address: "900 113th St, Arlington, TX", date: "Jun 2025", transaction: "Sale", size_sqft: "118,500", clear_height: "30 ft", dock_doors: "18 dock-high, 2 grade", price_or_rate: "$14,500,000", price_per_sqft: "$122", cap_rate: "5.8%", tenancy: "Single-tenant NNN - national e-commerce tenant", year_built: "2022", notes: "2022 construction; single tenant on NNN lease", source_url: "", source_type: "estimate", lat: "32.6490", lng: "-97.0830" },
+      { address: "2801 S Great Southwest Pkwy, Grand Prairie, TX", date: "Mar 2026", transaction: "Sale", size_sqft: "86,400", clear_height: "28 ft", dock_doors: "12 dock-high, 2 grade", price_or_rate: "$9,940,000", price_per_sqft: "$115", cap_rate: "", tenancy: "Single-tenant NNN - regional 3PL", year_built: "2019", construction: "Tilt-up concrete", notes: "Class B distribution; 2019 build with 130' truck court", source_url: "", lat: "32.6990", lng: "-97.0430", verified: true, verified_by: "Lonestar Industrial Advisors" },
+      { address: "4650 Mountain Creek Pkwy, Dallas, TX", date: "Jan 2026", transaction: "Sale", size_sqft: "152,000", clear_height: "32 ft", dock_doors: "24 dock-high", price_or_rate: "$16,700,000", price_per_sqft: "$110", cap_rate: "6.1%", tenancy: "Multi-tenant, 92% occupied", year_built: "2001", construction: "Tilt-up concrete", notes: "Cross-dock; sold to institutional buyer", source_url: "", source_type: "news", lat: "32.7020", lng: "-96.9510" },
+      { address: "1310 Avenue R, Grand Prairie, TX", date: "Nov 2025", transaction: "Lease", size_sqft: "42,750", clear_height: "24 ft", dock_doors: "8 dock-high", price_or_rate: "$7.25/SF/yr NNN", price_per_sqft: "", cap_rate: "", tenancy: "Single-tenant NNN - building products distributor", year_built: "1996", construction: "Metal building", notes: "5-year lease; rear-load flex space", source_url: "", source_type: "listing", lat: "32.7330", lng: "-97.0110" },
+      { address: "2222 W Pioneer Pkwy, Arlington, TX", date: "Sep 2025", transaction: "Sale", size_sqft: "61,200", clear_height: "26 ft", dock_doors: "10 dock-high, 1 ramp", price_or_rate: "$6,400,000", price_per_sqft: "$105", cap_rate: "", tenancy: "Owner-user", year_built: "1988", construction: "Masonry", notes: "Owner-user sale; includes 1.2 AC fenced yard", source_url: "", source_type: "public_record", lat: "32.7120", lng: "-97.1350" },
+      { address: "900 113th St, Arlington, TX", date: "Jun 2025", transaction: "Sale", size_sqft: "118,500", clear_height: "30 ft", dock_doors: "18 dock-high, 2 grade", price_or_rate: "$14,500,000", price_per_sqft: "$122", cap_rate: "5.8%", tenancy: "Single-tenant NNN - national e-commerce tenant", year_built: "2022", construction: "Tilt-up concrete", notes: "2022 construction; single tenant on NNN lease", source_url: "", source_type: "estimate", lat: "32.6490", lng: "-97.0830" },
     ],
   };
 
@@ -24697,8 +24648,6 @@ async function renderMyDesk() {
     } else {
       mapEl.classList.remove("hidden");
       confirmMapInstance = L.map("confirmMap", { scrollWheelZoom: false, zoomControl: false });
-      // The dialog scrolls on a phone: one finger scrolls it (touchPanMap).
-      touchPanMap(confirmMapInstance);
       streetBasemap().addTo(confirmMapInstance);
       const p = pinColors();
       const pinIcon = L.divIcon({

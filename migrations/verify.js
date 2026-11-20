@@ -114,6 +114,7 @@ const COLUMNS = [
   // both name every per-type column, so a missing one silently freezes the
   // corpus rather than raising anything.
   ["comp_corpus",       ["condition"],                          "028-comp-condition.sql"],
+  ["comp_corpus",       ["construction"],                       "064-comp-construction.sql"],
   ["users",             ["stripe_customer_id"],                 "008-pro-billing.sql"],
   ["analytics_events",  ["duration_ms", "searches", "out_tokens", "rescue"],
                                                                 "012-search-timings.sql"],

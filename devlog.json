@@ -1,5 +1,29 @@
 [
   {
+    "date": "2026-11-19",
+    "type": "improvement",
+    "title": "Saved comps remember how the building is built",
+    "details": "Comps saved from past searches now keep their construction type, so a comp reused in a later report still shows it and still counts toward matching your building's construction."
+  },
+  {
+    "date": "2026-11-19",
+    "type": "improvement",
+    "title": "Comps are matched on the building's age and how it's built",
+    "details": "Commercial comp searches (industrial, office, retail, multifamily) now ask for comps of similar age and the same construction type, and report each comp's construction (tilt-up concrete, concrete frame, steel frame, metal building, masonry, wood frame) in a new column. The value range counts a comp built differently from your building at 60% weight, beside the existing vintage weighting."
+  },
+  {
+    "date": "2026-11-20",
+    "type": "improvement",
+    "title": "One finger moves the map on a phone again",
+    "details": "Removed the “use two fingers to move the map” rule on every map (Home, the report, the address check, market pages, Markets, Comps, Permits). One finger now pans the map up, down, left and right; two fingers still pinch to zoom and pan."
+  },
+  {
+    "date": "2026-11-20",
+    "type": "feature",
+    "title": "Ctrl + scroll (⌘ + scroll on a Mac) zooms every map",
+    "details": "The report, market pages, Markets, Comps, Permits and the address dialog's maps now zoom with Ctrl/⌘ held and a scroll or a trackpad pinch. A plain scroll still scrolls the page and shows a short “Hold Ctrl and scroll to zoom the map” hint. Home's map already zoomed on a plain scroll and is unchanged."
+  },
+  {
     "date": "2026-11-20",
     "type": "feature",
     "title": "BOV requests are worked automatically: brokers found, emails drafted, introductions made",

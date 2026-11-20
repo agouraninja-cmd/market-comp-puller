@@ -35,6 +35,7 @@ const FIELD_LABELS = grab("server.js", /const FIELD_LABELS = \{[\s\S]*?\n\};/, "
 const BASE_KEYS = new Set([
   "address", "date", "transaction", "size_sqft", "price_or_rate",
   "price_per_sqft", "cap_rate", "notes", "source_url", "tenancy", "year_built",
+  "construction",
 ]);
 
 let problems = 0;

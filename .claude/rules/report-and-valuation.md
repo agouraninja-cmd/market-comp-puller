@@ -524,6 +524,25 @@ and exporting each slide to PNG (a PowerShell one-liner, no dependency).
    asking price wins** (`askingRangeFrom`); the looked-up listing is the
    fallback that lights the comparison card when the visitor never typed one.
 
+3e2. **`construction` and `subject_construction` — how the building is built**
+   (2026-11-19, owner's call: "consider the age and structure of the
+   building"). Industrial, Office, Retail and Multifamily only
+   (`RPARSE.collectsConstruction`; a house is nearly always wood frame and
+   Land has no building). A CLOSED vocabulary (`CONSTRUCTION_VALUES`:
+   Tilt-up concrete, Concrete frame, Steel frame, Metal building, Masonry,
+   Wood frame), strict like `condition`: anything off the alias list is ""
+   — fix the prompt, never loosen the parser. The subject's own rides the
+   SUBJECT SIZE step like `subject_year_built` and merges across lanes the
+   same way. It is a `compWeight` factor in valuation.js only (x0.6 on a
+   mismatch, `opts.subjectConstruction`, neutral when either side is
+   unknown); comp-gate.js has no subject so it does not weigh it, but
+   `basisRow` carries it so free and Pro ranges agree. The prompt's MATCH
+   AGE AND CONSTRUCTION line steers which comps are CHOSEN (vintage within
+   ~15 years, same construction) for the commercial types; Residential has
+   its own vintage sentence. **Not yet in `comp_corpus`**: harvest and
+   `corpusRowsForMarket` do not name the column, so a reused corpus comp
+   arrives without it until a migration adds it (rule 9: migrate first).
+
 3f. **A leases-only report headlines RENT, not a missing sale price**
    (2026-08-21). Until this, `txFocus: "leases"` produced a hero with three
    dashes, the line "No priced sale comps came back in this window", and a

@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-11-19",
+    "type": "improvement",
+    "title": "Comps are matched on the building's age and how it's built",
+    "details": "Commercial comp searches (industrial, office, retail, multifamily) now ask for comps of similar age and the same construction type, and report each comp's construction (tilt-up concrete, concrete frame, steel frame, metal building, masonry, wood frame) in a new column. The value range counts a comp built differently from your building at 60% weight, beside the existing vintage weighting."
+  },
+  {
     "date": "2026-11-20",
     "type": "improvement",
     "title": "No more +/− zoom buttons on any map, desktop included",

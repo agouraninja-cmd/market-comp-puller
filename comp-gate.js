@@ -215,6 +215,10 @@ function basisRow(c) {
   // it — the exact desync locked_basis exists to prevent. A year is not
   // identifying.
   if (c.year_built) row.year_built = c.year_built;
+  // Construction type, for the same reason: valuation.js down-weights a comp
+  // built differently from the subject, and one word out of six is no more
+  // identifying than a year.
+  if (c.construction) row.construction = c.construction;
   // Distance, not coordinates: a mile figure cannot be reverse-geocoded to a
   // building, and without it a locked far-away sale would pull the free
   // range the same as a next-door one while a Pro report down-weighted it.

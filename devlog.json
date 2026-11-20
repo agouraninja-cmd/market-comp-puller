@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-20",
+    "type": "feature",
+    "title": "A firm is emailed before a lease date arrives",
+    "details": "A firm's leases already showed their option notice and expiry dates on the Buildings page, but nobody was told when one was coming. Now, 90 days before a lease's option notice (or its expiry, when there is no notice), the firm's owners and the person who filed the lease get one email naming the tenant, the building and the date, with a link to the building. Each lease is mailed about once, and again if its dates are changed. Anyone who turned CompNinja emails off gets none."
+  },
+  {
+    "date": "2026-11-20",
     "type": "fix",
     "title": "Swiping up on a comp report on a phone no longer makes the section bar flicker",
     "details": "On an iPhone, swiping up slides Safari’s address bar away, and the browser reports that as the window changing size, once a frame. The report’s sticky section bar (Value, Market, Drivers, Position, Comps) rebuilt itself on every one of those, 27 times in one swipe up and back down, so it flashed and jumped back to its first link if you had slid it sideways. It is now rebuilt only when its sections change, and a change of height alone is checked once, after the swipe settles. Turning the phone sideways still redraws it straight away."

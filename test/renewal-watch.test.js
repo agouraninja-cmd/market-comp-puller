@@ -225,3 +225,52 @@ test("daysUntil counts calendar days in UTC, not hours", () => {
   assert.equal(RW.daysUntil("2026-08-22", late), 0);
   assert.equal(RW.daysUntil("2026-08-21", late), -1);
 });
+
+// --- the firm's leases (org_leases), mailed since 2026-11-20 ---------------
+
+const FIRM_NOW = Date.parse("2026-11-20T15:00:00Z");
+function firmLease(over) {
+  return { id: "l1", tenant: "Acme Logistics", suite: "200", address: "1210 N 17th St, Boise, ID",
+    url: "https://compninja.co/building/b1", size_sqft: 12500, rent_psf: 18.5, rent_basis: "annual",
+    lease_type: "NNN", status: "active", added_by_name: "Finn", renewal_notified_at: null,
+    option_notice_date: "2027-01-19", lease_expiry: "2027-07-19", ...over };
+}
+const firmBuild = (leases, role) => RW.buildFirmLeaseNotice({ leases, now: FIRM_NOW, firmName: "Northside Brokers",
+  role: role || "owner", buildingsUrl: "https://compninja.co/buildings", unsubscribeUrl: "https://compninja.co/u" });
+
+test("a firm lease's email names the tenant, the building, both dates and why it arrived", () => {
+  const mail = firmBuild([firmLease()]);
+  assert.equal(mail.subject, "Option notice coming up: Acme Logistics at 1210 N 17th St, Boise, ID");
+  assert.match(mail.text, /Acme Logistics, Suite 200\n1210 N 17th St, Boise, ID/);
+  assert.match(mail.text, /Option notice due Jan 19, 2027, in 60 days\n {2}Lease expires Jul 19, 2027/);
+  assert.match(mail.text, /12,500 SF at \$18\.50\/SF\/yr NNN/);
+  assert.match(mail.text, /Filed by Finn/);
+  assert.match(mail.text, /you are an owner of Northside Brokers/);
+  assert.match(firmBuild([firmLease()], "filer").text, /you filed this lease for Northside Brokers/);
+  assert.match(mail.text, /Turn these emails off: https:\/\/compninja\.co\/u/);
+});
+
+test("a firm lease is due once, inside the window, and never when vacated, expired or passed", () => {
+  assert.equal(RW.firmLeaseDue(firmLease(), FIRM_NOW), true);
+  assert.equal(RW.firmLeaseDue(firmLease({ renewal_notified_at: "2026-11-01T00:00:00Z" }), FIRM_NOW), false);
+  assert.equal(RW.firmLeaseDue(firmLease({ option_notice_date: "2027-06-01" }), FIRM_NOW), false);
+  assert.equal(RW.firmLeaseDue(firmLease({ status: "vacated" }), FIRM_NOW), false);
+  assert.equal(RW.firmLeaseDue(firmLease({ status: "expired" }), FIRM_NOW), false);
+  assert.equal(RW.firmLeaseDue(firmLease({ option_notice_date: null, lease_expiry: "2026-11-01" }), FIRM_NOW), false);
+  assert.equal(firmBuild([firmLease({ status: "vacated" })]), null, "nothing due is null, never a blank email");
+});
+
+test("a lapsed option notice hands over to the expiry, and a rent without a basis is not printed", () => {
+  const l = firmLease({ option_notice_date: "2026-11-01", lease_expiry: "2026-12-20", rent_basis: null });
+  assert.deepEqual(RW.firmLeaseDeadline(l, FIRM_NOW), { date: "2026-12-20", kind: "expiry", days: 30 });
+  const mail = firmBuild([l]);
+  assert.match(mail.subject, /^Lease expiry coming up/);
+  assert.equal(/Option notice/.test(mail.text), false);
+  assert.equal(/\$18/.test(mail.text), false);
+});
+
+test("several firm leases are counted in the subject and listed soonest first", () => {
+  const mail = firmBuild([firmLease(), firmLease({ id: "l2", tenant: "Zed Co", suite: "Unit 4", option_notice_date: "2026-12-01" })]);
+  assert.equal(mail.subject, "2 leases at Northside Brokers have dates coming up");
+  assert.ok(mail.text.indexOf("Zed Co, Unit 4") < mail.text.indexOf("Acme Logistics"));
+});

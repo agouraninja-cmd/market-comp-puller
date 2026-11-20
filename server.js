@@ -6027,6 +6027,75 @@ async function orgLeaseRows(orgId, buildingId) {
   return (await sbRequest("GET", `${scope}&order=lease_expiry.asc&limit=1000`)) || [];
 }
 
+// --- the firm's lease reminders (2026-11-20) -------------------------------
+//
+// The reads behind POST /api/org/leases/notices. Rules in renewal-watch.js
+// (which lease is due, the copy); who is mailed is decided in the route.
+//
+// Two queries and a union, leasesDueForRenewal's pattern and reason. The
+// second takes the expiry window WHETHER OR NOT a notice date exists, because
+// a lapsed notice hands over to the expiry; `RENEWAL.firmLeaseDue` re-checks
+// every row, so a generous read only ever costs a read.
+async function orgLeasesDueForNotice(now = Date.now()) {
+  if (!DB_CONFIGURED) return [];
+  const day = 24 * 3600 * 1000;
+  const iso = (t) => new Date(t).toISOString().slice(0, 10);
+  const from = iso(now - day);
+  const to = iso(now + (RENEWAL.LEAD_DAYS + 1) * day);
+  const cols = "id,org_id,building_id,tenant,suite,size_sqft,lease_expiry,option_notice_date," +
+    "rent_psf,rent_basis,lease_type,status,added_by_user_id,added_by_name,renewal_notified_at";
+  const [byNotice, byExpiry] = await Promise.all([
+    sbRequest("GET", `org_leases?renewal_notified_at=is.null` +
+      `&option_notice_date=gte.${from}&option_notice_date=lte.${to}` +
+      `&select=${cols}&order=option_notice_date.asc&limit=2000`),
+    sbRequest("GET", `org_leases?renewal_notified_at=is.null` +
+      `&lease_expiry=gte.${from}&lease_expiry=lte.${to}` +
+      `&select=${cols}&order=lease_expiry.asc&limit=2000`),
+  ]);
+  const seen = new Map();
+  for (const row of [...(byNotice || []), ...(byExpiry || [])]) {
+    if (row && row.id && !seen.has(row.id)) seen.set(row.id, row);
+  }
+  return [...seen.values()];
+}
+
+// The addresses of the buildings those leases sit on. Its own read, id-scoped,
+// inside the buildings read block (test/org-routes.test.js's rule).
+async function orgBuildingAddresses(ids) {
+  const out = new Map();
+  const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
+  for (let i = 0; i < list.length; i += 100) {
+    const chunk = list.slice(i, i + 100);
+    const rows = await sbRequest("GET",
+      `org_buildings?id=in.(${pgInList(chunk)})&select=id,org_id,address&limit=${chunk.length}`);
+    for (const r of rows || []) out.set(String(r.id), r);
+  }
+  return out;
+}
+
+// Active, JOINED members of the firms with a lease due. An invite is not a
+// membership (030), so a pending row is never mailed a firm's tenants.
+async function orgMembersForNotice(orgIds) {
+  const list = [...new Set((orgIds || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
+  const out = [];
+  for (let i = 0; i < list.length; i += 50) {
+    const chunk = list.slice(i, i + 50);
+    const rows = await sbRequest("GET",
+      `org_members?org_id=in.(${pgInList(chunk)})&removed_at=is.null&joined_at=not.is.null` +
+      `&select=org_id,user_id,role&limit=${chunk.length * (ORG.MAX_MEMBERS + 1)}`);
+    out.push(...(rows || []));
+  }
+  return out;
+}
+
+// Scoped by org_id as well as id, the lease route's rule.
+async function markOrgLeasesNotified(orgId, ids) {
+  if (!DB_CONFIGURED || !orgId || !ids.length) return;
+  await sbRequest("PATCH",
+    `org_leases?org_id=eq.${encodeURIComponent(orgId)}&id=in.(${pgInList(ids)})`,
+    { renewal_notified_at: new Date().toISOString() }, { prefer: "return=minimal" });
+}
+
 async function buildingContacts(orgId, buildingId) {
   if (!DB_CONFIGURED || !orgId || !isUuidish(buildingId)) return [];
   // Its own select, deliberately NOT orgContactRows' — this one is scoped to
@@ -23756,6 +23825,123 @@ const server = http.createServer((req, res) =>
     return;
   }
 
+  // --- POST /api/org/leases/notices — the firm's lease reminders ----------
+  //
+  // 2026-11-20, the owner: lease date reminders by email. Mails a firm about
+  // each lease whose option notice (or, with none ahead, expiry) is within
+  // RENEWAL.LEAD_DAYS, once per lease. Copy and the due rule: renewal-watch.js.
+  //
+  // WHO IS MAILED: the firm's owners get every due lease, and the member who
+  // filed a lease gets theirs while they are still in the firm. Never a
+  // pending invite, never somebody removed, never an account that turned
+  // CompNinja emails off.
+  //
+  // The trial emails' design, rule for rule: ADMIN_KEY-gated and driven from
+  // OUTSIDE (.github/workflows/lease-notices.yml), never a timer; refuses
+  // without a database or outbound mail; { dryRun: true } builds every email,
+  // sends none, marks nothing; a lease is marked AFTER a send that carried
+  // it was accepted (by at least one recipient: holding the mark for the
+  // rest would mail the others again on every run while one address fails);
+  // one bad firm never stops the run.
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/org/leases/notices") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (!DB_CONFIGURED) {
+          return sendJson(res, 503, { error: "Lease reminders need a database: without one, nothing records which leases were already mailed." });
+        }
+        const opts = JSON.parse(body || "{}");
+        const dryRun = opts.dryRun === true;
+        if (!dryRun && !(EMAIL_FROM && RESEND_API_KEY)) {
+          return sendJson(res, 503, {
+            error: "Outbound email is not configured (EMAIL_FROM + RESEND_API_KEY). " +
+              "Refusing rather than marking leases as mailed. Use { dryRun: true } to see the copy.",
+          });
+        }
+        const now = Date.now();
+        const due = RENEWAL.dueFirmLeases(await orgLeasesDueForNotice(now), now);
+        const byOrg = new Map();
+        for (const row of due) {
+          if (!row.org_id) continue;
+          if (!byOrg.has(String(row.org_id))) byOrg.set(String(row.org_id), []);
+          byOrg.get(String(row.org_id)).push(row);
+        }
+        const summary = { firms: byOrg.size, due: due.length, sent: 0, leases: 0, optedOut: 0, failed: 0, previews: [] };
+        if (!byOrg.size) return sendJson(res, 200, summary);
+
+        const [orgs, buildings, members] = await Promise.all([
+          orgsByIds([...byOrg.keys()]),
+          orgBuildingAddresses(due.map((l) => l.building_id)),
+          orgMembersForNotice([...byOrg.keys()]),
+        ]);
+        const accounts = new Map((await findUsersByIds(members.map((m) => m.user_id).filter(Boolean)))
+          .map((a) => [String(a.id), a]));
+
+        for (const [orgId, rows] of byOrg) {
+          try {
+            const firmName = (orgs.get(orgId) || {}).name || "";
+            const leases = rows.map((l) => {
+              const b = buildings.get(String(l.building_id));
+              // The building is read by id; its org is checked here too, so a
+              // lease can never be mailed under another firm's address.
+              const mine = b && String(b.org_id) === orgId;
+              return { ...l, address: mine ? b.address : "", url: mine ? `${SITE_URL}/building/${l.building_id}` : "" };
+            });
+            const active = members.filter((m) => String(m.org_id) === orgId && m.user_id);
+            const recipients = new Map();
+            for (const m of active) if (m.role === "owner") recipients.set(String(m.user_id), { role: "owner", leases });
+            for (const m of active) {
+              const id = String(m.user_id);
+              if (recipients.has(id)) continue;
+              const theirs = leases.filter((l) => l.added_by_user_id && String(l.added_by_user_id) === id);
+              if (theirs.length) recipients.set(id, { role: "filer", leases: theirs });
+            }
+            const mailed = new Set();
+            for (const [userId, r] of recipients) {
+              const account = accounts.get(userId);
+              if (!account || !account.email) continue;
+              if (account.digest_optout) { summary.optedOut += 1; continue; }
+              const mail = RENEWAL.buildFirmLeaseNotice({
+                leases: r.leases, now, firmName, role: r.role,
+                buildingsUrl: `${SITE_URL}/buildings`,
+                unsubscribeUrl: unsubscribeUrlFor(account.id),
+              });
+              if (!mail) continue;
+              if (dryRun) { summary.previews.push({ to: account.email, subject: mail.subject, text: mail.text }); continue; }
+              // AWAITED, and its answer read (the trial emails' rule).
+              if (!(await sendOutboundEmail(account.email, mail.subject, mail.text))) {
+                console.error(`Lease reminder not accepted for ${account.id}; that copy is not counted.`);
+                summary.failed += 1;
+                continue;
+              }
+              summary.sent += 1;
+              r.leases.forEach((l) => mailed.add(l.id));
+            }
+            if (mailed.size) {
+              await markOrgLeasesNotified(orgId, [...mailed]);
+              summary.leases += mailed.size;
+            }
+          } catch (err) {
+            console.error(`Lease reminders failed for firm ${orgId}:`, err.message);
+            summary.failed += 1;
+          }
+        }
+        logEvent("org_lease_notices", { source: dryRun ? `dry:${summary.previews.length}` : `sent:${summary.sent}` });
+        console.log(`Lease reminders${dryRun ? " (dry run)" : ""}: ${summary.sent} sent covering ${summary.leases} of ` +
+          `${summary.due} due across ${summary.firms} firm(s), ${summary.optedOut} opted out, ${summary.failed} failed`);
+        return sendJson(res, 200, summary);
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("lease notices error:", err);
+        return sendJson(res, 500, { error: "The lease reminder run failed: " + String(err && err.message || err).slice(0, 200) });
+      }
+    });
+    return;
+  }
+
   if (req.method === "POST" && req.url.split("?")[0] === "/api/watchlist/digest") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
     if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
@@ -30802,8 +30988,8 @@ const server = http.createServer((req, res) =>
     // Three Spaces, slice 6. Membership-gated through openOrg + memberOf like
     // every firm surface; every row carries org_id AND building_id, and the
     // building must be on this firm's board before a lease may be filed on
-    // it. Rules in org-leases.js; renewal-watch.js is NOT wired to send —
-    // see the migration's header for why, and whose decision that is.
+    // it. Rules in org-leases.js. Nothing in THIS block mails: the
+    // reminders go from POST /api/org/leases/notices, driven from outside.
     if (orgPath === "/api/org/leases") {
       const leasesFor = async () => {
         const user = await openOrg();
@@ -30896,7 +31082,15 @@ const server = http.createServer((req, res) =>
           // validateEdit rule, so an edit cannot accept what an add refuses.
           const { row, errors } = ORGLEASES.validateLease(patch, existing);
           if (errors.length) return sendJson(res, 400, { error: errors.join(" ") });
-          await sbRequest("PATCH", scope, { ...row, updated_at: new Date().toISOString() }, { prefer: "return=minimal" });
+          // Changed dates are a new deadline (a renewal, a corrected typo),
+          // so the one-email-per-lease mark is cleared and the reminder
+          // comes round again for the new date.
+          const dayOf = (v) => String(v || "").slice(0, 10);
+          const redated = dayOf(row.lease_expiry) !== dayOf(existing.lease_expiry) ||
+            dayOf(row.option_notice_date) !== dayOf(existing.option_notice_date);
+          await sbRequest("PATCH", scope,
+            { ...row, ...(redated ? { renewal_notified_at: null } : {}), updated_at: new Date().toISOString() },
+            { prefer: "return=minimal" });
           const after = ((await sbRequest("GET", `${scope}&limit=1`)) || [])[0] || { ...existing, ...row };
           logEvent("org_leases", { source: "edit" });
           return sendJson(res, 200, { ok: true, lease: ORGLEASES.toLease(after, ctx.user.id) });

@@ -199,6 +199,10 @@ main.wrap{max-width:none;padding:0}
 .hmchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:var(--text-small);color:var(--ink-mute)}
 .hmchips span{background:var(--wash);padding:3px 9px;border-radius:var(--r-sm)}
 .hmlab{font-size:var(--text-tiny);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+/* Classes rather than the inline styles these were, so the phone block can
+   bring them in to the card's 16px gutter. */
+.hmrlab{padding:0 22px 6px}
+.hmdrvs{padding:22px}
 .hmrange{margin:0 24px;border:1px solid var(--edge);border-radius:var(--r-md);display:grid;grid-template-columns:1fr 1fr 1fr}
 .hmrcell{padding:20px;border-right:1px solid var(--hair);text-align:center}
 .hmrcell:last-child{border-right:0}
@@ -293,24 +297,114 @@ main.wrap{max-width:none;padding:0}
 .hmclose .btn2{background:transparent;border-color:#3D4B5F;color:#D5DDE8}
 .hmclose .btn2:hover{background:transparent;color:#fff;border-color:#5A6980}
 
-/* --- Below ~900px every 2- and 3-column grid becomes one column, the search
-       row stacks, and the photo goes 16:9 so a 3:1 strip does not become a
-       60px sliver on a phone. ---------------------------------------------- */
+/* --- Below ~900px the two- and three-column grids become one column (the
+       feature tiles two), and the photo goes 16:9 so a 3:1 strip does not
+       become a 60px sliver. ------------------------------------------------ */
 @media (max-width:899.98px){
   .hmband,.hmintro,.hmfirms{padding-left:16px;padding-right:16px}
   .hmreport{padding-left:16px;padding-right:16px}
-  .hmtwo,.hmsteps,.hmtiles{grid-template-columns:1fr}
+  .hmtwo,.hmsteps{grid-template-columns:1fr}
+  .hmtiles{grid-template-columns:1fr 1fr}
   .hmphoto{aspect-ratio:16/9}
-  .hmrow{flex-direction:column;align-items:stretch}
-  .hmrow select{border-left:0;border-top:1px solid var(--line)}
-  .hmrow .btn{width:100%;text-align:center}
   .hmtwo h1,.hmtwo h2{font-size:30px}
   .hmfind h2{font-size:var(--text-hero)}
   .hmfhead h2{font-size:var(--text-figure)}
-  .hmrange{grid-template-columns:1fr}
-  .hmrcell{border-right:0;border-bottom:1px solid var(--hair)}
-  .hmrcell:last-child{border-bottom:0}
+  .hmh,.hmclose h2{text-wrap:balance}
+  /* The answer first: Likely across the top, Low and High side by side
+     under it. Stacked one over another the three were a 420px tower on a
+     phone, with the figure the page is about in the middle of it. Order
+     only, so a screen reader still reads Low, Likely, High. */
+  .hmrange{grid-template-columns:1fr 1fr}
+  .hmrcell.mid{order:-1;grid-column:1 / -1;border-right:0;border-bottom:1px solid var(--hair)}
   .hmprice{flex-direction:column;align-items:flex-start;gap:12px}
+}
+
+/* --- Phones (2026-11-18, the owner: "Improve the landing page for Mobile").
+       Under 660px the sample report's two tables lost their right-hand
+       columns off the edge of the card: the $/SF and the source badge, the
+       two things the page is selling, sat behind a sideways scroll nothing
+       pointed to. Each row is now two lines (address and $/SF, then date,
+       size and source), the buttons take the full width a thumb wants, and
+       the bands carry less air above and below. Words the hidden column
+       heads used to say ("Sold", "SF", "/SF") come back as generated text.
+       660px rather than 640: the comp table is 620px wide plus the page's
+       two 16px gutters, so at 640 it still scrolled by 14px. */
+@media (max-width:659.98px){
+  .hmintro{padding-top:40px;padding-bottom:44px}
+  .hmintro .hmcol{gap:28px}
+  .hmtwo{gap:28px}
+  .hmtwo>div{padding-top:18px}
+  .hmtwo h1,.hmtwo h2{font-size:var(--text-h1)}
+  .hmtwo p{font-size:var(--text-input);line-height:1.6}
+  /* Full width and one under the other, capped so a large phone held
+     sideways does not get a 600px button. A flex column stretches its
+     children, so the shared .btn is not restyled. */
+  .hmctas,.hmbtns{flex-direction:column;align-items:stretch;width:100%;max-width:420px;margin-left:auto;margin-right:auto}
+  .hmband{padding-top:48px;padding-bottom:40px}
+  .hmfind{gap:14px}
+  .hmfind .hmsub{font-size:var(--text-input)}
+  .hmrow{flex-direction:column;align-items:stretch}
+  .hmrow select{border-left:0;border-top:1px solid var(--line)}
+  .hmrow .btn{width:100%;text-align:center}
+  /* One badge per line either way at this width; left-aligned in a block
+     that is itself centred, they read as a key rather than a ragged stack. */
+  .hmlegend{display:grid;justify-content:center;justify-items:start}
+
+  .hmreport{padding-bottom:56px}
+  .hmcap{padding:12px 16px}
+  .hmcapx{display:none}
+  .hmsubj{padding:20px 16px 16px}
+  .hmaddr{font-size:var(--text-subhead);line-height:1.3}
+  .hmrlab{padding:0 16px 6px}
+  .hmrange{margin:0 16px}
+  .hmrcell{padding:16px 8px}
+  .hmrcell .hmfig{font-size:var(--text-subhead)}
+  .hmdrvs{padding:18px 16px}
+
+  .hmscroll{overflow-x:visible}
+  .hmtable,.hmvtable{min-width:0}
+  .hmtr.head,.hmvr.head{display:none}
+  /* Two lines per row. Flex rather than grid so a row that cannot fit its
+     second line (the Verified badge names its broker) wraps the badge to a
+     third, right-aligned, instead of running out of the card. The ::after
+     is the line break: a zero-height item a full line wide. */
+  .hmtr:not(.med):not(.head),.hmvr:not(.head){display:flex;flex-wrap:wrap;align-items:center;gap:2px 4px;padding:12px 16px}
+  .hmtr:not(.med):not(.head)::after,.hmvr:not(.head)::after{content:"";order:3;flex-basis:100%}
+  .hmtr:not(.med)>:nth-child(1),.hmvr>:nth-child(1){order:1;flex:1 1 0;min-width:0;margin-right:8px;font-weight:600;color:var(--ink)}
+  .hmtr:not(.med)>:nth-child(4),.hmvr>:nth-child(4){order:2;font-weight:600;color:var(--ink)}
+  .hmtr:not(.med)>:nth-child(2),.hmvr>:nth-child(2){order:4;font-size:var(--text-small);color:var(--ink-3)}
+  .hmtr:not(.med)>:nth-child(3),.hmvr>:nth-child(3){order:5;font-size:var(--text-small);color:var(--ink-3)}
+  .hmtr:not(.med)>:nth-child(5){order:6;margin-left:auto;padding-left:4px}
+  .hmtr:not(.med)>:nth-child(2)::before{content:"Sold "}
+  .hmvr>:nth-child(2)::before{content:"Closed "}
+  .hmtr:not(.med)>:nth-child(3)::before,.hmvr>:nth-child(3)::before{content:"· "}
+  .hmtr:not(.med)>:nth-child(3)::after,.hmvr>:nth-child(3)::after{content:" SF"}
+  .hmtr>:nth-child(4)::after,.hmvr>:nth-child(4)::after,.hmtr.med>:nth-child(2)::after{content:"/SF";font-weight:400;color:var(--ink-3)}
+  /* The median row: its label and $/SF on one line, the working under the
+     figure it multiplies. */
+  .hmtr.med{grid-template-columns:1fr auto;gap:2px 12px;padding:12px 16px}
+  .hmtr.med .hmmedlab{grid-column:auto}
+  .hmtr.med>:nth-child(2){text-align:right}
+  .hmtr.med .hmarith{grid-column:1 / -1;text-align:right;font-size:var(--text-small)}
+  .hmfoot{padding:14px 16px}
+
+  .hmfirms{padding-top:56px;padding-bottom:60px}
+  .hmfirms .hmcol{gap:28px}
+  .hmsteps>div{padding:20px}
+  .hmsteph{font-size:var(--text-subhead)}
+  .hmvault .hmcap{padding:12px 16px}
+  .hmvr .who{white-space:normal;flex-wrap:wrap}
+  /* "$/SF, size, date only" repeated on every row, and without the column
+     head above it it no longer says what it is answering. The footnote
+     under the table says the same thing once. */
+  .hmvr .shown{display:none}
+  .hmvfoot{padding:12px 16px}
+  .hmtiles{grid-template-columns:1fr}
+  .hmtiles>div{padding:16px 20px}
+  .hmprice a{display:inline-block;padding:8px 0}
+
+  .hmclose{padding:48px 16px}
+  .hmclose h2{font-size:var(--text-h1)}
 }`;
 
 /**
@@ -349,7 +443,8 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<span>${esc(psf)}</span><span><span class="badge ${cls}">${label}</span></span></div>`).join("");
 
   const drivers = [
-    ["up", "&#9650;", "Inland Empire vacancy tightening near the I-15 corridor"],
+    // A non-breaking hyphen (U+2011): at phone width "I-15" broke across two lines.
+    ["up", "&#9650;", "Inland Empire vacancy tightening near the I‑15 corridor"],
     ["up", "&#9650;", "Sub-25K SF buildings trade at a premium: scarce supply"],
     // The MARK is interpolated raw, so it stays an entity; the range is
     // written out in words, which also keeps a dash out of the copy.
@@ -400,11 +495,14 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<div class="hmcol">` +
     `<div class="hmeye">Enterprise software for commercial real estate</div>` +
     `<div class="hmtwo">` +
-    `<div><h1>Data storage</h1><p>Keep all of your firm’s closed deals in one private place. ` +
-    `Upload them once and they appear in every report you run, labeled as yours.</p></div>` +
-    `<div><h2>Research</h2><p>A cited comp report on any commercial address in about a minute. ` +
+    // Research first (2026-11-18, the owner: "Have research before data
+    // storage"): it is the free door, and the comp finder below is its next
+    // step. The first column carries the page's one <h1>.
+    `<div><h1>Research</h1><p>A cited comp report on any commercial address in about a minute. ` +
     `Public records, listings and verified broker submissions, with the source disclosed on ` +
     `every line.</p></div>` +
+    `<div><h2>Data storage</h2><p>Keep all of your firm’s closed deals in one private place. ` +
+    `Upload them once and they appear in every report you run, labeled as yours.</p></div>` +
     `</div>` +
     // The first door on the page. A member already has an account, so theirs
     // goes to the workspace (public-pages.test.js's signup-door rule).
@@ -442,14 +540,16 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
 
     // --- Band 2: proof it did it -------------------------------------------
     `<section class="hmreport" id="sample"><div class="hmcard">` +
-    `<div class="hmcap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span>` +
+    // The city is dropped on a phone (.hmcapx): the address is the next line,
+    // and with it the caption wrapped to two lines beside "Illustrative".
+    `<div class="hmcap"><span>Sample report &middot; Industrial<span class="hmcapx"> &middot; Rancho Cucamonga, CA</span></span>` +
     `<span class="ill">Illustrative</span></div>` +
     `<div class="hmsubj">` +
     `<div class="hmaddr">${esc(SAMPLE_ADDRESS)}</div>` +
     `<div class="hmchips"><span>Industrial</span><span>${SAMPLE_SIZE_SQFT} SF &middot; public record</span>` +
     `<span>24-month lookback</span><span>5 comparables</span></div>` +
     `</div>` +
-    `<div style="padding:0 22px 6px" class="hmlab">What this building is worth &middot; from 5 comparable sales</div>` +
+    `<div class="hmlab hmrlab">What this building is worth &middot; from 5 comparable sales</div>` +
     `<div class="hmrange">` +
     `<div class="hmrcell"><div class="hmlab">Low</div><div class="hmfig">${SAMPLE_RANGE.low.value}</div>` +
     `<div class="hmpsf">at ${SAMPLE_RANGE.low.psf}/SF</div></div>` +
@@ -458,13 +558,13 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<div class="hmrcell"><div class="hmlab">High</div><div class="hmfig">${SAMPLE_RANGE.high.value}</div>` +
     `<div class="hmpsf">at ${SAMPLE_RANGE.high.psf}/SF</div></div>` +
     `</div>` +
-    `<div style="padding:22px">` +
+    `<div class="hmdrvs">` +
     `<div class="hmlab" style="margin-bottom:10px">What&#39;s driving prices here</div>` +
     `<div style="display:flex;flex-direction:column;gap:8px">${drivers}</div>` +
     `</div>` +
     `<div style="border-top:1px solid var(--edge)">` +
     `<div class="hmcap" style="border-bottom:0;padding-bottom:8px"><span>Comparable properties</span>` +
-    `<span class="ill">source badged per comp</span></div>` +
+    `<span class="ill hmcapx">source badged per comp</span></div>` +
     `<div class="hmscroll"><div class="hmtable">` +
     `<div class="hmtr head"><span>Address</span><span>Sold</span><span>SF</span><span>$/SF</span><span>Source</span></div>` +
     compRows +

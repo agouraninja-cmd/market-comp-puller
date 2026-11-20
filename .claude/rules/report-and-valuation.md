@@ -539,9 +539,11 @@ and exporting each slide to PNG (a PowerShell one-liner, no dependency).
    `basisRow` carries it so free and Pro ranges agree. The prompt's MATCH
    AGE AND CONSTRUCTION line steers which comps are CHOSEN (vintage within
    ~15 years, same construction) for the commercial types; Residential has
-   its own vintage sentence. **Not yet in `comp_corpus`**: harvest and
-   `corpusRowsForMarket` do not name the column, so a reused corpus comp
-   arrives without it until a migration adds it (rule 9: migrate first).
+   its own vintage sentence. **Stored in `comp_corpus.construction`**
+   (migration 064, applied 2026-11-19): harvest writes it, both corpus
+   reads select it, blend-corpus.js maps it, and the KNOWN RECENT COMPS
+   lines offer it to the model (`typeSpecsOf`) so a reused comp keeps it.
+   Deploy order is hard (rule 9).
 
 3f. **A leases-only report headlines RENT, not a missing sale price**
    (2026-08-21). Until this, `txFocus: "leases"` produced a hero with three

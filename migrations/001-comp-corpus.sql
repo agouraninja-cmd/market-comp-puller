@@ -22,7 +22,7 @@ create table if not exists public.comp_corpus (
   units text, price_per_unit text,
   lot_acres text, price_per_acre text, zoning text,
   beds_baths text, "condition" text,
-  tenancy text, year_built text,
+  tenancy text, year_built text, construction text,
   notes text, source_url text, source_type text, lat text, lng text,
   verified boolean default false
 );

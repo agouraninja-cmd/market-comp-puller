@@ -2424,7 +2424,9 @@ test("a report card is scrolled to by its layout position, clear of the sticky b
   run(0, true);       // no bar on a short report; reduced motion jumps
   assert.deepEqual({ ...asked }, { top: 2300 - 8, behavior: "auto" });
   // And the jump bar goes through it, rather than keeping a copy.
-  assert.match(html, /b\.addEventListener\("click", \(\) => scrollToReportCard\(sec\.el\)\)/);
+  // (It looks the card up at the click since 2026-11-20: a kept button can
+  // outlive the card element it was built beside; test/phone-scroll.test.js.)
+  assert.match(html, /b\.addEventListener\("click", \(\) => \{\s*const el = document\.getElementById\(sec\.id\);\s*if \(el\) scrollToReportCard\(el\);/);
 });
 
 test("the debt card's loan box follows the shared loan, except where its own contents are newer", () => {

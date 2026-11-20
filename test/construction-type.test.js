@@ -84,6 +84,22 @@ test("valueFromComps forwards the subject's construction into the weights", () =
   assert.ok(aware.mid >= blind.mid, `matching construction should not pull the value toward the metal buildings (${aware.mid} vs ${blind.mid})`);
 });
 
+test("the corpus writes and reads construction (migration 064)", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  assert.match(src, /construction: String\(c\.construction \|\| ""\)/, "harvest row keeps it");
+  const reads = src.match(/`\$\{ALL_TYPE_COMP_FIELDS\.join\(","\)\}[^`]*`/g) || [];
+  assert.ok(reads.length >= 2 && reads.every((s) => s.includes("construction")),
+    "every corpus select that names the per-type columns names construction too");
+  const { mapCorpusRow } = require("../blend-corpus");
+  if (typeof mapCorpusRow === "function") {
+    assert.strictEqual(mapCorpusRow({ address: "1 A St", construction: "Masonry" }).construction, "Masonry");
+  }
+  const migration = fs.readFileSync(path.join(__dirname, "..", "migrations", "064-comp-construction.sql"), "utf8");
+  assert.match(migration, /add column if not exists construction text/);
+});
+
 test("locked_basis carries construction so free and Pro weigh alike", () => {
   const row = basisRow({ address: "9 Elm St", date: "Jun 2026", transaction: "Sale", size_sqft: "40,000",
     price_per_sqft: "$90", source_type: "news", construction: "Masonry" }, 0);

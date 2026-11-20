@@ -4434,7 +4434,7 @@ async function corpusRowsForMarkets(markets, property_type, limit) {
       dbRows = await sbRequest("GET",
         `comp_corpus?${filter}&property_type=eq.${encodeURIComponent(property_type)}` +
         `&select=ts,address,transaction,deal_date,size_sqft,price_or_rate,price_per_sqft,cap_rate,` +
-        `${ALL_TYPE_COMP_FIELDS.join(",")},market,source_url,source_type,verified&order=ts.desc&limit=${limit}`) || [];
+        `${ALL_TYPE_COMP_FIELDS.join(",")},construction,market,source_url,source_type,verified&order=ts.desc&limit=${limit}`) || [];
     } catch (e) { noteCorpusFailure("read", e); }
   }
   const want = new Set(wanted);
@@ -4464,7 +4464,7 @@ async function corpusRowsForType(property_type, limit) {
       dbRows = await sbRequest("GET",
         `comp_corpus?property_type=eq.${encodeURIComponent(property_type)}` +
         `&select=ts,dedupe_key,address,transaction,deal_date,size_sqft,price_or_rate,price_per_sqft,cap_rate,` +
-        `${ALL_TYPE_COMP_FIELDS.join(",")},market,source_url,source_type,verified,lat,lng,year_built,tenancy` +
+        `${ALL_TYPE_COMP_FIELDS.join(",")},market,source_url,source_type,verified,lat,lng,year_built,tenancy,construction` +
         `&order=ts.desc&limit=${cap}`) || [];
     } catch (e) { noteCorpusFailure("read", e); }
   }
@@ -8786,6 +8786,8 @@ async function harvestComps(type, searchAddress, payload) {
         ...Object.fromEntries(ALL_TYPE_COMP_FIELDS.map((f) => [f, String(c[f] || "")])),
         tenancy: String(c.tenancy || ""),
         year_built: String(c.year_built || ""),
+        // Migration 064. Normalized onto the closed vocabulary at parse time.
+        construction: String(c.construction || ""),
         notes: String(c.notes || ""),
         source_url: String(c.source_url || ""),
         source_type: String(c.source_type || ""),
@@ -9363,7 +9365,8 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 
   // Type-specific specs already stored on a corpus row. Passed through so a
   // reused comp keeps them, instead of coming back with those columns empty.
-  const typeSpecsOf = (c) => (typeSpec ? typeSpec.fields : [])
+  // Construction rides along too (migration 064), so a reused comp keeps it.
+  const typeSpecsOf = (c) => [...(typeSpec ? typeSpec.fields : []), ...(wantsConstruction ? ["construction"] : [])]
     .map((f) => (c[f] ? ` | ${f.replace(/_/g, " ")} ${c[f]}` : "")).join("");
 
   // What the owner told us about their own building. Given to the model so it

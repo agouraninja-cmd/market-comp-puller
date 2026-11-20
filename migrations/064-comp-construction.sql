@@ -1,0 +1,25 @@
+-- 064: comp_corpus.construction — how a comp's building is built (2026-11-19).
+--
+-- RUN THIS BEFORE DEPLOYING THE CODE THAT NAMES IT.
+--
+-- PR #491 taught the comp search to report a commercial comp's construction
+-- type (Tilt-up concrete, Concrete frame, Steel frame, Metal building,
+-- Masonry, Wood frame; report-parse.js CONSTRUCTION_VALUES) and the valuation
+-- to down-weight a comp built differently from the subject. It deliberately
+-- did not store the field, so a comp reused from the corpus came back without
+-- it. This column lets harvestComps keep it and corpusRowsForMarket hand it
+-- back.
+--
+-- Deploy order is HARD, the same as 028: harvest names every column in its
+-- insert and corpus retrieval names them in its &select=, and PostgREST 400s
+-- either on an unknown column. Both paths swallow the error, so code deployed
+-- first freezes the corpus silently (the 2026-07 outage's shape).
+--
+-- Purely additive and idempotent. NULL / "" is "unknown", which the weighting
+-- treats as neutral.
+alter table public.comp_corpus add column if not exists construction text;
+
+-- Verify (expects zero rows):
+--   select 'missing: construction'
+--   where not exists (select 1 from information_schema.columns
+--                     where table_name = 'comp_corpus' and column_name = 'construction');

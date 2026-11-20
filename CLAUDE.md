@@ -56,6 +56,11 @@ comps-mode split was merged (commit 87095aa); `#owner` survives only as a
 deep link that pre-opens the property-details section. The hero carries a
 "Get a free Broker Opinion of Value" button — the site's lead funnel; those
 leads are stored with `source: "bov"` (vs `"export"` for export unlocks).
+Since 2026-11-20 a stored BOV request starts the **BOV desk** on its own: the
+local brokers are found and an email to each is drafted on `/admin/bov`, the
+owner sends them (nothing reaches a broker unread unless `BOV_AUTOPILOT` is
+on), and the first broker to accept is introduced to the requester by email
+(`bov-desk.js`; bov-desk.md).
 The front-end is a single HTML file plus one shared script it depends on at
 runtime, **`valuation.js`** (the value-range math, extracted so the browser
 and the accuracy backtest run one copy of it — see "Non-obvious flows" in
@@ -154,8 +159,10 @@ session that never reads it.
 12. **Nothing mails or sweeps on a timer.** The watchlist digest, the trial
     emails and the permit sweep are `ADMIN_KEY`-gated routes driven from
     outside the process. A ledger is marked only after the send, and opening
-    `/admin` must never send mail. [watchlist-and-mail.md, billing.md,
-    permits.md]
+    `/admin` must never send mail. The BOV desk keeps both halves: its broker
+    search is started by the request itself or by a click, and opening
+    `/admin/bov` only reads. [watchlist-and-mail.md, billing.md, permits.md,
+    bov-desk.md]
 13. **Checkout has no fallthrough.** `/api/checkout`'s `PLANS` map 400s an
     unknown plan, `.pricing-buy` `data-plan` values must match it, and
     `single_report` stays retired (a source-scan test pins it). [billing.md]
@@ -436,6 +443,10 @@ so they are trusted config and are never set in production.
 | `PARALLEL_SEARCH` | off | two concurrent search lanes; measured and not worth it yet | search-pipeline.md |
 | `CORPUS_RADIUS`, `CORPUS_METRO`, `CORPUS_LISTED`, `ARCHIVE_FIRST` | on | `off` rolls back the radius blend, metro retrieval, on-market listings, archive-first | corpus.md |
 | `LEAD_METRO` | on | broker lead coverage matches across metro groups | vault.md |
+| `BOV_AUTOMATION` | on | a stored BOV request starts the BOV desk on its own (brokers found, emails drafted); `off` is the rollback | bov-desk.md |
+| `BOV_AUTOPILOT` | off | send the BOV desk's drafts without waiting for the owner, behind four gates; off, nothing reaches a broker until a person presses Send | bov-desk.md |
+| `BOV_FROM` | unset | who BOV mail is from (`Name <name@compninja.co>`), and where replies go; unset is `EMAIL_FROM` with replies to `LEAD_NOTIFY_EMAIL` | bov-desk.md |
+| `BOV_DAILY_SEARCHES` | 20 | broker searches per UTC day (the lead form is public) | bov-desk.md |
 | `NAV_SHELL` | `rail` | signed-in chrome as a left rail; `bar` is the rollback | app-shell.md |
 | `WARM_TABS` | `all` | build every rail tab the member can see ahead of the click; `one` is the rollback (only the likely next tab); an unknown value exits at boot | app-shell.md |
 | `ADMIN_KEY_IN_URL` | off | `on` lets the six admin routes that used to take `?key=` take it again (the CSV downloads, `/api/stats`, `/api/admin/submissions`, `/api/corpus-audit`); the rollback for a forgotten bookmark, not a setting to leave on | billing.md |
@@ -469,6 +480,7 @@ gone. Document a new feature in its area's file, not here.
 | `report-and-valuation.md` | the report front end: search form, valuation math and hero, flows 2–4 and 3a–3f, private comps on screen and in exports, PowerPoint export, the Collateral Check card | `index.html`, `valuation.js`, `comp-gate.js`, `market-snapshot.js`, `collateral-check.js` |
 | `billing.md` | Pro tier, trial, prices, free allowance, passkeys, admin access, branding, trial emails, `/api/config`, `/pricing` | `entitlements.js`, `stripe.js`, `branding.js`, `trial-notices.js`, `pricing-page.js` |
 | `vault.md` | the broker vault (import, mapper, editing, publishing, dashboard, gut check, BOV, building facts), comp submissions, the lead inbox | `vault-*.js`, `broker-*.js`, `building-facts.js`, `gut-check.js`, `bov-log.js`, `blend-comps.js`, `xlsx.js` |
+| `bov-desk.md` | the BOV desk: finding local brokers for a BOV request, the drafted outreach, sending, the accept link and the introduction, autopilot, `/admin/bov`, migration 065 | `bov-desk.js`, `bov-desk-page.js`, `test/bov-desk*.test.js` |
 | `firms.md` | firms: membership, shelf, buildings, sheets, leases, contacts, messaging doors, Messages' Reports view, auto-share, the shared vault, seats, shop kinds | `org-*.js`, `buildings-page.js`, `messaging.js`, `messages-page.js`, `report-inbox.js` |
 | `workspace.md` | the signed-in Home (`/desk`): Home as one map and its layer switch, layout history, one-paint fill, `DESK_BOOT`, `AUTH_BOOT`, `pagePath`, index.html's script served as `/app.<hash>.js` (`app-page.js`) | `index.html`, `home-map.js`, `app-page.js`, desk tests |
 | `app-shell.md` | the `NAV_SHELL` rail, the signed-in header on server-rendered pages, nav parity with `index.html`, the shared button and tabs (`components.js`), instant tab switching (prerendered tabs, `/api/visit`), the security headers on every response (`security-headers.js`), stopping and crashing without dropping requests (`graceful-shutdown.js`) | `theme.js`, `components.js`, `instant-nav.js`, `security-headers.js`, `graceful-shutdown.js`, nav tests |

@@ -12380,7 +12380,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     card.classList.remove("hidden");
 
-    mapInstance = L.map("compMap", { scrollWheelZoom: false });
+    mapInstance = L.map("compMap", { zoomControl: false, scrollWheelZoom: false });
     // On a phone one finger scrolls the report past the map; fullscreen, the
     // map is the page, so one finger drags it again (setMapFullscreen).
     const syncMapTouch = touchPanMap(mapInstance, () => !document.getElementById("compMap").classList.contains("map-fullscreen"));
@@ -17240,7 +17240,6 @@ async function renderMyDesk() {
     // does not scroll, so one finger drags it as before.
     const hmTouch = touchPanMap(hmMap, () => !(document.documentElement.classList.contains("nav-rail") && window.matchMedia("(min-width: 900px)").matches));
     try { window.matchMedia("(min-width: 900px)").addEventListener("change", hmTouch); } catch (_) {}
-    L.control.zoom({ position: "topright" }).addTo(hmMap);
     hmBaseLayers = hmBasemap().addTo(hmMap);
     hmPinLayer = L.layerGroup().addTo(hmMap);
     hmMap.setView([39.6, -98.6], 4);

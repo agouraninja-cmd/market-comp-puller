@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-11-20",
+    "type": "fix",
+    "title": "Swiping up on a comp report on a phone no longer makes the section bar flicker",
+    "details": "On an iPhone, swiping up slides Safari’s address bar away, and the browser reports that as the window changing size, once a frame. The report’s sticky section bar (Value, Market, Drivers, Position, Comps) rebuilt itself on every one of those, 27 times in one swipe up and back down, so it flashed and jumped back to its first link if you had slid it sideways. It is now rebuilt only when its sections change, and a change of height alone is checked once, after the swipe settles. Turning the phone sideways still redraws it straight away."
+  },
+  {
     "date": "2026-11-19",
     "type": "improvement",
     "title": "Saved comps remember how the building is built",

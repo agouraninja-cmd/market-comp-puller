@@ -112,3 +112,76 @@ test("drawStaticMap waits, then draws decoded tiles, then encodes off the main t
   assert.match(tile[0], /img\.decode\(\)\.then\(\(\) => finish\(img\), \(\) => finish\(img\)\)/,
     "a tile that cannot decode early is still drawn");
 });
+
+// ---------------------------------------------------------------------------
+// The report's jump bar and Safari's toolbar (2026-11-20, the owner: "When
+// swiping up on mobile in CompNinja it still glitches"). On an iPhone a swipe
+// slides the address bar away, which fires one resize per frame; the bar was
+// torn down and rebuilt on each (27 times in one swipe up and down, measured
+// by imitating the toolbar in Chromium), flashing it and throwing its
+// sideways scroll back to the first link.
+// ---------------------------------------------------------------------------
+function reportNavHarness() {
+  const start = HTML.indexOf("  const REPORT_NAV_MIN_SCREENS = 2;");
+  const end = HTML.indexOf("  // Bring one report card to the top of the screen.");
+  assert.ok(start !== -1 && end > start, "syncReportNav moved or was renamed");
+  const listeners = HTML.slice(HTML.indexOf("  const REPORT_NAV_RESIZE_SETTLE_MS"), HTML.indexOf("  function setReportTab(which)"));
+  assert.ok(listeners.includes('window.addEventListener("resize"'), "the jump bar's resize listener moved");
+  const els = {};
+  const mk = (id) => (els[id] = {
+    id, hidden: false, offsetParent: {}, offsetHeight: 40, children: [], builds: 0,
+    classList: { add: (c) => { if (c === "hidden") els[id].hidden = true; }, remove: (c) => { if (c === "hidden") els[id].hidden = false; }, contains: (c) => c === "hidden" && els[id].hidden },
+    getBoundingClientRect: () => ({ top: 0, height: 5000 }),
+    appendChild(ch) { this.children.push(ch); },
+    set innerHTML(v) { this.children = []; this.builds++; },
+  });
+  ["reportNav", "reportNavInner", "results"].forEach(mk);
+  const timers = [];
+  const ctx = {
+    els, timers, resize: null,
+    window: { innerWidth: 390, innerHeight: 664, addEventListener: (t, fn) => { if (t === "resize") ctx.resize = fn; } },
+    document: {
+      getElementById: (id) => els[id] || null,
+      createElement: () => ({ dataset: {}, addEventListener() {}, setAttribute() {}, removeAttribute() {} }),
+      querySelectorAll: () => [],
+    },
+    requestAnimationFrame: () => {},
+    setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
+    clearTimeout: (n) => { if (timers[n - 1]) timers[n - 1].fn = () => {}; },
+    scrollToReportCard: () => {},
+    markReportNavPosition: () => {},
+  };
+  vm.createContext(ctx);
+  const sections = HTML.slice(HTML.indexOf("const REPORT_NAV_SECTIONS"), HTML.indexOf("  const REPORT_NAV_MIN_SCREENS = 2;"));
+  vm.runInContext(sections + HTML.slice(start, end) + listeners + "\nthis.syncReportNav = syncReportNav; this.REPORT_NAV_SECTIONS = REPORT_NAV_SECTIONS;", ctx);
+  ctx.REPORT_NAV_SECTIONS.forEach((s) => mk(s.id));
+  return ctx;
+}
+
+test("the jump bar is built once, not on every resize of a swipe", () => {
+  const ctx = reportNavHarness();
+  ctx.syncReportNav();
+  const inner = ctx.els.reportNavInner;
+  assert.equal(inner.builds, 1);
+  assert.ok(inner.children.length >= 3);
+  // The same links again: nothing is torn down.
+  ctx.syncReportNav();
+  assert.equal(inner.builds, 1, "a re-sync with the same links must keep the bar as it is");
+  // Safari's toolbar sliding away: height-only resizes, one per frame.
+  for (let h = 664; h <= 746; h += 6) { ctx.window.innerHeight = h; ctx.resize(); }
+  assert.equal(inner.builds, 1, "nothing is rebuilt mid-swipe");
+  // They are answered once, after the swipe settles, and still rebuild nothing.
+  const live = ctx.timers.filter((t) => t.fn.toString() !== "() => {}");
+  assert.equal(live.length, 1, "one settle check, not one per frame");
+  live[0].fn();
+  assert.equal(inner.builds, 1);
+  // A rotation (width) is answered at once.
+  ctx.window.innerWidth = 844;
+  const before = ctx.timers.length;
+  ctx.resize();
+  assert.equal(ctx.timers.length, before, "a width change does not wait");
+  // A card going away changes the links, which does rebuild.
+  ctx.els[ctx.REPORT_NAV_SECTIONS[0].id].offsetParent = null;
+  ctx.syncReportNav();
+  assert.equal(inner.builds, 2);
+});

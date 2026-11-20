@@ -10363,6 +10363,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // same rule the firm shelf's search box and the history filter follow.
   const REPORT_NAV_MIN_SCREENS = 2;
   let reportNavTargets = [];
+  let reportNavBuilt = "";   // the links last drawn; see syncReportNav
 
   function syncReportNav() {
     const nav = document.getElementById("reportNav");
@@ -10379,20 +10380,34 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (results.classList.contains("hidden") || shown.length < 3 || !longEnough) {
       nav.classList.add("hidden");
       reportNavTargets = [];
+      reportNavBuilt = "";
       return;
     }
     nav.classList.remove("hidden");
-    inner.innerHTML = "";
     reportNavTargets = shown;
-    shown.forEach((sec) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "rn-link";
-      b.textContent = sec.label;
-      b.dataset.target = sec.id;
-      b.addEventListener("click", () => scrollToReportCard(sec.el));
-      inner.appendChild(b);
-    });
+    // Rebuilt only when the links themselves change (2026-11-20). On an
+    // iPhone a swipe collapses Safari's address bar, which fires a resize
+    // per frame; rebuilding then flashed the bar and threw its sideways
+    // scroll back to the first link, 27 times in one swipe up and down.
+    const built = shown.map((sec) => sec.id + "\u0000" + sec.label).join("\u0001");
+    if (built !== reportNavBuilt) {
+      reportNavBuilt = built;
+      inner.innerHTML = "";
+      shown.forEach((sec) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "rn-link";
+        b.textContent = sec.label;
+        b.dataset.target = sec.id;
+        // Looked up at the click, since a kept button can outlive the card
+        // element it was built beside.
+        b.addEventListener("click", () => {
+          const el = document.getElementById(sec.id);
+          if (el) scrollToReportCard(el);
+        });
+        inner.appendChild(b);
+      });
+    }
     markReportNavPosition();
   }
 
@@ -10443,7 +10458,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     requestAnimationFrame(() => { reportNavTick = false; markReportNavPosition(); });
   }, { passive: true });
   // A resize changes both the "is it long enough" answer and every offset.
-  window.addEventListener("resize", () => { if (!document.getElementById("results").classList.contains("hidden")) syncReportNav(); });
+  // A change of WIDTH (a rotation, a desktop window) is answered at once. A
+  // change of height alone is, on a phone, the browser's toolbar sliding
+  // away or back during a swipe, one resize per frame: it is answered once,
+  // after the swipe settles, so nothing is measured or redrawn mid-swipe.
+  const REPORT_NAV_RESIZE_SETTLE_MS = 250;
+  let reportNavWidth = window.innerWidth;
+  let reportNavResizeTimer = 0;
+  function reportNavOnResize() {
+    if (!document.getElementById("results").classList.contains("hidden")) syncReportNav();
+  }
+  window.addEventListener("resize", () => {
+    clearTimeout(reportNavResizeTimer);
+    if (window.innerWidth !== reportNavWidth) {
+      reportNavWidth = window.innerWidth;
+      reportNavOnResize();
+      return;
+    }
+    reportNavResizeTimer = setTimeout(reportNavOnResize, REPORT_NAV_RESIZE_SETTLE_MS);
+  });
 
   function setReportTab(which) {
     const isReport = which !== "analysis";

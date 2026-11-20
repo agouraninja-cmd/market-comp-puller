@@ -39,11 +39,13 @@ zoom (and pan). There is no "Use two fingers to move the map" hint.
   dialog or Home map is built with `dragging: false`. /comps' empty map is
   static on purpose (`dragging:false`) and is not one of those.
 
-## No zoom buttons; Ctrl + scroll zooms (2026-11-20)
+## No zoom buttons; Ctrl + scroll, or rest 2 s and scroll (2026-11-20)
 
 The owner: "Remove the plus and minus feature on the compninja mobile version
 on the map", then "remove the zoom buttons on desktop too", then "add the
-scroll zoom for the other maps as well".
+scroll zoom for the other maps as well", then "remove the scroll hint on the
+maps and make it so you can scroll without pressing control if your cursor
+is on the map for 2 seconds".
 
 - **No map draws Leaflet's +/- buttons**, at any width: every `L.map(` call
   passes `zoomControl: false`, and nothing adds `L.control.zoom`.
@@ -51,18 +53,25 @@ scroll zoom for the other maps as well".
 - **`map-zoom.js`** (browser global `MAPZOOM`, dual-exported, `maxAge: 0`;
   its header is the contract) gives every map made with `scrollWheelZoom:
   false` (all but Home's) Ctrl + scroll zoom (Cmd on a Mac; a trackpad pinch
-  arrives with ctrlKey, so it zooms the map, not the page). It turns
-  Leaflet's own ScrollWheelZoom on and stops a PLAIN wheel in a window
-  capture listener before Leaflet sees it (`stopPropagation`, never
-  `preventDefault`), so the page still scrolls, and shows "Hold Ctrl and
-  scroll to zoom the map" over the map for 1.2 s. Skipped: Home (zooms on a
+  arrives with ctrlKey, so it zooms the map, not the page), and plain
+  scroll zoom once the pointer has RESTED on the map for `DWELL_MS` (2 s):
+  on the map (`mouseenter`) with no page-scrolling wheel in those 2 s. Every
+  plain wheel before that restarts the clock, so scrolling past a map, however
+  slowly, never turns into zooming it; leaving starts it over. It turns
+  Leaflet's own ScrollWheelZoom on and stops a not-yet-rested PLAIN wheel in a
+  window capture listener before Leaflet sees it (`stopPropagation`, never
+  `preventDefault`), so the page still scrolls. No hint is drawn (it showed
+  "Hold Ctrl and scroll to zoom the map" for a few hours; the owner removed
+  it, and a test holds it out). Skipped: Home (zooms on a
   plain wheel already), `dragging: false` maps (/comps' empty map), and
   `keyWheelZoom: false`. Loaded wherever map-credit.js is (index.html,
   `LEAFLET_HEAD`, /permits' head and `withLeaflet`); if it fails to load, the
   maps are what they were (no wheel zoom), never a trapped page.
 - Tests: `test/map-zoom.test.js` (stand-ins). Checked in Chromium with
   Leaflet 1.9.4 and a real wheel: a plain wheel scrolled the page 200px and
-  left the zoom alone; Ctrl + wheel zoomed and the page did not move.
+  left the zoom alone; Ctrl + wheel zoomed and the page did not move. After
+  the 2 s change: a wheel 0.3 s after arriving scrolled the page; a wheel
+  after resting 2.3 s zoomed 10 → 13 and the page did not move.
 
 ## Street photos instead of the aerial (2026-10-09)
 

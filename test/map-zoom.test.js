@@ -1,6 +1,8 @@
-// map-zoom.js: Ctrl (Cmd) + scroll zooms a map in a scrolling page, and a
-// plain scroll still scrolls the page. Run against stand-ins for Leaflet,
-// the window and the document; the header of map-zoom.js is the contract.
+// map-zoom.js: Ctrl (Cmd) + scroll zooms a map in a scrolling page at once,
+// and a plain scroll zooms it once the pointer has rested on it for 2 s;
+// before that a plain scroll scrolls the page. Run against stand-ins for
+// Leaflet, the window and the map element; the header of map-zoom.js is the
+// contract.
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -12,27 +14,20 @@ const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
 
 function stand() {
   const listeners = [];
+  const clock = { t: 100000 };
   const win = { addEventListener: (type, fn, opts) => listeners.push({ type, fn, opts }) };
-  const made = [];
-  const doc = {
-    createElement: () => {
-      const el = { style: {}, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, offsetWidth: 1 };
-      made.push(el);
-      return el;
-    },
-  };
-  const timers = [];
-  const env = {
-    win, doc, nav: { platform: "Win32" },
-    setTimeout: (fn) => { timers.push(fn); return timers.length; },
-    clearTimeout: () => {},
-  };
-  return { listeners, win, doc, made, timers, env };
+  const env = { win, now: () => clock.t };
+  const onWheel = (e) => listeners.find((l) => l.type === "wheel").fn(e);
+  return { listeners, clock, env, onWheel };
 }
 
 function container() {
-  const kids = [];
-  return { nodeType: 1, parentNode: null, kids, appendChild(k) { kids.push(k); } };
+  const on = {};
+  return {
+    nodeType: 1, parentNode: null, on,
+    addEventListener(type, fn) { (on[type] = on[type] || []).push(fn); },
+    fire(type) { (on[type] || []).forEach((fn) => fn()); },
+  };
 }
 
 function map(options, c) {
@@ -53,21 +48,21 @@ function wheel(target, keys) {
     stopPropagation() { this.stopped = true; }, preventDefault() { this.prevented = true; } }, keys || {});
 }
 
-test("a map in a scrolling page takes the key-held wheel; Home's and a still map do not", () => {
+test("a map in a scrolling page takes the gated wheel; Home's and a still map do not", () => {
   assert.equal(MZ.wants({ options: { scrollWheelZoom: false } }), true);
   assert.equal(MZ.wants({ options: { scrollWheelZoom: true } }), false, "Home zooms on a plain wheel already");
   assert.equal(MZ.wants({ options: {} }), false, "Leaflet's default (wheel on) is left alone");
   assert.equal(MZ.wants({ options: { scrollWheelZoom: false, dragging: false } }), false, "a still picture of a map");
   assert.equal(MZ.wants({ options: { scrollWheelZoom: false, keyWheelZoom: false } }), false, "opted out");
+  assert.equal(MZ.DWELL_MS, 2000, "the owner's two seconds");
 });
 
 test("attach turns Leaflet's wheel zoom on, marks the map, and listens once on the window, in capture", (t) => {
   const s = stand();
-  const c1 = container(), c2 = container();
-  const m1 = map({ scrollWheelZoom: false }, c1);
+  const m1 = map({ scrollWheelZoom: false }, container());
   assert.equal(MZ.attach(m1, s.env), true);
   assert.equal(m1.enabled, true);
-  assert.equal(MZ.attach(map({ scrollWheelZoom: false }, c2), s.env), true);
+  assert.equal(MZ.attach(map({ scrollWheelZoom: false }, container()), s.env), true);
   const wheels = s.listeners.filter((l) => l.type === "wheel");
   assert.equal(wheels.length, 1, "one listener per window");
   assert.equal(wheels[0].opts.capture, true, "ahead of Leaflet's own listener on the map");
@@ -75,51 +70,103 @@ test("attach turns Leaflet's wheel zoom on, marks the map, and listens once on t
   assert.equal(MZ.attach(map({ scrollWheelZoom: true }, container()), s.env), false);
 });
 
-test("a plain wheel over the map is stopped before Leaflet and shows the hint; the page still scrolls", (t) => {
+test("a plain wheel scrolls the page until the pointer has rested on the map for 2 s, then zooms it", (t) => {
   const s = stand();
   const c = container();
   MZ.attach(map({ scrollWheelZoom: false }, c), s.env);
-  const onWheel = s.listeners.find((l) => l.type === "wheel").fn;
+  c.fire("mouseenter");
   const inner = { nodeType: 1, parentNode: c };
-  const e = wheel(inner);
-  onWheel(e);
-  assert.equal(e.stopped, true, "Leaflet never sees it, so it does not zoom");
-  assert.equal(e.prevented, false, "the browser scrolls the page");
-  assert.equal(c.kids.length, 1);
-  assert.equal(c.kids[0].textContent, "Hold Ctrl and scroll to zoom the map");
-  assert.equal(c.kids[0].attrs["aria-hidden"], "true");
-  assert.match(c.kids[0].style.cssText, /pointer-events:none/);
-  assert.equal(c.kids[0].style.opacity, "1");
-  s.timers.at(-1)();
-  assert.equal(c.kids[0].style.opacity, "0", "it fades once the wheel stops");
-  onWheel(wheel(inner));
-  assert.equal(c.kids.length, 1, "one hint per map, reused");
+
+  s.clock.t += 1999;
+  const early = wheel(inner);
+  s.onWheel(early);
+  assert.equal(early.stopped, true, "1.999 s in: Leaflet never sees it, so the page scrolls");
+  assert.equal(early.prevented, false, "the browser scrolls the page");
+
+  s.clock.t += 1999;
+  const stillScrolling = wheel(inner);
+  s.onWheel(stillScrolling);
+  assert.equal(stillScrolling.stopped, true, "the scroll before restarted the clock");
+
+  s.clock.t += 2000;
+  const rested = wheel(inner);
+  s.onWheel(rested);
+  assert.equal(rested.stopped, false, "rested 2 s with no page scroll: Leaflet zooms");
+
+  s.clock.t += 50;
+  const more = wheel(inner);
+  s.onWheel(more);
+  assert.equal(more.stopped, false, "and keeps zooming while the wheel turns");
 });
 
-test("Ctrl or Cmd held goes through to Leaflet, which zooms (a trackpad pinch carries ctrlKey)", (t) => {
+test("scrolling slowly past a map never turns into zooming it", (t) => {
   const s = stand();
   const c = container();
   MZ.attach(map({ scrollWheelZoom: false }, c), s.env);
-  const onWheel = s.listeners.find((l) => l.type === "wheel").fn;
+  c.fire("mouseenter");
+  for (let i = 0; i < 20; i++) {
+    s.clock.t += 1500;
+    const e = wheel(c);
+    s.onWheel(e);
+    assert.equal(e.stopped, true, `wheel ${i}: still the page's`);
+  }
+});
+
+test("leaving the map starts the clock over", (t) => {
+  const s = stand();
+  const c = container();
+  MZ.attach(map({ scrollWheelZoom: false }, c), s.env);
+  c.fire("mouseenter");
+  s.clock.t += 5000;
+  c.fire("mouseleave");
+  c.fire("mouseenter");
+  s.clock.t += 500;
+  const e = wheel(c);
+  s.onWheel(e);
+  assert.equal(e.stopped, true);
+});
+
+test("a wheel over a map no enter was seen for counts as arriving, not as rested", (t) => {
+  const s = stand();
+  const c = container();
+  MZ.attach(map({ scrollWheelZoom: false }, c), s.env);
+  s.clock.t += 60000;
+  const first = wheel(c);
+  s.onWheel(first);
+  assert.equal(first.stopped, true);
+  s.clock.t += 2000;
+  const later = wheel(c);
+  s.onWheel(later);
+  assert.equal(later.stopped, false);
+});
+
+test("Ctrl or Cmd held zooms at once (a trackpad pinch carries ctrlKey)", (t) => {
+  const s = stand();
+  const c = container();
+  MZ.attach(map({ scrollWheelZoom: false }, c), s.env);
+  c.fire("mouseenter");
   for (const keys of [{ ctrlKey: true }, { metaKey: true }]) {
     const e = wheel(c, keys);
-    onWheel(e);
+    s.onWheel(e);
     assert.equal(e.stopped, false);
-    assert.equal(e.prevented, false, "Leaflet's handler stops the page zoom, not this one");
+    assert.equal(e.prevented, false, "Leaflet's handler stops the page, not this one");
   }
-  assert.equal(c.kids.length, 0, "no hint while zooming");
+});
+
+test("no hint is drawn on the map", (t) => {
+  const src = read("map-zoom.js");
+  assert.doesNotMatch(src, /createElement|appendChild|textContent/, "the owner removed the hint");
 });
 
 test("a wheel anywhere else on the page is not touched", (t) => {
   const s = stand();
   MZ.attach(map({ scrollWheelZoom: false }, container()), s.env);
-  const onWheel = s.listeners.find((l) => l.type === "wheel").fn;
   const e = wheel({ nodeType: 1, parentNode: { nodeType: 1, parentNode: null } });
-  onWheel(e);
+  s.onWheel(e);
   assert.equal(e.stopped, false);
 });
 
-test("a map rebuilt on the same element: the old one's unload clears the mark", (t) => {
+test("a map rebuilt on the same element: unload clears the mark, hover listeners are added once", (t) => {
   const s = stand();
   const c = container();
   const m = map({ scrollWheelZoom: false }, c);
@@ -127,13 +174,9 @@ test("a map rebuilt on the same element: the old one's unload clears the mark", 
   assert.equal(MZ.markedFrom(c), c);
   m.fire("unload");
   assert.equal(MZ.markedFrom(c), null);
-});
-
-test("the hint names the Mac's key on a Mac", () => {
-  assert.equal(MZ.tipText({ platform: "MacIntel" }), "Hold ⌘ and scroll to zoom the map");
-  assert.equal(MZ.tipText({ userAgentData: { platform: "macOS" } }), "Hold ⌘ and scroll to zoom the map");
-  assert.equal(MZ.tipText({ platform: "Win32" }), "Hold Ctrl and scroll to zoom the map");
-  assert.equal(MZ.tipText(undefined), "Hold Ctrl and scroll to zoom the map");
+  MZ.attach(map({ scrollWheelZoom: false }, c), s.env);
+  assert.equal(c.on.mouseenter.length, 1);
+  assert.equal(MZ.markedFrom(c), c);
 });
 
 test("hook adds one init hook, once", () => {

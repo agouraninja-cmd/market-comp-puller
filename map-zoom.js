@@ -1,25 +1,32 @@
-// Ctrl + scroll zooms a map that sits in a scrolling page (2026-11-20; the
+// Scroll zoom for a map that sits in a scrolling page (2026-11-20; the
 // owner, once the +/- buttons were gone from every map: "add the scroll zoom
-// for the other maps as well").
+// for the other maps as well", then "remove the scroll hint on the maps and
+// make it so you can scroll without pressing control if your cursor is on
+// the map for 2 seconds").
 //
 // Every map but Home's is made with `scrollWheelZoom: false`, because it sits
 // in a page that scrolls (the report, a market page, /markets, /comps,
-// /permits, the address dialog) and a wheel that zoomed it would trap the
-// page's own scroll the moment the pointer crossed the map. With the buttons
-// gone, a desktop could zoom those maps only by double-clicking. Now:
-//   - A wheel with Ctrl held (Cmd on a Mac) zooms the map, through Leaflet's
-//     own ScrollWheelZoom, so the feel is Home's. A trackpad pinch arrives as
-//     a wheel with ctrlKey set, so a pinch zooms the map, not the page.
-//   - A plain wheel scrolls the page, as before, and says on the map "Hold
-//     Ctrl and scroll to zoom the map" for a moment (Google's own maps do the
-//     same), so the way to zoom can be found.
+// /permits, the address dialog) and a wheel that zoomed it at once would trap
+// the page's own scroll the moment the pointer crossed the map. Now:
+//   - A wheel with Ctrl held (Cmd on a Mac) zooms the map at once, through
+//     Leaflet's own ScrollWheelZoom, so the feel is Home's. A trackpad pinch
+//     arrives as a wheel with ctrlKey set, so a pinch zooms the map.
+//   - A plain wheel zooms the map once the pointer has RESTED on it for
+//     `DWELL_MS` (2 s). Rested means: on the map, with no page-scrolling wheel
+//     in those 2 s. Every plain wheel that scrolls the page restarts the
+//     clock, so scrolling past a map never turns into zooming it halfway
+//     down, however slowly the page goes by; stop on the map, wait, and the
+//     next scroll zooms. Leaving the map starts it over.
+//   - Before that, a plain wheel scrolls the page, as it always did. No hint
+//     is drawn (the owner removed it).
 //
 // How: the hook turns Leaflet's ScrollWheelZoom ON for those maps and marks
 // the container. One wheel listener on the window, in the CAPTURE phase, runs
 // before Leaflet's listener on the container; for a plain wheel over a marked
-// map it stops the event there (`stopPropagation`, never `preventDefault`),
-// so Leaflet never sees it and the browser scrolls the page. A wheel with the
-// key goes on to Leaflet, which zooms and stops the browser's page zoom.
+// map that has not been rested on, it stops the event there
+// (`stopPropagation`, never `preventDefault`), so Leaflet never sees it and
+// the browser scrolls the page. Otherwise the wheel goes on to Leaflet, which
+// zooms and stops the page from moving.
 //
 // Which maps: one made with `scrollWheelZoom: false` whose dragging is on.
 // A map that zooms on a plain wheel already (Home) is left alone, and so is a
@@ -40,21 +47,10 @@
 (function (root) {
   "use strict";
 
-  var TIP_MS = 1200;
+  var DWELL_MS = 2000;
   var FLAG = "cnKeyWheel";
 
-  function isMac(nav) {
-    try {
-      var p = (nav && ((nav.userAgentData && nav.userAgentData.platform) || nav.platform)) || "";
-      return /mac|iphone|ipad/i.test(p);
-    } catch (_) { return false; }
-  }
-
-  function tipText(nav) {
-    return isMac(nav) ? "Hold ⌘ and scroll to zoom the map" : "Hold Ctrl and scroll to zoom the map";
-  }
-
-  // Does this map take the key-held wheel?
+  // Does this map take the gated wheel?
   function wants(map) {
     var o = (map && map.options) || {};
     return o.scrollWheelZoom === false && o.dragging !== false && o.keyWheelZoom !== false;
@@ -68,34 +64,17 @@
     return null;
   }
 
-  function showTip(c, env) {
-    var doc = env.doc, later = env.setTimeout, cancel = env.clearTimeout;
-    var t = c.cnWheelTip;
-    if (!t) {
-      t = doc.createElement("div");
-      t.setAttribute("aria-hidden", "true");
-      t.textContent = tipText(env.nav);
-      t.style.cssText = "position:absolute;top:0;right:0;bottom:0;left:0;z-index:1000;display:flex;align-items:center;" +
-        "justify-content:center;padding:0 24px;text-align:center;background:color-mix(in srgb,var(--slab,#1d232c) 55%,transparent);" +
-        "color:#ffffff;font:600 15px/1.4 Inter,system-ui,-apple-system,sans-serif;pointer-events:none;opacity:0;transition:opacity .2s";
-      c.appendChild(t);
-      c.cnWheelTip = t;
-      void t.offsetWidth;
-    }
-    t.style.opacity = "1";
-    if (c.cnWheelTimer) cancel(c.cnWheelTimer);
-    c.cnWheelTimer = later(function () { t.style.opacity = "0"; c.cnWheelTimer = 0; }, TIP_MS);
+  // Has the pointer rested on this map long enough for a plain wheel to zoom?
+  function rested(c, now) {
+    return !!(c.cnHover && now - c.cnSince >= DWELL_MS);
   }
 
-  // `env` is for the tests: { win, doc, nav, setTimeout, clearTimeout }.
+  // `env` is for the tests: { win, now }.
   function envOf(env) {
     env = env || {};
     return {
       win: env.win || root,
-      doc: env.doc || root.document,
-      nav: "nav" in env ? env.nav : root.navigator,
-      setTimeout: env.setTimeout || root.setTimeout,
-      clearTimeout: env.clearTimeout || root.clearTimeout,
+      now: env.now || function () { return Date.now(); },
     };
   }
 
@@ -108,8 +87,13 @@
       var c = markedFrom(e.target);
       if (!c) return;
       if (e.ctrlKey || e.metaKey) return;   // Leaflet's: it zooms
-      e.stopPropagation();                  // not Leaflet's: the page scrolls
-      try { showTip(c, env); } catch (_) { /* a missing tip still scrolls */ }
+      var now = env.now();
+      if (rested(c, now)) return;           // rested on: Leaflet zooms
+      // Not yet: the page scrolls, and a page-scrolling wheel restarts the
+      // clock (a wheel over a map no enter was seen for counts as arriving).
+      c.cnHover = true;
+      c.cnSince = now;
+      e.stopPropagation();
     }, { capture: true, passive: true });
     return true;
   }
@@ -121,10 +105,16 @@
     env = envOf(env);
     listen(env);
     c[FLAG] = true;
+    c.cnHover = false;
+    c.cnSince = 0;
+    if (c.addEventListener && !c.cnZoomHover) {
+      c.cnZoomHover = true;   // once per element: /permits and the report rebuild maps on the same one
+      c.addEventListener("mouseenter", function () { c.cnHover = true; c.cnSince = env.now(); });
+      c.addEventListener("mouseleave", function () { c.cnHover = false; });
+    }
     map.scrollWheelZoom.enable();
-    // /permits and the report rebuild a map on the same element: the old
-    // map's unload clears the mark, and the new map sets it again.
-    if (map.on) map.on("unload", function () { c[FLAG] = false; });
+    // The old map's unload clears the mark; a new map on the element sets it again.
+    if (map.on) map.on("unload", function () { c[FLAG] = false; c.cnHover = false; });
     return true;
   }
 
@@ -132,12 +122,12 @@
     if (!L || !L.Map || !L.Map.addInitHook || L.__cnKeyWheel) return false;
     L.__cnKeyWheel = true;
     L.Map.addInitHook(function () {
-      try { attach(this); } catch (_) { /* a map without key zoom is still a map */ }
+      try { attach(this); } catch (_) { /* a map without wheel zoom is still a map */ }
     });
     return true;
   }
 
-  var api = { TIP_MS: TIP_MS, tipText: tipText, wants: wants, attach: attach, hook: hook, listen: listen, markedFrom: markedFrom };
+  var api = { DWELL_MS: DWELL_MS, wants: wants, rested: rested, attach: attach, hook: hook, listen: listen, markedFrom: markedFrom };
   if (typeof module === "object" && module.exports) module.exports = api;
   else {
     root.MAPZOOM = api;

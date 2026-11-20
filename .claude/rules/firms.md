@@ -184,11 +184,35 @@ paths:
   renewal-watch.js's `deadlineOf`/`daysUntil` INJECTED, never required.
   `GET|POST|PATCH|DELETE /api/org/leases` on the firm gate; the Leases section
   on the sheet and the Critical dates strip at the top of `/buildings` (the
-  next twelve months, soonest first). **Nothing here sends mail**:
-  `renewal_notified_at` ships unwritten, renewal-watch is display-only on
-  this surface, and which member at a firm would get a reminder is an owner
-  decision the plan defers. The run test asserts the mail stand-in stayed
-  empty.
+  next twelve months, soonest first). **The lease routes send no mail**; the
+  run test asserts the mail stand-in stayed empty.
+  **Lease reminders by email** (2026-11-20, the owner: "do 1 for me", of
+  lease date reminders; no migration, `renewal_notified_at` has existed
+  since 048). `POST /api/org/leases/notices`, `ADMIN_KEY`-gated, driven on
+  weekdays by `.github/workflows/lease-notices.yml` (needs the `ADMIN_KEY`
+  repository secret) and never by a timer. Copy and the due rule are
+  `buildFirmLeaseNotice` / `firmLeaseDue` in renewal-watch.js; the reads sit
+  beside `orgLeaseRows`. Rules:
+  - **Who is mailed**: the firm's owners get every due lease; the member who
+    filed a lease gets theirs while still in the firm. Never a pending
+    invite, a removed member, or an account with `digest_optout` (the one
+    switch for mail CompNinja sends on its own; the email's link is the
+    digest's unsubscribe link).
+  - **Once per lease**, 90 days out (`RENEWAL.LEAD_DAYS`), counting to the
+    option notice, or to the expiry when there is no notice or it has
+    lapsed. Vacated and expired leases, and dates already passed, are
+    never mailed.
+  - **Marked after a send**, when at least one recipient's copy was accepted.
+    Holding the mark for every recipient would mail the others again on
+    each run while one address fails.
+  - **`PATCH /api/org/leases` clears the mark when either date changes**, so
+    a renewed lease is reminded about again. Any other edit leaves it.
+  - Refuses without a database or outbound mail (503); `{ dryRun: true }`
+    returns the emails, sends none, marks nothing.
+  - The address is read by building id and its `org_id` is checked against
+    the lease's before it is printed.
+  Run test: `test/firm-lease-notices-run.test.js`. Not built: a card on
+  `/admin`, a per-firm off switch, a second reminder closer to the date.
   **Discovery, unread, contacts, reports** (slice 8, 2026-09-02, no
   migration; spec §13 of the firm-messaging design). Four **Discuss** doors
   (a SHARED comp in the Vault's Firm column, a shelf report, a building

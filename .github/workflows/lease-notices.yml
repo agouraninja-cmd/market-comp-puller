@@ -1,0 +1,56 @@
+# The firm's lease reminders (2026-11-20): one email about each lease whose
+# option notice, or expiry, is within 90 days. To the firm's owners and the
+# member who filed the lease, once per lease.
+#
+# A ROUTE, never a timer inside server.js (the trial emails' and the permit
+# sweep's rule). The schedule lives here and all this does is ask the live
+# site to run once. The route is idempotent (org_leases.renewal_notified_at),
+# so a double fire or a manual "Run workflow" sends nothing twice.
+#
+# Weekdays at 16:10 UTC (a working morning in Boise).
+#
+# NEEDS ONE REPOSITORY SECRET, ADMIN_KEY, the same key /admin takes. It fails
+# loudly without it, and loudly when the route refuses.
+name: Lease reminders
+
+on:
+  schedule:
+    - cron: "10 16 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build the emails and send none (true/false)"
+        required: false
+        default: "false"
+
+jobs:
+  notices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Run the lease reminders against the live site
+        env:
+          ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+          SITE: https://compninja.co
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          if [ -z "$ADMIN_KEY" ]; then
+            echo "::error::The ADMIN_KEY repository secret is not set, so the lease reminders cannot run. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          status=$(curl -sS -o notices.json -w '%{http_code}' --max-time 540 \
+            -X POST "$SITE/api/org/leases/notices" \
+            -H "x-admin-key: $ADMIN_KEY" -H 'content-type: application/json' \
+            -d "{\"dryRun\": $DRY_RUN}")
+          echo "HTTP $status"
+          if [ "$status" != "200" ]; then
+            cat notices.json; echo
+            echo "::error::The lease reminders answered HTTP $status."
+            exit 1
+          fi
+          node -e '
+            const s = JSON.parse(require("fs").readFileSync("notices.json", "utf8"));
+            console.log(`firms ${s.firms} · leases due ${s.due} · emails sent ${s.sent} covering ${s.leases} · opted out ${s.optedOut}`);
+            if (s.previews && s.previews.length) console.log(`dry run: ${s.previews.length} email(s) built, none sent`);
+            if (s.failed) { console.log(`::error::${s.failed} send(s) failed; see the Render log.`); process.exit(1); }
+          '

@@ -236,7 +236,152 @@ function buildRenewalNotice({ leases, now, deskUrl, unsubscribeUrl }) {
   return { subject: subjectFor(due), text: body };
 }
 
+// ---------------------------------------------------------------------------
+// THE FIRM'S LEASES (org_leases, migration 048), mailed since 2026-11-20.
+//
+// A different noun from everything above: a lease the FIRM manages, on a
+// building on its list, with a tenant and a suite, where the lines above are
+// about a lease COMP in one broker's own book. The copy says so, and the
+// arithmetic is the same (`deadlineOf`, `daysUntil`, LEAD_DAYS), because
+// "which date is the deadline" has one owner.
+//
+// Who is mailed is the caller's decision (server.js: the firm's owners and
+// the member who filed the lease). Three rules live here:
+//   - ONE email per lease, ever (`renewal_notified_at`), the rule above. The
+//     lease route clears the mark when somebody changes a lease's dates.
+//   - A LAPSED OPTION NOTICE HANDS OVER TO THE EXPIRY, org-leases.js's
+//     criticalDates rule. A lease filed after its notice date went by still
+//     ends on a day the firm can act on, and nobody has been told about it.
+//   - Vacated and expired leases are skipped: nothing is left to act on.
+// ---------------------------------------------------------------------------
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// "2027-01-15" as "Jan 15, 2027", from its own three numbers. Never
+// Date.parse: midnight UTC is the day before, west of Greenwich.
+function prettyDay(ymd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed(ymd));
+  if (!m || !Number.isFinite(dayMs(ymd))) return trimmed(ymd);
+  return MONTHS[Number(m[2]) - 1] + " " + Number(m[3]) + ", " + m[1];
+}
+
+// The date this firm lease is counting down to, or null.
+function firmLeaseDeadline(lease, now) {
+  let deadline = deadlineOf(lease);
+  if (!deadline) return null;
+  let days = daysUntil(deadline.date, now);
+  if (deadline.kind === "notice" && Number.isFinite(days) && days < 0) {
+    deadline = deadlineOf({ lease_expiry: lease.lease_expiry });
+    if (!deadline) return null;
+    days = daysUntil(deadline.date, now);
+  }
+  if (!Number.isFinite(days)) return null;
+  return { date: deadline.date, kind: deadline.kind, days };
+}
+
+function firmLeaseDue(lease, now) {
+  if (!lease) return false;
+  if (trimmed(lease.renewal_notified_at)) return false;
+  const status = trimmed(lease.status).toLowerCase();
+  if (status === "vacated" || status === "expired") return false;
+  const d = firmLeaseDeadline(lease, now);
+  return Boolean(d) && d.days >= 0 && d.days <= LEAD_DAYS;
+}
+
+function dueFirmLeases(leases, now) {
+  return (Array.isArray(leases) ? leases : []).filter((l) => firmLeaseDue(l, now));
+}
+
+// The firm's own rent, in the basis the firm recorded. No basis, no figure
+// (029's rule: never guess which half of 12x it is).
+function firmRentText(lease) {
+  const x = Number(lease.rent_psf);
+  const basis = trimmed(lease.rent_basis);
+  if (!Number.isFinite(x) || x <= 0 || (basis !== "annual" && basis !== "monthly")) return "";
+  const figure = basis === "monthly" || !Number.isInteger(x) ? x.toFixed(2) : String(x);
+  return "$" + figure + (basis === "monthly" ? "/SF/mo" : "/SF/yr");
+}
+
+function firmLeaseName(lease) {
+  const tenant = trimmed(lease.tenant) || "A tenant";
+  const suite = trimmed(lease.suite);
+  // "Suite" only when the firm did not already write it.
+  return tenant + (suite ? ", " + (/^(suite|ste|unit|#)/i.test(suite) ? suite : "Suite " + suite) : "");
+}
+
+function firmLeaseBlock(lease, now) {
+  const d = firmLeaseDeadline(lease, now);
+  const when = d.days === 0 ? "today" : d.days === 1 ? "tomorrow" : "in " + d.days + " days";
+  const lines = [firmLeaseName(lease)];
+  if (trimmed(lease.address)) lines.push(trimmed(lease.address));
+  lines.push("  " + (d.kind === "notice" ? "Option notice due " : "Lease expires ") + prettyDay(d.date) + ", " + when);
+  // The expiry too, when the countdown is to the notice: the two dates are
+  // one decision.
+  if (d.kind === "notice" && Number.isFinite(dayMs(lease.lease_expiry))) {
+    lines.push("  Lease expires " + prettyDay(lease.lease_expiry));
+  }
+  const size = Number(lease.size_sqft);
+  const rent = firmRentText(lease);
+  const type = trimmed(lease.lease_type);
+  const facts = [
+    Number.isFinite(size) && size > 0 ? Math.round(size).toLocaleString("en-US") + " SF" : "",
+    rent ? rent + (type ? " " + type : "") : "",
+  ].filter(Boolean);
+  if (facts.length) lines.push("  " + facts.join(" at "));
+  if (trimmed(lease.added_by_name)) lines.push("  Filed by " + trimmed(lease.added_by_name));
+  if (trimmed(lease.url)) lines.push("  " + trimmed(lease.url));
+  return lines.join("\n");
+}
+
+function firmSubjectFor(due, firmName, now) {
+  if (due.length === 1) {
+    const d = firmLeaseDeadline(due[0], now);
+    const what = d.kind === "notice" ? "Option notice" : "Lease expiry";
+    const where = trimmed(due[0].address);
+    return what + " coming up: " + (trimmed(due[0].tenant) || "a tenant") + (where ? " at " + where : "");
+  }
+  return due.length + " leases at " + (trimmed(firmName) || "your firm") + " have dates coming up";
+}
+
+// Builds one recipient's email for one firm, or returns null when nothing is
+// due. `role` is why this person is being told: "owner" of the firm, or the
+// "filer" of these leases. Each lease carries `address` (its building's) and
+// `url` (the building's page), stitched on by the caller.
+function buildFirmLeaseNotice({ leases, now, firmName, role, buildingsUrl, unsubscribeUrl }) {
+  const due = dueFirmLeases(leases, now);
+  if (!due.length) return null;
+  due.sort((a, b) => firmLeaseDeadline(a, now).days - firmLeaseDeadline(b, now).days
+    || trimmed(a.tenant).localeCompare(trimmed(b.tenant)));
+  const firm = trimmed(firmName) || "your firm";
+
+  const body = [
+    due.length === 1
+      ? "A lease at " + firm + " has a date coming up."
+      : due.length + " leases at " + firm + " have dates coming up.",
+    "",
+    due.map((l) => firmLeaseBlock(l, now)).join("\n\n"),
+    "",
+    "Every date your firm is tracking: " + buildingsUrl,
+    "",
+    // WHY and HOW TO STOP, as two facts (the rule above).
+    role === "owner"
+      ? "You are receiving this because you are an owner of " + firm + " on CompNinja. Each lease is mailed about once."
+      : "You are receiving this because you filed " + (due.length === 1 ? "this lease" : "these leases") +
+        " for " + firm + " on CompNinja. Each lease is mailed about once.",
+    "Turn these emails off: " + unsubscribeUrl,
+    "",
+    "These dates are as your firm recorded them. Check the lease itself for the dates that bind you.",
+  ].join("\n");
+
+  return { subject: firmSubjectFor(due, firmName, now), text: body };
+}
+
 module.exports = {
+  buildFirmLeaseNotice,
+  firmLeaseDue,
+  dueFirmLeases,
+  firmLeaseDeadline,
+  prettyDay,
   buildRenewalNotice,
   worthSending,
   isDue,

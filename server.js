@@ -15143,49 +15143,7 @@ const BASEMAP_JS = `var CNBASE = (function () {
     syncLabels();
     return { setTheme: function () { var d = isDark(); base.setUrl(baseUrl(d)); labels.setUrl(labelUrl(d)); } };
   }
-  // One finger scrolls the page, two move the map (2026-11-18): on a phone a
-  // map with dragging on took every swipe that started on it, and the page
-  // stood still. The reasons are on index.html's touchPanMap.
-  // ⚠ MIRROR of touchPanMap in index.html: the bodies are one text, held
-  // together by test/phone-scroll.test.js.
-  function touchPan(map, scrolls) {
-    var coarse = false;
-    try { coarse = window.matchMedia("(hover: none) and (pointer: coarse)").matches; } catch (e) {}
-    if (!coarse || !map || !map.dragging || !map.getContainer) return function () {};
-    var el = map.getContainer();
-    function sync() {
-      if (!scrolls || scrolls()) map.dragging.disable();
-      else map.dragging.enable();
-    }
-    sync();
-    if (el.cnTouchPan) return sync;
-    el.cnTouchPan = true;
-    var x0 = 0, y0 = 0, told = false, timer = 0;
-    el.addEventListener("touchstart", function (e) {
-      told = false;
-      if (e.touches.length === 1) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }
-      else if (el.cnTip) el.cnTip.style.opacity = "0";
-    }, { passive: true });
-    el.addEventListener("touchmove", function (e) {
-      if (told || e.touches.length !== 1 || el.classList.contains("leaflet-touch-drag")) return;
-      var dx = Math.abs(e.touches[0].clientX - x0), dy = Math.abs(e.touches[0].clientY - y0);
-      if (dx < 24 || dx < dy * 1.5) return;
-      told = true;
-      if (!el.cnTip) {
-        el.cnTip = document.createElement("div");
-        el.cnTip.setAttribute("aria-hidden", "true");
-        el.cnTip.textContent = "Use two fingers to move the map";
-        el.cnTip.style.cssText = "position:absolute;top:0;right:0;bottom:0;left:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:0 24px;text-align:center;background:var(--slab);color:#ffffff;font:600 15px/1.4 Inter,system-ui,-apple-system,sans-serif;pointer-events:none;opacity:0;transition:opacity .2s";
-        el.appendChild(el.cnTip);
-        void el.cnTip.offsetWidth;
-      }
-      el.cnTip.style.opacity = ".88";
-      clearTimeout(timer);
-      timer = setTimeout(function () { el.cnTip.style.opacity = "0"; }, 1600);
-    }, { passive: true });
-    return sync;
-  }
-  return { add: add, isDark: isDark, touchPan: touchPan };
+  return { add: add, isDark: isDark };
 })();`;
 
 const MARKET_MAP_JS = `(function(){
@@ -15251,8 +15209,6 @@ const MARKET_MAP_JS = `(function(){
     map = L.map("mktMap", { zoomControl: false, scrollWheelZoom: false }).setView(center, 12);
     // Held rather than discarded: the theme swap below depends on it.
     tiles = CNBASE.add(map);
-    // On a phone one finger scrolls the page past the map, two move it.
-    CNBASE.touchPan(map);
     try {
       new MutationObserver(function () {
         if (tiles) tiles.setTheme();
@@ -15405,8 +15361,6 @@ const MARKETS_DIR_MAP_JS = `(function(){
   // the fit below lands a level up rather than falling back a whole level.
   var map = L.map("mktsMap", { zoomControl: false, scrollWheelZoom: false }).setView([39.8, -98.6], 4);
   var tiles = CNBASE.add(map);
-  // On a phone one finger scrolls the page past the map, two move it.
-  CNBASE.touchPan(map);
   // The theme flip restyles the carved areas alongside the tile swap — their
   // colors are computed tokens, not CSS classes (an SVG path cannot wear
   // .mmap-pin-expanding). Pins need nothing here: they are CSS all the way.

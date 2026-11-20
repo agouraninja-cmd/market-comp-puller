@@ -965,10 +965,6 @@ test("no raw colour literal remains in index.html's generated markup (the JS hal
     // would be the bug.
     "ctx.fillstyle:#1e293b", "ctx.strokestyle:#fff",
     "ctx.fillstyle:#dc2626", "ctx.fillstyle:#4c5665", "ctx.fillstyle:#f2f1ec",
-    // The maps' "Use two fingers to move the map" hint (touchPanMap,
-    // 2026-11-18): white words on --slab, which is dark in both themes, the
-    // footer lockup's arrangement above. No token is light in both themes.
-    "color:#ffffff",
   ]);
 
   const named = offenders.filter((o) => !ALLOWLIST.has(o));
@@ -1454,10 +1450,6 @@ test("no raw colour literal remains in in-scope server.js generated markup", () 
     // browser chrome tracks the OS rather than data-theme. Same pair as
     // --paper's light/dark values; not a page colour.
     "content:#fbfbf9", "content:#121826",
-    // The maps' "Use two fingers to move the map" hint (CNBASE.touchPan in
-    // BASEMAP_JS, 2026-11-18): white words on --slab, which is dark in both
-    // themes, the footer's arrangement. No token is light in both themes.
-    "color:#ffffff",
   ]);
 
   const named = offenders.filter((o) => !ALLOWLIST.has(o));

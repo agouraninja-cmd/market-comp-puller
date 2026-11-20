@@ -8,6 +8,12 @@
   {
     "date": "2026-11-20",
     "type": "improvement",
+    "title": "One finger moves the map on a phone again",
+    "details": "Removed the “use two fingers to move the map” rule on every map (Home, the report, the address check, market pages, Markets, Comps, Permits). One finger now pans the map up, down, left and right; two fingers still pinch to zoom and pan."
+  },
+  {
+    "date": "2026-11-20",
+    "type": "improvement",
     "title": "No more +/− zoom buttons on any map, desktop included",
     "details": "Every map is now made without Leaflet's zoom buttons (zoomControl: false), so they are gone on desktop as well as phones. Double-click, pinch, double-tap and (on Home) the scroll wheel still zoom. A test fails any new map that brings them back."
   },

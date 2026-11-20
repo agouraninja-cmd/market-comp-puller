@@ -16,38 +16,28 @@ paths:
 > this area's code in `server.js`. The never-break rules stay in CLAUDE.md.
 > Add new notes for this area here, not there.
 
-## One finger scrolls the page, two move the map (2026-11-18)
+## One finger moves the map on a phone (2026-11-20)
 
-The owner: "When swiping up and down on mobile it looks like it freezes for a
-split second or glitches". A Leaflet map with dragging on is `touch-action:
-none`, so on a phone a swipe that STARTED on a map moved the map and the page
-stood still. Measured in Playwright (iPhone 13 emulation, real touch events):
-Home's map is the top 45% of the screen and a 150px swipe on it moved the page
-0px; the same on /markets' map and the report's. Rules:
+The owner: "remove the feature that makes it so you have to use two fingers
+on the map to move where you want to go ... you can move up right left or
+down with one finger as well just not zoom on the map for mobile." Every map
+keeps Leaflet's own touch behaviour: one finger pans, two fingers pinch to
+zoom (and pan). There is no "Use two fingers to move the map" hint.
 
-- **`touchPanMap(map, scrolls)` in index.html and `CNBASE.touchPan` in
-  server.js's BASEMAP_JS are one text** (⚠, ES5, held together by
-  `test/phone-scroll.test.js`, which also runs it). On a touch-only screen
-  (`(hover: none) and (pointer: coarse)`: a phone or tablet, never a laptop
-  with a touch screen, never a narrow desktop window) it turns dragging off
-  while `scrolls()` says the page around the map scrolls (no `scrolls` means
-  always). touchZoom stays on, so the container is `touch-action: pan-x
-  pan-y` and Leaflet's pinch, which moves the map with the fingers, is the
-  two-finger pan. It returns `sync`, called again when that answer changes.
-- **Where the map is the page, one finger drags it**: the report map's
-  fullscreen (`setMapFullscreen` calls `syncMapTouch`), and Home beside the
-  rail at 900px and up (`hmTouch`, on a `(min-width: 900px)` change).
-- **A sideways one-finger drag shows "Use two fingers to move the map"** over
-  the map for 1.6s (`el.cnTip`, `pointer-events:none`, `aria-hidden`; white on
-  `--slab`, dark in both themes, allowlisted in both colour tests). A swipe up
-  or down is scrolling and is not told anything. Listeners are passive and
-  added once per element (`el.cnTouchPan`), because the report and /permits
-  rebuild their maps on the same element.
-- **Every map in a scrolling page calls it**: the report's (`compMap`), the
-  address dialog's (`confirmMap`), Home's, the market page's (`mktMap`),
-  /markets' (`mktsMap`), /comps' book map (`bmMap`) and /permits' area maps.
-  /comps' empty map is static already (`dragging:false`) and is left alone.
-  A new map in a scrolling page takes it too.
+- **History (2026-11-18 to 2026-11-20):** `touchPanMap` in index.html and
+  its ⚠ twin `CNBASE.touchPan` in BASEMAP_JS turned dragging off on a
+  touch-only screen while the page around a map scrolled, so a swipe that
+  started on a map scrolled the page (the owner had reported the page
+  "freezing" on such swipes). Both helpers, their callers, the hint
+  (`el.cnTip`) and its colour allowlist entries were deleted. **The cost
+  the owner accepted:** a swipe that starts on a map moves the map, not the
+  page, so on Home's phone strip (the top of the screen) a member scrolls
+  from the list below it.
+- **Do not bring it back without the owner asking.** `test/phone-scroll.test.js`
+  fails the build if `touchPan` or the hint's words reappear in index.html,
+  server.js, vault-page.js or permits-page.js, or if the report, address
+  dialog or Home map is built with `dragging: false`. /comps' empty map is
+  static on purpose (`dragging:false`) and is not one of those.
 
 ## Street photos instead of the aerial (2026-10-09)
 

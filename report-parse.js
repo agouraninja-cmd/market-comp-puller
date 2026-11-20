@@ -117,8 +117,16 @@ const SHORT_COMP_KEYS = {
   floor_plate: "fp", center_type: "ct", anchor_tenant: "at",
   units: "un", price_per_unit: "ppu", lot_acres: "ac",
   price_per_acre: "ppa", zoning: "z", beds_baths: "bb",
-  condition: "cd",
+  condition: "cd", construction: "cn",
 };
+
+// The commercial building types that report a construction type. Land has no
+// building and a house is almost always wood frame, so asking either for it
+// would spend output on a column that says nothing.
+const CONSTRUCTION_TYPES = ["Industrial", "Office", "Retail", "Multifamily"];
+function collectsConstruction(type) {
+  return CONSTRUCTION_TYPES.includes(type);
+}
 const LONG_COMP_KEYS = Object.fromEntries(
   Object.entries(SHORT_COMP_KEYS).map(([l, s]) => [s, l])
 );
@@ -150,7 +158,8 @@ function expandCompKeys(parsed, type, typeCompFields) {
     "price_per_sqft", "cap_rate", "notes", "source_url", "source_type"];
   const spec = (typeCompFields || {})[type];
   const fill = [...base, ...(spec ? spec.fields : []),
-    ...(type === "Land" ? [] : ["tenancy", "year_built"])];
+    ...(type === "Land" ? [] : ["tenancy", "year_built"]),
+    ...(collectsConstruction(type) ? ["construction"] : [])];
   parsed.comps = parsed.comps.map((c) => {
     const e = expandComp(c);
     if (!e || typeof e !== "object" || Array.isArray(e)) return e;
@@ -242,6 +251,54 @@ function normalizeConditions(parsed) {
     // every harvested Industrial row.
     if ("condition" in c) c.condition = normalizeConditionValue(c.condition);
   }
+  return parsed;
+}
+
+// How a commercial building is built (2026-11-19, owner's call: "have it also
+// consider the age and structure of the building"). A tilt-up concrete
+// warehouse and a pre-engineered metal building of the same size and year do
+// not trade at the same $/SF, and neither do a steel-frame office and a
+// wood-frame one. CLOSED vocabulary for the same reason as condition: the
+// value is compared comp-to-subject in valuation.js's compWeight, and a match
+// only means something when both sides land on the same word. Strict on
+// purpose — exact words plus a short alias list, anything else is "" (unknown,
+// which the weighting treats as neutral). A looser matcher would turn a
+// provenance column into a guess.
+const CONSTRUCTION_VALUES = ["Tilt-up concrete", "Concrete frame", "Steel frame",
+  "Metal building", "Masonry", "Wood frame"];
+const CONSTRUCTION_ALIASES = {
+  "tilt-up concrete": "Tilt-up concrete", "tilt-up": "Tilt-up concrete",
+  "tilt up": "Tilt-up concrete", "tiltup": "Tilt-up concrete",
+  "concrete tilt-up": "Tilt-up concrete", "concrete tilt up": "Tilt-up concrete",
+  "concrete frame": "Concrete frame", "reinforced concrete": "Concrete frame",
+  "steel frame": "Steel frame", "steel": "Steel frame", "structural steel": "Steel frame",
+  "metal building": "Metal building", "pre-engineered metal": "Metal building",
+  "pre-engineered metal building": "Metal building", "metal": "Metal building",
+  "masonry": "Masonry", "brick": "Masonry", "concrete block": "Masonry", "cmu": "Masonry",
+  "wood frame": "Wood frame", "wood": "Wood frame", "frame": "Wood frame",
+};
+function normalizeConstructionValue(v) {
+  const raw = String(v == null ? "" : v).trim().toLowerCase().replace(/\.$/, "").replace(/\s+/g, " ");
+  return CONSTRUCTION_ALIASES[raw] || "";
+}
+function normalizeConstructions(parsed) {
+  if (!parsed || !Array.isArray(parsed.comps)) return parsed;
+  for (const c of parsed.comps) {
+    if (!c || typeof c !== "object") continue;
+    // Same rule as condition: only a key the comp carries (expandCompKeys
+    // backfills it for the types that collect it).
+    if ("construction" in c) c.construction = normalizeConstructionValue(c.construction);
+  }
+  return parsed;
+}
+// The subject's own construction type, read off the same assessor / listing
+// page as its size and year built. Normalized onto the vocabulary or dropped.
+function normalizeSubjectConstruction(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  if (!("subject_construction" in parsed)) return parsed;
+  const v = normalizeConstructionValue(parsed.subject_construction);
+  if (v) parsed.subject_construction = v;
+  else delete parsed.subject_construction;
   return parsed;
 }
 
@@ -599,4 +656,10 @@ module.exports = {
   CONDITION_VALUES,
   normalizeConditionValue,
   normalizeConditions,
+  CONSTRUCTION_TYPES,
+  CONSTRUCTION_VALUES,
+  collectsConstruction,
+  normalizeConstructionValue,
+  normalizeConstructions,
+  normalizeSubjectConstruction,
 };

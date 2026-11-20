@@ -9204,6 +9204,7 @@ const FIELD_LABELS = {
   cap_rate: "Cap Rate",
   tenancy: "Tenancy",
   year_built: "Year Built",
+  construction: "Construction",
 };
 
 // ---------------------------------------------------------------------------
@@ -9324,7 +9325,11 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   // shape at parse time, so only the model's OUTPUT is smaller.
   const S = SHORT_COMP_KEYS;
   const typeFields = typeSpec ? typeSpec.fields.map((f) => `"${S[f]}": "", `).join("") : ``;
-  const buildingFields = isLand ? `` : `"${S.tenancy}": "", "${S.year_built}": "", `;
+  // Construction type rides beside year built on the commercial building
+  // types only (RPARSE.collectsConstruction): both are what a buyer means by
+  // "a different product" once size and location match.
+  const wantsConstruction = collectsConstruction(type);
+  const buildingFields = isLand ? `` : `"${S.tenancy}": "", "${S.year_built}": "", ${wantsConstruction ? `"${S.construction}": "", ` : ``}`;
   // "verified" is only offerable when we actually handed the model broker
   // comps to match against. With none offered the field can only ever be
   // false, and asking for it invites the model to award itself the badge:
@@ -9343,6 +9348,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     ...(typeSpec ? typeSpec.fields : []),
     "price_or_rate", "price_per_sqft", "cap_rate",
     ...(isLand ? [] : ["tenancy", "year_built"]),
+    ...(wantsConstruction ? ["construction"] : []),
     "notes", "source_url", "source_type", ...(hasVerified ? ["verified"] : [])];
   const compKeyLegend = legendFields.map((f) => `"${S[f]}"=${f}`).join(", ");
 
@@ -9510,7 +9516,15 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     type === "Residential"
       ? `For EACH comp, also report "year_built" = the year the home was constructed as a 4-digit year (e.g. "1998"). If it genuinely can't be found, use "". Do not guess. Leave "tenancy" empty — it is a commercial occupancy field, not a house field.`
       : !isLand
-      ? `For EACH comp, also report "tenancy" = who occupies the building and the lease structure, naming the tenant when it is a single-tenant property (e.g. "Single-tenant NNN - Starbucks", "Multi-tenant, 85% occupied", "Owner-user", "Vacant"). Tenant quality moves pricing, so name national or credit tenants specifically when a source shows one. Also report "year_built" = the year the building was constructed as a 4-digit year (e.g. "1998"). If either genuinely can't be found, use an empty string "" — do not guess.`
+      ? `For EACH comp, also report "tenancy" = who occupies the building and the lease structure, naming the tenant when it is a single-tenant property (e.g. "Single-tenant NNN - Starbucks", "Multi-tenant, 85% occupied", "Owner-user", "Vacant"). Tenant quality moves pricing, so name national or credit tenants specifically when a source shows one. Also report "year_built" = the year the building was constructed as a 4-digit year (e.g. "1998").${wantsConstruction ? ` Also report "construction" = how the building is built, as EXACTLY ONE of these and nothing else: ${RPARSE.CONSTRUCTION_VALUES.map((v) => `"${v}"`).join(", ")}. Read it from the assessor record, listing or brokerage flyer.` : ""} If any of these genuinely can't be found, use an empty string "" — do not guess.`
+      : "",
+    // Vintage and construction steer which comps are CHOSEN, not just how
+    // they are weighted afterwards (Residential has its own vintage sentence
+    // in its type guidance). valuation.js down-weights a comp more than 15
+    // years off the subject's year built or of a different construction type,
+    // but a weight can only rank the comps it was handed.
+    wantsConstruction
+      ? `MATCH AGE AND CONSTRUCTION: a building's age and how it is built move its price as much as its size does. Prefer comps built within about 15 years of the target and of the same construction type (a tilt-up concrete warehouse is a different product from a metal building; a steel-frame office from a wood-frame one). When the only comparable deals are materially older, newer, or built differently than the target, include them but say so plainly in "summary".`
       : "",
     verifiedBlock,
     corpusBlock,
@@ -9590,6 +9604,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
       `  "subject_assessed": { "value": "", "year": "", "source_url": "" },`,
       `  "subject_asking": { "price": "", "source_url": "" },`,
       `  "subject_year_built": "",`,
+      ...(wantsConstruction ? [`  "subject_construction": "",`] : []),
     ] : []),
     `  "comps": [`,
     `    ${compShape}`,
@@ -9660,7 +9675,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // and buying one would come out of the comp budget.
     ...(wantsSize || !compsOnly ? [`"subject_last_sale" = the TARGET property's own most recent closed sale, if the sources you are already looking at show one. ${wantsSize ? "The assessor, parcel, and listing pages you open for the subject size above normally carry the sale history, so read it off those - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "date" = the closing month and year like "Aug 2025", "price" = the sale price as one number like "$12,450,000", "source_url" = the page that states it. This is the TARGET's own transaction, never a comp, and it must NOT also appear in "comps". Include it however long ago it closed, even well outside the comp window, and even when only part of it is known (a date with no public price is still worth reporting - leave "price" empty). Leave all three fields "" if the property has no findable sale of its own, and never infer one from a neighboring or similar property.${compsOnly ? "" : ` When you do find one, mention it in "summary" - what the subject itself last traded for is the most important single fact an owner can be told, so it outranks the market-level read for the second sentence.`}`] : []),
     ...(wantsSize || !compsOnly ? [`"subject_assessed" = the TARGET parcel's total assessed or taxable value, if the sources you are already looking at show one. ${wantsSize ? "The assessor and parcel pages you open for the subject size above normally print this number, so read it off those - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "value" = the county's total assessed (or taxable) value as one number like "$412,000". "year" = the four-digit tax year like "2025", or "" if the year is not shown. "source_url" = the page that states it. This is the whole parcel, never land-only or improvements-only - if the source splits those, leave all three fields "". This is not a comp and must NOT appear in "comps". Do not put it in "summary". Leave all three fields "" if nothing findable, and never infer one from a neighboring or similar property. Never use a listing ask, a Zestimate, or a separate "market value" the assessor printed as an opinion - only the assessed or taxable number the county uses to tax the parcel.`] : []),
-    ...(wantsSize || !compsOnly ? [`"subject_asking" = the TARGET property's current asking or list price if it is actively listed for sale, as one number like "$1,250,000". ${wantsSize ? "The listing page you open for the subject size above carries this next to the square footage, so read it off that page - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "source_url" = the listing page that states it. This is the current ASK, not a closed sale and not a comp, and it must NOT also appear in "comps". Leave both fields "" if the property is not listed. "subject_year_built" = the year the TARGET building was constructed, as a 4-digit year like "1994". Same lookup as the size; use "" if you cannot determine it. Do not guess.`] : []),
+    ...(wantsSize || !compsOnly ? [`"subject_asking" = the TARGET property's current asking or list price if it is actively listed for sale, as one number like "$1,250,000". ${wantsSize ? "The listing page you open for the subject size above carries this next to the square footage, so read it off that page - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "source_url" = the listing page that states it. This is the current ASK, not a closed sale and not a comp, and it must NOT also appear in "comps". Leave both fields "" if the property is not listed. "subject_year_built" = the year the TARGET building was constructed, as a 4-digit year like "1994". Same lookup as the size; use "" if you cannot determine it. Do not guess.${wantsConstruction ? ` "subject_construction" = how the TARGET building is built, using the same vocabulary as the comps' "construction" field. Same lookup as the size (assessor records usually state it); use "" if you cannot determine it. Do not guess.` : ""}`] : []),
   ].join("\n");
 }
 
@@ -9679,7 +9694,8 @@ const normalizeSourceTypes = (parsed, propertyType) =>
   RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType, propertyType);
 const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims,
         normalizeSubjectAssessed, normalizeSubjectAsking, normalizeSubjectYearBuilt,
-        normalizeSubjectSize, normalizeConditions } = RPARSE;
+        normalizeSubjectSize, normalizeConditions, normalizeConstructions,
+        normalizeSubjectConstruction, collectsConstruction } = RPARSE;
 
 // The subject's own last sale is model-written free text headed for a report
 // surface, a cache entry and a share, so it is normalized to a known shape
@@ -10555,15 +10571,15 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // own claims and conclude the narrative was justified.
   const finishReport = (raw) => {
     const parsed = normalizeSubjectSize(normalizeSubjectAssessed(
-      normalizeSubjectYearBuilt(
+      normalizeSubjectConstruction(normalizeSubjectYearBuilt(
         normalizeSubjectAsking(
           normalizeSubjectLastSale(
             reconcilePricePerSqft(
               normalizeTrendPct(
                 normalizeCurrency(
                   normalizeSourceTypes(
-                    normalizeConditions(
-                      expandCompKeys(parseCompJson(raw, stats), type)), type))))))),
+                    normalizeConstructions(normalizeConditions(
+                      expandCompKeys(parseCompJson(raw, stats), type))), type)))))))),
       new Date()));
     RPARSE.normalizeCorrectedAddress(parsed, address);
     return scrubUnearnedVerifiedClaims(
@@ -10651,6 +10667,9 @@ function mergeLaneReports(primary, records, maxComps) {
   }
   if (records.subject_year_built && !primary.subject_year_built) {
     primary.subject_year_built = records.subject_year_built;
+  }
+  if (records.subject_construction && !primary.subject_construction) {
+    primary.subject_construction = records.subject_construction;
   }
 
   console.log(`Lane merge: ${a.length} listing-lane + ${fresh.length} records-lane comp(s), ${records.comps.length - fresh.length} duplicate(s) dropped, ${primary.comps.length} kept.`);
@@ -15124,49 +15143,7 @@ const BASEMAP_JS = `var CNBASE = (function () {
     syncLabels();
     return { setTheme: function () { var d = isDark(); base.setUrl(baseUrl(d)); labels.setUrl(labelUrl(d)); } };
   }
-  // One finger scrolls the page, two move the map (2026-11-18): on a phone a
-  // map with dragging on took every swipe that started on it, and the page
-  // stood still. The reasons are on index.html's touchPanMap.
-  // ⚠ MIRROR of touchPanMap in index.html: the bodies are one text, held
-  // together by test/phone-scroll.test.js.
-  function touchPan(map, scrolls) {
-    var coarse = false;
-    try { coarse = window.matchMedia("(hover: none) and (pointer: coarse)").matches; } catch (e) {}
-    if (!coarse || !map || !map.dragging || !map.getContainer) return function () {};
-    var el = map.getContainer();
-    function sync() {
-      if (!scrolls || scrolls()) map.dragging.disable();
-      else map.dragging.enable();
-    }
-    sync();
-    if (el.cnTouchPan) return sync;
-    el.cnTouchPan = true;
-    var x0 = 0, y0 = 0, told = false, timer = 0;
-    el.addEventListener("touchstart", function (e) {
-      told = false;
-      if (e.touches.length === 1) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }
-      else if (el.cnTip) el.cnTip.style.opacity = "0";
-    }, { passive: true });
-    el.addEventListener("touchmove", function (e) {
-      if (told || e.touches.length !== 1 || el.classList.contains("leaflet-touch-drag")) return;
-      var dx = Math.abs(e.touches[0].clientX - x0), dy = Math.abs(e.touches[0].clientY - y0);
-      if (dx < 24 || dx < dy * 1.5) return;
-      told = true;
-      if (!el.cnTip) {
-        el.cnTip = document.createElement("div");
-        el.cnTip.setAttribute("aria-hidden", "true");
-        el.cnTip.textContent = "Use two fingers to move the map";
-        el.cnTip.style.cssText = "position:absolute;top:0;right:0;bottom:0;left:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:0 24px;text-align:center;background:var(--slab);color:#ffffff;font:600 15px/1.4 Inter,system-ui,-apple-system,sans-serif;pointer-events:none;opacity:0;transition:opacity .2s";
-        el.appendChild(el.cnTip);
-        void el.cnTip.offsetWidth;
-      }
-      el.cnTip.style.opacity = ".88";
-      clearTimeout(timer);
-      timer = setTimeout(function () { el.cnTip.style.opacity = "0"; }, 1600);
-    }, { passive: true });
-    return sync;
-  }
-  return { add: add, isDark: isDark, touchPan: touchPan };
+  return { add: add, isDark: isDark };
 })();`;
 
 const MARKET_MAP_JS = `(function(){
@@ -15232,8 +15209,6 @@ const MARKET_MAP_JS = `(function(){
     map = L.map("mktMap", { zoomControl: false, scrollWheelZoom: false }).setView(center, 12);
     // Held rather than discarded: the theme swap below depends on it.
     tiles = CNBASE.add(map);
-    // On a phone one finger scrolls the page past the map, two move it.
-    CNBASE.touchPan(map);
     try {
       new MutationObserver(function () {
         if (tiles) tiles.setTheme();
@@ -15388,8 +15363,6 @@ const MARKETS_DIR_MAP_JS = `(function(){
   // the fit below lands a level up rather than falling back a whole level.
   var map = L.map("mktsMap", { zoomControl: false, scrollWheelZoom: false }).setView([39.8, -98.6], 4);
   var tiles = CNBASE.add(map);
-  // On a phone one finger scrolls the page past the map, two move it.
-  CNBASE.touchPan(map);
   // The theme flip restyles the carved areas alongside the tile swap — their
   // colors are computed tokens, not CSS classes (an SVG path cannot wear
   // .mmap-pin-expanding). Pins need nothing here: they are CSS all the way.

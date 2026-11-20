@@ -205,6 +205,8 @@
   //                then halving per further 15 years (a 1994 house should not
   //                be priced by 2024 new construction: they are different
   //                products even on the same block)
+  //   construction x0.6 when the comp is built differently from the subject
+  //                (opts.subjectConstruction; tilt-up vs metal building)
   //   distance     free pass out to the search radius (10 miles for CRE,
   //                1 for Residential), then a half-life (4 miles for
   //                CRE, 2 miles for Residential — a sale five miles away is
@@ -301,6 +303,23 @@
     return 0.15;
   }
 
+  // How a building is built (2026-11-19): "Tilt-up concrete", "Metal
+  // building", ... — the closed vocabulary report-parse.js normalizes onto.
+  // Compared case-insensitively; anything empty is unknown and neutral.
+  // A comp built differently from the subject counts at CONSTRUCTION_MISMATCH:
+  // a real but partial penalty, smaller than a vintage gap of a generation,
+  // because the model reads construction off fewer pages than year built and
+  // a wrong word should cost a comp some weight, never its place in the range.
+  var CONSTRUCTION_MISMATCH = 0.6;
+  function constructionOf(v) {
+    const s = String(v == null ? "" : v).trim().toLowerCase();
+    return s || null;
+  }
+  function constructionMismatch(c, subjConstruction) {
+    const a = constructionOf(subjConstruction), b = constructionOf(c && c.construction);
+    return a != null && b != null && a !== b;
+  }
+
   function compWeight(c, asOf, subjSF, subjYear, opts) {
     const o = opts && typeof opts === "object" && !Array.isArray(opts) ? opts : {};
     const propType = typeof opts === "string" ? opts : o.propertyType;
@@ -317,6 +336,7 @@
       const dy = Math.abs(yComp - ySub);
       if (dy > 15) w *= Math.pow(0.5, (dy - 15) / 15);
     }
+    if (constructionMismatch(c, o.subjectConstruction)) w *= CONSTRUCTION_MISMATCH;
     const mi = distanceMiles(c);
     const halfLife = distanceHalfLifeMiles(propType);
     const freePass = Number(o.radiusMiles) > 0 ? Number(o.radiusMiles) : defaultFreePassMiles(propType);
@@ -434,6 +454,7 @@
           propertyType: o.propertyType,
           radiusMiles: o.radiusMiles,
           subjectPsf: o.subjectPsf,
+          subjectConstruction: o.subjectConstruction,
         }),
       };
     }));
@@ -744,7 +765,7 @@
   return {
     numericValue, salePsfOf, robustPpsfRange, BAND_LOW_PCT, BAND_HIGH_PCT, heroRound,
     TIER_WEIGHT, tierOf, compDateMs, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
-    defaultFreePassMiles,
+    defaultFreePassMiles, constructionMismatch, CONSTRUCTION_MISMATCH,
     parseRadiusMiles, radiusClaimContradicted, RADIUS_CLAIM_SLACK,
     priceTierFactor, PRICE_TIER_RATIO,
     compWeight, trendFactor,

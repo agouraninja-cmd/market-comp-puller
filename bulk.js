@@ -440,6 +440,7 @@ function valueFromReport(report, opts) {
     propertyType: o.propertyType,
     radiusMiles: VALUATION.parseRadiusMiles(o.note),
     subjectPsf: subjectPsfOf(rep, sizeSqft, o.askingPrice),
+    subjectConstruction: rep.subject_construction || "",
   });
   if (!val) return null;
 

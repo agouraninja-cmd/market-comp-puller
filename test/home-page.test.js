@@ -96,3 +96,41 @@ test("the rendered card shows those figures, says weighted, and stays Illustrati
   assert.ok(card.includes(`&asymp; ${SAMPLE_RANGE.mid.value}`), "the working beside the median must match Likely");
   assert.match(card, /<span class="ill">Illustrative<\/span>/, "keep the Illustrative label");
 });
+
+// The phone layout (2026-11-18, "Improve the landing page for Mobile"). Every
+// rule below lives inside a media query, so on the desktop a review is done on
+// it changes nothing, and that is exactly how a tidy-up deletes it. Each pin
+// is a thing a phone visitor lost before it: the sample's $/SF and source
+// badge were off the right edge of the card behind an unmarked sideways
+// scroll, and the value range was a 420px tower with Likely in the middle.
+test("on a phone the sample's tables are rows, not a sideways scroll, and Likely leads", () => {
+  const { HOME_CSS } = require("../home-page");
+  const css = HOME_CSS.replace(/\/\*[\s\S]*?\*\//g, "");
+  const block = (q) => {
+    const at = css.indexOf("@media (" + q + "){");
+    assert.ok(at > -1, "the " + q + " block is gone");
+    let depth = 0, i = css.indexOf("{", at);
+    const start = i + 1;
+    for (; i < css.length; i++) { if (css[i] === "{") depth++; else if (css[i] === "}" && --depth === 0) break; }
+    return css.slice(start, i);
+  };
+  const phone = block("max-width:659.98px");
+  // 620px of comp table plus the page's two 16px gutters: a smaller
+  // breakpoint leaves a sliver of sideways scroll between it and 652px.
+  assert.match(css, /\.hmtable\{min-width:620px\}/, "the table's desktop width moved; re-derive the phone breakpoint from it");
+  assert.match(phone, /\.hmtable,\.hmvtable\{min-width:0\}/, "the tables must stop forcing their desktop width");
+  assert.match(phone, /\.hmscroll\{overflow-x:visible\}/, "no sideways scroll on a phone");
+  assert.match(phone, /\.hmtr\.head,\.hmvr\.head\{display:none\}/, "the column heads give way to labelled rows");
+  // The words the hidden heads said come back on each row.
+  for (const word of ['"Sold "', '"Closed "', '" SF"', '"/SF"']) assert.ok(phone.includes("content:" + word), "a row lost its " + word + " label");
+  // The badge is what the page sells; it stays on screen.
+  assert.match(phone, /\.hmtr:not\(\.med\)>:nth-child\(5\)\{order:6;margin-left:auto/, "the source badge must stay on the row");
+  assert.ok(!/nth-child\(5\)\{[^}]*display:none/.test(phone), "never hide the source badge on a phone");
+  // Likely first, Low and High under it (order only: the DOM still reads
+  // Low, Likely, High, which the card test above pins).
+  const tablet = block("max-width:899.98px");
+  assert.match(tablet, /\.hmrcell\.mid\{order:-1;grid-column:1 \/ -1/, "Likely must lead the range under 900px");
+  assert.match(tablet, /\.hmrange\{grid-template-columns:1fr 1fr\}/, "Low and High sit side by side");
+  // Buttons a thumb can hit: the intro's and the closing band's doors stack full width.
+  assert.match(phone, /\.hmctas,\.hmbtns\{flex-direction:column;align-items:stretch/, "the doors stack full width on a phone");
+});

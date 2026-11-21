@@ -1377,6 +1377,12 @@ paths:
   broker cannot request an intro to a lead they cannot see) and deduped via
   `unique(lead_id, user_id)` on `lead_intro_requests` — a repeat request
   answers `{ ok: true, already: true }` rather than emailing the owner twice.
+  **Since 2026-11-20 an intro request also lands on the owner's BOV desk**
+  (`bovAddPlatformBroker`, non-blocking; bov-desk.md): the broker is listed
+  on `/admin/bov` as already accepted, and the owner's part is one press of
+  Introduce, which sends one email to the requester and the broker. Still
+  owner-mediated: nothing is sent to either of them until that press, and
+  the owner's notification email names the desk.
   All three routes go through **`requireBroker`**, a deliberate second copy
   of the vault's `openVault` gate (same three refusals, same order: 401 not
   signed in, 403 not a broker, 503 no database) — `test/routes.test.js`

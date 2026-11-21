@@ -27,7 +27,11 @@ paths:
   rows with broker email and the lead's market/type — owner-facing, so that
   PII is allowed here even though analytics EVENTS stay PII-free), rendered
   as a "Broker intro requests" card on `/admin`; without it a dropped owner
-  email made a request invisible. Supabase-only like the route that writes
+  email made a request invisible. Since 2026-11-20 it also carries `bovDesk`
+  (`readBovDeskCount`: drafts waiting to be sent and brokers waiting for an
+  introduction), drawn as a "BOV desk" card above the tiles with a link to
+  `/admin/bov`. The card is a count and a door: it sends nothing and
+  searches nothing (bov-desk.md). Supabase-only like the route that writes
   it (`db: false` when unconfigured), and fails safe: a read error yields
   `null`/"Unavailable", never a broken dashboard or a fabricated zero.
   **Logging is always on**; the

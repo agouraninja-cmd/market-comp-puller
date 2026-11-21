@@ -93,6 +93,8 @@ const TABLES = [
   ["permit_watch_mutes",  "055-permit-watch-firm.sql"],
   ["permit_alerts",       "057-permit-alerts.sql"],
   ["user_sites",          "060-user-sites.sql"],
+  ["bov_requests",        "065-bov-desk.sql"],
+  ["bov_matches",         "065-bov-desk.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a

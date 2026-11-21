@@ -31,6 +31,12 @@
   },
   {
     "date": "2026-11-20",
+    "type": "feature",
+    "title": "BOV requests are worked automatically: brokers found, emails drafted, introductions made",
+    "details": "When someone asks for a Broker Opinion of Value, the site now finds up to five local brokers for that market and property type and drafts an email to each within seconds, then emails you a link to the new BOV desk (/admin/bov). You read a draft and press Send; nothing reaches a broker before that unless you switch autopilot on. Each email carries a link, and the first broker to accept is introduced to the owner by email on the spot, with a copy to you. Brokers found for a market are reused for the next request there, so a second request costs no search. A member broker who asks for a lead from their Pipeline shows up on the desk one press from an introduction. Needs migration 065; until it runs, requests and the existing emails work exactly as before."
+  },
+  {
+    "date": "2026-11-20",
     "type": "improvement",
     "title": "No more +/− zoom buttons on any map, desktop included",
     "details": "Every map is now made without Leaflet's zoom buttons (zoomControl: false), so they are gone on desktop as well as phones. Double-click, pinch, double-tap and (on Home) the scroll wheel still zoom. A test fails any new map that brings them back."

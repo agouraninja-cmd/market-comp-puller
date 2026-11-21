@@ -6044,16 +6044,26 @@ async function orgLeasesDueForNotice(now = Date.now()) {
   const to = iso(now + (RENEWAL.LEAD_DAYS + 1) * day);
   const cols = "id,org_id,building_id,tenant,suite,size_sqft,lease_expiry,option_notice_date," +
     "rent_psf,rent_basis,lease_type,status,added_by_user_id,added_by_name,renewal_notified_at";
-  const [byNotice, byExpiry] = await Promise.all([
+  // The last reminder's window (FIRM_FINAL_DAYS) is read again WITHOUT the
+  // never-mailed filter, since a lease owed its last reminder has been
+  // mailed once already. Small: only dates inside the next two weeks.
+  const toFinal = iso(now + (RENEWAL.FIRM_FINAL_DAYS + 1) * day);
+  const [byNotice, byExpiry, finalNotice, finalExpiry] = await Promise.all([
     sbRequest("GET", `org_leases?renewal_notified_at=is.null` +
       `&option_notice_date=gte.${from}&option_notice_date=lte.${to}` +
       `&select=${cols}&order=option_notice_date.asc&limit=2000`),
     sbRequest("GET", `org_leases?renewal_notified_at=is.null` +
       `&lease_expiry=gte.${from}&lease_expiry=lte.${to}` +
       `&select=${cols}&order=lease_expiry.asc&limit=2000`),
+    sbRequest("GET", `org_leases?renewal_notified_at=not.is.null` +
+      `&option_notice_date=gte.${from}&option_notice_date=lte.${toFinal}` +
+      `&select=${cols}&order=option_notice_date.asc&limit=2000`),
+    sbRequest("GET", `org_leases?renewal_notified_at=not.is.null` +
+      `&lease_expiry=gte.${from}&lease_expiry=lte.${toFinal}` +
+      `&select=${cols}&order=lease_expiry.asc&limit=2000`),
   ]);
   const seen = new Map();
-  for (const row of [...(byNotice || []), ...(byExpiry || [])]) {
+  for (const row of [...(byNotice || []), ...(byExpiry || []), ...(finalNotice || []), ...(finalExpiry || [])]) {
     if (row && row.id && !seen.has(row.id)) seen.set(row.id, row);
   }
   return [...seen.values()];
@@ -6094,6 +6104,39 @@ async function markOrgLeasesNotified(orgId, ids) {
   await sbRequest("PATCH",
     `org_leases?org_id=eq.${encodeURIComponent(orgId)}&id=in.(${pgInList(ids)})`,
     { renewal_notified_at: new Date().toISOString() }, { prefer: "return=minimal" });
+}
+
+// The firm's switch for its lease reminders (migration 065, SOFT order). Its
+// own query, never a column in orgsByIds/findOrg, so code deployed before the
+// migration keeps every firm read working. Answers a Map of org id -> false
+// for the firms that turned reminders OFF; anything absent is on.
+//
+// A missing column is "on" for everyone: nobody can have turned it off before
+// it existed. ANY OTHER failure throws, so the send run refuses rather than
+// mailing a firm whose "off" it could not read (fail closed).
+async function orgLeaseReminderSettings(orgIds) {
+  const out = new Map();
+  const list = [...new Set((orgIds || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
+  if (!DB_CONFIGURED || !list.length) return out;
+  try {
+    for (let i = 0; i < list.length; i += 100) {
+      const chunk = list.slice(i, i + 100);
+      const rows = await sbRequest("GET",
+        `orgs?id=in.(${pgInList(chunk)})&select=id,lease_reminders&limit=${chunk.length}`);
+      for (const r of rows || []) if (r && r.lease_reminders === false) out.set(String(r.id), false);
+    }
+  } catch (err) {
+    if (isMissingColumn(err)) return new Map();
+    throw err;
+  }
+  return out;
+}
+
+// Owner/admin only, checked by the route. A missing column throws a
+// recognizable error the route turns into a plain 503.
+async function setOrgLeaseReminders(orgId, on) {
+  return sbRequest("PATCH", `orgs?id=eq.${encodeURIComponent(orgId)}`,
+    { lease_reminders: Boolean(on) }, { prefer: "return=minimal" });
 }
 
 async function buildingContacts(orgId, buildingId) {
@@ -18637,6 +18680,22 @@ function aggregateStats(rows) {
         lastAnyAt: lastAny ? lastAny.ts : null,
       };
     })(),
+    // The firm lease reminders' runs (2026-11-21), the digest card's reasons
+    // and shape: the schedule is outside this process, so the card says when
+    // it last really mailed anybody, and previews are counted apart.
+    leaseNoticeRuns: (() => {
+      const all = rows.filter((r) => r.kind === "org_lease_notices");
+      const real = all.filter((r) => !String(r.source || "").startsWith("dry:"));
+      const last = (list) => list.reduce((newest, r) =>
+        (!newest || String(r.ts) > String(newest.ts) ? r : newest), null);
+      const lastReal = last(real);
+      return {
+        runs: real.length,
+        previews: all.length - real.length,
+        lastAt: lastReal ? lastReal.ts : null,
+        lastOutcome: lastReal ? String(lastReal.source || "") : "",
+      };
+    })(),
     // Visitor funnel (2026-08-13, migration 026). The one question every
     // other block here cannot answer: not how many signups and how many
     // reports, but how many of the SAME browsers did both. Counted over
@@ -18925,6 +18984,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <div id="auditPanel"></div>
 <div id="accuracy"></div>
 <div id="digest" style="display:none"></div>
+<div id="leaseNotices" style="display:none"></div>
 <div id="permits" style="display:none"></div>
 <div id="subs" style="display:none"></div>
 </div>
@@ -19359,6 +19419,70 @@ function renderDigestCard(state){
   document.getElementById("dgPrev").addEventListener("click",function(){run(true);});
   document.getElementById("dgSend").addEventListener("click",function(){run(false);});
 }
+// Firm lease reminders (2026-11-21). The digest card's shape and its rule:
+// renderLeaseCard takes no arguments on load and FETCHES NOTHING, and the one
+// call to /api/org/leases/notices lives inside the click handler, so opening
+// /admin never mails a firm. LEASE_RUNS comes off /api/stats.
+var LEASE_RUNS=null;
+function renderLeaseCard(state){
+  var el=document.getElementById("leaseNotices");
+  var body;
+  if(state&&state.error){
+    body="<p class=muted>"+esc(state.error)+"</p>";
+  }else if(state&&state.summary){
+    var s=state.summary;
+    body="<p><b>"+esc(s.due)+"</b> lease(s) due across <b>"+esc(s.firms)+"</b> firm(s) &middot; "+
+      (state.dry?"<b>"+esc((s.previews||[]).length)+"</b> email(s) would go"
+                :"<b>"+esc(s.sent)+"</b> email(s) sent covering "+esc(s.leases)+" lease(s)")+
+      " &middot; "+esc(s.firmsOff||0)+" firm(s) turned off &middot; "+esc(s.optedOut)+" opted out"+
+      (s.failed?" &middot; <b>"+esc(s.failed)+" failed</b>":"")+"</p>"+
+      (s.previews||[]).map(function(p){
+        return "<div style='margin-top:12px'><div class=muted>"+esc(p.to)+"</div>"+
+          "<div style='font-weight:600'>"+esc(p.subject)+"</div>"+
+          "<pre style='white-space:pre-wrap;background:#F7F6F3;border:1px solid #E4E2DA;border-radius:8px;padding:10px;margin-top:6px;font-size:13px'>"+
+          esc(p.text)+"</pre></div>";
+      }).join("");
+  }else{
+    var r=LEASE_RUNS||{};
+    var ago=function(ts){
+      var days=Math.floor((Date.now()-Date.parse(ts))/86400000);
+      return days<=0?"today":(days===1?"yesterday":days+" days ago");
+    };
+    var lastLine;
+    if(r.lastAt){
+      lastLine="Last run <b>"+esc(ago(r.lastAt))+"</b> ("+esc(new Date(r.lastAt).toLocaleDateString())+")"+
+        (r.lastOutcome?" &middot; "+esc(r.lastOutcome.replace("sent:","")+" email(s) sent"):"")+
+        " &middot; "+esc(r.runs)+" run(s) logged";
+    }else if(r.previews){
+      lastLine="<b>Never run for real</b> &mdash; "+esc(r.previews)+" preview(s) only";
+    }else{
+      lastLine="<b>Never run.</b>";
+    }
+    body="<p class=muted>Emails a firm's owners, and whoever filed the lease, 90 and 14 days before an option notice or expiry. "+
+      "Runs on weekdays from GitHub Actions. Preview builds every email and sends none.</p><p>"+lastLine+"</p>";
+  }
+  el.innerHTML="<div class=card><h2>Lease reminders</h2>"+body+
+    "<p style='margin-top:12px'>"+digestBtn("lnPrev","Preview (sends nothing)")+
+    digestBtn("lnSend","Send now","mute")+"</p></div>";
+  el.style.display="block";
+  var run=function(dry){
+    var key=sessionStorage.getItem(KEYK);
+    if(!dry&&!confirm("Send the lease reminders now? Real email goes to firm owners and filers, and it cannot be recalled."))return;
+    document.getElementById("lnPrev").disabled=true;
+    document.getElementById("lnSend").disabled=true;
+    fetch("/api/org/leases/notices",{method:"POST",
+      headers:{"content-type":"application/json","x-admin-key":key||""},
+      body:JSON.stringify({dryRun:dry})})
+    .then(function(r){return r.json().then(function(j){
+      if(!r.ok)throw new Error(j.error||("Error "+r.status));
+      return j;
+    });})
+    .then(function(j){renderLeaseCard({summary:j,dry:dry});})
+    .catch(function(e){renderLeaseCard({error:e.message});});
+  };
+  document.getElementById("lnPrev").addEventListener("click",function(){run(true);});
+  document.getElementById("lnSend").addEventListener("click",function(){run(false);});
+}
 // Permit filings (2026-09-16). The digest card's shape and the digest card's
 // rule: this takes no arguments and FETCHES NOTHING on load — the only call
 // to /api/permits/sweep lives inside the click handlers, so opening /admin
@@ -19434,7 +19558,7 @@ function load(key){
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key); DIGEST_RUNS=d.digestRuns||null; renderDigestCard(); PERMIT_STATS=d.permits; renderPermitCard();})
+  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key); DIGEST_RUNS=d.digestRuns||null; renderDigestCard(); LEASE_RUNS=d.leaseNoticeRuns||null; renderLeaseCard(); PERMIT_STATS=d.permits; renderPermitCard();})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }
@@ -23834,7 +23958,9 @@ const server = http.createServer((req, res) =>
   // WHO IS MAILED: the firm's owners get every due lease, and the member who
   // filed a lease gets theirs while they are still in the firm. Never a
   // pending invite, never somebody removed, never an account that turned
-  // CompNinja emails off.
+  // CompNinja emails off, and never a firm whose owner or admin turned lease
+  // reminders off (orgs.lease_reminders, 065). WHEN: 90 days before the date
+  // and again 14 days before (renewal-watch.js firmLeaseStage).
   //
   // The trial emails' design, rule for rule: ADMIN_KEY-gated and driven from
   // OUTSIDE (.github/workflows/lease-notices.yml), never a timer; refuses
@@ -23869,7 +23995,17 @@ const server = http.createServer((req, res) =>
           if (!byOrg.has(String(row.org_id))) byOrg.set(String(row.org_id), []);
           byOrg.get(String(row.org_id)).push(row);
         }
-        const summary = { firms: byOrg.size, due: due.length, sent: 0, leases: 0, optedOut: 0, failed: 0, previews: [] };
+        const summary = { firms: byOrg.size, due: due.length, sent: 0, leases: 0, optedOut: 0, firmsOff: 0, failed: 0, previews: [] };
+        if (!byOrg.size) return sendJson(res, 200, summary);
+
+        // A firm that turned reminders off (065) is skipped whole and its
+        // leases are NOT marked, so turning them back on picks up whatever is
+        // still ahead. A read that fails (other than an unrun migration)
+        // throws to the 500 below: nobody is mailed whose "off" was unread.
+        const off = await orgLeaseReminderSettings([...byOrg.keys()]);
+        for (const orgId of [...byOrg.keys()]) {
+          if (off.get(orgId) === false) { byOrg.delete(orgId); summary.firmsOff += 1; }
+        }
         if (!byOrg.size) return sendJson(res, 200, summary);
 
         const [orgs, buildings, members] = await Promise.all([
@@ -23931,7 +24067,8 @@ const server = http.createServer((req, res) =>
         }
         logEvent("org_lease_notices", { source: dryRun ? `dry:${summary.previews.length}` : `sent:${summary.sent}` });
         console.log(`Lease reminders${dryRun ? " (dry run)" : ""}: ${summary.sent} sent covering ${summary.leases} of ` +
-          `${summary.due} due across ${summary.firms} firm(s), ${summary.optedOut} opted out, ${summary.failed} failed`);
+          `${summary.due} due across ${summary.firms} firm(s), ${summary.firmsOff} firm(s) off, ` +
+          `${summary.optedOut} opted out, ${summary.failed} failed`);
         return sendJson(res, 200, summary);
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -30201,9 +30338,15 @@ const server = http.createServer((req, res) =>
         const [rows, ent] = await Promise.all([orgMembershipsFor(user), entitlementsFor(req)]);
         const mine = rows.filter((r) => ORG.isActive(r));
         const pending = rows.filter((r) => ORG.isPending(r));
-        const [firms, logos] = await Promise.all([
+        const [firms, logos, leaseOff] = await Promise.all([
           orgsByIds([...mine, ...pending].map((r) => r.org_id)),
           orgLogoRevs(mine.map((r) => r.org_id)),
+          // Presentation only (the switch's state for the settings panel), so
+          // a failed read shows "on" rather than failing the whole firm read.
+          orgLeaseReminderSettings(mine.map((r) => r.org_id)).catch((err) => {
+            console.error("Lease reminder setting read failed (shown as on):", err.message);
+            return new Map();
+          }),
         ]);
         // Billing state, only for a firm this caller actually belongs to, and
         // the SEAT USAGE for everyone in it — a member seeing "6 of 6 seats"
@@ -30239,7 +30382,8 @@ const server = http.createServer((req, res) =>
           // header on Home draws /api/org/logo?id=…&v=<logoAt>, so the bytes
           // never ride this read (it ships inside every Home page) and a new
           // logo is a new URL rather than a stale cache.
-          orgs: mine.map((r) => ({ ...orgSummary(r, firms), logoAt: logos.get(String(r.org_id)) || "" })),
+          orgs: mine.map((r) => ({ ...orgSummary(r, firms), logoAt: logos.get(String(r.org_id)) || "",
+            leaseReminders: leaseOff.get(String(r.org_id)) !== false })),
           invites: pending.map((r) => ({
             id: r.id,
             orgId: r.org_id,
@@ -31244,6 +31388,25 @@ const server = http.createServer((req, res) =>
           renamed = check.name;
           changed = true;
         }
+        let leaseReminders = null;
+        if (body.leaseReminders !== undefined) {
+          // Owner/admin: it decides what the firm's owners and every filer
+          // are emailed, not one member's own mail (that is digest_optout).
+          if (!ORG.canManageMembers(membership)) {
+            return sendJson(res, 403, { error: "Only a firm's owner or an admin can change this." });
+          }
+          if (typeof body.leaseReminders !== "boolean") return sendJson(res, 400, { error: "Unrecognized setting." });
+          try {
+            await setOrgLeaseReminders(orgId, body.leaseReminders);
+          } catch (err) {
+            if (isMissingColumn(err)) {
+              return sendJson(res, 503, { error: "Lease reminders can't be turned off just yet. Please try again later." });
+            }
+            throw err;
+          }
+          leaseReminders = body.leaseReminders;
+          changed = true;
+        }
         if (body.autoShare !== undefined) {
           const value = ORG.autoShareValue(body.autoShare);
           // `undefined` is the refusal and `null` is a real value ("follow"),
@@ -31262,8 +31425,13 @@ const server = http.createServer((req, res) =>
         const mine = ORG.membershipOf(
           rows.filter((r) => String(r.org_id) === orgId), user.email);
         const org = (await orgsByIds([orgId])).get(String(orgId)) || null;
+        if (leaseReminders === null) {
+          leaseReminders = await orgLeaseReminderSettings([orgId])
+            .then((m) => m.get(String(orgId)) !== false).catch(() => true);
+        }
         return sendJson(res, 200, {
           ok: true,
+          leaseReminders,
           // The stored name, cleaned; the cleaned input if the re-read failed.
           name: org ? org.name : renamed,
           kind: ORG.kindOf(org),
@@ -35009,8 +35177,12 @@ const server = http.createServer((req, res) =>
             // Permit signals slice 3: filings and status moves on the board's
             // own buildings in the last thirty days. Same enrichment rule.
             const permits = await boardPermitActivityFor(rows);
+            // Whether the strip's dates are emailed (065), for the line under
+            // it. Shown as on when unread, the GET /api/org rule.
+            const leaseReminders = await orgLeaseReminderSettings([firm.orgId])
+              .then((m) => m.get(String(firm.orgId)) !== false).catch(() => true);
             boot = { s: 200, j: {
-              firm: { id: firm.orgId, name: (org && org.name) || "Your firm" },
+              firm: { id: firm.orgId, name: (org && org.name) || "Your firm", leaseReminders },
               truncated: rows.length >= BUILDINGS.MAX_BUILDINGS,
               summary: BUILDINGS.summarize(rows).line,
               buildings: rows.map((r) => BUILDINGS.toBuilding(r, user.id)),

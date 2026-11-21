@@ -274,3 +274,24 @@ test("several firm leases are counted in the subject and listed soonest first", 
   assert.equal(mail.subject, "2 leases at Northside Brokers have dates coming up");
   assert.ok(mail.text.indexOf("Zed Co, Unit 4") < mail.text.indexOf("Acme Logistics"));
 });
+
+test("a firm lease gets a last reminder 14 days out, once, and never after a late first one", () => {
+  // Due 2026-12-01, 11 days after FIRM_NOW.
+  const base = { option_notice_date: "2026-12-01", lease_expiry: "2027-06-01" };
+  assert.equal(RW.FIRM_FINAL_DAYS, 14);
+  assert.equal(RW.firmLeaseStage(firmLease(base), FIRM_NOW), "first", "never told: the first email");
+  assert.equal(RW.firmLeaseStage(firmLease({ ...base, renewal_notified_at: "2026-09-02T16:10:00Z" }), FIRM_NOW), "final",
+    "told 90 days out: the last reminder is due inside two weeks");
+  assert.equal(RW.firmLeaseStage(firmLease({ ...base, renewal_notified_at: "2026-11-18T16:10:00Z" }), FIRM_NOW), null,
+    "told inside the last two weeks (the final, or a late first): nothing more");
+  assert.equal(RW.firmLeaseStage(firmLease({ option_notice_date: "2027-01-19", renewal_notified_at: "2026-11-01T00:00:00Z" }), FIRM_NOW), null,
+    "told, and the date is still more than 14 days out: wait");
+  assert.equal(RW.firmLeaseStage(firmLease({ ...base, renewal_notified_at: "garbage" }), FIRM_NOW), null,
+    "an unreadable mark under-sends");
+  const mail = firmBuild([firmLease({ ...base, renewal_notified_at: "2026-09-02T16:10:00Z" })]);
+  assert.match(mail.subject, /^Reminder: Option notice coming up: Acme Logistics/);
+  assert.match(mail.text, /in 11 days/);
+  assert.match(mail.text, /Each date is mailed about twice: 90 days and 14 days before\. An owner can turn these off/);
+  const mixed = firmBuild([firmLease({ ...base, renewal_notified_at: "2026-09-02T16:10:00Z" }), firmLease({ id: "l2" })]);
+  assert.equal(/^Reminder:/.test(mixed.subject), false, "Reminder: only when every lease in it is a repeat");
+});

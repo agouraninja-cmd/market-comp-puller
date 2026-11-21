@@ -231,6 +231,9 @@ const COLUMNS = [
   // Missing either is not a degraded hub, it is a 400 on every read — which
   // is the intended loud failure, but only if someone can see it named here.
   ["hub_participants",  ["token_hash", "removed_at", "role"],    "024-messaging-hub.sql"],
+  // 065 is read on its own and a missing column reads as "on", so its
+  // absence only means a firm cannot turn its lease reminders off yet.
+  ["orgs",              ["lease_reminders"],                     "065-org-lease-reminders.sql"],
   // 063 is probed (hubNamesReady), so its absence only means no names.
   ["hub_participants",  ["name"],                                "063-hub-guest-names.sql"],
   ["hub_items",         ["snapshot", "private", "source_ref"],   "024-messaging-hub.sql"],

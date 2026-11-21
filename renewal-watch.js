@@ -246,9 +246,14 @@ function buildRenewalNotice({ leases, now, deskUrl, unsubscribeUrl }) {
 // "which date is the deadline" has one owner.
 //
 // Who is mailed is the caller's decision (server.js: the firm's owners and
-// the member who filed the lease). Three rules live here:
-//   - ONE email per lease, ever (`renewal_notified_at`), the rule above. The
-//     lease route clears the mark when somebody changes a lease's dates.
+// the member who filed the lease). Four rules live here:
+//   - TWO emails per lease date at most: the first inside LEAD_DAYS, and a
+//     last one inside FIRM_FINAL_DAYS (2026-11-21, the owner: "Build the not
+//     built"). One column holds both (`renewal_notified_at`): the last one is
+//     due only when the mark was set MORE than FIRM_FINAL_DAYS before the
+//     date, so a first email that already went inside the last two weeks
+//     (a lease filed late) is never followed by a second. The lease route
+//     clears the mark when somebody changes a lease's dates.
 //   - A LAPSED OPTION NOTICE HANDS OVER TO THE EXPIRY, org-leases.js's
 //     criticalDates rule. A lease filed after its notice date went by still
 //     ends on a day the firm can act on, and nobody has been told about it.
@@ -279,13 +284,30 @@ function firmLeaseDeadline(lease, now) {
   return { date: deadline.date, kind: deadline.kind, days };
 }
 
-function firmLeaseDue(lease, now) {
-  if (!lease) return false;
-  if (trimmed(lease.renewal_notified_at)) return false;
+// Two weeks: long enough to send a notice that is still a decision, short
+// enough that it reads as the last call rather than a second copy.
+const FIRM_FINAL_DAYS = 14;
+
+// Which email a firm lease is owed now: "first", "final", or null.
+function firmLeaseStage(lease, now) {
+  if (!lease) return null;
   const status = trimmed(lease.status).toLowerCase();
-  if (status === "vacated" || status === "expired") return false;
+  if (status === "vacated" || status === "expired") return null;
   const d = firmLeaseDeadline(lease, now);
-  return Boolean(d) && d.days >= 0 && d.days <= LEAD_DAYS;
+  if (!d || d.days < 0 || d.days > LEAD_DAYS) return null;
+  const mark = trimmed(lease.renewal_notified_at);
+  if (!mark) return "first";
+  if (d.days > FIRM_FINAL_DAYS) return null;
+  // The mark's own calendar day against the deadline's. Unreadable reads as
+  // already told: under-send, never repeat.
+  const markDay = dayMs(mark.slice(0, 10));
+  if (!Number.isFinite(markDay)) return null;
+  const gap = Math.round((dayMs(d.date) - markDay) / MS_PER_DAY);
+  return gap > FIRM_FINAL_DAYS ? "final" : null;
+}
+
+function firmLeaseDue(lease, now) {
+  return firmLeaseStage(lease, now) !== null;
 }
 
 function dueFirmLeases(leases, now) {
@@ -334,6 +356,12 @@ function firmLeaseBlock(lease, now) {
 }
 
 function firmSubjectFor(due, firmName, now) {
+  // "Reminder:" only when every lease in it has been mailed about before.
+  const again = due.every((l) => firmLeaseStage(l, now) === "final") ? "Reminder: " : "";
+  return again + firmSubjectCore(due, firmName, now);
+}
+
+function firmSubjectCore(due, firmName, now) {
   if (due.length === 1) {
     const d = firmLeaseDeadline(due[0], now);
     const what = d.kind === "notice" ? "Option notice" : "Lease expiry";
@@ -365,9 +393,11 @@ function buildFirmLeaseNotice({ leases, now, firmName, role, buildingsUrl, unsub
     "",
     // WHY and HOW TO STOP, as two facts (the rule above).
     role === "owner"
-      ? "You are receiving this because you are an owner of " + firm + " on CompNinja. Each lease is mailed about once."
+      ? "You are receiving this because you are an owner of " + firm + " on CompNinja."
       : "You are receiving this because you filed " + (due.length === 1 ? "this lease" : "these leases") +
-        " for " + firm + " on CompNinja. Each lease is mailed about once.",
+        " for " + firm + " on CompNinja.",
+    "Each date is mailed about twice: " + LEAD_DAYS + " days and " + FIRM_FINAL_DAYS +
+      " days before. An owner can turn these off for the firm in its settings on Home.",
     "Turn these emails off: " + unsubscribeUrl,
     "",
     "These dates are as your firm recorded them. Check the lease itself for the dates that bind you.",
@@ -379,7 +409,9 @@ function buildFirmLeaseNotice({ leases, now, firmName, role, buildingsUrl, unsub
 module.exports = {
   buildFirmLeaseNotice,
   firmLeaseDue,
+  firmLeaseStage,
   dueFirmLeases,
+  FIRM_FINAL_DAYS,
   firmLeaseDeadline,
   prettyDay,
   buildRenewalNotice,

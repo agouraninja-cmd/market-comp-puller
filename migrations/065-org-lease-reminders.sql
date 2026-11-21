@@ -1,0 +1,25 @@
+-- 065: orgs.lease_reminders — a firm's switch for its lease reminder emails (2026-11-21).
+--
+-- Deploy order is SOFT: run it before or after the code.
+--
+-- POST /api/org/leases/notices (2026-11-20) emails a firm's owners and the
+-- member who filed a lease, 90 and 14 days before its option notice or
+-- expiry. This column lets an owner or admin turn that off for the whole
+-- firm (POST /api/org/settings { leaseReminders: false }).
+--
+-- Why the order does not matter: no read the app depends on names the column.
+-- orgsByIds and findOrg do not select it; it is read by its own query,
+-- orgLeaseReminderSettings, which treats a missing column as "on" (nobody can
+-- have turned it off before it existed). Writing it before it exists answers
+-- 503 with a plain message rather than a silent no-op.
+--
+-- Default true: the reminders shipped on for every firm, and a firm that has
+-- never chosen keeps getting them. NOT NULL so "unset" cannot mean a third
+-- thing. Purely additive and idempotent.
+alter table public.orgs add column if not exists lease_reminders boolean not null default true;
+
+-- Verify (expects zero rows):
+--   select 'missing: orgs.lease_reminders'
+--   where not exists (select 1 from information_schema.columns
+--                     where table_schema = 'public' and table_name = 'orgs'
+--                       and column_name = 'lease_reminders');

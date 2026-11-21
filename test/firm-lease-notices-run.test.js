@@ -188,6 +188,107 @@ test("the firm's lease reminders actually run", async (t) => {
     assert.equal(tbl.org_leases[0].renewal_notified_at, null);
   });
 
+  await t.test("a lease told 90 days out gets one last reminder inside 14 days, then nothing", async (t) => {
+    const told = new Date(Date.now() - 80 * 86400000).toISOString();
+    const tbl = tables([lease({ option_notice_date: ymd(10), renewal_notified_at: told })]);
+    const { db, srv, stop } = await boot(tbl);
+    t.after(stop);
+    const summary = await (await run(srv)).json();
+    assert.equal(summary.sent, 2);
+    const mails = await fake.waitForMail(db, 2);
+    assert.ok(mails.every((m) => /^Reminder: Option notice coming up/.test(m.subject)));
+    assert.match(mails[0].text, /in 10 days/);
+    assert.notEqual(tbl.org_leases[0].renewal_notified_at, told, "the mark moves to this send");
+    assert.equal((await (await run(srv)).json()).sent, 0, "and a third run mails nobody");
+  });
+
+  await t.test("a firm that turned reminders off is skipped whole, and its leases stay unmarked", async (t) => {
+    const tbl = tables([lease()]);
+    tbl.orgs[0].lease_reminders = false;
+    const { db, srv, stop } = await boot(tbl);
+    t.after(stop);
+    const summary = await (await run(srv)).json();
+    assert.equal(summary.firmsOff, 1);
+    assert.equal(summary.sent, 0);
+    assert.equal(db.sent.length, 0);
+    assert.equal(tbl.org_leases[0].renewal_notified_at, null, "turned back on, the reminder still comes");
+  });
+
+  await t.test("an owner or admin turns reminders off in firm settings; a member cannot", async (t) => {
+    const tbl = tables([lease()]);
+    const { db, srv, stop } = await boot(tbl);
+    t.after(stop);
+    const settings = (user, body) => fetch(srv.base + "/api/org/settings", {
+      method: "POST", headers: { "content-type": "application/json", cookie: `cn_session=tok-${user.id}` },
+      body: JSON.stringify({ orgId: ORG_ID, ...body }),
+    });
+    const org = async (user) => (await (await fetch(srv.base + "/api/org",
+      { headers: { cookie: `cn_session=tok-${user.id}` } })).json()).orgs[0];
+
+    assert.equal((await org(OWNER)).leaseReminders, true, "on until somebody turns it off");
+    assert.equal((await settings(FILER, { leaseReminders: false })).status, 403, "a member cannot");
+    assert.equal((await settings(OWNER, { leaseReminders: "no" })).status, 400, "a yes or no, nothing else");
+    const r = await settings(OWNER, { leaseReminders: false });
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).leaseReminders, false);
+    assert.equal(tbl.orgs[0].lease_reminders, false);
+    assert.equal((await org(FILER)).leaseReminders, false, "every member reads the firm's answer");
+
+    // The Buildings page says so under its dates.
+    const page = await (await fetch(srv.base + "/buildings", { headers: { cookie: `cn_session=tok-${OWNER.id}` } })).text();
+    assert.match(page, /"leaseReminders":false/);
+    assert.match(page, /id="blCritNote"/);
+
+    assert.equal((await (await run(srv)).json()).firmsOff, 1, "and the run honours it");
+    assert.equal(db.sent.length, 0);
+    assert.equal((await settings(OWNER, { leaseReminders: true })).status, 200);
+    assert.equal((await (await run(srv)).json()).sent, 2, "back on: the lease is mailed");
+  });
+
+  await t.test("before migration 065 runs: the run mails as before, and the switch says it cannot yet", async (t) => {
+    const tbl = tables([lease()]);
+    const db = await fake.start({ tables: tbl, missingColumns: { orgs: ["lease_reminders"] } });
+    const srv = await shared.boot({ ACCOUNT_WALL: "off", PRO_ENABLED: "on", ADMIN_KEY: "lease-key",
+      SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key", RESEND_API_KEY: "resend-key",
+      EMAIL_FROM: "CompNinja <reports@compninja.co>", RESEND_API_URL: db.resendUrl, SITE_URL: "https://compninja.co" });
+    t.after(async () => { srv.stop(); await db.stop(); });
+    assert.equal((await (await run(srv)).json()).sent, 2, "a missing column is on for everyone");
+    const r = await fetch(srv.base + "/api/org/settings", {
+      method: "POST", headers: { "content-type": "application/json", cookie: `cn_session=tok-${OWNER.id}` },
+      body: JSON.stringify({ orgId: ORG_ID, leaseReminders: false }),
+    });
+    assert.equal(r.status, 503);
+    assert.match((await r.json()).error, /can't be turned off just yet/);
+    const me = await (await fetch(srv.base + "/api/org", { headers: { cookie: `cn_session=tok-${OWNER.id}` } })).json();
+    assert.equal(me.orgs[0].leaseReminders, true, "the firm read still answers");
+  });
+
+  await t.test("the /admin card: opening the page sends nothing, and it says when it last ran", async (t) => {
+    const tbl = tables([lease()]);
+    const { srv, stop } = await boot(tbl);
+    t.after(stop);
+    const html = await (await fetch(srv.base + "/admin")).text();
+    assert.equal(html.split('"/api/org/leases/notices"').length - 1, 1, "one fetch call site, inside run()");
+    const loader = html.slice(html.indexOf("function load(key)"), html.indexOf("function load(key)") + 1200);
+    assert.equal(/leases\/notices/.test(loader), false, "the loader never touches the route");
+    assert.match(html, /renderLeaseCard\(\)/, "the idle card takes no arguments and fetches nothing");
+    assert.match(html, /confirm\("Send the lease reminders now\?[^"]*cannot be recalled/);
+    const runFn = html.slice(html.indexOf("function renderLeaseCard"));
+    assert.match(runFn.slice(runFn.indexOf("var run=function(dry)"), runFn.indexOf("var run=function(dry)") + 300),
+      /if\(!dry&&!confirm\(/, "only the real send asks first");
+
+    const stats = async () => (await (await fetch(srv.base + "/api/stats",
+      { headers: { "x-admin-key": "lease-key" } })).json()).leaseNoticeRuns;
+    assert.deepEqual(await stats(), { runs: 0, previews: 0, lastAt: null, lastOutcome: "" });
+    await run(srv, { dryRun: true });
+    assert.equal((await stats()).previews, 1);
+    assert.equal((await stats()).runs, 0, "a preview is not a run");
+    await run(srv);
+    const after = await stats();
+    assert.equal(after.runs, 1);
+    assert.equal(after.lastOutcome, "sent:2");
+  });
+
   await t.test("it is the admin's route, and it refuses without outbound mail", async (t) => {
     const tbl = tables([lease()]);
     const { db, srv, stop } = await boot(tbl, { EMAIL_FROM: "" });

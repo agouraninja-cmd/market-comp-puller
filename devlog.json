@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-11-21",
+    "type": "improvement",
+    "title": "Lease reminders: a last call two weeks out, an off switch, and a card on /admin",
+    "details": "A lease emailed about 90 days ahead now gets one last reminder 14 days before the date. A firm's owner or admin can turn lease reminder emails off in Firm settings on Home, and the Buildings page says under its Critical dates who is emailed and when. /admin has a Lease reminders card with Preview and Send now and the date it last ran."
+  },
+  {
     "date": "2026-11-20",
     "type": "feature",
     "title": "A firm is emailed before a lease date arrives",

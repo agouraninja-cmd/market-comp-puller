@@ -1,0 +1,146 @@
+{
+  "day": "2026-11-15",
+  "updatedAt": "2026-11-16T16:55:35.983Z",
+  "period": {
+    "start": "2026-11-05",
+    "end": "2026-11-18",
+    "index": 11,
+    "length": 14,
+    "days": [
+      "2026-11-05",
+      "2026-11-06",
+      "2026-11-07",
+      "2026-11-08",
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15",
+      "2026-11-16",
+      "2026-11-17",
+      "2026-11-18"
+    ]
+  },
+  "resetsOn": "2026-11-19",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 5,
+        "prs": 5
+      },
+      "periodTotal": 68,
+      "periodPrs": 45,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        24,
+        0,
+        0,
+        13,
+        26,
+        5,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 456,
+      "title": "Run a report fits on one screen (Draft D)",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 458,
+      "title": "Phone: number and email fields open the right keyboard",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 457,
+      "title": "design-drafts skill: dark pictures need the stored theme",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 459,
+      "title": "Comps opens on Run a comp report, and sits above Markets",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 460,
+      "title": "Commercial comps are restated at the subject's size, measured against the corpus",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    }
+  ]
+}

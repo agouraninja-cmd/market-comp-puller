@@ -1,0 +1,125 @@
+{
+  "day": "2026-09-26",
+  "updatedAt": "2026-09-27T11:56:32.131Z",
+  "period": {
+    "start": "2026-09-24",
+    "end": "2026-10-07",
+    "index": 3,
+    "length": 14,
+    "days": [
+      "2026-09-24",
+      "2026-09-25",
+      "2026-09-26",
+      "2026-09-27",
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30",
+      "2026-10-01",
+      "2026-10-02",
+      "2026-10-03",
+      "2026-10-04",
+      "2026-10-05",
+      "2026-10-06",
+      "2026-10-07"
+    ]
+  },
+  "resetsOn": "2026-10-08",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 4,
+        "prs": 2
+      },
+      "periodTotal": 41,
+      "points": [
+        11,
+        26,
+        4,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "points": [
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "points": [
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 342,
+      "title": "Tabs switch faster in Safari and Firefox: the server builds the tab ahead",
+      "login": "agouraninja-cmd",
+      "commits": 2
+    },
+    {
+      "number": 343,
+      "title": "Desktop app 1.1.0: instant tabs, built in hidden views by the shell",
+      "login": "agouraninja-cmd",
+      "commits": 2
+    }
+  ]
+}

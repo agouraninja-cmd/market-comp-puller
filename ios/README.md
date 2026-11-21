@@ -12,7 +12,8 @@ preference.
 | `CompNinja` — the SwiftUI screens | **Compiles and runs.** Verified on the iPhone and iPad simulators 2026-08-28 |
 | Xcode project | Generated from `project.yml` by XcodeGen 2.46 (installed) |
 | Xcode | **Installed.** 26.6, iOS 26.5 SDK |
-| Apple Developer Program account | **Jacob's enrollment is in flight** (notice received 2026-08-28). Nothing ships until the Team ID and the Admin invite arrive |
+| Apple Developer Program account | **Approved** (confirmed 2026-11-20), team `ZRFN5C3645`, already in `Team.xcconfig` |
+| Cloud build (no Mac needed) | `.github/workflows/ios.yml`, see "Building without a Mac" below |
 | App icon | Done — 1024x1024, generated from the brand mark |
 | App Store Connect record, screenshots, listing copy, privacy answers | Not started |
 
@@ -76,6 +77,29 @@ Without the team, step 4 fails with `Signing for "CompNinja" requires a
 development team`. With a team but no signed-in account it fails with
 `No profiles for 'co.compninja.ios' were found` — both were reproduced on
 2026-08-28, which is how we know nothing else is in the way.
+
+## Building without a Mac (GitHub Actions), added 2026-11-20
+
+The Apple Developer account is approved (COMPNINJA LLC, team `ZRFN5C3645`).
+`.github/workflows/ios.yml` builds the app on a GitHub-hosted Mac, so
+shipping a build does not depend on anyone's own Mac. Both routes stay: the
+Mac route above uses `ExportOptions.plist` (manual signing, a keychain
+certificate), and the cloud route uses `ExportOptions-ci.plist` (Apple's
+cloud-managed certificate, authorised by an API key).
+
+- **Any push that touches `ios/`** runs a build-only check: does it still
+  compile on the newest Xcode? No secrets, no upload.
+- **Actions → iOS → Run workflow** (on `main`) with "upload" ticked builds,
+  signs and uploads to App Store Connect, where it appears in TestFlight.
+
+It needs three repo secrets from an App Store Connect API key with the
+**Admin** role (cloud signing refuses lesser ones): `ASC_KEY_ID`,
+`ASC_ISSUER_ID`, `ASC_KEY_P8` (the whole `.p8` file's text). Build numbers
+are `100 + run number`, so they only go up.
+
+Not yet proven: the first signed upload. If cloud signing refuses an
+unsigned archive, the fallback is to register one iPhone under Devices and
+archive with automatic signing instead.
 
 ## Why native, and not a web view
 

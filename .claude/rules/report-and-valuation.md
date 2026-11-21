@@ -22,6 +22,23 @@ paths:
 
 ## Architecture
 
+- **The jump bar survives Safari's toolbar (2026-11-20; the owner: "When
+  swiping up on mobile in CompNinja it still glitches").** On an iPhone a
+  swipe slides the address bar away or back, and Safari fires a `resize`
+  per frame of it. The report's resize listener called `syncReportNav()`,
+  which emptied `#reportNavInner` and built every link again each time:
+  imitated in Chromium (iPhone 13, viewport height stepped 664 to 746 and
+  back during a scroll), 27 rebuilds in one swipe up and down, so the bar
+  flashed and its sideways scroll snapped to the first link. Chromium's own
+  phone emulation fires no such resizes, which is why the 2026-11-18 swipe
+  measurements below never saw it. Now `syncReportNav` rebuilds only when
+  the links change (`reportNavBuilt`, the ids and labels last drawn; a
+  link looks its card up at the click), and the listener answers a WIDTH
+  change at once but a height-only change once,
+  `REPORT_NAV_RESIZE_SETTLE_MS` (250) after the last one. After: 0
+  rebuilds. Held by `test/phone-scroll.test.js`, which runs the function
+  and the listener and was checked against both halves broken.
+
 - **The printable map is built while the page is still (2026-11-18; the
   owner: "When swiping up and down on mobile it looks like it freezes for a
   split second").** `smapIdle(ensureStaticMap)` only STARTS the raster at

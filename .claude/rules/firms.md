@@ -208,7 +208,7 @@ paths:
     leases in the 90-day window, and mailed ones in the 14-day window.
     Vacated and expired leases, and dates already passed, are never mailed.
     The subject starts "Reminder:" when every lease in it is a repeat.
-  - **A firm can turn them off** (`orgs.lease_reminders`, migration 065,
+  - **A firm can turn them off** (`orgs.lease_reminders`, migration 066,
     SOFT order, 2026-11-21): `POST /api/org/settings { leaseReminders }`,
     owner/admin only, a checkbox in Firm settings on Home
     (`#firmLeaseToggle`, `renderFirmLease`, hidden for members).
@@ -216,7 +216,7 @@ paths:
     by `orgLeaseReminderSettings`, never by `orgsByIds`/`findOrg`: a
     missing column reads as on for everyone, any other read failure throws
     so the run refuses (fail closed) and the firm read shows on. Writing it
-    before 065 answers 503 by name. A firm that is off is skipped whole and
+    before 066 answers 503 by name. A firm that is off is skipped whole and
     its leases stay unmarked, so turning it back on picks up what is ahead.
   - **The Buildings page says so** under the Critical dates strip
     (`#blCritNote`, from the boot's `firm.leaseReminders`): who is emailed

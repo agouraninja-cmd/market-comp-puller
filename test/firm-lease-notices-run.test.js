@@ -245,7 +245,7 @@ test("the firm's lease reminders actually run", async (t) => {
     assert.equal((await (await run(srv)).json()).sent, 2, "back on: the lease is mailed");
   });
 
-  await t.test("before migration 065 runs: the run mails as before, and the switch says it cannot yet", async (t) => {
+  await t.test("before migration 066 runs: the run mails as before, and the switch says it cannot yet", async (t) => {
     const tbl = tables([lease()]);
     const db = await fake.start({ tables: tbl, missingColumns: { orgs: ["lease_reminders"] } });
     const srv = await shared.boot({ ACCOUNT_WALL: "off", PRO_ENABLED: "on", ADMIN_KEY: "lease-key",

@@ -3249,7 +3249,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <input id="firmDefaultToggle" type="checkbox" class="accent-red" />
               <span>Share new reports with the firm by default</span>
             </label>
-            <!-- Lease reminders (2026-11-21, migration 065). Owner/admin, like
+            <!-- Lease reminders (2026-11-21, migration 066). Owner/admin, like
                  the default above, and hidden for everyone else. On means the
                  firm's owners and whoever filed a lease are emailed 90 and 14
                  days before its option notice or expiry. renderFirmLease(). -->
@@ -18637,7 +18637,7 @@ async function renderMyDesk() {
     renderFirmBilling(firm);
   }
 
-  // The firm's lease reminder switch (065). Presentation only: the server
+  // The firm's lease reminder switch (066). Presentation only: the server
   // re-checks owner/admin, and the send run reads the stored value itself.
   // `leaseReminders` is absent from an older server's answer, which means on.
   function renderFirmLease(firm) {

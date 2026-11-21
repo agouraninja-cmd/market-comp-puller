@@ -1,4 +1,4 @@
--- 065: orgs.lease_reminders — a firm's switch for its lease reminder emails (2026-11-21).
+-- 066: orgs.lease_reminders — a firm's switch for its lease reminder emails (2026-11-21).
 --
 -- Deploy order is SOFT: run it before or after the code.
 --

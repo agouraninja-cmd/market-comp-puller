@@ -6137,7 +6137,7 @@ async function markOrgLeasesNotified(orgId, ids) {
     { renewal_notified_at: new Date().toISOString() }, { prefer: "return=minimal" });
 }
 
-// The firm's switch for its lease reminders (migration 065, SOFT order). Its
+// The firm's switch for its lease reminders (migration 066, SOFT order). Its
 // own query, never a column in orgsByIds/findOrg, so code deployed before the
 // migration keeps every firm read working. Answers a Map of org id -> false
 // for the firms that turned reminders OFF; anything absent is on.
@@ -24668,7 +24668,7 @@ const server = http.createServer((req, res) =>
   // filed a lease gets theirs while they are still in the firm. Never a
   // pending invite, never somebody removed, never an account that turned
   // CompNinja emails off, and never a firm whose owner or admin turned lease
-  // reminders off (orgs.lease_reminders, 065). WHEN: 90 days before the date
+  // reminders off (orgs.lease_reminders, 066). WHEN: 90 days before the date
   // and again 14 days before (renewal-watch.js firmLeaseStage).
   //
   // The trial emails' design, rule for rule: ADMIN_KEY-gated and driven from
@@ -24707,7 +24707,7 @@ const server = http.createServer((req, res) =>
         const summary = { firms: byOrg.size, due: due.length, sent: 0, leases: 0, optedOut: 0, firmsOff: 0, failed: 0, previews: [] };
         if (!byOrg.size) return sendJson(res, 200, summary);
 
-        // A firm that turned reminders off (065) is skipped whole and its
+        // A firm that turned reminders off (066) is skipped whole and its
         // leases are NOT marked, so turning them back on picks up whatever is
         // still ahead. A read that fails (other than an unrun migration)
         // throws to the 500 below: nobody is mailed whose "off" was unread.
@@ -36025,7 +36025,7 @@ const server = http.createServer((req, res) =>
             // Permit signals slice 3: filings and status moves on the board's
             // own buildings in the last thirty days. Same enrichment rule.
             const permits = await boardPermitActivityFor(rows);
-            // Whether the strip's dates are emailed (065), for the line under
+            // Whether the strip's dates are emailed (066), for the line under
             // it. Shown as on when unread, the GET /api/org rule.
             const leaseReminders = await orgLeaseReminderSettings([firm.orgId])
               .then((m) => m.get(String(firm.orgId)) !== false).catch(() => true);

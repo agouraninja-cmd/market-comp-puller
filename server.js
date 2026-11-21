@@ -203,6 +203,12 @@ const BFACTS = require("./building-facts");
 const DIRECTORY = require("./broker-directory");
 const LEADSVC = require("./broker-leads");
 const BOVSVC = require("./bov-log");
+// The BOV desk (2026-11-20, migration 065): the brokers found for a Broker
+// Opinion of Value request, the email drafted to each, and the introduction.
+// Every rule and every word is in bov-desk.js (pure, tested); the owner's
+// page is bov-desk-page.js. server.js owns the reads, the search and the mail.
+const BOVDESK = require("./bov-desk");
+const BOVDESKPAGE = require("./bov-desk-page");
 // A development firm's deals (migration 060; worked on Home's Properties tab
 // since 2026-10-09): stages, the tracker, and the field validation every
 // /api/sites write goes through. Dual-exported; the browser reads the same
@@ -1260,14 +1266,39 @@ const LEAD_NOTIFY_EMAIL = (process.env.LEAD_NOTIFY_EMAIL || "agouraninja@gmail.c
 // delivers to the account owner, so outbound mail silently no-ops without it.
 const EMAIL_FROM = (process.env.EMAIL_FROM || "").trim();
 
+// The BOV desk's four settings (bov-desk.js has the rules; .claude/rules/
+// bov-desk.md the history).
+//
+// BOV_AUTOMATION (default ON): a stored BOV request starts the desk on its
+//   own -- the brokers are found and the emails drafted before the owner has
+//   opened the notification. `off` is the rollback: the lead route does
+//   exactly what it did before 2026-11-20, and the desk still works by hand.
+// BOV_AUTOPILOT (default OFF): send the drafted emails without waiting for
+//   the owner to press Send. Off, nothing reaches a broker until a person
+//   has read the full text and said yes, which is the owner's standing rule
+//   for mail sent in their name; on is their own switch to flip. Even on,
+//   only an address proven by the page it was read from goes out unreviewed
+//   (BOVDESK.canAutoSend), in the plain wording.
+// BOV_FROM: who BOV mail is from, e.g. `Jacob Adler <jacobadler@compninja.co>`.
+//   Replies go to that address. Unset, it goes out as EMAIL_FROM with replies
+//   to LEAD_NOTIFY_EMAIL, like every other outbound mail. EMAIL_FROM stays
+//   the single gate: with it unset nothing here sends, and the desk offers
+//   each draft as a prefilled Gmail window instead.
+// BOV_DAILY_SEARCHES (default 20): the most broker searches a UTC day. The
+//   lead form is public, so this is what a flood of fake requests can cost.
+//   In memory, like DAILY_SEARCH_CAP and for its reason.
+const BOV_AUTOMATION = !/^(0|off|false|no)$/i.test(String(process.env.BOV_AUTOMATION || "").trim());
+const BOV_AUTOPILOT = /^(1|on|true|yes)$/i.test(String(process.env.BOV_AUTOPILOT || "").trim());
+const BOV_FROM = (process.env.BOV_FROM || "").trim();
+const BOV_DAILY_SEARCHES = Number(process.env.BOV_DAILY_SEARCHES) > 0 ? Math.floor(Number(process.env.BOV_DAILY_SEARCHES)) : 20;
+
 // Where a member's feedback goes -- the ninja badge, which every signed-in
 // member sees since 2026-10-17 (it was for tester-code accounts only before).
 //
 // THREE people rather than one: a recommendation or a bug report that lands
 // in a single inbox waits on that person being about, and a member who hears
-// nothing back stops sending them. One message per address (sendEmail
-// wraps `to` in an array of its own, so an array here would post a nested one),
-// which also means one bad address cannot sink the other two.
+// nothing back stops sending them. One message per address, never one
+// message to all three, so one bad address cannot sink the other two.
 //
 // Env-overridable so a change of team is a Render edit rather than a deploy,
 // and split the way PRO_AUDIENCE is, so a stray space or a trailing comma
@@ -9031,7 +9062,11 @@ const RESEND_API_URL = (process.env.RESEND_API_URL || "https://api.resend.com/em
 // went can now await the truth instead of inferring it from configuration.
 // The difference is not academic: a hub invite carries the only copy of a
 // token, and the panel hides that link when it believes the mail was sent.
-async function sendEmail(to, subject, text, { from, replyTo, html } = {}) {
+// `to` is one address, or (since the BOV desk's introduction, 2026-11-20) a
+// list: an introduction is ONE message to two people so either can reply to
+// both. `cc` is the same message's copy line. Every other caller passes one
+// address and sends exactly what it always did.
+async function sendEmail(to, subject, text, { from, replyTo, html, cc } = {}) {
   if (!RESEND_API_KEY) return false;
   try {
     const r = await fetch(RESEND_API_URL, {
@@ -9039,11 +9074,12 @@ async function sendEmail(to, subject, text, { from, replyTo, html } = {}) {
       headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
       body: JSON.stringify({
         from: from || "CompNinja <onboarding@resend.dev>",
-        to: [to],
+        to: Array.isArray(to) ? to : [to],
         subject,
         text,
         ...(html ? { html } : {}),
         ...(replyTo ? { reply_to: replyTo } : {}),
+        ...(cc && cc.length ? { cc: [].concat(cc) } : {}),
       }),
       signal: AbortSignal.timeout(8000),
     });
@@ -9083,16 +9119,652 @@ function notifyByEmail(subject, fields) {
 // who reads "Sarah left a note" and hits Reply expects Sarah, and sending
 // that reply to a third party's personal inbox loses the message and
 // discloses the deal in the same click. Pass the human when there is one.
-async function sendOutboundEmail(to, subject, text, { replyTo } = {}) {
+// `from` and `cc` are the BOV desk's (bovMail below): its mail may come from a
+// named person on the verified domain. EMAIL_FROM is still the gate for it,
+// set or not: an unverified domain delivers nothing whoever it claims to be
+// from.
+async function sendOutboundEmail(to, subject, text, { replyTo, from, cc } = {}) {
   if (!RESEND_API_KEY || !EMAIL_FROM) {
     console.log(`Outbound email skipped (${!RESEND_API_KEY ? "RESEND_API_KEY" : "EMAIL_FROM"} unset): ${subject}`);
     return false;
   }
   return sendEmail(to, subject, text, {
-    from: EMAIL_FROM,
+    from: from || EMAIL_FROM,
     replyTo: replyTo || LEAD_NOTIFY_EMAIL,
     html: EMAILSHELL.renderEmailHtml(subject, text),
+    ...(cc ? { cc } : {}),
   });
+}
+
+// ---------------------------------------------------------------------------
+// The BOV desk (2026-11-20; migration 065; rules and every word of copy in
+// bov-desk.js, the owner's page in bov-desk-page.js, notes in
+// .claude/rules/bov-desk.md).
+//
+// A Broker Opinion of Value request used to wait on the owner three times:
+// to notice it, to search the web for local brokers and write to each, and
+// to write the introduction once one said yes. Now a stored request starts
+// the first two on its own (bovKickoff, from POST /api/lead), and a broker
+// who accepts is introduced on the spot (POST /bov/accept).
+//
+// What must stay true here:
+//  - NOTHING REACHES A BROKER UNREAD unless BOV_AUTOPILOT is on. The drafts
+//    wait on /admin/bov for a person to press Send under the full text.
+//  - THE REQUESTER'S NAME AND CONTACT DETAILS travel in exactly one mail, the
+//    introduction (bovIntroduce), and only to a broker who accepted an offer
+//    the owner let out, or whom the owner picked on the desk.
+//  - NO TIMER (never-break rule 12). The search is started by the request
+//    itself or by a click; a restart mid-search loses it, and the desk's
+//    "Find brokers" is the retry.
+//  - DB-ONLY. No file fallback: these rows are a work queue with strangers'
+//    contact details, and Render's disk is erased on every deploy.
+//  - OPENING THE DESK SENDS NOTHING AND SEARCHES NOTHING. GET /api/admin/bov
+//    only reads; every send and every search is behind a POST a person made.
+// ---------------------------------------------------------------------------
+const BOV_SEARCH_TIMEOUT_MS = 120_000;
+const BOV_INFLIGHT = new Set();
+// Two in-memory tallies for the UTC day, reset together: searches run, and
+// emails autopilot sent with nobody reading them. In memory for
+// DAILY_SEARCH_CAP's reason: a spend and abuse backstop, not accounting.
+let bovDay = "";
+let bovSearchCount = 0;
+let bovAutopilotCount = 0;
+function bovRollDay() {
+  const day = new Date().toISOString().slice(0, 10);
+  if (day !== bovDay) { bovDay = day; bovSearchCount = 0; bovAutopilotCount = 0; }
+}
+function bovSearchesLeft() {
+  bovRollDay();
+  return Math.max(0, BOV_DAILY_SEARCHES - bovSearchCount);
+}
+function bovAutopilotLeft() {
+  bovRollDay();
+  return Math.max(0, BOVDESK.AUTOPILOT_PER_DAY - bovAutopilotCount);
+}
+// Has anything been sent to this address lately, on any request? Autopilot
+// asks before an unread send: the bench reuses a market's brokers, so without
+// this a run of requests would be a run of emails to the same few people.
+async function bovRecentlyMailed(email) {
+  const since = new Date(Date.now() - BOVDESK.AUTOPILOT_REST_DAYS * 864e5).toISOString();
+  const rows = await sbRequest("GET",
+    `bov_matches?email=eq.${encodeURIComponent(email)}&sent_at=gte.${encodeURIComponent(since)}&select=id&limit=1`);
+  return Boolean(rows && rows.length);
+}
+function bovSender() { return BOVDESK.parseSender(BOV_FROM, LEAD_NOTIFY_EMAIL); }
+function bovMailReady() { return Boolean(RESEND_API_KEY && EMAIL_FROM); }
+// BOV_FROM is used as the From header only when an address can be read out
+// of it; a mistyped value falls back to EMAIL_FROM rather than bouncing every
+// send at the provider.
+function bovFromHeader() { return BOVDESK.parseSender(BOV_FROM, "").email ? BOV_FROM : ""; }
+function bovMail(to, subject, text, { cc } = {}) {
+  return sendOutboundEmail(to, subject, text, {
+    from: bovFromHeader() || undefined,
+    replyTo: bovSender().email || undefined,
+    cc,
+  });
+}
+// An id that is safe to put in a PostgREST filter. leads.id is a bigint in
+// production and bov_matches.id a uuid; both fit, and nothing else does.
+function bovId(v) {
+  const s = String(v == null ? "" : v);
+  return /^[A-Za-z0-9-]{1,64}$/.test(s) ? s : "";
+}
+// The accept link authenticates itself, like the digest's unsubscribe link
+// and keyed the same way (digestMac has the reasons); domain-separated, so a
+// token for one use is no token for another.
+function bovMac(matchId) {
+  return crypto.createHmac("sha256", SUPABASE_SERVICE_KEY || "unset")
+    .update(`bov-accept:${matchId}`).digest("hex").slice(0, 32);
+}
+function bovTokenValid(matchId, token) {
+  if (!SUPABASE_SERVICE_KEY || !matchId) return false;
+  return secretMatches(String(token || ""), bovMac(matchId));
+}
+function bovAcceptUrl(matchId) {
+  return `${SITE_URL}/bov/accept?m=${encodeURIComponent(matchId)}&t=${bovMac(matchId)}`;
+}
+// An unrun migration 065, as PostgREST words it. Told apart from an outage
+// because the fix is different and the desk says which.
+function bovTablesMissing(err) {
+  return /PGRST205|Could not find the table|42P01|does not exist/i.test(String(err && err.message));
+}
+// The same check POST /api/lead applies to a report link, shared so a link
+// pasted on the desk cannot put an arbitrary URL into mail sent to a broker.
+function ownReportUrl(v) {
+  const u = String(v || "").trim().slice(0, 300);
+  for (const origin of new Set([SITE_URL, DEFAULT_SITE_URL])) {
+    if (new RegExp(`^${origin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/r/[A-Za-z0-9_-]{6,32}$`).test(u)) return u;
+  }
+  return "";
+}
+const BOV_LEAD_COLS = "id,ts,name,email,phone,company,address,type,size_sqft,source";
+async function bovReadLead(leadId) {
+  const rows = await sbRequest("GET",
+    `leads?id=eq.${encodeURIComponent(leadId)}&source=in.(bov,1031)&select=${BOV_LEAD_COLS}&limit=1`);
+  return (rows && rows[0]) || null;
+}
+async function bovReadRequest(leadId) {
+  const rows = await sbRequest("GET", `bov_requests?lead_id=eq.${encodeURIComponent(leadId)}&select=*&limit=1`);
+  return (rows && rows[0]) || null;
+}
+async function bovReadMatch(matchId) {
+  const rows = await sbRequest("GET", `bov_matches?id=eq.${encodeURIComponent(matchId)}&select=*&limit=1`);
+  return (rows && rows[0]) || null;
+}
+// The request row, made if it is not there. Written with an explicit
+// created_at so a read ordered or windowed by it never depends on a default.
+async function bovEnsureRequest(lead, reportUrl) {
+  const leadId = bovId(lead.id);
+  const existing = await bovReadRequest(leadId);
+  if (existing) return existing;
+  const now = new Date().toISOString();
+  const row = {
+    lead_id: lead.id, market: marketOf(lead.address), property_type: String(lead.type || ""),
+    report_url: reportUrl || null, state: "new", note: null, introduced_match_id: null,
+    created_at: now, updated_at: now,
+  };
+  await sbRequest("POST", "bov_requests?on_conflict=lead_id", [row],
+    { prefer: "resolution=ignore-duplicates,return=minimal" });
+  return (await bovReadRequest(leadId)) || row;
+}
+
+// One billed search for brokers in a market, through the same provider seam
+// as a comp search and never streamed. Market and type only: the street
+// address is not sent, which is also what lets the answer be reused.
+async function bovFindBrokers(market, type) {
+  if (!providerApiKey()) {
+    return { ok: false, brokers: [], error: "This server has no search key, so no search was run." };
+  }
+  if (!bovSearchesLeft()) {
+    return { ok: false, brokers: [], error: `Today's ${BOV_DAILY_SEARCHES} broker searches are used. Try again tomorrow, or add a broker by hand.` };
+  }
+  bovSearchCount++;
+  const body = PROVIDER.buildRequestBody({
+    model: MODEL,
+    prompt: BOVDESK.finderPrompt({ market, type }),
+    maxComps: 8,
+    searchUses: 5,
+    stream: false,
+    thinkingLevel: THINKING_LEVEL,
+  });
+  const init = PROVIDER.requestInit({ apiKey: providerApiKey(), stream: false });
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), BOV_SEARCH_TIMEOUT_MS);
+  try {
+    const r = await fetch(SEARCH_API_URL || init.url, {
+      method: "POST", headers: init.headers, body: JSON.stringify(body), signal: controller.signal,
+    });
+    if (!r.ok) {
+      let detail = "";
+      try { detail = (await r.json())?.error?.message || ""; } catch (_) {}
+      console.error(`BOV broker search failed (${r.status}): ${String(detail).slice(0, 200)}`);
+      logEvent("bov_search", { prop_type: type, market, source: "failed:" + r.status });
+      return { ok: false, brokers: [], error: "The search could not be run just now. Try again in a minute." };
+    }
+    const parsed = PROVIDER.parseResponse(await r.json());
+    const out = BOVDESK.parseCandidates(parsed.text);
+    console.log(`BOV broker search [${market} · ${type}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ` +
+      `${out.brokers.length} usable${out.dropped ? ` · ${out.dropped} dropped` : ""}${out.ok ? "" : " · unreadable answer"}`);
+    logEvent("bov_search", { prop_type: type, market, source: out.ok ? "found:" + out.brokers.length : "unreadable" });
+    return out;
+  } catch (err) {
+    const timedOut = err && err.name === "AbortError";
+    console.error("BOV broker search failed:", timedOut ? "timed out" : err && err.message);
+    logEvent("bov_search", { prop_type: type, market, source: timedOut ? "timeout" : "error" });
+    return { ok: false, brokers: [], error: timedOut ? "The search took too long and was stopped. Try again." : "The search could not be run just now. Try again in a minute." };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Find the brokers for one request and draft the email to each. `lead` is a
+// stored leads row (it has an id). Brokers already found for the same market
+// and type are reused first; a search runs only when they are too few, or
+// when `force` asks for more. Returns { busy } when this request is already
+// being worked, else { state, note, added, matches, searched }.
+async function bovPrepare(lead, opts = {}) {
+  const leadId = bovId(lead && lead.id);
+  if (!leadId) throw new Error("bovPrepare needs a stored lead");
+  if (BOV_INFLIGHT.has(leadId)) return { busy: true };
+  BOV_INFLIGHT.add(leadId);
+  try {
+    const enc = encodeURIComponent;
+    const stamp = () => new Date().toISOString();
+    const market = marketOf(lead.address);
+    const type = String(lead.type || "");
+    const before = await bovEnsureRequest(lead, opts.reportUrl);
+    const reportUrl = opts.reportUrl || before.report_url || "";
+    const settled = before.state === "introduced" || before.state === "closed";
+    await sbRequest("PATCH", `bov_requests?lead_id=eq.${enc(leadId)}`, {
+      ...(settled ? {} : { state: "searching" }),
+      report_url: reportUrl || null,
+      updated_at: stamp(),
+    });
+
+    const mine = (await sbRequest("GET", `bov_matches?lead_id=eq.${enc(leadId)}&select=*&limit=200`)) || [];
+    // A market marketOf() could not make canonical, or a type outside the
+    // vocabulary, is not searched: the prompt would be asking about "Canada".
+    const searchable = LEADSVC.isCanonicalMarket(market) && VAULT.PROPERTY_TYPES.includes(type);
+
+    // The bench: brokers already found for this market and type. Whoever
+    // passed on one of those requests, or was skipped by the owner, is not
+    // offered this one either, whether the bench or a fresh search names them.
+    let bench = [];
+    let passed = [];
+    if (searchable) {
+      const since = new Date(Date.now() - BOVDESK.BENCH_DAYS * 864e5).toISOString();
+      const peers = (await sbRequest("GET",
+        `bov_requests?market=eq.${enc(market)}&property_type=eq.${enc(type)}` +
+        `&created_at=gte.${enc(since)}&select=lead_id&order=created_at.desc&limit=20`)) || [];
+      const peerIds = peers.map((p) => bovId(p.lead_id)).filter((id) => id && id !== leadId);
+      if (peerIds.length) {
+        const rows = (await sbRequest("GET",
+          `bov_matches?lead_id=in.(${peerIds.map(enc).join(",")})` +
+          `&select=name,firm,email,phone,fit,license,source_url,status,origin&limit=200`)) || [];
+        passed = rows.filter((r) => r.status === "declined" || r.status === "skipped");
+        bench = BOVDESK.withoutKnown(BOVDESK.benchCandidates(rows), mine);
+      }
+    }
+
+    let found = { ok: true, brokers: [] };
+    const searched = searchable && (Boolean(opts.force) || bench.length < BOVDESK.MIN_BENCH);
+    if (searched) found = await bovFindBrokers(market, type);
+    const candidates = BOVDESK.withoutKnown(
+      BOVDESK.mergeCandidates(bench, found.brokers), mine.concat(passed));
+
+    const rows = candidates.map((c) => {
+      const id = crypto.randomUUID();
+      // An address that could go out unread (autopilot) is drafted in the
+      // plain wording; one a person will read keeps the search's own clause.
+      const unread = BOV_AUTOPILOT && BOVDESK.autopilotSafe(lead) &&
+        BOVDESK.canAutoSend({ status: "draft", email: c.email, email_check: c.email_check });
+      const draft = bovDraftFor(c, id, lead, reportUrl, unread);
+      // Every row carries every key: PostgREST refuses a bulk insert whose
+      // objects differ (PGRST102).
+      return {
+        id, lead_id: lead.id, name: c.name, firm: c.firm, email: c.email, phone: c.phone,
+        fit: c.fit, license: c.license, source_url: c.source_url, email_check: c.email_check,
+        origin: c.origin, status: "draft", subject: draft.subject, body: draft.text,
+        sent_at: null, answered_at: null, created_at: stamp(),
+      };
+    });
+    if (rows.length) await sbRequest("POST", "bov_matches", rows, { prefer: "return=minimal" });
+
+    const total = mine.length + rows.length;
+    let note = null;
+    if (!found.ok) note = found.error;
+    else if (!total) {
+      note = searchable
+        ? "The search found no broker with a stated email or phone number. Try again, or add one by hand."
+        : "This request has no city and state to search in, or no property type. Add a broker by hand.";
+    }
+    const state = settled ? before.state : total ? "ready" : (found.ok ? "none_found" : "failed");
+    await sbRequest("PATCH", `bov_requests?lead_id=eq.${enc(leadId)}`, { state, note, updated_at: stamp() });
+    return { state, note, added: rows.length, matches: rows, searched };
+  } finally {
+    BOV_INFLIGHT.delete(leadId);
+  }
+}
+
+// Send one drafted email, and mark it sent only once the provider took it
+// (mark after the send: a failed mark costs one duplicate, marking first
+// would call an unsent email sent). False when it did not go.
+async function bovSendMatch(match) {
+  if (!match || !match.email || !match.subject || !match.body) return false;
+  const ok = await bovMail(match.email, match.subject, match.body);
+  if (!ok) return false;
+  await sbRequest("PATCH", `bov_matches?id=eq.${encodeURIComponent(match.id)}`,
+    { status: "sent", sent_at: new Date().toISOString() });
+  return true;
+}
+
+// This request goes to this broker, if it is still free. The filter is the
+// lock: of two brokers accepting at once, one PATCH matches a row and the
+// other matches none. `force` is the owner's own choice on the desk, which
+// may give a request to a second broker.
+async function bovClaim(leadId, matchId, force) {
+  const hit = await sbRequest("PATCH",
+    `bov_requests?lead_id=eq.${encodeURIComponent(leadId)}` + (force ? "" : "&introduced_match_id=is.null"),
+    { introduced_match_id: matchId, updated_at: new Date().toISOString() },
+    { prefer: "return=representation" });
+  if (hit && hit.length) return true;
+  // Already this broker's (a second click on the same link) is not a loss.
+  const row = await bovReadRequest(leadId);
+  return Boolean(row && String(row.introduced_match_id) === String(matchId));
+}
+
+// The introduction: one message to the requester and the broker, copied to
+// the sender. Marks the match and the request only once it went. Returns
+// whether it was sent.
+async function bovIntroduce(match, lead, request) {
+  if (!match.email || !lead.email) return false;
+  const sender = bovSender();
+  const mail = BOVDESK.introDraft({ lead, broker: match, reportUrl: request && request.report_url, sender });
+  const ok = await bovMail([lead.email, match.email], mail.subject, mail.text,
+    { cc: sender.email ? [sender.email] : undefined });
+  if (!ok) return false;
+  const now = new Date().toISOString();
+  await sbRequest("PATCH", `bov_matches?id=eq.${encodeURIComponent(match.id)}`,
+    { status: "introduced", answered_at: match.answered_at || now });
+  await sbRequest("PATCH", `bov_requests?lead_id=eq.${encodeURIComponent(bovId(lead.id))}`,
+    { state: "introduced", introduced_match_id: match.id, note: null, updated_at: now });
+  logEvent("bov_intro", { prop_type: lead.type, market: marketOf(lead.address), source: match.origin });
+  return true;
+}
+
+// From POST /api/lead, fire-and-forget: the request is already stored and the
+// owner already notified, so nothing here may fail the request. Finds the
+// stored row (storeRow answers "db", not an id), prepares the desk, sends
+// what autopilot allows, and tells the owner what is waiting.
+async function bovKickoff(lead, reportUrl) {
+  const rows = await sbRequest("GET",
+    `leads?email=eq.${encodeURIComponent(lead.email)}&ts=eq.${encodeURIComponent(lead.ts)}&select=id&limit=1`);
+  const id = rows && rows[0] ? rows[0].id : null;
+  if (id == null) return;
+  const out = await bovPrepare({ ...lead, id }, { reportUrl });
+  if (!out || out.busy) return;
+  // Autopilot: what may go with nobody reading it. Four gates, and failing
+  // any of them only means the draft waits on the desk like every draft does
+  // with autopilot off: the request's own text looks like an address and a
+  // name (it is about to be mailed to a stranger); the address was proven by
+  // its page; that broker has not been mailed lately; and the day's limit.
+  let autoSent = 0;
+  let held = "";
+  if (BOV_AUTOPILOT && bovMailReady()) {
+    if (!BOVDESK.autopilotSafe(lead)) {
+      held = "Autopilot held this one: the request's own text needs a person's eye before it is mailed to anyone.";
+    } else {
+      for (const m of out.matches) {
+        if (!BOVDESK.canAutoSend(m)) continue;
+        if (!bovAutopilotLeft()) {
+          held = `Autopilot stopped at today's limit of ${BOVDESK.AUTOPILOT_PER_DAY} unread sends.`;
+          break;
+        }
+        try {
+          if (await bovRecentlyMailed(m.email)) continue;
+          bovAutopilotCount++;
+          if (await bovSendMatch(m)) autoSent++;
+        } catch (err) { console.error("BOV autopilot send failed:", err.message); }
+      }
+    }
+  }
+  const n = out.matches.length;
+  const waiting = out.matches.filter((m) => m.email).length - autoSent;
+  notifyByEmail(
+    n ? `BOV desk: ${n} broker${n === 1 ? "" : "s"} found for ${lead.address}`
+      : `BOV desk: no broker found yet for ${lead.address}`,
+    [
+      ["Request", `${lead.name}: ${lead.address}${lead.type ? " (" + lead.type + ")" : ""}`],
+      ...out.matches.map((m, i) => [`Broker ${i + 1}`,
+        `${m.name}${m.firm ? " (" + m.firm + ")" : ""}, ${m.email || m.phone}${m.source_url ? ", " + m.source_url : ""}`]),
+      ["Sent automatically", autoSent ? `${autoSent} of ${n} (autopilot is on)` : ""],
+      ["Autopilot", held],
+      ["What to do", !n ? (out.note || "Add a broker by hand on the desk.")
+        : waiting > 0 ? `Read the ${waiting === 1 ? "draft" : waiting + " drafts"} and press Send. A broker who accepts is introduced to ${lead.name} automatically.`
+        : "Nothing. You will hear when a broker accepts."],
+      ["Open the BOV desk", `${SITE_URL}/admin/bov`],
+    ]);
+}
+
+// Everything the desk shows: the BOV requests of the last DESK_DAYS, each
+// with its request row and its brokers. READS ONLY. `ready: false` means
+// migration 065 has not run: the requests are still listed, with nothing
+// under them.
+async function bovDeskPayload() {
+  const enc = encodeURIComponent;
+  const since = new Date(Date.now() - BOVDESK.DESK_DAYS * 864e5).toISOString();
+  const leads = (await sbRequest("GET",
+    `leads?source=in.(bov,1031)&ts=gte.${enc(since)}&select=${BOV_LEAD_COLS}&order=ts.desc&limit=60`)) || [];
+  const ids = leads.map((l) => bovId(l.id)).filter(Boolean);
+  let ready = true;
+  let requests = [];
+  let matches = [];
+  if (ids.length) {
+    try {
+      const inList = ids.map(enc).join(",");
+      [requests, matches] = await Promise.all([
+        sbRequest("GET", `bov_requests?lead_id=in.(${inList})&select=*&limit=200`),
+        sbRequest("GET", `bov_matches?lead_id=in.(${inList})&select=*&order=created_at.asc&limit=1000`),
+      ]);
+    } catch (err) {
+      if (!bovTablesMissing(err)) throw err;
+      ready = false;
+    }
+  } else {
+    // No request to hang a read on, so ask the cheapest question that still
+    // says whether the tables are there.
+    try { await sbRequest("GET", "bov_requests?select=lead_id&limit=1"); }
+    catch (err) { if (!bovTablesMissing(err)) throw err; ready = false; }
+  }
+  const sender = bovSender();
+  const reqBy = new Map((requests || []).map((r) => [String(r.lead_id), r]));
+  const byLead = new Map();
+  for (const m of matches || []) {
+    const k = String(m.lead_id);
+    if (!byLead.has(k)) byLead.set(k, []);
+    byLead.get(k).push({
+      id: m.id, name: m.name, firm: m.firm, email: m.email, phone: m.phone, fit: m.fit,
+      license: m.license, source_url: m.source_url, email_check: m.email_check,
+      origin: m.origin, status: m.status, subject: m.subject, body: m.body,
+      sent_at: m.sent_at, answered_at: m.answered_at,
+      gmail_url: m.email && m.subject && m.body
+        ? BOVDESK.gmailComposeUrl({ to: m.email, subject: m.subject, body: m.body, account: bovFromHeader() ? sender.email : "" })
+        : "",
+    });
+  }
+  const all = matches || [];
+  return {
+    ready,
+    automation: BOV_AUTOMATION,
+    autopilot: BOV_AUTOPILOT,
+    mail: { ready: bovMailReady(), from: bovFromHeader() || EMAIL_FROM || "", replyTo: sender.email },
+    search: { ready: Boolean(providerApiKey()), left: bovSearchesLeft(), perDay: BOV_DAILY_SEARCHES },
+    attention: BOVDESK.attention(all),
+    requests: leads.map((l) => {
+      const r = reqBy.get(String(l.id)) || null;
+      return {
+        lead: {
+          id: l.id, ts: l.ts, name: l.name, email: l.email, phone: l.phone, company: l.company,
+          address: l.address, type: l.type, size_sqft: l.size_sqft, is_1031: l.source === "1031",
+        },
+        market: r ? r.market : marketOf(l.address),
+        state: r ? r.state : "new",
+        note: r ? r.note : null,
+        report_url: r ? r.report_url : null,
+        introduced_match_id: r ? r.introduced_match_id : null,
+        busy: BOV_INFLIGHT.has(bovId(l.id)),
+        matches: byLead.get(String(l.id)) || [],
+      };
+    }),
+  };
+}
+
+// One outreach row for a broker on a request, drafted. Shared by the search,
+// a broker typed in by hand, and a broker given an address after the fact.
+function bovDraftFor(candidate, id, lead, reportUrl, plain) {
+  return candidate.email
+    ? BOVDESK.outreachDraft({
+        broker: candidate, lead, market: marketOf(lead.address), reportUrl,
+        acceptUrl: bovAcceptUrl(id), sender: bovSender(), plain: Boolean(plain),
+      })
+    : { subject: null, text: null };
+}
+
+// A member broker who asked for a lead from their pipeline has already said
+// yes, so they go on the desk as accepted and the owner's part is one press
+// of Introduce. Called fire-and-forget from POST /api/broker/leads/intro.
+async function bovAddPlatformBroker(lead, user, prof) {
+  await bovEnsureRequest(lead, "");
+  const email = BOVDESK.cleanEmail(user && user.email);
+  if (!email) return;
+  const now = new Date().toISOString();
+  const name = BOVDESK.clean((prof && prof.display_name) || (user && user.name) || email.split("@")[0], 80);
+  await sbRequest("POST", "bov_matches", [{
+    id: crypto.randomUUID(), lead_id: lead.id, name,
+    firm: BOVDESK.clean(prof && prof.company, 120) || null, email, phone: null,
+    fit: null, license: null, source_url: null, email_check: "manual",
+    origin: "platform", status: "accepted", subject: null, body: null,
+    sent_at: null, answered_at: now, created_at: now,
+  }], { prefer: "return=minimal" });
+}
+
+// Everything the owner can DO on the desk, behind one ADMIN_KEY-gated POST.
+// Returns { status?, body }. Every send and every search in the product's
+// BOV flow that a person starts is one of these.
+async function bovDeskAction(input) {
+  const enc = encodeURIComponent;
+  const action = String((input && input.action) || "");
+  const stamp = () => new Date().toISOString();
+  const bad = (error, status = 400, extra) => ({ status, body: { error, ...(extra || {}) } });
+  const NO_MAIL = "Outbound mail isn't set up on this server (EMAIL_FROM), so nothing was sent.";
+  const leadId = bovId(input && input.lead_id);
+  const matchId = bovId(input && input.match_id);
+
+  if (action === "find") {
+    const lead = leadId ? await bovReadLead(leadId) : null;
+    if (!lead) return bad("That request no longer exists.", 404);
+    let reportUrl = "";
+    if (input.report_url) {
+      reportUrl = ownReportUrl(input.report_url);
+      if (!reportUrl) return bad(`That isn't one of this site's report links. It should look like ${SITE_URL}/r/...`);
+    }
+    const out = await bovPrepare(lead, { reportUrl, force: Boolean(input.more) });
+    if (out.busy) return bad("Already searching for this request. Give it a minute, then refresh.", 409);
+    return { body: { ok: true, state: out.state, added: out.added, note: out.note } };
+  }
+
+  if (action === "add") {
+    const lead = leadId ? await bovReadLead(leadId) : null;
+    if (!lead) return bad("That request no longer exists.", 404);
+    const made = BOVDESK.manualCandidate(input);
+    if (!made.ok) return bad(made.error);
+    const request = await bovEnsureRequest(lead, "");
+    const mine = (await sbRequest("GET", `bov_matches?lead_id=eq.${enc(leadId)}&select=name,firm,email&limit=200`)) || [];
+    if (!BOVDESK.withoutKnown([made.candidate], mine).length) return bad("That broker is already on this request.", 409);
+    const id = crypto.randomUUID();
+    const c = made.candidate;
+    const draft = bovDraftFor(c, id, lead, request.report_url, false);
+    await sbRequest("POST", "bov_matches", [{
+      id, lead_id: lead.id, name: c.name, firm: c.firm, email: c.email, phone: c.phone,
+      fit: null, license: null, source_url: null, email_check: c.email_check,
+      origin: "manual", status: "draft", subject: draft.subject, body: draft.text,
+      sent_at: null, answered_at: null, created_at: stamp(),
+    }], { prefer: "return=minimal" });
+    if (["new", "none_found", "failed", "searching"].includes(request.state)) {
+      await sbRequest("PATCH", `bov_requests?lead_id=eq.${enc(leadId)}`, { state: "ready", note: null, updated_at: stamp() });
+    }
+    return { body: { ok: true, id } };
+  }
+
+  if (action === "close" || action === "reopen") {
+    const lead = leadId ? await bovReadLead(leadId) : null;
+    if (!lead) return bad("That request no longer exists.", 404);
+    const request = await bovEnsureRequest(lead, "");
+    let state = "closed";
+    if (action === "reopen") {
+      const some = (await sbRequest("GET", `bov_matches?lead_id=eq.${enc(leadId)}&select=id&limit=1`)) || [];
+      state = request.introduced_match_id ? "introduced" : some.length ? "ready" : "new";
+    }
+    await sbRequest("PATCH", `bov_requests?lead_id=eq.${enc(leadId)}`, { state, updated_at: stamp() });
+    return { body: { ok: true, state } };
+  }
+
+  // Everything below acts on one broker.
+  let match = matchId ? await bovReadMatch(matchId) : null;
+  if (!match) return bad("That broker is no longer on the desk.", 404);
+  const mLeadId = bovId(match.lead_id);
+
+  if (action === "save" || action === "send") {
+    const edit = BOVDESK.validateEdit({ email: input.email, subject: input.subject, body: input.body });
+    if (!edit.ok) return bad(edit.error);
+    const patch = { ...edit.patch };
+    // An address left as it was keeps the check it earned.
+    if (patch.email === match.email) { delete patch.email; delete patch.email_check; }
+    if (patch.subject === match.subject) delete patch.subject;
+    if (patch.body === match.body) delete patch.body;
+    if (Object.keys(patch).length) {
+      if (match.status !== "draft") return bad("That email has already gone out, so it can't be changed.", 409);
+      await sbRequest("PATCH", `bov_matches?id=eq.${enc(match.id)}`, patch);
+      match = { ...match, ...patch };
+    }
+    // A broker found with a phone number only has no draft until an address
+    // is typed for them.
+    if (match.email && (!match.subject || !match.body)) {
+      const [lead, request] = await Promise.all([bovReadLead(mLeadId), bovReadRequest(mLeadId)]);
+      if (!lead) return bad("That request no longer exists.", 404);
+      const draft = bovDraftFor(match, match.id, lead, request && request.report_url, false);
+      await sbRequest("PATCH", `bov_matches?id=eq.${enc(match.id)}`, { subject: draft.subject, body: draft.text });
+      match = { ...match, subject: draft.subject, body: draft.text };
+      // The owner has not read this text yet, so it is saved, never sent.
+      if (action === "send") return { body: { ok: true, sent: 0, drafted: true } };
+    }
+    if (action === "save") return { body: { ok: true } };
+    if (match.status !== "draft") return bad("That email has already gone out.", 409);
+    if (!match.email) return bad("This broker has no email address. Type one first, or call them.");
+    if (!bovMailReady()) return bad(`${NO_MAIL} Use “Open in Gmail”, then “Mark as sent”.`, 503, { code: "no_mail" });
+    if (!(await bovSendMatch(match))) return bad("The mail provider did not take that email, so it was not marked sent. Try again.", 502);
+    return { body: { ok: true, sent: 1 } };
+  }
+
+  if (action === "mark") {
+    const status = String(input.status || "");
+    if (!["sent", "skipped", "declined", "draft"].includes(status)) return bad("Unknown status.");
+    if (match.status === "introduced") return bad("This broker has already been introduced.", 409);
+    const patch =
+      status === "sent" ? { status, sent_at: match.sent_at || stamp() }
+      : status === "draft" ? { status, sent_at: null, answered_at: null }
+      : status === "declined" ? { status, answered_at: stamp() }
+      : { status };
+    await sbRequest("PATCH", `bov_matches?id=eq.${enc(match.id)}`, patch);
+    return { body: { ok: true } };
+  }
+
+  if (action === "introduce" || action === "introduced") {
+    const lead = await bovReadLead(mLeadId);
+    if (!lead) return bad("That request no longer exists.", 404);
+    const request = await bovEnsureRequest(lead, "");
+    if (action === "introduced") {
+      // The owner made the introduction themselves (from their own mailbox).
+      await bovClaim(mLeadId, match.id, true);
+      await sbRequest("PATCH", `bov_matches?id=eq.${enc(match.id)}`, { status: "introduced", answered_at: match.answered_at || stamp() });
+      await sbRequest("PATCH", `bov_requests?lead_id=eq.${enc(mLeadId)}`, { state: "introduced", note: null, updated_at: stamp() });
+      return { body: { ok: true } };
+    }
+    if (!match.email) return bad("This broker has no email address to introduce by. Type one first.");
+    if (!bovMailReady()) {
+      const mail = BOVDESK.introDraft({ lead, broker: match, reportUrl: request.report_url, sender: bovSender() });
+      return bad(`${NO_MAIL} Open the introduction in Gmail, send it, then press “Mark introduced”.`, 503, {
+        code: "no_mail",
+        gmail_url: BOVDESK.gmailComposeUrl({
+          to: `${lead.email},${match.email}`, subject: mail.subject, body: mail.text,
+          account: bovFromHeader() ? bovSender().email : "",
+        }),
+      });
+    }
+    await bovClaim(mLeadId, match.id, true);
+    if (!(await bovIntroduce(match, lead, request))) {
+      return bad("The mail provider did not take the introduction, so nobody was introduced. Try again.", 502);
+    }
+    return { body: { ok: true, introduced: true } };
+  }
+
+  return bad("Unknown action.");
+}
+
+// What /admin's own card shows without opening the desk. Fails SAFE to null,
+// like readIntroRequests: this must never be what breaks the dashboard.
+async function readBovDeskCount() {
+  if (!DB_CONFIGURED) return { db: false };
+  try {
+    const rows = (await sbRequest("GET",
+      "bov_matches?status=in.(draft,accepted)&select=status,email&limit=500")) || [];
+    return { db: true, ready: true, ...BOVDESK.attention(rows) };
+  } catch (err) {
+    if (bovTablesMissing(err)) return { db: true, ready: false };
+    console.warn("BOV desk count failed:", err && err.message);
+    return null;
+  }
 }
 
 // The invitation. Rides the existing EMAIL_FROM gate, so with a custom domain
@@ -19131,9 +19803,31 @@ function render(d){
         "arrivals, where they are noise. One person on two devices counts twice; a browser that "+
         "clears cookies starts over.</div>")+
     "</div>";
+  // The BOV desk (2026-11-20). A count and a door: the desk is a page of its
+  // own (/admin/bov), and this card neither sends nor searches. It sits above
+  // the tiles because it is the one card here that can be waiting on the
+  // owner. undefined = a stale /api/stats from before it existed (no card);
+  // null = the read failed; ready:false = migration 065 has not run.
+  var bd=d.bovDesk;
+  var bovCard=(bd===undefined)?"":
+    "<div class=card><h2>BOV desk</h2>"+
+    (!bd
+      ? "<p class=muted>Unavailable right now &mdash; the desk could not be read. Nothing else on this page is affected.</p>"
+      : !bd.db
+      ? "<p class=muted>Requires Supabase &mdash; the brokers and drafts for a BOV request are stored only there.</p>"
+      : !bd.ready
+      ? "<p><b>Migration 065 has not been run</b>, so brokers are not being found for new BOV requests. "+
+        "Run <code>migrations/065-bov-desk.sql</code> in the Supabase SQL editor.</p>"
+      : (bd.toSend||bd.toIntroduce)
+      ? "<p><b>"+esc(bd.toSend)+"</b> drafted email(s) waiting for you to send &middot; <b>"+esc(bd.toIntroduce)+
+        "</b> broker(s) waiting for an introduction.</p>"
+      : "<p class=muted>Nothing is waiting on you. When a BOV request comes in, the local brokers are found and the "+
+        "emails drafted here.</p>")+
+    "<p style='margin-top:12px'><a class=btn style='display:inline-block' href='/admin/bov'>Open the BOV desk</a></p></div>";
   document.getElementById("dash").innerHTML=
     upAlarm+
     alarm+
+    bovCard+
     "<div class=tiles>"+
     "<div class=tile><div class=k>Searches</div><div class=v>"+t.searches+"</div></div>"+
     "<div class=tile><div class=k>Billed</div><div class=v>"+t.billed+"</div></div>"+
@@ -22666,13 +23360,7 @@ const server = http.createServer((req, res) =>
         // /r/<id> shape so this endpoint can't be abused to email arbitrary
         // attacker-supplied links. NOT stored in the lead row (the Supabase
         // leads table has no such column) — email/notification only.
-        const reportUrl = (() => {
-          const u = clean(report_url, 300);
-          for (const origin of new Set([SITE_URL, DEFAULT_SITE_URL])) {
-            if (new RegExp(`^${origin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/r/[A-Za-z0-9_-]{6,32}$`).test(u)) return u;
-          }
-          return "";
-        })();
+        const reportUrl = ownReportUrl(report_url);
         if (!lead.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email)) {
           return sendJson(res, 400, { error: "A name and a valid email are required." });
         }
@@ -22770,10 +23458,27 @@ const server = http.createServer((req, res) =>
             }
           })().catch((err) => console.error("Broker lead notify failed:", err.message));
         }
+        // The BOV desk (2026-11-20): find the local brokers and draft the
+        // email to each, now, instead of when the owner next reads their
+        // inbox. Fire-and-forget and after everything above, so a search
+        // provider or an unrun migration 065 can never cost the request, the
+        // owner's notification or the brokers' alert. DB rows only: the desk
+        // has no file fallback, and a lead that fell back to the local file
+        // has no id to hang its brokers on.
+        if (bovClass && BOV_AUTOMATION && DB_CONFIGURED && dest === "db") {
+          bovKickoff(lead, reportUrl).catch((err) => console.error(
+            bovTablesMissing(err)
+              ? "BOV desk skipped: migration 065 has not been run (bov_requests / bov_matches)."
+              : "BOV desk kickoff failed: " + (err && err.message)));
+        }
         // Follow-up to the lead: their report link + what happens next.
         // Dormant until EMAIL_FROM is set (custom domain verified in Resend).
+        // Through bovMail since 2026-11-20, so with BOV_FROM set it comes
+        // from the person who will make the introduction and a reply reaches
+        // them; unset, it is sent exactly as before.
         if (bovClass) {
-          sendOutboundEmail(
+          const ackPhone = BOVDESK.ackPhoneLine(lead.phone);
+          bovMail(
             lead.email,
             "Your CompNinja report + what happens next",
             [
@@ -22793,6 +23498,10 @@ const server = http.createServer((req, res) =>
               // impression a real lead gets. Say what happens, not when.
               `2. We connect you with a licensed local broker who knows your market.`,
               `3. The broker prepares a no-cost opinion of value. No obligation.`,
+              // The hand-written reply always asked whether the number on
+              // the form was the one to call; this states it and invites a
+              // correction, so nobody has to answer for the request to move.
+              ...(ackPhone ? [``, ackPhone] : []),
               ``,
               `A note on the numbers: everything in the report is an automated estimate`,
               `built from recent comparable sales. It is not an appraisal and not a`,
@@ -22800,7 +23509,7 @@ const server = http.createServer((req, res) =>
               ``,
               `Questions? Just reply to this email.`,
               ``,
-              `CompNinja · ${LEAD_NOTIFY_EMAIL}`,
+              `CompNinja · ${bovSender().email || LEAD_NOTIFY_EMAIL}`,
             ].join("\n")
           );
         }
@@ -24328,6 +25037,86 @@ const server = http.createServer((req, res) =>
       console.error("unsubscribe error:", err);
       res.writeHead(500, { "content-type": "text/plain" });
       res.end("Could not update that setting. Please reply to any CompNinja email and we will do it for you.");
+    });
+    return;
+  }
+
+  // --- A broker answers a BOV offer (migration 065; rules in bov-desk.js) ----
+  //
+  // The link in the outreach email. The unsubscribe link's shape and for its
+  // reason: the GET only SHOWS the offer, because mail scanners and link
+  // previews fetch every URL in an email, and a GET that accepted would
+  // introduce a stranger's phone number to a broker who never opened the
+  // mail. The token is an HMAC of the match id (bovMac), so the link works
+  // for somebody with no account and cannot be guessed or walked.
+  //
+  // On yes: the request is claimed for this broker (bovClaim: of two brokers
+  // answering at once, one wins), the introduction goes to both people, and
+  // the owner is told. If the introduction cannot be sent (outbound mail
+  // off), the broker is told it is coming and the owner is told to make it.
+  // `no=1` in the POST's address is "no thanks", so no body is read at all.
+  if (req.url.split("?")[0] === "/bov/accept" && (req.method === "GET" || req.method === "POST")) {
+    (async () => {
+      const q = new URL(req.url, "http://localhost").searchParams;
+      const matchId = bovId(q.get("m"));
+      const page = (status, view) => {
+        res.writeHead(status, {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+          "x-robots-tag": "noindex, nofollow",
+        });
+        const out = BOVDESKPAGE.acceptView(view);
+        return res.end(marketShell({
+          title: out.title + " | CompNinja",
+          description: "A Broker Opinion of Value request from CompNinja.",
+          noindex: true,
+          body: out.body,
+        }));
+      };
+      if (!DB_CONFIGURED || !matchId || !bovTokenValid(matchId, q.get("t"))) return page(400, { kind: "invalid" });
+      if (rateLimited("bovaccept:" + clientIp(req), 40)) return page(429, { kind: "busy" });
+      const match = await bovReadMatch(matchId);
+      if (!match) return page(404, { kind: "invalid" });
+      const leadId = bovId(match.lead_id);
+      const [lead, request] = await Promise.all([bovReadLead(leadId), bovReadRequest(leadId)]);
+      if (!lead) return page(404, { kind: "gone" });
+      const self = `/bov/accept?m=${encodeURIComponent(matchId)}&t=${bovMac(matchId)}`;
+      // The property, never the person: nothing about who asked is on this
+      // page before the introduction.
+      const offer = {
+        action: self, address: lead.address, type: lead.type, size_sqft: lead.size_sqft,
+        reportUrl: request && request.report_url, residential: lead.type === "Residential",
+      };
+      const where = BOVDESK.acceptState(match, request);
+      if (req.method === "GET" || where !== "open") {
+        return page(200, { kind: where, declined: match.status === "declined", ...offer });
+      }
+      const now = new Date().toISOString();
+      if (q.get("no") === "1") {
+        await sbRequest("PATCH", `bov_matches?id=eq.${encodeURIComponent(matchId)}`, { status: "declined", answered_at: now });
+        return page(200, { kind: "declined_now", ...offer });
+      }
+      const live = request || await bovEnsureRequest(lead, "");
+      if (!(await bovClaim(leadId, matchId, false))) return page(200, { kind: "taken", ...offer });
+      await sbRequest("PATCH", `bov_matches?id=eq.${encodeURIComponent(matchId)}`, { status: "accepted", answered_at: now });
+      let introduced = false;
+      try { introduced = await bovIntroduce({ ...match, status: "accepted", answered_at: now }, lead, live); }
+      catch (err) { console.error("BOV introduction failed:", err && err.message); }
+      notifyByEmail(`BOV: ${match.name} accepted ${lead.address}`, [
+        ["Broker", `${match.name}${match.firm ? " (" + match.firm + ")" : ""}`],
+        ["Broker email", match.email],
+        ["Broker phone", match.phone],
+        ["Request", `${lead.name}: ${lead.address}${lead.type ? " (" + lead.type + ")" : ""}`],
+        ["Introduction", introduced
+          ? `Sent to ${lead.email} and ${match.email}. Nothing for you to do.`
+          : "NOT sent. Open the BOV desk and press Introduce, or introduce them from your own mailbox."],
+        ["Open the BOV desk", `${SITE_URL}/admin/bov`],
+      ]);
+      return page(200, { kind: introduced ? "done" : "accepted", ...offer });
+    })().catch((err) => {
+      console.error("bov accept error:", err && err.message);
+      res.writeHead(500, { "content-type": "text/plain" });
+      res.end("That did not go through. Please reply to the email you received and we will take it from there.");
     });
     return;
   }
@@ -26040,6 +26829,12 @@ const server = http.createServer((req, res) =>
           }],
           { prefer: "resolution=ignore-duplicates,return=minimal" })
           .catch((e) => console.error("bov auto-create failed (seeding recovers it):", e.message));
+        // The owner's BOV desk (migration 065): this broker has already said
+        // yes, so they are listed there as accepted and the owner's part is
+        // one press of Introduce. Non-blocking, and an unrun 065 costs only
+        // this row: the request above is stored and the email below is sent.
+        bovAddPlatformBroker(lead, user, BROKER_PROFILES.byEmail[String(user.email || "").toLowerCase()])
+          .catch((e) => console.error("BOV desk: could not list the intro request:", e.message));
         // Broker identity for the owner's email: account + public profile if
         // one exists (BROKER_PROFILES holds public rows only; that is fine,
         // the email address is the working identifier either way).
@@ -26059,6 +26854,7 @@ const server = http.createServer((req, res) =>
           ["Size (SF)", lead.size_sqft ? Number(lead.size_sqft).toLocaleString("en-US") : ""],
           ["1031 exchange", lead.source === "1031" ? "Yes — read the 1031 guide, likely on the 45/180-day clock" : ""],
           ["Lead received", lead.ts],
+          ["Introduce them in one click", `${SITE_URL}/admin/bov`],
         ]);
         logEvent("lead_intro", { prop_type: lead.type, market: marketOf(lead.address) });
         return sendJson(res, 200, { ok: true });
@@ -34724,8 +35520,11 @@ const server = http.createServer((req, res) =>
       readIntroRequests(),
       // Same contract (2026-09-16): the permit filings count for its card.
       readPermitStats(),
+      // Same contract (2026-11-20): what is waiting on the BOV desk, for the
+      // card that links to it. A read only; opening /admin sends nothing.
+      readBovDeskCount(),
     ])
-      .then(([rows, introRequests, permits]) => sendJson(res, 200, { ...aggregateStats(rows), introRequests, permits }))
+      .then(([rows, introRequests, permits, bovDesk]) => sendJson(res, 200, { ...aggregateStats(rows), introRequests, permits, bovDesk }))
       .catch((err) => { console.error("Stats read failed:", err); return sendJson(res, 500, { error: "Could not load stats." }); });
     return;
   }
@@ -34773,6 +35572,55 @@ const server = http.createServer((req, res) =>
       "x-robots-tag": "noindex, nofollow",
     });
     return res.end(renderAdminHTML());
+  }
+  // --- The BOV desk (owner only; rules in bov-desk.js) ----------------------
+  // The page is a public shell that shows nothing until the admin key or the
+  // cn_admin cookie opens /api/admin/bov, the same gate as /admin itself.
+  if (req.method === "GET" && req.url.split("?")[0] === "/admin/bov") {
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+    });
+    return res.end(BOVDESKPAGE.renderBovDeskHTML({ CN_LOGO }));
+  }
+  // GET only READS: opening the desk sends no mail and runs no search (the
+  // digest card's rule, and tested the same way). Every send and every search
+  // a person starts is the POST.
+  if (req.url.split("?")[0] === "/api/admin/bov" && (req.method === "GET" || req.method === "POST")) {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
+    if (!DB_CONFIGURED) {
+      return sendJson(res, 503, { error: "The BOV desk needs the database: its brokers and drafts are stored only there." });
+    }
+    if (req.method === "GET") {
+      bovDeskPayload()
+        .then((d) => sendJson(res, 200, d))
+        .catch((err) => {
+          console.error("BOV desk read failed:", err && err.message);
+          sendJson(res, 503, { error: "Couldn't load the BOV desk just now. Try again in a minute." });
+        });
+      return;
+    }
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 3e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const out = await bovDeskAction(JSON.parse(body || "{}"));
+        return sendJson(res, out.status || 200, out.body);
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        if (bovTablesMissing(err)) {
+          return sendJson(res, 503, {
+            error: "Migration 065 has not been run, so nothing was changed. Run migrations/065-bov-desk.sql in the Supabase SQL editor.",
+            code: "migration",
+          });
+        }
+        console.error("BOV desk action failed:", err && err.message);
+        return sendJson(res, 503, { error: "That didn't go through, and nothing was sent. Try again in a minute." });
+      }
+    });
+    return;
   }
   if (req.method === "GET" && req.url.split("?")[0] === "/admin/heroes") {
     res.writeHead(200, {

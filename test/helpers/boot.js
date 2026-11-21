@@ -208,6 +208,17 @@ async function bootOnce(env) {
       // would be measuring it instead of what they test. Its own suite
       // (test/comp-fit-run.test.js) turns it on.
       COMP_WIDER_SEARCH: "off",
+      // The BOV desk's automatic start (bov-desk.js, 2026-11-20), OFF by
+      // default here for the wider search's reason. On, every suite that
+      // posts a BOV lead against the stand-in database would also start a
+      // broker search (a provider call) and write two more tables, and the
+      // suites that count requests or mail would be counting those. Its own
+      // suite (test/bov-desk-run.test.js) turns it on, and blanks the three
+      // settings beside it so a developer's .env cannot change what it proves.
+      BOV_AUTOMATION: "off",
+      BOV_AUTOPILOT: "",
+      BOV_FROM: "",
+      BOV_DAILY_SEARCHES: "",
       ...env,
     },
     // stderr is piped (stdout stays ignored: the startup banner is noise)

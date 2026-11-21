@@ -98,6 +98,15 @@ paths:
   never the owner's name/email/phone/company/address, throttled to one email
   per broker/market/hour (`BROKER_ALERT_SUPPRESS`, `BROKER_ALERT_WINDOW_MS`)
   so a hot market cannot turn one lead into a mail storm. Rate-limited per IP.
+  **Since 2026-11-20 a durably-stored bov-class lead also starts the BOV
+  desk** (`bovKickoff`, fire-and-forget, `BOV_AUTOMATION`; bov-desk.md): the
+  local brokers are found and an email to each is drafted, and the owner gets
+  a second notice, "BOV desk: N brokers found for \<address\>". The lead's
+  own follow-up goes through `bovMail`, so with `BOV_FROM` set it comes from
+  that person and a reply reaches them; unset, it is sent exactly as before.
+  It gained one line, the phone number on file and an invitation to correct
+  it (`BOVDESK.ackPhoneLine`), and its report-link check is the shared
+  `ownReportUrl`.
 - **The watchlist digest** (2026-08-13; migration `025-watchlist-digest.sql`,
   **run before deploying**). `POST /api/watchlist/digest` mails each watcher
   the markets of theirs that have new comps. It is **the only thing this

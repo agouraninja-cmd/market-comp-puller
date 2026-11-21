@@ -1,5 +1,17 @@
 [
   {
+    "date": "2026-11-21",
+    "type": "improvement",
+    "title": "Lease reminders: a last call two weeks out, an off switch, and a card on /admin",
+    "details": "A lease emailed about 90 days ahead now gets one last reminder 14 days before the date. A firm's owner or admin can turn lease reminder emails off in Firm settings on Home, and the Buildings page says under its Critical dates who is emailed and when. /admin has a Lease reminders card with Preview and Send now and the date it last ran."
+  },
+  {
+    "date": "2026-11-20",
+    "type": "feature",
+    "title": "A firm is emailed before a lease date arrives",
+    "details": "A firm's leases already showed their option notice and expiry dates on the Buildings page, but nobody was told when one was coming. Now, 90 days before a lease's option notice (or its expiry, when there is no notice), the firm's owners and the person who filed the lease get one email naming the tenant, the building and the date, with a link to the building. Each lease is mailed about once, and again if its dates are changed. Anyone who turned CompNinja emails off gets none."
+  },
+  {
     "date": "2026-11-20",
     "type": "fix",
     "title": "Swiping up on a comp report on a phone no longer makes the section bar flicker",

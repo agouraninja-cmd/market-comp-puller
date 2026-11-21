@@ -156,7 +156,7 @@ session that never reads it.
     permits-page.js `STAGE_NAMES` / `tidy`; index.html's `houseNumberOf` /
     `unitDesignatorOf` and building-photo.js's copies). Grep for ⚠ before changing either side.
 12. **Nothing mails or sweeps on a timer.** The watchlist digest, the trial
-    emails and the permit sweep are `ADMIN_KEY`-gated routes driven from
+    emails, the firm's lease reminders (firms.md) and the permit sweep are `ADMIN_KEY`-gated routes driven from
     outside the process. A ledger is marked only after the send, and opening
     `/admin` must never send mail. The BOV desk keeps both halves: its broker
     search is started by the request itself or by a click, and opening

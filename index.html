@@ -3249,6 +3249,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <input id="firmDefaultToggle" type="checkbox" class="accent-red" />
               <span>Share new reports with the firm by default</span>
             </label>
+            <!-- Lease reminders (2026-11-21, migration 065). Owner/admin, like
+                 the default above, and hidden for everyone else. On means the
+                 firm's owners and whoever filed a lease are emailed 90 and 14
+                 days before its option notice or expiry. renderFirmLease(). -->
+            <label id="firmLeaseWrap" class="hidden flex items-center gap-2 text-sm text-ink-2 cursor-pointer">
+              <input id="firmLeaseToggle" type="checkbox" class="accent-red" />
+              <span>Email lease date reminders to owners and whoever filed the lease</span>
+              <span id="firmLeaseState" class="text-xs text-ink-3"></span>
+            </label>
             <div class="flex flex-wrap items-center gap-4 text-sm text-ink-2">
               <label for="firmAutoShareSelect">My new reports</label>
               <select id="firmAutoShareSelect"
@@ -18624,8 +18633,42 @@ async function renderMyDesk() {
     renderFirmName(firm);
     renderFirmShop(firm);
     renderFirmAutoShare(firm);
+    renderFirmLease(firm);
     renderFirmBilling(firm);
   }
+
+  // The firm's lease reminder switch (065). Presentation only: the server
+  // re-checks owner/admin, and the send run reads the stored value itself.
+  // `leaseReminders` is absent from an older server's answer, which means on.
+  function renderFirmLease(firm) {
+    if (!firm) return;
+    document.getElementById("firmLeaseWrap").classList.toggle("hidden", !firm.canManage);
+    document.getElementById("firmLeaseToggle").checked = firm.leaseReminders !== false;
+  }
+  document.getElementById("firmLeaseToggle").addEventListener("change", async (e) => {
+    const firm = myFirm();
+    if (!firm) return;
+    const toggle = e.target;
+    const state = document.getElementById("firmLeaseState");
+    const want = toggle.checked;
+    toggle.disabled = true;
+    state.textContent = "Saving…";
+    try {
+      const res = await fetch("/api/org/settings", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orgId: firm.id, leaseReminders: want }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "That didn't go through.");
+      firm.leaseReminders = body.leaseReminders !== false;
+      state.textContent = "";
+    } catch (err) {
+      state.textContent = err.message || "That didn't go through.";
+      setTimeout(() => { state.textContent = ""; }, 4000);
+    }
+    toggle.checked = firm.leaseReminders !== false;
+    toggle.disabled = false;
+  });
 
   // ---------------------------------------------------------------------------
   // The member profile card (2026-09-29, the owner's pick: Draft A)

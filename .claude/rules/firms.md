@@ -184,11 +184,60 @@ paths:
   renewal-watch.js's `deadlineOf`/`daysUntil` INJECTED, never required.
   `GET|POST|PATCH|DELETE /api/org/leases` on the firm gate; the Leases section
   on the sheet and the Critical dates strip at the top of `/buildings` (the
-  next twelve months, soonest first). **Nothing here sends mail**:
-  `renewal_notified_at` ships unwritten, renewal-watch is display-only on
-  this surface, and which member at a firm would get a reminder is an owner
-  decision the plan defers. The run test asserts the mail stand-in stayed
-  empty.
+  next twelve months, soonest first). **The lease routes send no mail**; the
+  run test asserts the mail stand-in stayed empty.
+  **Lease reminders by email** (2026-11-20, the owner: "do 1 for me", of
+  lease date reminders; no migration, `renewal_notified_at` has existed
+  since 048). `POST /api/org/leases/notices`, `ADMIN_KEY`-gated, driven on
+  weekdays by `.github/workflows/lease-notices.yml` (needs the `ADMIN_KEY`
+  repository secret) and never by a timer. Copy and the due rule are
+  `buildFirmLeaseNotice` / `firmLeaseDue` in renewal-watch.js; the reads sit
+  beside `orgLeaseRows`. Rules:
+  - **Who is mailed**: the firm's owners get every due lease; the member who
+    filed a lease gets theirs while still in the firm. Never a pending
+    invite, a removed member, or an account with `digest_optout` (the one
+    switch for mail CompNinja sends on its own; the email's link is the
+    digest's unsubscribe link).
+  - **Twice per date at most**: 90 days out (`RENEWAL.LEAD_DAYS`) and a last
+    reminder 14 days out (`RENEWAL.FIRM_FINAL_DAYS`, 2026-11-21), counting to
+    the option notice, or to the expiry when there is no notice or it has
+    lapsed. One column holds both (`renewal_notified_at`, no migration):
+    `firmLeaseStage` owes the last one only when the mark is MORE than 14
+    days before the date, so a lease first mailed inside the last two weeks
+    (filed late) gets no second. The read is four queries: never-mailed
+    leases in the 90-day window, and mailed ones in the 14-day window.
+    Vacated and expired leases, and dates already passed, are never mailed.
+    The subject starts "Reminder:" when every lease in it is a repeat.
+  - **A firm can turn them off** (`orgs.lease_reminders`, migration 065,
+    SOFT order, 2026-11-21): `POST /api/org/settings { leaseReminders }`,
+    owner/admin only, a checkbox in Firm settings on Home
+    (`#firmLeaseToggle`, `renderFirmLease`, hidden for members).
+    `GET /api/org` sends `leaseReminders` per firm. The column is read only
+    by `orgLeaseReminderSettings`, never by `orgsByIds`/`findOrg`: a
+    missing column reads as on for everyone, any other read failure throws
+    so the run refuses (fail closed) and the firm read shows on. Writing it
+    before 065 answers 503 by name. A firm that is off is skipped whole and
+    its leases stay unmarked, so turning it back on picks up what is ahead.
+  - **The Buildings page says so** under the Critical dates strip
+    (`#blCritNote`, from the boot's `firm.leaseReminders`): who is emailed
+    and when, or that they are off and who can turn them on.
+  - **`/admin` has a Lease reminders card** (`renderLeaseCard`), the
+    digest card's shape and rule: Preview first, Send now behind a confirm,
+    one fetch call site inside the click handler, and a last-run line from
+    `/api/stats`' `leaseNoticeRuns` (event `org_lease_notices`, previews
+    counted apart).
+  - **Marked after a send**, when at least one recipient's copy was accepted.
+    Holding the mark for every recipient would mail the others again on
+    each run while one address fails.
+  - **`PATCH /api/org/leases` clears the mark when either date changes**, so
+    a renewed lease is reminded about again. Any other edit leaves it.
+  - Refuses without a database or outbound mail (503); `{ dryRun: true }`
+    returns the emails, sends none, marks nothing.
+  - The address is read by building id and its `org_id` is checked against
+    the lease's before it is printed.
+  Run test: `test/firm-lease-notices-run.test.js`. Before-and-after
+  pictures were taken on the stand-in database (Firm settings, the
+  Buildings strip, `/admin`).
   **Discovery, unread, contacts, reports** (slice 8, 2026-09-02, no
   migration; spec §13 of the firm-messaging design). Four **Discuss** doors
   (a SHARED comp in the Vault's Firm column, a shelf report, a building

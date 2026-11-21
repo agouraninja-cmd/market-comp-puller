@@ -84,6 +84,7 @@ function renderBuildingsBody(boot) {
 .bl-crit .kicker{margin:0 0 6px}
 .bl-crit-row{display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid var(--hair);font-size:var(--text-small)}
 .bl-crit-row:last-child{border-bottom:0}
+.bl-crit-note{margin:8px 0 0;font-size:var(--text-tiny);color:var(--ink-3)}
 .bl-crit-row .d{flex:0 0 7.5rem;font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600}
 .bl-crit-row .d.soon{color:var(--red)}
 .bl-crit-row .k{flex:0 0 4.5rem;font-size:var(--text-tiny);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
@@ -108,6 +109,10 @@ function renderBuildingsBody(boot) {
   <div class="bl-crit hide" id="blCrit">
     <div class="kicker">Critical dates \u00b7 next 12 months</div>
     <div id="blCritRows"></div>
+    <!-- Whether these dates are emailed (2026-11-21; firms.md, "Lease
+         reminders by email"). Written from the boot's firm.leaseReminders;
+         empty when the boot did not say. -->
+    <p class="bl-crit-note" id="blCritNote"></p>
   </div>
   <!-- Permit activity (permit signals slice 3): a filing applied for, or a
        status that moved, on one of the board's own buildings in the last
@@ -156,6 +161,11 @@ function renderBuildingsBody(boot) {
     // Only the boot carries these two; a reload after a remove answers from
     // /api/org/buildings, which does not, and must not blank either strip.
     if(Array.isArray(o.j.critical))renderCritical(o.j.critical);
+    if(firm&&typeof firm.leaseReminders==="boolean"){
+      $("blCritNote").textContent=firm.leaseReminders
+        ?"Your firm\\u2019s owners, and whoever filed a lease, are emailed 90 and 14 days before each date."
+        :"Lease reminder emails are off for your firm. An owner or admin can turn them on in Firm settings on Home.";
+    }
     if(Array.isArray(o.j.permits))renderPermits(o.j.permits);
     fillTypes();
     render();

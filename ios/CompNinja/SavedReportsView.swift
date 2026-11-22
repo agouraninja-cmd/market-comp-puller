@@ -8,6 +8,7 @@ import CompNinjaKit
 /// property next door. Nothing here touches the network.
 struct SavedReportsView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var demoOpen = false
 
     var body: some View {
         NavigationStack {
@@ -39,6 +40,12 @@ struct SavedReportsView: View {
                 }
             }
             .navigationTitle("Saved")
+            #if DEBUG
+            .navigationDestination(isPresented: $demoOpen) {
+                if let saved = model.savedReports.first { ReportView(saved: saved) }
+            }
+            .onAppear { if DemoScene.opensReport { demoOpen = true } }
+            #endif
         }
     }
 }

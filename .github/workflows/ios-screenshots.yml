@@ -1,0 +1,118 @@
+# iOS screenshots: photographs the CompNinja iPhone app on a GitHub-hosted
+# Mac's simulator for the App Store listing. No secrets, uploads nothing to
+# Apple: the PNGs land as the "app-store-screenshots" artifact of the run.
+#
+# The simulator cannot be tapped from a script, so the app is built in DEBUG
+# with a screenshot mode (ios/CompNinja/DemoScene.swift): launched with
+# `-demoScene <name>` it opens straight on that screen. The data on screen is a
+# sample saved report written into the app's own store by
+# ios/Tools/screenshot-data.py, so nothing here touches a live account.
+#
+# Size: the 6.9" iPhone set (1320x2868, iPhone 17/16 Pro Max), the one size App
+# Store Connect requires for an iPhone-only app.
+name: iOS screenshots
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/ios-screenshots]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-screenshots.yml"
+
+jobs:
+  shoot:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode*.app | grep -v -i beta | sort -V | tail -1)
+          echo "Using $XC"
+          sudo xcode-select -s "$XC/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        working-directory: ios
+        run: xcodegen generate
+
+      # The newest iOS runtime's "Pro Max", preferring the 17. Said in the
+      # log, because the picture size depends on it.
+      - name: Boot a Pro Max simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          best = None
+          for runtime, devices in data.items():
+              if "iOS" not in runtime:
+                  continue
+              ver = tuple(int(p) for p in runtime.rsplit("iOS-", 1)[-1].split("-") if p.isdigit())
+              for d in devices:
+                  if "Pro Max" not in d["name"]:
+                      continue
+                  score = (ver, "17" in d["name"], d["name"])
+                  if best is None or score > best[0]:
+                      best = (score, d["udid"], d["name"], runtime)
+          if not best:
+              sys.exit("no Pro Max simulator on this runner")
+          print(best[1])
+          print(best[2], best[3], file=sys.stderr)
+          ')
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl ui "$UDID" appearance light
+
+      - name: Build (Debug, simulator)
+        working-directory: ios
+        run: |
+          xcodebuild -project CompNinja.xcodeproj -scheme CompNinja \
+            -configuration Debug -sdk iphonesimulator \
+            -destination "id=$UDID" -derivedDataPath build/dd \
+            CODE_SIGNING_ALLOWED=NO build | tee build-log.txt \
+            | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
+          test -d build/dd/Build/Products/Debug-iphonesimulator/CompNinja.app \
+            || { echo "::error::Simulator build failed, see the uploaded build log"; exit 1; }
+
+      - name: Install and seed the sample report
+        working-directory: ios
+        run: |
+          xcrun simctl install "$UDID" build/dd/Build/Products/Debug-iphonesimulator/CompNinja.app
+          C=$(xcrun simctl get_app_container "$UDID" co.compninja.ios data)
+          mkdir -p "$C/Library/Application Support"
+          python3 Tools/screenshot-data.py \
+            CompNinjaKit/Tests/CompNinjaKitTests/Fixtures/sample-report.json \
+            "$C/Library/Application Support/saved-reports.json"
+
+      - name: Take the screenshots
+        run: |
+          xcrun simctl status_bar "$UDID" override --time "9:41" \
+            --dataNetwork 5g --cellularMode active --cellularBars 4 \
+            --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
+          mkdir -p shots
+          n=0
+          for scene in report map comp saved search; do
+            n=$((n + 1))
+            xcrun simctl terminate "$UDID" co.compninja.ios 2>/dev/null || true
+            xcrun simctl launch "$UDID" co.compninja.ios -demoScene "$scene"
+            # The map needs its tiles; everything else settles in a few seconds.
+            if [ "$scene" = map ]; then sleep 15; else sleep 7; fi
+            xcrun simctl io "$UDID" screenshot "shots/0$n-$scene.png"
+          done
+          for f in shots/*.png; do echo "$f $(sips -g pixelWidth -g pixelHeight "$f" | awk '/pixel/{printf "%s ", $2}')"; done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: app-store-screenshots
+          path: |
+            shots/*.png
+            ios/build-log.txt
+          if-no-files-found: ignore
+          retention-days: 30

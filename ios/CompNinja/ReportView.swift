@@ -6,7 +6,32 @@ struct ReportView: View {
 
     var report: Report { saved.report }
 
+    @State private var demoComp = false
+
     var body: some View {
+        #if DEBUG
+        // Screenshot mode (DemoScene.swift): scroll to the map, or open the
+        // first comp. Not compiled into Release.
+        ScrollViewReader { proxy in
+            reportList
+                .onAppear {
+                    if DemoScene.current == .map {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                            proxy.scrollTo("map", anchor: .top)
+                        }
+                    }
+                    if DemoScene.current == .comp { demoComp = true }
+                }
+                .navigationDestination(isPresented: $demoComp) {
+                    if let comp = report.comps.first { CompDetailView(comp: comp) }
+                }
+        }
+        #else
+        reportList
+        #endif
+    }
+
+    private var reportList: some View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 6) {
@@ -59,6 +84,7 @@ struct ReportView: View {
                     CompMapView(report: report, comps: mappableComps)
                         .frame(height: 260)
                         .listRowInsets(EdgeInsets())
+                        .id("map")
                 } header: {
                     Text("Where they are")
                 } footer: {

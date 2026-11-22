@@ -86,14 +86,14 @@ test("an answer is believed only where it could be a real person with a real add
   const [jim, lee, robin, dana] = out.brokers;
   assert.equal(jim.email, "jsmith@hayessherry.com");
   assert.equal(jim.phone, "(401) 555-0100", "an extension is dropped, not folded into the number");
-  assert.equal(jim.email_check, "match", "same domain as the page it was read from");
+  assert.equal(jim.email_check, "unchecked", "nobody has read its page yet: never \"match\" from the search alone");
   assert.equal(jim.fit, "your office sales and leasing work across Greater Rhode Island");
-  assert.equal(lee.email_check, "free");
+  assert.equal(lee.email_check, "unchecked");
   assert.equal(robin.email, null, "a general inbox is not this person");
   assert.equal(robin.phone, "(401) 555-0199");
   assert.equal(robin.email_check, "none");
   assert.equal(dana.source_url, null, "only an http link is kept");
-  assert.equal(dana.email_check, "differs");
+  assert.equal(dana.email_check, "unchecked");
   assert.equal(out.dropped, 3);
 });
 
@@ -136,12 +136,82 @@ test("phones are US numbers written one way, or nothing", () => {
 test("only an address proven by its own page may go out unread", () => {
   const draft = { status: "draft", email: "jim@firm.test" };
   assert.equal(B.canAutoSend({ ...draft, email_check: "match" }), true);
-  for (const check of ["free", "differs", "manual", "none", undefined]) {
+  for (const check of ["free", "differs", "manual", "none", "unseen", "unchecked", undefined]) {
     assert.equal(B.canAutoSend({ ...draft, email_check: check }), false, String(check));
   }
   assert.equal(B.canAutoSend({ status: "sent", email: "jim@firm.test", email_check: "match" }), false);
   assert.equal(B.canAutoSend({ status: "draft", email: null, email_check: "match" }), false);
   assert.equal(B.canAutoSend(null), false);
+});
+
+// The first live run (2026-11-21, 982 Warwick Ave, Office). Two addresses on
+// the firm's own domain that no page shows were labeled "match" because only
+// the domains were compared; one broker's own bio page showed an address the
+// search left out. These are those cases, with the firm names kept so the
+// next reader can see what happened.
+test("an address is \"match\" only when its page was read and shows it", () => {
+  const fair = { name: "Matthew Fair", firm: "Hayes & Sherry", email: "mfair@hayessherry.com", phone: "(401) 555-0110",
+    source_url: "https://www.hayessherry.com/content/properties/pdf/133.pdf" };
+  const lucivero = { name: "David T. Lucivero", firm: "Hayes & Sherry", email: "dlucivero@hayessherry.com", phone: "(401) 555-0111",
+    source_url: "https://www.hayessherry.com/our-team" };
+  // The cited pages were 404s: unchecked, never match.
+  assert.equal(B.pageEmailCheck(fair, { ok: false, status: 404 }).email_check, "unchecked");
+  assert.equal(B.pageEmailCheck(lucivero, null).email_check, "unchecked");
+  // The firm's real team page lists both men and no email for anybody: the
+  // addresses were built from a pattern. Kept for the owner to judge, labeled.
+  const teamPage = { ok: true, emails: B.emailsOnPage("<li>Matthew Fair 401-555-0110</li><li>David T. Lucivero 401-555-0111</li><a href='mailto:info@hayessherry.com'>info</a>") };
+  const v = B.pageEmailCheck(lucivero, teamPage);
+  assert.deepEqual(v, { email: "dlucivero@hayessherry.com", email_check: "unseen", adopted: false });
+  for (const check of ["unseen", "unchecked"]) {
+    assert.equal(B.canAutoSend({ status: "draft", email: lucivero.email, email_check: check }), false, check);
+    assert.equal(B.unprovenCheck(check), true, check);
+  }
+  // Thomas Sweeney's address IS on his bio page: match, and only now.
+  const sweeney = { name: "Thomas Sweeney", firm: "Sweeney Real Estate & Appraisal", email: "tsweeney@sreari.com",
+    source_url: "https://www.sreari.com/meet-our-team/thomas-sweeney/" };
+  const bio = { ok: true, emails: B.emailsOnPage('<p>Email: <a href="mailto:tsweeney@sreari.com">tsweeney@sreari.com</a></p>') };
+  assert.equal(B.pageEmailCheck(sweeney, bio).email_check, "match");
+  assert.equal(B.unprovenCheck("match"), false);
+  // Shown on the page but on another domain, or free mail: the domain half.
+  const dir = { ok: true, emails: ["lee.park@gmail.com", "dana@coleproperties.test"] };
+  assert.equal(B.pageEmailCheck({ name: "Lee Park", email: "lee.park@gmail.com", source_url: "https://directory.test/lee" }, dir).email_check, "free");
+  assert.equal(B.pageEmailCheck({ name: "Dana Cole", email: "dana@coleproperties.test", source_url: "https://directory.test/d" }, dir).email_check, "differs");
+});
+
+test("an address the search left out is read off the person's own page, never built", () => {
+  // Kevin Casey came back with no email; his bio page shows one.
+  const casey = { name: "Kevin Casey", firm: "Sweeney Real Estate & Appraisal", email: "", phone: "(401) 555-0120",
+    source_url: "https://www.sreari.com/meet-our-team/kevin-casey/" };
+  const bio = { ok: true, emails: B.emailsOnPage('<div class="contact">kcasey@sreari.com<br>office: info@sreari.com</div>') };
+  assert.deepEqual(B.pageEmailCheck(casey, bio), { email: "kcasey@sreari.com", email_check: "match", adopted: true });
+  // A page that does not show his address yields none; nothing is made up.
+  const team = { ok: true, emails: ["tsweeney@sreari.com", "info@sreari.com"] };
+  assert.deepEqual(B.pageEmailCheck(casey, team), { email: null, email_check: "none", adopted: false });
+  assert.deepEqual(B.pageEmailCheck(casey, { ok: false }), { email: null, email_check: "none", adopted: false });
+  // Whose address it is takes a personal shape, and exactly one of them.
+  assert.equal(B.personalAddress("Kevin Casey", ["kevin.casey@x.test"]), "kevin.casey@x.test");
+  assert.equal(B.personalAddress("Kevin Casey", ["caseyk@x.test"]), "caseyk@x.test");
+  assert.equal(B.personalAddress("Thomas Sweeney", ["sweeney@sreari.com"]), "", "a family-named firm's own inbox is nobody's");
+  assert.equal(B.personalAddress("Kevin Casey", ["kcasey@x.test", "kevin.casey@x.test"]), "", "two candidates: neither");
+  assert.equal(B.personalAddress("Kevin Casey", ["kcasey2@x.test"]), "");
+  assert.equal(B.personalAddress("David T. Lucivero", ["dlucivero@x.test"]), "dlucivero@x.test", "the middle initial is not the last name");
+  assert.equal(B.personalAddress("Casey", ["casey@x.test"]), "");
+});
+
+test("addresses a page hides from scrapers are still read, and nothing else is", () => {
+  const html = [
+    "<a href='mailto:jo%40firm.test'>Jo</a>",
+    "pat&#64;firm.test",
+    "lee&#x40;firm&#46;test",
+    "sam [at] firm [dot] test",
+    // Cloudflare: key 0x42, then "cf@x.io" XORed with it.
+    `<a class="__cf_email__" data-cfemail="42${Buffer.from("cf@x.io").map((b) => b ^ 0x42).toString("hex")}">[email&#160;protected]</a>`,
+    "<img src='logo@2x.png'>",
+    "Email: First.Last@example.com",
+  ].join("\n");
+  assert.deepEqual(B.emailsOnPage(html).sort(), ["cf@x.io", "jo@firm.test", "lee@firm.test", "pat@firm.test", "sam@firm.test"]);
+  assert.deepEqual(B.emailsOnPage(""), []);
+  assert.equal(B.decodeCfEmail("zz"), "");
 });
 
 // With autopilot on, the public form's text is mailed to a stranger with
@@ -183,7 +253,8 @@ test("the bench reuses brokers found before, a yes first, and never one who pass
   const bench = B.benchCandidates(rows);
   assert.deepEqual(bench.map((b) => b.name), ["Yes Yara", "Sent Sam"]);
   assert.ok(bench.every((b) => b.origin === "bench"));
-  assert.equal(bench[1].email_check, "match");
+  // A stored "match" is not carried over: the page is read again (bovCheckPages).
+  assert.equal(bench[1].email_check, "unchecked");
 });
 
 test("a second search never offers a broker already on the request", () => {

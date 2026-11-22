@@ -23,9 +23,11 @@
 //
 // 1. A CONTACT DETAIL IS COPIED OR ABSENT, never built. The prompt forbids a
 //    guessed address and parseCandidates drops anything that is not shaped
-//    like one, a placeholder, or a pattern ("first.last@"). `email_check`
-//    then says how far to trust what is left: "match" only when the address
-//    is on the same domain as the page it was read from.
+//    like one, a placeholder, or a pattern ("first.last@"). The prompt is not
+//    obeyed reliably (2026-11-21), so server.js then READS the cited page and
+//    pageEmailCheck decides: "match" only when that page shows the address
+//    and it is on the page's own domain; "unseen" when the page was read and
+//    does not show it; "unchecked" when the page could not be read.
 //
 // 2. ONLY "match" MAY BE SENT WITHOUT A PERSON LOOKING (canAutoSend). The
 //    default is that nothing is sent until the owner presses Send under the
@@ -175,10 +177,22 @@ function baseDomain(host) {
 }
 
 // How far to trust an address (rule 1):
-//   "none"    there is none
-//   "match"   same domain as the page it was read from
-//   "free"    a free-mail address: real, but it proves no firm
-//   "differs" another domain than the page (a directory, a listing site)
+//   "none"      there is none
+//   "unchecked" nobody has read its page yet, or the page could not be read
+//               (404, refused, timed out, no page given)
+//   "unseen"    its page was read and does NOT show it: most likely built
+//               from the firm's pattern, which the prompt forbids
+//   "match"     its page shows it, and it is on the page's own domain
+//   "free"      its page shows it, a free-mail address: proves no firm
+//   "differs"   its page shows it, on another domain (a directory, a listing)
+//   "manual"    the owner typed it (validateEdit, manualCandidate)
+//
+// emailCheck() answers only the domain half and is meaningful only for an
+// address a page was seen to state; pageEmailCheck() is the whole verdict.
+// The first live run (2026-11-21, Warwick RI) is why: two addresses on a
+// firm's own domain were labeled "match" though no page anywhere shows them,
+// one cited page was a 404, and the firm's real team page lists no email for
+// anybody. Domain agreement is what a pattern guess looks like too.
 function emailCheck(email, sourceUrl) {
   const e = cleanEmail(email);
   if (!e) return "none";
@@ -189,8 +203,102 @@ function emailCheck(email, sourceUrl) {
   return "differs";
 }
 
+// Checks an address may carry only once its page was read and shows it.
+const PAGE_PROVEN = new Set(["match", "free", "differs"]);
+// What "Send all" and autopilot leave for a person to send one at a time.
+function unprovenCheck(check) { return check === "unseen" || check === "unchecked"; }
+
 function canAutoSend(m) {
   return Boolean(m && m.status === "draft" && cleanEmail(m.email) && m.email_check === "match");
+}
+
+// ---------------------------------------------------------------------------
+// Reading a page for addresses. server.js fetches the page (its DNS guard,
+// byte cap and timeout); everything about what the bytes say is here.
+// ---------------------------------------------------------------------------
+const GENERAL_INBOX = /^(info|contact|sales|admin|office|hello|inquiries|support|marketing|leasing)@/;
+const FILE_TLD = /\.(png|jpe?g|gif|webp|svg|css|js|ico|pdf)$/i;
+
+// Cloudflare's email obfuscation: hex, first byte is the XOR key.
+function decodeCfEmail(hex) {
+  const h = String(hex || "");
+  if (!/^[0-9a-f]{4,400}$/i.test(h) || h.length % 2) return "";
+  const key = parseInt(h.slice(0, 2), 16);
+  let out = "";
+  for (let i = 2; i < h.length; i += 2) out += String.fromCharCode(parseInt(h.slice(i, i + 2), 16) ^ key);
+  return out;
+}
+
+// Every address a page states, lowercased and cleaned: plain text, mailto:
+// links, HTML entities (&#64;), "name [at] firm [dot] com", and Cloudflare's
+// encoding. Nothing is inferred: a string not on the page never comes out.
+function emailsOnPage(html) {
+  let s = String(html || "");
+  const found = [];
+  s.replace(/data-cfemail=["']?([0-9a-f]+)/gi, (_, hx) => { found.push(decodeCfEmail(hx)); return ""; });
+  s.replace(/email-protection#([0-9a-f]+)/gi, (_, hx) => { found.push(decodeCfEmail(hx)); return ""; });
+  s = s
+    .replace(/&#(\d{2,3});/g, (_, d) => String.fromCharCode(Number(d)))
+    .replace(/&#x([0-9a-f]{2});/gi, (_, x) => String.fromCharCode(parseInt(x, 16)))
+    .replace(/&commat;/gi, "@").replace(/&period;/gi, ".")
+    .replace(/%40/g, "@")
+    .replace(/\s*[[(]\s*at\s*[\])]\s*/gi, "@")
+    .replace(/\s*[[(]\s*dot\s*[\])]\s*/gi, ".");
+  const re = /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi;
+  let m;
+  while ((m = re.exec(s))) found.push(m[0]);
+  const out = [];
+  for (const raw of found) {
+    const e = cleanEmail(String(raw).replace(/\.+$/, ""));
+    if (e && !FILE_TLD.test(e) && !out.includes(e)) out.push(e);
+  }
+  return out;
+}
+
+// The address on a page that is THIS person's, when the search left it out
+// (2026-11-21: Kevin Casey came back with no email while his own bio page
+// shows kcasey@sreari.com). The address is copied from the page, never built;
+// the name only decides WHOSE it is, and only the usual personal shapes
+// count ("kcasey", "kevin.casey", "kevincasey", "caseyk"). A bare "casey@"
+// could be the firm's own inbox when the firm carries the family's name, so it
+// does not count; neither does more than one candidate.
+function personalAddress(name, emails) {
+  const words = clean(name, 80).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z\s'-]/g, "").replace(/['-]/g, "").split(/\s+/)
+    .filter((w) => w && !/^(jr|sr|ii|iii|iv)$/.test(w));
+  if (words.length < 2) return "";
+  const first = words[0], last = words[words.length - 1];
+  if (first.length < 2 || last.length < 2) return "";
+  const shapes = new Set([
+    first[0] + last, first + last, first + "." + last, first + "_" + last, first + "-" + last,
+    last + first[0], last + "." + first, first[0] + "." + last,
+  ]);
+  const hits = (emails || []).filter((e) => {
+    if (!e || GENERAL_INBOX.test(e)) return false;
+    return shapes.has(e.slice(0, e.lastIndexOf("@")));
+  });
+  return hits.length === 1 ? hits[0] : "";
+}
+
+// The whole verdict on one candidate's address, given what its page said.
+//   page  { ok:true, emails:[...] }  the page was read
+//         { ok:false } or null         it could not be (or was not) read
+// Returns { email, email_check, adopted }. An address the page does not show
+// is kept for the owner to judge, labeled "unseen", and never "match".
+function pageEmailCheck(candidate, page) {
+  const c = candidate || {};
+  const email = cleanEmail(c.email);
+  const read = Boolean(page && page.ok);
+  const onPage = read ? (page.emails || []).map(cleanEmail).filter(Boolean) : [];
+  if (email) {
+    if (!read) return { email, email_check: "unchecked", adopted: false };
+    if (!onPage.includes(email)) return { email, email_check: "unseen", adopted: false };
+    return { email, email_check: emailCheck(email, c.source_url), adopted: false };
+  }
+  if (!read) return { email: null, email_check: "none", adopted: false };
+  const mine = personalAddress(c.name, onPage);
+  if (!mine) return { email: null, email_check: "none", adopted: false };
+  return { email: mine, email_check: emailCheck(mine, c.source_url), adopted: true };
 }
 
 // Whether a request may be worked with nobody reading it (autopilot).
@@ -343,7 +451,7 @@ function cleanCandidate(raw, origin) {
   let email = cleanEmail(raw.email);
   // A general inbox is not this person (the prompt asks for none; this is the
   // guarantee).
-  if (email && /^(info|contact|sales|admin|office|hello|inquiries|support|marketing|leasing)@/.test(email)) email = "";
+  if (email && GENERAL_INBOX.test(email)) email = "";
   const phone = cleanPhone(raw.phone);
   if (!email && !phone) return null;
   return {
@@ -354,7 +462,9 @@ function cleanCandidate(raw, origin) {
     fit: cleanFit(raw.fit) || null,
     license: clean(raw.license, 40).replace(/[^A-Za-z0-9 .#-]/g, "") || null,
     source_url: source_url || null,
-    email_check: emailCheck(email, source_url),
+    // Nobody has read the page yet: server.js does (bovCheckPages), and only
+    // then may an address be "match" (rule 1).
+    email_check: email ? "unchecked" : "none",
     origin: ORIGINS.includes(origin) ? origin : "search",
   };
 }
@@ -622,6 +732,7 @@ module.exports = {
   isStatus, isState,
   clean, cleanEmail, cleanPhone, cleanName, cleanFit, cleanUrl,
   emailCheck, canAutoSend, autopilotSafe, firstName, wordsFor,
+  PAGE_PROVEN, unprovenCheck, decodeCfEmail, emailsOnPage, personalAddress, pageEmailCheck,
   finderPrompt, parseCandidates, benchCandidates, cleanCandidate, candidateKey,
   keysOf, withoutKnown, mergeCandidates,
   parseSender, signature,

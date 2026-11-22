@@ -119,11 +119,40 @@ the owner's part there is one press of Introduce.
 6. **A contact detail is copied or absent, never built.** The prompt forbids
    a guessed address; `parseCandidates` drops anything that is not shaped
    like one, a placeholder, a pattern (`first.last@`), a general inbox
-   (`info@`), or a "person" that is a firm. `email_check` then says how far
-   to trust what is left: `match` (same domain as the page it was read
-   from), `free` (a free-mail address), `differs`, `manual` (the owner typed
-   it), `none`. The desk shows the check and the page it came from beside
-   every address.
+   (`info@`), or a "person" that is a firm. **Then the server reads each
+   cited page itself** (`bovCheckPages` → `BOVDESK.pageEmailCheck`), the
+   bench's too, and `email_check` says how far to trust what is left:
+   `match` (the page shows it, on the page's own domain), `free` (the page
+   shows it, free mail), `differs` (the page shows it, another domain),
+   `unseen` (the page was read and does NOT show it: probably built from
+   the firm's pattern), `unchecked` (the page could not be read: 404,
+   refused, timed out, a bot-walled portal, no page given), `manual` (the
+   owner typed it), `none`. A failure of any kind lands on `unchecked`,
+   never `match`. When the search returned no address but the person's page
+   shows one in a personal shape (`kcasey@`, `kevin.casey@`; never a bare
+   `casey@`, which could be a family-named firm's inbox, and never one of
+   two), that address is copied off the page (`personalAddress`). The desk
+   shows the check and the page it came from beside every address, and
+   "Send all" leaves `unseen` and `unchecked` drafts to be sent one at a
+   time.
+
+   **Why (2026-11-21, the first live run, 982 Warwick Ave):** the search
+   returned `mfair@hayessherry.com` and `dlucivero@hayessherry.com`, cited a
+   404 PDF and a 404 team page, and the firm's real team page lists both men
+   with no email for anyone; neither address appears anywhere public. The
+   old check compared only domains, so both were `match` ("on the firm's own
+   site"), the one label autopilot sends unread. The same run returned Kevin
+   Casey with no email though his own bio page shows `kcasey@sreari.com`.
+   The prompt already forbade a built address; a prompt is not a guarantee.
+
+   The page is fetched through `fetchSite` (the logo import's: DNS-resolved
+   and private addresses refused on every redirect hop, 6 s a hop, 1 MB
+   cap), all pages in parallel inside `BOV_PAGE_BUDGET_MS` (10 s); a page not
+   back by then is `unchecked`. Bot-walled hosts (`link-check.js`
+   `BLOCKED_HOSTS`) are not fetched. `BOV_PAGE_ORIGIN` is TEST-ONLY: it
+   serves `https://<host><path>` from a stub on loopback, alongside
+   `LOGO_IMPORT_ALLOW_PRIVATE`. `email_check` has no check constraint in
+   migration 065, so the two new values needed no migration.
 7. **We connect; we are not a brokerage.** Every email says so and says the
    estimate is automated, not an appraisal. Nothing says "licensed" about a
    broker a search found: nobody checked. The owner reads each candidate
@@ -158,7 +187,9 @@ Off by default. On, a draft may go with nobody reading it, behind four
 gates. Failing any of them only means the draft waits on the desk:
 
 - **The address was proven by its page** (`email_check === "match"`,
-  `canAutoSend`). A free-mail or off-domain address waits for a person.
+  `canAutoSend`): the server read the cited page and it shows that address,
+  on its own domain. A free-mail, off-domain, `unseen` or `unchecked`
+  address waits for a person.
 - **The request's own text looks like an address and a name**
   (`autopilotSafe`). The lead form is public, and with autopilot on its text
   is mailed to a stranger under the owner's name: the address in the
@@ -192,10 +223,14 @@ every suite that posts a BOV lead would start a provider call.
 
 ## What has NOT been measured
 
-**The search prompt has only been run against a stand-in provider.** Every
-rule about what is believed is tested; how many usable brokers the live
-provider returns for a real market, and how often their addresses are right,
-is not known. That is why the default is that a person reads each candidate
+**The search prompt has been run live once** (2026-11-21, Warwick RI,
+Office): of four brokers, two addresses were on the person's own bio page,
+two were built from a pattern (see rule 6), one address on a bio page was
+missed, and two of the cited pages were 404s. One run is not a rate. The
+page check is tested against stubbed pages, never against the live firm
+sites, and its log line (`BOV page check: N page(s), N read · N address(es)
+not on their page · N unchecked · N read off the page`) is where real
+evidence about it accumulates. That is why the default is that a person reads each candidate
 (with the page it came from one click away) before anything is sent, and why
 turning autopilot on should wait for a few real requests' worth of evidence.
 `bov_search` analytics events (`source`: `found:N`, `unreadable`,

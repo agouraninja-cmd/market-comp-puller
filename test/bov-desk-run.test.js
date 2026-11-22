@@ -70,9 +70,37 @@ async function startProvider() {
     stop: () => new Promise((r) => server.close(r)) };
 }
 
+// The pages FOUND cites, as the server reads them (BOV_PAGE_ORIGIN serves
+// "https://<host><path>" from here). Each shows the address the search
+// returned, except Devon's, which shows none, so the checks come out as
+// before the page check: match, match, free, none, differs. A path not
+// listed is a 404.
+const PAGES = {
+  "www.stonecre.test/team/avery": "<h1>Avery Stone</h1><a href='mailto:avery@stonecre.test'>Email Avery</a>",
+  "riversgroup.test/blake": "<p>Blake Rivers · blake&#64;riversgroup.test</p>",
+  "directory.test/casey": "<td>Casey Moor</td><td>casey.moor@gmail.com</td>",
+  "halepartners.test/devon": "<p>Devon Hale, 401-555-0104</p>",
+  "listings.test/emery": "<p>Listed by Emery Lake, emery@lakecommercial.test</p>",
+};
+async function startPages() {
+  const pages = { ...PAGES };
+  const hits = [];
+  const server = http.createServer((req, res) => {
+    const key = decodeURIComponent(req.url.slice(1));
+    hits.push(key);
+    if (pages[key] == null) { res.writeHead(404); return res.end("not found"); }
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end(`<!doctype html><html><body>${pages[key]}</body></html>`);
+  });
+  await new Promise((r) => server.listen(0, r));
+  return { origin: `http://localhost:${server.address().port}`, pages, hits,
+    stop: () => new Promise((r) => server.close(r)) };
+}
+
 async function bootDesk(t, { tables = {}, env = {}, fakeOpts = {} } = {}) {
   const db = await fake.start({ tables, ...fakeOpts });
   const provider = await startProvider();
+  const site = await startPages();
   const srv = await shared.boot({
     ACCOUNT_WALL: "off",
     ADMIN_KEY: KEY,
@@ -89,10 +117,12 @@ async function bootDesk(t, { tables = {}, env = {}, fakeOpts = {} } = {}) {
     SEARCH_API_URL: provider.url,
     BOV_AUTOMATION: "on",
     BOV_FROM: SENDER,
+    BOV_PAGE_ORIGIN: site.origin,
+    LOGO_IMPORT_ALLOW_PRIVATE: "on",
     ...env,
   });
-  t.after(async () => { srv.stop(); await provider.stop(); await db.stop(); });
-  return { db, provider, srv };
+  t.after(async () => { srv.stop(); await provider.stop(); await site.stop(); await db.stop(); });
+  return { db, provider, srv, site };
 }
 
 const postLead = (srv, over) => fetch(srv.base + "/api/lead", {
@@ -431,6 +461,57 @@ test("autopilot sends only what a page proved, in the plain wording", async (t) 
     // Held for a person, so the drafts keep the wording a person reads.
     assert.match(third[0].body, /with your office sales work across Greater Rhode Island/);
   });
+});
+
+// The first live run (2026-11-21), replayed against a real server with
+// autopilot ON, the setting where a wrong "match" would mail a stranger
+// unread: two addresses on the firm's own domain that no page shows (one
+// cited page a 404, the other a team page with no emails), one address the
+// search left out though the broker's own page shows it, and one that is on
+// its page.
+test("an address no page shows is never \"match\", and one a page shows is picked up", async (t) => {
+  const { db, srv, site, provider } = await bootDesk(t, { env: { BOV_AUTOPILOT: "on" } });
+  Object.assign(site.pages, {
+    "www.hayessherry.com/pages/About-Hayes-Sherry.cfm": "<li>Matthew Fair 401-555-0110</li><li>David Lucivero 401-555-0111</li>",
+    "www.sreari.com/meet-our-team/kevin-casey/": "<p>Kevin Casey</p><p>kcasey@sreari.com</p><p>info@sreari.com</p>",
+    "www.sreari.com/meet-our-team/thomas-sweeney/": "<a href='mailto:tsweeney@sreari.com'>Email</a>",
+  });
+  provider.state.answer = { brokers: [
+    { name: "Matthew Fair", firm: "Hayes & Sherry", email: "mfair@hayessherry.com", phone: "401-555-0110",
+      source_url: "https://www.hayessherry.com/content/properties/pdf/133.pdf" },   // a 404
+    { name: "David Lucivero", firm: "Hayes & Sherry", email: "dlucivero@hayessherry.com", phone: "401-555-0111",
+      source_url: "https://www.hayessherry.com/pages/About-Hayes-Sherry.cfm" },      // read; no address on it
+    { name: "Kevin Casey", firm: "Sweeney Real Estate", email: "", phone: "401-555-0120",
+      source_url: "https://www.sreari.com/meet-our-team/kevin-casey/" },
+    { name: "Thomas Sweeney", firm: "Sweeney Real Estate", email: "tsweeney@sreari.com", phone: "",
+      source_url: "https://www.sreari.com/meet-our-team/thomas-sweeney/" },
+  ] };
+  assert.equal((await postLead(srv)).status, 200);
+  await until(() => (db.tables.bov_requests || []).some((r) => r.state === "ready"), "the desk to be ready");
+  // Owner notice, acknowledgment, the two page-proven sends, desk notice.
+  await fake.waitForMail(db, 5);
+  await until(() => /^BOV desk:/.test((db.sent[db.sent.length - 1] || {}).subject || ""), "the desk notice");
+  assert.equal(db.sent.length, 5);
+  assert.deepEqual(db.unparsed, []);
+
+  const check = (name) => matchNamed(db, name).email_check;
+  assert.equal(check("Matthew Fair"), "unchecked", "its cited page is a 404");
+  assert.equal(check("David Lucivero"), "unseen", "its page was read and shows no address");
+  assert.equal(matchNamed(db, "David Lucivero").email, "dlucivero@hayessherry.com", "kept for the owner to judge");
+  assert.equal(matchNamed(db, "Kevin Casey").email, "kcasey@sreari.com", "read off his own page");
+  assert.equal(check("Kevin Casey"), "match");
+  assert.equal(check("Thomas Sweeney"), "match");
+
+  // Autopilot mailed only the two addresses a page shows.
+  assert.equal(mailTo(db, "mfair@hayessherry.com").length, 0);
+  assert.equal(mailTo(db, "dlucivero@hayessherry.com").length, 0);
+  assert.equal(mailTo(db, "kcasey@sreari.com").length, 1);
+  assert.equal(mailTo(db, "tsweeney@sreari.com").length, 1);
+  assert.deepEqual(db.tables.bov_matches.map((m) => m.status), ["draft", "draft", "sent", "sent"]);
+  // Each cited page was read once, by the server.
+  for (const p of ["www.hayessherry.com/content/properties/pdf/133.pdf", "www.sreari.com/meet-our-team/kevin-casey/"]) {
+    assert.equal(site.hits.filter((h) => h === p).length, 1, p);
+  }
 });
 
 test("an unrun migration 065 costs the desk and never the request", async (t) => {

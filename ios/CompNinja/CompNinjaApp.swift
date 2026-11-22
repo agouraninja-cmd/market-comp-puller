@@ -113,22 +113,33 @@ final class AppModel: ObservableObject {
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
 
+    #if DEBUG
+    @State private var tab = DemoScene.initialTab
+    #else
+    @State private var tab = 0
+    #endif
+
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             SearchView()
                 .tabItem { Label("Search", systemImage: "magnifyingglass") }
+                .tag(0)
             SavedReportsView()
                 .tabItem { Label("Saved", systemImage: "tray.full") }
+                .tag(1)
             if model.showsVault {
                 VaultView()
                     .tabItem { Label("Book", systemImage: "building.2") }
+                    .tag(2)
             }
             if model.showsPipeline {
                 PipelineView()
                     .tabItem { Label("Pipeline", systemImage: "list.bullet.rectangle") }
+                    .tag(3)
             }
             NavigationStack { AccountView() }
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
+                .tag(4)
         }
         .task { await model.refreshAccount() }
         .sheet(item: Binding(

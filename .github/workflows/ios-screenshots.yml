@@ -98,14 +98,24 @@ jobs:
             --dataNetwork 5g --cellularMode active --cellularBars 4 \
             --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
           mkdir -p shots
+          # The first launch on a fresh simulator is slow (the 2026-11-21 run's
+          # first shot came out blank), so warm the app up once, unphotographed.
+          xcrun simctl launch "$UDID" co.compninja.ios -demoScene report
+          sleep 20
           n=0
           for scene in report map comp saved search; do
             n=$((n + 1))
             xcrun simctl terminate "$UDID" co.compninja.ios 2>/dev/null || true
             xcrun simctl launch "$UDID" co.compninja.ios -demoScene "$scene"
             # The map needs its tiles; everything else settles in a few seconds.
-            if [ "$scene" = map ]; then sleep 15; else sleep 7; fi
+            if [ "$scene" = map ]; then sleep 15; else sleep 10; fi
             xcrun simctl io "$UDID" screenshot "shots/0$n-$scene.png"
+          done
+          # simctl writes RGBA PNGs, and App Store Connect refuses any
+          # screenshot with an alpha channel ("An error occurred during
+          # upload", found 2026-11-21). JPEG has no alpha; that is the upload set.
+          for f in shots/*.png; do
+            sips -s format jpeg -s formatOptions 95 "$f" --out "${f%.png}.jpg" >/dev/null
           done
           for f in shots/*.png; do echo "$f $(sips -g pixelWidth -g pixelHeight "$f" | awk '/pixel/{printf "%s ", $2}')"; done
 
@@ -115,6 +125,7 @@ jobs:
           name: app-store-screenshots
           path: |
             shots/*.png
+            shots/*.jpg
             ios/build-log.txt
           if-no-files-found: ignore
           retention-days: 30

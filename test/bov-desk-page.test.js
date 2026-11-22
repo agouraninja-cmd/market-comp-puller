@@ -189,6 +189,21 @@ test("Send all asks first, and a no sends nothing", async () => {
     [{ action: "send", match_id: "m1" }, { action: "send", match_id: "m2" }]);
 });
 
+// 2026-11-21: two addresses no page shows reached the desk. One at a time,
+// with a person looking, is still allowed; a sweep is not.
+test("Send all leaves an address no page showed for a person to send by itself", async () => {
+  const data = payload();
+  data.requests[0].matches.push(
+    draft({ id: "m3", name: "David Lucivero", email: "dlucivero@hayessherry.com", email_check: "unseen", body: "Hi David,\n\nText." }),
+    draft({ id: "m4", name: "Matthew Fair", email: "mfair@hayessherry.com", email_check: "unchecked", body: "Hi Matthew,\n\nText." }));
+  const run = await runDesk(data);
+  assert.equal(run.button("Send all 4 drafts"), undefined);
+  run.button("Send all 2 drafts").fire("click");
+  await run.settle();
+  assert.deepEqual(run.calls.filter((c) => c.method === "POST").map((c) => c.body.match_id), ["m1", "m2"]);
+  assert.ok(run.button("Send to David"), "each one can still be sent on its own");
+});
+
 test("Send all stops at the first refusal instead of sending past it", async () => {
   const run = await runDesk(payload(), { posts: () => ({ status: 502, error: "The mail provider did not take that email." }) });
   run.button("Send all 2 drafts").fire("click");
@@ -246,14 +261,18 @@ test("the caution beside an unproven address is not hidden by another rule's cla
     draft({ id: "m2", email_check: "differs" }),
     draft({ id: "m3", email: null, email_check: "none", body: null, subject: null }),
     draft({ id: "m4", email_check: "match" }),
+    draft({ id: "m5", email_check: "unseen" }),
+    draft({ id: "m6", email_check: "unchecked" }),
   ];
   const { find } = await runDesk(data);
   const checks = find((e) => e.tag === "span" && /(^| )check( |$)/.test(e.className));
   assert.deepEqual(checks.map((e) => e.textContent), [
-    "Free-mail address: check it before sending",
-    "Address is not on the page's own site: check it",
+    "Free-mail address on this page: check it before sending",
+    "Address is on this page, but on another site's domain: check it",
     "No email address was stated",
-    "Address is on the firm's own site",
+    "Address is on this page, on the firm's own site",
+    "Not on the page it came from: probably guessed. Check before sending",
+    "Couldn't open the page it came from: check the address before sending",
   ]);
   for (const e of checks) {
     for (const cls of e.className.split(/\s+/).filter(Boolean)) {

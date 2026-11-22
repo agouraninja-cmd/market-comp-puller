@@ -458,7 +458,7 @@ so they are trusted config and are never set in production.
 | `STRIPE_PRICE_*` | — | price ids; each may be a comma list (first is sold, all are recognized), so a price change is `new_id,old_id`, never a swap | billing.md |
 | `STRIPE_PRICE_CHECK` | on | boot check that each sold price matches `PRICING`; a mismatch pauses that plan's checkout | billing.md |
 | `FREE_REPORTS_PER_MONTH` | 3 | a free account's monthly report allowance | billing.md |
-| `RESEND_API_URL`, `SEARCH_API_URL`, `GOOGLE_OAUTH_TOKEN_URL`, `CENSUS_API_URL`, `STREETVIEW_API_URL`, `PERMIT_PORTAL_ORIGIN`, `SHIP_BOARD_BASE`, `LOGO_IMPORT_ALLOW_PRIVATE` | unset | **test-only** endpoint overrides and one guard switch | that feature's file |
+| `RESEND_API_URL`, `SEARCH_API_URL`, `GOOGLE_OAUTH_TOKEN_URL`, `CENSUS_API_URL`, `STREETVIEW_API_URL`, `PERMIT_PORTAL_ORIGIN`, `SHIP_BOARD_BASE`, `BOV_PAGE_ORIGIN`, `LOGO_IMPORT_ALLOW_PRIVATE` | unset | **test-only** endpoint overrides and one guard switch | that feature's file |
 
 ## Where everything else lives
 

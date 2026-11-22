@@ -207,9 +207,11 @@ function deskClient() {
     manual: "Added by you", platform: "Asked for this from their pipeline"
   };
   var CHECK_WORDS = {
-    match: ["Address is on the firm's own site", "good"],
-    free: ["Free-mail address: check it before sending", "care"],
-    differs: ["Address is not on the page's own site: check it", "care"],
+    match: ["Address is on this page, on the firm's own site", "good"],
+    free: ["Free-mail address on this page: check it before sending", "care"],
+    differs: ["Address is on this page, but on another site's domain: check it", "care"],
+    unseen: ["Not on the page it came from: probably guessed. Check before sending", "bad"],
+    unchecked: ["Couldn't open the page it came from: check the address before sending", "bad"],
     manual: ["Address typed by you", ""],
     none: ["No email address was stated", "care"]
   };
@@ -408,7 +410,11 @@ function deskClient() {
     if (safeHref(req.report_url)) who.appendChild(link("Their automated estimate", req.report_url));
     card.appendChild(who);
 
-    var drafts = req.matches.filter(function (m) { return m.status === "draft" && m.email; });
+    // An address no page was seen to state is sent one at a time, after a
+    // person has looked at it, never swept up by "Send all".
+    var drafts = req.matches.filter(function (m) {
+      return m.status === "draft" && m.email && m.email_check !== "unseen" && m.email_check !== "unchecked";
+    });
     var open = req.state !== "closed";
     var acts = h("div", { cls: "acts top" });
 
@@ -580,7 +586,7 @@ h1.h{font-weight:600;letter-spacing:-.005em;color:var(--ink);margin:var(--s4) 0 
 .mfacts span,.mfacts a{overflow-wrap:anywhere}
 /* Not "ok"/"warn": .warn is the migration notice's box, which is display:none
    until it is needed, and a span sharing the name vanished with it. */
-.check.good{color:var(--ok)}.check.care{color:var(--warn)}
+.check.good{color:var(--ok)}.check.care{color:var(--warn)}.check.bad{color:var(--red);font-weight:600}
 .muted{color:var(--ink-3);font-size:var(--text-small);margin:var(--s3) 0 0}
 .lab{display:block;font-size:var(--text-tiny);color:var(--ink-3);font-weight:600;margin:var(--s4) 0 2px}
 .in{width:100%;padding:var(--s3) var(--s4);border:1px solid var(--edge);border-radius:var(--r-sm);

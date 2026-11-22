@@ -9050,6 +9050,17 @@ async function sendOutboundEmail(to, subject, text, { replyTo, from, cc } = {}) 
 //    only reads; every send and every search is behind a POST a person made.
 // ---------------------------------------------------------------------------
 const BOV_SEARCH_TIMEOUT_MS = 120_000;
+// Reading every candidate's page (bovCheckPages) stops after this long; a
+// page not read by then is "unchecked", never "match".
+const BOV_PAGE_BUDGET_MS = 10_000;
+// One megabyte of a bio or team page is plenty to find an address in.
+const BOV_PAGE_MAX = 1_000_000;
+// TEST-ONLY (RESEND_API_URL's precedent): pages are fetched from
+// `${BOV_PAGE_ORIGIN}/<host><path>` instead of their own host, so the run
+// test can serve "https://www.firm.test/team/x" from a stub on loopback
+// (with LOGO_IMPORT_ALLOW_PRIVATE, the guard's own test switch). Never set
+// in production.
+const BOV_PAGE_ORIGIN = (process.env.BOV_PAGE_ORIGIN || "").trim().replace(/\/+$/, "");
 const BOV_INFLIGHT = new Set();
 // Two in-memory tallies for the UTC day, reset together: searches run, and
 // emails autopilot sent with nobody reading them. In memory for
@@ -9206,6 +9217,62 @@ async function bovFindBrokers(market, type) {
   }
 }
 
+// Read each candidate's cited page and decide how far its address is trusted
+// (BOVDESK.pageEmailCheck, rule 1). The first live run (2026-11-21) returned
+// two addresses on a firm's own domain that no page shows, which the old
+// domain-only check called "match"; and it missed an address a broker's own
+// bio page does show. Each page is fetched once, by our server only, through
+// fetchSite (DNS-guarded on every redirect hop, byte-capped, timed out), and
+// a bot-walled portal is not fetched at all. A page not read for ANY reason
+// leaves the address "unchecked": the failure direction is a person's look,
+// never a "match". Candidates who end up with neither email nor phone are
+// dropped, as parseCandidates would have.
+async function bovFetchPage(url) {
+  if (!LINKCHECK.checkableUrl(url) || LINKCHECK.hostClass(url) === "blocked") return { ok: false };
+  let target = url;
+  if (BOV_PAGE_ORIGIN) {
+    const u = new URL(url);
+    target = `${BOV_PAGE_ORIGIN}/${u.hostname}${u.pathname}${u.search}`;
+  }
+  const page = await fetchSite(target, { accept: "text/html,*/*;q=0.5", max: BOV_PAGE_MAX });
+  if (!page.ok) return { ok: false, status: page.status || (page.refused ? "refused" : 0) };
+  return { ok: true, emails: BOVDESK.emailsOnPage(page.bytes.toString("utf8")) };
+}
+async function bovCheckPages(candidates) {
+  const list = candidates || [];
+  const urls = [...new Set(list.map((c) => c && c.source_url).filter(Boolean))];
+  const pages = new Map();
+  let timer;
+  const budget = new Promise((resolve) => { timer = setTimeout(resolve, BOV_PAGE_BUDGET_MS); });
+  await Promise.race([
+    Promise.all(urls.map(async (url) => {
+      try { pages.set(url, await bovFetchPage(url)); } catch (_) { pages.set(url, { ok: false }); }
+    })),
+    budget,
+  ]);
+  clearTimeout(timer);
+  // Snapshot: a fetch that lands after the budget must not change a verdict
+  // that is already being drafted from.
+  const read = new Map(pages);
+  const out = [];
+  let unseen = 0, adopted = 0, unread = 0;
+  for (const c of list) {
+    if (!c) continue;
+    const page = c.source_url ? read.get(c.source_url) : null;
+    const v = BOVDESK.pageEmailCheck(c, page);
+    if (v.email_check === "unseen") unseen++;
+    if (v.email_check === "unchecked") unread++;
+    if (v.adopted) adopted++;
+    if (!v.email && !c.phone) continue;
+    out.push({ ...c, email: v.email, email_check: v.email_check });
+  }
+  if (urls.length) {
+    console.log(`BOV page check: ${urls.length} page(s), ${[...read.values()].filter((p) => p.ok).length} read · ` +
+      `${unseen} address(es) not on their page · ${unread} unchecked · ${adopted} read off the page`);
+  }
+  return out;
+}
+
 // Find the brokers for one request and draft the email to each. `lead` is a
 // stored leads row (it has an id). Brokers already found for the same market
 // and type are reused first; a search runs only when they are too few, or
@@ -9258,8 +9325,13 @@ async function bovPrepare(lead, opts = {}) {
     let found = { ok: true, brokers: [] };
     const searched = searchable && (Boolean(opts.force) || bench.length < BOVDESK.MIN_BENCH);
     if (searched) found = await bovFindBrokers(market, type);
-    const candidates = BOVDESK.withoutKnown(
-      BOVDESK.mergeCandidates(bench, found.brokers), mine.concat(passed));
+    // Every candidate's page is read, the bench's too: a bench row's stored
+    // check was made by whatever rule was live then (before 2026-11-21, the
+    // domain-only one), and a page can change in 60 days. An address read
+    // off a page can name somebody already on this request, so the known
+    // filter runs again after.
+    const candidates = BOVDESK.withoutKnown(await bovCheckPages(BOVDESK.withoutKnown(
+      BOVDESK.mergeCandidates(bench, found.brokers), mine.concat(passed))), mine.concat(passed));
 
     const rows = candidates.map((c) => {
       const id = crypto.randomUUID();

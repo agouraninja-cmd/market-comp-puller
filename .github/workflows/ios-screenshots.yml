@@ -8,8 +8,9 @@
 # sample saved report written into the app's own store by
 # ios/Tools/screenshot-data.py, so nothing here touches a live account.
 #
-# Size: the 6.9" iPhone set (1320x2868, iPhone 17/16 Pro Max), the one size App
-# Store Connect requires for an iPhone-only app.
+# Size: 1206x2622, the iPhone 17 Pro (6.3"). That is the one iPhone size App
+# Store Connect asks for now ("iPhone with Dynamic Island, medium display"); it
+# refuses the 6.9" Pro Max's 1320x2868 there (found 2026-11-21).
 name: iOS screenshots
 
 on:
@@ -41,9 +42,9 @@ jobs:
         working-directory: ios
         run: xcodegen generate
 
-      # The newest iOS runtime's "Pro Max", preferring the 17. Said in the
-      # log, because the picture size depends on it.
-      - name: Boot a Pro Max simulator
+      # The newest iOS runtime's iPhone 17 Pro (falling back to any non-Max
+      # "Pro"). Said in the log, because the picture size depends on it.
+      - name: Boot an iPhone Pro simulator
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c '
           import json, sys
@@ -54,13 +55,14 @@ jobs:
                   continue
               ver = tuple(int(p) for p in runtime.rsplit("iOS-", 1)[-1].split("-") if p.isdigit())
               for d in devices:
-                  if "Pro Max" not in d["name"]:
+                  name = d["name"]
+                  if not name.startswith("iPhone") or "Pro" not in name or "Max" in name:
                       continue
-                  score = (ver, "17" in d["name"], d["name"])
+                  score = (name == "iPhone 17 Pro", ver, name)
                   if best is None or score > best[0]:
                       best = (score, d["udid"], d["name"], runtime)
           if not best:
-              sys.exit("no Pro Max simulator on this runner")
+              sys.exit("no iPhone Pro simulator on this runner")
           print(best[1])
           print(best[2], best[3], file=sys.stderr)
           ')

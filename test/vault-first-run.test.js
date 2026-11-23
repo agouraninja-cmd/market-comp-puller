@@ -66,8 +66,9 @@ test("empty invitations ship visible; tables and the uploader stay hidden", () =
   const page = html();
   assert.match(page, /id="bookEmpty"/);
   assert.doesNotMatch(page, /id="bookEmpty"[^>]*hide/);
-  assert.match(page, /id="pipeEmpty"/);
-  assert.doesNotMatch(page, /id="pipeEmpty"[^>]*\bhide\b/);
+  // The pipeline's invitation ships hidden since 2026-11-23: the board is
+  // drawn once both of its reads have answered (test/vault-page.test.js).
+  assert.match(page, /<div id="pipeEmpty" class="pb-slot act hide">/);
   assert.match(page, /<div id="addSec" class="addpanel hide">/);
   assert.match(page, /id="addToggle"[^>]*aria-expanded="false"/);
   // The pipeline's table went on 2026-11-23: an empty pipeline is its board.

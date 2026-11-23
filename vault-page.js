@@ -1717,13 +1717,16 @@ ${tabButtons}
         <div class="pb-col" data-s="new" role="group" aria-labelledby="pbNewH">
           <div class="pb-ch"><h2 id="pbNewH">Owner requests</h2><span class="n" id="pbNewN">0</span></div>
           <p class="pb-cf">Owners asking in your markets</p>
-          <div class="pb-stack" id="pbNew"></div>
+          <div class="pb-stack" id="pbNew"><div class="pb-slot">Loading&hellip;</div></div>
+          <!-- Ships hidden, like the columns' cards: shown ahead of the reads it
+               stood alone in the first column while the other three were
+               still empty. -->
           <!-- The invitation, and the home of the ONE market-adding form on
                the page. renderPipeline moves #covForm into #covBox once a
                market is watched or a row exists, and walks it home when the
                pipeline is empty again. One node, relocated, never a second
                copy that would drift from the coverage rules. -->
-          <div id="pipeEmpty" class="pb-slot act">
+          <div id="pipeEmpty" class="pb-slot act hide">
             <b>Watch a market</b>
             <p>When an owner there asks CompNinja for a Broker Opinion of Value, it lands
               in this column. Nothing to upload.</p>
@@ -1741,17 +1744,17 @@ ${tabButtons}
         <div class="pb-col" data-s="open" role="group" aria-labelledby="pbOpenH">
           <div class="pb-ch"><h2 id="pbOpenH">Open</h2><span class="n" id="pbOpenN">0</span></div>
           <p class="pb-cf">You&rsquo;re writing it</p>
-          <div class="pb-stack" id="pbOpen"></div>
+          <div class="pb-stack" id="pbOpen"><div class="pb-slot">Loading&hellip;</div></div>
         </div>
         <div class="pb-col" data-s="delivered" role="group" aria-labelledby="pbDeliveredH">
           <div class="pb-ch"><h2 id="pbDeliveredH">Delivered</h2><span class="n" id="pbDeliveredN">0</span></div>
           <p class="pb-cf">The owner has it</p>
-          <div class="pb-stack" id="pbDelivered"></div>
+          <div class="pb-stack" id="pbDelivered"><div class="pb-slot">Loading&hellip;</div></div>
         </div>
         <div class="pb-col" data-s="won" role="group" aria-labelledby="pbWonH">
           <div class="pb-ch"><h2 id="pbWonH">Won</h2><span class="n" id="pbWonN">0</span></div>
           <p class="pb-cf">You got the listing</p>
-          <div class="pb-stack" id="pbWon"></div>
+          <div class="pb-stack" id="pbWon"><div class="pb-slot">Loading&hellip;</div></div>
         </div>
       </div>
       <!-- Said once, under the board, rather than on every request's card. A
@@ -3409,6 +3412,12 @@ ${tabButtons}
   // renders. One table fed by two endpoints must never let either failure blank
   // the deck or leave the other half's stale rows under an error message.
   var leads=[],coverage=[],leadsOk=false,leadsErr="",allMarkets=[];
+  // The board is drawn once BOTH reads have answered, whichever way
+  // (2026-11-23, the owner: the Open, Delivered and Won cards "load after
+  // the owner request card"). Each read used to draw the board as it landed,
+  // so the first column filled a beat before the other three. Until then
+  // every column says Loading. A later reload (after a press) draws at once.
+  var leadsDone=false,bovsDone=false;
   // noseed=true after a delete: that call must NOT re-earn the market the
   // broker just removed. A plain page visit (no arg) always reseeds, which is
   // what the section's own copy promises.
@@ -3417,19 +3426,19 @@ ${tabButtons}
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
         if(o.s!==200){
-          leads=[]; coverage=[]; leadsOk=false;
+          leads=[]; coverage=[]; leadsOk=false; leadsDone=true;
           leadsErr=o.j.error||"Couldn't load leads.";
           renderCoverage(coverage); renderPipeline();
           return;
         }
-        leadsOk=true; leadsErr="";
+        leadsOk=true; leadsErr=""; leadsDone=true;
         coverage=o.j.coverage||[];
         leads=o.j.leads||[];
         renderCoverage(coverage);
         renderPipeline();
       })
       .catch(function(){
-        leads=[]; coverage=[]; leadsOk=false;
+        leads=[]; coverage=[]; leadsOk=false; leadsDone=true;
         leadsErr="Couldn\\'t load leads. Please try again.";
         renderCoverage(coverage); renderPipeline();
       });
@@ -3549,7 +3558,7 @@ ${tabButtons}
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
         if(o.s!==200){
-          bovs=[]; bovRollup=null; bovsOk=false;
+          bovs=[]; bovRollup=null; bovsOk=false; bovsDone=true;
           // Reworded rather than shown verbatim: requireBroker's strings name
           // the lead inbox, and this half of the table is the broker's own log.
           bovsErr=o.s===403?"Your BOV log is part of Pro."
@@ -3558,13 +3567,13 @@ ${tabButtons}
           renderPipeline();
           return;
         }
-        bovsOk=true; bovsErr="";
+        bovsOk=true; bovsErr=""; bovsDone=true;
         bovs=o.j.bovs||[];
         bovRollup=o.j.rollup||null;
         renderPipeline();
       })
       .catch(function(){
-        bovs=[]; bovRollup=null; bovsOk=false;
+        bovs=[]; bovRollup=null; bovsOk=false; bovsDone=true;
         bovsErr="Couldn\\'t load your BOV log. Please try again.";
         renderPipeline();
       });
@@ -3654,6 +3663,7 @@ ${tabButtons}
   }
 
   function renderPipeline(){
+    if(!leadsDone||!bovsDone)return;
     // Whichever halves failed, said once, above the board. Neither failure
     // may blank it: the other half's cards still render underneath.
     var errs=[];

@@ -120,6 +120,13 @@ paths:
 >   `section` a 48px top margin. `.pb-watch.hide` is restated (the `.hide`
 >   trap), and a card's select carries its own chevron and is 16px on a
 >   phone so an iPhone does not zoom.
+> - **The board is drawn once, when BOTH reads have answered** (the same
+>   day; the owner: the Open, Delivered and Won cards "load after the owner
+>   request card"). `leadsDone` / `bovsDone` are set on every exit of
+>   `loadLeads` / `loadBovs`, failures included, and `renderPipeline` returns
+>   until both are. Until then each column's stack says Loading and
+>   `#pipeEmpty` is hidden (it ships with `hide`). A reload after a press
+>   draws at once: the flags stay set.
 > Tests: the pipeline block of `test/vault-page.test.js` (rewritten), whose
 > stub document now keeps document-level listeners (`doc.fire`, `pressOf`).
 

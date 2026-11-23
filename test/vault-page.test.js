@@ -994,7 +994,7 @@ test("the pipeline's empty state is an invitation in the first column", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
   // The invitation is inside the Owner requests column, with the one form.
   const col = html.slice(html.indexOf('class="pb-col" data-s="new"'), html.indexOf('class="pb-col" data-s="open"'));
-  assert.ok(col.includes('<div id="pipeEmpty" class="pb-slot act">') && col.includes('id="covForm"'));
+  assert.ok(col.includes('<div id="pipeEmpty" class="pb-slot act hide">') && col.includes('id="covForm"'));
   // A column is a div: this stylesheet gives every section a 48px top margin.
   assert.ok(!/<section class="pb-col"/.test(html));
   assert.ok(!html.includes('id="noPipe"'), "the old empty-line id must be gone");
@@ -2805,6 +2805,31 @@ test("an empty pipeline is the board, with the invitation in its first column", 
   assert.equal(doc.getElementById("pbNew").innerHTML, "");
   assert.equal(doc.getElementById("pbLostBox").className, "pb-fold hide");
   for (const id of ["pbNewN", "pbOpenN", "pbDeliveredN", "pbWonN"]) assert.equal(String(doc.getElementById(id).textContent), "0");
+});
+
+test("the board is drawn once, when both of its reads have answered", async () => {
+  // Each read used to draw the board as it landed, so the first column
+  // filled a beat before Open, Delivered and Won (the owner, 2026-11-23).
+  const html = renderVaultHTML(boot([comp({})]), { page: "pipeline" });
+  for (const id of ["pbNew", "pbOpen", "pbDelivered", "pbWon"]) {
+    assert.ok(html.includes('<div class="pb-stack" id="' + id + '"><div class="pb-slot">Loading&hellip;</div></div>'), "#" + id + " does not say it is loading");
+  }
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const run = runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
+    leads: () => Promise.resolve(jsonResponse(200, { coverage: [A_COV], leads: [A_LEAD] })),
+    bovs: () => held.then(() => jsonResponse(200, { bovs: [A_BOV], rollup: { total: 1, thisYear: 1, winRate: null } })),
+  });
+  release();
+  const { doc } = await run;
+  assert.match(doc.getElementById("pbNew").innerHTML, /Request introduction/);
+  assert.match(doc.getElementById("pbOpen").innerHTML, /Boise, ID/);
+  const js = pageScript(html);
+  assert.match(js, /function renderPipeline\(\)\{\n    if\(!leadsDone\|\|!bovsDone\)return;/);
+  // Every exit of each read says it is done, or a failed read would leave
+  // the board on Loading for good.
+  assert.equal((js.match(/leadsDone=true;/g) || []).length, 3);
+  assert.equal((js.match(/bovsDone=true;/g) || []).length, 3);
 });
 
 test("the first logged BOV puts the invitation away", async () => {

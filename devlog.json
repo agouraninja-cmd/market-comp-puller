@@ -2,6 +2,12 @@
   {
     "date": "2026-11-23",
     "type": "improvement",
+    "title": "Run a comp report: removed the line under the heading",
+    "details": "The sentence under “Run a report” (“One address opens its comp report. A list becomes a portfolio…”) is gone, so the address box sits right under the heading."
+  },
+  {
+    "date": "2026-11-23",
+    "type": "improvement",
     "title": "Earlier runs: clicking a property opens its full report",
     "details": "On Run a comp report, a one-address run in Earlier runs is now listed by its address and opens the full comp report when clicked, instead of a one-row table. A run of several addresses still opens its table, where each address links to its own report."
   },

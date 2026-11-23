@@ -5605,5 +5605,11 @@
     "type": "fix",
     "title": "Pipeline’s four columns appear together",
     "details": "Opening Pipeline, the Owner requests column filled a beat before Open, Delivered and Won, because the page drew the board as each of its two reads came back. It now waits for both and draws the board once; until then every column says Loading."
+  },
+  {
+    "date": "2026-11-23",
+    "type": "fix",
+    "title": "A client chat says which property its comps are for",
+    "details": "A deal room with nobody invited yet was named after its property, but the chat showed only the comps' addresses, so the property seemed to be missing. The top of the chat now names the property and says the comps below are for it (and, when nobody is invited, that nobody else can see it yet); the header says “No one invited yet”; the list row says “Sent 6 comps” instead of “No messages yet”; and a comp card no longer shows a bare “/SF” with no number."
   }
 ]

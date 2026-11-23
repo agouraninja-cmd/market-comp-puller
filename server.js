@@ -6520,6 +6520,10 @@ async function externalThreadsFor(user) {
   // waited seconds for the page. The firm side fixed the same shape on
   // 2026-09-04. Each read keeps its own catch: one failing costs its own
   // polish and never the list.
+  // How many comps each room holds, for a room nobody has written in yet:
+  // its row says "Sent 6 comps" rather than "No messages yet" (the owner's
+  // report, 2026-11-23). One read for every room; a failure costs the line.
+  const compsBy = new Map();
   const [, , previews] = await Promise.all([
     emails.length
       ? sbRequest("GET",
@@ -6549,6 +6553,14 @@ async function externalThreadsFor(user) {
         console.error("External preview read failed (the row stays):", err.message);
         return [];
       }))),
+    ids.length
+      ? sbRequest("GET",
+        `hub_items?hub_id=in.(${pgInList(ids)})&kind=eq.comp&removed_at=is.null&select=hub_id&limit=5000`)
+        .then((rows) => {
+          for (const r of rows || []) compsBy.set(String(r.hub_id), (compsBy.get(String(r.hub_id)) || 0) + 1);
+        })
+        .catch((err) => console.error("External comp count read failed (rows say no messages):", err.message))
+      : null,
   ]);
 
   const seenBy = new Map(notify.map((n) => [String(n.hub_id), n.seen_at]));
@@ -6617,7 +6629,9 @@ async function externalThreadsFor(user) {
       invitedAt: room.owner ? null : (invitedAtBy.get(String(h.id)) || null),
       closed: h.status === "closed" || Boolean(h.closed_at),
       lastMessageAt: (latest && latest.created_at) || h.updated_at || null,
-      preview: latest ? MSG.previewOf({ body: latest.body }) : "",
+      preview: latest
+        ? MSG.previewOf({ body: latest.body })
+        : MSG.previewOf({ comp_count: compsBy.get(String(h.id)) || 0 }),
       unread: MSG.externalUnread(msgs, { seenAt: seenBy.get(String(h.id)), email: me }),
       people,
     });

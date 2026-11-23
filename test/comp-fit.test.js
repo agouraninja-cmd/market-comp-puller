@@ -216,3 +216,58 @@ test("the page adopts a corrected address once and keeps what was typed", () => 
   adopt({}, plain);
   assert.deepEqual(plain, { address: "1 A St, Boise, ID" });
 });
+
+// Net lease (2026-11-23): a single-tenant net-leased subject is valued on its
+// comps' cap rates, which building size does not set.
+test("a net-leased subject keeps off-size comps and never asks for a size-matched wider search", () => {
+  const mk = () => ({
+    comps: [
+      { address: "1 Pad Way, Boise, ID", transaction: "Sale", size_sqft: "1,400", price_or_rate: "$1,600,000", cap_rate: "6%", source_url: "https://example.com/1" },
+      { address: "2 Pad Way, Boise, ID", transaction: "Sale", size_sqft: "1,500", price_or_rate: "$1,700,000", cap_rate: "6.25%", source_url: "https://example.com/2" },
+      { address: "3 Box Rd, Boise, ID", transaction: "Sale", size_sqft: "14,000", price_or_rate: "$5,000,000", cap_rate: "6.5%", source_url: "https://example.com/3" },
+      { address: "4 Box Rd, Boise, ID", transaction: "Sale", size_sqft: "15,000", price_or_rate: "$5,200,000", cap_rate: "6.75%", source_url: "https://example.com/4" },
+      { address: "5 Mid St, Boise, ID", transaction: "Sale", size_sqft: "3,400", price_or_rate: "$2,000,000", cap_rate: "7%", source_url: "https://example.com/5" },
+      { address: "6 Mid St, Boise, ID", transaction: "Sale", size_sqft: "3,800", price_or_rate: "$2,100,000", cap_rate: "7%", source_url: "https://example.com/6" },
+      { address: "7 Mid St, Boise, ID", transaction: "Sale", size_sqft: "4,000", price_or_rate: "$2,200,000", cap_rate: "7%", source_url: "https://example.com/7" },
+    ],
+  });
+  const base = { subjectSqft: 3600, propertyType: "Retail", subjectAddress: "347 Main St, Boise, ID" };
+  // Without the flag the two pads (0.39x, 0.42x is kept) and the two boxes are a different size class.
+  const plain = mk();
+  FIT.applyCompFit(plain, base);
+  assert.ok(plain.set_aside && plain.set_aside.some((c) => c.set_aside === "size"), "the ordinary Retail rule still cuts on size");
+  // With it, every comp stays: they are the cap-rate evidence.
+  const nl = mk();
+  const out = FIT.applyCompFit(nl, { ...base, netLease: true });
+  assert.equal(nl.comps.length, 7);
+  assert.equal(out.setAside, 0);
+  assert.equal(nl.set_aside, undefined);
+  // A dead source and a unit sale are still not evidence about anything.
+  const dead = mk();
+  dead.comps[0].source_url = PARKED;
+  dead.comps[1].address = "2 Pad Way, Unit B, Boise, ID";
+  FIT.applyCompFit(dead, { ...base, netLease: true, deadUrls: new Set([PARKED]) });
+  assert.deepEqual(dead.set_aside_counts, { dead_source: 1, unit: 1 });
+  // And a thin net-lease set does not buy a search for size-matched sales.
+  const thin = { comps: mk().comps.slice(0, 2) };
+  assert.equal(FIT.needsWiderSearch(thin, { propertyType: "Retail", subjectSqft: 3600 }), true);
+  assert.equal(FIT.needsWiderSearch(thin, { propertyType: "Retail", subjectSqft: 3600, netLease: true }), false);
+});
+
+test("the search and the fit are told a subject is net leased, from the one definition", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  assert.match(src, /const VALUATION = require\("\.\/valuation"\);/);
+  const refine = src.slice(src.indexOf("async function refineComps(report, ctx) {"), src.indexOf("async function refineComps(report, ctx) {") + 3500);
+  assert.match(refine, /const netLease = VALUATION\.isNetLease\(type, subjectDetails\);/);
+  assert.match(refine, /radiusMiles: RADIUSBLEND\.parseRadiusMiles\(note\), netLease,/);
+  assert.match(refine, /COMPFIT\.needsWiderSearch\(report, \{ propertyType: type, txFocus, subjectSqft, netLease \}\)/);
+  const prompt = src.slice(src.indexOf("function buildPrompt("), src.indexOf("function buildPrompt(") + 40000);
+  assert.match(prompt, /const netLease = VALUATION\.isNetLease\(type, subjectDetails\) && txFocus !== "leases" && lane !== "wider";/);
+  assert.match(prompt, /\n    netLeaseBlock,\n/, "the block is in the prompt, not only built");
+  assert.ok(prompt.indexOf("    netLeaseBlock,") > prompt.indexOf("`SIZE FIT:"), "after the rule it overrides");
+  // A cap rate is computed from a page's own figures or left blank, never
+  // estimated: an invented rate would move the value by a multiple.
+  assert.match(prompt, /Never estimate a cap rate for a comp from market averages/);
+});

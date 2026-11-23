@@ -961,3 +961,83 @@ test("countedPsf is the figure valueFromComps took the band over", () => {
   assert.equal(V.countedPsf(comp({ price_per_sqft: "", price_or_rate: "", size_sqft: "" }), opts), null);
   assert.equal(V.countedPsf(null, opts), null);
 });
+
+// --- Net lease (2026-11-23) --------------------------------------------------
+// A single-tenant net-leased property is valued on its comps' cap rates, not
+// their $/SF. These are the rules the report page, the prompt and the comp fit
+// all read.
+
+test("net lease mode is Retail with the Single-tenant NNN center type, and nothing else", () => {
+  assert.equal(V.isNetLease("Retail", { center_type: "Single-tenant NNN" }), true);
+  assert.equal(V.isNetLease("Retail", { center_type: "  single-tenant nnn " }), true, "case and stray spaces are not a different type");
+  assert.equal(V.isNetLease("Retail", { center_type: "Strip center" }), false);
+  assert.equal(V.isNetLease("Retail", {}), false);
+  assert.equal(V.isNetLease("Retail", null), false);
+  assert.equal(V.isNetLease("Industrial", { center_type: "Single-tenant NNN" }), false, "the field is Retail's; another type carrying it is not in the mode");
+  assert.equal(V.isNetLease("", { center_type: "Single-tenant NNN" }), false);
+});
+
+test("capRateOf reads a percent and refuses what it cannot be sure of", () => {
+  assert.equal(V.capRateOf(comp({ cap_rate: "6.5%" })), 6.5);
+  assert.equal(V.capRateOf(comp({ cap_rate: "7" })), 7);
+  assert.equal(V.capRateOf(comp({ cap_rate: " 5.86 % " })), 5.86);
+  assert.ok(Number.isNaN(V.capRateOf(comp({ cap_rate: "0.065" }))), "a decimal fraction is refused, never read as 0.065%");
+  assert.ok(Number.isNaN(V.capRateOf(comp({ cap_rate: "6.0-6.5%" }))), "a range is not one rate");
+  assert.ok(Number.isNaN(V.capRateOf(comp({ cap_rate: "6% to 7%" }))));
+  assert.ok(Number.isNaN(V.capRateOf(comp({ cap_rate: "" }))));
+  assert.ok(Number.isNaN(V.capRateOf(comp({}))));
+  assert.ok(Number.isNaN(V.capRateOf(comp({ cap_rate: "45%" }))), "outside the plausible window");
+  assert.ok(Number.isNaN(V.capRateOf(comp({ cap_rate: "6.5%", transaction: "Lease" }))), "a lease's rate prices no sale");
+  assert.ok(Number.isNaN(V.capRateOf(null)));
+});
+
+test("capRateBand needs three sale comps with a rate, and takes the full spread under four", () => {
+  const caps = (list) => list.map((r) => comp({ cap_rate: r }));
+  assert.equal(V.capRateBand(caps(["6%", "7%"])), null, "two rates are not a range");
+  assert.equal(V.capRateBand(caps(["6%", "", "n/a", "7%"])), null, "blank and unreadable rates do not count toward the three");
+  assert.equal(V.capRateBand([]), null);
+  assert.equal(V.capRateBand(null), null);
+  const three = V.capRateBand(caps(["7.25%", "6%", "6.5%"]));
+  assert.deepEqual({ low: three.low, mid: three.mid, high: three.high, trimmed: three.trimmed, n: three.n },
+    { low: 6, mid: 6.5, high: 7.25, trimmed: false, n: 3 });
+  assert.deepEqual(three.rates, [6, 6.5, 7.25], "the rates come back sorted, for the scatter");
+});
+
+test("capRateBand trims at four or more, and ignores leases", () => {
+  const list = ["5%", "6%", "6.25%", "6.5%", "6.75%", "7%", "9%"].map((r) => comp({ cap_rate: r }));
+  list.push(comp({ cap_rate: "3%", transaction: "Lease" }));
+  const b = V.capRateBand(list);
+  assert.equal(b.n, 7);
+  assert.equal(b.trimmed, true);
+  assert.equal(b.mid, 6.5);
+  assert.ok(b.low > 5 && b.low < 6.25, "the 5% outlier does not set the low end");
+  assert.ok(b.high < 9 && b.high > 6.75, "the 9% outlier does not set the high end");
+});
+
+test("netLeaseValue divides the income by each rate: the lowest rate is the High value", () => {
+  const v = V.netLeaseValue(180000, { low: 6, mid: 6.5, high: 7.25 });
+  assert.equal(Math.round(v.high), 3000000);
+  assert.equal(Math.round(v.likely), 2769231);
+  assert.equal(Math.round(v.low), 2482759);
+  assert.ok(v.low < v.likely && v.likely < v.high);
+});
+
+test("netLeaseValue takes the geometric middle of a band with no mid, the income hero's midpoint", () => {
+  const v = V.netLeaseValue(100000, { low: 5, high: 8 });
+  assert.equal(Math.round(v.likely), Math.round(Math.sqrt(v.low * v.high)));
+});
+
+test("netLeaseValue refuses a missing income or a band it cannot read", () => {
+  assert.equal(V.netLeaseValue(0, { low: 6, mid: 6.5, high: 7 }), null);
+  assert.equal(V.netLeaseValue(null, { low: 6, mid: 6.5, high: 7 }), null);
+  assert.equal(V.netLeaseValue(100000, null), null);
+  assert.equal(V.netLeaseValue(100000, { low: 0, high: 7 }), null);
+  assert.equal(V.netLeaseValue(100000, { low: 8, high: 7 }), null, "an inverted band is not valued");
+});
+
+test("impliedCapRate is the income over the price, as a percent", () => {
+  assert.equal(Math.round(V.impliedCapRate(179970, 2571000) * 100) / 100, 7);
+  assert.equal(V.impliedCapRate(0, 2571000), null);
+  assert.equal(V.impliedCapRate(179970, 0), null);
+  assert.equal(V.impliedCapRate(5000000, 1000000), null, "a rate of 500% is a typo, not a rate");
+});

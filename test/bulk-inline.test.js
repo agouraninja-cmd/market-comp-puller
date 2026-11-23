@@ -172,9 +172,10 @@ test("a one-address run opens its report; a list, a failure, and an old run do n
     "and says it was just run, so it does not open as a reopened saved report (2026-10-21)");
   assert.ok(js.includes("BULKRUN.init({max:MAX,onState:onRunState,onList:loadList,onRunAgain:runAgain})"),
     "the hook is what BULKRUN reports state through");
-  // The copy follows: the button and the lede say one address is a report.
+  // The copy follows: the button says one address is a report. The lede that
+  // said it too came off on 2026-11-23 (owner's call).
   const page = MOD.renderBulkPageBody({ s: 200, j: { types: [], jobs: [] } });
-  assert.match(page, /One address opens its comp report\. A list becomes a portfolio/);
+  assert.equal(page.includes("A list becomes a portfolio"), false, "the lede under 'Run a report' is gone");
   assert.ok(js.includes('parsedCount===1?"Run the report"'), "one address is 'Run the report', not 'Run 1 valuation'");
   // The foot's door to the single-property form went with the inputs it
   // pointed at (2026-09-04 evening): this page asks for all of them now, so

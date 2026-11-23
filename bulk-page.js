@@ -456,8 +456,8 @@ function renderBulkPageBody(boot) {
     <div class="top">
       <div>
         <h1>Run a report</h1>
-        <p class="lede">One address opens its comp report. A list becomes a portfolio, every row
-          linking to the report behind its number.</p>
+        <!-- The one-line lede under the heading came off on 2026-11-23
+             (owner's call). -->
       </div>
       <!-- The LEFT TODAY / PER RUN strip that sat here came off on 2026-10-09
            (owner's call): the limits still hold, and the cost line under the

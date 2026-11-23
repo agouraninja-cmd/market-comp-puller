@@ -129,7 +129,7 @@ function renderPermitsBody(boot) {
 .pt-chip button:hover{color:var(--ink)}
 .pt-day h3{display:flex;justify-content:space-between;gap:12px;margin:18px 0 0;padding:0 0 6px;border-bottom:1px solid var(--line);font-family:inherit;font-size:var(--text-small);font-weight:600;color:var(--ink)}
 .pt-day h3 span{font-weight:400;color:var(--ink-3);font-variant-numeric:tabular-nums}
-.pt-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start;padding:10px 0;border-bottom:1px solid var(--hair)}
+.pt-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 16px;align-items:start;padding:10px 0;border-bottom:1px solid var(--hair)}
 .pt-main{min-width:0}
 .pt-addr{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;font-size:var(--text-compact)}
 .pt-addr .a{font-weight:500;color:var(--ink)}
@@ -144,6 +144,25 @@ function renderPermitsBody(boot) {
 .pt-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
 .pt-num{font-size:var(--text-small);color:var(--ink-2);white-space:nowrap}
 a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+/* A row's address is a button that opens the permit's progress under it
+   (2026-11-23): the five steps and its status history. The small arrow says
+   it opens, and turns over when it has. Under a finger the 21px line is 37px
+   tall, by padding its own negative margin gives back, so nothing moves. */
+.pt-open{appearance:none;border:0;background:none;padding:0;margin:0;font:inherit;text-align:left;cursor:pointer;display:inline-flex;align-items:baseline;gap:7px;min-width:0}
+.pt-open::after{content:"";flex:0 0 auto;width:6px;height:6px;border-right:1.5px solid var(--ink-3);border-bottom:1.5px solid var(--ink-3);transform:translateY(-3px) rotate(45deg)}
+.pt-open[aria-expanded="true"]::after{transform:translateY(0) rotate(225deg)}
+.pt-open:hover{text-decoration:underline;text-underline-offset:3px}
+.pt-open:focus-visible,.pt-jump:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+@media (pointer:coarse){.pt-open{padding:8px 0;margin:-8px 0}}
+.pt-det{grid-column:1/-1;min-width:0;padding:0 0 8px}
+.pt-det .pw-tl{margin-top:14px}
+/* Opened, the row's one clipped line of work reads in full. */
+.pt-row.open .pt-l2{white-space:normal;overflow:visible}
+.pt-dnote{margin:12px 0 0;max-width:760px;font-size:var(--text-small);color:var(--ink-3)}
+.pt-dnote.bad{color:var(--warn-text)}
+/* An alert's match: its address goes to that permit in Filings, opened. */
+.pt-jump{appearance:none;border:0;background:none;padding:0;margin:0;font:inherit;text-align:left;cursor:pointer;min-width:0}
+.pt-jump:hover{text-decoration:underline;text-underline-offset:3px}
 .pt-note{font-size:var(--text-small);color:var(--ink-3);margin:12px 0 0}
 .pt-empty2{font-size:var(--text-small);color:var(--ink-2);margin:12px 0 0;padding:12px 14px;border:1px solid var(--hair);border-radius:var(--r-lg);background:var(--wash)}
 .pt-foot{font-size:var(--text-label);color:var(--ink-3);margin:22px 0 0;max-width:100ch}
@@ -387,7 +406,7 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
   var BOOT = ${bootJson};
   function $(id){return document.getElementById(id)}
   function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
-  var items=[], CITY_LINE="these cities", WIN=30;
+  var items=[], CITY_LINE="these cities", WIN=30, STEPS=[];
   var PROP_TYPES=["Industrial","Office","Retail","Multifamily","Mixed use","Other"];
   var KIND_NAMES={ti:"Tenant build-outs","new":"New buildings & additions",other:"Other work"};
   // ⚠ Home's map card names a stage with home-map.js PERMIT_STAGES, a copy
@@ -563,7 +582,7 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
     if(o.s!==200||!o.j){ wall("<p>Couldn’t load the permit tracker just now. Refresh in a moment.</p>"); return; }
     var j=o.j;
     items=Array.isArray(j.filings)?j.filings:[];
-    CITY_LINE=j.cities||"these cities"; WIN=j.windowDays||30;
+    CITY_LINE=j.cities||"these cities"; WIN=j.windowDays||30; STEPS=Array.isArray(j.steps)?j.steps:[];
     items.forEach(function(f){ if(PROP_TYPES.indexOf(f.propertyType)<0)f.propertyType="Other"; });
     var sub="Commercial building permits filed in "+(j.cities||"no city")+" in the last "+WIN+" days, read from each city’s portal on weekday mornings.";
     if(j.never)sub+=" The sweep has not run yet.";
@@ -587,13 +606,66 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
     var work=f.description||f.projectName||f.type||"";
     var bits=[work,f.propertyType,f.applicant,f.contractor&&f.contractor!==f.applicant?f.contractor:""].filter(Boolean);
     var num=f.sourceUrl?'<a class="pt-num" href="'+esc(f.sourceUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(f.permitNumber)+"</a>":'<span class="pt-num">'+esc(f.permitNumber)+"</span>";
-    return '<div class="pt-row"><div class="pt-main"><div class="pt-addr"><span class="a">'+esc(addr)+'</span><span class="c">'+esc(f.city)+"</span>"+
+    // The address opens the permit's progress under the row (a filing with
+    // no id has nothing to read, and keeps a plain address).
+    var can=f.id!=null&&f.id!=="", open=can&&!!OPENF[f.id];
+    var a=can?'<button type="button" class="a pt-open" data-open="'+esc(f.id)+'" aria-expanded="'+(open?"true":"false")+'" aria-controls="ptd-'+esc(f.id)+'">'+esc(addr)+"</button>":'<span class="a">'+esc(addr)+"</span>";
+    return '<div class="pt-row'+(open?" open":"")+'"><div class="pt-main"><div class="pt-addr">'+a+'<span class="c">'+esc(f.city)+"</span>"+
       (f.onBoard?'<a class="pt-board" href="/building/'+esc(encodeURIComponent(f.onBoard.id))+'">Your firm’s building →</a>':"")+
       (f.nearSite?'<a class="pt-near" href="/sites">'+esc(f.nearSite.miles<0.1?"At ":f.nearSite.miles+" mi from ")+esc(street(f.nearSite.address))+" →</a>":"")+alertTag(f)+"</div>"+
       // Boise's descriptions run to whole paragraphs: one line here, the
       // full text on hover.
       '<div class="pt-l2"'+(f.description?' title="'+esc(f.description)+'"':"")+">"+esc(bits.join(" · "))+"</div></div>"+
-      '<div class="pt-right">'+stTag(f.status,f.stage)+num+"</div></div>";
+      '<div class="pt-right">'+stTag(f.status,f.stage)+num+"</div>"+
+      (can?'<div class="pt-det'+(open?"":" hide")+'" id="ptd-'+esc(f.id)+'">'+(open?detail(f):"")+"</div>":"")+"</div>";
+  }
+  // ---- A filing's progress (2026-11-23) ------------------------------------
+  // A row's address opens the five steps a tracked permit shows, for any
+  // permit in the list. They are drawn at once from the feed (f.step, the
+  // furthest step its status reaches; Submitted is dated the day it was
+  // filed), then GET /api/permits/filing adds the day we saw each later step
+  // and the status history. Read once per permit, when it is first opened: a
+  // READ, so a page built ahead of the click may make it (rule 15). Several
+  // rows can be open, and a filter or a search keeps them open.
+  var OPENF={}, PROG={};
+  function filingById(id){ for(var i=0;i<items.length;i++){ if(String(items[i].id)===String(id))return items[i]; } return null; }
+  function bootSteps(f){
+    var at=-1; STEPS.forEach(function(s,i){ if(s.key===f.step)at=i; });
+    return STEPS.map(function(s,i){ return {key:s.key,label:s.label,done:i<=at,at:i===0&&at>=0?f.appliedDate:null}; });
+  }
+  function detail(f){
+    var p=PROG[f.id]||{}, j=p.j;
+    var html=timeline({step:j?j.step:f.step,steps:j?j.steps:bootSteps(f)},true);
+    if(j&&j.history&&j.history.length)html+='<div class="pw-hist"><b>Status history</b><ul>'+j.history.map(function(h){
+      return "<li>"+esc(day(h.at))+": "+(h.from?"“"+esc(h.from)+"” → ":"First read: ")+"“"+esc(h.to)+"”</li>";
+    }).join("")+"</ul></div>";
+    else if(j)html+='<p class="pt-dnote">We haven’t seen its status change since we first read it'+(f.status?". The city lists it as “"+esc(f.status)+"”":"")+".</p>";
+    else if(p.failed)html+='<p class="pt-dnote bad">Couldn’t load its status history just now. <button type="button" class="pt-rm" data-retry="'+esc(f.id)+'">Try again</button></p>';
+    else html+='<p class="pt-dnote">Reading its status history…</p>';
+    return html;
+  }
+  function drawDetail(f){
+    var d=document.getElementById("ptd-"+f.id); if(!d)return;
+    var open=!!OPENF[f.id];
+    d.className=open?"pt-det":"pt-det hide"; d.innerHTML=open?detail(f):"";
+  }
+  function loadProgress(f){
+    PROG[f.id]={};
+    fetch("/api/permits/filing?id="+encodeURIComponent(f.id),{credentials:"same-origin"})
+      .then(function(r){ return r.ok?r.json():null; })
+      .then(function(j){ PROG[f.id]=j&&Array.isArray(j.steps)?{j:j}:{failed:true}; drawDetail(f); })
+      .catch(function(){ PROG[f.id]={failed:true}; drawDetail(f); });
+  }
+  function needsRead(f){ return !PROG[f.id]||!!PROG[f.id].failed; }
+  function toggleFiling(id,btn){
+    var f=filingById(id); if(!f)return;
+    var open=OPENF[f.id]=!OPENF[f.id];
+    if(btn){
+      btn.setAttribute("aria-expanded",String(open));
+      var r=btn.closest?btn.closest(".pt-row"):null; if(r)r.className=open?"pt-row open":"pt-row";
+    }
+    if(open&&needsRead(f))loadProgress(f);
+    drawDetail(f);
   }
   function render(){
     var q=$("ptSearch").value.toLowerCase().split(/\\s+/).filter(Boolean);
@@ -671,10 +743,12 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
     else if(MINE.canTrack&&MINE.firm)out+=b("data-firmon","Track for "+MINE.firm.name);
     return out+b("data-rm","Stop tracking");
   }
-  function timeline(w){
+  // filed: a filing's own timeline, whose Submitted date is the day the
+  // city says it was filed; every other date is the day we saw the step.
+  function timeline(w,filed){
     return '<ol class="pw-tl" aria-label="Permit steps">'+w.steps.map(function(s){
       return '<li class="'+(s.done?"done":"")+(s.key===w.step?" now":"")+'"><b>'+esc(s.label)+"</b>"+
-        (s.at?'<time datetime="'+esc(s.at)+'" title="Seen on the portal '+esc(day(s.at))+'">'+esc(day(s.at))+"</time>":"")+"</li>";
+        (s.at?'<time datetime="'+esc(s.at)+'" title="'+(filed&&s.key==="submitted"?"Filed ":"Seen on the portal ")+esc(day(s.at))+'">'+esc(day(s.at))+"</time>":"")+"</li>";
     }).join("")+"</ol>";
   }
   function card(w){
@@ -1088,7 +1162,9 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
       '<button type="button" class="pt-rm" data-aldel="'+esc(a.id)+'">Delete</button></div></div>'+
       (a.area&&alMapOpen===a.id?'<div class="pa-map" id="paLineMap"></div><p class="pa-mapnote">'+all.length+" of the last "+WIN+" days’ permits "+(all.length===1?"is":"are")+" inside this circle."+(alUnplaced()?" "+alUnplaced()+" permits in the list couldn’t be placed on the map.":"")+"</p>":"")+
       (top.length?'<ul class="pa-mini">'+top.map(function(f){
-        return "<li><time>"+esc(day(f.appliedDate))+'</time><span class="a">'+esc(f.address?street(f.address):f.permitNumber)+'</span><span class="w">'+esc(f.description||f.projectName||f.type)+"</span>"+stTag(f.status,f.stage)+"</li>";
+        // Its address goes to that permit in Filings, with its progress open.
+        var name=esc(f.address?street(f.address):f.permitNumber);
+        return "<li><time>"+esc(day(f.appliedDate))+"</time>"+(f.id!=null&&f.id!==""?'<button type="button" class="a pt-jump" data-alpermit="'+esc(f.id)+'" data-al="'+esc(a.id)+'">'+name+"</button>":'<span class="a">'+name+"</span>")+'<span class="w">'+esc(f.description||f.projectName||f.type)+"</span>"+stTag(f.status,f.stage)+"</li>";
       }).join("")+"</ul>"+(all.length>3?'<button type="button" class="pt-rm pa-all" data-alshow="'+esc(a.id)+'">See all '+all.length+" in Filings →</button>":"")
         :'<p class="pa-none">No permit in the last '+WIN+" days fits this alert.</p>")+"</article>";
   }
@@ -1148,10 +1224,22 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
     renderAlerts();
     render();
   }
-  // "See all N in Filings": the list, filtered to that alert alone.
-  function showAlertInList(a){
-    clearFilters(); ALERT=a; render();
+  // "See all N in Filings": the list, filtered to that alert alone. From one
+  // of the alert's permits (its address), the same list with that permit's
+  // progress opened and brought into view.
+  function showAlertInList(a,openId){
+    var f=openId?filingById(openId):null;
+    clearFilters(); ALERT=a;
+    if(f){ OPENF[f.id]=true; if(needsRead(f))loadProgress(f); }
+    render();
     showTab("filings",true);
+    var d=f?document.getElementById("ptd-"+f.id):null;
+    if(d&&d.scrollIntoView){
+      d.scrollIntoView({block:"center"});
+      var b=d.parentNode&&d.parentNode.querySelector?d.parentNode.querySelector(".pt-open"):null;
+      if(b&&b.focus)b.focus({preventScroll:true});
+      return;
+    }
     var t=$("ptTabs"); if(t&&t.scrollIntoView)t.scrollIntoView({block:"start"});
   }
   $("paAdd").addEventListener("click",function(){ openAlertForm(null); });
@@ -1190,6 +1278,8 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
       return;
     }
     if(sh){ var s=alIndex(sh); if(s>-1)showAlertInList(alerts[s]); return; }
+    var pm=t.getAttribute("data-alpermit");
+    if(pm){ var pa=alIndex(t.getAttribute("data-al")); if(pa>-1)showAlertInList(alerts[pa],pm); return; }
     if(ed){ var i=alIndex(ed); if(i>-1){ openAlertForm(alerts[i]); $("paForm").scrollIntoView({block:"nearest"}); } return; }
     if(del){
       var k=alIndex(del); if(k<0)return;
@@ -1201,6 +1291,12 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
   });
 
   $("ptSearch").addEventListener("input",render);
+  $("ptRows").addEventListener("click",function(e){
+    var b=e.target&&e.target.closest?e.target.closest("button"):null; if(!b)return;
+    var op=b.getAttribute("data-open"), again=b.getAttribute("data-retry");
+    if(op){ toggleFiling(op,b); return; }
+    if(again){ var f=filingById(again); if(f){ loadProgress(f); drawDetail(f); } }
+  });
   $("ptTypeAll").addEventListener("click",function(){ SEL.prop={}; [].forEach.call($("ptFac").querySelectorAll('input[data-g="prop"]'),function(i){ i.checked=false; }); facetMarks(); render(); });
   $("ptClear").addEventListener("click",function(){ clearFilters(); render(); });
   $("ptClearAll").addEventListener("click",function(){ clearFilters(); render(); });

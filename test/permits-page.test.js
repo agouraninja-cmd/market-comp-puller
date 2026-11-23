@@ -48,16 +48,17 @@ test("the page's script compiles, and the literal interpolates the boot alone", 
 // and fetch for the boot to draw every tab. What it proves is which tab opens
 // and when the unread count is cleared: the first thing a person sees, and the
 // one write the page makes on its own.
-function runPage(boot, { hash = "", search = "" } = {}) {
+function runPage(boot, { hash = "", search = "", answer = null } = {}) {
   const html = renderPermitsBody(boot);
   const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
   const els = {};
   const posts = [];
   const el = (id) => els[id] || (els[id] = {
     id, className: "", textContent: "", innerHTML: "", value: "", checked: false, disabled: false, hidden: false, tabIndex: 0,
-    attrs: {}, options: [], selectedIndex: 0, firstChild: null,
+    attrs: {}, options: [], selectedIndex: 0, firstChild: null, on: {},
     setAttribute(k, v) { this.attrs[k] = String(v); }, getAttribute(k) { return this.attrs[k]; },
-    addEventListener() {}, appendChild(c) { this.options.push(c); }, focus() {}, scrollIntoView() {},
+    // Kept, so a test can press what the page listens for.
+    addEventListener(type, fn) { this.on[type] = fn; }, appendChild(c) { this.options.push(c); }, focus() {}, scrollIntoView() {},
     querySelectorAll() { return []; }, querySelector() { return null; },
   });
   for (const m of html.split("<script>")[0].matchAll(/<[a-z0-9]+\b([^>]*)>/gi)) {
@@ -67,7 +68,13 @@ function runPage(boot, { hash = "", search = "" } = {}) {
   }
   const document = { getElementById: el, createElement: () => ({}), querySelector: () => null, querySelectorAll: () => [], head: { appendChild() {} }, documentElement: {} };
   const location = { hash, search, pathname: "/permits" };
-  const fetch = (url, opts) => { posts.push([opts && opts.method, url]); return { then: () => ({ catch() {} }) }; };
+  // `answer`: what a read the page makes comes back with ({ ok, json }), for
+  // the tests that follow one; without it a request is recorded and never
+  // answered, as before.
+  const fetch = (url, opts) => {
+    posts.push([opts && opts.method, url]);
+    return answer ? Promise.resolve(answer(url)) : { then: () => ({ catch() {} }) };
+  };
   const history = { replaceState() {} };
   new Function("document", "location", "fetch", "history", "window", "getComputedStyle", script)(
     document, location, fetch, history, {}, () => ({ getPropertyValue: () => "" }));
@@ -147,6 +154,78 @@ test("the filters: every property type with its count, zero included, and a type
   assert.equal(html.includes('id="ptStrip"'), false, "the four number tiles are gone (their week counted eight days)");
 });
 
+test("a filing's address opens its progress: the five steps at once, then the dates and the history (2026-11-23)", async () => {
+  // The owner's report: "you can't click on the address to open the progress
+  // on the permit". The address was a plain span. It is a button now, the
+  // steps are drawn from the feed without waiting, and the one read the page
+  // makes for a permit is made when it is opened, never before.
+  const steps = [["submitted", "Submitted"], ["review", "In review"], ["approved", "Approved"], ["issued", "Issued"], ["final", "Finaled"]]
+    .map(([key, label]) => ({ key, label }));
+  const f = { id: "f-1", permitNumber: "BLD26-1", address: "8000 S FEDERAL WAY", city: "Boise", appliedDate: "2026-11-18",
+    status: "In Review", stage: "open", step: "review", propertyType: "Industrial", type: "Tenant Improvement" };
+  const boot = { ...bootWith(0), j: { filings: [f], cities: "Boise", windowDays: 30, steps } };
+  const progress = { id: "f-1", step: "approved",
+    steps: steps.map((s, i) => ({ ...s, done: i < 3, at: i === 0 ? "2026-11-18" : i === 2 ? "2026-11-21T13:00:00Z" : null })),
+    history: [{ from: "In Review", to: "Approved", at: "2026-11-21T13:00:00Z" }] };
+  const press = (page, list, attrs) => {
+    const btn = { attrs: {}, getAttribute: (k) => attrs[k] || null, setAttribute(k, v) { this.attrs[k] = v; } };
+    page.els[list].on.click({ target: { closest: () => btn } });
+    return btn;
+  };
+  const settle = () => new Promise((r) => setImmediate(r));
+
+  const page = runPage(boot, { answer: () => ({ ok: true, json: () => Promise.resolve(progress) }) });
+  assert.match(page.els.ptRows.innerHTML,
+    /<button type="button" class="a pt-open" data-open="f-1" aria-expanded="false" aria-controls="ptd-f-1">8000 S Federal Way<\/button>/,
+    "the address is a button, and says it is closed");
+  assert.match(page.els.ptRows.innerHTML, /<div class="pt-det hide" id="ptd-f-1"><\/div>/);
+  assert.deepEqual(page.posts, [], "nothing is read until a permit is opened");
+
+  const btn = press(page, "ptRows", { "data-open": "f-1" });
+  const det = page.els["ptd-f-1"];
+  assert.equal(btn.attrs["aria-expanded"], "true");
+  assert.equal(det.className, "pt-det");
+  assert.match(det.innerHTML, /<li class="done"><b>Submitted<\/b><time datetime="2026-11-18" title="Filed Nov 18">Nov 18<\/time><\/li><li class="done now"><b>In review<\/b><\/li><li class=""><b>Approved<\/b><\/li>/,
+    "the steps its status reaches, at once, Submitted dated the day it was filed");
+  assert.match(det.innerHTML, /Reading its status history/);
+  assert.deepEqual(page.posts, [[undefined, "/api/permits/filing?id=f-1"]], "one read, a GET");
+  await settle();
+  assert.match(det.innerHTML, /<li class="done now"><b>Approved<\/b><time datetime="2026-11-21T13:00:00Z" title="Seen on the portal Nov 21">Nov 21<\/time><\/li>/,
+    "the answer adds the day we saw a later step");
+  assert.match(det.innerHTML, /<b>Status history<\/b><ul><li>Nov 21: “In Review” → “Approved”<\/li><\/ul>/);
+
+  // Closed and opened again: the answer is kept, not read twice.
+  press(page, "ptRows", { "data-open": "f-1" });
+  assert.equal(det.className, "pt-det hide");
+  assert.equal(det.innerHTML, "");
+  press(page, "ptRows", { "data-open": "f-1" });
+  assert.match(det.innerHTML, /Status history/);
+  assert.equal(page.posts.length, 1);
+  // Still open when the list is drawn again (a search, a filter).
+  page.els.ptSearch.on.input();
+  assert.match(page.els.ptRows.innerHTML, /<div class="pt-row open">[\s\S]*aria-expanded="true"[\s\S]*<div class="pt-det" id="ptd-f-1"><ol class="pw-tl"/);
+
+  // A read that fails keeps the steps and says so, with a way to ask again.
+  const down = runPage(boot, { answer: () => ({ ok: false }) });
+  press(down, "ptRows", { "data-open": "f-1" });
+  await settle();
+  assert.match(down.els["ptd-f-1"].innerHTML, /<ol class="pw-tl"[\s\S]*Couldn’t load its status history just now\. <button type="button" class="pt-rm" data-retry="f-1">Try again<\/button>/);
+  press(down, "ptRows", { "data-retry": "f-1" });
+  assert.equal(down.posts.length, 2, "Try again reads it again");
+
+  // An alert's match: its address goes to that permit in Filings, opened.
+  const alerted = runPage({ ...boot, alerts: { s: 200, j: { canTrack: true, cities: [], propertyTypes: [], kinds: [], areaMiles: [1],
+    alerts: [{ id: "a1", name: "Boise build-outs", describe: "Boise", email: true }] } } },
+  { hash: "#alerts", answer: () => ({ ok: true, json: () => Promise.resolve(progress) }) });
+  assert.equal(alerted.selected, "tabAlerts");
+  assert.match(alerted.els.paList.innerHTML, /<button type="button" class="a pt-jump" data-alpermit="f-1" data-al="a1">8000 S Federal Way<\/button>/);
+  press(alerted, "paList", { "data-alpermit": "f-1", "data-al": "a1" });
+  assert.equal(alerted.els.tabFilings.attrs["aria-selected"], "true", "it lands on Filings");
+  assert.match(alerted.els.ptRows.innerHTML, /<div class="pt-row open">/);
+  assert.match(alerted.els.ptChips.innerHTML, /Fits your alert “Boise build-outs”/);
+  assert.deepEqual(alerted.posts, [[undefined, "/api/permits/filing?id=f-1"]]);
+});
+
 test("the rail's last two rows are Markets, then Permits, on both nav authors", () => {
   // Draft C (2026-10-07): the Comp report row left the rail, so Permits sits
   // right after Markets, under the divider the Tools label draws. Comps came
@@ -169,6 +248,7 @@ const BRAD = { id: "u-brad", email: "brad@colliers.com", name: "Brad" };
 const SOLO = { id: "u-solo", email: "solo@nowhere.com", name: "Solo" };
 const ORG = "5a1e9a1e-0000-4000-8000-000000000001";
 const B1 = "5a1e9a1e-0000-4000-8000-0000000000b1";
+const F1 = "5a1e9a1e-0000-4000-8000-0000000000f1";
 const fl = (street, over) => ({
   id: crypto.randomUUID(), jurisdiction: "boise", permit_number: "BLD-" + crypto.randomUUID().slice(0, 6),
   permit_type: "Tenant Improvement", description: null, project_name: null, address: street,
@@ -190,7 +270,7 @@ test("the /permits route, signed out and signed in", async (t) => {
       property_type: "Industrial", size_sqft: null, year_built: null, lat: null, lng: null,
       added_by_user_id: BRAD.id, added_by_name: "Brad", created_at: NOW, updated_at: NOW }],
     permit_filings: [
-      fl("1450 W MISSION AVE", { permit_number: "ON-BOARD", applied_date: dayAgo(1), is_industrial: true, zoning: "I-2" }),
+      fl("1450 W MISSION AVE", { id: F1, permit_number: "ON-BOARD", applied_date: dayAgo(1), is_industrial: true, zoning: "I-2", status: "In Review" }),
       fl("200 N 8TH ST", { permit_number: "OFFICE-TI", applied_date: dayAgo(3) }),
       fl("9 OLD RD", { permit_number: "TOO-OLD", applied_date: dayAgo(45) }),
       // Nampa is read from its published reports (2026-10-01), a month
@@ -200,7 +280,8 @@ test("the /permits route, signed out and signed in", async (t) => {
       fl("1 NAMPA ST", { permit_number: "NAMPA-RPT", jurisdiction: "nampa", market: "Nampa, ID", applied_date: dayAgo(40) }),
       fl("2 NAMPA ST", { permit_number: "NAMPA-OLD", jurisdiction: "nampa", market: "Nampa, ID", applied_date: dayAgo(75) }),
     ],
-    permit_filing_events: [], analytics_events: [],
+    permit_filing_events: [{ id: crypto.randomUUID(), filing_id: F1, old_status: "Received", new_status: "In Review", detected_at: NOW }],
+    analytics_events: [],
   } });
   const srv = await shared.boot({ ACCOUNT_WALL: "off", PRO_ENABLED: "on", SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key" });
   t.after(async () => { srv.stop(); await db.stop(); });
@@ -234,6 +315,9 @@ test("the /permits route, signed out and signed in", async (t) => {
       "each filing carries its property type for the menu, worked out at read time");
     assert.ok(boot.j.filings.every((f) => f.stage === "open"),
       "and its stage, the colour of its status and the Status filter (\"Received\" is open)");
+    assert.deepEqual(boot.j.filings.map((f) => f.step), ["review", "submitted", "submitted"],
+      "and its furthest step, so its progress opens without waiting on a read");
+    assert.deepEqual(boot.j.steps.map((s) => s.label), ["Submitted", "In review", "Approved", "Issued", "Finaled"]);
     assert.equal(boot.j.inFirm, true);
     assert.equal(boot.j.cities, "Boise, Meridian and Nampa");
     assert.equal(boot.j.stale, false);
@@ -251,6 +335,25 @@ test("the /permits route, signed out and signed in", async (t) => {
     assert.equal(boot.j.inFirm, false);
     assert.equal(boot.j.filings.length, 3);
     assert.ok(boot.j.filings.every((f) => f.onBoard === null));
+  });
+
+  await t.test("one filing's progress: its steps, the day we saw each, and its status history", async () => {
+    // GET /api/permits/filing (2026-11-23), what a row's address opens.
+    // Public record like the feed: any signed-in account, firm or not.
+    const read = (id, user) => fetch(`${srv.base}/api/permits/filing?id=${encodeURIComponent(id)}`,
+      user ? { headers: { cookie: `cn_session=tok-${user.id}` } } : {});
+    assert.equal((await read(F1, null)).status, 401, "signed out: nothing");
+    const r = await read(F1, SOLO);
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.equal(j.id, F1);
+    assert.equal(j.step, "review");
+    assert.deepEqual(j.steps.map((s) => [s.key, s.done, s.at]), [
+      ["submitted", true, dayAgo(1)], ["review", true, NOW], ["approved", false, null], ["issued", false, null], ["final", false, null],
+    ], "Submitted is the day it was filed; In review the day we saw it move");
+    assert.deepEqual(j.history, [{ from: "Received", to: "In Review", at: NOW }]);
+    assert.equal((await read("5a1e9a1e-0000-4000-8000-00000000dead", SOLO)).status, 404, "an id that is no stored filing");
+    assert.equal((await read("ON-BOARD", SOLO)).status, 404, "and one that is no id at all never reaches the database");
   });
 });
 

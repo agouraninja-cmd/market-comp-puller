@@ -837,7 +837,11 @@ test("the contact door names the person and the company, and NEVER their email",
 // ---------------------------------------------------------------------------
 const CONTACTS_RE = /  let contactsExpanded = false;[\s\S]*?\n  async function renderContacts\(\) \{[\s\S]*?\n  \}/;
 function loadContacts(o) {
-  const fetch = makeFetch([["/api/org/contacts", { status: o.status || 200, body: o.body }]]);
+  // Two lists since 2026-11-23: the firm's, and the member's own (066).
+  const fetch = makeFetch([
+    ["/api/org/contacts", { status: o.status || 200, body: o.body }],
+    ["/api/account/contacts", { status: o.ownStatus || 200, body: o.own || { contacts: [], fields: { phone: true } } }],
+  ]);
   return load(CONTACTS_RE,
     "this.render = renderContacts; this.setOpen = setContactAddOpen;",
     "const COLLAPSE_AT = 8; let currentUser = __user; function myFirm() { return __firm; }\n" +
@@ -874,13 +878,49 @@ test("under the cap there is no fold; no firm or a failed read hides the section
   ctx = loadContacts({ body: { contacts: [] } });
   await ctx.render();
   assert.equal(ctx.dom.hidden("contactsEmpty"), false);
-  ctx = loadContacts({ firm: null, body: { contacts: [CT(0)] } });
+  ctx = loadContacts({ user: null, body: { contacts: [CT(0)] } });
   await ctx.render();
   assert.equal(ctx.dom.hidden("deskContacts"), true);
-  assert.equal(ctx.fetch.log.length, 0, "no member, no read");
+  assert.equal(ctx.fetch.log.length, 0, "nobody signed in, no read");
   ctx = loadContacts({ status: 503, body: { error: "down" } });
   await ctx.render();
   assert.equal(ctx.dom.hidden("deskContacts"), true, "'could not read' is not 'no contacts'");
+});
+
+test("a member in no firm has contacts of their own, read from their own route", async () => {
+  // Contacts were a firm's alone until 2026-11-23, so a broker working alone
+  // had no list at all.
+  const mine = { id: "m1", name: "Dana Wu", company: "Acme Holdings LLC", phone: "(208) 555-0142", email: "", mine: true,
+    source: "lookup", sourceUrl: "https://county.example/parcel/1" };
+  const ctx = loadContacts({ firm: null, body: { contacts: [CT(0)] }, own: { contacts: [mine], fields: { phone: true } } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("deskContacts"), false);
+  assert.deepEqual(ctx.fetch.log.map((c) => c.url), ["/api/account/contacts"], "their own route, and never the firm's");
+  assert.equal(ctx.dom.hidden("contactsScope"), true, "one list, so no switch");
+  assert.match(ctx.dom.text("contactsCopy"), /^Only you can see these\./);
+  assert.equal(ctx.dom.hidden("contactPhoneWrap"), false, "the phone box is offered once the read says it can be kept");
+  const row = ctx.dom.el("contactRows").children[0].children[0];
+  assert.match(row.textContent, /Dana Wu.*Acme Holdings LLC · \(208\) 555-0142/, "the phone is on the row");
+  assert.doesNotMatch(row.textContent, /added by/, "nobody else is on a member's own list");
+  const links = (row.children || []).filter((el) => el.tagName === "A").map((a) => [a.href, a.textContent]);
+  assert.deepEqual(links, [["https://county.example/parcel/1", "From an owner lookup"]],
+    "a looked-up contact links the page it was read from, and a member's own contact has no Discuss door");
+});
+
+test("a member of a firm sees the firm's list first, with the switch to their own", async () => {
+  const ctx = loadContacts({ body: { contacts: [CT(0)], fields: { phone: false } } });
+  await ctx.render();
+  assert.deepEqual(ctx.fetch.log.map((c) => c.url), ["/api/org/contacts?id=o1"]);
+  assert.equal(ctx.dom.hidden("contactsScope"), false);
+  assert.match(ctx.dom.text("contactsCopy"), /^Your firm's own list, shared with everyone in it\./);
+  assert.equal(ctx.dom.hidden("contactPhoneWrap"), true, "no phone box before migration 066 has run");
+  // A source that is not a web address is never made a link.
+  const odd = loadContacts({ body: { contacts: [Object.assign(CT(1), { source: "lookup", sourceUrl: "javascript:alert(1)" })] } });
+  await odd.render();
+  const row = odd.dom.el("contactRows").children[0].children[0];
+  const from = (row.children || []).find((el) => el.textContent === "From an owner lookup");
+  assert.ok(from, "it still says where the contact came from");
+  assert.notEqual(from.tagName, "A");
 });
 
 test("a contact attached to a building carries a door to that building's sheet", async () => {

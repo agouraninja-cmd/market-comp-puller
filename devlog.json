@@ -5623,5 +5623,11 @@
     "type": "fix",
     "title": "A client chat says which property its comps are for",
     "details": "A deal room with nobody invited yet was named after its property, but the chat showed only the comps' addresses, so the property seemed to be missing. The top of the chat now names the property and says the comps below are for it (and, when nobody is invited, that nobody else can see it yet); the header says “No one invited yet”; the list row says “Sent 6 comps” instead of “No messages yet”; and a comp card no longer shows a bare “/SF” with no number."
+  },
+  {
+    "date": "2026-11-23",
+    "type": "feature",
+    "title": "Find a property’s owner, and contacts for everyone",
+    "details": "A broker’s hardest step is getting in front of a landlord. Home’s People tab now has “Find a property’s owner”: type a commercial address and one web search reads the county’s record for the owner, the state’s business filing for who is behind the company, and the owner’s own pages for a business phone or email. Every phone and email says whether the page it came from really shows it, and you choose who to save to your contacts. It is part of Pro, with 100 lookups a month; opening a building you already looked up is free. It never looks up a home and never uses a people-search site. Contacts also gained a phone number, and they are no longer a firm’s alone: every member has a list of their own on People, and a member of a firm can switch between the firm’s list and their own. Needs migration 066."
   }
 ]

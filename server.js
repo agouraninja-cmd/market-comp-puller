@@ -8321,6 +8321,10 @@ async function permitTrackerPayload(user, opts) {
   // issued or ended, from permit-watch.js's classifyStatus, so a tag's colour
   // and the Status filter read the portal's words the way a tracked permit does.
   for (const f of filings) f.stage = PERMIT_WATCH.stageOf(f.status);
+  // Its furthest step (2026-11-23): the row's address opens the permit's five
+  // steps, drawn at once from this; the dates and the status history are read
+  // when it is opened (GET /api/permits/filing).
+  for (const f of filings) f.step = PERMIT_WATCH.filingProgress(f, []).step;
   // Near one of the reader's Sites deals (2026-10-21): the nearest within a
   // mile, by the permit's own place (058) and the deal's (061). The deal's
   // street is the reader's own or shared with them, and this feed goes to
@@ -8334,6 +8338,7 @@ async function permitTrackerPayload(user, opts) {
     reportCities: coverage.filter((c) => c.through).map((c) => ({ city: c.city, through: c.through })),
     inFirm: Boolean(board),
     nearSites: nearSites.length,
+    steps: PERMIT_WATCH.STEPS.map((x) => ({ key: x.key, label: x.label })),
     filings,
     ...PERMIT_FILINGS.sweepFreshness(lastSweptAt, now),
   };
@@ -25035,6 +25040,32 @@ const server = http.createServer((req, res) =>
       const { filed, pins } = PERMIT_FILINGS.mapPins(feed.filings);
       return sendJson(res, 200, { cities: feed.cities, windowDays: feed.windowDays, filed, pins, truncated: feed.truncated });
     })().catch((err) => { console.error("permits map error:", err.message); sendJson(res, 503, { error: "Permits are unavailable right now." }); });
+    return;
+  }
+  // One filing's progress (2026-11-23): the Filings list's address opens the
+  // permit's five steps and its status history, read when it is opened so the
+  // page's boot never carries a thousand histories. Public record, like the
+  // feed it is opened from: any signed-in account, no plan. A READ, so a page
+  // built ahead of the click may make it (rule 15). An id that is no stored
+  // filing is a 404; no file fallback, the filings live only in the database.
+  if (req.url.split("?")[0] === "/api/permits/filing" && req.method === "GET") {
+    (async () => {
+      const user = await requireUser(req, res);
+      if (!user) return;
+      if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Permits are unavailable right now." });
+      const id = new URL(req.url, "http://localhost").searchParams.get("id");
+      if (!isUuidish(id)) return sendJson(res, 404, { error: "Not found." });
+      const [rows, events] = await Promise.all([
+        sbRequest("GET", `permit_filings?id=eq.${encodeURIComponent(id)}&select=id,status,applied_date&limit=1`),
+        sbRequest("GET", `permit_filing_events?filing_id=eq.${encodeURIComponent(id)}&order=detected_at.desc&limit=200`),
+      ]);
+      const row = rows && rows[0];
+      if (!row) return sendJson(res, 404, { error: "Not found." });
+      return sendJson(res, 200, {
+        id: row.id,
+        ...PERMIT_WATCH.filingProgress({ status: row.status, appliedDate: row.applied_date }, events || []),
+      });
+    })().catch((err) => { console.error("permit filing error:", err.message); sendJson(res, 503, { error: "Permits are unavailable right now." }); });
     return;
   }
   if (req.url.split("?")[0] === "/api/permits/mine" && req.method === "GET") {

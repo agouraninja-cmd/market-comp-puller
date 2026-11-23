@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-23",
+    "type": "fix",
+    "title": "Permit tracker: click a permit’s address to open its progress",
+    "details": "On the Filings list an address was plain text, so there was no way to see how far a permit had got without tracking it. The address is now a button: it opens the permit’s five steps (Submitted, In review, Approved, Issued, Finaled) under its row, with the day it was filed, the day we saw it reach each later step, and its status history. The steps show at once and the history is read when the permit is opened. The row’s one clipped line of work also reads in full while it is open. On the Alerts tab, a matching permit’s address goes to that permit in Filings with its progress open."
+  },
+  {
+    "date": "2026-11-23",
     "type": "feature",
     "title": "Net lease mode: a single-tenant net-leased property is valued on cap rates",
     "details": "A leased pad (an oil change, a drive-thru, a pharmacy) is priced on its rent, not its square feet, and a report used to value one at the price per square foot of whatever small buildings sold nearby. Now, on a Retail report whose center type is “Single-tenant NNN”, the value comes from the cap rates the sale comps traded at: type the net operating income and Low, Likely and High are that income at those rates; leave it out and the report shows the cap rates themselves and what every $100,000 of income is worth. The asking price is read as the cap rate it implies, against the comps’. The search asks for net-leased sales that state a cap rate, with the tenant, lease type and years left on each, and no longer sets a comp aside for being a different size. The price per square foot stays on the report as a cross-check. The income never leaves the browser."

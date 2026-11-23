@@ -611,6 +611,40 @@ function stepSeenAt(events) {
   return out;
 }
 
+// A stored FILING's progress (2026-11-23, the Filings list's address opens
+// it): the five steps a tracked permit shows, for a public-record permit
+// nobody tracks. A filing has no `passed_steps` ledger, so its steps are read
+// from what we hold: every step its status today reaches, every step a status
+// in its history reached (a permit issued and then expired was still issued,
+// the ledger's own rule), and Submitted for any permit with a filing date,
+// dated that day because the city printed it. Every other date is when we SAW
+// the step (stepSeenAt). A status whose words do not say claims no step.
+// `filing` is { status, appliedDate }; `events` are its permit_filing_events.
+function filingProgress(filing, events) {
+  const f = filing || {};
+  const list = (events || []).filter(Boolean);
+  const reached = new Set();
+  const statuses = [f.status];
+  for (const e of list) statuses.push(e.old_status, e.new_status);
+  for (const s of statuses) for (const k of stepsThrough(classifyStatus(s).step)) reached.add(k);
+  const filed = /^\d{4}-\d{2}-\d{2}/.test(String(f.appliedDate || "")) ? String(f.appliedDate).slice(0, 10) : null;
+  if (filed) reached.add("submitted");
+  const passed = inStepOrder([...reached]);
+  const seenAt = stepSeenAt(list);
+  return {
+    step: furthestStep(passed),
+    steps: STEPS.map((s) => {
+      const done = passed.includes(s.key);
+      return { key: s.key, label: s.label, done, at: !done ? null : s.key === "submitted" && filed ? filed : seenAt[s.key] || null };
+    }),
+    // Newest first, the building sheet's shape.
+    history: list
+      .filter((e) => clean(e.new_status))
+      .map((e) => ({ from: clean(e.old_status), to: clean(e.new_status), at: e.detected_at || null }))
+      .sort((a, c) => String(c.at || "").localeCompare(String(a.at || ""))),
+  };
+}
+
 // One stored watch + its events -> what the page draws. camelCase, nothing
 // the page does not use.
 // `viewerId` makes the view relative to who is reading: their own watch, or a
@@ -676,7 +710,7 @@ module.exports = {
   stepIndex, stepLabel, classifyStatus, stepsThrough, furthestStep, STAGES, stageOf, stepSeenAt,
   normalizePermitNumber, normalizeNotify, notifyColumns, notifyOfRow,
   validateWatchInput, validateWatchPatch, newWatchRow, displayName, headlineFor,
-  decideCheck, dueChecks, buildNoticeEmail, watchView, unreadCount,
+  decideCheck, dueChecks, buildNoticeEmail, watchView, unreadCount, filingProgress,
   canShareWithFirm, firmRecipients, firmEvent,
   BULK_MAX_ROWS, parseBulkPermits,
 };

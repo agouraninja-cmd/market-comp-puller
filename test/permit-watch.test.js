@@ -256,6 +256,45 @@ test("a step is dated by the change we saw reach it, never by one we did not see
   assert.deepEqual(W.stepSeenAt(null), {});
 });
 
+test("a filing's progress: the five steps for a permit nobody tracks, under-claimed (2026-11-23)", () => {
+  const e = (old_status, new_status, detected_at) => ({ old_status, new_status, detected_at });
+  const done = (p) => p.steps.filter((s) => s.done).map((s) => s.key);
+  const dates = (p) => Object.fromEntries(p.steps.filter((s) => s.at).map((s) => [s.key, s.at]));
+  // Nothing but today's status: the steps it reaches, and Submitted dated the
+  // day the city says it was filed. No later step has a date we did not see.
+  const fresh = W.filingProgress({ status: "In Review", appliedDate: "2026-11-18" }, []);
+  assert.deepEqual(done(fresh), ["submitted", "review"]);
+  assert.equal(fresh.step, "review");
+  assert.deepEqual(dates(fresh), { submitted: "2026-11-18" });
+  assert.deepEqual(fresh.history, []);
+  assert.deepEqual(fresh.steps.map((s) => s.label), ["Submitted", "In review", "Approved", "Issued", "Finaled"]);
+  // Its history dates the steps we saw it reach, newest change first.
+  const moved = W.filingProgress({ status: "Issued", appliedDate: "2026-11-03T00:00:00Z" }, [
+    e("Received", "In Review", "2026-11-06T13:00:00Z"),
+    e("In Review", "Issued", "2026-11-17T13:00:00Z"),
+  ]);
+  assert.deepEqual(done(moved), ["submitted", "review", "approved", "issued"]);
+  assert.deepEqual(dates(moved), { submitted: "2026-11-03", review: "2026-11-06T13:00:00Z",
+    approved: "2026-11-17T13:00:00Z", issued: "2026-11-17T13:00:00Z" });
+  assert.deepEqual(moved.history, [
+    { from: "In Review", to: "Issued", at: "2026-11-17T13:00:00Z" },
+    { from: "Received", to: "In Review", at: "2026-11-06T13:00:00Z" },
+  ]);
+  // Issued and then expired was still issued (the ledger's rule): the steps
+  // stay, and the page's status tag says where it stands today.
+  const ended = W.filingProgress({ status: "Expired", appliedDate: "2026-10-01" }, [e("Issued", "Expired", "2026-11-10T13:00:00Z")]);
+  assert.deepEqual(done(ended), ["submitted", "review", "approved", "issued"]);
+  assert.equal(ended.step, "issued");
+  // A status whose words do not say claims no step past the filing itself.
+  const vague = W.filingProgress({ status: "Fees Outstanding - Hold", appliedDate: "2026-11-18" }, []);
+  assert.deepEqual(done(vague), ["submitted"]);
+  // And with no filing date, not even that.
+  const bare = W.filingProgress({ status: "", appliedDate: null }, null);
+  assert.deepEqual(done(bare), []);
+  assert.equal(bare.step, null);
+  assert.deepEqual(W.filingProgress(null, null).history, []);
+});
+
 // --- A permit tracked for the whole firm (2026-09-29; migration 055) --------
 
 test("only an active owner may switch a permit to the firm", () => {

@@ -827,3 +827,46 @@ migration of its own. Five rules:
   address, or any circle that holds the whole mile), and the pane says "One
   of your permit alerts already emails you about new ones here. Manage
   alerts".
+
+## Following one company (2026-11-23)
+
+Owner's ask: "a way to pull permits automatically for a specific company."
+An alert may now name a **company**: the New alert form on /permits' Alerts
+tab has a Company box above the other filters, and the alert then fits every
+permit whose **applicant or contractor** is that company. It is an ordinary
+permit alert in every other way, so the weekday sweep is what pulls it (the
+digest at the end of the first call, rule 12), the Alerts tab lists its newest
+matches with "See all N in Filings", the Filings rows carry its tag, and its
+filters (city, type, kind, words, area) still narrow it. Migration
+**`067-permit-alert-company.sql`** (`permit_alerts.company`), deploy order
+SOFT. Rules in **`permit-alerts.js`** (`companyKey`, `companyNeedle`,
+`companyMatches`, `companyRole`); `test/permit-alerts.test.js` and the last
+test in `test/permit-alerts-run.test.js`. Five rules:
+
+- **Only the two companies on the permit.** `applicant_company` and
+  `contractor_company`, which the sweep already reads off each permit's
+  detail page (and Nampa's reports). A name in the description is the
+  Words filter's business, not this one. A permit stored without its
+  companies (the history pass's backfill, a detail page that failed) cannot
+  match, which under-claims rather than guesses.
+- **Whole words, and nothing guessed.** Lower case, `&` read as "and", every
+  other mark a space; a trailing LLC / Inc / Co / Corp / Ltd / LP / LLP /
+  PLLC / PC / PA is dropped from what the member TYPED (never from the
+  permit), so "Hawkins Companies, LLC" finds "HAWKINS COMPANIES". "Ace" finds
+  Ace Electric, never Grace Builders. No abbreviations, no nicknames, no
+  fuzzy match. A name that is nothing once the suffix goes ("LLC") is a 400.
+- **⚠ pair.** The page's `alertMatches` carries its own copy of the
+  normalisation (the browser cannot require the module); the pair test runs
+  both over the same names and permits.
+- **The email says which side.** Each line of a company alert's email ends
+  "applicant", "contractor" or "applicant and contractor".
+- **067 is soft because the column is named only when used.**
+  `normalizeFilters` puts `company` in the row only when one is typed, and a
+  PATCH writes `company: null` only to a row whose `select=*` already has the
+  column. Before 067 runs, every existing alert saves, lists and mails as
+  before; only saving one WITH a company fails ("unavailable right now").
+
+Not built: a "Follow this company" link on a Filings row's applicant or
+contractor, and reading a company's permits further back than the feed's 30
+days on the page (the stored year is there; the stand-in would need an
+`ilike` shape taught to it).

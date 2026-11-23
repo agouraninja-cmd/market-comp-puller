@@ -237,6 +237,7 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
 .pa-mapnote{font-size:var(--text-label);color:var(--ink-3);margin:6px 0 4px}
 .leaflet-tooltip.pa-count,[data-theme="dark"] .leaflet-tooltip.pa-count{background:none;border:0;box-shadow:none;color:#fff;font-weight:700;font-size:var(--text-tiny);padding:0}
 .leaflet-tooltip.pa-count:before{display:none}
+.pa-co label{flex-basis:100%;max-width:520px}
 .pa-h{margin:0 0 10px;font-weight:600;font-size:18px;letter-spacing:-.01em;color:var(--ink)}
 .hide{display:none}
 @media (max-width:760px){
@@ -349,12 +350,16 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
       </div>
       <div class="pw-pro hide" id="paPro">
         <h2>Get new permits by email</h2>
-        <p>Permit alerts are part of CompNinja Pro. Save what you follow, like industrial in Boise or tenant build-outs in Meridian, and get its new permits by email each weekday morning.</p>
+        <p>Permit alerts are part of CompNinja Pro. Save what you follow, like industrial in Boise, tenant build-outs in Meridian or one company’s permits, and get its new permits by email each weekday morning.</p>
         <a class="pw-btn pri" href="/?pricing=1">See Pro</a>
       </div>
       <form class="pw-form hide" id="paForm" novalidate>
         <h3 class="pa-h" id="paFormTitle">New alert</h3>
-        <div class="pw-grid">
+        <div class="pw-grid pa-co">
+          <label><span>Company <span class="opt">optional</span></span><input id="paCompany" maxlength="80" autocomplete="off" placeholder="a company to follow, e.g. Hawkins Companies"/></label>
+        </div>
+        <p class="pa-found" id="paCoNote">Every permit that names this company as its applicant or contractor. Whole words, so “Ace” is not Grace Builders.</p>
+        <div class="pw-grid" style="margin-top:12px">
           <label>City <select id="paCity"><option value="">Every city we read</option></select></label>
           <label>Property type <select id="paProp"><option value="">Every type</option></select></label>
           <label>Kind <select id="paKind"><option value="">Every kind</option></select></label>
@@ -1051,6 +1056,12 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
       var hay=[p.address,p.description,p.projectName,p.applicant,p.contractor,p.permitNumber].join(" ").toLowerCase();
       if(hay.indexOf(String(a.words).toLowerCase())<0)return false;
     }
+    if(a.company){
+      // ⚠ PAIR with permit-alerts.js's companyKey / companyNeedle / companyMatches.
+      var ck=function(v){return String(v==null?"":v).toLowerCase().replace(/&/g," and ").replace(/[^a-z0-9]+/g," ").trim()};
+      var nd=ck(a.company).replace(/(?:(?:^| )(?:llc|l l c|inc|incorporated|co|corp|corporation|ltd|limited|lp|llp|pllc|pc|pa))+$/,"").trim();
+      if(!nd||[p.applicant,p.contractor].every(function(c){return (" "+ck(c)+" ").indexOf(" "+nd+" ")<0}))return false;
+    }
     if(a.area){
       if(p.lat==null||p.lng==null)return false;
       if(alMiles(a.area.lat,a.area.lng,p.lat,p.lng)>a.area.miles)return false;
@@ -1100,7 +1111,7 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
       ? (alerts.length?"Your alerts are kept here. You can delete any of them.":"")
       : alerts.length
       ? "New permits that fit an alert come by email each weekday morning, after the city portals are read. Nothing is sent on a day with no match."
-      : "Save what you follow, like industrial permits in Boise or tenant build-outs in Meridian, and get its new permits by email each weekday morning and here.";
+      : "Save what you follow, like industrial permits in Boise, tenant build-outs in Meridian or every permit one company files or builds, and get its new permits by email each weekday morning and here.";
     $("paSub").className=$("paSub").textContent?"pw-sub":"pw-sub hide";
     $("paList").innerHTML=alerts.map(alLine).join("");
     // An open map is drawn again into its new box.
@@ -1109,7 +1120,7 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
   }
   function alPreview(){
     if(alWithin()&&!alAreaNow()){ formMsg($("paMsg"),$("paAddr").value.trim()?"":"Type an address to see the area."); return; }
-    var a={jurisdiction:$("paCity").value,propertyType:$("paProp").value,kind:$("paKind").value,words:$("paWords").value.trim(),area:alAreaNow()};
+    var a={jurisdiction:$("paCity").value,propertyType:$("paProp").value,kind:$("paKind").value,words:$("paWords").value.trim(),company:$("paCompany").value.trim(),area:alAreaNow()};
     var n=items.filter(function(f){return alertMatches(a,f)}).length;
     formMsg($("paMsg"),n+(n===1?" permit":" permits")+" in the last "+WIN+" days "+(n===1?"matches.":"match.")+(a.area&&alUnplaced()?" "+alUnplaced()+" couldn’t be placed on the map.":""));
   }
@@ -1119,6 +1130,7 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
     $("paSave").textContent=alEditing?"Save":"Save alert";
     $("paCity").value=(a&&a.jurisdiction)||""; $("paProp").value=(a&&a.propertyType)||"";
     $("paKind").value=(a&&a.kind)||""; $("paWords").value=(a&&a.words)||"";
+    $("paCompany").value=(a&&a.company)||"";
     $("paName").value=alEditing?a.name:""; $("paEmail").checked=!a||a.email!==false;
     var ar=a&&a.area;
     $("paWithin").checked=Boolean(ar); $("paAnywhere").checked=!ar;
@@ -1158,6 +1170,7 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
   $("paCancel").addEventListener("click",function(){ closeAlertForm(); renderAlerts(); });
   ["paCity","paProp","paKind"].forEach(function(id){ $(id).addEventListener("change",alPreview); });
   $("paWords").addEventListener("input",alPreview);
+  $("paCompany").addEventListener("input",alPreview);
   $("paAnywhere").addEventListener("change",function(){ alShowArea(); });
   $("paWithin").addEventListener("change",function(){ if($("paAddr").value.trim()&&!alArea)alLookup(); else alShowArea(); $("paAddr").focus(); });
   $("paMiles").addEventListener("change",alShowArea);
@@ -1166,7 +1179,7 @@ a.pt-num:hover{color:var(--ink);text-decoration:underline;text-underline-offset:
   $("paForm").addEventListener("submit",function(e){
     e.preventDefault();
     var body={jurisdiction:$("paCity").value,propertyType:$("paProp").value,kind:$("paKind").value,
-      words:$("paWords").value,name:$("paName").value,email:$("paEmail").checked,
+      words:$("paWords").value,company:$("paCompany").value,name:$("paName").value,email:$("paEmail").checked,
       areaAddress:alWithin()?$("paAddr").value.trim():"",areaMiles:Number($("paMiles").value)};
     if(alWithin()&&!$("paAddr").value.trim()){ formMsg($("paMsg"),"Type the address the area is around, or pick Anywhere in the city.","bad"); $("paAddr").focus(); return; }
     var url="/api/permits/alerts"+(alEditing?"?id="+encodeURIComponent(alEditing):"");

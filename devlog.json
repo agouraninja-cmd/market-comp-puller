@@ -5593,5 +5593,11 @@
     "type": "fix",
     "title": "Pipeline’s four columns appear together",
     "details": "Opening Pipeline, the Owner requests column filled a beat before Open, Delivered and Won, because the page drew the board as each of its two reads came back. It now waits for both and draws the board once; until then every column says Loading."
+  },
+  {
+    "date": "2026-11-23",
+    "type": "feature",
+    "title": "Permit alerts can follow a company",
+    "details": "A permit alert can now name a company. Type it in the new Company box on the Permit tracker's Alerts tab, and every weekday morning you get an email with the new permits that company filed or is building, as the applicant or the contractor, in Boise, Meridian and Nampa. The alert lists its newest matches on the page and marks them in Filings, and you can still narrow it by city, property type, kind, words or area. Names are matched as whole words, ignoring case, punctuation and a trailing LLC or Inc, so Hawkins Companies, LLC finds HAWKINS COMPANIES and Ace never finds Grace Builders. Each line of the email says whether the company is the applicant or the contractor."
   }
 ]

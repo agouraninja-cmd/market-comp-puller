@@ -290,6 +290,8 @@ const COLUMNS = [
   ["permit_alerts",     ["notified_through", "last_emailed_at", "notify_email"], "057-permit-alerts.sql"],
   ["permit_filings",    ["lat", "lng", "geo_source"],                "058-permit-areas.sql"],
   ["permit_alerts",     ["area_address", "area_lat", "area_lng", "area_miles"], "058-permit-areas.sql"],
+  // Missing, saving an alert that follows a company answers "unavailable".
+  ["permit_alerts",     ["company"],                                 "067-permit-alert-company.sql"],
   // The profile card's title. Its absence degrades (the roster retries the
   // read without it) but every title save answers "couldn't save".
   ["users",             ["title"],                                   "056-user-title.sql"],

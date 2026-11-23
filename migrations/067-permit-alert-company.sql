@@ -1,0 +1,21 @@
+-- 067 — follow one company's permits (2026-11-23, owner's ask: "a way to pull
+-- permits automatically for a specific company")
+-- Rules:  permit-alerts.js (companyKey / companyNeedle / companyMatches, and
+--         the ⚠ copy inside permits-page.js's alertMatches)
+-- Routes: POST|PATCH /api/permits/alerts take `company`; the weekday email is
+--         the alerts' own, riding POST /api/permits/sweep
+--
+-- permit_alerts.company: the company the member typed, as typed. A permit fits
+-- when that name (case, punctuation and a trailing LLC / Inc dropped) is,
+-- whole words, its applicant's or its contractor's company — the two names
+-- the sweep already stores on permit_filings (applicant_company,
+-- contractor_company). NULL is an alert with no company, as every alert
+-- before this was.
+--
+-- DEPLOY ORDER: SOFT. The code names the column only for an alert that HAS a
+-- company (and, on a change, a row whose select=* already carries it), so
+-- until this runs existing alerts save, list and mail as before, and only
+-- saving an alert WITH a company fails ("Permit alerts are unavailable right
+-- now"). Run it before deploying anyway. Purely additive and idempotent.
+
+alter table permit_alerts add column if not exists company text;

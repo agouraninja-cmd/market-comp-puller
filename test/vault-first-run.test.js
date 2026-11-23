@@ -70,7 +70,8 @@ test("empty invitations ship visible; tables and the uploader stay hidden", () =
   assert.doesNotMatch(page, /id="pipeEmpty"[^>]*\bhide\b/);
   assert.match(page, /<div id="addSec" class="addpanel hide">/);
   assert.match(page, /id="addToggle"[^>]*aria-expanded="false"/);
-  assert.match(page, /<div class="tw hide" id="pipeTableWrap">/);
+  // The pipeline's table went on 2026-11-23: an empty pipeline is its board.
+  assert.match(page, /<div class="pb-board" id="pipeBoard">/);
 });
 
 test("the coverage form is one relocating node that parks in the pipeline invitation", () => {

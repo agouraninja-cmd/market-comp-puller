@@ -73,6 +73,69 @@ paths:
 >   `test/vault-personal-decks.test.js`, `test/vault-shell.test.js` and
 >   `test/routes.test.js`.
 
+> **The Pipeline is a board (2026-11-23; Draft C of the Pipeline drafts,
+> the owner's pick at https://claude.ai/artifact/AuoYUu9uyrir8sStH9zVSJ).**
+> This replaces what the notes below say about the pipeline's strip and
+> table; the reads, the routes and every write are what they were. Page only
+> (`vault-page.js`), no migration.
+> - **One column per stage, the shape `/sites` has**: Owner requests
+>   (`#pbNew`), Open, Delivered, Won, and Lost folded at the foot
+>   (`#pbLostBox`, as Passed is on Sites). `renderPipeline` sorts
+>   `pipeRows()` into them, newest first; a status the page does not know
+>   goes in Open. The five-cell strip, the table and their two listeners
+>   (`#pipeStrip`, `#pipeTbl`, sorting, the strip's filter) are gone: a
+>   column is the filter, and a board is not sorted.
+> - **A card's controls are the row's own**: `data-intro`, the stage
+>   `<select data-bov>` (`bovSelect`) and `data-bovdel` (an x with an
+>   aria-label), so the three document-level handlers and their confirms are
+>   unchanged. A request card shows the five facts `broker-leads.js` allows
+>   and "Asked 4 days ago" (`pipeAgo`); a BOV's date reads "Nov 20"
+>   (`pipeDay`).
+> - **Request introduction is the red on the page** (`.pb-ask`, a red
+>   outline) and **+ Log a BOV is the plain button**: until now the press
+>   that gets a broker a listing was a small grey button in a table's last
+>   column.
+> - **Won opens on its latest five** (`WON_CAP`, "Show all N" is
+>   `data-wonall`); its count is always all of them.
+> - **The markets are in sight**: `#covRow`, the chips, is in a bar over the
+>   board (`#pipeWatch`), four of them past five with "+N more"
+>   (`data-covmore`). `#covBox` is the "+ Watch a market" door beside them.
+>   **`#covForm` is still ONE node**: its home is `#pipeEmpty`, now a card in
+>   the Owner requests column, and `renderPipeline` moves it into `#covBox`
+>   once a market is watched or a row exists. That is a change: with a
+>   market watched and nothing in it the invitation used to stay; the column
+>   now says "Nothing new". The line about removed markets coming back is in
+>   `#covBox` only, reworded, no longer the first thing under an empty form.
+> - **An empty pipeline is the board** (the empty-vault rule): every column
+>   says what lands in it, and Open offers Log a BOV (`data-logbov`, which
+>   opens `#bovAddSec`). **A column whose read failed says nothing**: "Nothing
+>   open" over a failed BOV read would be a claim the page cannot make.
+> - **No tab bar and no eyebrow on `/pipeline`** (`.vt-wrap.pl`, `VT_WRAP` in
+>   the script, which the lock and unlock both write). The tab's markup and
+>   `tabCount("tabPipeN")` are kept, hidden: `setTab` and the panel's
+>   `aria-labelledby` still read them. The deck (`#deckPipe`) is laid over
+>   main's top right corner beside the title; on a phone it is in the flow
+>   under the subtitle, as it was.
+> - **Columns are divs** (`role="group"`): this stylesheet gives every
+>   `section` a 48px top margin. `.pb-watch.hide` is restated (the `.hide`
+>   trap), and a card's select carries its own chevron and is 16px on a
+>   phone so an iPhone does not zoom.
+> Tests: the pipeline block of `test/vault-page.test.js` (rewritten), whose
+> stub document now keeps document-level listeners (`doc.fire`, `pressOf`).
+
+> **The footer starts below the first screen (2026-11-23, the owner: "make
+> sure the footer isnt in the page when you first click on the side tab for
+> pipline").** An empty pipeline is about 620px of page and the body is a
+> flex column as tall as the window, so the footer stood across the bottom
+> third of the first screen: at 626px of a 900px window, and at 716px of an
+> 844px phone. `main.wrap` in this page's stylesheet now carries
+> `min-height:100vh`, the rule `sites-page.js` (since 2026-11-16, for the
+> same complaint) and `bulk-page.js` already carry (Messages fills its
+> screen its own way, firms.md). It is on both pages the file draws;
+> `/comps` with an empty book was already taller than a 945px window, so
+> nothing moves there until a window is taller than that. Pinned in
+> `test/vault-page.test.js` ("the footer starts below the first screen").
+
 > **The list starts sooner on a phone (2026-11-15, the owner: "yes fix
 > both").** On a 390px phone the ledger began 1,115px down an 844px screen:
 > title, four figures (276px), the map band (180px) and its note (83px), the

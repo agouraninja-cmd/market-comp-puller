@@ -6520,6 +6520,10 @@ async function externalThreadsFor(user) {
   // waited seconds for the page. The firm side fixed the same shape on
   // 2026-09-04. Each read keeps its own catch: one failing costs its own
   // polish and never the list.
+  // How many comps each room holds, for a room nobody has written in yet:
+  // its row says "Sent 6 comps" rather than "No messages yet" (the owner's
+  // report, 2026-11-23). One read for every room; a failure costs the line.
+  const compsBy = new Map();
   const [, , previews] = await Promise.all([
     emails.length
       ? sbRequest("GET",
@@ -6549,6 +6553,14 @@ async function externalThreadsFor(user) {
         console.error("External preview read failed (the row stays):", err.message);
         return [];
       }))),
+    ids.length
+      ? sbRequest("GET",
+        `hub_items?hub_id=in.(${pgInList(ids)})&kind=eq.comp&removed_at=is.null&select=hub_id&limit=5000`)
+        .then((rows) => {
+          for (const r of rows || []) compsBy.set(String(r.hub_id), (compsBy.get(String(r.hub_id)) || 0) + 1);
+        })
+        .catch((err) => console.error("External comp count read failed (rows say no messages):", err.message))
+      : null,
   ]);
 
   const seenBy = new Map(notify.map((n) => [String(n.hub_id), n.seen_at]));
@@ -6617,7 +6629,9 @@ async function externalThreadsFor(user) {
       invitedAt: room.owner ? null : (invitedAtBy.get(String(h.id)) || null),
       closed: h.status === "closed" || Boolean(h.closed_at),
       lastMessageAt: (latest && latest.created_at) || h.updated_at || null,
-      preview: latest ? MSG.previewOf({ body: latest.body }) : "",
+      preview: latest
+        ? MSG.previewOf({ body: latest.body })
+        : MSG.previewOf({ comp_count: compsBy.get(String(h.id)) || 0 }),
       unread: MSG.externalUnread(msgs, { seenAt: seenBy.get(String(h.id)), email: me }),
       people,
     });
@@ -12444,7 +12458,7 @@ async function bulkListPayload(user, ent) {
       const rows = await sbRequest("GET",
         `bulk_job_items?user_id=eq.${encodeURIComponent(user.id)}` +
         `&job_id=in.(${pgInList(ids)})&status=eq.done` +
-        `&select=job_id,status,value_low,value_likely,value_high` +
+        `&select=job_id,status,value_low,value_likely,value_high,address,recent_item_id,portfolio_item_id` +
         `&limit=${BULK_JOB_LIST_LIMIT * BULK.MAX_ADDRESSES}`);
       const byJob = new Map();
       for (const r of Array.isArray(rows) ? rows : []) {
@@ -12454,6 +12468,15 @@ async function bulkListPayload(user, ent) {
       for (const j of jobs) {
         const s = BULK.summarize(byJob.get(j.id) || []);
         j.summary = { valued: s.valued, low: s.low, likely: s.likely, high: s.high };
+        // A one-address run IS a comp report, so the ledger opens that report
+        // directly (2026-11-23: clicking a property in Earlier runs should
+        // bring up the full report) rather than a one-row table. The ids are
+        // the row's own, read user-scoped above, and index.html's ?recent= /
+        // ?property= doors are user-scoped reads too.
+        const only = j.total === 1 ? (byJob.get(j.id) || [])[0] : null;
+        if (only && only.address) j.address = String(only.address);
+        if (only && only.recent_item_id) j.report_href = "/?recent=" + encodeURIComponent(only.recent_item_id);
+        else if (only && only.portfolio_item_id) j.report_href = "/?property=" + encodeURIComponent(only.portfolio_item_id);
       }
     } catch (err) {
       console.error("bulk list totals failed (ledger shows no figure):", err.message);

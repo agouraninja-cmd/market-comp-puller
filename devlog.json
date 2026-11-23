@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-11-23",
+    "type": "fix",
+    "title": "Permit tracker: click a permit’s address to open its progress",
+    "details": "On the Filings list an address was plain text, so there was no way to see how far a permit had got without tracking it. The address is now a button: it opens the permit’s five steps (Submitted, In review, Approved, Issued, Finaled) under its row, with the day it was filed, the day we saw it reach each later step, and its status history. The steps show at once and the history is read when the permit is opened. The row’s one clipped line of work also reads in full while it is open. On the Alerts tab, a matching permit’s address goes to that permit in Filings with its progress open."
+  },
+  {
+    "date": "2026-11-23",
     "type": "improvement",
     "title": "Run a comp report: removed the line under the heading",
     "details": "The sentence under “Run a report” (“One address opens its comp report. A list becomes a portfolio…”) is gone, so the address box sits right under the heading."

@@ -827,3 +827,45 @@ migration of its own. Five rules:
   address, or any circle that holds the whole mile), and the pane says "One
   of your permit alerts already emails you about new ones here. Manage
   alerts".
+
+## A filing's progress, opened from its address (2026-11-23)
+
+Owner's report: "you can't click on the address to open the progress on the
+permit". On the Filings tab an address was a plain span; the five-step
+timeline existed only for a permit a member tracks (Your permits). The
+address is now a button (`.pt-open`, `aria-expanded`) that opens the same
+timeline under its row, for any permit in the list. No migration. Rules in
+`permit-watch.js` (`filingProgress`, `test/permit-watch.test.js`); the page
+half and the route are pinned in `test/permits-page.test.js`, whose stand-in
+DOM now keeps the listeners so a test can press them. Six rules:
+
+- **A filing has no ledger, so its steps are read from what we hold**
+  (`filingProgress`): every step its status today reaches, every step a
+  status in its `permit_filing_events` reached (issued and then expired was
+  still issued, the watch ledger's rule), and Submitted for any permit with a
+  filing date. A status whose words do not say claims no step (the badge
+  rule); the row's tag still shows the portal's own words.
+- **Submitted is dated the day the city says it was filed**; every other
+  date is the day we SAW the step (`stepSeenAt`), so a step reached before
+  our first read has no date. The timeline's hover says which ("Filed …",
+  "Seen on the portal …").
+- **Drawn at once, read on open.** The feed carries each filing's furthest
+  step (`f.step`) and the step names (`steps`), so the timeline draws with no
+  request. **`GET /api/permits/filing?id=`** then adds the dates and the
+  status history: any signed-in account (public record, the feed's own gate),
+  503 with no database, 404 for an id that is no stored filing or no uuid.
+  Read once per permit per page view, when it is first opened, never in the
+  boot (a thousand histories nobody opened). A READ, so a prerendered page
+  may make it (rule 15).
+- **A failed read keeps the steps** and says "Couldn't load its status
+  history just now" with Try again; no history is "We haven't seen its
+  status change since we first read it", never an empty list.
+- **Open rows stay open** through a search or a filter (`OPENF`), several at
+  once, and an opened row's one clipped line of work reads in full
+  (`.pt-row.open .pt-l2`), which is how a phone reads Boise's paragraphs.
+- **An alert's match goes there.** On the Alerts tab a matching permit's
+  address (`.pt-jump`) is "See all N in Filings" with that permit opened and
+  brought into view (`showAlertInList(a, id)`).
+
+Not built: the same panel on Home's permit cards, and a "Track this permit"
+button in the panel (it would prefill Your permits' add form).

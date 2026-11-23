@@ -6078,3 +6078,20 @@ test("on a phone the list starts sooner: the map starts hidden, the figures are 
   assert.equal(wide.doc.getElementById("bmBand").className, "vd-band");
   assert.equal(wide.doc.getElementById("mapShow").className, "btn ghost hide");
 });
+
+test("the footer starts below the first screen on /pipeline and /comps (2026-11-23)", () => {
+  // An empty pipeline is about 620px of page, and the body is a flex column
+  // as tall as the window, so the footer stood across the bottom third of
+  // the first screen (the owner's screenshot). The page's own main now fills
+  // that screen, as /sites has since 2026-11-16.
+  for (const page of ["pipeline", "comps"]) {
+    const html = renderVaultHTML(boot([]), { page });
+    const css = html.slice(html.indexOf("<style>"), html.indexOf("</style>")).replace(/\/\*[\s\S]*?\*\//g, "");
+    assert.match(css, /\nmain\.wrap\{flex:1;min-height:100vh;padding-top:40px;padding-bottom:72px\}/,
+      "/" + page + " lets its footer back onto the first screen");
+    // One rule, said once: a second main.wrap rule setting a height would
+    // decide this somewhere the line above does not look.
+    assert.equal((css.match(/min-height:100vh/g) || []).length, 2,
+      "expected the body's own min-height and main's, and nothing else");
+  }
+});

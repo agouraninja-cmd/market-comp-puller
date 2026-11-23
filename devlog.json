@@ -5575,5 +5575,11 @@
     "type": "fix",
     "title": "The BOV desk checks a broker’s email on the page it came from",
     "details": "The first live broker search (982 Warwick Ave) returned two addresses on a firm’s own domain that no page shows, and labeled them “on the firm’s own site” because only the domains were compared. That label is the one autopilot may send unread. The server now reads each cited page itself: an address is trusted only when that page shows it, an address the page does not show is marked “probably guessed”, a page that can’t be opened (a 404) is marked unchecked, and “Send all” leaves both for a person to send one at a time. When the search misses an address the broker’s own bio page shows, it is now picked up from the page."
+  },
+  {
+    "date": "2026-11-23",
+    "type": "fix",
+    "title": "The footer no longer sits on Pipeline’s first screen",
+    "details": "An empty Pipeline was shorter than the window, so the dark footer covered the bottom third of the first screen, on a computer and on a phone. The page now fills the first screen and the footer starts below it, the way Sites already does. Your comps follows the same rule."
   }
 ]

@@ -111,8 +111,16 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
    (main.wrap{flex:1;padding-top:32px;padding-bottom:64px}); these are the
    vault's, unchanged, so the fold moves nothing on screen.
    No literal tag syntax in here: this comment ships inside the stylesheet, and
-   the served page is counted for exactly one of each landmark element. */
-main.wrap{flex:1;padding-top:40px;padding-bottom:72px}
+   the served page is counted for exactly one of each landmark element.
+
+   min-height (2026-11-23, the owner: "make sure the footer isnt in the page
+   when you first click on the side tab for pipline"): an empty pipeline is
+   about 620px of page, so the body's flex column parked the footer across
+   the bottom third of the first screen, and on a phone too. The page now
+   fills that screen and the footer starts under it, which is the rule
+   sites-page.js (since 2026-11-16, the same complaint) and bulk-page.js
+   already carry. Both pages this file draws get it. */
+main.wrap{flex:1;min-height:100vh;padding-top:40px;padding-bottom:72px}
 .kicker{margin:0 0 var(--s3);font-size:var(--text-tiny);font-weight:600;letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink-3)}
 /* A member page's title is Inter since 2026-11-14 (app-shell.md, "Member

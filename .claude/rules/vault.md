@@ -73,6 +73,19 @@ paths:
 >   `test/vault-personal-decks.test.js`, `test/vault-shell.test.js` and
 >   `test/routes.test.js`.
 
+> **The footer starts below the first screen (2026-11-23, the owner: "make
+> sure the footer isnt in the page when you first click on the side tab for
+> pipline").** An empty pipeline is about 620px of page and the body is a
+> flex column as tall as the window, so the footer stood across the bottom
+> third of the first screen: at 626px of a 900px window, and at 716px of an
+> 844px phone. `main.wrap` in this page's stylesheet now carries
+> `min-height:100vh`, the rule `sites-page.js` (since 2026-11-16, for the
+> same complaint) and `bulk-page.js` already carry (Messages fills its
+> screen its own way, firms.md). It is on both pages the file draws;
+> `/comps` with an empty book was already taller than a 945px window, so
+> nothing moves there until a window is taller than that. Pinned in
+> `test/vault-page.test.js` ("the footer starts below the first screen").
+
 > **The list starts sooner on a phone (2026-11-15, the owner: "yes fix
 > both").** On a 390px phone the ledger began 1,115px down an 844px screen:
 > title, four figures (276px), the map band (180px) and its note (83px), the

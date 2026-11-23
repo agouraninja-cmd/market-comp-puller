@@ -714,6 +714,80 @@ and exporting each slide to PNG (a PowerShell one-liner, no dependency).
    wider band flags fewer comps; that is the chip agreeing with the range the
    page shows, and it was left that way on purpose.
 
+3i. **Net lease mode: a single-tenant net-leased subject is valued on cap
+   rates (2026-11-23; the owner's ask, "build the net lease mode", the day
+   before a demo to a net-lease investment-sales brokerage).** The first
+   report run on such a property (a 3,600 SF auto shop on a 15-year absolute
+   NNN lease, listed near $2.6M on a 7% cap) valued it near $800,000: it was
+   priced at the $/SF of small industrial sales, and a leased pad is priced on
+   its rent. Rules:
+   - **The trigger is one definition, `VALUATION.isNetLease(type, details)`:**
+     Retail with the center type "Single-tenant NNN", a subject field the form
+     already had. The page (`netLeaseOn`), the prompt (`buildPrompt`) and the
+     comp fit (`refineComps`) all call it, so they cannot disagree about which
+     reports are in the mode. No new field, no column, **no migration**.
+     Retail only: Industrial and Office have no field that says "net leased".
+   - **The math is valuation.js** (`capRateOf`, `capRateBand`,
+     `netLeaseValue`, `impliedCapRate`, tested): the comps' cap rates through
+     `robustPpsfRange` (middle 70% at four or more, the full spread under
+     that), UNWEIGHTED like `rentFromComps`, three sale comps with a readable
+     rate at least. `capRateOf` refuses a decimal fraction, a range and
+     anything outside 2-20%. Value is NOI over a rate, so the HIGHEST rate is
+     the Low figure. Do not borrow `compWeight` for it without a lab run: its
+     size and price-tier factors are about buildings and its trend is a price
+     index.
+   - **`netLeaseValuation(parsed, meta)` in index.html is the one
+     computation**, and the hero, `sellTodayEstimate`, the comparison card and
+     the Excel sheet all read it. It answers `{ band, source, noi, values }`:
+     `source` is `"comps"` or `"market"` (fewer than three rates falls back to
+     the search's `market_cap_rate_range`, and the copy says so; with neither,
+     it is null and the report is an ordinary Retail one).
+   - **Two hero branches, ahead of every other basis.** With an NOI: Low /
+     Likely / High in dollars, sub-labels "at a 7.36% cap rate", and
+     `lastValuation` set (`median_psf: null`). Without one: the three tiles
+     show the cap rates themselves (lowest first, as rates are quoted), the
+     basis line says what turns them into dollars, the trust line says what
+     $100,000 of income is worth, and `lastValuation` stays null, the lease
+     hero's rule: a rate is not a value. Both clear `currentPsfBand` (the
+     outlier chips describe a $/SF range the ledger did not use) and draw the
+     scatter in cap rates, only off the comps' own rates.
+   - **The $/SF figure is a cross-check row, worded as one** ("Net-leased
+     properties rarely trade on this"). In the no-NOI branch its dollars sit
+     in the sentence, not the Indicated value column (`netLeasePsfEntry(false)`):
+     `renderApproaches` leads with every row that has a figure, and it would
+     have been the only number in the statement.
+   - **The comparison card compares cap rates** (`renderNetLeaseComparison`):
+     the rate the asking price implies against the comps' median, in basis
+     points. A HIGHER rate at the ask is a LOWER price, so that is the green
+     case. It needs the NOI, an ask and a band; otherwise the card hides
+     rather than fall back to $/SF, which called a leased pad "66% above
+     market".
+   - **`netLeaseHero`** (set inside the branches, like `leaseHero`) picks the
+     mechanics sentence and skips the generic ask sentence, whose "different
+     vintage or a cheaper pocket" explains a $/SF gap.
+   - **Private as before (rule 6).** The mode reads `meta.subject.noi`, which
+     never reaches `/api/comps` and is stripped from shares, so a shared
+     net-lease report shows its reader the cap rates and no dollars. A test
+     fails if either function gains a request or storage.
+   - **A free report's range is Pro's:** `basisRow` (comp-gate.js) now carries
+     `cap_rate` on locked comps.
+   - **The search half** is search-pipeline.md ("Net lease"): the NET LEASE
+     prompt block and the comp fit's size exemption.
+   - **Not built, and worth knowing before a demo:** the market position
+     chart is still $/SF (its "You" marker sits far right on a leased pad);
+     lease term, lease type and guarantor ride in the comp's `tenancy` text,
+     not columns of their own (a real column spans `comp_corpus` and the
+     vault's `broker_comps`, two migrations); self-storage and mobile home
+     parks have no type; and **the prompt block has never been run against the
+     live model** (no key in the session that wrote it), so how many comps
+     come back with a cap rate is unmeasured. Run one real search and count
+     before trusting it.
+   - Tests: `test/valuation.test.js` (the math), `test/index-html.test.js`'s
+     last four blocks (the one computation, executed, and every surface held
+     to it), `test/comp-fit.test.js`, `test/comp-gate.test.js`. Rendered in
+     Chromium on sample comps in all three states, desktop and phone, with no
+     console errors.
+
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High
    range from sale-comp $/SF (leases are excluded even on mixed searches) ×

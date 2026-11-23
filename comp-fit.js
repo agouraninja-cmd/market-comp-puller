@@ -140,7 +140,8 @@ function misfit(c, subjectSqft) {
  * (the reason). Returns { kept, setAside, counts }.
  *
  * opts: { subjectSqft, propertyType, subjectAddress, deadUrls (Set or array
- *         of source URLs link-check called dead), radiusMiles (typed) }
+ *         of source URLs link-check called dead), radiusMiles (typed),
+ *         netLease (the subject is single-tenant net leased: no size rule) }
  */
 function applyCompFit(report, opts = {}) {
   const out = { kept: 0, setAside: 0, counts: {} };
@@ -162,7 +163,12 @@ function applyCompFit(report, opts = {}) {
     if (UNIT_TYPES.has(type) && !subjectIsUnit && isUnitSale(c)) {
       cut.push({ c, reason: "unit", restorable: false }); continue;
     }
-    if (SIZE_TYPES.has(type) && subjectSqft > 0) {
+    // A net-leased subject (opts.netLease, valuation.js isNetLease) is valued
+    // on its comps' cap rates, which building size does not set: a 1,400 SF
+    // oil-change pad and a 10,000 SF pharmacy on the same lease terms trade
+    // at the same rate. So the size rule does not apply, and cutting on it
+    // would throw away exactly the comps that mode values from.
+    if (SIZE_TYPES.has(type) && subjectSqft > 0 && !opts.netLease) {
       const r = sizeRatio(c, subjectSqft);
       if (r > 0 && (r < HARD_SIZE_MIN || r > HARD_SIZE_MAX)) {
         cut.push({ c, reason: "size", restorable: true }); continue;
@@ -235,8 +241,11 @@ function goodSaleCount(report, subjectSqft) {
  * wider search is TOLD the size band, so without one it would only repeat
  * the first search).
  */
-function needsWiderSearch(report, { propertyType, txFocus, subjectSqft } = {}) {
+function needsWiderSearch(report, { propertyType, txFocus, subjectSqft, netLease } = {}) {
   if (!SIZE_TYPES.has(String(propertyType || ""))) return false;
+  // The wider search asks for SIZE-matched sales, which is not what a
+  // net-leased subject is short of when it is short.
+  if (netLease) return false;
   if (txFocus === "leases") return false;
   if (!(num(subjectSqft) > 0)) return false;
   return goodSaleCount(report, subjectSqft) < WIDER_SEARCH_BELOW;

@@ -106,7 +106,14 @@ test("a whole gated response leaks nothing about a locked comp", () => {
 test("basis rows keep exactly the fields the valuation needs", () => {
   const row = basisRow(comp({ price_per_sqft: "$140" }));
   assert.deepEqual(Object.keys(row).sort(),
-    ["date", "price_per_sqft", "size_sqft", "source_type", "transaction"].sort());
+    ["cap_rate", "date", "price_per_sqft", "size_sqft", "source_type", "transaction"].sort());
+});
+
+test("cap_rate rides along so a net-leased subject's free range is the Pro range", () => {
+  assert.equal(basisRow(comp({ cap_rate: "6.25%" })).cap_rate, "6.25%");
+  assert.equal("cap_rate" in basisRow(comp({ cap_rate: "" })), false,
+    "an absent rate stays off the row, matching year_built");
+  assert.ok(!("price_or_rate" in basisRow(comp({ cap_rate: "6.25%" }))), "the sale price still does not travel");
 });
 
 test("$/SF is derived when the model left it blank, so no comp drops out of the range", () => {

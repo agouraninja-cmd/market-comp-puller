@@ -762,7 +762,84 @@
     return out;
   }
 
+  // -------------------------------------------------------------------------
+  // Net lease (2026-11-23). A single-tenant net-leased property is priced on
+  // its lease: net rent over a cap rate, the rate set by the tenant's credit
+  // and the years left. Its building's $/SF says almost nothing. The first
+  // report run on one (a 3,600 SF auto shop on a 15-year absolute NNN lease,
+  // listed near $2.6M on a 7% cap) was valued near $800,000 off the $/SF of
+  // small industrial sales.
+  //
+  // ONE definition of "this subject is net leased", read by the browser (the
+  // hero), by server.js (the prompt) and by comp-fit.js's caller, so the three
+  // cannot disagree about which reports are in the mode. Retail only for now:
+  // "Single-tenant NNN" is a Retail center type the form already offers, so
+  // the mode needs no new field, no column and no migration.
+  var NET_LEASE_TYPES = ["Retail"];
+  var NET_LEASE_CENTER_TYPE = "Single-tenant NNN";
+  function isNetLease(type, details) {
+    if (NET_LEASE_TYPES.indexOf(String(type || "")) < 0) return false;
+    var ct = String((details && details.center_type) || "").trim().toLowerCase();
+    return ct === NET_LEASE_CENTER_TYPE.toLowerCase();
+  }
+
+  // A SALE comp's cap rate as a percent (6.5, not 0.065), or NaN. Refuses
+  // rather than guesses, the displayMoney rule: a decimal fraction ("0.065"),
+  // a range ("6.0-6.5%") and anything outside the plausible window are all
+  // NaN, because a comp read at the wrong rate moves the value by a multiple
+  // and nothing downstream could tell. Leases never carry one that prices a
+  // sale.
+  var CAP_RATE_MIN = 2, CAP_RATE_MAX = 20;
+  function capRateOf(c) {
+    if (!c || String(c.transaction || "").toLowerCase().startsWith("lease")) return NaN;
+    var raw = String(c.cap_rate == null ? "" : c.cap_rate).trim();
+    // Exactly one number: "6.0-6.5%" and "6% to 7%" are ranges, not a rate.
+    if (!raw || (raw.match(/\d+(?:\.\d+)?/g) || []).length !== 1) return NaN;
+    var v = numericValue(raw);
+    return v >= CAP_RATE_MIN && v <= CAP_RATE_MAX ? v : NaN;
+  }
+
+  // The cap rates a set of comps traded at: robustPpsfRange's band (the
+  // middle 70% at four or more, the full spread under that), UNWEIGHTED. The
+  // $/SF weighting is not borrowed: its size and price-tier factors are about
+  // buildings, its trend index is a price index, and no lab run says what
+  // weights a cap rate. Every comp counts the same until one does
+  // (rentFromComps' rule). null under CAP_BAND_MIN_COMPS: one or two rates is
+  // not a range, and the caller falls back to the market's own.
+  var CAP_BAND_MIN_COMPS = 3;
+  function capRateBand(comps) {
+    var rates = (comps || []).map(capRateOf).filter(function (v) { return v > 0; })
+      .sort(function (a, b) { return a - b; });
+    if (rates.length < CAP_BAND_MIN_COMPS) return null;
+    var rr = robustPpsfRange(rates);
+    return { low: rr.low, mid: rr.mid, high: rr.high, trimmed: rr.trimmed, n: rates.length, rates: rates };
+  }
+
+  // Net income over a cap-rate band. The LOWEST rate gives the HIGH value.
+  // Unrounded: the caller rounds for display (heroRound). A band with no mid
+  // (the market's low-high range) takes the geometric middle, which is what
+  // the income-led hero has always shown as its midpoint.
+  function netLeaseValue(noi, band) {
+    var n = Number(noi);
+    if (!(n > 0) || !band) return null;
+    var lo = Number(band.low), hi = Number(band.high);
+    if (!(lo > 0) || !(hi >= lo)) return null;
+    var mid = Number(band.mid) > 0 ? Number(band.mid) : Math.sqrt(lo * hi);
+    return { low: n / (hi / 100), likely: n / (mid / 100), high: n / (lo / 100) };
+  }
+
+  // The cap rate a price implies for an income, as a percent, or null.
+  function impliedCapRate(noi, price) {
+    var n = Number(noi), p = Number(price);
+    if (!(n > 0) || !(p > 0)) return null;
+    var pct = (n / p) * 100;
+    return pct > 0 && pct < 100 ? pct : null;
+  }
+
   return {
+    isNetLease, NET_LEASE_TYPES, NET_LEASE_CENTER_TYPE,
+    capRateOf, capRateBand, netLeaseValue, impliedCapRate,
+    CAP_RATE_MIN, CAP_RATE_MAX, CAP_BAND_MIN_COMPS,
     numericValue, salePsfOf, robustPpsfRange, BAND_LOW_PCT, BAND_HIGH_PCT, heroRound,
     TIER_WEIGHT, tierOf, compDateMs, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
     defaultFreePassMiles, constructionMismatch, CONSTRUCTION_MISMATCH,

@@ -493,6 +493,22 @@ with the key and update the constant — an earlier model ID was retired.
     `meta.addressTyped` for a "Corrected from …" chip, and
     `maybePublishMarketSnapshot` files under the corrected address on all
     three exits, so a typo can never publish a /market/ page.
+  - **Net lease (2026-11-23; report-and-valuation.md flow 3i).** When
+    `VALUATION.isNetLease(type, subjectDetails)` (Retail, center type
+    "Single-tenant NNN"), `buildPrompt` adds a NET LEASE block after SIZE
+    FIT, which it says it overrides: return sales of single-tenant
+    net-leased properties that STATE a cap rate, same kind of tenant first,
+    then lease term, then lease type; compute a rate from a page's own NOI
+    and price, never estimate one; name the tenant, lease type, years left
+    and guarantor in `tenancy`; and make `market_cap_rate_range` the
+    net-lease range, not all retail's. Not on a leases-only search or the
+    wider lane. `refineComps` passes `netLease` to `applyCompFit` (no `size`
+    cut: a cap rate is not set by building size, and the cut would remove
+    the comps the page values from) and to `needsWiderSearch` (false: that
+    search asks for size-matched sales). Dead sources, unit sales and
+    distance are unchanged. **Unmeasured against the live model**; the first
+    such report had 3 comps with a cap rate out of 34, which is what the
+    block is there to change.
   - `COMP_FIT=off` rolls back the whole step (no placement, no fit, no
     wider search). Tests: `test/comp-fit.test.js` (the rules, the page's
     sentence and adoption, the wiring by source),

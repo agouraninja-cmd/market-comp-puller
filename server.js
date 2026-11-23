@@ -243,6 +243,9 @@ const LINKCHECK = require("./link-check");
 // Which comps are good enough to value this property, and when to search
 // wider (2026-11-17). Rules and history in comp-fit.js's header.
 const COMPFIT = require("./comp-fit");
+// The one definition of "this subject is net leased" (valuation.js isNetLease),
+// shared with the report page so the prompt, the comp fit and the hero agree.
+const VALUATION = require("./valuation");
 // Valuation backtest — hold-one-out accuracy scoring over the comp corpus.
 // Pure and tested, like the three modules above; server.js owns the database
 // read, the memo and the route (GET /api/accuracy).
@@ -10052,6 +10055,23 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   // listing sites are the weaker source for building SF anyway.
   const wantsSize = !subjectSizeSqft && lane !== "primary";
 
+  // Net lease mode (2026-11-23; valuation.js isNetLease, report-and-valuation.md
+  // flow 3i). The report page values a single-tenant net-leased subject on the
+  // cap rates its comps traded at, so those are the rows this search has to
+  // bring back. Without this block the model matches on building size and
+  // returns whatever small buildings sold nearby: the first such report (a
+  // 3,600 SF auto shop listed on a 7% cap) came back with 34 comps of which 3
+  // carried a cap rate, all three on buildings ten times its size. Prompt rules are requests; the page falls back to the market's own
+  // range when fewer than three comps state a rate.
+  const netLease = VALUATION.isNetLease(type, subjectDetails) && txFocus !== "leases" && lane !== "wider";
+  const netLeaseBlock = netLease ? [
+    `NET LEASE (this overrides SIZE FIT above): the target is a single-tenant net-leased property, and buyers price those on the lease, not on the building: the cap rate, the tenant and its credit, the years left on the lease, and the lease type. The report values the target from the CAP RATES of your sale comps, so a comp without a cap rate is nearly useless here and a comp with one is the most valuable row you can return.`,
+    `Return SALES of single-tenant net-leased properties (closed, or actively listed with an asking cap rate) that state a cap rate. Prefer, in this order: the same tenant or the same kind of tenant as the target (quick-service restaurant, auto service, pharmacy, dollar store, bank, convenience and fuel, medical or dental), a similar number of years left on the lease, and the same lease type. Building size matters little: never pass over a net-leased sale with a stated cap rate because its building is larger or smaller than the target.`,
+    `When a sale's page states the price and the net operating income or annual rent but no cap rate, compute it (income divided by price) and report that. Never estimate a cap rate for a comp from market averages: if the page gives neither a rate nor the income, leave "cap_rate" as "".`,
+    `For each comp, "tenancy" must name the tenant, the lease type (absolute NNN, NNN, NN or ground lease), the years left on the lease at the sale, and who guarantees it when a source says, e.g. "Single-tenant absolute NNN - Take 5 Oil Change, 13 yrs left, corporate". Put rent increases in "notes" (e.g. "10% bumps every 5 yrs").`,
+    compsOnly ? "" : `"market_cap_rate_range" must be the going-in range for single-tenant net-leased properties with this kind of tenant in this region, not for all ${type.toLowerCase()} property. In "summary", say how the target's tenant, lease term and lease type compare with the comps'.`,
+  ].filter(Boolean).join("\n") : "";
+
   // Anchor the lookback window to real dates — the model doesn't know "today",
   // so "last N months" alone drifts toward stale comps.
   const now = new Date();
@@ -10238,6 +10258,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
         ? ` (${subjectSizeSqft.toLocaleString("en-US")} SF, so roughly ${Math.round(subjectSizeSqft / 2).toLocaleString("en-US")} to ${(subjectSizeSqft * 2).toLocaleString("en-US")} SF)`
         : ` (once you determine the target's size)`
     } where the market offers them - a small building and a very large one trade at different $/SF. If you must include comps materially larger or smaller to reach 3, keep them, but say so in "summary". A comp under 40% or over 2.5 times the target's size is a different size class: we set those aside before valuing, so search further out for a right-sized sale rather than returning one.`,
+    netLeaseBlock,
     // The three rules below (2026-11-17) came from one report: a 32,000 SF
     // Englewood CO building valued on two 7,200 SF buildings, a condo unit
     // cited to a parked domain, and two comps 9 miles off in another
@@ -11676,9 +11697,12 @@ async function refineComps(report, ctx) {
   try {
     const subjectSqft = Number(subjectSizeSqft) > 0 ? Number(subjectSizeSqft)
       : (GATE.numericValue(report.subject_size_sqft) || 0);
+    // A net-leased subject is valued on cap rates, which size does not set:
+    // no size cut, and no wider search for size-matched sales (comp-fit.js).
+    const netLease = VALUATION.isNetLease(type, subjectDetails);
     const fitOpts = (dead) => ({
       subjectSqft, propertyType: type, subjectAddress: address, deadUrls: dead,
-      radiusMiles: RADIUSBLEND.parseRadiusMiles(note),
+      radiusMiles: RADIUSBLEND.parseRadiusMiles(note), netLease,
     });
     // A corrected address is where the building really is; the typed one may
     // name a city the geocoder cannot find, or the wrong one.
@@ -11688,7 +11712,7 @@ async function refineComps(report, ctx) {
     if (first.setAside) {
       console.log(`🎯 Comp fit: set aside ${first.setAside} of ${first.setAside + first.kept} comp(s) — ${JSON.stringify(first.counts)} — ${address}`);
     }
-    if (!COMP_WIDER_SEARCH || !COMPFIT.needsWiderSearch(report, { propertyType: type, txFocus, subjectSqft })) return;
+    if (!COMP_WIDER_SEARCH || !COMPFIT.needsWiderSearch(report, { propertyType: type, txFocus, subjectSqft, netLease })) return;
 
     const have = COMPFIT.goodSaleCount(report, subjectSqft);
     const ask = Math.max(4, Math.min(8, (Number(maxComps) || 8) - report.comps.length));

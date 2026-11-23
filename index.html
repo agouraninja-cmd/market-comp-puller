@@ -5589,7 +5589,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   const { numericValue, salePsfOf, heroRound,
           compAgeYears, yearOf, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf, askFit,
           conditionSpread, unexplainedGain, conditionFit, countedPsf,
-          parseRadiusMiles, defaultFreePassMiles } = VALUATION;
+          parseRadiusMiles, defaultFreePassMiles,
+          isNetLease, capRateBand, netLeaseValue, impliedCapRate } = VALUATION;
 
   // ----------------------------------------------------------------------------
   // Table columns
@@ -7332,6 +7333,106 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     return v > 0 && v < 100 ? v : null;
   }
 
+  // --------------------------------------------------------------------------
+  // Net lease mode (2026-11-23). A single-tenant net-leased property is priced
+  // on its lease (net income over a cap rate), not on its building's $/SF, so
+  // for a Retail subject whose center type is "Single-tenant NNN" the hero
+  // values it from the CAP RATES its sale comps traded at.
+  //
+  // netLeaseValuation is the ONE computation, and every surface that quotes
+  // the value reads it (the hero, sellTodayEstimate, the comparison card), so
+  // none of them can print a $/SF figure beside a cap-rate one. It returns:
+  //   band   - the comps' cap rates (VALUATION.capRateBand: three or more sale
+  //            comps with a readable rate), else the search's own
+  //            market_cap_rate_range, else the whole answer is null and the
+  //            report is valued the ordinary way.
+  //   source - "comps" or "market", so the copy never credits the comps with
+  //            a range they did not supply.
+  //   values - Low / Likely / High in dollars, rounded the way the hero
+  //            rounds, or null when no NOI has been typed. The NOI is the
+  //            browser's own (rule 6): it is never sent, and a shared report
+  //            arrives without it, so its reader gets the rates and no dollars.
+  // --------------------------------------------------------------------------
+  function netLeaseOn(meta) {
+    return !!meta && meta.txFocus !== "leases" && isNetLease(meta.type, (meta.subject || {}).details);
+  }
+  function netLeaseValuation(parsed, meta) {
+    if (!netLeaseOn(meta)) return null;
+    let band = capRateBand(valuationComps());
+    let source = "comps";
+    if (!band) {
+      const capR = parsed && parsed.market_cap_rate_range ? parsed.market_cap_rate_range : null;
+      const lo = capR ? numericValue(capR.low) : NaN;
+      const hi = capR ? numericValue(capR.high) : NaN;
+      if (!(lo > 0 && hi >= lo)) return null;
+      band = { low: lo, mid: Math.sqrt(lo * hi), high: hi, trimmed: false, n: 0, rates: [] };
+      source = "market";
+    }
+    const noi = meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
+    const v = noi ? netLeaseValue(noi, band) : null;
+    return {
+      band, source, noi,
+      values: v ? { low: heroRound(v.low), likely: heroRound(v.likely), high: heroRound(v.high) } : null,
+    };
+  }
+  // A cap rate as the trade writes it: two decimals, always ("6.50%").
+  function capRateText(v) { return (Math.round(v * 100) / 100).toFixed(2) + "%"; }
+
+  // The comparison card for a net-leased subject: the cap rate the asking
+  // price implies against the rates the comps traded at. The $/SF card it
+  // replaces would call a pad on a 15-year lease "230% above market", which is
+  // true of the building and says nothing about the deal. Needs the NOI, an
+  // asking price and a band; without all three there is nothing to compare,
+  // and the card hides rather than fall back to $/SF.
+  function renderNetLeaseComparison(parsed, card) {
+    const nl = netLeaseValuation(parsed, currentMeta);
+    const priceR = askingRangeFrom(parsed);
+    const ask = priceR ? (priceR.min + priceR.max) / 2 : 0;
+    const implied = nl && nl.noi ? impliedCapRate(nl.noi, ask) : null;
+    if (!nl || !implied) { card.classList.add("hidden"); return; }
+    const b = nl.band;
+    const fromComps = nl.source === "comps";
+    setCompareLabels(
+      "Asking Price vs. Net-Lease Comps",
+      "Cap rate at the ask",
+      fromComps ? "Comp median cap rate" : "Market cap rate (midpoint)",
+      (fromComps ? `${b.n} sale comps, ` : "market range, ") + `${capRateText(b.low)} to ${capRateText(b.high)}`,
+      "Difference vs. comps"
+    );
+    const ppsfEl = document.getElementById("targetPpsfVal");
+    ppsfEl.classList.add("text-2xl");
+    ppsfEl.classList.remove("text-xl");
+    animateValue(ppsfEl, implied, capRateText);
+    document.getElementById("targetBasis").textContent =
+      `your net operating income ÷ ${formatUsd(ask, { maximumFractionDigits: 0 })}`;
+    animateValue(document.getElementById("marketPpsfVal"), b.mid, capRateText);
+
+    const deltaTile = document.getElementById("deltaTile");
+    const deltaVal = document.getElementById("deltaVal");
+    const deltaPct = document.getElementById("deltaPct");
+    const verdict = document.getElementById("verdictText");
+    const whose = fromComps ? "the comps'" : "the market's";
+    const bps = Math.round((implied - b.mid) * 100);
+    if (implied >= b.low && implied <= b.high) {
+      deltaTile.className = "rd-tile text-ink";
+      deltaVal.textContent = "In range";
+      deltaPct.textContent = `inside ${whose} cap-rate range`;
+      verdict.textContent = `At the asking price this income is a ${capRateText(implied)} cap rate, inside the `
+        + `${capRateText(b.low)} to ${capRateText(b.high)} ${fromComps ? "these comps traded at" : "range for this market"}. `
+        + "Where it sits inside the range comes down to the tenant's credit and the years left on the lease.";
+    } else {
+      // A HIGHER cap rate at the ask is a LOWER price for the same income.
+      const higher = implied > b.high;
+      deltaTile.className = "rd-tile " + (higher ? "text-ok-text" : "text-warn-text");
+      deltaVal.textContent = (bps > 0 ? "+" : "−") + Math.abs(bps) + " bps";
+      deltaPct.textContent = (higher ? "a higher" : "a lower") + ` cap rate than ${whose} median`;
+      verdict.textContent = higher
+        ? `At the asking price this income is a ${capRateText(implied)} cap rate, above the ${capRateText(b.low)} to ${capRateText(b.high)} ${fromComps ? "these comps traded at" : "range for this market"}: it is priced below them for the same income. A shorter lease, a weaker tenant or rent above market would each explain that.`
+        : `At the asking price this income is a ${capRateText(implied)} cap rate, below the ${capRateText(b.low)} to ${capRateText(b.high)} ${fromComps ? "these comps traded at" : "range for this market"}: it is priced above them for the same income. A longer lease, a stronger tenant or scheduled rent increases would each support that.`;
+    }
+    card.classList.remove("hidden");
+  }
+
   function setCompareLabels(title, left, mid, midSub, right) {
     document.getElementById("compareTitle").textContent = title;
     document.getElementById("compareLeftLab").textContent = left;
@@ -7401,6 +7502,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const card = document.getElementById("compareCard");
     if (currentMeta && currentMeta.type === "Residential") {
       return renderResidentialAskComparison(parsed, card);
+    }
+    // A net-leased subject compares cap rates, never $/SF (see
+    // renderNetLeaseComparison). Only while the mode has a band to speak
+    // from: with none, the report is an ordinary Retail one and so is this.
+    if (netLeaseValuation(parsed, currentMeta)) {
+      return renderNetLeaseComparison(parsed, card);
     }
 
     // The sub-label said "from pulled comps" until 2026-08-23, and the figure
@@ -8476,7 +8583,153 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const sfUsable = !!(sizeR && ppsfs.length >= 2);
     const leadWithAlt = !!altRange && (altRange.spec.leads || !sfUsable);
 
-    if (sfUsable && !leadWithAlt) {
+    // Net lease mode leads every other basis (see netLeaseValuation). Two
+    // branches: with the owner's NOI the ledger is dollars; without it the
+    // ledger is the cap rates themselves, the way the no-size branch below
+    // shows a $/SF band rather than dashes. `netLeaseHero` tells the code
+    // after the chain which math ran, as leaseHero does for the rent range.
+    const nl = netLeaseValuation(parsed, meta);
+    let netLeaseHero = false;
+    // The $/SF view of the same comps, kept as a cross-check row in both
+    // net-lease branches: it is real evidence, it is just not what sets the
+    // price of a leased pad, and the row says so.
+    // `figure: false` (the no-NOI branch) keeps the dollars in the sentence
+    // and out of the Indicated value column: renderApproaches leads with every
+    // row that has a figure, and with no income line to stand beside, this one
+    // would be the only number in the statement and read as the answer.
+    const netLeasePsfEntry = (figure) => {
+      if (!sfUsable) return [];
+      const range = `${fmtTotal(psfBand.low * sizeR.min)} – ${fmtTotal(psfBand.high * sizeR.max)}`;
+      const caveat = "Net-leased properties rarely trade on this: the lease sets the price, not the building, so it is here for reference and not as a second estimate.";
+      return [figure ? {
+        label: "Price per square foot cross-check",
+        value: range,
+        text: `what ${ppsfs.length} sale comps say buyers pay per square foot, applied to this ${noun}'s size. ${caveat}`,
+      } : {
+        label: "Price per square foot cross-check",
+        text: `${range} is what ${ppsfs.length} sale comps say buyers pay per square foot, applied to this ${noun}'s size. ${caveat}`,
+        muted: true,
+      }];
+    };
+    // How far apart the comps' rates are, in points of cap rate. The bars are
+    // a judgment, not a measurement (no lab run covers cap rates yet): within
+    // half a point net-lease comps are telling one story, and past a point and
+    // a quarter they are different credits or lease terms.
+    const capSpreadPhrase = (b) => (b.high - b.low <= 0.5 ? "The comps agree closely."
+      : b.high - b.low <= 1.25 ? "A typical spread for net-lease sales."
+      : "The comps span a wide range of cap rates, so treat the midpoint loosely.");
+    const capThinNote = (b) => (b.n < 4
+      ? ` Only ${b.n} back this range, so it shows the full observed spread - treat it as a rough guide.`
+      : "");
+    const leaseDrivesNote = " A net-leased property is priced on its lease, so building size is not part of this estimate; "
+      + "the tenant's credit and the years left on the lease decide where in the range it belongs.";
+
+    if (nl && nl.values) {
+      netLeaseHero = true;
+      // The outlier chips and the $/SF band they read describe a range this
+      // ledger does not use; with the band cleared they draw nothing.
+      currentPsfBand = null;
+      const b = nl.band, v = nl.values;
+      const fromComps = nl.source === "comps";
+      animateValue(lowEl, v.low, fmtTotal);
+      animateValue(midEl, v.likely, fmtTotal);
+      animateValue(highEl, v.high, fmtTotal);
+      lastValuation = { low: v.low, likely: v.likely, high: v.high, median_psf: null };
+      // The HIGHEST rate gives the LOW value, so the sub-labels run high to low.
+      setPpsf("ownerLowPpsf", "at a " + capRateText(b.high) + " cap rate");
+      setPpsf("ownerMidPpsf", "at a " + capRateText(b.mid) + " cap rate · " + (fromComps ? "comp median" : "market midpoint"));
+      setPpsf("ownerHighPpsf", "at a " + capRateText(b.low) + " cap rate");
+      basisEl.textContent = fromComps
+        ? `Your net operating income ÷ the cap rates of ${b.n} sale comps`
+          + (currentComps.length > b.n ? ` (${currentComps.length} in the table)` : "")
+        : "Your net operating income ÷ the market's cap-rate range";
+      // What the asking price says about the same income, in the unit this
+      // ledger speaks. The generic ask sentence after the chain is skipped for
+      // this branch: its "different vintage or a cheaper pocket" is about $/SF.
+      const nlAsk = askingRangeFrom(parsed);
+      const nlAskMid = nlAsk ? (nlAsk.min + nlAsk.max) / 2 : 0;
+      const nlImplied = impliedCapRate(nl.noi, nlAskMid);
+      const askNote = nlImplied
+        ? ` At the ${formatUsd(nlAskMid, { maximumFractionDigits: 0 })} asking price this income is a ${capRateText(nlImplied)} cap rate, `
+          + (nlImplied > b.high ? "above this range, so it is priced below these figures."
+            : nlImplied < b.low ? "below this range, so it is priced above these figures."
+            : "inside this range.")
+        : "";
+      trustEl.textContent = (fromComps
+        ? `Based on ${b.n} sale comps that stated a cap rate. ${capSpreadPhrase(b)}` + capThinNote(b)
+        : `Fewer than ${VALUATION.CAP_BAND_MIN_COMPS} sale comps here stated a cap rate, so this uses the market's `
+          + `${capRateText(b.low)} to ${capRateText(b.high)} range for this kind of property instead of these comps.`)
+        + askNote + leaseDrivesNote;
+      trustEl.classList.remove("hidden");
+      // Same unit as the ledger's sub-labels. Only off the comps' own rates:
+      // a market range has no ticks to draw.
+      if (fromComps) renderCompScatter(b.rates, b, { fmt: capRateText, unitPhrase: "cap rate" });
+      const entries = [{
+        label: "Income approach (net lease)",
+        value: `${fmtTotal(v.low)} – ${fmtTotal(v.high)}`,
+        text: (fromComps
+          ? `your net operating income valued at the ${capRateText(b.low)} to ${capRateText(b.high)} cap rates ${b.n} comparable sales traded at. `
+          : `your net operating income valued at the market's ${capRateText(b.low)} to ${capRateText(b.high)} cap-rate range. `)
+          + "This is the headline range above.",
+      }];
+      // The market's own range beside the comps', when both exist: the same
+      // two-line reading the income approach gives the owner's own rate.
+      if (fromComps && capOk) {
+        entries.push({
+          label: "Income approach (market range)",
+          value: `${fmtTotal(noi / (capHi / 100))} – ${fmtTotal(noi / (capLo / 100))}`,
+          text: `the same income at the ${capRateText(capLo)} to ${capRateText(capHi)} range this search reported for the market, to read against the comps' own rates above.`,
+        });
+      }
+      if (userCap) {
+        entries.push({
+          label: "Income approach (your cap rate)",
+          value: fmtTotal(noi / (userCap / 100)),
+          text: `the same income at the ${capPct(userCap)}% rate you entered under 'Details for comps'.`,
+        });
+      }
+      entries.push(...netLeasePsfEntry(true));
+      entries.push(costApproachEntry);
+      renderApproaches(withAssessed(entries, v.low, v.high));
+      estimateNoteEl.textContent = "Automated estimate from the income you entered and the cap rates of recent comparable sales. "
+        + "Not an appraisal and not a broker opinion of value.";
+    } else if (nl) {
+      // Net leased, and no NOI to divide. The rates ARE the answer the comps
+      // can give, so the ledger shows them (lowest first, as rates are quoted)
+      // and says what turns them into dollars. lastValuation stays null: a
+      // rate is not a value, and everything downstream of it means dollars.
+      netLeaseHero = true;
+      currentPsfBand = null;
+      const b = nl.band;
+      const fromComps = nl.source === "comps";
+      animateValue(lowEl, b.low, capRateText);
+      animateValue(midEl, b.mid, capRateText);
+      animateValue(highEl, b.high, capRateText);
+      setPpsf("ownerLowPpsf", "cap rate");
+      setPpsf("ownerMidPpsf", "cap rate · " + (fromComps ? "comp median" : "market midpoint"));
+      setPpsf("ownerHighPpsf", "cap rate");
+      basisEl.textContent = (fromComps
+        ? `The cap rates ${b.n} comparable sales traded at`
+          + (currentComps.length > b.n ? ` (${currentComps.length} in the table). ` : ". ")
+        : "The market's cap-rate range for this kind of property. ")
+        + `A net-leased ${noun} is priced on its rent, not its square feet: enter its net operating income under 'Details for comps' and this becomes a dollar value instantly.`;
+      const per = netLeaseValue(100000, b);
+      trustEl.textContent = (fromComps
+        ? `Based on ${b.n} sale comps that stated a cap rate. ${capSpreadPhrase(b)}` + capThinNote(b)
+        : `Fewer than ${VALUATION.CAP_BAND_MIN_COMPS} sale comps here stated a cap rate, so this is the market's range rather than these comps'.`)
+        + ` At these rates every $100,000 of net income is worth about ${fmtTotal(per.low)} to ${fmtTotal(per.high)}.`;
+      trustEl.classList.remove("hidden");
+      if (fromComps) renderCompScatter(b.rates, b, { fmt: capRateText, unitPhrase: "cap rate" });
+      const entries = [{
+        label: "Income approach (net lease)",
+        text: `not run yet: enter this ${noun}'s net operating income under 'Details for comps' and it is valued at these cap rates.`,
+        muted: true,
+      }, ...netLeasePsfEntry(false), costApproachEntry];
+      // A cap rate is not a dollar range, so no disagreement sentence.
+      renderApproaches(withAssessed(entries, NaN, NaN));
+      estimateNoteEl.textContent = "Cap rates from recent comparable sales. "
+        + "Not an appraisal and not a broker opinion of value.";
+    } else if (sfUsable && !leadWithAlt) {
       // Outlier-resistant $/SF band (see robustPpsfRange) instead of raw min/max.
       const rr = psfBand;
       const midSize = (sizeR.min + sizeR.max) / 2;
@@ -8893,7 +9146,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const askMid = askR ? (askR.min + askR.max) / 2 : 0;
     const likely = lastValuation && lastValuation.likely;
     const askGap = askFit(askMid, likely);
-    if (askGap && askGap.skewed) {
+    // Not on a net-lease ledger: that branch has already said what the ask
+    // implies, as a cap rate, and "a different vintage or a cheaper pocket"
+    // is an explanation of a $/SF gap that this range was not built from.
+    if (askGap && askGap.skewed && !netLeaseHero) {
       const askMoney = formatUsd(askMid, { maximumFractionDigits: 0 });
       const askPsf = subjSFMid > 0 ? formatUsd(askMid / subjSFMid, { maximumFractionDigits: 0 }) + "/SF" : "";
       const psfBit = askPsf ? ` (${askPsf})` : "";
@@ -9022,7 +9278,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // because a reader in a monthly market is looking at a converted number.
     const leaseWeighNote = "Every priced lease comp counts the same here, and the range is the "
       + "middle half of them; rates quoted monthly are converted to a year before it is taken.";
-    if (trustEl.textContent) mechanics.unshift(leaseHero ? leaseWeighNote : weighNote);
+    // And a third: the net-lease range is not the weighted $/SF math either.
+    // Every comp with a readable cap rate counts once, and the range is the
+    // middle 70% of those rates (valuation.js capRateBand), the full spread
+    // under four.
+    const netLeaseWeighNote = "Every sale comp that stated a cap rate counts the same here, and the range is the "
+      + "middle 70% of those rates (all of them when there are fewer than four). A value is the net operating "
+      + "income divided by a rate, so the lowest cap rate gives the High figure. Comps with no stated rate, "
+      + "and lease comps, are in the table but not in this range.";
+    if (trustEl.textContent) mechanics.unshift(netLeaseHero ? netLeaseWeighNote : leaseHero ? leaseWeighNote : weighNote);
     const howWrap = document.getElementById("ownerTrustHowWrap");
     const howBody = document.getElementById("ownerTrustHow");
     howBody.textContent = mechanics.join(" ");
@@ -9057,6 +9321,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // The same "sell today" number the hero leads with: comp $/SF midpoint × SF,
   // falling back to the income-approach midpoint when sale comps are thin.
   function sellTodayEstimate(parsed, meta) {
+    // A net-leased subject sells on its lease. The hero leads with
+    // netLeaseValuation whenever it answers, so this does too, from the same
+    // call: with an NOI it is that Likely figure; without one the hero shows
+    // cap rates and no dollars, and this returns nothing rather than the $/SF
+    // figure the hero declined to headline.
+    const nl = netLeaseValuation(parsed, meta);
+    if (nl) return nl.values ? { value: nl.values.likely, source: "net-lease income value" } : null;
     let sizeR = subjectRangeFromMeta("size");
     if (!sizeR && parsed) {
       const found = numericValue(parsed.subject_size_sqft);
@@ -23318,6 +23589,7 @@ async function renderMyDesk() {
       const assessed = currentParsed && currentParsed.subject_assessed;
       const assessedN = assessed ? numericValue(assessed.value) : NaN;
       const sell = sellTodayEstimate(currentParsed, currentMeta);
+      const nlX = netLeaseValuation(currentParsed, currentMeta);
       const cc = curationCounts();
       const brand = activeBrand();
       const vRows = [
@@ -23350,7 +23622,15 @@ async function renderMyDesk() {
           // the sheet's own $/SF column and must not be called that. Read off
           // the band, not lastValuation: that object is posted to the server
           // as a portfolio snapshot and must keep its four fields.
-          [currentPsfBand && currentPsfBand.restated ? "Median $/SF at your size" : "Comp median $/SF", xlsxMoney(lastValuation.median_psf)],
+          // A net-lease value has no $/SF behind it: name the basis and the
+          // rates it was taken over instead of a blank $/SF cell.
+          ...(nlX && nlX.values ? [
+            ["Basis", "Net operating income ÷ cap rate (net lease)"],
+            [nlX.source === "comps" ? `Cap rates of ${nlX.band.n} sale comps` : "Market cap-rate range",
+              `${capRateText(nlX.band.low)} – ${capRateText(nlX.band.high)}, ${nlX.source === "comps" ? "median" : "midpoint"} ${capRateText(nlX.band.mid)}`],
+          ] : [
+            [currentPsfBand && currentPsfBand.restated ? "Median $/SF at your size" : "Comp median $/SF", xlsxMoney(lastValuation.median_psf)],
+          ]),
         ] : []),
         ...(sell && sell.value > 0 && (!lastValuation || Math.round(sell.value) !== Math.round(lastValuation.likely))
           ? [["Sell today (est.)", xlsxMoney(Math.round(sell.value))], ["Sell-today basis", sell.source]] : []),

@@ -561,7 +561,10 @@ test("land's comp table leads with acres and $/acre, and a bare-digit size gets 
 });
 
 test("a land report leads per acre from the lot size when no acreage was typed (2026-10-21)", () => {
-  const hero = html.slice(html.indexOf("  function renderOwnerHero(parsed, meta) {"), html.indexOf("  function renderOwnerHero(parsed, meta) {") + 40000);
+  // The whole function, up to the next one: a fixed 40,000-character window
+  // stopped reaching the $/SF branch when the net-lease branches went in
+  // ahead of it (2026-11-23).
+  const hero = html.slice(html.indexOf("  function renderOwnerHero(parsed, meta) {"), html.indexOf("  function sellTodayEstimate(parsed, meta) {"));
   assert.match(hero, /if \(meta\.type === "Land" && sizeR && !\(numericValue\(\(s\.details \|\| \{\}\)\.lot_acres\) > 0\)\) \{\s*acresFromLot = Math\.round\(\(\(sizeR\.min \+ sizeR\.max\) \/ 2 \/ 43560\) \* 100\) \/ 100;/);
   assert.match(hero, /const altRange = altBasisRange\(meta, sAlt, saleComps, parsed\);/);
   assert.match(hero, /const altEntry = altBasisEntry\(meta, sAlt, saleComps, parsed\);/);
@@ -1901,7 +1904,13 @@ test("the mechanics half describes the math that actually ran", () => {
   // the wrong sentence.
   assert.match(body, /let leaseHero = false;/);
   assert.match(body, /\} else if \(leaseRent\) \{\n      leaseHero = true;/);
-  assert.match(body, /mechanics\.(un)?shift\(leaseHero \? leaseWeighNote : weighNote\)/);
+  // Three maths now, three sentences: the net-lease range (2026-11-23) is not
+  // the weighted $/SF band either, so it is asked first.
+  assert.match(body, /mechanics\.(un)?shift\(netLeaseHero \? netLeaseWeighNote : leaseHero \? leaseWeighNote : weighNote\)/);
+  assert.match(body, /let netLeaseHero = false;/);
+  assert.match(body, /if \(nl && nl\.values\) \{\n      netLeaseHero = true;/);
+  assert.match(body, /\} else if \(nl\) \{[\s\S]{0,500}netLeaseHero = true;/);
+  assert.match(body, /const netLeaseWeighNote = "Every sale comp that stated a cap rate counts the same here/);
   assert.doesNotMatch(body, /leaseHero = leaseRent/, "that would describe a branch that did not render");
 
   // The MLS sentence is a claim about SALE comp coverage (MLS, a CMA and an
@@ -4058,11 +4067,13 @@ test("Sell today is the hero's Likely when the comps set it", () => {
     { transaction: "Sale", date: "Jan 2026", size_sqft: "47,500", price_per_sqft: "$110", source_type: "public_record" },
     { transaction: "Sale", date: "Aug 2025", size_sqft: "49,000", price_per_sqft: "$125", source_type: "listing" },
   ];
-  const sellWith = (list, cap) => new Function("subjectRangeFromMeta", "numericValue", "valueFromComps", "valuationComps", "asOfOf", "trendPctOf",
-    "subjectYearForMatch", "weightOpts", "subjectCapRate",
+  // `nl` stands in for netLeaseValuation: null on every report that is not a
+  // net-leased subject, which is every case here but the last block.
+  const sellWith = (list, cap, nl) => new Function("subjectRangeFromMeta", "numericValue", "valueFromComps", "valuationComps", "asOfOf", "trendPctOf",
+    "subjectYearForMatch", "weightOpts", "subjectCapRate", "netLeaseValuation",
     liftFn("  function sellTodayEstimate(parsed, meta) {") + "return sellTodayEstimate;")(
     () => ({ min: 48000, max: 48000 }), V.numericValue, V.valueFromComps, () => list, () => asOf, () => 3.5,
-    () => null, () => ({ propertyType: "Industrial" }), () => cap);
+    () => null, () => ({ propertyType: "Industrial" }), () => cap, () => nl || null);
   const hero = V.valueFromComps(comps, { subjectSF: { min: 48000, max: 48000 }, asOf, trendPct: 3.5, subjectYear: null, propertyType: "Industrial" });
   assert.notEqual(hero.mid, hero.psfMid * 48000, "the fixture must be one where the rounding shows, or this proves nothing");
   const sell = sellWith(comps, null)({}, { subject: {} });
@@ -4076,6 +4087,14 @@ test("Sell today is the hero's Likely when the comps set it", () => {
   assert.equal(Math.round(income.value), Math.round(Math.sqrt((480000 / 0.08) * (480000 / 0.06))));
   assert.deepEqual(sellWith([], 6)({}, { subject: { noi: 480000 } }), { value: 8000000, source: "income approach at your cap rate" });
   assert.equal(sellWith([], null)({}, { subject: {} }), null);
+
+  // A net-leased subject sells on its lease: the hero's own Likely with an
+  // NOI, and NOTHING without one, even though these comps would price it per
+  // square foot. Quoting that figure is what the mode exists to stop.
+  const band = { low: 6, mid: 6.5, high: 7.25 };
+  assert.deepEqual(sellWith(comps, null, { band, source: "comps", noi: 180000, values: { low: 2475000, likely: 2775000, high: 3000000 } })({}, { subject: { noi: 180000 } }),
+    { value: 2775000, source: "net-lease income value" });
+  assert.equal(sellWith(comps, null, { band, source: "comps", noi: null, values: null })({}, { subject: {} }), null);
 });
 
 test("the report tab's map re-measure survives the map being dropped under it", () => {
@@ -4240,4 +4259,106 @@ test("the spread verdict says the same thing about the same comps under the wide
   // closely read as merely typical, and a typical set as wide.
   assert.equal(verdict(widthOf(9), 0.15, 0.35), "typical");
   assert.equal(verdict(widthOf(22), 0.15, 0.35), "wide");
+});
+
+// --- Net lease mode (2026-11-23) ---------------------------------------------
+// A Retail subject whose center type is "Single-tenant NNN" is valued on the
+// cap rates its comps traded at, not their $/SF. The math is valuation.js's
+// (test/valuation.test.js); these hold the page to using it everywhere it
+// quotes the value.
+
+function netLeasePage(comps) {
+  const V = require("../valuation.js");
+  return new Function("isNetLease", "capRateBand", "netLeaseValue", "heroRound", "numericValue", "valuationComps",
+    liftFn("  function netLeaseOn(meta) {") + liftFn("  function netLeaseValuation(parsed, meta) {") + liftFn("  function capRateText(v) {")
+    + "return { on: netLeaseOn, value: netLeaseValuation, text: capRateText };")(
+    V.isNetLease, V.capRateBand, V.netLeaseValue, V.heroRound, V.numericValue, () => comps);
+}
+
+test("net lease mode: the comps' cap rates value the income, and say where the range came from", () => {
+  const sale = (cap) => ({ transaction: "Sale", cap_rate: cap, price_per_sqft: "$400", size_sqft: "3,000" });
+  const meta = (over) => ({ type: "Retail", txFocus: "both", subject: { details: { center_type: "Single-tenant NNN" }, ...over } });
+  const page = netLeasePage([sale("6%"), sale("6.5%"), sale("7.25%"), sale("")]);
+
+  // With an NOI: dollars, rounded the way the hero rounds, the lowest rate
+  // giving the High figure.
+  const withNoi = page.value({}, meta({ noi: 180000 }));
+  assert.equal(withNoi.source, "comps");
+  assert.equal(withNoi.band.n, 3);
+  assert.deepEqual(withNoi.values, { low: 2475000, likely: 2775000, high: 3000000 });
+
+  // Without one: the rates, and no dollars.
+  const noNoi = page.value({}, meta({}));
+  assert.equal(noNoi.values, null);
+  assert.deepEqual([noNoi.band.low, noNoi.band.mid, noNoi.band.high], [6, 6.5, 7.25]);
+
+  // Not the mode: another center type, another property type, a leases-only search.
+  assert.equal(page.value({}, { type: "Retail", subject: { noi: 180000, details: { center_type: "Strip center" } } }), null);
+  assert.equal(page.value({}, { type: "Industrial", subject: { noi: 180000, details: { center_type: "Single-tenant NNN" } } }), null);
+  assert.equal(page.value({}, { ...meta({ noi: 180000 }), txFocus: "leases" }), null);
+  assert.equal(page.value({}, null), null);
+  assert.equal(page.text(6.5), "6.50%");
+  assert.equal(page.text(7.254), "7.25%");
+});
+
+test("net lease mode: too few comps with a rate falls back to the market's range, and to nothing without one", () => {
+  const sale = (cap) => ({ transaction: "Sale", cap_rate: cap });
+  const meta = { type: "Retail", txFocus: "sales", subject: { noi: 100000, details: { center_type: "Single-tenant NNN" } } };
+  const page = netLeasePage([sale("6%"), sale("7%"), sale("")]);
+  const market = page.value({ market_cap_rate_range: { low: "6.25%", high: "7.25%" } }, meta);
+  assert.equal(market.source, "market", "the copy must not credit the comps with a range they did not supply");
+  assert.equal(market.band.n, 0);
+  assert.equal(market.values.low, 1375000, "100,000 / 7.25% = 1,379,310, shown to the nearest 25,000 like every hero total");
+  assert.equal(market.values.high, 1600000);
+  // No rates and no market range: not this mode's report at all, so the
+  // ordinary Retail branches value it.
+  assert.equal(page.value({}, meta), null);
+  assert.equal(page.value({ market_cap_rate_range: { low: "", high: "" } }, meta), null);
+  assert.equal(page.value({ market_cap_rate_range: { low: "8%", high: "6%" } }, meta), null, "an inverted range is not read");
+});
+
+test("net lease mode: every surface that quotes the value reads the one computation", () => {
+  const hero = html.slice(html.indexOf("  function renderOwnerHero(parsed, meta) {"), html.indexOf("  function sellTodayEstimate(parsed, meta) {"));
+  // It leads the chain, ahead of the $/SF branch.
+  assert.match(hero, /const nl = netLeaseValuation\(parsed, meta\);/);
+  assert.match(hero, /if \(nl && nl\.values\) \{[\s\S]+?\} else if \(nl\) \{[\s\S]+?\} else if \(sfUsable && !leadWithAlt\) \{/);
+  const withNoi = hero.slice(hero.indexOf("if (nl && nl.values) {"), hero.indexOf("} else if (nl) {"));
+  const noNoi = hero.slice(hero.indexOf("} else if (nl) {"), hero.indexOf("} else if (sfUsable && !leadWithAlt) {"));
+  // Dollars only where an income was typed; a rate is never stored as a value.
+  assert.match(withNoi, /lastValuation = \{ low: v\.low, likely: v\.likely, high: v\.high, median_psf: null \};/);
+  assert.doesNotMatch(noNoi, /lastValuation =/, "a cap rate is not a value: the snapshot, the collateral card and the exports mean dollars");
+  // The $/SF band's chips and scatter describe a range neither ledger uses.
+  for (const b of [withNoi, noNoi]) {
+    assert.match(b, /currentPsfBand = null;/);
+    assert.match(b, /if \(fromComps\) renderCompScatter\(b\.rates, b, \{ fmt: capRateText, unitPhrase: "cap rate" \}\);/);
+  }
+  // The highest rate is the LOW value.
+  assert.match(withNoi, /setPpsf\("ownerLowPpsf", "at a " \+ capRateText\(b\.high\) \+ " cap rate"\);/);
+  assert.match(withNoi, /setPpsf\("ownerHighPpsf", "at a " \+ capRateText\(b\.low\) \+ " cap rate"\);/);
+  // The $/SF figure survives as a cross-check that says what it is, and with
+  // no income line beside it, never as the statement's only number.
+  assert.match(hero, /Net-leased properties rarely trade on this/);
+  assert.match(withNoi, /netLeasePsfEntry\(true\)/);
+  assert.match(noNoi, /netLeasePsfEntry\(false\)/);
+  // The generic $/SF ask sentence does not follow a cap-rate ledger.
+  assert.match(hero, /if \(askGap && askGap\.skewed && !netLeaseHero\) \{/);
+  // Never an appraisal, in either branch's own words.
+  assert.match(withNoi, /Not an appraisal and not a broker opinion of value\./);
+  assert.match(noNoi, /Not an appraisal and not a broker opinion of value\./);
+
+  // Sell today, the comparison card and the Excel sheet go through it too.
+  const sell = liftFn("  function sellTodayEstimate(parsed, meta) {");
+  assert.match(sell, /const nl = netLeaseValuation\(parsed, meta\);\s*if \(nl\) return nl\.values \? \{ value: nl\.values\.likely, source: "net-lease income value" \} : null;/);
+  const compare = liftFn("  function renderComparison(parsed) {");
+  assert.match(compare, /if \(netLeaseValuation\(parsed, currentMeta\)\) \{\s*return renderNetLeaseComparison\(parsed, card\);/);
+  assert.ok(compare.indexOf("renderNetLeaseComparison") < compare.indexOf('"Your Property $/SF"'), "asked before the $/SF card is drawn");
+  assert.match(html, /const nlX = netLeaseValuation\(currentParsed, currentMeta\);/);
+  assert.match(html, /\["Basis", "Net operating income ÷ cap rate \(net lease\)"\]/);
+});
+
+test("net lease mode: the NOI stays in the browser", () => {
+  // Rule 6. The mode adds no request and no stored field: it reads
+  // meta.subject.noi, which /api/comps never receives and /api/share strips.
+  const fn = liftFn("  function netLeaseValuation(parsed, meta) {") + liftFn("  function renderNetLeaseComparison(parsed, card) {");
+  assert.doesNotMatch(fn, /fetch\(|acctApi\(|localStorage|sessionStorage/);
 });

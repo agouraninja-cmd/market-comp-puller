@@ -219,6 +219,12 @@ function basisRow(c) {
   // built differently from the subject, and one word out of six is no more
   // identifying than a year.
   if (c.construction) row.construction = c.construction;
+  // Cap rate (2026-11-23): a net-leased subject is valued on the comps' cap
+  // rates (valuation.js capRateBand), so a free report's range needs the
+  // locked comps' rates or it is a different range from Pro's. A rate names
+  // no building, and with $/SF and the size already here it adds no figure a
+  // reader could not otherwise have.
+  if (c.cap_rate) row.cap_rate = c.cap_rate;
   // Distance, not coordinates: a mile figure cannot be reverse-geocoded to a
   // building, and without it a locked far-away sale would pull the free
   // range the same as a next-door one while a Pro report down-weighted it.

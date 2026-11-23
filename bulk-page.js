@@ -1164,7 +1164,7 @@ function renderPast(){
   // status, and a three-dot menu: Download CSV, Run again, Rename, Delete.
   body.innerHTML=rest.map(function(j){
     var done=j.status==="done"||(j.status!=="running"&&j.done_count>=j.total&&j.total>0);
-    var s=j.summary,name=j.label||j.property_type+" run";
+    var s=j.summary,name=j.label||j.address||j.property_type+" run";
     var val=s&&s.valued>0
       ? '<span class="fig">'+money(s.likely)+"</span>"+
         (s.valued<j.total?'<div class="sub">'+s.valued+" of "+j.total+" valued</div>":"")
@@ -1174,7 +1174,12 @@ function renderPast(){
     if(onRunAgain&&j.status!=="running")acts.push('<a href="#" data-again="'+esc(j.id)+'">Run again</a>');
     acts.push('<a href="#" data-rename="'+esc(j.id)+'">Rename</a>');
     if(j.status!=="running")acts.push('<a href="#" class="danger" data-del="'+esc(j.id)+'">Delete</a>');
-    return '<tr><td class="r-name"><a href="#" data-job="'+esc(j.id)+'">'+esc(name)+"</a>"+
+    // A one-address run opens its full report (the list read's report_href,
+    // 2026-11-23); a list opens its run, where each address links to its own.
+    var open=j.report_href&&/^[/][?](recent|property)=/.test(j.report_href)
+      ? '<a href="'+esc(j.report_href)+'">'+esc(name)+"</a>"
+      : '<a href="#" data-job="'+esc(j.id)+'">'+esc(name)+"</a>";
+    return '<tr><td class="r-name">'+open+
       '<span class="sub dt">'+esc(dayWords(j.created_at))+"</span></td>"+
       '<td class="r-type">'+esc(j.property_type)+" \\u00b7 "+esc(String(j.months))+" months"+
       '<span class="pn"> \\u00b7 '+j.total+(j.total===1?" address":" addresses")+"</span></td>"+

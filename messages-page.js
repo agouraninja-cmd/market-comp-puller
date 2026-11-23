@@ -391,6 +391,8 @@ body>main.wrap{max-width:none;padding:0}
 #msgTyping:empty,#msgSendMsg:empty{display:none}
 @media (max-width:640px){ #msgAttach{width:44px;padding:0;font-size:0;gap:0} }
 .msg-hint{font-size:var(--text-label);color:var(--ink-faint)}
+.msg-dealintro{margin:4px auto 14px;max-width:560px;text-align:center;padding:10px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--wash);font-size:var(--text-label);color:var(--ink-3);line-height:1.5}
+.msg-dealintro b{display:block;color:var(--ink);font-size:var(--text-compact);font-weight:600}
 
 /* --- empty states, notices ----------------------------------------------- */
 .msg-empty{margin:auto;text-align:center;padding:40px 24px;max-width:44ch;color:var(--ink-3);font-size:var(--text-compact)}
@@ -863,13 +865,15 @@ ${REPORT_INBOX_SRC}
     });
   }
   function initial(s){ s = String(s || "").trim(); return s ? s.charAt(0).toUpperCase() : "?"; }
+  // A figure stored as text ("$1,234") reads as the number it is.
+  function figure(v){ return Number(String(v == null ? "" : v).replace(/[$,\\s]/g, "")); }
   function money(v){
-    var n = Number(v);
+    var n = figure(v);
     if (!isFinite(n) || !n) return "";
     return "$" + Math.round(n).toLocaleString("en-US");
   }
   function num(v){
-    var n = Number(v);
+    var n = figure(v);
     return isFinite(n) && n ? Math.round(n).toLocaleString("en-US") : "";
   }
   function when(iso){
@@ -1104,10 +1108,13 @@ ${REPORT_INBOX_SRC}
     var facts = [];
     if (s.transaction) facts.push('<span>' + esc(String(s.transaction).charAt(0).toUpperCase() + String(s.transaction).slice(1)) + '</span>');
     if (s.deal_date) facts.push('<span>' + esc(dealDay(s.deal_date)) + '</span>');
-    if (s.price) facts.push('<span><b>' + esc(money(s.price)) + '</b></span>');
-    if (s.size_sqft) facts.push('<span>' + esc(num(s.size_sqft)) + ' SF</span>');
-    if (s.price_per_sqft) facts.push('<span>' + esc(money(s.price_per_sqft)) + '/SF</span>');
-    else if (s.rent_psf_yr) facts.push('<span>' + esc(money(s.rent_psf_yr)) + '/SF/yr</span>');
+    // Each figure only when it reads as a number: a stored "$1,234" or ""
+    // came out as a bare "/SF" with nothing in front of it.
+    var price = money(s.price), size = num(s.size_sqft), psf = money(s.price_per_sqft), rent = money(s.rent_psf_yr);
+    if (price) facts.push('<span><b>' + esc(price) + '</b></span>');
+    if (size) facts.push('<span>' + esc(size) + ' SF</span>');
+    if (psf) facts.push('<span>' + esc(psf) + '/SF</span>');
+    else if (rent) facts.push('<span>' + esc(rent) + '/SF/yr</span>');
     var who = extName(item.addedBy);
     var foot = who === "You"
       ? '<span class="msg-hint">You sent this from your comps</span>'
@@ -1120,6 +1127,19 @@ ${REPORT_INBOX_SRC}
       '</div>' +
       '<div class="foot">' + foot + '</div>' +
     '</div>';
+  }
+  // The line at the top of a deal room: which property its comps are for.
+  // Nothing for a room with no deal name.
+  function dealIntro(x){
+    var title = x ? String(x.title || "").trim() : "";
+    if (!title) return "";
+    var n = 0;
+    for (var i = 0; i < state.extItems.length; i++) if (state.extItems[i].kind === "comp") n++;
+    var what = n ? (n === 1 ? "The comp below is" : "The " + n + " comps below are") + " for this property."
+      : "Comps sent here are for this property.";
+    var who = x.owner && !(x.people || []).length
+      ? " Nobody else can see this chat yet. Press People to invite a client." : "";
+    return '<div class="msg-dealintro"><b>' + esc(title) + '</b><span>' + esc(what + who) + '</span></div>';
   }
   function renderExternalStream(mode, fresh){
     if (!state.messages.length && !state.extItems.length) {
@@ -1147,7 +1167,10 @@ ${REPORT_INBOX_SRC}
     var byId = {};
     for (var q = 0; q < state.extItems.length; q++) byId[state.extItems[q].id] = state.extItems[q];
 
-    var html = "", lastDay = "", lastWho = "", lastAt = 0;
+    // What the room is about, above everything in it. The heading named the
+    // property and the stream showed only OTHER addresses (its comps), so it
+    // read as if the property were missing (the owner's report, 2026-11-23).
+    var html = dealIntro(extRow()), lastDay = "", lastWho = "", lastAt = 0;
     for (var e = 0; e < entries.length; e++) {
       var it2 = entries[e];
       var day = dayLabel(it2.at);
@@ -1380,6 +1403,10 @@ ${REPORT_INBOX_SRC}
   // which is the whole answer to "is that me?" when two accounts share a name.
   function extSub(x){
     var line = dealLine(x);
+    // A room the owner has not invited anybody to is named after its deal,
+    // so the heading alone read like a person (the owner's report,
+    // 2026-11-23). Say who is in it: nobody yet.
+    if (x.owner && !(x.people || []).length) line = "No one invited yet" + (line ? " \\u00b7 " + line : "");
     var s = x.owner || x.nickname ? line : x.label + " invited you" + (line ? " \\u00b7 " + line : "");
     return s + (x.closed ? " \\u00b7 closed" : "");
   }
@@ -2060,10 +2087,13 @@ ${REPORT_INBOX_SRC}
     if (s.transaction) facts.push('<span>' + esc(String(s.transaction).charAt(0).toUpperCase() + String(s.transaction).slice(1)) + '</span>');
     if (c.dealDate) facts.push('<span>' + esc(dealDay(c.dealDate)) + '</span>');
     else facts.push('<span>Undated</span>');
-    if (s.price) facts.push('<span><b>' + esc(money(s.price)) + '</b></span>');
-    if (s.size_sqft) facts.push('<span>' + esc(num(s.size_sqft)) + ' SF</span>');
-    if (s.price_per_sqft) facts.push('<span>' + esc(money(s.price_per_sqft)) + '/SF</span>');
-    else if (s.rent_psf_yr) facts.push('<span>' + esc(money(s.rent_psf_yr)) + '/SF/yr</span>');
+    // Each figure only when it reads as a number: a stored "$1,234" or ""
+    // came out as a bare "/SF" with nothing in front of it.
+    var price = money(s.price), size = num(s.size_sqft), psf = money(s.price_per_sqft), rent = money(s.rent_psf_yr);
+    if (price) facts.push('<span><b>' + esc(price) + '</b></span>');
+    if (size) facts.push('<span>' + esc(size) + ' SF</span>');
+    if (psf) facts.push('<span>' + esc(psf) + '/SF</span>');
+    else if (rent) facts.push('<span>' + esc(rent) + '/SF/yr</span>');
     // A comp YOU sent came out of your own vault, so a Save button on it can
     // only be a no-op. It says so instead, and drops the "Sent by" line, which
     // would otherwise be your own name repeated back at you.

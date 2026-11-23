@@ -5581,5 +5581,11 @@
     "type": "fix",
     "title": "The footer no longer sits on Pipeline’s first screen",
     "details": "An empty Pipeline was shorter than the window, so the dark footer covered the bottom third of the first screen, on a computer and on a phone. The page now fills the first screen and the footer starts below it, the way Sites already does. Your comps follows the same rule."
+  },
+  {
+    "date": "2026-11-23",
+    "type": "improvement",
+    "title": "Pipeline is a board",
+    "details": "Pipeline is now one column per stage, left to right: Owner requests, Open, Delivered and Won, with Lost folded at the foot. Each request says what the owner has, where, and how long ago they asked, and Request introduction is the red button on the page. The markets you watch sit under the title instead of in a closed box at the bottom. An empty Pipeline is the board itself, with the form to watch a first market in the first column. On a phone the columns stack, so nothing runs off the side of the screen. The table’s sorting and stage filter are gone with the table."
   }
 ]

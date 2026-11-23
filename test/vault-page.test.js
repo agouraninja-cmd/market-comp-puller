@@ -609,6 +609,9 @@ function stubFileReader() {
 // literal " alone (matches the comment on escA in vault-page.js).
 function stubDocument() {
   const byId = {};
+  // Document-level listeners are kept so a test can press something the page
+  // handles by delegation (the board's three presses, 2026-11-23).
+  const on = {};
   return {
     getElementById(id) { if (!byId[id]) byId[id] = stubElement(); return byId[id]; },
     createElement() {
@@ -619,11 +622,15 @@ function stubDocument() {
         get innerHTML() { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); },
       };
     },
-    addEventListener() {},
+    addEventListener(t, fn) { (on[t] = on[t] || []).push(fn); },
+    fire(t, ev) { (on[t] || []).forEach((fn) => fn(ev || {})); },
     querySelector() { return stubElement(); },
     querySelectorAll() { return []; },
   };
 }
+// A press on an element carrying one data- attribute, as delegation sees it.
+const pressOf = (attr) => ({ target: { getAttribute: (a) => (a === attr ? "1" : null), closest: () => null },
+  preventDefault() {}, stopPropagation() {} });
 
 function jsonResponse(status, body) {
   return { ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) };
@@ -960,12 +967,20 @@ test("the gut check degrades to a one-line note when the benchmarks fetch fails,
 });
 
 // ---------------------------------------------------------------------------
-// The pipeline deck (2026-08-13): one table from lead to won
+// The pipeline deck (2026-08-13): one list from lead to won. A board of one
+// column per stage since 2026-11-23 (Draft C of the Pipeline drafts).
 // ---------------------------------------------------------------------------
 
-test("the pipeline is one table and neither old wrapper remains", () => {
+test("the pipeline is one board and neither old wrapper remains", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
-  assert.ok(html.includes('id="pipeTbl"'), "the pipeline table is missing");
+  assert.ok(html.includes('id="pipeBoard"'), "the pipeline board is missing");
+  for (const id of ["pbNew", "pbOpen", "pbDelivered", "pbWon", "pbLost"]) {
+    assert.equal((html.match(new RegExp('id="' + id + '"', "g")) || []).length, 1, "#" + id + " is not there exactly once");
+  }
+  // The table, its strip and their two listeners went with it.
+  for (const id of ["pipeTbl", "pipeRows", "pipeTableWrap", "pipeStrip"]) {
+    assert.ok(!html.includes('id="' + id + '"'), "#" + id + " is back");
+  }
   assert.ok(html.includes('id="pipeSec"'));
   assert.ok(!html.includes('id="bovSec"'), "the old BOV section must be gone");
   assert.ok(!html.includes('id="leadTableWrap"'), "the old leads wrapper must be gone");
@@ -975,10 +990,13 @@ test("the pipeline is one table and neither old wrapper remains", () => {
     "applyFirstRun must not hide the pipeline — a waiting lead has to show on an empty book");
 });
 
-test("the pipeline's empty state is an invitation, not an empty table", () => {
+test("the pipeline's empty state is an invitation in the first column", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
-  assert.ok(html.includes('class="tw hide" id="pipeTableWrap"'));
-  assert.ok(html.includes('id="pipeEmpty"'));
+  // The invitation is inside the Owner requests column, with the one form.
+  const col = html.slice(html.indexOf('class="pb-col" data-s="new"'), html.indexOf('class="pb-col" data-s="open"'));
+  assert.ok(col.includes('<div id="pipeEmpty" class="pb-slot act">') && col.includes('id="covForm"'));
+  // A column is a div: this stylesheet gives every section a 48px top margin.
+  assert.ok(!/<section class="pb-col"/.test(html));
   assert.ok(!html.includes('id="noPipe"'), "the old empty-line id must be gone");
   const js = pageScript(html);
   assert.match(js, /if\(pipeInvite\)\$\("pipeEmpty"\)\.appendChild\(\$\("covForm"\)\)/);
@@ -988,7 +1006,7 @@ test("the pipeline's empty state is an invitation, not an empty table", () => {
 test("the lead-privacy line appears exactly once", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
   assert.equal((html.match(/id="leadPrivacy"/g) || []).length, 1);
-  assert.match(html, /A lead&rsquo;s address and contact details stay/);
+  assert.match(html, /An owner&rsquo;s name, address and contact details stay\s+with CompNinja until an introduction is made\./);
 });
 
 test("the log-a-BOV panel ships closed", () => {
@@ -2774,12 +2792,19 @@ const A_LEAD = {
 };
 const A_COV = { id: "cov1", market: "Boise, ID", property_type: "Industrial", source: "added" };
 
-test("an empty pipeline shows the invitation and no table", async () => {
+test("an empty pipeline is the board, with the invitation in its first column", async () => {
   const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline" });
-  assert.ok(!doc.getElementById("pipeEmpty").classList.contains("hide"),
-    "with nothing in either source the invitation is the body");
-  assert.match(doc.getElementById("pipeTableWrap").className, /hide/,
-    "a header row over no rows is the empty table the first-run work removed");
+  assert.equal(doc.getElementById("pipeEmpty").className, "pb-slot act",
+    "with nothing in either source the invitation is the first column's body");
+  assert.equal(doc.getElementById("pipeWatch").className, "pb-watch hide", "a bar of no markets over the form that adds one");
+  assert.equal(doc.getElementById("covBox").className, "pb-add hide");
+  // Every other column says what lands in it, and Open offers the log.
+  assert.match(doc.getElementById("pbOpen").innerHTML, /Already working one\?[\s\S]*data-logbov="1">\+ Log a BOV</);
+  assert.match(doc.getElementById("pbDelivered").innerHTML, /class="pb-slot">Move a BOV here/);
+  assert.match(doc.getElementById("pbWon").innerHTML, /class="pb-slot">Wins collect here/);
+  assert.equal(doc.getElementById("pbNew").innerHTML, "");
+  assert.equal(doc.getElementById("pbLostBox").className, "pb-fold hide");
+  for (const id of ["pbNewN", "pbOpenN", "pbDeliveredN", "pbWonN"]) assert.equal(String(doc.getElementById(id).textContent), "0");
 });
 
 test("the first logged BOV puts the invitation away", async () => {
@@ -2790,60 +2815,96 @@ test("the first logged BOV puts the invitation away", async () => {
     })),
   });
   assert.ok(doc.getElementById("pipeEmpty").classList.contains("hide"),
-    "the invitation over a logged BOV contradicts the row beneath it");
-  assert.equal(doc.getElementById("pipeTableWrap").className, "tw");
-  assert.match(doc.getElementById("pipeRows").innerHTML, /Boise, ID/);
+    "the invitation over a logged BOV contradicts the card beside it");
+  assert.match(doc.getElementById("pbOpen").innerHTML, /Boise, ID/);
+  assert.equal(String(doc.getElementById("pbOpenN").textContent), "1");
+  // No market watched yet: the bar keeps its door and drops its label.
+  assert.equal(doc.getElementById("pipeWatch").className, "pb-watch none");
+  assert.equal(doc.getElementById("covBox").className, "pb-add");
+  assert.match(doc.getElementById("pbNew").innerHTML, /Watch a market, above/);
 });
 
-test("coverage without a lead or BOV keeps the pipeline invitation", async () => {
+test("a watched market with nothing in it says so, and the form moves to the bar", async () => {
   const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
     leads: () => Promise.resolve(jsonResponse(200, { coverage: [A_COV], leads: [] })),
   });
-  assert.ok(!doc.getElementById("pipeEmpty").classList.contains("hide"));
+  // The invitation asks for a first market. With one watched it would ask
+  // for what the broker has already done.
+  assert.ok(doc.getElementById("pipeEmpty").classList.contains("hide"));
+  assert.equal(doc.getElementById("pipeWatch").className, "pb-watch");
+  assert.match(doc.getElementById("covRow").innerHTML, /class="chip">Boise, ID/);
+  assert.match(doc.getElementById("pbNew").innerHTML, /<b>Nothing new<\/b>Requests from the markets you watch land here\./);
 });
 
-test("a BOV row renders its status select and a Remove button", async () => {
+test("past five markets, four chips show and the rest wait behind one press", async () => {
+  const cov = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ id: "cov" + n, market: "Town" + n + ", ID", property_type: "Office" }));
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
+    leads: () => Promise.resolve(jsonResponse(200, { coverage: cov, leads: [] })),
+  });
+  const row = () => doc.getElementById("covRow").innerHTML;
+  assert.equal((row().match(/class="chip"/g) || []).length, 4);
+  assert.match(row(), /data-covmore="1">\+3 more</);
+  doc.fire("click", pressOf("data-covmore"));
+  assert.equal((row().match(/class="chip"/g) || []).length, 7);
+  assert.doesNotMatch(row(), /data-covmore/);
+});
+
+test("a BOV card carries its stage select and a Remove button", async () => {
   const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
     bovs: () => Promise.resolve(jsonResponse(200, {
       bovs: [A_BOV],
       rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
     })),
   });
-  const row = doc.getElementById("pipeRows").innerHTML;
-  assert.match(row, /<select data-bov="b1"/);
-  assert.match(row, /data-bovdel="b1">Remove<\/button>/);
-  assert.doesNotMatch(row, /data-intro=/);
-  assert.doesNotMatch(row, /class="stg new"/);
+  const card = doc.getElementById("pbOpen").innerHTML;
+  assert.match(card, /<select data-bov="b1" data-prev="open" aria-label="Stage">/);
+  assert.match(card, /data-bovdel="b1" aria-label="Remove this BOV"/);
+  assert.doesNotMatch(card, /data-intro=/);
 });
 
-test("a lead row renders the New chip and an intro button, and no status select", async () => {
+test("a request card says what, where and how long ago, with an intro button and no stage select", async () => {
   const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
-    leads: () => Promise.resolve(jsonResponse(200, { coverage: [A_COV], leads: [A_LEAD] })),
+    leads: () => Promise.resolve(jsonResponse(200, { coverage: [A_COV], leads: [A_LEAD, Object.assign({}, A_LEAD, { id: "l2", is_1031: true, size_sqft: null })] })),
   });
-  const row = doc.getElementById("pipeRows").innerHTML;
-  assert.match(row, /<span class="stg new">New<\/span>/);
-  assert.match(row, /data-intro="l1">Request introduction<\/button>/);
-  assert.match(row, /CompNinja lead/);
-  assert.doesNotMatch(row, /<select data-bov=/);
-  assert.doesNotMatch(row, /data-bovdel=/);
+  const col = doc.getElementById("pbNew").innerHTML;
+  assert.match(col, /<b>Industrial<\/b><\/div><div class="z">34,000 SF <span>\u00b7 Meridian, ID<\/span>/);
+  assert.match(col, /<div class="w">Asked \d+ weeks ago<\/div>/);
+  assert.match(col, /class="pb-ask" data-intro="l1">Request introduction<\/button>/);
+  assert.match(col, /<span class="pb-tag">1031 exchange<\/span>/);
+  assert.doesNotMatch(col, /<select data-bov=/);
+  assert.doesNotMatch(col, /data-bovdel=/);
   assert.equal(doc.getElementById("leadPrivacy").className, "note");
+  assert.equal(String(doc.getElementById("pbNewN").textContent), "2");
+  assert.equal(doc.getElementById("pbNewN").className, "n hot");
 });
 
-test("a stage cell with a zero count is not a button", async () => {
+test("each BOV sits in the column for its stage; Lost folds; Won opens on its latest five", async () => {
+  const B = (id, status, day) => Object.assign({}, A_BOV, { id, status, received_on: "2026-0" + day });
+  const bovs = [B("o1", "open", "3-01"), B("d1", "delivered", "3-02"), B("l1", "lost", "3-03"), B("q1", "paused", "3-04")]
+    .concat([1, 2, 3, 4, 5, 6, 7].map((n) => B("w" + n, "won", "4-0" + n)));
   const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
-    bovs: () => Promise.resolve(jsonResponse(200, {
-      bovs: [A_BOV],
-      rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
-    })),
+    bovs: () => Promise.resolve(jsonResponse(200, { bovs, rollup: { total: 11, thisYear: 11, winRate: 0.875 } })),
   });
-  const strip = doc.getElementById("pipeStrip").innerHTML;
-  assert.match(strip, /<button class="scell act" type="button" data-stage="open"/);
-  assert.match(strip, /<div class="scell"[^>]*>[\s\S]*New/);
-  assert.doesNotMatch(strip, /data-stage="new"/);
-  assert.doesNotMatch(strip, /data-stage="won"/);
+  const ids = (id) => (doc.getElementById(id).innerHTML.match(/data-bovdel="[^"]+"/g) || []).map((x) => x.slice(13, -1));
+  // A status this page does not know is still the broker's open work.
+  assert.deepEqual(ids("pbOpen"), ["q1", "o1"]);
+  assert.deepEqual(ids("pbDelivered"), ["d1"]);
+  assert.deepEqual(ids("pbLost"), ["l1"]);
+  assert.equal(doc.getElementById("pbLostBox").className, "pb-fold");
+  assert.equal(String(doc.getElementById("pbLostN").textContent), "1");
+  // Newest first, five of seven, and the count is all seven.
+  assert.deepEqual(ids("pbWon"), ["w7", "w6", "w5", "w4", "w3"]);
+  assert.equal(String(doc.getElementById("pbWonN").textContent), "7");
+  assert.match(doc.getElementById("pbWon").innerHTML, /data-wonall="1">Show all 7</);
+  doc.fire("click", pressOf("data-wonall"));
+  assert.equal(ids("pbWon").length, 7);
+  assert.match(doc.getElementById("pbWon").innerHTML, /data-wonall="1">Show the latest 5</);
+  // "Mar 1", never 2026-03-01.
+  assert.match(doc.getElementById("pbOpen").innerHTML, /Mar 1/);
+  assert.doesNotMatch(doc.getElementById("pbOpen").innerHTML, /2026-03-01/);
 });
 
-test("leads failing still renders BOV rows", async () => {
+test("leads failing still renders BOV cards", async () => {
   const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
     leads: () => Promise.resolve(jsonResponse(503, { error: "Couldn't load leads." })),
     bovs: () => Promise.resolve(jsonResponse(200, {
@@ -2851,28 +2912,30 @@ test("leads failing still renders BOV rows", async () => {
       rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
     })),
   });
-  assert.match(doc.getElementById("pipeRows").innerHTML, /Boise, ID/);
+  assert.match(doc.getElementById("pbOpen").innerHTML, /Boise, ID/);
   assert.match(doc.getElementById("pipeMsg").innerHTML, /Couldn.t load leads/);
-  assert.equal(doc.getElementById("pipeTableWrap").className, "tw");
+  // A column whose half failed claims nothing about what is in it.
+  assert.equal(doc.getElementById("pbNew").innerHTML, "");
 });
 
-test("BOVs failing still renders lead rows", async () => {
+test("BOVs failing still renders request cards", async () => {
   const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
     leads: () => Promise.resolve(jsonResponse(200, { coverage: [A_COV], leads: [A_LEAD] })),
     bovs: () => Promise.resolve(jsonResponse(503, { error: "unavailable" })),
   });
-  assert.match(doc.getElementById("pipeRows").innerHTML, /<span class="stg new">New<\/span>/);
-  assert.match(doc.getElementById("pipeRows").innerHTML, /Meridian, ID/);
+  assert.match(doc.getElementById("pbNew").innerHTML, /Request introduction/);
+  assert.match(doc.getElementById("pbNew").innerHTML, /Meridian, ID/);
   assert.match(doc.getElementById("pipeMsg").innerHTML, /unavailable/i);
   assert.ok(doc.getElementById("pipeEmpty").classList.contains("hide"));
+  for (const id of ["pbOpen", "pbDelivered", "pbWon"]) assert.equal(doc.getElementById(id).innerHTML, "", "#" + id + " says it is empty over a failed read");
 });
 
-test("a failed BOV load shows neither the invitation nor a stale table when leads are empty too", async () => {
+test("a failed BOV load shows neither the invitation nor a claim of emptiness when leads are empty too", async () => {
   const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline",
     bovs: () => Promise.resolve(jsonResponse(503, { error: "unavailable" })),
   });
   assert.ok(doc.getElementById("pipeEmpty").classList.contains("hide"));
-  assert.match(doc.getElementById("pipeTableWrap").className, /hide/);
+  assert.equal(doc.getElementById("pbOpen").innerHTML, "");
   assert.match(doc.getElementById("pipeMsg").innerHTML, /unavailable/i);
 });
 
@@ -2883,8 +2946,27 @@ test("the win rate is a dash below three decided BOVs", async () => {
       rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
     })),
   });
-  assert.match(doc.getElementById("pipeNote").innerHTML, /1 this year/);
-  assert.match(doc.getElementById("pipeNote").innerHTML, /win rate (?:—|&mdash;|\\u2014|\u2014)/);
+  assert.match(doc.getElementById("pipeNote").innerHTML, /<b>1<\/b> logged this year/);
+  assert.match(doc.getElementById("pipeNote").innerHTML, /win rate <b>(?:—|&mdash;|\\u2014|\u2014)<\/b>/);
+});
+
+test("/pipeline draws no tab bar, no eyebrow, and Log a BOV from the empty Open column opens the panel", async () => {
+  const pipe = renderVaultHTML(boot([comp({})]), { page: "pipeline" });
+  const comps = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(pipe, /<div class="vt-wrap pl" id="vtWrap">/);
+  assert.match(comps, /<div class="vt-wrap" id="vtWrap">/);
+  assert.ok(!pipe.includes('class="kicker"'), "the eyebrow is back over Pipeline");
+  const css = pipe.slice(pipe.indexOf("<style>"), pipe.indexOf("</style>")).replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.match(css, /\n\.vt-wrap\.pl \.vt-tabs\{display:none\}/);
+  // .pb-watch sets a display and is hidden by class: it restates .hide.
+  assert.ok(css.indexOf(".pb-watch.hide{display:none}") > css.indexOf(".pb-watch{display:flex"));
+  // The lock and the unlock both keep the page's own class on the wrap.
+  assert.match(pageScript(pipe), /var VT_WRAP=PAGE==="pipeline"\?"vt-wrap pl":"vt-wrap";/);
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, { page: "pipeline" });
+  assert.equal(doc.getElementById("vtWrap").className, "vt-wrap pl");
+  assert.equal(doc.getElementById("bovAddSec").className, "addpanel hide");
+  doc.fire("click", pressOf("data-logbov"));
+  assert.equal(doc.getElementById("bovAddSec").className, "addpanel");
 });
 
 test("/comps reads no leads and no BOVs, and /pipeline no benchmarks: each page reads its own", async () => {
@@ -4829,7 +4911,9 @@ test("each page has its own tabs, and each panel holds its own sections", () => 
     for (const id of ["tab-watch", "panelWatch", "mktSec", "tabWatchN", "tab-props", "panelProps"]) {
       assert.ok(!html.includes('id="' + id + '"'), "#" + id + " is back");
     }
-    for (const id of ["deckWeek", "weekSec", "pipeBoard", "pipeViewSeg"]) {
+    // (#pipeBoard was on this list until 2026-11-23: the Pipeline is a
+    // board again, the owner's pick of the Pipeline drafts.)
+    for (const id of ["deckWeek", "weekSec", "pipeViewSeg"]) {
       assert.ok(!html.includes('id="' + id + '"'), "#" + id + " (Draft C) is still in the page");
     }
   }
@@ -4867,10 +4951,10 @@ test("setTab is the one writer of which panel shows; under the lock, Contributio
   assert.ok(!/setTab\("props"/.test(js), "the lock still opens on Properties");
   const sync = js.match(/function syncLockedTabs\(\)\{[\s\S]*?\n  \}/);
   assert.ok(sync, "syncLockedTabs is gone");
-  assert.match(sync[0], /\$\("vtWrap"\)\.className=live\?"vt-wrap":"vt-wrap hide"/);
+  assert.match(sync[0], /\$\("vtWrap"\)\.className=live\?VT_WRAP:VT_WRAP\+" hide"/);
   assert.match(sync[0], /if\(live&&curTab!=="contrib"\)setTab\("contrib",true\)/);
   assert.match(js, /locked=true;\s*syncLockedTabs\(\);/, "the lock does not settle the tabs");
-  assert.match(js, /locked=false; \$\("vtWrap"\)\.className="vt-wrap";/, "a read that succeeds after a lock keeps the bar hidden");
+  assert.match(js, /locked=false; \$\("vtWrap"\)\.className=VT_WRAP;/, "a read that succeeds after a lock keeps the bar hidden");
   assert.equal((js.match(/syncLockedTabs\(\);/g) || []).length, 3, "the contributions read must settle the locked tabs on both of its exits");
 });
 
@@ -5137,16 +5221,16 @@ test("a request with its own BOV row is listed once, as the BOV", async () => {
     leads: deskLeads(leads),
     bovs: deskBovs([BOV({}), BOV({ id: "B2", lead_id: "9275", market: "Boise, ID", source: "compninja" })]),
   });
-  const rows = doc.getElementById("pipeRows").innerHTML;
-  assert.doesNotMatch(rows, /Intro requested/, "the introduced request shows as its BOV, not again as a New row");
-  assert.match(doc.getElementById("pipeStrip").innerHTML, /New<\/span><div class="sfig[^"]*">2</, "the strip counts 2 new");
+  const rows = doc.getElementById("pbNew").innerHTML;
+  assert.doesNotMatch(rows, /Intro requested/, "the introduced request shows as its BOV, not again as a request");
+  assert.equal(String(doc.getElementById("pbNewN").textContent), "2", "the column counts 2 new");
   assert.equal(String(doc.getElementById("tabPipeN").textContent), "2 new", "and agrees with the tab");
   // With the BOVs unread there is no row to fold into: the lead row is all there is.
   const failed = await runPage(comps, null, { page: "pipeline",
     leads: deskLeads(leads),
     bovs: () => Promise.resolve(jsonResponse(503, { error: "Couldn't load your BOVs." })),
   });
-  assert.match(failed.doc.getElementById("pipeRows").innerHTML, /Intro requested/);
+  assert.match(failed.doc.getElementById("pbNew").innerHTML, /class="pb-ask" disabled>Intro requested/);
 });
 
 // Presses one of the ledger's quick views (or a pill's ×) the way a click would.

@@ -622,6 +622,120 @@ a.btn.ghost:hover{color:var(--ink)}
 .vt-panel>.deck .dlab,.vt-panel>.deck .dln{display:none}
 .vt-panel>.deck .dact{background:var(--red-fill);color:#fff;border-color:var(--red-fill);font-weight:600}
 .vt-panel>.deck .dact:hover{background:var(--red-fill-hover);border-color:var(--red-fill-hover);color:#fff}
+/* ---- /pipeline: the board (2026-11-23, Draft C of the Pipeline drafts) ----
+   A page of one tab draws no tab bar: the title is the page's name, and the
+   panel's one action (+ Log a BOV) sits beside it. The deck is still the
+   panel's own, laid over main's top right corner (main.wrap is the box it is
+   placed in). It is the plain button here: the red on this page belongs to
+   an owner's request. */
+main.wrap{position:relative}
+.vt-wrap.pl{position:static;margin-top:var(--s5)}
+.vt-wrap.pl .vt-tabs{display:none}
+.vt-wrap.pl .vt-panel.on>.deck{top:38px;right:var(--s6);height:auto}
+.vt-wrap.pl .vt-panel>.deck .dact{background:var(--card);color:var(--ink);border-color:var(--edge);padding:8px 14px}
+.vt-wrap.pl .vt-panel>.deck .dact:hover{background:var(--wash);color:var(--ink);border-color:var(--ink-3)}
+.vt-wrap.pl .vt-panel>section{margin-top:0}
+.pb-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 20px}
+.pb-bar .note{margin:0;white-space:nowrap}
+.pb-bar .note b{font-weight:600;color:var(--ink)}
+.pb-watch{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.pb-watch.hide{display:none}
+.pb-wl{font-size:var(--text-small);color:var(--ink-3)}
+.pb-watch.none .pb-wl{display:none}
+.pb-chips{display:contents}
+.pb-more{border:1px solid var(--edge);border-radius:var(--r-pill);background:var(--wash);padding:4px 12px;
+  font:inherit;font-size:var(--text-small);font-weight:500;color:var(--ink-2);cursor:pointer}
+.pb-more:hover{border-color:var(--ink-3);color:var(--ink)}
+.pb-more.wide{width:100%;margin-top:8px;padding:8px;border-style:dashed;border-radius:var(--r-xl);background:none;font-weight:600}
+.pb-add>summary{display:inline-block;list-style:none;cursor:pointer;border:1px dashed var(--edge);border-radius:var(--r-pill);
+  padding:4px 12px;font-size:var(--text-small);font-weight:600;color:var(--red)}
+.pb-add>summary::-webkit-details-marker{display:none}
+.pb-add>summary:hover{border-color:var(--red)}
+.pb-add[open]{flex-basis:100%;padding:14px 16px 16px;border:1px solid var(--edge);border-radius:var(--r-xl);background:var(--card)}
+.pb-add[open]>summary{margin-bottom:var(--s4)}
+.pb-add .fine{margin:var(--s3) 0 0}
+.pb-add .fine:first-of-type{order:2}
+.pb-board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:var(--s5);align-items:start}
+.pb-col{min-width:0;border:1px solid var(--line);border-top:3px solid var(--line);border-radius:var(--r-2xl);
+  background:var(--wash);padding:10px 9px 9px}
+.pb-col[data-s="new"]{border-top-color:var(--red-fill)}
+.pb-col[data-s="open"]{border-top-color:var(--ink-faint)}
+.pb-col[data-s="delivered"]{border-top-color:var(--ink-3)}
+.pb-col[data-s="won"]{border-top-color:var(--green)}
+.pb-ch{display:flex;align-items:center;gap:8px;padding:2px 4px 0}
+.pb-ch h2{flex:1;min-width:0;margin:0;font-size:var(--text-compact);font-weight:600;color:var(--ink)}
+.pb-ch .n{flex:none;min-width:24px;padding:2px 7px;border-radius:var(--r-pill);background:var(--card);
+  box-shadow:inset 0 0 0 1px var(--line);text-align:center;font-size:var(--text-label);font-weight:600;color:var(--ink-2);
+  font-variant-numeric:tabular-nums}
+.pb-ch .n.hot{background:var(--red-fill);box-shadow:none;color:#fff}
+.pb-cf{margin:0;padding:3px 4px 10px;font-size:var(--text-label);color:var(--ink-3)}
+.pb-stack{display:flex;flex-direction:column;gap:8px}
+.pb-stack:empty{display:none}
+.pb-card{min-width:0;padding:12px 12px 11px;border:1px solid var(--line);border-radius:var(--r-xl);background:var(--card);
+  box-shadow:0 1px 2px rgba(15,23,42,.06)}
+.pb-card .t{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.pb-card .t b{font-size:var(--text-compact);font-weight:600;line-height:1.3;color:var(--ink);overflow-wrap:anywhere}
+.pb-card .ty{flex:none;margin-top:1px;padding:2px 6px;border-radius:var(--r-sm);background:var(--wash);
+  box-shadow:inset 0 0 0 1px var(--hair);font-size:var(--text-tiny);font-weight:600;color:var(--ink-3);white-space:nowrap}
+.pb-tag{flex:none;padding:1px 7px;border-radius:var(--r-sm);background:var(--warn-bg);color:var(--warn-text);
+  font-size:var(--text-tiny);font-weight:600;white-space:nowrap}
+.pb-card .a{margin-top:2px;font-size:var(--text-small);color:var(--ink-3);overflow-wrap:anywhere}
+.pb-card .z{margin-top:8px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.pb-card .z span{font-weight:400;color:var(--ink-3)}
+.pb-card .w{margin-top:2px;font-size:var(--text-small);color:var(--ink-3)}
+.pb-card .nt{margin:6px 0 0;font-size:var(--text-small);line-height:1.45;color:var(--ink-2);overflow-wrap:anywhere}
+.pb-card .f{display:flex;align-items:center;gap:6px;margin-top:10px;padding-top:9px;border-top:1px solid var(--hair);
+  font-size:var(--text-label);color:var(--ink-3)}
+.pb-card .f span{flex:1;min-width:0}
+/* Its own small chevron: the page's select is 40px tall with the browser's
+   arrow, and beside it a card's source and date broke onto two lines. */
+.pb-card select{flex:none;appearance:none;-webkit-appearance:none;min-height:0;height:28px;padding:0 22px 0 8px;
+  font-size:var(--text-label);font-weight:500;
+  background:var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2368707E' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 7px center}
+.pb-x{flex:none;width:20px;height:28px;padding:0;border:0;border-radius:var(--r-sm);background:none;color:var(--ink-3);
+  font-size:var(--text-input);line-height:1;cursor:pointer}
+.pb-x:hover{color:var(--red);background:var(--wash)}
+/* The one press that gets a broker a listing: the red on this page. */
+.pb-ask{display:block;width:100%;margin-top:11px;padding:6px 12px;border:1px solid var(--red);border-radius:var(--r-lg);
+  background:var(--card);color:var(--red);font:inherit;font-size:var(--text-small);font-weight:600;cursor:pointer}
+.pb-ask:hover{background:var(--red-fill);border-color:var(--red-fill);color:#fff}
+.pb-ask[disabled]{border-color:transparent;background:var(--ok-bg);color:var(--ok-text);cursor:default}
+.pb-slot{padding:16px 12px;border:1px dashed var(--edge);border-radius:var(--r-xl);font-size:var(--text-small);line-height:1.5;
+  color:var(--ink-3)}
+.pb-slot b{display:block;margin-bottom:2px;font-weight:600;color:var(--ink-2)}
+.pb-slot p{margin:0}
+.pb-slot.act{border-style:solid;border-color:var(--line);background:var(--card);box-shadow:0 1px 2px rgba(15,23,42,.06);
+  color:var(--ink-2)}
+.pb-slot.act b{font-size:var(--text-compact);color:var(--ink)}
+.pb-slot .btn{margin-top:var(--s4)}
+.pb-slot #covForm{margin-top:var(--s4)}
+/* One field per line: the page's form grid wants 168px a field and a column
+   is narrower than two of them. */
+.pb-slot .form{grid-template-columns:minmax(0,1fr)}
+.pb-slot .form .span2{grid-column:1/-1}
+.pb-slot .form .btn{width:100%;margin-top:0}
+.pb-board+.note{margin:10px 0 0}
+.pb-fold{margin-top:var(--s5);border:1px solid var(--line);border-radius:var(--r-2xl);background:var(--card);padding:0 14px}
+.pb-fold>summary{display:flex;align-items:center;gap:10px;padding:13px 0;list-style:none;cursor:pointer;
+  font-size:var(--text-compact);font-weight:600;color:var(--ink-2)}
+.pb-fold>summary::-webkit-details-marker{display:none}
+.pb-fold>summary::before{content:"";flex:none;width:7px;height:7px;margin:0 2px 0 1px;border-right:1.5px solid var(--ink-3);
+  border-bottom:1.5px solid var(--ink-3);transform:rotate(-45deg)}
+.pb-fold[open]>summary::before{transform:rotate(45deg)}
+.pb-fold>summary:hover{color:var(--ink)}
+.pb-fold>summary span{padding:1px 8px;border-radius:var(--r-pill);background:var(--wash);box-shadow:inset 0 0 0 1px var(--line);
+  font-size:var(--text-label);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.pb-fold>summary span:empty{display:none}
+.pb-fold .pb-stack{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:0 0 14px}
+@media (max-width:1000px){
+  .pb-board,.pb-fold .pb-stack{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:640px){
+  .pb-board,.pb-fold .pb-stack{grid-template-columns:minmax(0,1fr)}
+  /* 16px, or an iPhone zooms the page when the stage is opened. */
+  .pb-card select{height:32px;font-size:var(--text-input)}
+  .pb-x{width:28px;height:32px}
+}
 .vd-pv{display:inline-flex;border:1px solid var(--edge);border-radius:var(--r-md);overflow:hidden;background:var(--card);align-self:center}
 .vd-pv.hide{display:none}
 .vd-pv button{font:inherit;font-size:var(--text-small);color:var(--ink-2);background:none;border:0;border-left:1px solid var(--edge);
@@ -961,7 +1075,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   #compSheet .vd-sh-ck td:first-child{white-space:nowrap}
 }
 </style>
-  <p class="kicker">Private to you</p>
+${pipe ? "" : '  <p class="kicker">Private to you</p>'}
   <!-- Each page is named for its row of the rail (2026-10-13): Comps, whose
        first tab this is, or Pipeline. The page was "Your properties and
        comps" from 2026-10-07 until the vault was taken apart; a property is
@@ -1015,7 +1129,7 @@ ${lockedCopy}      <p style="margin:0"><a class="btn" href="/desk">See your plan
          decks (VAULT_DECKS); on /comps it opens on Contributions when the
          member has any, and otherwise the bar goes too (syncLockedTabs).
          ------------------------------------------------------------------ -->
-    <div class="vt-wrap" id="vtWrap">
+    <div class="vt-wrap${pipe ? " pl" : ""}" id="vtWrap">
     <div class="vt-tabs" id="vaultTabs" role="tablist" aria-label="${pipe ? "Pipeline" : "Your comps"}">
 ${tabButtons}
     </div>
@@ -1544,8 +1658,26 @@ ${tabButtons}
          requesting a Broker Opinion of Value...") went on 2026-10-13: the
          panel is the whole of /pipeline, whose subtitle says it. -->
     <section id="pipeSec">
-      <div class="strip s5 hide" id="pipeStrip"></div>
-      <p class="note hide" id="pipeNote"></p>
+      <!-- The board (2026-11-23; Draft C of the Pipeline drafts, the owner's
+           pick at https://claude.ai/artifact/AuoYUu9uyrir8sStH9zVSJ). One
+           column per stage, the shape /sites has: Owner requests, Open,
+           Delivered, Won, with Lost folded at the foot. It replaced the
+           five-cell strip and the one table (#pipeStrip, #pipeTbl), and with
+           them sorting and the strip's filter: a column IS the filter. -->
+      <div class="pb-bar">
+        <!-- The markets, in sight (they were a closed box under the table).
+             #covRow is the chips; #covBox opens the one form. -->
+        <div class="pb-watch hide" id="pipeWatch">
+          <span class="pb-wl">Watching</span>
+          <span class="pb-chips" id="covRow"></span>
+          <details class="pb-add" id="covBox">
+            <summary>+ Watch a market</summary>
+            <p class="fine" id="covFine">If you remove every market, any market where you have
+              submitted a comp comes back on your next visit.</p>
+          </details>
+        </div>
+        <p class="note hide" id="pipeNote"></p>
+      </div>
 
       <!-- A panel, not a section, and it ships CLOSED — the same rule #addSec
            carries. #bovMsg lives INSIDE it for the same reason #res lives
@@ -1578,45 +1710,59 @@ ${tabButtons}
       <datalist id="mktList"></datalist>
 
       <div id="pipeMsg"></div>
-      <div id="pipeEmpty" class="invite">
-        <p>Watch a market to see owners requesting valuations. Nothing to upload.</p>
-        <!-- The ONE market-adding form on the page. renderPipeline moves this
-             node into #covBox once a lead or BOV exists. One node, relocated
-             — never a second copy that would drift from the coverage rules. -->
-        <div id="covForm">
-          <div class="form">
-            <label class="span2">Market <input id="covMarket" type="text" placeholder="City, ST" list="mktList"/></label>
-            <label>Type <select id="covType"></select></label>
-            <div class="formact"><button class="btn" id="covAdd">Watch this market</button></div>
+      <!-- Columns are divs, not sections: this stylesheet gives every section
+           a 48px top margin. An empty pipeline is still this board (the
+           empty-vault rule): each column says what lands in it. -->
+      <div class="pb-board" id="pipeBoard">
+        <div class="pb-col" data-s="new" role="group" aria-labelledby="pbNewH">
+          <div class="pb-ch"><h2 id="pbNewH">Owner requests</h2><span class="n" id="pbNewN">0</span></div>
+          <p class="pb-cf">Owners asking in your markets</p>
+          <div class="pb-stack" id="pbNew"></div>
+          <!-- The invitation, and the home of the ONE market-adding form on
+               the page. renderPipeline moves #covForm into #covBox once a
+               market is watched or a row exists, and walks it home when the
+               pipeline is empty again. One node, relocated, never a second
+               copy that would drift from the coverage rules. -->
+          <div id="pipeEmpty" class="pb-slot act">
+            <b>Watch a market</b>
+            <p>When an owner there asks CompNinja for a Broker Opinion of Value, it lands
+              in this column. Nothing to upload.</p>
+            <div id="covForm">
+              <div class="form">
+                <label class="span2">Market <input id="covMarket" type="text" placeholder="City, ST" list="mktList"/></label>
+                <label>Type <select id="covType"></select></label>
+                <div class="formact"><button class="btn" id="covAdd">Watch this market</button></div>
+              </div>
+              <div id="leadMsg"></div>
+              <div id="covMsg"></div>
+            </div>
           </div>
-          <div class="row" id="covRow"></div>
-          <div id="leadMsg"></div>
-          <div id="covMsg"></div>
-          <p class="fine" style="margin-top:var(--s3)">Remove all of them and any market
-            where you have submitted a comp comes back on your next visit.</p>
+        </div>
+        <div class="pb-col" data-s="open" role="group" aria-labelledby="pbOpenH">
+          <div class="pb-ch"><h2 id="pbOpenH">Open</h2><span class="n" id="pbOpenN">0</span></div>
+          <p class="pb-cf">You&rsquo;re writing it</p>
+          <div class="pb-stack" id="pbOpen"></div>
+        </div>
+        <div class="pb-col" data-s="delivered" role="group" aria-labelledby="pbDeliveredH">
+          <div class="pb-ch"><h2 id="pbDeliveredH">Delivered</h2><span class="n" id="pbDeliveredN">0</span></div>
+          <p class="pb-cf">The owner has it</p>
+          <div class="pb-stack" id="pbDelivered"></div>
+        </div>
+        <div class="pb-col" data-s="won" role="group" aria-labelledby="pbWonH">
+          <div class="pb-ch"><h2 id="pbWonH">Won</h2><span class="n" id="pbWonN">0</span></div>
+          <p class="pb-cf">You got the listing</p>
+          <div class="pb-stack" id="pbWon"></div>
         </div>
       </div>
-      <!-- Hidden while there are no rows: a header row with nothing under it is
-           the same "is this broken?" signal the empty comps table gave. -->
-      <div class="tw hide" id="pipeTableWrap"><table id="pipeTbl">
-        <thead><tr>
-          <th data-bk="stageRank">Stage</th><th data-bk="received">Received</th>
-          <th data-bk="market">Market</th><th data-bk="property_type">Type</th>
-          <th data-bk="size_sqft" class="num">Size</th><th data-bk="source">Source</th>
-          <th>Notes</th><th></th>
-        </tr></thead><tbody id="pipeRows"></tbody>
-      </table></div>
-      <!-- Said once, under the table, rather than in every unclaimed lead's
-           empty Market cell. A lead is anonymized to five facts by
-           broker-leads.js; the blank is the privacy wall, not missing data. -->
-      <p class="note hide" id="leadPrivacy">A lead&rsquo;s address and contact details stay
+      <!-- Said once, under the board, rather than on every request's card. A
+           lead is anonymized to five facts by broker-leads.js; what a card
+           leaves out is the privacy wall, not missing data. -->
+      <p class="note hide" id="leadPrivacy">An owner&rsquo;s name, address and contact details stay
         with CompNinja until an introduction is made.</p>
-
-      <!-- Choosing markets is setup, not the daily job, so it collapses once
-           there is a row. #covForm is still exactly ONE node, relocated here
-           by renderPipeline. Never add a second copy. -->
-      <details class="dbox hide" id="covBox">
-        <summary>Markets you watch</summary>
+      <!-- Lost, folded away at the foot, the way Passed is on /sites. -->
+      <details class="pb-fold hide" id="pbLostBox">
+        <summary>Lost<span id="pbLostN"></span></summary>
+        <div class="pb-stack" id="pbLost"></div>
       </details>
     </section>
     </div>
@@ -1689,6 +1835,8 @@ ${tabButtons}
   var $=function(id){return document.getElementById(id)};
   // Which page this is: "comps" (/comps) or "pipeline" (/pipeline).
   var PAGE=${JSON.stringify(page)};
+  // /pipeline has one tab, so its bar is not drawn (.pl; 2026-11-23).
+  var VT_WRAP=PAGE==="pipeline"?"vt-wrap pl":"vt-wrap";
   var esc=function(s){var d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML};
   // esc() is only innerHTML-safe: it leaves a literal " untouched, which
   // breaks out of a quoted attribute. Attribute values built from free text
@@ -1994,7 +2142,7 @@ ${tabButtons}
   function syncLockedTabs(){
     if(!locked)return;
     var c=$("tab-contrib"),live=!!c&&!c.classList.contains("vt-off");
-    $("vtWrap").className=live?"vt-wrap":"vt-wrap hide";
+    $("vtWrap").className=live?VT_WRAP:VT_WRAP+" hide";
     if(live&&curTab!=="contrib")setTab("contrib",true);
   }
 
@@ -2091,7 +2239,7 @@ ${tabButtons}
     if(o.s!==200) return lockVaultDecks((o.j&&o.j.error)||"Could not load your comps.");
     // A read that succeeds after one that failed has to put them back.
     $("vaultLocked").className="invite hide";
-    locked=false; $("vtWrap").className="vt-wrap";
+    locked=false; $("vtWrap").className=VT_WRAP;
     // The trust line makes the promise for an open book: one copy, not two.
     $("vFoot").className="vfoot hide";
     comps=o.j.comps||[];
@@ -3286,9 +3434,13 @@ ${tabButtons}
         renderCoverage(coverage); renderPipeline();
       });
   }
+  // The chips sit in the bar over the board. Past five, four show and the
+  // rest wait behind "+N more", so nine markets are not three lines of page
+  // above the work.
+  var covAll=false;
   function renderCoverage(cov){
-    var emptyHint='<span class="empty" style="padding:0">No markets yet. Add a market above to start seeing leads here, or submit comps to earn markets automatically.</span>';
-    $("covRow").innerHTML=cov.length?cov.map(function(c){
+    var show=(!covAll&&cov.length>5)?cov.slice(0,4):cov,rest=cov.length-show.length;
+    $("covRow").innerHTML=show.map(function(c){
       var label=escA(c.market)+" "+escA(c.property_type);
       // Cities that trade as one market are matched together (the server's
       // METRO_GROUPS), so a chip reading "Boise, ID" can legitimately pull in
@@ -3301,7 +3453,7 @@ ${tabButtons}
         (near?'<span class="near" title="'+escA(nearTip.trim())+'">+'+near+" nearby</span>":"")+
         ' <button type="button" data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+nearTip+'" title="Stop watching '+label+
         '">&times;</button></span>';
-    }).join(" "):(($("covForm").parentNode&&$("covForm").parentNode.id==="pipeEmpty")?"":emptyHint);
+    }).join(" ")+(rest?' <button type="button" class="pb-more" data-covmore="1">+'+rest+" more</button>":"");
     var seen={},opts=[];
     coverage.concat().forEach(function(c){ if(c&&c.market&&!seen[c.market]){seen[c.market]=1;opts.push(c.market);} });
     (allMarkets||[]).forEach(function(m){ if(m&&!seen[m]){seen[m]=1;opts.push(m);} });
@@ -3382,7 +3534,6 @@ ${tabButtons}
   // allows are the five facts drawn, and a lead's empty Market and Notes cells
   // are the privacy wall doing its job (#leadPrivacy says so once, below).
   var bovs=[],bovRollup=null,bovsOk=false,bovsErr="";
-  var pipeSortK="received",pipeSortAsc=false,pipeStage="";
   var BOV_STATUSES=["open","delivered","won","lost"];
   var BOV_SOURCE_LABEL={compninja:"CompNinja intro",referral:"Referral",repeat_client:"Repeat client",other:"Other"};
   // New first, then the log's own order. The rank is what the Stage column
@@ -3439,6 +3590,7 @@ ${tabButtons}
           received:String(l.ts||"").slice(0,10),market:l.market||"",address:"",
           property_type:l.type||"",size_sqft:l.size_sqft||null,
           source:"lead",sourceLabel:l.is_1031?"CompNinja lead · 1031 exchange":"CompNinja lead",notes:"",
+          ts:l.ts||"",is1031:!!l.is_1031,
           intro_requested:!!l.intro_requested,status:""});
       });
     }
@@ -3456,21 +3608,54 @@ ${tabButtons}
     return out;
   }
 
-  // A stage cell. Same rule as the book deck's reading strip: it is a BUTTON
-  // only when there is something behind it, because an affordance over an empty
-  // stage is a control that does nothing.
-  function stageCell(stage,label,count,active){
-    var live=count>0,tag=live?"button":"div",
-        cls="scell"+(live?" act":""),
-        attr=live?' type="button" data-stage="'+stage+'"':"";
-    return "<"+tag+' class="'+cls+'"'+attr+'><span class="slab">'+label+"</span>"+
-      '<div class="sfig'+(active?" ok":"")+'">'+count+"</div>"+
-      (active?'<div class="ssub">filtering</div>':"")+"</"+tag+">";
+  // ---- The board (2026-11-23, Draft C) -------------------------------------
+  // One column per stage. Nothing here reads anything the table did not: the
+  // same rows, from the same two lists, drawn as cards. A card's controls are
+  // the row's own (data-intro, data-bov, data-bovdel), so every write is the
+  // handler it always was.
+  var wonAll=false,WON_CAP=5;
+  // "Asked 4 days ago": how long an owner has been waiting is the point of a
+  // request, and a date makes the reader do the subtraction.
+  function pipeAgo(ts){
+    var t=Date.parse(ts); if(!isFinite(t))return "";
+    var n=Math.floor((Date.now()-t)/864e5);
+    if(n<=0)return "Asked today";
+    if(n===1)return "Asked yesterday";
+    if(n<14)return "Asked "+n+" days ago";
+    return "Asked "+Math.floor(n/7)+" weeks ago";
+  }
+  // "Nov 20", with the year only when it is not this one.
+  function pipeDay(d){
+    var p=isoParts(d); if(!p)return "";
+    return dayLabel(d,p.y!==new Date().getFullYear());
+  }
+  function pipeCard(r){
+    if(r.kind==="lead"){
+      // The five facts broker-leads.js allows, and nothing else.
+      return '<article class="pb-card"><div class="t"><b>'+esc(r.property_type||"Property")+"</b>"+
+        (r.is1031?'<span class="pb-tag">1031 exchange</span>':"")+"</div>"+
+        '<div class="z">'+(r.size_sqft?num(r.size_sqft)+" SF <span>\\u00b7 "+esc(r.market)+"</span>":esc(r.market))+"</div>"+
+        '<div class="w">'+esc(pipeAgo(r.ts))+"</div>"+
+        (r.intro_requested
+          ? '<button class="pb-ask" disabled>Intro requested</button>'
+          : '<button class="pb-ask" data-intro="'+escA(r.id)+'">Request introduction</button>')+"</article>";
+    }
+    var meta=[r.sourceLabel,pipeDay(r.received)].filter(function(x){return x}).join(" \\u00b7 ");
+    return '<article class="pb-card"><div class="t"><b>'+esc(r.market)+"</b>"+
+      (r.property_type?'<span class="ty">'+esc(r.property_type)+"</span>":"")+"</div>"+
+      (r.address?'<div class="a">'+esc(r.address)+"</div>":"")+
+      (r.size_sqft?'<div class="z">'+num(r.size_sqft)+" SF</div>":"")+
+      (r.notes?'<p class="nt">'+esc(r.notes)+"</p>":"")+
+      '<div class="f"><span>'+esc(meta)+"</span>"+bovSelect(r.id,r.status,"Stage")+
+      '<button class="pb-x" data-bovdel="'+escA(r.id)+'" aria-label="Remove this BOV" title="Remove">&times;</button></div></article>';
+  }
+  function pipeSlot(title,text){
+    return '<div class="pb-slot">'+(title?"<b>"+title+"</b>":"")+text+"</div>";
   }
 
   function renderPipeline(){
-    // Whichever halves failed, said once, above the table. Neither failure may
-    // blank the deck: the other half's rows still render underneath.
+    // Whichever halves failed, said once, above the board. Neither failure
+    // may blank it: the other half's cards still render underneath.
     var errs=[];
     if(!leadsOk&&leadsErr)errs.push(leadsErr);
     if(!bovsOk&&bovsErr)errs.push(bovsErr);
@@ -3479,97 +3664,79 @@ ${tabButtons}
     }).join("");
 
     var all=pipeRows();
-    // Counted from what ARRIVED, never from what was asked for — a strip that
-    // counted a failed half would report zero as if it were the answer.
-    var counts={};
-    all.forEach(function(r){ counts[r.stage]=(counts[r.stage]||0)+1; });
-    if(pipeStage&&!counts[pipeStage])pipeStage="";   // the stage being filtered emptied out
-    var strip=$("pipeStrip");
-    if(all.length){
-      strip.innerHTML=STAGES.map(function(s){
-        return stageCell(s,s.charAt(0).toUpperCase()+s.slice(1),counts[s]||0,pipeStage===s);
-      }).join("");
-      strip.className="strip s5";
-    } else { strip.innerHTML=""; strip.className="strip s5 hide"; }
+    // Sorted into columns from what ARRIVED, never from what was asked for.
+    // A status this page does not know is still the broker's open work.
+    var by={"new":[],open:[],delivered:[],won:[],lost:[]};
+    all.forEach(function(r){ (by[r.stage]||by.open).push(r); });
+    ["new","open","delivered","won","lost"].forEach(function(k){
+      by[k].sort(function(a,b){ return String(b.received).localeCompare(String(a.received)); });
+    });
 
-    // The two rollup facts that are not stage counts. They come from the
+    // The two rollup facts that are not column counts. They come from the
     // server's own rollup, so the win rate keeps bov-log.js's floor of three
     // decided BOVs, under which it is a dash rather than a punchline.
     var note=$("pipeNote");
     if(bovRollup&&bovRollup.total){
       var wr=bovRollup.winRate==null?"\\u2014":Math.round(bovRollup.winRate*100)+"%";
-      note.innerHTML=esc(bovRollup.thisYear)+" this year &middot; win rate "+wr;
+      note.innerHTML="<b>"+esc(bovRollup.thisYear)+"</b> logged this year &middot; win rate <b>"+wr+"</b>";
       note.className="note";
     } else { note.innerHTML=""; note.className="note hide"; }
 
-    var rows=all.filter(function(r){ return !pipeStage||r.stage===pipeStage; });
-    rows.sort(function(a,b){
-      var av=a[pipeSortK],bv=b[pipeSortK];
-      if(av==null&&bv==null)return 0;
-      if(av==null)return 1;
-      if(bv==null)return -1;
-      var c=typeof av==="number"&&typeof bv==="number"?av-bv:String(av).localeCompare(String(bv));
-      return pipeSortAsc?c:-c;
-    });
-
-    $("pipeTableWrap").className=rows.length?"tw":"tw hide";
-    // Only shown when an unclaimed lead is actually on screen to explain.
-    var anyLead=rows.some(function(r){ return r.kind==="lead"; });
-    $("leadPrivacy").className=anyLead?"note":"note hide";
-    $("pipeRows").innerHTML=rows.map(pipeRow).join("");
-
-    // Invitation vs table: a header row over nothing is the empty table this
-    // page used to open with. Failures do not count as empty — "nothing here"
-    // would be a claim we cannot make — so an error with no rows hides the
-    // invitation too and leaves the messages in #pipeMsg.
-    var pipeInvite=!all.length&&!errs.length;
-    $("pipeEmpty").className=pipeInvite?"invite":"invite hide";
-    $("covBox").className=pipeInvite?"dbox hide":"dbox";
+    // The invitation: nothing watched, nothing logged, nothing failed. A
+    // failure is not "empty" (that would be a claim we cannot make), so an
+    // error keeps the invitation away and leaves the messages in #pipeMsg.
+    var pipeInvite=!all.length&&!errs.length&&!coverage.length;
+    $("pipeEmpty").className=pipeInvite?"pb-slot act":"pb-slot act hide";
+    $("covBox").className=pipeInvite?"pb-add hide":"pb-add";
+    $("pipeWatch").className=pipeInvite?"pb-watch hide":(coverage.length?"pb-watch":"pb-watch none");
     if(pipeInvite)$("pipeEmpty").appendChild($("covForm"));
     else $("covBox").appendChild($("covForm"));
     renderCoverage(coverage);
-    // The Pipeline tab says what is new: owner requests nobody has asked to
-    // be introduced to yet, in red. Otherwise how many rows the pipeline
-    // holds, counted from what ARRIVED like the strip above.
-    var fresh=all.filter(function(r){return r.kind==="lead"&&!r.intro_requested}).length;
+
+    // Each column: its cards, or one line saying what lands there. A column
+    // whose half failed says nothing, for the invitation's reason.
+    var fresh=by["new"].filter(function(r){return !r.intro_requested}).length;
+    $("pbNewN").textContent=String(by["new"].length);
+    $("pbNewN").className=fresh?"n hot":"n";
+    $("pbNew").innerHTML=by["new"].map(pipeCard).join("")||
+      (pipeInvite||!leadsOk?"":coverage.length
+        ? pipeSlot("Nothing new","Requests from the markets you watch land here.")
+        : pipeSlot("","Watch a market, above, and owner requests land here."));
+    $("pbOpenN").textContent=String(by.open.length);
+    $("pbOpen").innerHTML=by.open.map(pipeCard).join("")||
+      (!bovsOk?"":bovs.length?pipeSlot("","Nothing open.")
+        : '<div class="pb-slot act"><b>Already working one?</b>Log a BOV from a referral or a repeat client.'+
+          '<br/><button type="button" class="btn ghost" data-logbov="1">+ Log a BOV</button></div>');
+    $("pbDeliveredN").textContent=String(by.delivered.length);
+    $("pbDelivered").innerHTML=by.delivered.map(pipeCard).join("")||
+      (!bovsOk?"":pipeSlot("",bovs.length?"Nothing waiting on an owner.":"Move a BOV here once you\\u2019ve sent it."));
+    // Won only grows, so it opens on its latest five.
+    var won=by.won,shown=wonAll?won:won.slice(0,WON_CAP);
+    $("pbWonN").textContent=String(won.length);
+    $("pbWon").innerHTML=(shown.map(pipeCard).join("")||
+      (!bovsOk?"":pipeSlot("",bovs.length?"None yet.":"Wins collect here, and your win rate shows after three are won or lost.")))+
+      (won.length>WON_CAP?'<button type="button" class="pb-more wide" data-wonall="1">'+(wonAll?"Show the latest "+WON_CAP:"Show all "+won.length)+"</button>":"");
+    $("pbLostBox").className=by.lost.length?"pb-fold":"pb-fold hide";
+    $("pbLostN").textContent=by.lost.length?String(by.lost.length):"";
+    $("pbLost").innerHTML=by.lost.map(pipeCard).join("");
+
+    // Only shown when an unclaimed request is actually on screen to explain.
+    $("leadPrivacy").className=by["new"].length?"note":"note hide";
+    // The Pipeline tab's count is still kept (the bar is not drawn on
+    // /pipeline, where the first column's count says it): owner requests
+    // nobody has asked to be introduced to yet, in red, else the rows held.
     tabCount("tabPipeN",fresh?fresh+" new":(all.length||""),fresh>0);
   }
 
-  function pipeRow(r){
-    var stage,action;
-    if(r.kind==="lead"){
-      stage='<span class="stg new">New</span>';
-      action=r.intro_requested
-        ? '<button class="pubbtn on" disabled>Intro requested</button>'
-        : '<button class="pubbtn" data-intro="'+escA(r.id)+'">Request introduction</button>';
-    } else {
-      stage=bovSelect(r.id,r.status);
-      action='<button class="pubbtn" data-bovdel="'+escA(r.id)+'">Remove</button>';
+  // The board's own three presses. None of them writes anything.
+  document.addEventListener("click",function(e){
+    var t=e.target; if(!t||!t.getAttribute)return;
+    if(t.getAttribute("data-wonall")){ wonAll=!wonAll; renderPipeline(); return; }
+    if(t.getAttribute("data-covmore")){ covAll=true; renderCoverage(coverage); return; }
+    if(t.getAttribute("data-logbov")){
+      setBovOpen(true);
+      if($("bovMarket").focus)$("bovMarket").focus();
     }
-    return "<tr><td>"+stage+"</td><td>"+esc(r.received)+"</td>"+
-      "<td>"+esc(r.market)+(r.address?' <span class="note">'+esc(r.address)+"</span>":"")+"</td>"+
-      "<td>"+esc(r.property_type)+"</td>"+
-      '<td class="num">'+(r.size_sqft?num(r.size_sqft)+" SF":"")+"</td>"+
-      "<td>"+esc(r.sourceLabel)+"</td>"+
-      "<td>"+esc(r.notes)+"</td>"+
-      "<td>"+action+"</td></tr>";
-  }
-
-  document.querySelector("#pipeTbl thead").addEventListener("click",function(e){
-    var th=e.target.closest("th[data-bk]"); if(!th)return;
-    var k=th.getAttribute("data-bk");
-    if(k===pipeSortK)pipeSortAsc=!pipeSortAsc; else{pipeSortK=k;pipeSortAsc=false;}
-    // Redraws from the rows already held: a sort costs no refetch and cannot
-    // clear the strip.
-    renderPipeline();
-  });
-  // A stage cell is the filter, and clicking the active one clears it — a
-  // toggle, never a trap you can only leave by reloading.
-  $("pipeStrip").addEventListener("click",function(e){
-    var cell=e.target.closest("button[data-stage]"); if(!cell)return;
-    var s=cell.getAttribute("data-stage");
-    pipeStage=pipeStage===s?"":s;
-    renderPipeline();
   });
   $("bovAdd").addEventListener("click",function(){
     var b=$("bovAdd");

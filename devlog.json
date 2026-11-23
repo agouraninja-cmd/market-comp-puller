@@ -5587,5 +5587,11 @@
     "type": "improvement",
     "title": "Pipeline is a board",
     "details": "Pipeline is now one column per stage, left to right: Owner requests, Open, Delivered and Won, with Lost folded at the foot. Each request says what the owner has, where, and how long ago they asked, and Request introduction is the red button on the page. The markets you watch sit under the title instead of in a closed box at the bottom. An empty Pipeline is the board itself, with the form to watch a first market in the first column. On a phone the columns stack, so nothing runs off the side of the screen. The table’s sorting and stage filter are gone with the table."
+    },
+  {
+    "date": "2026-11-23",
+    "type": "feature",
+    "title": "Permit alerts can follow a company",
+    "details": "A permit alert can now name a company. Type it in the new Company box on the Permit tracker's Alerts tab, and every weekday morning you get an email with the new permits that company filed or is building, as the applicant or the contractor, in Boise, Meridian and Nampa. The alert lists its newest matches on the page and marks them in Filings, and you can still narrow it by city, property type, kind, words or area. Names are matched as whole words, ignoring case, punctuation and a trailing LLC or Inc, so Hawkins Companies, LLC finds HAWKINS COMPANIES and Ace never finds Grace Builders. Each line of the email says whether the company is the applicant or the contractor."
   }
 ]

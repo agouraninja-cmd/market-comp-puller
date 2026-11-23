@@ -179,3 +179,72 @@ test("⚠ the page's copy of the matching rule agrees on areas too", () => {
     for (const p of permits) assert.equal(pageMatches(pageShape, p), A.matches(a, p), JSON.stringify([ar.area_miles, p.lat, p.lng]));
   }
 });
+
+// ---- A company (2026-11-23) -------------------------------------------------
+test("a company alert takes a name, names itself after it, and says so", () => {
+  const ok = A.validateAlertInput({ company: "  Hawkins  Companies ", jurisdiction: "boise" }, { cities: CITIES, cityOf });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.value.company, "Hawkins Companies");
+  assert.equal(ok.value.name, "Hawkins Companies permits in Boise");
+  assert.equal(A.defaultName({ company: "ESI", kind: "new" }, cityOf), "ESI new buildings in every city");
+  assert.equal(A.describe({ company: "ESI" }, cityOf), "Every kind · Every property type · every city we read · filed by or built by ESI");
+  assert.equal("company" in A.validateAlertInput({ jurisdiction: "boise" }, { cities: CITIES }).value, false,
+    "an alert with no company never names the column, so 067 can run after the deploy");
+  assert.match(A.validateAlertInput({ company: "x".repeat(81) }, { cities: CITIES }).error, /under 80/);
+  assert.match(A.validateAlertInput({ company: "LLC" }, { cities: CITIES }).error, /company's name/, "nothing left once the suffix is dropped");
+  assert.equal(A.alertView({ id: "x", name: "n", company: "ESI" }).company, "ESI");
+  assert.equal(A.alertView({ id: "x", name: "n" }).company, "");
+});
+
+test("a company matches its applicant or contractor, whole words, whatever the case, marks or suffix", () => {
+  const a = { company: "Hawkins Companies, LLC" };
+  assert.equal(A.matches(a, permit({ applicant: "HAWKINS COMPANIES" })), true, "the suffix typed is dropped");
+  assert.equal(A.matches(a, permit({ contractor: "Hawkins Companies LLC" })), true);
+  assert.equal(A.matches(a, permit({ description: "for Hawkins Companies" })), false, "only the two companies, never the words");
+  assert.equal(A.matches({ company: "Ace" }, permit({ contractor: "Grace Builders" })), false, "whole words");
+  assert.equal(A.matches({ company: "Ace" }, permit({ contractor: "ACE ELECTRIC INC" })), true);
+  assert.equal(A.matches({ company: "B&B Construction" }, permit({ applicant: "B and B Construction" })), true);
+  assert.equal(A.matches({ company: "ESI" }, permit()), false, "a permit with no company cannot match");
+  assert.equal(A.matches({ company: "ESI", jurisdiction: "meridian" }, permit({ contractor: "ESI" })), false, "the other filters still hold");
+});
+
+test("a company change moves the email mark and clearing it writes null only where the column exists", () => {
+  const row = { jurisdiction: null, property_type: null, kind: null, words: null, company: "ESI", notified_through: "2026-09-01T00:00:00Z" };
+  const moved = A.validateAlertPatch({ company: "Hawkins" }, row, { cities: CITIES, now: NOW });
+  assert.equal(moved.patch.company, "Hawkins");
+  assert.equal(moved.patch.notified_through, new Date(NOW).toISOString());
+  const same = A.validateAlertPatch({ company: "ESI" }, row, { cities: CITIES, now: NOW });
+  assert.equal(same.patch.notified_through, undefined);
+  const cleared = A.validateAlertPatch({ company: "" }, row, { cities: CITIES, now: NOW });
+  assert.equal(cleared.patch.company, null);
+  const old = A.validateAlertPatch({ jurisdiction: "boise" }, { jurisdiction: null }, { cities: CITIES, now: NOW });
+  assert.equal("company" in old.patch, false, "a row from before 067 is never sent the column");
+});
+
+test("a company alert's email says which side of each permit the company is on", () => {
+  const mail = A.buildDigestEmail({
+    items: [{ alert: { name: "ESI permits", company: "ESI Construction" }, permits: [
+      permit({ permitNumber: "P-1", contractor: "ESI CONSTRUCTION" }),
+      permit({ permitNumber: "P-2", applicant: "ESI Construction", contractor: "ESI Construction" }),
+    ] }],
+    siteUrl: "https://compninja.co", cityOf,
+  });
+  assert.match(mail.text, /· contractor \(P-1\)/);
+  assert.match(mail.text, /· applicant and contractor \(P-2\)/);
+});
+
+test("⚠ the page's copy of the matching rule agrees on companies too", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "permits-page.js"), "utf8");
+  const m = src.match(/function alertMatches\(a,p\)\{[\s\S]*?\n  \}\n/);
+  const pageMatches = new Function(`${m[0]}; return alertMatches;`)();
+  const companies = ["Hawkins Companies, LLC", "Ace", "ace electric", "B&B Construction", "ESI", "Inc", "Grace"];
+  const permits = [
+    permit({ applicant: "HAWKINS COMPANIES" }), permit({ contractor: "Grace Builders" }), permit({ contractor: "ACE ELECTRIC INC" }),
+    permit({ applicant: "B and B Construction" }), permit({ contractor: "ESI" }), permit({ description: "Hawkins Companies" }), permit(),
+  ];
+  for (const company of companies) {
+    for (const p of permits) {
+      assert.equal(pageMatches({ company }, p), A.matches({ company }, p), JSON.stringify([company, p.applicant, p.contractor]));
+    }
+  }
+});

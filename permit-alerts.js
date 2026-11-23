@@ -31,6 +31,17 @@
 // permit that could not be placed never matches an area; the page says how
 // many there are, so a quiet area reads as quiet rather than broken.
 //
+// A COMPANY (2026-11-23, owner's ask: "a way to pull permits automatically for
+// a specific company"): an alert may also follow one company — a permit fits
+// when that name is its APPLICANT's or its CONTRACTOR's, the two companies the
+// sweep reads off each permit (permit-portals.js, permit-reports.js). Words are
+// matched whole (`companyKey`): "Ace" is Ace Electric, never Grace Builders;
+// case, punctuation and "&"/"and" do not count, and a trailing LLC / Inc / Co
+// typed into the box is dropped, so "Hawkins Companies, LLC" finds "HAWKINS
+// COMPANIES". Nothing else is guessed: no abbreviations, no nicknames. A permit
+// whose detail page gave us no company (the history pass's backfill rows)
+// cannot match, and the page says the rule under the box. Migration 066.
+//
 // ⚠ PAIR: `matches` below and `alertMatches` in permits-page.js's script are
 // one rule in two places (the browser cannot require this file): the page uses
 // its copy for the counts, the feed tags and the form's preview. Change both;
@@ -57,6 +68,24 @@ const PROPERTY_TYPES = Object.freeze(["Industrial", "Office", "Retail", "Multifa
 // The distances an area may be, in miles.
 const AREA_MILES = Object.freeze([0.5, 1, 2, 5]);
 const AREA_ADDRESS_MAX = 120;
+const COMPANY_MAX = 80;
+// Words a company name may end in that say what KIND of company it is, not
+// which: dropped from what the member typed (never from the permit), so the
+// box can take a name copied off a letterhead.
+const COMPANY_SUFFIXES = /(?:(?:^| )(?:llc|l l c|inc|incorporated|co|corp|corporation|ltd|limited|lp|llp|pllc|pc|pa))+$/;
+
+// A company name as words to compare: lower case, "&" read as "and", every
+// other mark a space. ⚠ PAIR with the copy inside permits-page.js's alertMatches.
+function companyKey(v) {
+  return String(v == null ? "" : v).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
+}
+// What the member typed, as the key a permit's companies are searched for.
+function companyNeedle(v) { return companyKey(v).replace(COMPANY_SUFFIXES, "").trim(); }
+// Is `needle` (companyNeedle) one of the permit's two companies, whole words?
+function companyMatches(needle, p) {
+  if (!needle) return false;
+  return Boolean(companyRole(needle, p));
+}
 
 function milesWords(m) { return m === 0.5 ? "½ mile" : m === 1 ? "1 mile" : `${m} miles`; }
 // The street line of a placed address, for the alert's own words.
@@ -80,6 +109,7 @@ function describe(a, cityOf) {
     a.property_type || "Every property type",
     city || "every city we read",
     hasArea(a) ? `within ${milesWords(Number(a.area_miles))} of ${areaLabel(a)}` : "",
+    a.company ? `filed by or built by ${a.company}` : "",
     a.words ? `mentions “${a.words}”` : "",
   ].filter(Boolean).join(" · ");
 }
@@ -92,6 +122,11 @@ function defaultName(a, cityOf) {
       : a.property_type || "Every permit";
   const where = hasArea(a) ? `within ${milesWords(Number(a.area_miles))} of ${areaLabel(a)}` : city ? `in ${city}` : "in every city";
   const words = a.words ? ` mentioning “${a.words}”` : "";
+  // A company alert leads with the company: it is what the member follows.
+  if (a.company) {
+    const filter = what === "Every permit" ? "permits" : what.charAt(0).toLowerCase() + what.slice(1);
+    return clean(`${a.company} ${filter} ${where}${words}`).slice(0, NAME_MAX);
+  }
   return clean(`${what} ${where}${words}`).slice(0, NAME_MAX);
 }
 
@@ -112,6 +147,13 @@ function normalizeFilters(b, { cities }) {
   const words = clean(b.words);
   if (words.length > WORDS_MAX) return { error: `Keep the words under ${WORDS_MAX} characters.` };
   out.words = words || null;
+  // The company is a column of its own (migration 066), so it is named only
+  // when one is given: an alert without one never writes the column, and the
+  // existing alerts keep saving if the migration has not run yet.
+  const company = clean(b.company);
+  if (company.length > COMPANY_MAX) return { error: `Keep the company under ${COMPANY_MAX} characters.` };
+  if (company && companyNeedle(company).length < 2) return { error: "Type the company's name, like Hawkins Companies or ESI Construction." };
+  if (company) out.company = company;
   return { value: out };
 }
 
@@ -149,12 +191,15 @@ function validateAlertInput(body, { cities, cityOf } = {}) {
 function validateAlertPatch(body, row, { cities, cityOf, now } = {}) {
   const b = body && typeof body === "object" ? body : {};
   const patch = {};
-  const filtersSent = ["jurisdiction", "propertyType", "kind", "words"].some((k) => Object.prototype.hasOwnProperty.call(b, k));
+  const filtersSent = ["jurisdiction", "propertyType", "kind", "words", "company"].some((k) => Object.prototype.hasOwnProperty.call(b, k));
   if (filtersSent) {
     const f = normalizeFilters(b, { cities });
     if (f.error) return { ok: false, error: f.error };
     const r = row || {};
-    const changed = ["jurisdiction", "property_type", "kind", "words"].some((k) => (f.value[k] || null) !== (r[k] || null));
+    // Clearing a company writes null, but only to a row that has the column
+    // (066 run): the stored row is read with select=*, so it says.
+    if (!f.value.company && Object.prototype.hasOwnProperty.call(r, "company")) f.value.company = null;
+    const changed = ["jurisdiction", "property_type", "kind", "words", "company"].some((k) => (f.value[k] || null) !== (r[k] || null));
     Object.assign(patch, f.value);
     if (changed) patch.notified_through = new Date(now).toISOString();
   }
@@ -185,6 +230,7 @@ function matches(a, p) {
     const hay = [p.address, p.description, p.projectName, p.applicant, p.contractor, p.permitNumber].join(" ").toLowerCase();
     if (hay.indexOf(String(a.words).toLowerCase()) < 0) return false;
   }
+  if (a.company && !companyMatches(companyNeedle(a.company), p)) return false;
   if (hasArea(a)) {
     if (p.lat == null || p.lng == null || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return false;
     if (milesBetween(Number(a.area_lat), Number(a.area_lng), p.lat, p.lng) > Number(a.area_miles)) return false;
@@ -197,7 +243,7 @@ function alertView(row, { cityOf } = {}) {
   const r = row || {};
   return {
     id: r.id, name: r.name || "", jurisdiction: r.jurisdiction || "", propertyType: r.property_type || "",
-    kind: r.kind || "", words: r.words || "", email: r.notify_email === true,
+    kind: r.kind || "", words: r.words || "", company: r.company || "", email: r.notify_email === true,
     lastEmailedAt: r.last_emailed_at || null, describe: describe(r, cityOf),
     area: hasArea(r) ? { address: r.area_address || "", lat: Number(r.area_lat), lng: Number(r.area_lng), miles: Number(r.area_miles) } : null,
   };
@@ -231,6 +277,13 @@ function digestFor(alerts, views, { now, cutoff, lateCities } = {}) {
   return out;
 }
 
+// "applicant", "contractor" or both, for one company on one permit.
+function companyRole(needle, p) {
+  const on = (c) => Boolean(needle) && (" " + companyKey(c) + " ").indexOf(" " + needle + " ") > -1;
+  const a = on(p && p.applicant), c = on(p && p.contractor);
+  return a && c ? "applicant and contractor" : a ? "applicant" : c ? "contractor" : "";
+}
+
 function shortDay(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
   if (!m) return "";
@@ -250,7 +303,9 @@ function buildDigestEmail({ items, siteUrl, cityOf } = {}) {
     const lines = [`${a.name} (${permits.length} new)`];
     for (const p of permits.slice(0, EMAIL_MAX_PER_ALERT)) {
       const kind = p.kind === "ti" ? "tenant build-out" : p.kind === "new" ? "new building" : clean(p.type);
-      lines.push(`• ${[shortDay(p.appliedDate), clean(p.address) || "no address on the permit", city(p.jurisdiction), kind, p.propertyType && p.propertyType !== "Other" ? p.propertyType.toLowerCase() : ""].filter(Boolean).join(" · ")}` +
+      // A company alert says which side of the permit the company is on.
+      const role = a.company ? companyRole(companyNeedle(a.company), p) : "";
+      lines.push(`• ${[shortDay(p.appliedDate), clean(p.address) || "no address on the permit", city(p.jurisdiction), kind, p.propertyType && p.propertyType !== "Other" ? p.propertyType.toLowerCase() : "", role].filter(Boolean).join(" · ")}` +
         ` (${clean(p.permitNumber)})${p.sourceUrl ? `\n  ${p.sourceUrl}` : ""}`);
     }
     if (permits.length > EMAIL_MAX_PER_ALERT) lines.push(`…and ${permits.length - EMAIL_MAX_PER_ALERT} more on the Permit tracker.`);
@@ -271,7 +326,7 @@ function buildDigestEmail({ items, siteUrl, cityOf } = {}) {
 
 module.exports = {
   MAX_ALERTS_PER_USER, NAME_MAX, WORDS_MAX, EMAIL_FRESH_DAYS, REPORT_FRESH_DAYS, EMAIL_MAX_PER_ALERT, KINDS, PROPERTY_TYPES,
-  AREA_MILES, hasArea, milesBetween, areaRequest, withArea,
+  AREA_MILES, COMPANY_MAX, companyKey, companyNeedle, companyMatches, hasArea, milesBetween, areaRequest, withArea,
   describe, defaultName, validateAlertInput, validateAlertPatch, matches, alertView, digestFor, buildDigestEmail,
   kindOf: PULSE.groupOf,
 };

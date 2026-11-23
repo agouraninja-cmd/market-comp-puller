@@ -25160,7 +25160,7 @@ const server = http.createServer((req, res) =>
             { user_id: user.id, ...v.value, notified_through: new Date().toISOString() },
             { prefer: "return=representation" })) || [];
           if (!inserted.length) return sendJson(res, 503, { error: "Permit alerts are unavailable right now." });
-          logEvent("permit_alert_add", { source: v.value.kind || "any" });
+          logEvent("permit_alert_add", { source: v.value.company ? "company" : v.value.kind || "any" });
           return sendJson(res, 200, { alert: PERMIT_ALERTS.alertView(inserted[0], { cityOf: permitCityOf }) });
         }
         const id = new URL(req.url, "http://localhost").searchParams.get("id");

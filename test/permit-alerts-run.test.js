@@ -204,3 +204,47 @@ test("an alert can be saved for every city the alert form offers", async (t) => 
     assert.equal(r.status, 200, key + ": " + JSON.stringify(await r.json()));
   }
 });
+
+// Following one company (2026-11-23; migration 067): the member names a
+// company, and the weekday sweep mails the new permits that company filed or
+// is building, by its applicant or contractor, and nothing else.
+test("a company alert is saved, listed, and mailed only that company's new permits", async (t) => {
+  const ctx = await bootWith({});
+  t.after(() => ctx.stop());
+  const { db, srv } = ctx;
+  const r = await api(srv, "POST", "/api/permits/alerts", PRO, { company: "Hawkins Companies, LLC" });
+  const j = await r.json();
+  assert.equal(r.status, 200, JSON.stringify(j));
+  assert.equal(j.alert.company, "Hawkins Companies, LLC");
+  assert.equal(j.alert.name, "Hawkins Companies, LLC permits in every city");
+  const row = db.tables.permit_alerts.find((a) => a.id === j.alert.id);
+  assert.equal(row.company, "Hawkins Companies, LLC");
+
+  const html = await (await api(srv, "GET", "/permits", PRO)).text();
+  assert.match(html, /"company":"Hawkins Companies, LLC"/, "/permits boots the company with the alert");
+  assert.match(html, /id="paCompany"/);
+
+  row.notified_through = new Date(Date.now() - 3600e3).toISOString();
+  db.tables.permit_filings.push(
+    filing(301, { applicant_company: "HAWKINS COMPANIES" }),
+    filing(302, { jurisdiction: "meridian", market: "Meridian, ID", contractor_company: "Hawkins Companies LLC" }),
+    filing(303, { contractor_company: "Shawkins Builders" }),           // not a whole-word match
+    filing(304, { description: "Shell for Hawkins Companies" }),         // the words, not a company on it
+    filing(305),
+  );
+  const s = await (await sweep(srv, { days: 1 })).json();
+  assert.deepEqual(s.errors, []);
+  assert.equal(s.alerts.emailed, 1);
+  const sent = await fake.waitForMail(db, 1);
+  assert.equal(sent[0].subject, "2 new permits: Hawkins Companies, LLC permits in every city");
+  assert.match(sent[0].text, /BLD26-0301\)/);
+  assert.match(sent[0].text, /BLD26-0302\)/);
+  assert.match(sent[0].text, /· applicant \(BLD26-0301\)/);
+  assert.match(sent[0].text, /· contractor \(BLD26-0302\)/);
+  assert.doesNotMatch(sent[0].text, /BLD26-030[3-5]/);
+
+  const patched = await api(srv, "PATCH", `/api/permits/alerts?id=${j.alert.id}`, PRO, { company: "", jurisdiction: "boise", propertyType: "", kind: "", words: "" });
+  assert.equal(patched.status, 200);
+  assert.equal(row.company, null, "clearing the company writes null");
+  assert.equal(db.unparsed.length, 0, JSON.stringify(db.unparsed));
+});

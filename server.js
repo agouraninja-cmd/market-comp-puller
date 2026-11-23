@@ -12444,7 +12444,7 @@ async function bulkListPayload(user, ent) {
       const rows = await sbRequest("GET",
         `bulk_job_items?user_id=eq.${encodeURIComponent(user.id)}` +
         `&job_id=in.(${pgInList(ids)})&status=eq.done` +
-        `&select=job_id,status,value_low,value_likely,value_high` +
+        `&select=job_id,status,value_low,value_likely,value_high,address,recent_item_id,portfolio_item_id` +
         `&limit=${BULK_JOB_LIST_LIMIT * BULK.MAX_ADDRESSES}`);
       const byJob = new Map();
       for (const r of Array.isArray(rows) ? rows : []) {
@@ -12454,6 +12454,15 @@ async function bulkListPayload(user, ent) {
       for (const j of jobs) {
         const s = BULK.summarize(byJob.get(j.id) || []);
         j.summary = { valued: s.valued, low: s.low, likely: s.likely, high: s.high };
+        // A one-address run IS a comp report, so the ledger opens that report
+        // directly (2026-11-23: clicking a property in Earlier runs should
+        // bring up the full report) rather than a one-row table. The ids are
+        // the row's own, read user-scoped above, and index.html's ?recent= /
+        // ?property= doors are user-scoped reads too.
+        const only = j.total === 1 ? (byJob.get(j.id) || [])[0] : null;
+        if (only && only.address) j.address = String(only.address);
+        if (only && only.recent_item_id) j.report_href = "/?recent=" + encodeURIComponent(only.recent_item_id);
+        else if (only && only.portfolio_item_id) j.report_href = "/?property=" + encodeURIComponent(only.portfolio_item_id);
       }
     } catch (err) {
       console.error("bulk list totals failed (ledger shows no figure):", err.message);

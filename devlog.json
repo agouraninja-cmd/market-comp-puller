@@ -5587,5 +5587,11 @@
     "type": "improvement",
     "title": "Pipeline is a board",
     "details": "Pipeline is now one column per stage, left to right: Owner requests, Open, Delivered and Won, with Lost folded at the foot. Each request says what the owner has, where, and how long ago they asked, and Request introduction is the red button on the page. The markets you watch sit under the title instead of in a closed box at the bottom. An empty Pipeline is the board itself, with the form to watch a first market in the first column. On a phone the columns stack, so nothing runs off the side of the screen. The table’s sorting and stage filter are gone with the table."
+  },
+  {
+    "date": "2026-11-23",
+    "type": "fix",
+    "title": "Pipeline’s four columns appear together",
+    "details": "Opening Pipeline, the Owner requests column filled a beat before Open, Delivered and Won, because the page drew the board as each of its two reads came back. It now waits for both and draws the board once; until then every column says Loading."
   }
 ]

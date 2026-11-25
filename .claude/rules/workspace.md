@@ -14,6 +14,31 @@ paths:
 ---
 # The signed-in workspace
 
+> **Home's map heals its own holes (2026-11-25; the owner, with two iPhone
+> pictures: "On CN mobile the map looks like this when you first load it, fix
+> this please").** The phone strip opened with one or two basemap tiles and
+> `--wash-2` everywhere else, pins floating over nothing, until a drag.
+> Leaflet asks for a tile once: a failed request stays blank, and so does a
+> tile it never asked for. Chromium never showed it on its own (instant, slow,
+> resized, jiggled viewports all filled in); failing half the first tile
+> requests reproduced the pictures exactly, and that is the case the fix was
+> measured on (before: two of four tiles holes for good; after: all four).
+> - **`hmHealing(layer)`** wraps both of `hmBasemap`'s tile layers: on
+>   `tileerror` the tile is asked for again (`?r=1`, `?r=2`), at most
+>   `HM_TILE_RETRIES` (2) times, 700 ms apart and growing.
+> - **`hmHealTiles()`** runs `HM_HEAL_MS` (2.5 s) after every `moveend`, and
+>   at once on `pageshow`, `load` and the page becoming visible
+>   (`hmHealSoon`). It calls `invalidateSize`, asks again for any tile IN VIEW
+>   that is unfinished or has no pixels (`?r=h<n>`, never piling markers), and
+>   calls each tile layer's `_update` (GridLayer's own fill of the view;
+>   Leaflet 1.9.4 private API, like the pinch code: re-check on an upgrade).
+>   While holes stay it looks again, at most `HM_HEAL_ROUNDS` (3) in a row.
+>   A hidden page or an unlaid map is left alone.
+> - The constants and timer sit with Home's map state (`let hmMap …`), above
+>   every function the boot path calls (the temporal-dead-zone rule).
+> - Home's map only. Tests: `test/home-map-heal.test.js` runs both functions
+>   against stand-ins and pins the wiring.
+
 > **People is every member's tab (2026-11-23; owner-lookup.md has the whole
 > of it).** Read this before the boxes below, which it amends: where they say
 > the People tab is hidden for a member in no firm, it is not any more.

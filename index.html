@@ -16226,6 +16226,11 @@ async function renderMyDesk() {
   let hmMarketsAsked = false;
   let hmSel = "";            // the selected row's key
   let hmMap = null, hmPinLayer = null, hmBaseLayers = null, hmFitFor = "", hmOpenedOnce = false, hmPopup = null;
+  // The map's self-heal (hmHealTiles): how long after a settle it looks, how
+  // often a failed tile is asked for again, and at most how many looks in a
+  // row, so a tile the server will never send cannot keep the page asking.
+  const HM_HEAL_MS = 2500, HM_TILE_RETRIES = 2, HM_HEAL_ROUNDS = 3;
+  let hmHealTimer = null, hmHealRound = 0;
   let hmMoving = false, hmMovedAt = 0; // the map's motion, for hmPin's hover
   // What the map shows (2026-10-08): HOMEMAP.readLayers decides, from this
   // browser's own last choice. Storage can throw (a private window, blocked
@@ -17611,6 +17616,11 @@ async function renderMyDesk() {
     hmMap.on("movestart zoomstart", () => { hmMoving = true; });
     hmMap.on("moveend zoomend", () => { hmMoving = false; hmMovedAt = performance.now(); });
     if (typeof ResizeObserver === "function") new ResizeObserver(() => hmMap && hmMap.invalidateSize()).observe(el);
+    // A map that settles with holes in it heals itself (hmHealTiles).
+    hmMap.on("moveend", hmHealSoon);
+    window.addEventListener("pageshow", () => hmHealSoon(0));
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") hmHealSoon(0); });
+    window.addEventListener("load", () => hmHealSoon(0));
     // The basemap follows the theme toggle, like the report's map.
     new MutationObserver(() => {
       if (!hmMap || !hmBaseLayers) return;
@@ -17624,9 +17634,62 @@ async function renderMyDesk() {
   // basemap's own rule: at national zoom they name countries, not this map.
   function hmBasemap() {
     return L.layerGroup([
-      L.tileLayer(basemapUrl(), { maxZoom: 18, crossOrigin: "anonymous", attribution: BASEMAP_ATTRIB }),
-      L.tileLayer(basemapLabelUrl(), { maxZoom: 18, minZoom: 6, crossOrigin: "anonymous" }),
+      hmHealing(L.tileLayer(basemapUrl(), { maxZoom: 18, crossOrigin: "anonymous", attribution: BASEMAP_ATTRIB })),
+      hmHealing(L.tileLayer(basemapLabelUrl(), { maxZoom: 18, minZoom: 6, crossOrigin: "anonymous" })),
     ]);
+  }
+  // ---- A map with holes in it (2026-11-25) -----------------------------------
+  // The owner, with two pictures from an iPhone: on a first load Home's map
+  // strip showed one or two tiles and the paper colour everywhere else, the
+  // pins floating over nothing. Leaflet asks for a tile once: a tile whose
+  // request fails (a phone on a weak signal) stays blank, and on iOS a tile
+  // Safari never finishes, or one Leaflet never asked for because the strip
+  // was laid out late, stays blank until somebody drags the map. Chromium
+  // never showed it, whatever was thrown at it, so this is a cure for every
+  // way a hole can stay, not a guess at one: a failed tile is asked for again
+  // (twice, a moment apart), and once the map has settled (each moveend, a
+  // page shown again, the page's load) the tiles in view are checked; any
+  // that is unfinished or empty is asked for again, and the layers are told
+  // to fill the view. Asking again costs nothing for a tile already in the
+  // browser's cache. Home's map only.
+  function hmHealing(layer) {
+    layer.on("tileerror", (e) => {
+      const img = e.tile;
+      const n = (img.cnRetry || 0) + 1;
+      if (n > HM_TILE_RETRIES) return;
+      img.cnRetry = n;
+      const url = layer.getTileUrl(e.coords);
+      setTimeout(() => { if (img.isConnected) img.src = url + (url.includes("?") ? "&" : "?") + "r=" + n; }, 700 * n);
+    });
+    return layer;
+  }
+  function hmHealSoon(ms) {
+    clearTimeout(hmHealTimer);
+    hmHealRound = 0;
+    hmHealTimer = setTimeout(hmHealTiles, ms == null || typeof ms === "object" ? HM_HEAL_MS : ms);
+  }
+  function hmHealTiles() {
+    if (!hmMap || !hmBaseLayers || document.visibilityState === "hidden") return;
+    const el = hmMap.getContainer();
+    if (!el.offsetWidth || !el.offsetHeight) return;
+    hmMap.invalidateSize({ animate: false });
+    const box = el.getBoundingClientRect();
+    let stale = 0;
+    el.querySelectorAll("img.leaflet-tile").forEach((img) => {
+      const r = img.getBoundingClientRect();
+      if (r.right <= box.left || r.left >= box.right || r.bottom <= box.top || r.top >= box.bottom) return;
+      if (img.complete && img.naturalWidth > 0) return;
+      const src = img.getAttribute("src");
+      if (!src || src.startsWith("data:")) return;
+      stale++;
+      const bare = src.replace(/[?&]r=h?\d+$/, "");
+      img.src = bare + (bare.includes("?") ? "&" : "?") + "r=h" + (Date.now() % 1e6);
+    });
+    // Tiles Leaflet never asked for (the strip laid out after the last look):
+    // _update is GridLayer's own fill of the view (Leaflet 1.9.4; a Leaflet
+    // upgrade must re-check it, as hmPinchStart's note says).
+    hmBaseLayers.eachLayer((l) => { if (typeof l._update === "function" && l._map) l._update(); });
+    if (stale && ++hmHealRound < HM_HEAL_ROUNDS) hmHealTimer = setTimeout(hmHealTiles, HM_HEAL_MS);
   }
 
   // `photoOf`: the address whose card this pin opens, warmed on hover

@@ -208,6 +208,7 @@ const BOVSVC = require("./bov-log");
 // Every rule and every word is in bov-desk.js (pure, tested); the owner's
 // page is bov-desk-page.js. server.js owns the reads, the search and the mail.
 const BOVDESK = require("./bov-desk");
+const OWNERLOOKUP = require("./owner-lookup");
 const BOVDESKPAGE = require("./bov-desk-page");
 // A development firm's deals (migration 060; worked on Home's Properties tab
 // since 2026-10-09): stages, the tracker, and the field validation every
@@ -2439,6 +2440,123 @@ async function hubNamesReady() {
   }
   hubNamesSchema.at = Date.now();
   return hubNamesSchema.ready;
+}
+
+// --- Contacts and owner lookups, migration 066 (2026-11-23) ------------------
+// What 066 adds: three columns on a firm's contacts (phone, source,
+// source_url), a member's own contact list (user_contacts) and their owner
+// lookups (owner_lookups). PROBED like 061 and 063, one answer for the whole
+// file: before it runs, the firm's list works with its four old fields and
+// the three new things answer "not switched on yet". A missing table or
+// column is re-checked every few minutes; an outage decides nothing.
+const contactsSchema = { ready: null, at: 0 };
+async function contactsV2Ready() {
+  if (!DB_CONFIGURED) return false;
+  if (contactsSchema.ready === true) return true;
+  if (contactsSchema.ready === false && Date.now() - contactsSchema.at < SITES_SCHEMA_RECHECK_MS) return false;
+  try {
+    await Promise.all([
+      sbRequest("GET", `org_contacts?select=${CONTACTS.V2_COLUMNS.join(",")}&limit=1`),
+      sbRequest("GET", "user_contacts?select=id&limit=1"),
+      sbRequest("GET", "owner_lookups?select=id&limit=1"),
+    ]);
+    contactsSchema.ready = true;
+  } catch (err) {
+    if (!isMissingColumn(err) && !bovTablesMissing(err)) {
+      console.error("Contacts schema probe failed (phone, own contacts and owner lookup wait):", err.message);
+      return false;
+    }
+    contactsSchema.ready = false;
+  }
+  contactsSchema.at = Date.now();
+  return contactsSchema.ready;
+}
+// One contact as the browser reads it, for both lists. A firm's row adds who
+// added it and its building; a member's own row has neither.
+function contactToWire(r) {
+  return {
+    id: r.id,
+    name: r.name,
+    email: r.email || "",
+    phone: r.phone || "",
+    company: r.company || "",
+    notes: r.notes || "",
+    // "lookup" for a person saved from an owner lookup, with the page they
+    // were read from; "" for one somebody typed or imported.
+    source: r.source || "",
+    sourceUrl: r.source_url || "",
+    createdAt: r.created_at,
+  };
+}
+// The rows one POST asks to store, for both lists: one typed contact, a CSV,
+// or an Excel file. `v2` says whether 066's columns exist to be written.
+// Answers { status, error } for a file that could not be read at all, else
+// { rows, errors, commented, total }. `xlsxGrid` is the request handler's
+// own xlsxGridFromBase64, handed in because it lives in that scope.
+function contactsFromBody(body, v2, xlsxGrid) {
+  const strip = (rows) => (v2 ? rows : rows.map(CONTACTS.withoutV2));
+  if (typeof body.xlsx === "string") {
+    // An Excel file, base64'd: /api/vault/extract's transport, for its
+    // reason (multipart would be hundreds of lines of hand-rolled parsing in
+    // a repo with no dependencies).
+    //
+    // NOTHING IS STORED OF THE FILE ITSELF. It is decoded, read into a grid,
+    // and dropped; only the contacts a person confirmed by importing are
+    // written, exactly as on the CSV path. Untyped: a number here is a
+    // number, never a date.
+    const got = xlsxGrid(body.xlsx, MAX_CONTACTS_XLSX_BYTES);
+    if (!got.ok) return { status: got.status, error: got.error };
+    const parsed = CONTACTS.parseContactsGrid(got.grid, {
+      isCommentRow: VAULT.isCommentRow,
+      normalizeHeader: VAULT.normalizeHeader,
+    });
+    return { ...parsed, rows: strip(parsed.rows) };
+  }
+  if (typeof body.csv === "string") {
+    const parsed = CONTACTS.parseContactsCsv(body.csv, {
+      parseCsv: VAULT.parseCsv,
+      isCommentRow: VAULT.isCommentRow,
+      normalizeHeader: VAULT.normalizeHeader,
+    });
+    return { ...parsed, rows: strip(parsed.rows) };
+  }
+  // One typed contact, the only door that may say where it came from
+  // (org-contacts.js: an import cannot claim its rows were looked up).
+  const one = CONTACTS.normalizeContact(body, { withSource: true });
+  return one.errors.length
+    ? { rows: [], errors: one.errors, commented: 0, total: 1 }
+    : { rows: strip([one.row]), errors: [], commented: 0, total: 1 };
+}
+// A member's OWN contacts (066). Its own read of its own table, scoped by
+// user_id: never the firm read widened (rule 3).
+async function userContactRows(userId) {
+  return (await sbRequest("GET",
+    `user_contacts?user_id=eq.${encodeURIComponent(userId)}` +
+    `&select=id,name,email,phone,company,notes,source,source_url,created_at` +
+    `&order=created_at.desc&limit=2000`)) || [];
+}
+async function userContactEmails(userId) {
+  const rows = await sbRequest("GET",
+    `user_contacts?user_id=eq.${encodeURIComponent(userId)}&email=not.is.null&select=email&limit=5000`);
+  return (rows || []).map((r) => r.email).filter(Boolean);
+}
+// A JSON body, bounded. Rejects "too_big", a SyntaxError for bad JSON, or
+// "aborted".
+function readJsonBody(req, max = 1e4) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    let tooBig = false;
+    req.on("data", (c) => {
+      body += c;
+      if (body.length > max && !tooBig) { tooBig = true; req.destroy(); }
+    });
+    req.on("end", () => {
+      if (tooBig) return reject(new Error("too_big"));
+      try { resolve(JSON.parse(body || "{}")); }
+      catch (_) { reject(new SyntaxError("bad_json")); }
+    });
+    req.on("error", () => reject(new Error("aborted")));
+  });
 }
 // The names a request gives for guests, keyed by address. null when the
 // request named nobody (leave every stored name alone); an empty string
@@ -5931,7 +6049,9 @@ async function orgContactRows(orgId) {
     `org_contacts?org_id=eq.${encodeURIComponent(orgId)}` +
     // building_id since 2026-09-02 — 046 is applied and verified in
     // production (migrations/APPLIED.md), which is the gate that kept it out.
+    // 066's three ride along only once the probe has seen them.
     `&select=id,name,email,company,notes,building_id,added_by_user_id,added_by_name,created_at` +
+    ((await contactsV2Ready()) ? "," + CONTACTS.V2_COLUMNS.join(",") : "") +
     `&order=created_at.desc&limit=2000`)) || [];
 }
 
@@ -9293,6 +9413,147 @@ async function bovCheckPages(candidates) {
       `${unseen} address(es) not on their page · ${unread} unchecked · ${adopted} read off the page`);
   }
   return out;
+}
+
+// --- Owner lookup (2026-11-23; owner-lookup.js, migration 066) ---------------
+// A member names a commercial property and ONE web search reads who owns it
+// and how to reach them on business. Rules and the legal review:
+// .claude/rules/owner-lookup.md. The spend is held four ways: it is part of
+// Pro, a member has OWNER_LOOKUPS_PER_MONTH (100) a UTC month, the whole site
+// has OWNER_DAILY_SEARCHES (150) a UTC day, and reopening a building the
+// same member looked up in the last 90 days runs no search at all.
+// OWNER_LOOKUPS_PER_MONTH=0 (or off) is the rollback: the routes answer that
+// it is off and no search can run.
+const OWNER_LOOKUPS_PER_MONTH = OWNERLOOKUP.perMonthFrom(process.env.OWNER_LOOKUPS_PER_MONTH);
+const OWNER_DAILY_SEARCHES = Number(process.env.OWNER_DAILY_SEARCHES) > 0 ? Math.floor(Number(process.env.OWNER_DAILY_SEARCHES)) : 150;
+const OWNER_SEARCH_TIMEOUT_MS = 120_000;
+// One search per member at a time: a second click while the first is out
+// would be a second billed search for the same answer.
+const OWNER_INFLIGHT = new Set();
+let ownerDay = "";
+let ownerSearchCount = 0;
+function ownerSearchesLeft() {
+  const day = new Date().toISOString().slice(0, 10);
+  if (day !== ownerDay) { ownerDay = day; ownerSearchCount = 0; }
+  return Math.max(0, OWNER_DAILY_SEARCHES - ownerSearchCount);
+}
+// One billed search, through the same provider seam as a comp search and
+// never streamed. The address goes in the request BODY to the provider this
+// server already sends every report's address to, and nowhere else.
+// Answers { ok:false, status, error } when no answer came back (nothing is
+// stored and nothing is counted), else owner-lookup.js's parseAnswer.
+async function ownerLookupSearch(address, type) {
+  if (!providerApiKey()) return { ok: false, status: 503, error: "Owner lookup is unavailable right now." };
+  if (!ownerSearchesLeft()) {
+    return { ok: false, status: 429, error: "Owner lookup is busy today. Please try again tomorrow." };
+  }
+  ownerSearchCount++;
+  const market = marketOf(address);
+  const body = PROVIDER.buildRequestBody({
+    model: MODEL,
+    prompt: OWNERLOOKUP.finderPrompt({ address, type }),
+    maxComps: 8,
+    searchUses: 6,
+    stream: false,
+    thinkingLevel: THINKING_LEVEL,
+  });
+  const init = PROVIDER.requestInit({ apiKey: providerApiKey(), stream: false });
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), OWNER_SEARCH_TIMEOUT_MS);
+  try {
+    const r = await fetch(SEARCH_API_URL || init.url, {
+      method: "POST", headers: init.headers, body: JSON.stringify(body), signal: controller.signal,
+    });
+    if (!r.ok) {
+      let detail = "";
+      try { detail = (await r.json())?.error?.message || ""; } catch (_) {}
+      console.error(`Owner lookup search failed (${r.status}): ${String(detail).slice(0, 200)}`);
+      logEvent("owner_lookup", { prop_type: type, market, source: "failed:" + r.status });
+      return { ok: false, status: 502, error: "The search could not be run just now. Try again in a minute. It did not count against your lookups." };
+    }
+    const out = OWNERLOOKUP.parseAnswer(PROVIDER.parseResponse(await r.json()).text);
+    // No address and no name in the log: a market, a type and a count.
+    console.log(`Owner lookup [${market || "?"} · ${type || "?"}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ` +
+      (out.ok ? (out.result.residential ? "a home, nothing kept" : `${out.found ? "owner found" : "nothing found"} · ${out.result.people.length} contact(s)${out.dropped ? ` · ${out.dropped} dropped` : ""}`) : "unreadable answer"));
+    logEvent("owner_lookup", { prop_type: type, market, duration_ms: Date.now() - startedAt,
+      source: !out.ok ? "unreadable" : out.result.residential ? "residential" : out.found ? "found:" + out.result.people.length : "none" });
+    if (!out.ok) return { ok: false, status: 502, error: "The search came back with an answer we could not read. Try again. It did not count against your lookups." };
+    return out;
+  } catch (err) {
+    const timedOut = err && err.name === "AbortError";
+    console.error("Owner lookup search failed:", timedOut ? "timed out" : err && err.message);
+    logEvent("owner_lookup", { prop_type: type, market, source: timedOut ? "timeout" : "error" });
+    return { ok: false, status: 502, error: (timedOut ? "The search took too long and was stopped." : "The search could not be run just now.") + " Try again. It did not count against your lookups." };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+// Read each person's cited page and say whether it really shows the phone
+// and the email (owner-lookup.js rule 3; the BOV desk's page check, and its
+// fetcher: DNS-guarded on every hop, byte-capped, timed out, a bot-walled
+// portal not fetched). A page not read for ANY reason leaves "unchecked".
+// BOV_PAGE_ORIGIN is the same test-only stand-in the BOV desk's check uses.
+async function ownerFetchPage(url) {
+  if (!LINKCHECK.checkableUrl(url) || LINKCHECK.hostClass(url) === "blocked") return { ok: false };
+  let target = url;
+  if (BOV_PAGE_ORIGIN) {
+    const u = new URL(url);
+    target = `${BOV_PAGE_ORIGIN}/${u.hostname}${u.pathname}${u.search}`;
+  }
+  const page = await fetchSite(target, { accept: "text/html,*/*;q=0.5", max: BOV_PAGE_MAX });
+  if (!page.ok) return { ok: false };
+  const html = page.bytes.toString("utf8");
+  return { ok: true, emails: BOVDESK.emailsOnPage(html), phones: OWNERLOOKUP.phonesOnPage(html) };
+}
+async function ownerCheckPeople(people) {
+  const list = people || [];
+  const urls = [...new Set(list.filter((p) => p.source_url && (p.phone || p.email)).map((p) => p.source_url))];
+  const pages = new Map();
+  let timer;
+  const budget = new Promise((resolve) => { timer = setTimeout(resolve, BOV_PAGE_BUDGET_MS); });
+  await Promise.race([
+    Promise.all(urls.map(async (url) => {
+      try { pages.set(url, await ownerFetchPage(url)); } catch (_) { pages.set(url, { ok: false }); }
+    })),
+    budget,
+  ]);
+  clearTimeout(timer);
+  // Snapshot: a fetch that lands after the budget changes nothing.
+  const read = new Map(pages);
+  return list.map((p) => OWNERLOOKUP.checkPerson(p, p.source_url ? read.get(p.source_url) : null));
+}
+// What a member has used this UTC month, counted off their own rows.
+async function ownerLookupAllowance(userId) {
+  const since = OWNERLOOKUP.monthStart(new Date().toISOString());
+  const rows = await sbRequest("GET",
+    `owner_lookups?user_id=eq.${encodeURIComponent(userId)}&created_at=gte.${encodeURIComponent(since)}` +
+    `&select=id&limit=${OWNER_LOOKUPS_PER_MONTH + 1}`);
+  return OWNERLOOKUP.allowance((rows || []).length, OWNER_LOOKUPS_PER_MONTH);
+}
+// The owner lookup's gate: 401, then 403 without Pro, then 503 with no
+// database or before 066. requireSites' order, with its own words. Part of
+// Pro is `canUseVault`, the capability the Pipeline and a member's own deals
+// already stand on (rule 1: entitlements.js decides, never a plan name here);
+// so a Pro-off deployment offers no lookup, which is right for a route that
+// runs a billed search.
+async function requireOwnerLookup(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  const ent = await entitlementsFor(req);
+  if (!ent.canUseVault) {
+    sendJson(res, 403, { error: "Finding a property's owner is part of Pro.", code: "pro_required" });
+    return null;
+  }
+  if (!OWNER_LOOKUPS_PER_MONTH) {
+    sendJson(res, 503, { error: "Owner lookup is switched off right now.", code: "off" });
+    return null;
+  }
+  if (!DB_CONFIGURED || !(await contactsV2Ready())) {
+    sendJson(res, 503, { error: "Owner lookup isn't switched on yet. Please try again later.", code: "not_ready" });
+    return null;
+  }
+  return user;
 }
 
 // Find the brokers for one request and draft the email to each. `lead` is a
@@ -30879,6 +31140,215 @@ const server = http.createServer((req, res) =>
   // product would not solve the problem it exists for.
   // ==========================================================================
   const orgPath = req.url.split("?")[0];
+
+  // --- /api/account/contacts — a member's OWN contacts (066) ----------------
+  //
+  // The firm's list (/api/org/contacts, below) scoped to one account, for the
+  // broker who works alone and for the contacts a member of a firm keeps to
+  // themselves. Any signed-in account, like the firm's list (which asks only
+  // for membership): a contact list is typed data, not a paid capability.
+  //
+  // PRIVATE TO THE MEMBER. Every read and write is scoped by user_id,
+  // including the DELETE, and it is its own table read by its own function,
+  // never the firm read widened (rule 3). DB-only (rule 4): a client list in
+  // a file Render erases on deploy would be lost without anyone being told.
+  //
+  // NOTHING HERE IS EVER POPULATED FROM A LEAD OR A HUB, the firm list's
+  // rule. A person found by an owner lookup lands here only when the member
+  // presses Save on that person, through this route's ordinary typed add.
+  if (orgPath === "/api/account/contacts") {
+    const mine = async () => {
+      const user = await getSessionUser(req);
+      if (!user) { sendJson(res, 401, { error: "Please sign in." }); return null; }
+      if (!DB_CONFIGURED) {
+        sendJson(res, 503, { error: "Your contacts are unavailable right now. Please try again in a minute." });
+        return null;
+      }
+      if (!(await contactsV2Ready())) {
+        sendJson(res, 503, { error: "Your own contacts aren't switched on yet. Please try again later.", code: "not_ready" });
+        return null;
+      }
+      return user;
+    };
+    const own = (user) => `user_id=eq.${encodeURIComponent(user.id)}`;
+
+    if (req.method === "GET") {
+      (async () => {
+        const user = await mine();
+        if (!user) return;
+        const rows = await userContactRows(user.id);
+        return sendJson(res, 200, {
+          truncated: rows.length >= 2000,
+          fields: { phone: true },
+          contacts: rows.map((r) => ({ ...contactToWire(r), buildingId: "", addedBy: "", mine: true })),
+        });
+      })().catch((err) => {
+        console.error("Own contacts read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load your contacts. Please try again in a minute." });
+      });
+      return;
+    }
+
+    if (req.method === "POST") {
+      (async () => {
+        const user = await mine();
+        if (!user) return;
+        let body;
+        try { body = await readJsonBody(req, 2e6); } catch (err) {
+          if (err.message === "too_big") return sendJson(res, 413, { error: "That file is too large to import in one go." });
+          return sendJson(res, 400, { error: "Bad request." });
+        }
+        const got = contactsFromBody(body, true, xlsxGridFromBase64);
+        if (got.status) return sendJson(res, got.status, { error: got.error });
+        const existing = got.rows.length ? await userContactEmails(user.id) : [];
+        const deduped = CONTACTS.dropExisting(got.rows, existing);
+        let imported = 0;
+        if (deduped.rows.length) {
+          await sbRequest("POST", "user_contacts?on_conflict=user_id,email",
+            deduped.rows.map((r) => ({ user_id: user.id, ...r })),
+            { prefer: "resolution=ignore-duplicates,return=minimal" });
+          imported = deduped.rows.length;
+        }
+        logEvent("own_contacts", { source: `add:${imported}` });
+        return sendJson(res, got.errors.length && !imported ? 400 : 200, {
+          imported, total: got.total, commented: got.commented,
+          duplicates: deduped.duplicates,
+          errors: got.errors,
+        });
+      })().catch((err) => {
+        console.error("Own contact write failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save that contact. Please try again in a minute." });
+      });
+      return;
+    }
+
+    if (req.method === "PATCH" || req.method === "DELETE") {
+      (async () => {
+        const user = await mine();
+        if (!user) return;
+        const contactId = (new URL(req.url, "http://localhost").searchParams.get("contact") || "").trim();
+        if (!isUuidish(contactId)) return sendJson(res, 400, { error: "Which contact?" });
+        const scope = `user_contacts?id=eq.${encodeURIComponent(contactId)}&${own(user)}`;
+        const existing = ((await sbRequest("GET", `${scope}&select=id,name,email,phone,company,notes&limit=1`)) || [])[0];
+        if (!existing) return sendJson(res, 404, { error: "That contact is not on your list." });
+        if (req.method === "DELETE") {
+          await sbRequest("DELETE", scope, null, { prefer: "return=minimal" });
+          return sendJson(res, 200, { ok: true, deleted: contactId });
+        }
+        let patch;
+        try { patch = await readJsonBody(req); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+        const { row, errors } = CONTACTS.validateContactEdit(existing, patch);
+        if (errors.length) return sendJson(res, 400, { error: errors.join("; ") });
+        await sbRequest("PATCH", scope, { ...row, updated_at: new Date().toISOString() }, { prefer: "return=minimal" });
+        return sendJson(res, 200, { ok: true, contact: { id: contactId, ...row } });
+      })().catch((err) => {
+        console.error("Own contact edit failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save that change. Please try again in a minute." });
+      });
+      return;
+    }
+  }
+
+  // --- /api/owner-lookup — who owns a commercial property (066) -------------
+  //
+  // GET reads the member's allowance and the buildings they have looked up
+  // (addresses and days, never an answer). POST looks one up: a stored answer
+  // of the member's own from the last 90 days is returned free, else one
+  // billed web search runs (ownerLookupSearch) and the answer is stored on
+  // the member's account. Rules: owner-lookup.js. Three to hold on to:
+  //   - the address is read from the BODY, never the query string;
+  //   - a search runs only inside this POST, which a page sends only from a
+  //     click (rule 15: a page built ahead of a click holds every non-GET);
+  //   - a search that returned no readable answer stores nothing, so it
+  //     costs the member nothing.
+  if (orgPath === "/api/owner-lookup" && (req.method === "GET" || req.method === "POST")) {
+    const recentSel = "id,address,property_type,found,result,created_at";
+    if (req.method === "GET") {
+      (async () => {
+        const user = await requireOwnerLookup(req, res);
+        if (!user) return;
+        const [allowance, rows] = await Promise.all([
+          ownerLookupAllowance(user.id),
+          sbRequest("GET", `owner_lookups?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&select=${recentSel}&order=created_at.desc&limit=${OWNERLOOKUP.RECENT_MAX}`),
+        ]);
+        return sendJson(res, 200, {
+          allowance, cacheDays: OWNERLOOKUP.CACHE_DAYS, useNote: OWNERLOOKUP.USE_NOTE,
+          recent: (rows || []).map(OWNERLOOKUP.recentRow),
+        });
+      })().catch((err) => {
+        console.error("Owner lookup read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load your owner lookups. Please try again in a minute." });
+      });
+      return;
+    }
+    (async () => {
+      if (rateLimited("ownerlookup:" + clientIp(req), 20)) {
+        return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+      }
+      const user = await requireOwnerLookup(req, res);
+      if (!user) return;
+      let body;
+      try { body = await readJsonBody(req); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+      const address = OWNERLOOKUP.cleanAddress(body.address);
+      const type = VAULT.PROPERTY_TYPES.includes(body.type) ? body.type : "";
+      const refusal = OWNERLOOKUP.lookupRefusal({ address, type });
+      if (refusal) return sendJson(res, 400, { error: refusal });
+
+      const now = new Date().toISOString();
+      const key = OWNERLOOKUP.addressKey(address);
+      const mineRows = `owner_lookups?user_id=eq.${encodeURIComponent(user.id)}`;
+      const answer = (row, extra) => ({
+        id: row.id, address: row.address, type: row.property_type || "",
+        found: row.found === true, result: row.result || {}, lookedUpAt: row.created_at,
+        useNote: OWNERLOOKUP.USE_NOTE, ...extra,
+      });
+
+      // The member's own answer for this building, if it is fresh enough.
+      // `fresh: true` (the "Look again" button) skips it and spends a lookup.
+      if (body.fresh !== true) {
+        const kept = ((await sbRequest("GET", `${mineRows}&address_key=eq.${encodeURIComponent(key)}` +
+          `&created_at=gte.${encodeURIComponent(OWNERLOOKUP.cacheSince(now))}` +
+          `&select=${recentSel}&order=created_at.desc&limit=1`)) || [])[0];
+        if (kept) {
+          logEvent("owner_lookup", { prop_type: kept.property_type || "", market: marketOf(address), source: "kept", cached: true });
+          return sendJson(res, 200, answer(kept, { cached: true, allowance: await ownerLookupAllowance(user.id) }));
+        }
+      }
+
+      const before = await ownerLookupAllowance(user.id);
+      if (!before.left) {
+        return sendJson(res, 429, { error: OWNERLOOKUP.allowanceLine(before), code: "allowance_used", allowance: before });
+      }
+      if (OWNER_INFLIGHT.has(user.id)) {
+        return sendJson(res, 429, { error: "A lookup of yours is still running. Give it a moment.", code: "busy" });
+      }
+      OWNER_INFLIGHT.add(user.id);
+      try {
+        const out = await ownerLookupSearch(address, type);
+        if (!out.ok) return sendJson(res, out.status, { error: out.error, allowance: before });
+        const result = out.result.residential
+          ? out.result
+          : { ...out.result, people: await ownerCheckPeople(out.result.people) };
+        const row = {
+          user_id: user.id, address, address_key: key, property_type: type || null,
+          found: out.found === true, result, created_at: now,
+        };
+        const stored = await sbRequest("POST", "owner_lookups", [row], { prefer: "return=representation" });
+        const saved = (stored && stored[0]) || row;
+        return sendJson(res, 200, answer({ ...row, id: saved.id || null }, {
+          cached: false, allowance: OWNERLOOKUP.allowance(before.used + 1, OWNER_LOOKUPS_PER_MONTH),
+        }));
+      } finally {
+        OWNER_INFLIGHT.delete(user.id);
+      }
+    })().catch((err) => {
+      console.error("Owner lookup failed:", err.message);
+      return sendJson(res, 503, { error: "Owner lookup is unavailable right now. Please try again in a minute." });
+    });
+    return;
+  }
+
   if (orgPath === "/api/org" || orgPath.startsWith("/api/org/")) {
     const readOrgBody = (max = 1e4) => new Promise((resolve, reject) => {
       let body = "";
@@ -31283,12 +31753,11 @@ const server = http.createServer((req, res) =>
             id: ctx.orgId,
             // The vault's rule: say so rather than under-report silently.
             truncated: rows.length >= 2000,
+            // Whether a phone number can be kept yet (066 has run). The page
+            // offers its phone box only then.
+            fields: { phone: await contactsV2Ready() },
             contacts: rows.map((r) => ({
-              id: r.id,
-              name: r.name,
-              email: r.email || "",
-              company: r.company || "",
-              notes: r.notes || "",
+              ...contactToWire(r),
               // The building it is attached to, if any (046; written only by
               // POST|DELETE /api/org/buildings/contacts). The desk maps it to
               // an address off its own buildings read.
@@ -31298,7 +31767,6 @@ const server = http.createServer((req, res) =>
               // called today, and the snapshot only speaks once they are gone.
               addedBy: r.added_by_name || "",
               mine: Boolean(r.added_by_user_id && String(r.added_by_user_id) === String(ctx.user.id)),
-              createdAt: r.created_at,
             })),
           });
         })().catch((err) => {
@@ -31330,43 +31798,11 @@ const server = http.createServer((req, res) =>
             added_by_name: String(ctx.user.name || "").trim().slice(0, 120),
           };
 
-          let rows = [];
-          let errors = [];
-          let commented = 0;
-          let total = 0;
-
-          if (typeof body.xlsx === "string") {
-            // An Excel file, base64'd — /api/vault/extract's transport, for its
-            // reason: multipart would be hundreds of lines of hand-rolled
-            // parsing in a repo with no dependencies.
-            //
-            // NOTHING IS STORED OF THE FILE ITSELF. It is decoded, read into a
-            // grid, and dropped; only the contacts a person confirmed by
-            // importing are written, exactly as on the CSV path. Untyped:
-            // four text fields, and a number here is a number, never a date.
-            const got = xlsxGridFromBase64(body.xlsx, MAX_CONTACTS_XLSX_BYTES);
-            if (!got.ok) return sendJson(res, got.status, { error: got.error });
-            const grid = got.grid;
-
-            const parsed = CONTACTS.parseContactsGrid(grid, {
-              isCommentRow: VAULT.isCommentRow,
-              normalizeHeader: VAULT.normalizeHeader,
-            });
-            rows = parsed.rows; errors = parsed.errors;
-            commented = parsed.commented; total = parsed.total;
-          } else if (typeof body.csv === "string") {
-            const parsed = CONTACTS.parseContactsCsv(body.csv, {
-              parseCsv: VAULT.parseCsv,
-              isCommentRow: VAULT.isCommentRow,
-              normalizeHeader: VAULT.normalizeHeader,
-            });
-            rows = parsed.rows; errors = parsed.errors;
-            commented = parsed.commented; total = parsed.total;
-          } else {
-            const one = CONTACTS.normalizeContact(body);
-            total = 1;
-            if (one.errors.length) errors = one.errors; else rows = [one.row];
-          }
+          // One reader for the typed contact, the CSV and the Excel file,
+          // shared with a member's own list (contactsFromBody).
+          const got = contactsFromBody(body, await contactsV2Ready(), xlsxGridFromBase64);
+          if (got.status) return sendJson(res, got.status, { error: got.error });
+          const { rows, errors, commented, total } = got;
 
           // Dedupe against what the firm already holds. Reported, never
           // silent — parseUpload's "imported N of M" rule.
@@ -31411,7 +31847,8 @@ const server = http.createServer((req, res) =>
           // would be enough to edit or delete another firm's row.
           const scope = `org_contacts?id=eq.${encodeURIComponent(contactId)}` +
             `&org_id=eq.${encodeURIComponent(ctx.orgId)}`;
-          const found = await sbRequest("GET", `${scope}&select=id,name,email,company,notes&limit=1`);
+          const v2 = await contactsV2Ready();
+          const found = await sbRequest("GET", `${scope}&select=id,name,email,company,notes${v2 ? ",phone" : ""}&limit=1`);
           const existing = (found || [])[0];
           if (!existing) return sendJson(res, 404, { error: "That contact is not in this firm." });
 
@@ -31424,8 +31861,9 @@ const server = http.createServer((req, res) =>
           try { patch = await readOrgBody(); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
           // Validated as the WHOLE row it would become — broker-vault.js's
           // validateEdit rule, so an edit cannot accept what an import refuses.
-          const { row, errors } = CONTACTS.validateContactEdit(existing, patch);
-          if (errors.length) return sendJson(res, 400, { error: errors.join("; ") });
+          const edit = CONTACTS.validateContactEdit(existing, patch);
+          if (edit.errors.length) return sendJson(res, 400, { error: edit.errors.join("; ") });
+          const row = v2 ? edit.row : CONTACTS.withoutV2(edit.row);
 
           await sbRequest("PATCH", scope, { ...row, updated_at: new Date().toISOString() },
             { prefer: "return=minimal" });

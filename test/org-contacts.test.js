@@ -132,9 +132,63 @@ test("an edit leaves untouched fields alone", () => {
 
 test("keys outside the contract are dropped, not rejected", () => {
   const existing = { name: "Dana Wu", email: null, company: null, notes: null };
-  const r = C.validateContactEdit(existing, { company: "Acme", org_id: "somebody-elses-firm", id: "x" });
+  const r = C.validateContactEdit(existing, { company: "Acme", org_id: "somebody-elses-firm", id: "x",
+    source: "lookup", source_url: "https://county.example/parcel/1" });
   assert.deepEqual(r.errors, []);
-  assert.deepEqual(Object.keys(r.row).sort(), ["company", "email", "name", "notes"]);
+  // An edit never returns `source`: the PATCH writes only these keys, so
+  // fixing a name cannot erase (or forge) where a number came from.
+  assert.deepEqual(Object.keys(r.row).sort(), ["company", "email", "name", "notes", "phone"]);
+});
+
+// --- the phone number, and where a contact came from (066) --------------------
+
+test("a phone number is kept as typed, and what is not a number is refused", () => {
+  for (const ok of ["(208) 555-0142", "208.555.0142 x12", "+1 208 555 0142", "208-555-0142 (cell)", "o: 208-555-0142"]) {
+    const r = C.normalizeContact({ name: "Dana Wu", phone: ok });
+    assert.deepEqual(r.errors, [], ok);
+    assert.equal(r.row.phone, ok, "kept as written, never reformatted");
+  }
+  assert.equal(C.normalizeContact({ name: "Dana Wu" }).row.phone, null, "no phone is not an error");
+  for (const bad of ["call me", "12 Main St", "555-0142 ask for Dana", "12345", "1".repeat(30)]) {
+    const r = C.normalizeContact({ name: "Dana Wu", phone: bad });
+    assert.equal(r.row, null, bad);
+    assert.match(r.errors[0], /is not a phone number/, bad);
+  }
+});
+
+test("a spreadsheet's phone column imports under the names people give it", () => {
+  for (const head of ["Phone", "Phone Number", "Mobile", "Cell", "Direct"]) {
+    const r = C.parseContactsCsv(`Name,${head}\nDana Wu,208-555-0142\n`, VAULT);
+    assert.deepEqual(r.errors, [], head);
+    assert.equal(r.rows[0].phone, "208-555-0142", head);
+  }
+  const bad = C.parseContactsCsv("Name,Phone\nDana Wu,soon\n", VAULT);
+  assert.equal(bad.rows.length, 0);
+  assert.match(bad.errors[0], /^Line 2: .*not a phone number/);
+});
+
+test("only the typed add may say a contact came from a lookup, and only with a real page", () => {
+  const plain = C.normalizeContact({ name: "Dana Wu", source: "lookup", source_url: "https://county.example/p/1" });
+  assert.equal("source" in plain.row, false, "an import or an edit cannot write a source");
+  const kept = C.normalizeContact({ name: "Dana Wu", source: "lookup", source_url: "https://county.example/p/1" }, { withSource: true });
+  assert.equal(kept.row.source, "lookup");
+  assert.equal(kept.row.source_url, "https://county.example/p/1");
+  // An unknown source is no source, and then no page is kept either.
+  const typed = C.normalizeContact({ name: "Dana Wu", source: "imported", source_url: "https://county.example/p/1" }, { withSource: true });
+  assert.equal(typed.row.source, null);
+  assert.equal(typed.row.source_url, null);
+  // A page that is not a web address is dropped, never stored as a link.
+  const js = C.normalizeContact({ name: "Dana Wu", source: "lookup", source_url: "javascript:alert(1)" }, { withSource: true });
+  assert.equal(js.row.source, "lookup");
+  assert.equal(js.row.source_url, null);
+  // A CSV with a "source" column still cannot claim it.
+  const csv = C.parseContactsCsv("Name,Source\nDana Wu,lookup\n", VAULT);
+  assert.equal("source" in csv.rows[0], false);
+});
+
+test("before migration 066 the three new columns are taken off a row", () => {
+  const row = C.normalizeContact({ name: "Dana Wu", phone: "208-555-0142", source: "lookup" }, { withSource: true }).row;
+  assert.deepEqual(Object.keys(C.withoutV2(row)).sort(), ["company", "email", "name", "notes"]);
 });
 
 // --- headers -----------------------------------------------------------------

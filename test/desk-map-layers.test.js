@@ -218,7 +218,9 @@ test("an empty Home asks for its first building, and the answer goes to Properti
   assert.equal((html.match(/classList\.toggle\("hm-first-on"/g) || []).length, 1, "hm-first-on has more than one writer");
   const show = fnOf("function hmFirstShow(on) {");
   assert.match(show, /on = Boolean\(on && \(ways\.own \|\| ways\.firm\) && currentUser\);/);
-  assert.match(fnOf("function drawHomeMap() {"), /hmFirstShow\(nothing && !hmFirstGone\);/);
+  // It steps aside for People (2026-11-23): contacts are every member's, and
+  // an account with no building still has them (owner-lookup.md).
+  assert.match(fnOf("function drawHomeMap() {"), /hmFirstShow\(nothing && !hmFirstGone && hmTab !== "people"\);/);
   // The old start cards stand in only when the start screen cannot show.
   assert.match(html, /getElementById\("hmStart"\)\.classList\.toggle\("hidden", !nothing \|\| hmTab !== "today" \|\| hmFirstOn\);/);
   assert.match(html, /getElementById\("hmStart"\)\.classList\.toggle\("hidden", !hmNothing \|\| tab !== "today" \|\| hmFirstOn\);/);

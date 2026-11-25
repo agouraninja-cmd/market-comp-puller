@@ -420,7 +420,12 @@ function renderBuildingSheetBody(boot) {
         <button type="submit" class="bs-btn" id="bsAttachSave">Attach</button>
         <button type="button" class="bs-lnk" id="bsAttachCancel">Cancel</button>
       </form>
-      <p class="bs-lease-act"><button type="button" class="bs-lnk" id="bsAttachAdd">Attach a contact</button></p>
+      <!-- The owner lookup's door (2026-11-23; owner-lookup.js). It opens
+           Home's People tab with this address in the box and runs nothing:
+           the search is billed and waits for its own button. The address
+           rides sessionStorage, never the link. -->
+      <p class="bs-lease-act"><button type="button" class="bs-lnk" id="bsAttachAdd">Attach a contact</button>
+        <a class="bs-lnk" id="bsFindOwner" href="/desk#people">Find the owner</a></p>
     </section>
 
     <section class="bs-sec bs-notes" id="bsNotes">
@@ -724,6 +729,14 @@ function renderBuildingSheetBody(boot) {
     return "/api/org/buildings/contacts?id="+encodeURIComponent(org.id)+"&building="+encodeURIComponent(building.id)+"&contact="+encodeURIComponent(contactId);
   }
   function attachForm(open){ $("bsAttachForm").className="bs-attach"+(open?"":" hide"); $("bsAttachAdd").className="bs-lnk"+(open?" hide":""); }
+  // Hand this building to Home's owner lookup. The link itself goes to
+  // /desk#people; the address rides sessionStorage ("cnOwnerAsk"), which Home
+  // reads once and removes, so it is never in an address bar. Nothing is
+  // searched here or on arrival.
+  $("bsFindOwner").addEventListener("click",function(){
+    if(!building)return;
+    try{ sessionStorage.setItem("cnOwnerAsk",JSON.stringify({address:building.address,type:building.type||""})); }catch(_){}
+  });
   $("bsAttachAdd").addEventListener("click",function(){
     if(!org||!building)return;
     fetch("/api/org/contacts?id="+encodeURIComponent(org.id),{credentials:"same-origin"})

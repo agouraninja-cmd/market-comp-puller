@@ -48,8 +48,8 @@ function seedTables() {
   };
 }
 
-async function bootWithDb(tables, extraEnv) {
-  const db = await fake.start({ tables });
+async function bootWithDb(tables, extraEnv, fakeOpts) {
+  const db = await fake.start({ tables, ...(fakeOpts || {}) });
   const srv = await shared.boot({
     ACCOUNT_WALL: "off",
     PRO_ENABLED: "on",
@@ -1196,9 +1196,9 @@ const CONTACT_CSV = [
 // lesson applied here: without it a fixture that failed under load arrived as
 // a contacts rule failing, and the accusation landed on the one thing the run
 // never got to test.
-async function firmWithMike(t) {
+async function firmWithMike(t, fakeOpts) {
   const tables = seedTables();
-  const { db, srv, stop } = await bootWithDb(tables);
+  const { db, srv, stop } = await bootWithDb(tables, undefined, fakeOpts);
   t.after(stop);
   const made = await fetch(srv.base + "/api/org", as(BRAD, {
     method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }),
@@ -1439,6 +1439,62 @@ test("a firm's tenant contacts", async (t) => {
       as(BRAD, { method: "DELETE" }));
     assert.equal(ok.status, 200);
     assert.equal(tables.org_contacts.length, 0);
+  });
+
+  // --- a phone number, and where a contact came from (066, 2026-11-23) -----
+  await t.test("a contact keeps its phone number, and an edit cannot forge or erase its source", async (t) => {
+    const { srv, org, tables } = await firmWithMike(t);
+    const url = `/api/org/contacts?id=${encodeURIComponent(org.id)}`;
+    const add = await fetch(srv.base + url, as(BRAD, { method: "POST", body: JSON.stringify({
+      name: "Lee Park", phone: "(208) 555-0142 x12", company: "Park Holdings LLC",
+      source: "lookup", source_url: "https://county.example/parcel/7" }) }));
+    assert.equal(add.status, 200);
+    const bad = await fetch(srv.base + url, as(BRAD, { method: "POST", body: JSON.stringify({ name: "No Number", phone: "soon" }) }));
+    assert.equal(bad.status, 400);
+    assert.match((await bad.json()).errors[0], /is not a phone number/);
+    const list = await (await fetch(srv.base + url, as(MIKE))).json();
+    assert.deepEqual(list.fields, { phone: true });
+    assert.equal(list.contacts.length, 1);
+    assert.equal(list.contacts[0].phone, "(208) 555-0142 x12", "kept as typed");
+    assert.equal(list.contacts[0].source, "lookup");
+    assert.equal(list.contacts[0].sourceUrl, "https://county.example/parcel/7");
+    // An edit changes the phone and touches nothing about where it came from.
+    const id = list.contacts[0].id;
+    const edit = await fetch(srv.base + url + `&contact=${encodeURIComponent(id)}`, as(MIKE, {
+      method: "PATCH", body: JSON.stringify({ phone: "208-555-0199", source: "", source_url: "https://elsewhere.example" }) }));
+    assert.equal(edit.status, 200);
+    assert.equal(tables.org_contacts[0].phone, "208-555-0199");
+    assert.equal(tables.org_contacts[0].source, "lookup");
+    assert.equal(tables.org_contacts[0].source_url, "https://county.example/parcel/7");
+    // A spreadsheet's phone column comes in with the rest.
+    const csv = await (await fetch(srv.base + url, as(BRAD, { method: "POST",
+      body: JSON.stringify({ csv: "Name,Mobile\nSam Ito,208-555-0177\n" }) }))).json();
+    assert.equal(csv.imported, 1);
+    assert.equal(tables.org_contacts.find((c) => c.name === "Sam Ito").phone, "208-555-0177");
+  });
+
+  await t.test("before migration 066 the list works as it did, and offers no phone", async (t) => {
+    const { srv, org, tables, db } = await firmWithMike(t, {
+      missingColumns: { org_contacts: ["phone", "source", "source_url"] },
+      missingTables: ["user_contacts", "owner_lookups"],
+    });
+    const url = `/api/org/contacts?id=${encodeURIComponent(org.id)}`;
+    const add = await fetch(srv.base + url, as(BRAD, { method: "POST",
+      body: JSON.stringify({ name: "Lee Park", phone: "208-555-0142", company: "Park Holdings LLC" }) }));
+    assert.equal(add.status, 200, "an add naming a phone must not 400 on a column that is not there yet");
+    assert.equal(tables.org_contacts.length, 1);
+    assert.equal("phone" in tables.org_contacts[0], false);
+    const list = await (await fetch(srv.base + url, as(BRAD))).json();
+    assert.deepEqual(list.fields, { phone: false }, "so the page shows no phone box");
+    assert.equal(list.contacts[0].name, "Lee Park");
+    const id = list.contacts[0].id;
+    const edit = await fetch(srv.base + url + `&contact=${encodeURIComponent(id)}`, as(BRAD, {
+      method: "PATCH", body: JSON.stringify({ company: "Park Holdings II LLC" }) }));
+    assert.equal(edit.status, 200);
+    const csv = await (await fetch(srv.base + url, as(BRAD, { method: "POST",
+      body: JSON.stringify({ csv: "Name,Phone\nSam Ito,208-555-0177\n" }) }))).json();
+    assert.equal(csv.imported, 1);
+    assert.deepEqual(db.unparsed, []);
   });
 
   await t.test("the fake understood every filter these routes sent", async (t) => {

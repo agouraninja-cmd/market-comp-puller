@@ -5623,5 +5623,11 @@
     "type": "fix",
     "title": "A client chat says which property its comps are for",
     "details": "A deal room with nobody invited yet was named after its property, but the chat showed only the comps' addresses, so the property seemed to be missing. The top of the chat now names the property and says the comps below are for it (and, when nobody is invited, that nobody else can see it yet); the header says “No one invited yet”; the list row says “Sent 6 comps” instead of “No messages yet”; and a comp card no longer shows a bare “/SF” with no number."
+  },
+  {
+    "date": "2026-11-25",
+    "type": "fix",
+    "title": "The phone bar sits on the bottom edge of an iPhone",
+    "details": "On an iPhone, once the browser’s toolbar slid away, the bottom bar floated about a thumb’s width above the edge with the page showing underneath it. The member pages now let the bar reach the bottom of the screen, with its icons padded clear of the home indicator."
   }
 ]

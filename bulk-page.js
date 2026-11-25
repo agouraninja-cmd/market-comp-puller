@@ -1441,13 +1441,27 @@ function runSpan(n){
   return BULKRUN.span(Math.ceil(n/lanes)*Number(PACE.typical_ms));
 }
 
+// The box starts three lines tall and grows with the list, to a point, so
+// a pasted list is read rather than scrolled. An EMPTY box grows to its
+// example addresses too (2026-11-25, the owner, of a phone: "the suggested
+// adress is cut off"): on a phone each example wraps to two lines, and three
+// of them ran past the three-line box. A browser does not count placeholder
+// text in scrollHeight, so the examples are measured by putting them in the
+// box for that one read and taking them out again (no event fires, and the
+// box is empty, so there is no caret or undo entry to lose).
+function fitBox(){
+  var box=$("bulkText");
+  if(!box)return;
+  box.style.height="";
+  var empty=box.value==="";
+  if(empty){if(!box.placeholder)return;box.value=box.placeholder;}
+  if(box.scrollHeight>box.clientHeight)box.style.height=Math.min(box.scrollHeight+2,420)+"px";
+  if(empty)box.value="";
+}
+
 function refreshCount(){
   parsedCount=Math.min(BULKRUN.countLines($("bulkText").value),MAX);
-  // The box starts three lines tall and grows with the list, to a point, so
-  // a pasted list is read rather than scrolled.
-  var box=$("bulkText");
-  box.style.height="";
-  if(box.value&&box.scrollHeight>box.clientHeight)box.style.height=Math.min(box.scrollHeight+2,420)+"px";
+  fitBox();
   $("count").textContent=parsedCount?parsedCount+" address"+(parsedCount===1?"":"es")+" ready":"";
   // The offer applies to an empty box only, so it leaves once there is
   // anything to lose — a control that would overwrite nothing is noise, and
@@ -1559,6 +1573,7 @@ function loadSamples(){
   function show(list){
     if($("bulkType").value!==type)return;   // the select moved on while this was loading
     ta.placeholder=list&&list.length?list.join("\\n"):FIXED_SAMPLES;
+    fitBox();
   }
   if(SAMPLES[type]){show(SAMPLES[type]);return;}
   BULKRUN.api("GET","/api/sample-addresses?count=3&type="+encodeURIComponent(type)).then(function(d){
@@ -1712,6 +1727,10 @@ function start(boot){
   if(live)BULKRUN.poll(live.id);
 
   $("bulkText").addEventListener("input",refreshCount);
+  // A width change rewraps the lines (a phone turned sideways); a height-only
+  // resize (Safari's toolbar sliding on a swipe) changes nothing here.
+  var fitW=window.innerWidth;
+  window.addEventListener("resize",function(){if(window.innerWidth!==fitW){fitW=window.innerWidth;fitBox();}});
   // A deal handed over from Sites' "Run a land report" (2026-10-21): ?type=
   // picks one of the offered types, and ?acres= / ?zoning= fill that type's
   // own fields where they are empty. Like ?address= below it fills once and

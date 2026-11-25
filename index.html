@@ -1897,7 +1897,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     html.hm-page #deskLoading .dk-skel-agenda { height: 70vh; }
     html.hm-page #checkoutNotice { margin: 16px; }
 
-    .hm { display: flex; flex-direction: column; }
+    /* isolation: Home is its own stacking layer (2026-11-23, the owner: "when
+       you click on your profile in the homepage, nothing pops up"). Leaflet's
+       panes (z 400-1000), the first-building fade (.hm-mapw::before, z 450)
+       and #hmFirst (z 520) otherwise compete in the ROOT stack with the rail
+       header (z 30), so the account menu that opens out of the rail over Home
+       was painted under the map: invisible, or faint text under the fade.
+       Contained here, nothing inside Home can climb over the rail or its menu. */
+    .hm { display: flex; flex-direction: column; isolation: isolate; }
     .hm-mapw { position: relative; order: -1; height: 300px; background: var(--wash-2); border-bottom: 1px solid var(--line); }
     .hm-map { position: absolute; inset: 0; }
     .hm-map.leaflet-container { background: var(--wash-2); font-family: inherit; }

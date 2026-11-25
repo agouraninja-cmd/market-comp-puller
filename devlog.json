@@ -1,5 +1,17 @@
 [
   {
+    "date": "2026-11-25",
+    "type": "fix",
+    "title": "Run a report on a phone: the example addresses are no longer cut off",
+    "details": "The address box on Run a report starts three lines tall and shows example addresses in grey. On a phone each address wraps to two lines, so the last example ran past the bottom of the box and was cut in half. The empty box now grows to fit its examples, and fits again when they change or the phone is turned sideways. On a laptop nothing changes."
+  },
+  {
+    "date": "2026-11-23",
+    "type": "fix",
+    "title": "The account menu shows over Home’s map",
+    "details": "Clicking your initial at the foot of the rail opens a menu (Settings, Sign out) that pops out over Home. On a Home with no properties yet, the map’s fade was painted on top of that menu, so it showed as faint ghost text or not at all. Home is now its own layer, so nothing on its map can cover the rail or its menu."
+  },
+  {
     "date": "2026-11-23",
     "type": "fix",
     "title": "Permit tracker: click a permit’s address to open its progress",

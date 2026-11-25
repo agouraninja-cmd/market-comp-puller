@@ -24,6 +24,16 @@ paths:
 > this area's code in `server.js`. The never-break rules stay in CLAUDE.md.
 > Add new notes for this area here, not there.
 
+> **A firm's contacts since 2026-11-23 (migration 066; owner-lookup.md).**
+> A contact gained `phone`, `source` and `source_url`; the three columns are
+> PROBED (`contactsV2Ready`), so before 066 every route below works with the
+> four old fields and `GET /api/org/contacts` answers `fields: { phone:
+> false }`. The POST's three readers (typed, CSV, Excel) are
+> `contactsFromBody`, shared with a member's own list
+> (`/api/account/contacts`, a separate table: never this read widened). The
+> rule "typed or imported, never collected" stands: a `lookup` contact was
+> saved by a member pressing Save on one person an owner lookup found.
+
 ## Architecture
 
 - **Firms — enterprise accounts, slice 1** (2026-08-16; migration

@@ -43,10 +43,16 @@ const MAX_ROWS_PER_IMPORT = 2000;
 
 // The columns an import may fill, and the header spellings that reach them.
 // Narrow on purpose: a wrong guess here silently files a company as a person.
-const FIELDS = ["name", "email", "company", "notes"];
+//
+// `phone` joined on 2026-11-23 (migration 066). A broker told the owner the
+// hard part of the job is getting in front of a landlord, and a list with no
+// phone column cannot hold the one thing a broker dials. It is a field like
+// the others: typed, imported or edited.
+const FIELDS = ["name", "email", "phone", "company", "notes"];
 const HEADER_ALIASES = {
   name: ["contact", "contact_name", "full_name", "tenant", "tenant_name", "person"],
   email: ["email_address", "e_mail", "mail"],
+  phone: ["phone_number", "telephone", "tel", "mobile", "cell", "cell_phone", "direct", "direct_phone", "office_phone"],
   company: ["organisation", "organization", "firm", "business", "tenant_company", "account"],
   notes: ["note", "comment", "comments", "detail", "details"],
 };
@@ -83,10 +89,61 @@ function validEmail(raw) {
   return { ok: true, value: s };
 }
 
+// A phone number is kept AS TYPED (cleaned and capped), never reformatted:
+// an extension, a country code and "cell" in brackets are all things a person
+// writes on purpose. What is refused is what is not a number at all, for the
+// email rule's reason: a name or a street pasted into this column is a row
+// nobody can dial, and saying so by line number is the fix.
+const MAX_PHONE = 40;
+const PHONE_CHARS_RE = /^[0-9+().,:\-\s/#*a-z]+$/i;
+// Bounded by "not a letter" rather than \b, so the x of "x12" counts.
+const PHONE_WORDS_RE = /(?<![a-z])(x|ext|extension|cell|mobile|office|direct|main|tel|phone|fax|o|c|m|d)(?![a-z])\.?/gi;
+function validPhone(raw) {
+  const s = clean(raw, 80);
+  if (!s) return { ok: true, value: null };
+  const digits = s.replace(/\D/g, "").length;
+  // Letters are allowed only as the words people put beside a number.
+  const stray = /[a-z]/i.test(s.replace(PHONE_WORDS_RE, ""));
+  if (digits < 7 || digits > 20 || s.length > MAX_PHONE || !PHONE_CHARS_RE.test(s) || stray) {
+    return { ok: false, error: `"${str(raw).trim().slice(0, 60)}" is not a phone number` };
+  }
+  return { ok: true, value: s };
+}
+
+// Where a contact came from, when it was not typed or imported (066).
+//
+// THE LIST IS STILL NEVER COLLECTED (the rule at the top of this file). A
+// contact marked "lookup" was found by a search the member asked for and was
+// saved by the member pressing Save on that one person: nothing writes a row
+// here on its own. The mark and the page it was read from are kept so the
+// list can say, years later, which of its numbers somebody typed and which
+// came off a web page that may since have changed.
+const SOURCES = ["lookup"];
+const MAX_URL = 500;
+function cleanSourceUrl(v) {
+  const s = clean(v, MAX_URL + 1);
+  return s.length <= MAX_URL && /^https?:\/\/[^\s<>"']+$/i.test(s) ? s : null;
+}
+
+// The three columns 066 added. server.js names them only once it has SEEN
+// them (a probe, 061's and 063's pattern), so a deploy that runs ahead of the
+// migration keeps every contact route working with the four old fields.
+const V2_COLUMNS = ["phone", "source", "source_url"];
+function withoutV2(row) {
+  const out = {};
+  for (const k of Object.keys(row || {})) if (!V2_COLUMNS.includes(k)) out[k] = row[k];
+  return out;
+}
+
 // One contact, validated. Returns { row, errors } — never throws, and never
 // returns a half-built row alongside errors, so a caller cannot store one by
 // forgetting to check.
-function normalizeContact(src) {
+//
+// `withSource` is passed by ONE caller, the single typed add. An import and
+// an edit leave it off, so neither can write `source`: a spreadsheet cannot
+// claim its rows were looked up, and editing a name does not erase where the
+// number came from (the PATCH writes only the keys this returns).
+function normalizeContact(src, { withSource = false } = {}) {
   const errors = [];
   const row = {};
 
@@ -99,8 +156,17 @@ function normalizeContact(src) {
   const email = validEmail(src && src.email);
   if (email.ok) row.email = email.value; else errors.push(email.error);
 
+  const phone = validPhone(src && src.phone);
+  if (phone.ok) row.phone = phone.value; else errors.push(phone.error);
+
   row.company = clean(src && src.company, MAX_SHORT_TEXT) || null;
   row.notes = clean(src && src.notes, MAX_TEXT) || null;
+
+  if (withSource) {
+    row.source = SOURCES.includes(src && src.source) ? src.source : null;
+    // A page with no lookup behind it is not a source, so it is not kept.
+    row.source_url = row.source ? cleanSourceUrl(src && src.source_url) : null;
+  }
 
   return errors.length ? { row: null, errors } : { row, errors: [] };
 }
@@ -255,7 +321,11 @@ module.exports = {
   mapHeaders,
   dropExisting,
   dedupeKey,
+  validPhone,
+  withoutV2,
   FIELDS,
+  SOURCES,
+  V2_COLUMNS,
   MAX_ROWS_PER_IMPORT,
   MAX_TEXT,
   MAX_SHORT_TEXT,

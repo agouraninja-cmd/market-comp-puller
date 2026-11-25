@@ -1897,7 +1897,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     html.hm-page #deskLoading .dk-skel-agenda { height: 70vh; }
     html.hm-page #checkoutNotice { margin: 16px; }
 
-    .hm { display: flex; flex-direction: column; }
+    /* isolation: Home is its own stacking layer (2026-11-23, the owner: "when
+       you click on your profile in the homepage, nothing pops up"). Leaflet's
+       panes (z 400-1000), the first-building fade (.hm-mapw::before, z 450)
+       and #hmFirst (z 520) otherwise compete in the ROOT stack with the rail
+       header (z 30), so the account menu that opens out of the rail over Home
+       was painted under the map: invisible, or faint text under the fade.
+       Contained here, nothing inside Home can climb over the rail or its menu. */
+    .hm { display: flex; flex-direction: column; isolation: isolate; }
     .hm-mapw { position: relative; order: -1; height: 300px; background: var(--wash-2); border-bottom: 1px solid var(--line); }
     .hm-map { position: absolute; inset: 0; }
     .hm-map.leaflet-container { background: var(--wash-2); font-family: inherit; }
@@ -2230,6 +2237,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .hm-first-or::before, .hm-first-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
     .hm-first-doors { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
     .hm-first-door { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 9px; align-items: center; padding: 11px 10px; border: 1px solid var(--line); border-radius: var(--r-2xl); background: var(--card); font: inherit; text-align: left; color: inherit; text-decoration: none; cursor: pointer; }
+    .hm-first-more { margin: 12px 0 0; }
+    .hm-first-more button { padding: 4px 0; border: 0; background: none; font: inherit; font-size: var(--text-small); font-weight: 500; color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+    .hm-first-more button:hover { color: var(--ink); }
+    .hm-first-more button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
     .hm-first-door:hover { border-color: var(--ink-3); }
     .hm-first-door:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
     .hm-first-door svg { grid-row: span 2; color: var(--ink); }
@@ -2466,6 +2477,37 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     #hmPanePeople #deskContacts .dk-row-meta { font-size: var(--text-small); }
     #hmPanePeople #deskContacts .dk-row-act { font-size: var(--text-small); }
     #hmPanePeople #deskContacts .dk-gt { font-family: inherit; font-size: var(--text-compact); font-weight: 600; }
+    /* Two contact lists and the owner lookup (2026-11-23). The list's four
+       sizes and no others; colours are tokens. .ct-scope sets a display, so
+       it restates the hide class (the .hm-ch trap). */
+    #hmPanePeople .ct-scope { display: inline-flex; gap: 2px; margin-top: 10px; padding: 2px; border-radius: var(--r-lg); background: var(--wash); }
+    #hmPanePeople .ct-scope.hidden { display: none; }
+    #hmPanePeople .ct-scope button { padding: 4px 10px; border: 0; border-radius: var(--r-md); background: none; font-size: var(--text-small); font-weight: 500; color: var(--ink-2); cursor: pointer; }
+    #hmPanePeople .ct-scope button[aria-pressed="true"] { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: 0 0 0 1px var(--line); }
+    #hmPanePeople .of { margin-top: 22px; }
+    #hmPanePeople .of > .dk-rule { align-items: baseline; padding: 16px 0 0; border-bottom: 0; border-top: 1px solid var(--line); }
+    #hmPanePeople .of > .dk-rule .rd-lab { font-family: inherit; font-size: var(--text-small); font-weight: 600; line-height: 1.3847; letter-spacing: 0; text-transform: none; color: var(--ink-2); }
+    #hmPanePeople .of-res { margin-top: 12px; padding: 14px; border: 1px solid var(--line); border-radius: var(--r-2xl); background: var(--card); }
+    #hmPanePeople .of-res > * + * { margin-top: 10px; }
+    #hmPanePeople .of-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+    #hmPanePeople .of-h b { font-size: var(--text-compact); font-weight: 600; color: var(--ink); }
+    #hmPanePeople .of-h small, #hmPanePeople .of-sub, #hmPanePeople .of-legal { font-size: var(--text-label); line-height: 1.45; color: var(--ink-3); }
+    #hmPanePeople .of-own b { display: block; font-size: var(--text-compact); font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+    #hmPanePeople .of-own span, #hmPanePeople .of-p span { display: block; font-size: var(--text-small); line-height: 1.45; color: var(--ink-2); overflow-wrap: anywhere; }
+    #hmPanePeople .of-res a { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
+    #hmPanePeople .of-res a:hover { color: var(--ink); }
+    #hmPanePeople .of-p { padding-top: 10px; border-top: 1px solid var(--line); }
+    #hmPanePeople .of-p b { font-size: var(--text-compact); font-weight: 600; color: var(--ink); }
+    #hmPanePeople .of-chk { display: inline-block; font-style: normal; margin-left: 6px; padding: 1px 6px; border-radius: var(--r-pill); font-size: var(--text-label); font-weight: 500; background: var(--wash); color: var(--ink-2); }
+    #hmPanePeople .of-chk.ok { background: var(--ok-bg); color: var(--ok-text); }
+    #hmPanePeople .of-chk.warn { background: var(--warn-bg); color: var(--warn-text); }
+    #hmPanePeople .of-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 8px; font-size: var(--text-small); }
+    #hmPanePeople .of-legal { padding-top: 10px; border-top: 1px solid var(--line); }
+    #hmPanePeople .of-recent { margin-top: 14px; }
+    #hmPanePeople .of-recent > small { display: block; margin-bottom: 2px; font-size: var(--text-label); color: var(--ink-3); }
+    #hmPanePeople .of-recent button { display: block; width: 100%; padding: 7px 0; border: 0; background: none; text-align: left; font-size: var(--text-small); line-height: 1.4; color: var(--ink-2); cursor: pointer; overflow-wrap: anywhere; }
+    #hmPanePeople .of-recent button:hover { color: var(--ink); }
+    #hmPanePeople .of-recent button i { font-style: normal; color: var(--ink-3); }
     /* The pane under a property (home-sites.css): its value is the list's
        figure, its small heads are captions in sentence case, and nothing in
        it is 11px. */
@@ -3864,7 +3906,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             </div>
 
             <div id="hmPanePeople" class="hm-pane hidden" role="tabpanel" aria-labelledby="hmTabPeople">
-              <div class="hm-ph"><p class="hm-what">The people at your firm, and the contacts you keep together.</p>
+              <div class="hm-ph"><p class="hm-what" id="hmPeopleWhat">The people at your firm, and the contacts you keep together.</p>
                 <button type="button" id="hmInvite" class="hm-btn">+ Invite someone</button></div>
               <div id="hmTeam" class="hm-rows"></div>
               <div id="deskContacts" class="hidden mt-8">
@@ -3876,7 +3918,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                       class="dk-toggle">+ Add or import</button>
                   </div>
                 </div>
-                <p class="dk-copy">Your firm's own list, shared with everyone in it. Type them in or import a spreadsheet — nothing here is ever filled in from CompNinja enquiries.</p>
+                <!-- Two lists since 2026-11-23 (migration 066): the firm's, shared
+                     with everyone in it, and the member's own. The switch shows
+                     only to a member of a firm; anyone else has the one list. -->
+                <div id="contactsScope" class="ct-scope hidden" role="group" aria-label="Which contacts to show">
+                  <button type="button" data-scope="firm" aria-pressed="true">The firm's</button>
+                  <button type="button" data-scope="own" aria-pressed="false">Only yours</button>
+                </div>
+                <p class="dk-copy" id="contactsCopy">Your firm's own list, shared with everyone in it. Type them in or import a spreadsheet — nothing here is ever filled in from CompNinja enquiries.</p>
 
                 <form id="contactAddForm" class="hidden mt-3 flex flex-wrap items-end gap-2">
                   <label class="flex-1 min-w-[10rem]">
@@ -3887,6 +3936,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                   <label class="flex-1 min-w-[10rem]">
                     <span class="rd-lab">Email</span>
                     <input id="contactEmail" type="text" inputmode="email" autocapitalize="off" autocomplete="off" maxlength="200" placeholder="optional"
+                      class="w-full rounded-lg border border-edge px-3 py-2 text-sm focus:ring-2 focus:ring-red focus:border-red outline-none" />
+                  </label>
+                  <!-- Shown once the list read says a phone can be kept (066). -->
+                  <label id="contactPhoneWrap" class="hidden flex-1 min-w-[10rem]">
+                    <span class="rd-lab">Phone</span>
+                    <input id="contactPhone" type="text" inputmode="tel" autocomplete="off" maxlength="40" placeholder="optional"
                       class="w-full rounded-lg border border-edge px-3 py-2 text-sm focus:ring-2 focus:ring-red focus:border-red outline-none" />
                   </label>
                   <label class="flex-1 min-w-[10rem]">
@@ -3910,6 +3965,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
                 <div id="contactRows" class="mt-1"></div>
                 <div id="contactsEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ink"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg></span><span class="dk-gtxt"><span class="dk-gt">No contacts yet</span><span class="dk-gx">Use Add or import above to type one in, or bring a spreadsheet — Excel (.xlsx) or CSV — with a name column.</span></span></div></div></div>
+
+                <!-- Find a property's owner (2026-11-23; owner-lookup.js). One
+                     billed web search per press of the button, never on
+                     arrival; part of Pro, with a monthly allowance. -->
+                <div id="ownerFind" class="of hidden">
+                  <div class="dk-rule">
+                    <span class="rd-lab">Find a property's owner</span>
+                    <span id="ownerLeft" class="dk-note"></span>
+                  </div>
+                  <p class="dk-copy">For commercial property. One search reads the county's record and the owner's own pages, and you choose who to save.</p>
+                  <form id="ownerForm" class="hidden mt-3 flex flex-wrap items-end gap-2">
+                    <label class="flex-1 min-w-[10rem]">
+                      <span class="rd-lab">Property address</span>
+                      <input id="ownerAddress" type="text" required maxlength="200" autocomplete="off" placeholder="1450 S Eagle Rd, Meridian, ID"
+                        class="w-full rounded-lg border border-edge px-3 py-2 text-sm focus:ring-2 focus:ring-red focus:border-red outline-none" />
+                    </label>
+                    <button type="submit" id="ownerGo" class="btn-live text-sm font-medium text-white bg-red-fill hover:bg-red-fill-hover rounded-lg px-3 py-1.5">Find the owner</button>
+                  </form>
+                  <p id="ownerPro" class="hidden dk-copy">Finding a property's owner is part of Pro. <button type="button" id="ownerPlans" class="dk-toggle hidden">See plans</button></p>
+                  <p id="ownerMsg" class="hidden dk-msg" role="status"></p>
+                  <div id="ownerResult" class="of-res hidden"></div>
+                  <div id="ownerRecent" class="of-recent hidden"></div>
+                </div>
               </div>
             </div>
 
@@ -3970,6 +4048,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <a class="hm-first-door" href="/markets"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15.5l4-4.5 3 2.5 4.5-6 2.5 3"/><path d="M3 3.5v13h14"/></svg><b>Follow a market</b><small>New deals by email</small></a>
               <a class="hm-first-door" href="/permits"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.75" y="2.75" width="10.5" height="14.5" rx="1.25"/><path d="M7.25 6.25h5.5"/><path d="M7.25 11.75l1.75 1.75 3.5-3.75"/></svg><b>See permits</b><small>Filed this month</small></a>
             </div>
+            <!-- The way to People from an account with no building yet
+                 (2026-11-23): the start screen hides the list and its tabs,
+                 and contacts are every member's now. -->
+            <p class="hm-first-more"><button type="button" id="hmFirstPeople">Open your contacts, or find a property’s owner →</button></p>
             <p class="hm-first-fine">Every valuation is an automated estimate, not an appraisal.</p>
           </section>
           <!-- What the start screen's dots are: the cities with market pages
@@ -16840,7 +16922,18 @@ async function renderMyDesk() {
     document.getElementById("hmSub").textContent = HOMEMAP.statusLine({ items: hmItems, hasFirm: !!firm, propertyCount: hmRows.length });
 
     // Which tabs apply, and their counts.
-    document.getElementById("hmTabPeople").hidden = !firm;
+    // People is every member's tab since 2026-11-23: a firm's roster and
+    // contacts for a member of one, and their own contacts for anyone else
+    // (it hid without a firm until then, and a broker working alone had
+    // nowhere to keep a contact).
+    document.getElementById("hmTabPeople").hidden = false;
+    document.getElementById("hmPeopleWhat").textContent = firm
+      ? "The people at your firm, and the contacts you keep together."
+      : "The owners, tenants and brokers you deal with. Only you can see them.";
+    document.getElementById("hmInvite").textContent = firm ? "+ Invite someone" : "+ Bring your team";
+    // The owner lookup under the contacts follows the plan, which can land
+    // after Home first drew (initGate draws Home again when it does).
+    if (typeof syncOwnerFind === "function") syncOwnerFind();
     document.getElementById("hmNToday").textContent = hmItems.length ? String(hmItems.length) : "";
     document.getElementById("hmNProps").textContent = hmRows.length ? String(hmRows.length) : "";
 
@@ -16849,7 +16942,10 @@ async function renderMyDesk() {
     // Today's content, not every tab's: the start card's "Add a property"
     // opens the Properties tab's own chooser, which the cards would bury.
     hmNothing = nothing;
-    hmFirstShow(nothing && !hmFirstGone);
+    // People is the one tab an account with no building still has something
+    // on (its contacts, and the owner lookup), so arriving there, or being
+    // sent there, shows the list and not the start screen (2026-11-23).
+    hmFirstShow(nothing && !hmFirstGone && hmTab !== "people");
     document.getElementById("hmStart").classList.toggle("hidden", !nothing || hmTab !== "today" || hmFirstOn);
     document.getElementById("hmStartFirm").classList.toggle("hidden", !!firm);
     // A property of the member's own opens the form that takes it, here on
@@ -17330,6 +17426,14 @@ async function renderMyDesk() {
     else hmOpenMineAdd("own", address);
   });
   document.getElementById("hmFirstTeam").addEventListener("click", () => { if (typeof openFirmModal === "function") openFirmModal(); });
+  // The start screen's way to People. It is put away for this visit (as
+  // "Put it on the map" does) so the list and its tabs show.
+  function hmOpenPeople() {
+    hmFirstGone = true;
+    drawHomeMap();
+    setHomeTab("people");
+  }
+  document.getElementById("hmFirstPeople").addEventListener("click", hmOpenPeople);
   // ---- The list's scrollbar (2026-11-13) -------------------------------------
   // Where a scrollbar takes room (Chrome and Edge on Windows, Linux, a Mac
   // with a mouse), the list's bar took its 15px out of the LIST: whenever a
@@ -17934,6 +18038,16 @@ async function renderMyDesk() {
         workLink(mineA, r.group === "buying" ? "Your deal →" : "Your numbers →");
         b.append(mineA);
       }
+      // The owner lookup's door from a property (2026-11-23): a building the
+      // member does not own themselves (the firm's, or a deal they are
+      // buying), never a home. It opens People with the address filled in
+      // and runs nothing: the search is billed, so it waits for its button.
+      if (hmCanVault() && r.group !== "owned" && r.type !== "Residential" && typeof hmFindOwner === "function") {
+        const who = hmEl("a", "hm-pop-a2", "Find the owner →");
+        who.href = "#people";
+        who.addEventListener("click", (e) => { e.preventDefault(); if (hmMap) hmMap.closePopup(); hmFindOwner(r.address, r.type); });
+        b.append(who);
+      }
     } else return;
     card.append(b);
     // A card always pans clear of the switch over the map's top-left corner
@@ -18031,6 +18145,8 @@ async function renderMyDesk() {
       // The contact list is the most personal thing on Home — real names and
       // addresses a customer typed — so it hides on the same signal.
       document.getElementById("deskContacts").classList.add("hidden");
+      // So is an owner lookup's answer, which names people outside the firm.
+      if (typeof resetOwnerFind === "function") resetOwnerFind();
       document.getElementById("deskFirm").classList.add("hidden");
       // The greeting's timer goes too, so a sign-out is not greeted back.
       stopDeskClock();
@@ -18409,6 +18525,20 @@ async function renderMyDesk() {
   // visibility (the vault's #addSec rule, 2026-08-10: "a broker with 200
   // comps opened their book and was handed an uploader"). The control's label
   // and aria-expanded ride with it so they cannot disagree with the panel.
+  // Two lists since 2026-11-23 (migration 066): the firm's, which every
+  // member of it reads, and the member's OWN, which nobody else does. A
+  // member in no firm has the one list; a member of a firm picks with
+  // #contactsScope, and "" means they have not picked (the firm's shows).
+  // contactsWhich() is the one place that decides which list a read, an add,
+  // an import, a delete or a saved owner goes to, so they cannot disagree.
+  let contactsScope = "";
+  function contactsWhich(firm) { return firm && contactsScope !== "own" ? "firm" : "own"; }
+  function contactsUrl(firm, which, extra) {
+    return which === "firm"
+      ? `/api/org/contacts?id=${encodeURIComponent(firm.id)}` + (extra ? "&" + extra : "")
+      : "/api/account/contacts" + (extra ? "?" + extra : "");
+  }
+
   let contactAddOpen = false;
   function setContactAddOpen(open) {
     contactAddOpen = Boolean(open);
@@ -18422,7 +18552,7 @@ async function renderMyDesk() {
     if (contactAddOpen) document.getElementById("contactName").focus();
   });
 
-  function contactRow(c, firm) {
+  function contactRow(c, firm, which) {
     // .dk-row, flat: the building door below must stay a direct child — the
     // test filters row.children for it.
     const row = document.createElement("div");
@@ -18437,12 +18567,24 @@ async function renderMyDesk() {
     meta.className = "dk-row-meta";
     const bits = [];
     if (c.company) bits.push(c.company);
+    if (c.phone) bits.push(c.phone);
     if (c.email) bits.push(c.email);
     // "you" rather than the reader's own name, the shelf's rule: reading
-    // your own name in a list of colleagues is a beat of confusion.
-    bits.push(c.mine ? "added by you" : (c.addedBy ? "added by " + c.addedBy : "added by a colleague"));
+    // your own name in a list of colleagues is a beat of confusion. A
+    // member's own list has nobody else in it, so it says nothing.
+    if (which !== "own") bits.push(c.mine ? "added by you" : (c.addedBy ? "added by " + c.addedBy : "added by a colleague"));
     meta.textContent = bits.join(" · ");
     row.appendChild(meta);
+
+    // A contact saved from an owner lookup says so, with the public page the
+    // person was read from when there was one (066). An http(s) address only.
+    if (c.source === "lookup") {
+      const from = document.createElement(/^https?:\/\//i.test(c.sourceUrl || "") ? "a" : "span");
+      from.className = "dk-row-act";
+      from.textContent = "From an owner lookup";
+      if (from.tagName === "A") { from.href = c.sourceUrl; from.target = "_blank"; from.rel = "noopener noreferrer"; from.title = "Open the page this contact was read from"; }
+      row.appendChild(from);
+    }
 
     // Attached to a building (046, written by the sheet's Attach door): a
     // door to that sheet. Mapped off the desk's own buildings read, which
@@ -18456,12 +18598,15 @@ async function renderMyDesk() {
       row.appendChild(where);
     }
 
-    const talk = document.createElement("a");
-    talk.className = "dk-row-act";
-    talk.textContent = "Discuss";
-    talk.title = "Start a conversation about this contact — by name, never their address";
-    talk.href = contactDiscussHref(c);
-    row.appendChild(talk);
+    // Discuss is a firm conversation, so a member's own contact has no door.
+    if (which !== "own") {
+      const talk = document.createElement("a");
+      talk.className = "dk-row-act";
+      talk.textContent = "Discuss";
+      talk.title = "Start a conversation about this contact — by name, never their address";
+      talk.href = contactDiscussHref(c);
+      row.appendChild(talk);
+    }
 
     const del = document.createElement("button");
     del.type = "button";
@@ -18472,8 +18617,7 @@ async function renderMyDesk() {
       // vault comp, and the vault's own Undo exists because a comp is not.
       del.disabled = true;
       try {
-        const res = await fetch(`/api/org/contacts?id=${encodeURIComponent(firm.id)}` +
-          `&contact=${encodeURIComponent(c.id)}`, { method: "DELETE" });
+        const res = await fetch(contactsUrl(firm, which, `contact=${encodeURIComponent(c.id)}`), { method: "DELETE" });
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "That didn't go through.");
         contactsMsg("");
         await renderContacts();
@@ -18491,11 +18635,15 @@ async function renderMyDesk() {
     // currentUser first, then the cached membership — readFirmBuildings' rule:
     // a failed /api/org read leaves the LAST firm in memory, and the one
     // state where acting on that is wrong is a signed-out page.
-    const firm = currentUser ? myFirm() : null;
-    if (!firm) { box.classList.add("hidden"); firmContacts = []; return; }
+    if (!currentUser) { box.classList.add("hidden"); firmContacts = []; return; }
+    const firm = myFirm();
+    // The firm's list for a member of one, unless they asked for their own;
+    // their own for anyone else (2026-11-23: contacts are no longer a firm's
+    // alone).
+    const which = contactsWhich(firm);
     let data = null;
     try {
-      const res = await bootFetch(`/api/org/contacts?id=${encodeURIComponent(firm.id)}`);
+      const res = await bootFetch(contactsUrl(firm, which));
       if (res.ok) data = await res.json();
     } catch (_) { /* handled below */ }
     // A failed read hides the panel rather than rendering an empty list — the
@@ -18504,6 +18652,15 @@ async function renderMyDesk() {
     // first invites somebody to retype a list they already have.
     if (!data) { box.classList.add("hidden"); firmContacts = []; return; }
     box.classList.remove("hidden");
+
+    // The switch, the sentence under it and the phone box follow the list.
+    const scope = document.getElementById("contactsScope");
+    scope.classList.toggle("hidden", !firm);
+    Array.from(scope.children || []).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset && b.dataset.scope === which)));
+    document.getElementById("contactsCopy").textContent = which === "firm"
+      ? "Your firm's own list, shared with everyone in it. Type them in or import a spreadsheet — nothing here is ever filled in from CompNinja enquiries."
+      : "Only you can see these. Type them in, import a spreadsheet, or save an owner you looked up. Nothing here is ever filled in from CompNinja enquiries.";
+    document.getElementById("contactPhoneWrap").classList.toggle("hidden", !(data.fields && data.fields.phone));
 
     const rows = Array.isArray(data.contacts) ? data.contacts : [];
     firmContacts = rows;
@@ -18526,8 +18683,10 @@ async function renderMyDesk() {
     // rolodex that migration 007 says must never meet this list.
     const collapse = rows.length > COLLAPSE_AT;
     const head = document.createElement("div");
-    (collapse ? rows.slice(0, COLLAPSE_AT) : rows).forEach((c) => head.appendChild(contactRow(c, firm)));
+    (collapse ? rows.slice(0, COLLAPSE_AT) : rows).forEach((c) => head.appendChild(contactRow(c, firm, which)));
     wrap.appendChild(head);
+    // The owner lookup under the list (its own code, below) follows the plan.
+    if (typeof syncOwnerFind === "function") syncOwnerFind();
     if (!collapse) return;
     const more = document.createElement("details");
     more.id = "contactsMore";
@@ -18537,18 +18696,38 @@ async function renderMyDesk() {
     summary.className = "dk-more";
     summary.textContent = `Show ${rows.length - COLLAPSE_AT} more`;
     const rest = document.createElement("div");
-    rows.slice(COLLAPSE_AT).forEach((c) => rest.appendChild(contactRow(c, firm)));
+    rows.slice(COLLAPSE_AT).forEach((c) => rest.appendChild(contactRow(c, firm, which)));
     more.appendChild(summary);
     more.appendChild(rest);
     wrap.appendChild(more);
   }
 
+  // The switch between the two lists. The member's own list needs migration
+  // 066; if its read fails the firm's list comes back and the page says why,
+  // rather than leaving a member of a firm looking at no contacts at all.
+  document.getElementById("contactsScope").addEventListener("click", async (e) => {
+    const b = e.target.closest ? e.target.closest("button[data-scope]") : null;
+    if (!b || !myFirm()) return;
+    const want = b.dataset.scope === "own" ? "own" : "firm";
+    if (want === contactsWhich(myFirm())) return;
+    contactsScope = want;
+    contactsExpanded = false;
+    contactsMsg("");
+    await renderContacts();
+    if (want === "own" && document.getElementById("deskContacts").classList.contains("hidden")) {
+      contactsScope = "firm";
+      await renderContacts();
+      contactsMsg("Your own contacts couldn't be loaded just now. Your firm's are all here.", true);
+    }
+  });
+
   // One writer for both doors — the typed form and the CSV — because they are
-  // the same POST with the same validation behind it.
+  // the same POST with the same validation behind it. It writes to the list
+  // that is showing (contactsWhich).
   async function postContacts(body) {
+    if (!currentUser) return;
     const firm = myFirm();
-    if (!firm) return;
-    const res = await fetch(`/api/org/contacts?id=${encodeURIComponent(firm.id)}`, {
+    const res = await fetch(contactsUrl(firm, contactsWhich(firm)), {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
     });
     const out = await res.json().catch(() => ({}));
@@ -18577,11 +18756,12 @@ async function renderMyDesk() {
     const name = document.getElementById("contactName").value.trim();
     const email = document.getElementById("contactEmail").value.trim();
     const company = document.getElementById("contactCompany").value.trim();
+    const phone = document.getElementById("contactPhone").value.trim();
     try {
-      const out = await postContacts({ name, email, company });
+      const out = await postContacts({ name, email, phone, company });
       if (out.errors && out.errors.length) return contactsMsg(out.errors.join("; "), true);
-      ["contactName", "contactEmail", "contactCompany"].forEach((id) => { document.getElementById(id).value = ""; });
-      contactsMsg(out.duplicates ? "That email is already on your firm's list." : "Added.");
+      ["contactName", "contactEmail", "contactPhone", "contactCompany"].forEach((id) => { document.getElementById(id).value = ""; });
+      contactsMsg(out.duplicates ? (contactsWhich(myFirm()) === "firm" ? "That email is already on your firm's list." : "That email is already on your list.") : "Added.");
       await renderContacts();
     } catch (err) {
       contactsMsg(err.message || "That didn't go through.", true);
@@ -18625,6 +18805,302 @@ async function renderMyDesk() {
       contactsMsg(err.message || "That file couldn't be imported.", true);
     }
   });
+
+  // ---- Find a property's owner (2026-11-23; owner-lookup.js, migration 066) ---
+  // A broker's hardest step is getting in front of a landlord. A member names
+  // a commercial property; the server runs ONE web search that reads the
+  // county's record, the state's business filing and the owner's own pages;
+  // and the member chooses who to save to the contacts above. Rules a future
+  // editor will otherwise break (.claude/rules/owner-lookup.md):
+  //   - A search runs only from a press of the button (or of an earlier
+  //     lookup's row, which is free). Arriving here, a filled-in address and
+  //     the door from a property's card run nothing: every search is billed
+  //     and counts against the member's month.
+  //   - Everything a search returned is text a stranger wrote: createElement
+  //     and textContent only, and a link only when it starts with http.
+  //   - Nothing is saved as a contact on its own. Save is one person, pressed.
+  //   - The address rides the POST's body, never an address in the bar.
+  const ownerState = { asked: false, on: false, allowance: null, recent: [] };
+  let ownerBusy = false;
+  function ownerMsg(text, bad) {
+    const el = document.getElementById("ownerMsg");
+    el.textContent = text || "";
+    el.className = "dk-msg" + (bad ? " bad" : "") + (text ? "" : " hidden");
+  }
+  function ownerEl(tag, cls, text) {
+    const el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (text != null) el.textContent = text;
+    return el;
+  }
+  function ownerLink(text, url) {
+    if (!/^https?:\/\//i.test(String(url || ""))) return null;
+    const a = ownerEl("a", null, text);
+    a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer";
+    return a;
+  }
+  function ownerDay(iso) {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }
+  // What the page check found for one phone or email, as a tag and its words.
+  const OWNER_CHECKS = {
+    on_page: ["ok", "on its page", "We opened the page this came from, and it shows it."],
+    not_on_page: ["warn", "not on its page", "We opened the page this was said to come from, and it does not show it. Check before you use it."],
+    unchecked: ["", "page not checked", "We could not open the page this came from to check it."],
+  };
+  function ownerCheckTag(check) {
+    const c = OWNER_CHECKS[check];
+    if (!c) return null;
+    const tag = ownerEl("i", "of-chk" + (c[0] ? " " + c[0] : ""), c[1]);
+    tag.title = c[2];
+    return tag;
+  }
+
+  // Shown to every signed-in member under the contacts; the form only to a
+  // plan that has it, the invitation to everyone else. Called by
+  // renderContacts and by a plan change (drawHomeMap runs it again).
+  function syncOwnerFind() {
+    const box = document.getElementById("ownerFind");
+    if (!box) return;
+    box.classList.toggle("hidden", !currentUser);
+    if (!currentUser) return;
+    const can = hmCanVault();
+    document.getElementById("ownerForm").classList.toggle("hidden", !can || (ownerState.asked && !ownerState.on));
+    document.getElementById("ownerPro").classList.toggle("hidden", can);
+    document.getElementById("ownerPlans").classList.toggle("hidden", !hmCanBuy());
+    if (!can) { document.getElementById("ownerLeft").textContent = ""; return; }
+    drawOwnerAllowance();
+    // The allowance and the earlier lookups are read once the tab is open
+    // and the page is shown, never from a page built ahead of a click.
+    if (hmTab === "people") loadOwnerState();
+    takeOwnerAsk();
+  }
+  // A building's sheet hands its address over in sessionStorage
+  // (buildings-page.js, "Find the owner"): read once, removed, and put in the
+  // box. Never while the page is being built ahead of a click, which would
+  // spend the note on a page nobody may open. It runs nothing.
+  function takeOwnerAsk() {
+    if (document.prerendering || !currentUser) return;
+    let ask = null;
+    try {
+      const raw = sessionStorage.getItem("cnOwnerAsk");
+      if (!raw) return;
+      sessionStorage.removeItem("cnOwnerAsk");
+      ask = JSON.parse(raw);
+    } catch (_) { return; }
+    if (!ask || typeof ask.address !== "string" || !ask.address.trim()) return;
+    // After the current task: this is reached from inside Home's own draw,
+    // and a tab change draws the pins (a draw inside a draw, hmRestack's trap).
+    setTimeout(() => hmFindOwner(ask.address.slice(0, 200), String(ask.type || "")), 0);
+  }
+  document.addEventListener("prerenderingchange", () => takeOwnerAsk());
+  function drawOwnerAllowance() {
+    const a = ownerState.allowance;
+    document.getElementById("ownerLeft").textContent = a && a.perMonth
+      ? (a.left ? `${a.left} of ${a.perMonth} left this month` : "None left this month")
+      : "";
+  }
+  function drawOwnerRecent() {
+    const box = document.getElementById("ownerRecent");
+    box.textContent = "";
+    const rows = ownerState.recent || [];
+    box.classList.toggle("hidden", !rows.length);
+    if (!rows.length) return;
+    box.append(ownerEl("small", null, "Looked up before. Opening one again uses no lookup."));
+    rows.slice(0, 8).forEach((r) => {
+      const b = ownerEl("button", null, r.address);
+      b.type = "button";
+      b.append(ownerEl("i", null, " · " + [r.owner || (r.found ? "" : "nothing found"), ownerDay(r.lookedUpAt)].filter(Boolean).join(" · ")));
+      b.addEventListener("click", () => runOwnerLookup(r.address, r.type, false));
+      box.append(b);
+    });
+  }
+  function loadOwnerState() {
+    if (ownerState.asked || !currentUser || !hmCanVault()) return;
+    ownerState.asked = true;
+    hmWhenShown(async () => {
+      try {
+        const res = await fetch("/api/owner-lookup");
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          // Off, or migration 066 has not run: say so and put the form away.
+          ownerState.on = false;
+          if (res.status !== 403) ownerMsg(out.error || "Owner lookup is unavailable right now.", true);
+          document.getElementById("ownerForm").classList.add("hidden");
+          return;
+        }
+        ownerState.on = true;
+        ownerState.allowance = out.allowance || null;
+        ownerState.recent = Array.isArray(out.recent) ? out.recent : [];
+        document.getElementById("ownerForm").classList.toggle("hidden", !hmCanVault());
+        drawOwnerAllowance();
+        drawOwnerRecent();
+      } catch (_) {
+        // A failed read is not "no lookups": the next visit asks again.
+        ownerState.asked = false;
+      }
+    });
+  }
+  // A sign-out (renderHomeFirm's hideAll) takes the answer, the history and
+  // the choice of list with it: the next account on this page starts clean.
+  function resetOwnerFind() {
+    ownerState.asked = false; ownerState.on = false; ownerState.allowance = null; ownerState.recent = [];
+    contactsScope = "";
+    ["ownerResult", "ownerRecent"].forEach((id) => { const el = document.getElementById(id); el.textContent = ""; el.classList.add("hidden"); });
+    document.getElementById("ownerFind").classList.add("hidden");
+    document.getElementById("ownerAddress").value = "";
+    ownerMsg("");
+  }
+  document.getElementById("hmTabPeople").addEventListener("click", () => loadOwnerState());
+  document.getElementById("ownerPlans").addEventListener("click", () => { if (typeof openPricingModal === "function") openPricingModal(); });
+
+  // The door from a property (the map card's "Find the owner"): People, with
+  // the address in the box and the cursor on the button. It runs nothing.
+  let ownerType = "";
+  function hmFindOwner(address, type) {
+    // Through the start screen too (hmOpenPeople puts it away), which is
+    // where a member with no building of their own arrives from a sheet.
+    if (hmFirstOn) hmOpenPeople(); else setHomeTab("people");
+    loadOwnerState();
+    const input = document.getElementById("ownerAddress");
+    input.value = String(address || "");
+    ownerType = String(type || "");
+    ownerMsg("");
+    const box = document.getElementById("ownerFind");
+    if (box.scrollIntoView) box.scrollIntoView({ block: "nearest" });
+    const go = document.getElementById("ownerGo");
+    if (!document.getElementById("ownerForm").classList.contains("hidden")) go.focus();
+  }
+  // A typed address forgets the type the door handed over with the last one.
+  document.getElementById("ownerAddress").addEventListener("input", (e) => { if (e.isTrusted !== false) ownerType = ""; });
+
+  async function runOwnerLookup(address, type, fresh) {
+    if (ownerBusy) return;
+    address = String(address || "").trim();
+    if (!address) return ownerMsg("Type the property's address.", true);
+    ownerBusy = true;
+    const go = document.getElementById("ownerGo");
+    go.disabled = true;
+    go.textContent = "Searching...";
+    ownerMsg("Reading public records. This takes about a minute.");
+    try {
+      const res = await fetch("/api/owner-lookup", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address, type: type || "", fresh: fresh === true }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (out.allowance) { ownerState.allowance = out.allowance; drawOwnerAllowance(); }
+      if (!res.ok) return ownerMsg(out.error || "That didn't go through.", true);
+      ownerMsg("");
+      drawOwnerResult(out);
+      // The history is the member's own rows: this one leads it now.
+      ownerState.recent = [{ id: out.id, address: out.address, type: out.type, found: out.found,
+        owner: (out.result && out.result.owner && out.result.owner.name) || "", lookedUpAt: out.lookedUpAt }]
+        .concat((ownerState.recent || []).filter((r) => r.address !== out.address));
+      drawOwnerRecent();
+    } catch (_) {
+      ownerMsg("That didn't go through. Nothing was counted against your lookups unless a result shows.", true);
+    } finally {
+      ownerBusy = false;
+      go.disabled = false;
+      go.textContent = "Find the owner";
+    }
+  }
+  document.getElementById("ownerForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    runOwnerLookup(document.getElementById("ownerAddress").value, ownerType, false);
+  });
+
+  // One person a lookup found, saved to the list that is showing, through
+  // the contacts' own typed add. The name is the person's, else the company.
+  async function saveOwnerContact(p, out, btn) {
+    const owner = (out.result && out.result.owner) || {};
+    btn.disabled = true;
+    try {
+      const done = await postContacts({
+        name: p.name || p.company || owner.name || "",
+        email: p.email || "", phone: p.phone || "",
+        company: p.name ? (p.company || owner.name || "") : "",
+        notes: [p.role, out.address].filter(Boolean).join(" · "),
+        source: "lookup", source_url: p.source_url || owner.record_url || "",
+      });
+      if (!done) throw new Error("Please sign in again.");
+      if (done.errors && done.errors.length) throw new Error(done.errors.join("; "));
+      btn.textContent = done.duplicates ? "Already on the list" : "Saved";
+      await renderContacts();
+    } catch (err) {
+      btn.disabled = false;
+      ownerMsg(err.message || "That contact couldn't be saved.", true);
+    }
+  }
+
+  function drawOwnerResult(out) {
+    const box = document.getElementById("ownerResult");
+    box.textContent = "";
+    box.classList.remove("hidden");
+    const r = out.result || {};
+
+    const head = ownerEl("div", "of-h");
+    head.append(ownerEl("b", null, out.address));
+    head.append(ownerEl("small", null, out.cached
+      ? `Looked up ${ownerDay(out.lookedUpAt)}. Opened again, so no lookup was used.`
+      : `Looked up ${ownerDay(out.lookedUpAt)}.`));
+    if (out.cached) {
+      const again = ownerEl("button", "dk-toggle", "Look again");
+      again.type = "button";
+      again.title = "Runs a new search and uses one lookup";
+      again.addEventListener("click", () => runOwnerLookup(out.address, out.type, true));
+      head.append(again);
+    }
+    box.append(head);
+
+    if (r.residential) {
+      box.append(ownerEl("p", "of-sub", "That address looks like a home. Owner lookup is for commercial property, so nothing more was looked up."));
+      return;
+    }
+    if (r.owner) {
+      const own = ownerEl("div", "of-own");
+      own.append(ownerEl("b", null, r.owner.name));
+      const kinds = { company: "A company", person: "A person", trust: "A trust", government: "A public body" };
+      own.append(ownerEl("span", null, [kinds[r.owner.kind] || "", r.owner.mailing_address ? "mail to " + r.owner.mailing_address : ""].filter(Boolean).join(" · ") || "Owner of record"));
+      const rec = ownerLink(r.owner.record_source || "The county's record", r.owner.record_url);
+      if (rec) { const s = ownerEl("span"); s.append("Owner of record, from ", rec); own.append(s); }
+      else if (r.owner.record_source) own.append(ownerEl("span", null, "Owner of record, from " + r.owner.record_source));
+      if (r.entity) {
+        const e = r.entity;
+        const s = ownerEl("span", null, [e.state ? "Registered in " + e.state : "", e.status, e.registered_agent ? "registered agent " + e.registered_agent : ""].filter(Boolean).join(" · "));
+        const f = ownerLink("State filing", e.filing_url);
+        if (f) s.append(s.textContent ? " · " : "", f);
+        if (s.textContent) own.append(s);
+      }
+      box.append(own);
+    } else {
+      box.append(ownerEl("p", "of-sub", "No owner of record was found for that address."));
+    }
+    const which = contactsWhich(myFirm());
+    (r.people || []).forEach((p) => {
+      const row = ownerEl("div", "of-p");
+      row.append(ownerEl("b", null, p.name || p.company));
+      const sub = [p.role, p.name ? p.company : ""].filter(Boolean).join(" · ");
+      if (sub) row.append(ownerEl("span", null, sub));
+      if (p.phone) { const s = ownerEl("span", null, p.phone); const t = ownerCheckTag(p.phone_check); if (t) s.append(t); row.append(s); }
+      if (p.email) { const s = ownerEl("span", null, p.email); const t = ownerCheckTag(p.email_check); if (t) s.append(t); row.append(s); }
+      if (!p.phone && !p.email) row.append(ownerEl("span", null, "No business phone or email was published for them."));
+      const acts = ownerEl("div", "of-acts");
+      const save = ownerEl("button", "hm-btn", which === "firm" ? "Save to the firm's contacts" : "Save to your contacts");
+      save.type = "button";
+      save.addEventListener("click", () => saveOwnerContact(p, out, save));
+      acts.append(save);
+      const src = ownerLink("Where this came from", p.source_url);
+      if (src) acts.append(src);
+      row.append(acts);
+      box.append(row);
+    });
+    if (r.owner && !(r.people || []).length) box.append(ownerEl("p", "of-sub", "No contact for the owner was found on a public record or on a page of their own."));
+    if (r.note) box.append(ownerEl("p", "of-sub", r.note));
+    if (out.useNote) box.append(ownerEl("p", "of-legal", out.useNote));
+  }
 
   // Chunked because String.fromCharCode.apply on a whole megabyte-long array
   // overflows the argument stack and throws — on a big file only, which is

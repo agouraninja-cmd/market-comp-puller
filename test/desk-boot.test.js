@@ -88,8 +88,14 @@ test("every URL the server embeds is one the page asks for through bootFetch, an
   assert.deepStrictEqual(segs.sort(), ["buildings", "contacts", "leases", "members"]);
   for (const seg of segs) {
     assert.ok(orgList[1].includes(`/api/org/${seg}?id=\${id}`), `server embeds /api/org/${seg}`);
-    assert.ok(html.includes(`bootFetch(\`/api/org/${seg}?id=\${encodeURIComponent(firm.id)}\`)`),
-      `index.html reads /api/org/${seg} through bootFetch with the same key shape`);
+    // The contacts read builds its address in contactsUrl() since 2026-11-23
+    // (a member has two lists, the firm's and their own): the same key shape,
+    // one function away, and still read through bootFetch.
+    const read = seg === "contacts"
+      ? html.includes("? `/api/org/contacts?id=${encodeURIComponent(firm.id)}`") &&
+        html.includes("bootFetch(contactsUrl(firm, which))")
+      : html.includes(`bootFetch(\`/api/org/${seg}?id=\${encodeURIComponent(firm.id)}\`)`);
+    assert.ok(read, `index.html reads /api/org/${seg} through bootFetch with the same key shape`);
   }
   assert.ok(orgList[1].includes('"/api/messages"') && html.includes('bootFetch("/api/messages",'));
   // And the reverse: a desk read that went back to bare fetch would cost a

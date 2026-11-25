@@ -1,5 +1,17 @@
 [
   {
+    "date": "2026-11-25",
+    "type": "fix",
+    "title": "Run a report on a phone: the example addresses are no longer cut off",
+    "details": "The address box on Run a report starts three lines tall and shows example addresses in grey. On a phone each address wraps to two lines, so the last example ran past the bottom of the box and was cut in half. The empty box now grows to fit its examples, and fits again when they change or the phone is turned sideways. On a laptop nothing changes."
+  },
+  {
+    "date": "2026-11-23",
+    "type": "fix",
+    "title": "The account menu shows over Home’s map",
+    "details": "Clicking your initial at the foot of the rail opens a menu (Settings, Sign out) that pops out over Home. On a Home with no properties yet, the map’s fade was painted on top of that menu, so it showed as faint ghost text or not at all. Home is now its own layer, so nothing on its map can cover the rail or its menu."
+  },
+  {
     "date": "2026-11-23",
     "type": "fix",
     "title": "Permit tracker: click a permit’s address to open its progress",
@@ -5623,6 +5635,12 @@
     "type": "fix",
     "title": "A client chat says which property its comps are for",
     "details": "A deal room with nobody invited yet was named after its property, but the chat showed only the comps' addresses, so the property seemed to be missing. The top of the chat now names the property and says the comps below are for it (and, when nobody is invited, that nobody else can see it yet); the header says “No one invited yet”; the list row says “Sent 6 comps” instead of “No messages yet”; and a comp card no longer shows a bare “/SF” with no number."
+  },
+  {
+    "date": "2026-11-23",
+    "type": "feature",
+    "title": "Find a property’s owner, and contacts for everyone",
+    "details": "A broker’s hardest step is getting in front of a landlord. Home’s People tab now has “Find a property’s owner”: type a commercial address and one web search reads the county’s record for the owner, the state’s business filing for who is behind the company, and the owner’s own pages for a business phone or email. Every phone and email says whether the page it came from really shows it, and you choose who to save to your contacts. It is part of Pro, with 100 lookups a month; opening a building you already looked up is free. It never looks up a home and never uses a people-search site. Contacts also gained a phone number, and they are no longer a firm’s alone: every member has a list of their own on People, and a member of a firm can switch between the firm’s list and their own. Needs migration 066."
   },
   {
     "date": "2026-11-25",

@@ -14,6 +14,25 @@ paths:
 ---
 # The signed-in workspace
 
+> **People is every member's tab (2026-11-23; owner-lookup.md has the whole
+> of it).** Read this before the boxes below, which it amends: where they say
+> the People tab is hidden for a member in no firm, it is not any more.
+> `drawHomeMap` shows it to every signed-in member, with the firm's roster
+> and contacts for a member of one and a member's OWN contacts
+> (`/api/account/contacts`) for anyone else; the pane's sentence and its
+> button ("+ Invite someone" / "+ Bring your team") follow. A member of a
+> firm switches between "The firm's" and "Only yours" (`#contactsScope`;
+> `contactsWhich(firm)` decides every read and write). Under the contacts is
+> "Find a property's owner" (`#ownerFind`), which runs a billed search only
+> from its own button. Three things on Home changed with it: the start
+> screen (`#hmFirst`) is not shown while the tab is People and carries a
+> door there (`#hmFirstPeople`); a property's map card offers "Find the
+> owner →" on a building the member does not own; and a sign-out
+> (`hideAll`) clears the lookup's answer and history (`resetOwnerFind`).
+> The firm contacts read is built by `contactsUrl()`, the same key shape
+> `DESK_BOOT_ORG_URLS` embeds; the member's own list is not in the boot
+> payload and is fetched live.
+
 > **index.html's script is served as its own file (2026-11-14).** The file is
 > about 400 KB of markup and CSS and ONE inline script of about 1 MB, served
 > `no-store`, so the megabyte was downloaded again on every page view (Home,

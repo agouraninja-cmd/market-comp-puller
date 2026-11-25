@@ -18,7 +18,10 @@ Estimate). Signed-in members land on **Home** (`/desk`), which since
 2026-10-07 is one screen: a list (Today, Properties, People) beside a
 map of every property, the firm's and their own, each row saying who can see
 it, with a switch over the map that adds the swept cities' permits
-(2026-10-08; `home-map.js`; workspace.md). A member's own properties are
+(2026-10-08; `home-map.js`; workspace.md). People is every member's tab
+since 2026-11-23: contacts are a firm's or a member's own, and Pro members
+can find a commercial property's owner there by web search
+(`owner-lookup.js`; owner-lookup.md). A member's own properties are
 worked there, in place under their row: what they own, for everyone since
 2026-10-13, and a development firm's deals (`home-sites.js`). Home holds no
 comps since 2026-10-09 (no Comps tab, layer or start card), runs no comp
@@ -446,6 +449,8 @@ so they are trusted config and are never set in production.
 | `BOV_AUTOPILOT` | off | send the BOV desk's drafts without waiting for the owner, behind four gates; off, nothing reaches a broker until a person presses Send | bov-desk.md |
 | `BOV_FROM` | unset | who BOV mail is from (`Name <name@compninja.co>`), and where replies go; unset is `EMAIL_FROM` with replies to `LEAD_NOTIFY_EMAIL` | bov-desk.md |
 | `BOV_DAILY_SEARCHES` | 20 | broker searches per UTC day (the lead form is public) | bov-desk.md |
+| `OWNER_LOOKUPS_PER_MONTH` | 100 | owner lookups a member may run per UTC month (Pro; each is one billed web search); `0` or `off` switches the feature off | owner-lookup.md |
+| `OWNER_DAILY_SEARCHES` | 150 | owner-lookup searches the whole site may run per UTC day | owner-lookup.md |
 | `NAV_SHELL` | `rail` | signed-in chrome as a left rail; `bar` is the rollback | app-shell.md |
 | `WARM_TABS` | `all` | build every rail tab the member can see ahead of the click; `one` is the rollback (only the likely next tab); an unknown value exits at boot | app-shell.md |
 | `ADMIN_KEY_IN_URL` | off | `on` lets the six admin routes that used to take `?key=` take it again (the CSV downloads, `/api/stats`, `/api/admin/submissions`, `/api/corpus-audit`); the rollback for a forgotten bookmark, not a setting to leave on | billing.md |
@@ -480,6 +485,7 @@ gone. Document a new feature in its area's file, not here.
 | `billing.md` | Pro tier, trial, prices, free allowance, passkeys, admin access, branding, trial emails, `/api/config`, `/pricing` | `entitlements.js`, `stripe.js`, `branding.js`, `trial-notices.js`, `pricing-page.js` |
 | `vault.md` | the broker vault (import, mapper, editing, publishing, dashboard, gut check, BOV, building facts), comp submissions, the lead inbox | `vault-*.js`, `broker-*.js`, `building-facts.js`, `gut-check.js`, `bov-log.js`, `blend-comps.js`, `xlsx.js` |
 | `bov-desk.md` | the BOV desk: finding local brokers for a BOV request, the drafted outreach, sending, the accept link and the introduction, autopilot, `/admin/bov`, migration 065 | `bov-desk.js`, `bov-desk-page.js`, `test/bov-desk*.test.js` |
+| `owner-lookup.md` | finding a commercial property's owner by web search (`/api/owner-lookup`), its monthly allowance, a member's own contacts (`/api/account/contacts`), a contact's phone and source, the legal review, migration 066 | `owner-lookup.js`, `org-contacts.js`, `test/owner-lookup*.test.js` |
 | `firms.md` | firms: membership, shelf, buildings, sheets, leases, contacts, messaging doors, Messages' Reports view, auto-share, the shared vault, seats, shop kinds | `org-*.js`, `buildings-page.js`, `messaging.js`, `messages-page.js`, `report-inbox.js` |
 | `workspace.md` | the signed-in Home (`/desk`): Home as one map and its layer switch, layout history, one-paint fill, `DESK_BOOT`, `AUTH_BOOT`, `pagePath`, index.html's script served as `/app.<hash>.js` (`app-page.js`) | `index.html`, `home-map.js`, `app-page.js`, desk tests |
 | `app-shell.md` | the `NAV_SHELL` rail, the signed-in header on server-rendered pages, nav parity with `index.html`, the shared button and tabs (`components.js`), instant tab switching (prerendered tabs, `/api/visit`), the security headers on every response (`security-headers.js`), stopping and crashing without dropping requests (`graceful-shutdown.js`) | `theme.js`, `components.js`, `instant-nav.js`, `security-headers.js`, `graceful-shutdown.js`, nav tests |

@@ -95,6 +95,8 @@ const TABLES = [
   ["user_sites",          "060-user-sites.sql"],
   ["bov_requests",        "065-bov-desk.sql"],
   ["bov_matches",         "065-bov-desk.sql"],
+  ["user_contacts",       "066-contacts-and-owner-lookups.sql"],
+  ["owner_lookups",       "066-contacts-and-owner-lookups.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -172,6 +174,11 @@ const COLUMNS = [
   // desk can never match to a portfolio property, with reads looking fine.
   ["org_buildings",     ["verified_key", "lat", "lng"],         "046-org-buildings.sql"],
   ["org_contacts",      ["building_id"],                        "046-org-buildings.sql"],
+  // 066's absence is SOFT: server.js probes for these three before naming
+  // them, so the firm's list keeps working with its four old fields and only
+  // the phone number, a member's own list and owner lookup wait. Named so the
+  // tool says which file to run when a broker asks where the phone box went.
+  ["org_contacts",      ["phone", "source", "source_url"],      "066-contacts-and-owner-lookups.sql"],
   ["org_building_notes", ["building_id", "body"],                "047-org-building-notes.sql"],
   // 048: option_notice_date is the column the critical-dates strip keys on,
   // rent_basis the one 029's rule stands on, renewal_notified_at the one that

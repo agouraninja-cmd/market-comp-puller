@@ -810,6 +810,11 @@ test("the form is short, keeps every field, and the note still says what a figur
   assert.match(MOD.BULK_CSS, /\.bulk \.addr \.links\{grid-column:3;grid-row:1;justify-self:end\}/);
   assert.match(MOD.BULK_CSS, /\.bulk \.desk textarea\{min-height:72px/);
   assert.ok(MOD.BULK_JS.includes('box.style.height=Math.min(box.scrollHeight+2,420)+"px"'), "the box no longer grows with a list");
+  // An empty box grows to its example addresses too (2026-11-25): on a phone
+  // each wraps to two lines and the third was cut off. A browser leaves the
+  // placeholder out of scrollHeight, so fitBox measures it as the value.
+  assert.ok(MOD.BULK_JS.includes("box.value=box.placeholder;"), "the empty box no longer fits its examples");
+  assert.match(MOD.BULK_JS, /ta\.placeholder=list&&list\.length\?[^;]*;\s*fitBox\(\);/, "new example addresses no longer re-fit the box");
   // CLAUDE.md's rule, on the one sentence the note is now.
   assert.match(page, /<p class="foot">Every figure is an automated estimate from comparable sales, not an appraisal\./);
   // The red button takes the fill red: the link red lightens on a dark page

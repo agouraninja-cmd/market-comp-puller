@@ -17748,6 +17748,11 @@ async function renderMyDesk() {
       if (busy) b.setAttribute("aria-busy", "true"); else b.removeAttribute("aria-busy");
     });
   }
+  // Whether a key is one of Today's numbered pins, the ones hmDrawPins
+  // draws on Today whatever the switch says.
+  function hmOnTodayPin(key) {
+    return hmTab === "today" && hmItems.some((x) => x.num != null && HOMEMAP.addressKey(x.address) === key);
+  }
   function hmSetLayer(layer, on, { draw = true } = {}) {
     if (!HOMEMAP.LAYERS.includes(layer)) return;
     hmLayers = { ...hmLayers, [layer]: Boolean(on) };
@@ -17755,9 +17760,11 @@ async function renderMyDesk() {
     if (on && layer === "permits") hmLoadPermits();
     // A card open on something that just left the map closes with it.
     if (!on && hmSel && hmMap && layer === "permits" && hmSel.startsWith("permit:")) hmMap.closePopup();
-    // A property's card too, unless Today is showing, whose numbered pins
-    // are drawn whatever the switch says.
-    if (!on && hmSel && hmMap && layer === "properties" && !hmSel.startsWith("permit:") && hmTab !== "today") hmMap.closePopup();
+    // A property's card too, unless it sits on one of Today's numbered pins,
+    // which are drawn whatever the switch says. Any other property's dot
+    // leaves the map, so its card goes with it (2026-11-26: on a quiet
+    // Today the card stayed up, photo and all, over the permits map).
+    if (!on && hmSel && hmMap && layer === "properties" && !hmSel.startsWith("permit:") && !hmOnTodayPin(hmSel)) hmMap.closePopup();
     hmSyncLayerButtons();
     if (draw) hmDrawPins();
   }

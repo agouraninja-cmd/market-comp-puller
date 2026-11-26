@@ -97,6 +97,7 @@ const TABLES = [
   ["bov_matches",         "065-bov-desk.sql"],
   ["user_contacts",       "066-contacts-and-owner-lookups.sql"],
   ["owner_lookups",       "066-contacts-and-owner-lookups.sql"],
+  ["owner_suppressions",  "067-owner-suppressions.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a

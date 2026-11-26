@@ -5653,5 +5653,11 @@
     "type": "fix",
     "title": "The phone bar sits on the bottom edge of an iPhone",
     "details": "On an iPhone, once the browser’s toolbar slid away, the bottom bar floated about a thumb’s width above the edge with the page showing underneath it. The member pages now let the bar reach the bottom of the screen, with its icons padded clear of the home indicator."
+  },
+  {
+    "date": "2026-11-26",
+    "type": "fix",
+    "title": "Home: a property card closes when the map switches to Permits",
+    "details": "On a quiet Today (no dated pins), a property card opened on the map stayed up, photo and all, after switching the map to Permits, even though its dot was gone. The card now closes unless it sits on one of Today’s numbered pins, which stay on the map."
   }
 ]

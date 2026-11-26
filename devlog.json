@@ -5659,5 +5659,11 @@
     "type": "fix",
     "title": "Home: a property card closes when the map switches to Permits",
     "details": "On a quiet Today (no dated pins), a property card opened on the map stayed up, photo and all, after switching the map to Permits, even though its dot was gone. The card now closes unless it sits on one of Today’s numbered pins, which stay on the map."
+  },
+  {
+    "date": "2026-11-26",
+    "type": "improvement",
+    "title": "Owner lookup: removal requests, and its rules in the Terms and Privacy Policy",
+    "details": "Before telling brokers about Find a property’s owner, the legal pieces are in place. The Terms of Service now say what owner lookup may be used for (contacting an owner about commercial real estate business) and what it may not (credit, insurance, employment or tenant decisions, looking up homes, harassment, reselling results, autodialing or mass texting), and that the member is responsible for Do Not Call and the other calling and email rules. The Privacy Policy explains what a lookup stores and who sees it, and how anyone named in one can ask to be removed. A new removal list at /admin/removals takes a name, phone, email or property address out of every owner lookup answer, including answers looked up before, and a removed address is not looked up at all. Needs migration 067; until it runs, lookups work as before and the removal list asks for it."
   }
 ]

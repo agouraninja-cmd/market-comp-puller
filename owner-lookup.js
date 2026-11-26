@@ -59,6 +59,15 @@
 // 7. WE NEVER CONTACT ANYBODY. Nothing here dials, texts or mails an owner.
 //    The use note (USE_NOTE) rides with every answer because the member is
 //    the one who will.
+//
+// 8. A REMOVAL REQUEST IS HONORED EVERYWHERE THE ANSWER IS SHOWN (2026-11-26).
+//    A person who asks to be left out goes on the removal list (migration
+//    067, owner_suppressions): an address, a name, a phone or an email. An
+//    address on it refuses the lookup before any search (and costs nothing);
+//    a name, phone or email is scrubbed out of every answer by
+//    applySuppressions, both a fresh one (before it is stored) and one stored
+//    earlier (each time it is read), so adding a row works backwards without
+//    a bulk edit of anybody's history.
 // ---------------------------------------------------------------------------
 
 const PER_MONTH_DEFAULT = 100;
@@ -404,7 +413,71 @@ function recentRow(row) {
   };
 }
 
+// ---- The removal list (rule 8) -----------------------------------------------
+
+const SUPPRESS_KINDS = ["address", "name", "phone", "email"];
+const SUPPRESSED_ADDRESS = "The owner details for this property aren't available.";
+const REMOVED_NOTE = "Some details were removed at the request of the person they name.";
+
+function nameKey(v) {
+  return clean(v, 200).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+// What one removal entry matches on, or "" when the value is not one of its
+// kind. A name needs two words: one word ("Smith", "Holdings") would scrub
+// strangers.
+function suppressionKey(kind, value) {
+  if (kind === "address") {
+    const a = cleanAddress(value);
+    return /^\d/.test(a) ? addressKey(a) : "";
+  }
+  if (kind === "name") {
+    const k = nameKey(value);
+    return k.split(" ").filter(Boolean).length >= 2 ? k : "";
+  }
+  if (kind === "phone") { const d = phoneDigits(value); return d.length === 10 ? d : ""; }
+  if (kind === "email") return cleanEmail(value);
+  return "";
+}
+// A removal list read from the table, as sets the checks below use. Rows
+// whose kind or key is not understood are ignored, never matched loosely.
+function suppressionSets(rows) {
+  const sets = { address: new Set(), name: new Set(), phone: new Set(), email: new Set() };
+  for (const r of rows || []) {
+    if (r && SUPPRESS_KINDS.includes(r.kind) && r.value_key) sets[r.kind].add(String(r.value_key));
+  }
+  return sets;
+}
+function addressSuppressed(address, sets) {
+  return Boolean(sets && sets.address.has(addressKey(address)));
+}
+// An answer with every listed name, phone and email taken out. A person
+// named on the list is dropped whole; a listed phone or email is blanked on
+// whoever carried it; an owner of record named on the list takes the owner,
+// the mailing address and the filing with it. Pure: returns a new result and
+// how much was removed. A home's answer is returned as it came.
+function applySuppressions(result, sets) {
+  if (!result || result.residential || !sets) return { result, removed: 0 };
+  const named = (v) => { const k = nameKey(v); return Boolean(k) && sets.name.has(k); };
+  let removed = 0;
+  let owner = result.owner || null;
+  let entity = result.entity || null;
+  if (owner && named(owner.name)) { owner = null; entity = null; removed++; }
+  if (entity && named(entity.registered_agent)) { entity = { ...entity, registered_agent: "" }; removed++; }
+  const people = [];
+  for (const p of Array.isArray(result.people) ? result.people : []) {
+    if (named(p.name) || (!p.name && named(p.company))) { removed++; continue; }
+    let q = p;
+    if (q.phone && sets.phone.has(phoneDigits(q.phone))) { q = { ...q, phone: "", phone_check: "none" }; removed++; }
+    if (q.email && sets.email.has(String(q.email).toLowerCase())) { q = { ...q, email: "", email_check: "none" }; removed++; }
+    people.push(q);
+  }
+  if (!removed) return { result, removed: 0 };
+  return { result: { ...result, owner, entity, people, note: REMOVED_NOTE }, removed };
+}
+
 module.exports = {
+  SUPPRESS_KINDS, SUPPRESSED_ADDRESS, REMOVED_NOTE,
+  suppressionKey, suppressionSets, addressSuppressed, applySuppressions,
   PER_MONTH_DEFAULT, CACHE_DAYS, MAX_PEOPLE, MAX_ADDRESS, RECENT_MAX,
   KINDS, TYPES, PEOPLE_SEARCH_HOSTS, USE_NOTE,
   cleanAddress, lookupRefusal, addressKey,

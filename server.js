@@ -209,6 +209,7 @@ const BOVSVC = require("./bov-log");
 // page is bov-desk-page.js. server.js owns the reads, the search and the mail.
 const BOVDESK = require("./bov-desk");
 const OWNERLOOKUP = require("./owner-lookup");
+const OWNERREMOVALSPAGE = require("./owner-removals-page");
 const BOVDESKPAGE = require("./bov-desk-page");
 // A development firm's deals (migration 060; worked on Home's Properties tab
 // since 2026-10-09): stages, the tracker, and the field validation every
@@ -9523,6 +9524,33 @@ async function ownerCheckPeople(people) {
   const read = new Map(pages);
   return list.map((p) => OWNERLOOKUP.checkPerson(p, p.source_url ? read.get(p.source_url) : null));
 }
+// The removal list (migration 067, owner-lookup.js rule 8). Read whole and
+// held for a minute: it is short, it is read on every lookup, and a removal
+// the owner just added should reach every answer within that minute (adding
+// one through /api/admin/owner-suppressions clears it at once). A MISSING
+// table is an empty list: before 067 runs there is nowhere a removal could be
+// stored. Any other failure throws, so the lookup answers 503 rather than
+// show an answer it could not check against the list.
+const OWNER_SUPPRESSION_TTL_MS = 60_000;
+const ownerSuppressionCache = { sets: null, at: 0, missing: false };
+async function ownerSuppressions() {
+  if (ownerSuppressionCache.sets && Date.now() - ownerSuppressionCache.at < OWNER_SUPPRESSION_TTL_MS) {
+    return ownerSuppressionCache.sets;
+  }
+  let rows = [];
+  let missing = false;
+  try {
+    rows = (await sbRequest("GET", "owner_suppressions?select=kind,value_key&limit=10000")) || [];
+  } catch (err) {
+    if (!bovTablesMissing(err)) throw err;
+    missing = true;
+  }
+  ownerSuppressionCache.sets = OWNERLOOKUP.suppressionSets(rows);
+  ownerSuppressionCache.at = Date.now();
+  ownerSuppressionCache.missing = missing;
+  return ownerSuppressionCache.sets;
+}
+function forgetOwnerSuppressions() { ownerSuppressionCache.sets = null; ownerSuppressionCache.at = 0; }
 // What a member has used this UTC month, counted off their own rows.
 async function ownerLookupAllowance(userId) {
   const since = OWNERLOOKUP.monthStart(new Date().toISOString());
@@ -18843,11 +18871,13 @@ function renderLeadershipPageHTML(signedIn) {
 // single LEGAL_UPDATED dated both, so a change to one document either left
 // its date stale or restamped the other, which had not changed. Move a date
 // only when THAT document's text changes.
-const TERMS_UPDATED = "August 14, 2026";
-// The Privacy Policy last changed when its Google Fonts line began to name
-// email as well as pages (November 15, 2026). The line itself joined the
-// list of outside services the evening before.
-const PRIVACY_UPDATED = "November 15, 2026";
+// It last changed when owner lookup's permitted use was written in
+// (November 26, 2026; .claude/rules/owner-lookup.md, the legal review).
+const TERMS_UPDATED = "November 26, 2026";
+// The Privacy Policy last changed when owner lookups, and how a person named
+// in one asks to be removed, were written in (November 26, 2026). Before
+// that, when its Google Fonts line began to name email (November 15).
+const PRIVACY_UPDATED = "November 26, 2026";
 
 function renderTermsPageHTML(signedIn) {
   const title = "Terms of Service | CompNinja";
@@ -18881,6 +18911,39 @@ function renderTermsPageHTML(signedIn) {
     `account per person. We may suspend or terminate accounts that abuse the service.</p>` +
     `<p>You agree not to scrape, bulk-extract, or resell report data; not to circumvent rate limits, usage ` +
     `caps, or access controls; and not to use the service for anything unlawful.</p>` +
+
+    // Owner lookup's permitted use (2026-11-26). The legal review in
+    // .claude/rules/owner-lookup.md asked for this as a condition of use, not
+    // only the note on each answer: FCRA (never for screening), Do Not Call
+    // and the TCPA (the member is the caller), CAN-SPAM (the member is the
+    // sender), and no resale (the data-broker question).
+    `<h2 id="owner-lookup">Owner lookup and contact information</h2>` +
+    `<p>Some plans can look up who owns a commercial property, and a business phone number or email ` +
+    `published for that owner. The answer comes from public records and public web pages as found at ` +
+    `the time of your search. It may be out of date or wrong; check it before you rely on it.</p>` +
+    `<p>You may use owner lookup only to contact a property's owner or manager about commercial real ` +
+    `estate business, such as a sale, a lease, a listing, financing, or a valuation. You agree that you ` +
+    `will not:</p>` +
+    `<ul>` +
+    `<li>use it, or anything it returns, to decide anyone's eligibility for credit, insurance, ` +
+    `employment, housing, or a tenancy, or for any other purpose covered by the Fair Credit Reporting ` +
+    `Act. CompNinja is not a consumer reporting agency and owner lookup is not a consumer report;</li>` +
+    `<li>look up a home or its occupants, or try to find a person's home address or personal phone ` +
+    `number;</li>` +
+    `<li>use it to harass, stalk, or threaten anyone, or to find someone who does not want to be found;</li>` +
+    `<li>resell, publish, or share its results outside your own business, or build a list or database ` +
+    `of them for others;</li>` +
+    `<li>call or text a number it returns with an autodialer, a prerecorded or artificial voice, or ` +
+    `mass texting.</li>` +
+    `</ul>` +
+    `<p>CompNinja never contacts an owner for you. When you call, text, or email someone, you are the ` +
+    `caller or sender and you are responsible for following the law that applies, including the ` +
+    `National Do Not Call Registry and state do-not-call lists, the Telephone Consumer Protection Act, ` +
+    `CAN-SPAM, and state telemarketing rules. Check the Registry before calling a number that may be ` +
+    `personal, and honor every request to stop contacting someone.</p>` +
+    `<p>A person named in a lookup can ask us to stop showing their details; see the ` +
+    `<a href="/privacy#owner-lookups">Privacy Policy</a>. We may limit or suspend owner lookup for ` +
+    `anyone who breaks these rules.</p>` +
 
     `<h2>Paid subscriptions</h2>` +
     `<p>Payment is processed by Stripe; CompNinja never sees or stores your card number. You can cancel at ` +
@@ -18952,6 +19015,8 @@ function renderPrivacyPageHTML(signedIn) {
     `account, including any financial inputs you choose to save (see Section 2).</li>` +
     `<li><strong>Broker comp submissions.</strong> The submitting broker's contact details and the ` +
     `submitted comparable-sale data.</li>` +
+    `<li><strong>Owner lookups.</strong> The commercial property address you look up and the answer ` +
+    `we found for it (see Section 7).</li>` +
     `</ul>` +
     `<p>We also collect limited information automatically: IP addresses, used for rate limiting and ` +
     `abuse prevention; standard server logs; and aggregate analytics events. Analytics events are ` +
@@ -19024,27 +19089,50 @@ function renderPrivacyPageHTML(signedIn) {
     `link. The financial inputs described in Section 2 are removed before the shared copy is stored. ` +
     `Share links do not expire.</p>` +
 
-    `<h2>7. Data Retention and Deletion</h2>` +
+    // Owner lookups (2026-11-26): what is stored about the people a lookup
+    // names, where it comes from, who sees it, and the removal route (the
+    // removal list, migration 067, owner-lookup.js rule 8).
+    `<h2 id="owner-lookups">7. Owner Lookups and the People Named in Them</h2>` +
+    `<p>Members on some plans can look up who owns a commercial property. Each lookup runs a web ` +
+    `search of public records (such as a county assessor's record and a state business filing) and ` +
+    `of pages the owner, its manager, or its leasing broker published. The answer can name the owner ` +
+    `of record, the people behind an owning company, and a business phone number or email address ` +
+    `published for them. We never use people-search or background-check sites, and we do not look up ` +
+    `homes.</p>` +
+    `<p>The answer is stored on the account of the member who ran the search, so they can reopen it, ` +
+    `and is not shown to any other member. We do not sell it or combine lookups into a shared ` +
+    `database. A member may save a person from an answer to their own contact list. We never call, ` +
+    `text, or email the people named in a lookup.</p>` +
+    `<p><strong>Removal.</strong> If you are named in owner lookups, or own a property and do not want ` +
+    `its owner details shown, email us at the address in Section 12 with the subject &quot;Owner ` +
+    `lookup removal&quot; and tell us the name, phone number, email address, or property address to ` +
+    `remove. We may ask you to confirm the request. Once we add it to our removal list, it is taken ` +
+    `out of every answer, including answers members looked up before, and an address on the list is ` +
+    `not looked up again. We aim to act on a request within 10 business days. A record held by a ` +
+    `county or state is public and is not changed by our removal; ask that office about its own ` +
+    `record.</p>` +
+
+    `<h2>8. Data Retention and Deletion</h2>` +
     `<p>We retain information for as long as it is needed to provide the Service. You may delete your ` +
     `account at any time from within the application (Settings, Delete account); doing so removes the ` +
     `account and its saved data. To request deletion of lead or submission data, contact us at ` +
     `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
 
-    `<h2>8. Security</h2>` +
+    `<h2>9. Security</h2>` +
     `<p>The Service is served exclusively over HTTPS. Passwords are stored as salted scrypt hashes, ` +
     `and database access is restricted. No method of transmission or storage is completely secure, ` +
     `and we cannot guarantee absolute security.</p>` +
 
-    `<h2>9. Children's Privacy</h2>` +
+    `<h2>10. Children's Privacy</h2>` +
     `<p>The Service is intended for business use and is not directed to children under 13. We do not ` +
     `knowingly collect personal information from children under 13.</p>` +
 
-    `<h2>10. Changes to This Policy</h2>` +
+    `<h2>11. Changes to This Policy</h2>` +
     `<p>We may update this policy from time to time. When we do, we will revise the effective date at ` +
     `the top of this page. Your continued use of the Service after a change takes effect constitutes ` +
     `acceptance of the updated policy.</p>` +
 
-    `<h2>11. Contact</h2>` +
+    `<h2>12. Contact</h2>` +
     `<p>Questions about this policy or about your data may be directed to CompNinja LLC at ` +
     `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
     `</div>`;
@@ -20083,7 +20171,12 @@ function render(d){
         "</b> broker(s) waiting for an introduction.</p>"
       : "<p class=muted>Nothing is waiting on you. When a BOV request comes in, the local brokers are found and the "+
         "emails drafted here.</p>")+
-    "<p style='margin-top:12px'><a class=btn style='display:inline-block' href='/admin/bov'>Open the BOV desk</a></p></div>";
+    "<p style='margin-top:12px'><a class=btn style='display:inline-block' href='/admin/bov'>Open the BOV desk</a></p></div>"+
+    // The owner lookup's removal list (2026-11-26, migration 067): a door,
+    // no count, so this card reads nothing of its own.
+    "<div class=card><h2>Owner lookup removals</h2><p class=muted>When someone asks to stop being shown in owner "+
+    "lookups, add them here.</p><p style='margin-top:12px'><a class=btn style='display:inline-block' "+
+    "href='/admin/removals'>Open the removal list</a></p></div>";
   document.getElementById("dash").innerHTML=
     upAlarm+
     alarm+
@@ -31271,14 +31364,19 @@ const server = http.createServer((req, res) =>
       (async () => {
         const user = await requireOwnerLookup(req, res);
         if (!user) return;
-        const [allowance, rows] = await Promise.all([
+        const [allowance, rows, removals] = await Promise.all([
           ownerLookupAllowance(user.id),
           sbRequest("GET", `owner_lookups?user_id=eq.${encodeURIComponent(user.id)}` +
             `&select=${recentSel}&order=created_at.desc&limit=${OWNERLOOKUP.RECENT_MAX}`),
+          ownerSuppressions(),
         ]);
+        // Rule 8: a removed address leaves the history, and a removed owner's
+        // name leaves its row, however long ago the lookup ran.
+        const recent = (rows || [])
+          .filter((row) => !OWNERLOOKUP.addressSuppressed(row.address, removals))
+          .map((row) => OWNERLOOKUP.recentRow({ ...row, result: OWNERLOOKUP.applySuppressions(row.result, removals).result }));
         return sendJson(res, 200, {
-          allowance, cacheDays: OWNERLOOKUP.CACHE_DAYS, useNote: OWNERLOOKUP.USE_NOTE,
-          recent: (rows || []).map(OWNERLOOKUP.recentRow),
+          allowance, cacheDays: OWNERLOOKUP.CACHE_DAYS, useNote: OWNERLOOKUP.USE_NOTE, recent,
         });
       })().catch((err) => {
         console.error("Owner lookup read failed:", err.message);
@@ -31298,14 +31396,22 @@ const server = http.createServer((req, res) =>
       const type = VAULT.PROPERTY_TYPES.includes(body.type) ? body.type : "";
       const refusal = OWNERLOOKUP.lookupRefusal({ address, type });
       if (refusal) return sendJson(res, 400, { error: refusal });
+      // Rule 8: an address on the removal list is refused before any search,
+      // so it costs nothing, and a stored answer for it is not reopened.
+      const removals = await ownerSuppressions();
+      if (OWNERLOOKUP.addressSuppressed(address, removals)) {
+        return sendJson(res, 403, { error: OWNERLOOKUP.SUPPRESSED_ADDRESS, code: "removed" });
+      }
 
       const now = new Date().toISOString();
       const key = OWNERLOOKUP.addressKey(address);
       const mineRows = `owner_lookups?user_id=eq.${encodeURIComponent(user.id)}`;
+      // Every answer leaves through here, fresh or stored, so a removal added
+      // after a lookup ran still reaches it.
       const answer = (row, extra) => ({
         id: row.id, address: row.address, type: row.property_type || "",
-        found: row.found === true, result: row.result || {}, lookedUpAt: row.created_at,
-        useNote: OWNERLOOKUP.USE_NOTE, ...extra,
+        found: row.found === true, result: OWNERLOOKUP.applySuppressions(row.result || {}, removals).result,
+        lookedUpAt: row.created_at, useNote: OWNERLOOKUP.USE_NOTE, ...extra,
       });
 
       // The member's own answer for this building, if it is fresh enough.
@@ -31331,9 +31437,13 @@ const server = http.createServer((req, res) =>
       try {
         const out = await ownerLookupSearch(address, type);
         if (!out.ok) return sendJson(res, out.status, { error: out.error, allowance: before });
-        const result = out.result.residential
-          ? out.result
-          : { ...out.result, people: await ownerCheckPeople(out.result.people) };
+        // Scrubbed BEFORE the page check and before it is stored (rule 8), so
+        // a removed person's page is not fetched and they are not written into
+        // this member's history at all.
+        const scrubbed = OWNERLOOKUP.applySuppressions(out.result, removals).result;
+        const result = scrubbed.residential
+          ? scrubbed
+          : { ...scrubbed, people: await ownerCheckPeople(scrubbed.people) };
         const row = {
           user_id: user.id, address, address_key: key, property_type: type || null,
           found: out.found === true, result, created_at: now,
@@ -35803,6 +35913,69 @@ const server = http.createServer((req, res) =>
     });
     return res.end(renderAdminHTML());
   }
+  // --- The owner lookup's removal list (owner only; migration 067) ---------
+  // owner-lookup.js rule 8. The page is a public shell (the BOV desk's
+  // pattern); the API is ADMIN_KEY-gated and DB-only. GET only reads. A row
+  // added here reaches every lookup answer at once (forgetOwnerSuppressions).
+  if (req.method === "GET" && req.url.split("?")[0] === "/admin/removals") {
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+    });
+    return res.end(OWNERREMOVALSPAGE.renderOwnerRemovalsHTML());
+  }
+  if (req.url.split("?")[0] === "/api/admin/owner-suppressions" && ["GET", "POST", "DELETE"].includes(req.method)) {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
+    if (!DB_CONFIGURED) return sendJson(res, 503, { error: "The removal list needs the database." });
+    const notReady = (err) => {
+      if (bovTablesMissing(err)) {
+        return sendJson(res, 503, { error: "Run migrations/067-owner-suppressions.sql in Supabase first.", code: "not_ready" });
+      }
+      console.error("Owner removal list failed:", err.message);
+      return sendJson(res, 503, { error: "Couldn't reach the removal list. Please try again in a minute." });
+    };
+    (async () => {
+      if (req.method === "GET") {
+        const rows = await sbRequest("GET", "owner_suppressions?select=id,kind,value_key,label,note,created_at&order=created_at.desc&limit=1000");
+        return sendJson(res, 200, { rows: rows || [] });
+      }
+      if (req.method === "DELETE") {
+        const id = new URL(req.url, "http://localhost").searchParams.get("id") || "";
+        if (!/^[0-9a-f-]{36}$/i.test(id)) return sendJson(res, 400, { error: "Bad id." });
+        await sbRequest("DELETE", `owner_suppressions?id=eq.${encodeURIComponent(id)}`);
+        forgetOwnerSuppressions();
+        return sendJson(res, 200, { ok: true });
+      }
+      let body;
+      try { body = await readJsonBody(req); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+      const kind = OWNERLOOKUP.SUPPRESS_KINDS.includes(body.kind) ? body.kind : "";
+      const valueKey = kind ? OWNERLOOKUP.suppressionKey(kind, body.value) : "";
+      if (!valueKey) {
+        return sendJson(res, 400, { error: kind === "name"
+          ? "Type a first and last name (or a company's full name)."
+          : kind === "phone" ? "Type a US phone number with its area code."
+          : kind === "email" ? "Type a whole email address."
+          : kind === "address" ? "Type the address starting with the street number."
+          : "Choose what to remove." });
+      }
+      const existing = await sbRequest("GET",
+        `owner_suppressions?kind=eq.${encodeURIComponent(kind)}&value_key=eq.${encodeURIComponent(valueKey)}&select=id&limit=1`);
+      if ((existing || []).length) return sendJson(res, 200, { ok: true, already: true });
+      await sbRequest("POST", "owner_suppressions", [{
+        kind, value_key: valueKey,
+        label: String(body.value || "").trim().slice(0, 200),
+        note: String(body.note || "").trim().slice(0, 300) || null,
+      }]);
+      forgetOwnerSuppressions();
+      // A kind and nothing else: the value is a person's detail.
+      console.log(`Owner removal list: ${kind} added`);
+      return sendJson(res, 200, { ok: true, already: false });
+    })().catch(notReady);
+    return;
+  }
+
   // --- The BOV desk (owner only; rules in bov-desk.js) ----------------------
   // The page is a public shell that shows nothing until the admin key or the
   // cn_admin cookie opens /api/admin/bov, the same gate as /admin itself.

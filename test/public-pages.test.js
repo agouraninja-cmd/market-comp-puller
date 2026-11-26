@@ -901,10 +901,33 @@ test("the privacy policy names every host the export feature loads code from", a
   // Emails ask for it too (2026-11-15), so the line says when a mail app does.
   assert.match(body, /some email apps request it when you open an email from us/);
   assert.match(body, /fonts\.googleapis\.com\/css2\?family=Inter/);
-  // Each document carries its own date (2026-11-15): the policy's moved when
-  // that line was added, and the Terms, which did not change, kept theirs.
-  assert.match(body, /Effective date: November 15, 2026</);
+  // Each document carries its own date (2026-11-15). Both moved on
+  // 2026-11-26, when owner lookup was written into each of them.
+  assert.match(body, /Effective date: November 26, 2026</);
   const terms = await (await fetch(srv.base + "/terms")).text();
-  assert.match(terms, /Last updated: August 14, 2026\./);
-  assert.ok(!terms.includes("November 15, 2026"), "the Terms were restamped with the policy's date");
+  assert.match(terms, /Last updated: November 26, 2026\./);
+  assert.ok(!terms.includes("November 15, 2026"), "the Terms were restamped with an old policy date");
+});
+
+test("owner lookup is a condition of use in the Terms and has a removal route in the Privacy Policy", async (t) => {
+  // The legal review (.claude/rules/owner-lookup.md) asked for both before
+  // owner lookup is marketed: the permitted use as a term, not only a note,
+  // and the removal contact for a person a lookup names.
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+  const terms = await (await fetch(srv.base + "/terms")).text();
+  assert.match(terms, /<h2 id="owner-lookup">Owner lookup and contact information<\/h2>/);
+  assert.match(terms, /Fair Credit Reporting\s+Act\. CompNinja is not a consumer reporting agency/);
+  assert.match(terms, /National Do Not Call Registry/);
+  assert.match(terms, /autodialer/);
+  assert.match(terms, /resell, publish, or share its results/);
+  assert.match(terms, /href="\/privacy#owner-lookups"/);
+  const policy = await (await fetch(srv.base + "/privacy")).text();
+  assert.match(policy, /<h2 id="owner-lookups">7\. Owner Lookups and the People Named in Them<\/h2>/);
+  assert.match(policy, /Owner\s+lookup removal/);
+  assert.match(policy, /never use people-search or background-check sites/);
+  // The renumbered sections still run in order.
+  for (const [n, name] of [[8, "Data Retention and Deletion"], [9, "Security"], [12, "Contact"]]) {
+    assert.ok(policy.includes(`<h2>${n}. ${name}</h2>`), `section ${n} is ${name}`);
+  }
 });

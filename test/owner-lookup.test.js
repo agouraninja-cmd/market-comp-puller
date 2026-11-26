@@ -206,3 +206,55 @@ test("the use note says what the member must not do with an answer", () => {
   assert.match(O.USE_NOTE, /postal address and a way to opt out/);
   assert.match(O.USE_NOTE, /Not for tenant screening, credit, employment or insurance/);
 });
+
+// ---- The removal list (rule 8, 2026-11-26) ------------------------------------
+
+test("a removal entry matches on a normalized key, and a vague one is refused", () => {
+  assert.equal(O.suppressionKey("name", "  Dana   WU "), "dana wu");
+  assert.equal(O.suppressionKey("name", "Wu"), "", "one word would scrub strangers");
+  assert.equal(O.suppressionKey("phone", "+1 (208) 555-2142"), "2085552142");
+  assert.equal(O.suppressionKey("phone", "555-2142"), "", "no area code");
+  assert.equal(O.suppressionKey("email", "Dana@EagleRoad.example"), "dana@eagleroad.example");
+  assert.equal(O.suppressionKey("address", "1450 S. Eagle Rd, Meridian, ID 83642"), O.addressKey(ADDRESS.replace("S ", "S. ")));
+  assert.equal(O.suppressionKey("address", "Eagle Rd"), "");
+  assert.equal(O.suppressionKey("ssn", "anything"), "");
+});
+
+test("applySuppressions takes listed names, phones and emails out of an answer", () => {
+  const parsed = O.parseAnswer(JSON.stringify(ANSWER)).result;
+  const none = O.applySuppressions(parsed, O.suppressionSets([]));
+  assert.equal(none.removed, 0);
+  assert.equal(none.result, parsed, "nothing listed returns the same answer");
+
+  const sets = O.suppressionSets([
+    { kind: "name", value_key: O.suppressionKey("name", "Dana Wu") },
+    { kind: "phone", value_key: O.suppressionKey("phone", "208-555-2199") },
+    { kind: "bogus", value_key: "x" },
+  ]);
+  const out = O.applySuppressions(parsed, sets);
+  assert.equal(out.removed, 2);
+  assert.equal(out.result.people.some((p) => p.name === "Dana Wu"), false, "a listed person is dropped whole");
+  const pm = out.result.people.find((p) => p.company === "Ridgeline Management");
+  assert.equal(pm.phone, "");
+  assert.equal(pm.phone_check, "none");
+  assert.equal(out.result.note, O.REMOVED_NOTE);
+  assert.ok(out.result.owner, "the LLC was not listed and stays");
+  assert.equal(parsed.people.length, 2, "the input is not mutated");
+});
+
+test("a listed owner of record takes the mailing address and the filing with it", () => {
+  const parsed = O.parseAnswer(JSON.stringify(ANSWER)).result;
+  const sets = O.suppressionSets([{ kind: "name", value_key: O.suppressionKey("name", "Eagle Road Holdings LLC") }]);
+  const out = O.applySuppressions(parsed, sets).result;
+  assert.equal(out.owner, null);
+  assert.equal(out.entity, null);
+  assert.equal(JSON.stringify(out).includes("PO Box 100"), false);
+});
+
+test("a listed address is refused, however it is typed, and a home's answer is left alone", () => {
+  const sets = O.suppressionSets([{ kind: "address", value_key: O.suppressionKey("address", ADDRESS) }]);
+  assert.equal(O.addressSuppressed("1450 s eagle rd meridian id 83642", sets), true);
+  assert.equal(O.addressSuppressed("1452 S Eagle Rd, Meridian, ID 83642", sets), false);
+  const home = { residential: true, owner: null, entity: null, people: [], note: "" };
+  assert.equal(O.applySuppressions(home, sets).result, home);
+});

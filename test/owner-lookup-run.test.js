@@ -397,3 +397,95 @@ test("before migration 066 the two new features wait, and say so", async (t) => 
   // And nothing else is touched: the account still reads.
   assert.equal((await fetch(srv.base + "/api/account/me", as("u-maya"))).status, 200);
 });
+
+// ---------------------------------------------------------------------------
+// The removal list (owner-lookup.js rule 8, migration 067): a person who asked
+// to be left out is taken out of every answer, fresh and stored, and a listed
+// address is refused before any search.
+test("the removal list reaches every answer, old and new", async (t) => {
+  const ADMIN = "admin-key-for-removals";
+  const tables = { ...baseTables(), owner_suppressions: [] };
+  const { provider, srv, db } = await bootWith(t, { env: { ADMIN_KEY: ADMIN }, tables });
+  const admin = (method, body, qs = "") => fetch(srv.base + "/api/admin/owner-suppressions" + qs, {
+    method, headers: { "content-type": "application/json", "x-admin-key": ADMIN },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  await t.test("only the admin key opens the list, and the page is a shell", async () => {
+    assert.equal((await fetch(srv.base + "/api/admin/owner-suppressions")).status, 401);
+    const asMember = await fetch(srv.base + "/api/admin/owner-suppressions", as("u-maya", { method: "POST",
+      body: JSON.stringify({ kind: "name", value: "Dana Wu" }) }));
+    assert.equal(asMember.status, 401);
+    const page = await fetch(srv.base + "/admin/removals");
+    assert.equal(page.status, 200);
+    assert.match(page.headers.get("x-robots-tag") || "", /noindex/);
+    assert.equal(tables.owner_suppressions.length, 0);
+  });
+
+  await t.test("a lookup before any removal shows Dana", async () => {
+    const r = await lookup(srv, "u-maya", { address: ADDRESS });
+    assert.equal(r.status, 200);
+    assert.ok(r.body.result.people.some((p) => p.name === "Dana Wu"));
+  });
+
+  await t.test("a vague entry is refused; a real one is stored once", async () => {
+    assert.equal((await admin("POST", { kind: "name", value: "Wu" })).status, 400);
+    assert.equal((await admin("POST", { kind: "nope", value: "Dana Wu" })).status, 400);
+    const add = await admin("POST", { kind: "name", value: "Dana Wu", note: "asked by email" });
+    assert.equal(add.status, 200);
+    assert.equal((await add.json()).already, false);
+    const again = await (await admin("POST", { kind: "name", value: "dana  wu" })).json();
+    assert.equal(again.already, true);
+    assert.equal(tables.owner_suppressions.length, 1);
+    assert.equal(tables.owner_suppressions[0].value_key, "dana wu");
+    const list = await (await admin("GET")).json();
+    assert.equal(list.rows.length, 1);
+  });
+
+  await t.test("Maya's stored answer no longer shows Dana, and reopening it is still free", async () => {
+    const before = provider.calls.length;
+    const r = await lookup(srv, "u-maya", { address: ADDRESS });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.cached, true);
+    assert.equal(provider.calls.length, before);
+    assert.equal(JSON.stringify(r.body.result).includes("Dana Wu"), false);
+    assert.equal(r.body.result.note, "Some details were removed at the request of the person they name.");
+  });
+
+  await t.test("a fresh lookup never stores Dana at all", async () => {
+    const r = await lookup(srv, "u-sam", { address: ADDRESS });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.cached, false);
+    const samRow = tables.owner_lookups.find((row) => row.user_id === "u-sam");
+    assert.equal(JSON.stringify(samRow.result).includes("Dana Wu"), false, "a removed person was written into history");
+  });
+
+  await t.test("a listed address is refused before any search, and leaves the history", async () => {
+    assert.equal((await admin("POST", { kind: "address", value: ADDRESS })).status, 200);
+    const before = provider.calls.length;
+    const r = await lookup(srv, "u-maya", { address: "1450 s eagle rd, meridian, id 83642", fresh: true });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.code, "removed");
+    assert.equal(provider.calls.length, before);
+    const page = await (await fetch(srv.base + "/api/owner-lookup", as("u-maya"))).json();
+    assert.equal(page.recent.length, 0);
+  });
+
+  await t.test("taking an entry off the list brings it back", async () => {
+    const row = tables.owner_suppressions.find((s) => s.kind === "address");
+    assert.equal((await admin("DELETE", null, "?id=" + row.id)).status, 200);
+    const page = await (await fetch(srv.base + "/api/owner-lookup", as("u-maya"))).json();
+    assert.equal(page.recent.length, 1);
+    assert.deepEqual(db.unparsed, [], JSON.stringify(db.unparsed));
+  });
+});
+
+test("before migration 067 the lookup runs and the removal list says to migrate", async (t) => {
+  const ADMIN = "admin-key-for-removals";
+  const { srv } = await bootWith(t, { env: { ADMIN_KEY: ADMIN }, fakeOpts: { missingTables: ["owner_suppressions"] } });
+  const r = await lookup(srv, "u-maya", { address: ADDRESS });
+  assert.equal(r.status, 200, "an unrun 067 cost the lookup");
+  const list = await fetch(srv.base + "/api/admin/owner-suppressions", { headers: { "x-admin-key": ADMIN } });
+  assert.equal(list.status, 503);
+  assert.equal((await list.json()).code, "not_ready");
+});

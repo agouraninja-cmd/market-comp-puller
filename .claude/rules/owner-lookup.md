@@ -3,6 +3,8 @@ paths:
   - "owner-lookup.js"
   - "org-contacts.js"
   - "migrations/066-contacts-and-owner-lookups.sql"
+  - "migrations/067-owner-suppressions.sql"
+  - "owner-removals-page.js"
   - "test/owner-lookup*.test.js"
 ---
 
@@ -156,6 +158,51 @@ language to the Terms; add owner lookups to the Privacy Policy with a removal
 contact (info@compninja.co); and have a lawyer confirm the data-broker
 question for the states sold into.
 
+## Removal requests and the legal pages (2026-11-26)
+
+The owner asked for "a way for brokers to find people's contact, specifically
+landlords"; it already existed, so this finished the three things the legal
+review said to do before marketing it (two of three; the lawyer is the
+third).
+
+- **Terms of Service**, new section "Owner lookup and contact information"
+  (`#owner-lookup`): permitted use is commercial real estate business only;
+  never FCRA purposes (credit, insurance, employment, housing, tenancy),
+  never a home, never harassment, no resale or list-building, no autodialer,
+  prerecorded voice or mass texting; the member is the caller and owns Do
+  Not Call, TCPA, CAN-SPAM and state telemarketing compliance. `TERMS_UPDATED`
+  moved to November 26, 2026.
+- **Privacy Policy**, new section 7 "Owner Lookups and the People Named in
+  Them" (`#owner-lookups`; the old 7 to 11 are now 8 to 12): sources, that
+  an answer is stored on the asking member's account only and never sold or
+  pooled, and the removal route: email info@ with the subject "Owner lookup
+  removal", acted on within 10 business days. `PRIVACY_UPDATED` moved too.
+  `test/public-pages.test.js` pins both.
+- **The removal list** (owner-lookup.js rule 8; migration 067,
+  `owner_suppressions`). The owner adds an address, a name (two words at
+  least), a phone or an email at **`/admin/removals`** (a public shell, the
+  BOV desk's pattern; `owner-removals-page.js`; a card on `/admin` links
+  it). `GET|POST|DELETE /api/admin/owner-suppressions`, `ADMIN_KEY`-gated,
+  DB-only. The lookup reads the whole list (`ownerSuppressions()`, held a
+  minute, cleared on every add or delete):
+  - a listed **address** answers 403 `removed` before any search (free) and
+    leaves the member's history list;
+  - a listed **name, phone or email** is scrubbed by `applySuppressions`
+    from a fresh answer BEFORE its pages are fetched and before it is
+    stored, and from a stored answer every time it is read, so a removal
+    works backwards with no bulk edit of anybody's history. A listed owner
+    of record takes the mailing address and the filing with it. A scrubbed
+    answer's note says details were removed at the request of the person
+    named.
+  - **Deploy order is SOFT**: a missing table is an empty list (nothing can
+    have been stored in it), so the lookup keeps working; the admin API
+    answers 503 `not_ready`. Any other read failure throws, and the lookup
+    answers 503 rather than show an answer it could not check.
+  - The log line says a kind was added, never the value.
+- Tests: `test/owner-lookup.test.js` (keys, scrubbing, owner of record,
+  addresses) and `test/owner-lookup-run.test.js` (the admin gate, old and
+  new answers scrubbed, an address refused before a search, an unrun 067).
+
 ## What has NOT been measured
 
 **The prompt has never been run against the live model** (no search key in
@@ -171,17 +218,15 @@ and it brings the FCRA and data-broker questions with it.
 
 ## Not built
 
-- **A takedown.** A person who asks for their details to be removed is
-  handled by hand today: delete the rows naming them in `owner_lookups`,
-  `user_contacts` and `org_contacts` in the SQL editor. A suppression list
-  the lookup checks before answering is the proper version.
+- **Scrubbing contacts members already saved** when a removal is added.
+  Those are the member's own records; `/admin/removals` tells the owner how
+  to delete them by hand if the person asks.
 - **Deleting a lookup** from the member's history (see Cost control).
 - **Attaching a saved owner to the firm's building** automatically. The
   sheet's Attach door still does that by hand.
 - **A list of addresses at once.** One building per search.
 - **The door on a deal's own pane** (`home-sites.js`). The map card and the
   People tab are the doors.
-- **Terms and Privacy Policy wording** (above). Those pages were not edited.
 
 ## Tests
 

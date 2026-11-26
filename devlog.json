@@ -5641,5 +5641,11 @@
     "type": "feature",
     "title": "Find a property’s owner, and contacts for everyone",
     "details": "A broker’s hardest step is getting in front of a landlord. Home’s People tab now has “Find a property’s owner”: type a commercial address and one web search reads the county’s record for the owner, the state’s business filing for who is behind the company, and the owner’s own pages for a business phone or email. Every phone and email says whether the page it came from really shows it, and you choose who to save to your contacts. It is part of Pro, with 100 lookups a month; opening a building you already looked up is free. It never looks up a home and never uses a people-search site. Contacts also gained a phone number, and they are no longer a firm’s alone: every member has a list of their own on People, and a member of a firm can switch between the firm’s list and their own. Needs migration 066."
+  },
+  {
+    "date": "2026-11-25",
+    "type": "fix",
+    "title": "The phone bar sits on the bottom edge of an iPhone",
+    "details": "On an iPhone, once the browser’s toolbar slid away, the bottom bar floated about a thumb’s width above the edge with the page showing underneath it. The member pages now let the bar reach the bottom of the screen, with its icons padded clear of the home indicator."
   }
 ]

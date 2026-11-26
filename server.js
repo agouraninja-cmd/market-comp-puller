@@ -14604,8 +14604,12 @@ const RAIL_CSS = `
      Seven cells is what fits.
    - z-index 1050: over a map's controls (Leaflet's are 1000 and leak out of
      the map) and the Feedback button, under the modals (1200). The body is
-     padded by the bar's height so a page's last line clears it; the
-     safe-area inset is 0 until a page asks for viewport-fit=cover.
+     padded by the bar's height so a page's last line clears it. Both
+     member pages ask for viewport-fit=cover (2026-11-25): without it an
+     iPhone keeps the home-indicator strip for the page, and once the
+     browser's toolbar slid away the bar floated 34px above the screen's
+     edge with the page showing under it. With it the bar reaches the edge
+     and the inset pads its icons clear of the indicator.
    Feedback (TESTER_BADGE_CSS) and /comps' selection tray (vault-page.js)
    stand on the bar from these numbers: 54px tall, so 66px. index.html
    carries the twin of every rule; test/nav-parity.test.js compares them. */
@@ -17085,7 +17089,7 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
   const shareImage = ogImage || `${SITE_URL}/og-image.png`;
   const shellClass = signedIn && NAV_SHELL_CLASS ? ` class="${NAV_SHELL_CLASS}"` : "";
   return `<!DOCTYPE html>\n<html lang="en"${shellClass}>\n<head>\n` +
-    `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
+    `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>\n` +
     `<title>${escHtml(title)}</title>\n` +
     `<meta name="description" content="${escHtml(description)}"/>\n` +
     (noindex

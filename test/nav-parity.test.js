@@ -880,3 +880,17 @@ test("seven rows, Feedback and the account circle fit, in the tallest and the sh
     `in a short window seven rows and the account circle need ${short.columnEnd(7).toFixed(1)}px`);
   assert.ok(short.rowH < tall.rowH, "the short-window block no longer closes the rows up");
 });
+
+test("both member pages let the phone bar reach the bottom edge of an iPhone", () => {
+  // 2026-11-25: without viewport-fit=cover an iPhone keeps its home-indicator
+  // strip for itself, so once the browser's toolbar slid away the fixed bar
+  // floated ~34px up with the page scrolling underneath it. The bar's own
+  // padding already adds env(safe-area-inset-bottom); that inset is 0 unless
+  // the page asks for cover, so both front doors must ask.
+  const meta = /<meta name="viewport" content="([^"]*)"/;
+  assert.match(INDEX_HTML.match(meta)[1], /viewport-fit=cover/, "index.html");
+  const shell = SERVER_JS.slice(SERVER_JS.indexOf("function marketShell("));
+  assert.match(shell.match(meta)[1], /viewport-fit=cover/, "marketShell");
+  assert.match(INDEX_HTML, /\.rd-appbar > nav \{[^}]*calc\(4px \+ env\(safe-area-inset-bottom, 0px\)\)/);
+  assert.match(SERVER_JS, /\.hdr nav\{position:fixed;[^}]*calc\(4px \+ env\(safe-area-inset-bottom,0px\)\)/);
+});

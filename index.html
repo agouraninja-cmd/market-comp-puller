@@ -17946,7 +17946,8 @@ async function renderMyDesk() {
       // One place (2026-10-18) opens on its town, not one block: at the
       // fit's own ceiling a first property was a dot in a grid of streets,
       // and at 14 (a neighbourhood) still a few streets (2026-11-27, the
-      // owner: "zoomed in too far"). 12 shows the town around it.
+      // owner: "zoomed in too far"). 12 (the town) was still too close the
+      // same day; 10 is the region: Twin Falls with Jerome, Buhl and Kimberly.
       const one = fitTo.every((p) => p[0] === fitTo[0][0] && p[1] === fitTo[0][1]);
       hmMap.fitBounds(fitTo, one ? { ...hmFitOpts(), maxZoom: HM_ONE_ZOOM } : hmFitOpts());
       fitted = true;
@@ -17964,7 +17965,7 @@ async function renderMyDesk() {
   // Room for what sits over the map: the switch at the top-left, the legend
   // at the foot. A fit never puts a pin under either. Tighter on the phone
   // strip, which is 300px tall and would otherwise be all margin.
-  const HM_ONE_ZOOM = 12;
+  const HM_ONE_ZOOM = 10;
   const hmFitOpts = () => (window.innerWidth >= 900
     ? { paddingTopLeft: [56, 84], paddingBottomRight: [56, 72], maxZoom: 15 }
     : { paddingTopLeft: [20, 56], paddingBottomRight: [20, 60], maxZoom: 15 });

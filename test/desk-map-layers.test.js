@@ -254,9 +254,9 @@ test("Home's fixes from the empty Home drafts: words on the firm header, links a
   assert.match(draw, /const msgsLink = !!firm && !!\(deskThreadsStat && deskThreadsStat\.total\);/);
   // The legend names only the kinds a pin was drawn for.
   assert.match(fnOf("function hmDrawPins() {"), /const kinds = new Set\(showProps \? located\.map\(\(\{ r \}\) => hmPipClass\(r\)\) : \[\]\);/);
-  // One place opens on its town, not at the fit's street-level ceiling
-  // (14 was still "zoomed in too far", 2026-11-27).
-  assert.match(html, /const HM_ONE_ZOOM = 12;/);
+  // One place opens on its region, not at the fit's street-level ceiling
+  // (14, then 12, were still "zoomed in too far", 2026-11-27).
+  assert.match(html, /const HM_ONE_ZOOM = 10;/);
   // No card opens by itself on Home's first view (2026-11-27): only a click
   // or a hover opens one.
   const pinCalls = fnOf("function hmDrawPins() {").match(/hmSelect\([^\n]*/g) || [];

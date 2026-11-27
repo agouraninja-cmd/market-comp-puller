@@ -5689,5 +5689,11 @@
     "type": "improvement",
     "title": "Home's map no longer opens a card by itself, and starts further out on one property",
     "details": "On load, Home opened the first property's card (photo and value) over the map unasked, and a single property opened a few streets wide. Cards now open only on a click or hover, and one property opens at town level (zoom 12, was 14)."
+  },
+  {
+    "date": "2026-11-27",
+    "type": "improvement",
+    "title": "Home's map opens one property at region level",
+    "details": "Zoom 12 (the town) was still too close; a single property now opens at zoom 10, showing the surrounding towns."
   }
 ]

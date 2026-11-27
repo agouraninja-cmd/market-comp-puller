@@ -11966,18 +11966,16 @@ const WIDER_SEARCH_USES = 6;
 // first call IS the report and is never cut short: an aborted first call is
 // a billed search with nothing to show. The wider search is the one leg that
 // is optional, so it is the one this governs:
-//   - it does not START unless it should finish inside the budget, reckoned
-//     as "as long as the first leg took" (same provider, same model, same
-//     reasoning depth, a smaller ask) plus the link check and placement that
+//   - it does not START unless COMPFIT.WIDER_MIN_RUN_MS (15 s, the measured
+//     length of a wider leg) is left after the link check and placement that
 //     follow it;
 //   - once started it is stopped at the budget, and the report keeps the
 //     first search's comps. That call is billed and wasted, which is why the
 //     first test exists: the stop is the backstop, not the plan.
-// On the live provider at its current depth a first leg runs about 10 s, so
-// neither fires and nothing changes. They matter the day the model, the
-// reasoning depth or the provider gets slower: at a 34 s first leg (the
-// measured cost of THINKING_LEVEL=medium) the wider search no longer fits
-// and is skipped, and the log says so. SEARCH_TIME_BUDGET_SECONDS moves the
+// MEASURED LIVE 2026-11-27 (nine fresh searches, Gemini 3.7 Flash, low
+// reasoning): a one-call search took 32 to 55 s, not the ~10 s the August
+// eval recorded, so this rule fires on real traffic: a first leg past about
+// 39 s leaves no room and the wider search is skipped, and the log says so. SEARCH_TIME_BUDGET_SECONDS moves the
 // ceiling without a deploy; 0 or off removes it (the behaviour before).
 const SEARCH_TIME_BUDGET_MS = (() => {
   const raw = String(process.env.SEARCH_TIME_BUDGET_SECONDS == null ? "" : process.env.SEARCH_TIME_BUDGET_SECONDS).trim();

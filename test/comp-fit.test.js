@@ -446,19 +446,20 @@ test("refitBlended leaves a report with no saved deals, or nothing to cut, exact
 
 test("the wider search starts only when it should finish inside the search's time budget", () => {
   const A = FIT.widerSearchAllowance;
-  // The live case: a 10 s first leg, checked and placed by 15.5 s.
-  assert.deepEqual(A({ budgetMs: 60000, elapsedMs: 15500, firstLegMs: 10000, afterMs: 6000 }),
-    { run: true, deadlineMs: 38500 });
-  // A 34 s first leg (the measured cost of deeper reasoning) leaves 14.5 s
-  // for a call expected to take 34: it is skipped, not started and cut.
-  assert.deepEqual(A({ budgetMs: 60000, elapsedMs: 39500, firstLegMs: 34000, afterMs: 6000 }),
-    { run: false, deadlineMs: null, leftMs: 14500, expectedMs: 34000 });
-  // The boundary: exactly enough runs, one millisecond short does not.
-  assert.equal(A({ budgetMs: 60000, elapsedMs: 24000, firstLegMs: 30000, afterMs: 6000 }).run, true);
-  assert.equal(A({ budgetMs: 60000, elapsedMs: 24001, firstLegMs: 30000, afterMs: 6000 }).run, false);
-  // A first leg too quick to trust as an estimate still needs a real window.
-  assert.equal(A({ budgetMs: 60000, elapsedMs: 50000, firstLegMs: 200, afterMs: 6000 }).run, false);
-  assert.equal(A({ budgetMs: 60000, elapsedMs: 49000, firstLegMs: 200, afterMs: 6000 }).run, true);
+  // A 26 s first leg, checked and placed by 31.5 s: 22.5 s is left, and the
+  // wider leg (measured live at 10 to 15 s) fits. The first version of this
+  // rule expected it to take the first leg's 26 s and skipped it.
+  assert.deepEqual(A({ budgetMs: 60000, elapsedMs: 31500, firstLegMs: 26000, afterMs: 6000 }),
+    { run: true, deadlineMs: 22500 });
+  // A 49 s first leg leaves no room: skipped, not started and cut.
+  assert.deepEqual(A({ budgetMs: 60000, elapsedMs: 54500, firstLegMs: 49000, afterMs: 6000 }),
+    { run: false, deadlineMs: null, leftMs: 0, expectedMs: 15000 });
+  // The boundary: fifteen seconds left runs, one millisecond short does not.
+  assert.equal(A({ budgetMs: 60000, elapsedMs: 39000, firstLegMs: 30000, afterMs: 6000 }).run, true);
+  assert.equal(A({ budgetMs: 60000, elapsedMs: 39001, firstLegMs: 30000, afterMs: 6000 }).run, false);
+  // The first leg's length is not the estimate any more.
+  assert.equal(A({ budgetMs: 60000, elapsedMs: 20000, firstLegMs: 200, afterMs: 6000 }).run, true);
+  assert.equal(A({ budgetMs: 60000, elapsedMs: 20000, firstLegMs: 45000, afterMs: 6000 }).run, true);
   // No budget is no ceiling: the behaviour before the budget existed.
   assert.deepEqual(A({ budgetMs: 0, elapsedMs: 999999, firstLegMs: 999999 }), { run: true, deadlineMs: null });
   assert.deepEqual(A(), { run: true, deadlineMs: null });

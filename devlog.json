@@ -2,6 +2,12 @@
   {
     "date": "2026-11-27",
     "type": "fix",
+    "title": "The one-minute limit was skipping second searches that had room to run",
+    "details": "The limit added earlier today assumed a search takes about ten seconds and that a second, wider search takes as long as the first. Measured on the live site, a search takes 32 to 55 seconds and the second search only 10 to 15, so the limit was skipping the second search on most thin reports, leaving them with two or three comps. It now runs whenever 15 seconds are left, and is still stopped at the minute."
+  },
+  {
+    "date": "2026-11-27",
+    "type": "fix",
     "title": "A comp we left out of a report no longer comes back as a saved deal",
     "details": "Since 2026-11-17 a report leaves out comps that do not fit the building (a very different size, a condo unit against a whole building, far away when closer sales exist) and says so under the table. But a report also adds deals we have saved from earlier searches within ten miles, and those were added with none of those rules. A comp left out for its size is saved as a good comp for some other building, so the next time the same report was opened it came back as a saved deal, under the sentence saying it had been left out, and a saved condo unit could join any whole-building report nearby. Saved deals now go through the fit rules before they join: one this report's search left out stays out, a condo or unit sale is not added to a whole-building report, and a far one is dropped when closer ones exist. One rule is deliberately not applied to saved deals: the size cut. Tested on the market pages' own comps, cutting a small set of comps down to its size class made the estimate worse more often than better, so a saved deal of another size stays in, adjusted for size and counted less, as before."
   },

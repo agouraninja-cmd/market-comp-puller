@@ -14,6 +14,17 @@ paths:
 ---
 # The signed-in workspace
 
+> **No card opens by itself, and one property opens on its town
+> (2026-11-27; the owner, of his start screen: the card "opens by itself"
+> and the map is "zoomed in too far").** Read this before the boxes below,
+> which it amends: where they say the first view of Today opens the card of
+> what is due first, or a lone property's card (Draft C), nothing opens now.
+> `hmDrawPins` no longer calls `hmSelect` except from a pin's own click or
+> hover (`from: "map"`), and `hmOpenedOnce` is gone. `HM_ONE_ZOOM` is 12
+> (was 14), so one property, or several at one point, opens on its town.
+> A fit of several places keeps `hmFitOpts`' 15 ceiling. Pinned in
+> `test/desk-map-layers.test.js`.
+
 > **Home's map heals its own holes (2026-11-25; the owner, with two iPhone
 > pictures: "On CN mobile the map looks like this when you first load it, fix
 > this please").** The phone strip opened with one or two basemap tiles and

@@ -254,8 +254,15 @@ test("Home's fixes from the empty Home drafts: words on the firm header, links a
   assert.match(draw, /const msgsLink = !!firm && !!\(deskThreadsStat && deskThreadsStat\.total\);/);
   // The legend names only the kinds a pin was drawn for.
   assert.match(fnOf("function hmDrawPins() {"), /const kinds = new Set\(showProps \? located\.map\(\(\{ r \}\) => hmPipClass\(r\)\) : \[\]\);/);
-  // One place opens on its neighbourhood, not at the fit's street-level ceiling.
-  assert.match(html, /const HM_ONE_ZOOM = 14;/);
+  // One place opens on its town, not at the fit's street-level ceiling
+  // (14 was still "zoomed in too far", 2026-11-27).
+  assert.match(html, /const HM_ONE_ZOOM = 12;/);
+  // No card opens by itself on Home's first view (2026-11-27): only a click
+  // or a hover opens one.
+  const pinCalls = fnOf("function hmDrawPins() {").match(/hmSelect\([^\n]*/g) || [];
+  assert.ok(pinCalls.length >= 2, "expected the pins' own click handlers");
+  pinCalls.forEach((c) => assert.match(c, /from: "map"/, "a card opened without a click: " + c));
+  assert.doesNotMatch(html, /hmOpenedOnce/);
   // Next replaces a paragraph that repeated the status line, and is text-built.
   // Since 2026-11-13 the paragraph no longer repeats it (below), so Next
   // stands in for it only when Next is all a quiet Today has to show.

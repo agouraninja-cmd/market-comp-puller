@@ -20,8 +20,10 @@ paths:
 > which it amends: where they say the first view of Today opens the card of
 > what is due first, or a lone property's card (Draft C), nothing opens now.
 > `hmDrawPins` no longer calls `hmSelect` except from a pin's own click or
-> hover (`from: "map"`), and `hmOpenedOnce` is gone. `HM_ONE_ZOOM` is 12
-> (was 14), so one property, or several at one point, opens on its town.
+> hover (`from: "map"`), and `hmOpenedOnce` is gone. `HM_ONE_ZOOM` is 10
+> (was 14; 12, the town, was still too close the same day), so one
+> property, or several at one point, opens on its region (Twin Falls with
+> Jerome, Buhl and Kimberly).
 > A fit of several places keeps `hmFitOpts`' 15 ceiling. Pinned in
 > `test/desk-map-layers.test.js`.
 

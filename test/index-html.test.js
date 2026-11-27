@@ -967,9 +967,10 @@ test("a link straight into one report never paints Home's map first", () => {
   assert.match(block, /_bootQs\.has\("recent"\)/);
   assert.match(block, /_bootQs\.has\("property"\) && _bootQs\.get\("refresh"\) !== "1"/,
     "?property=&refresh=1 keeps Home up under its confirm dialog");
-  const doorAt = block.indexOf("    if (_reportDoor) {");
-  assert.ok(doorAt > -1, "the door is decided inside the boot branch, before the desk shows");
-  const doorBranch = block.slice(doorAt, block.indexOf("} else {", doorAt));
+  const deciderAt = block.indexOf("    if (!_reportDoor) {\n      showDeskView();\n    } else {");
+  assert.ok(deciderAt > -1, "the door is decided inside the boot branch: the desk shows only when it is not one");
+  const doorAt = block.indexOf("} else {", deciderAt);
+  const doorBranch = block.slice(doorAt, block.indexOf("\n    }\n", doorAt));
   assert.ok(doorBranch.includes("setReportOnly(true)"));
   assert.ok(!doorBranch.includes("showDeskView()"), "the door branch never shows the desk");
   const openHist = html.slice(html.indexOf("async function openHistoryReport"), html.indexOf("async function openHistoryReport") + 900);

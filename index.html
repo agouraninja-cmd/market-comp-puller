@@ -20828,15 +20828,15 @@ async function renderMyDesk() {
   if (_reportDoor || location.pathname === "/desk"
       || (!_sharedPath && !_pendingLanding && location.pathname === "/" && looksSignedIn())) {
     if ("scrollRestoration" in history) history.scrollRestoration = "manual";
-    if (_reportDoor) {
+    if (!_reportDoor) {
+      showDeskView();
+    } else {
       reportDoorPending = true;
       document.getElementById("hero").classList.add("hidden");
       document.getElementById("homeInfo").classList.add("hidden");
       setReportOnly(true);
       markNavCurrent();
       showStatus("Opening the report…", "info");
-    } else {
-      showDeskView();
     }
     window.scrollTo(0, 0);
   } else if (!_sharedPath) {

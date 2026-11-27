@@ -564,18 +564,24 @@ with the key and update the constant — an earlier model ID was retired.
     `SEARCH_TIME_BUDGET_SECONDS` (default 60; `0` or `off` removes it) and
     `COMPFIT.widerSearchAllowance` (pure, tested). The first call is the
     report and is never cut short. The wider search is the optional leg, so
-    it is the one the clock governs: it does not START unless it should
-    finish inside the budget, reckoned as long as the first leg took plus
-    the link check and placement after it (`WIDER_AFTER_MS`); and once
+    it is the one the clock governs: it does not START unless
+    `COMPFIT.WIDER_MIN_RUN_MS` (15 s) is left after the link check and
+    placement that follow it (`WIDER_AFTER_MS`); and once
     started it is stopped at the budget (`promptExtra.deadlineMs`, which can
     only shorten the derived deadline and which only the wider lane passes)
     and the report keeps the first search's comps. A skipped one is logged
     and the report carries `wider_search: { added: 0, skipped: "time" }`.
-    On the live provider (Gemini 3.7 Flash, `THINKING_LEVEL=low`, about 10 s
-    a call) neither fires. **It bites the day a call gets slower**: at a
-    34 s first leg (the measured cost of `THINKING_LEVEL=medium`) the wider
-    search no longer fits and thin reports go out without it, cached like
-    any other. Weigh that before raising the depth.
+    **Measured live 2026-11-27 (nine fresh searches through `/api/comps`
+    with the admin key, Gemini 3.7 Flash, `THINKING_LEVEL=low`): a one-call
+    search took 32 to 55 s**, not the ~10 s the August eval recorded, and
+    two searches with a wider leg finished in 41 and 51 s, so the wider leg
+    is about 10 to 15 s. The rule first expected the wider leg to take as
+    long as the first and skipped it on five of six thin reports; it now
+    needs 15 s. A first leg past about 39 s still leaves no room, and that
+    report goes out thin and is cached like any other. The search is at the
+    owner's one-minute ceiling on its own: there is no headroom to spend on
+    deeper reasoning, and why a call takes 30 to 50 s when it took 10 in
+    August is an open question (nobody has looked).
   - `COMP_FIT=off` rolls back the whole step (no placement, no fit, no
     wider search, no blended re-fit). Tests: `test/comp-fit.test.js` (the rules, the page's
     sentence and adoption, the wiring by source),

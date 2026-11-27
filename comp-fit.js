@@ -324,19 +324,28 @@ function needsWiderSearch(report, { propertyType, txFocus, subjectSqft, netLease
   return goodSaleCount(report, subjectSqft) < WIDER_SEARCH_BELOW;
 }
 
-// A wider search that would be given less than this is not worth starting.
-const WIDER_MIN_RUN_MS = 5000;
+// What a wider search needs to be worth starting. MEASURED on the live site
+// (2026-11-27, Gemini 3.7 Flash at THINKING_LEVEL=low, nine fresh searches):
+// a search with one call took 32 to 55 seconds, and a whole search WITH its
+// wider leg finished in 41 and 51 seconds, so the wider leg is the short
+// one, roughly 10 to 15 seconds: it asks for comps only, with no size lookup
+// and no narrative. The first version of this rule expected it to take as
+// long as the first leg, on a repo note that a search took about ten
+// seconds; live, that skipped the wider search on five of six thin reports,
+// some of which had room for it.
+const WIDER_MIN_RUN_MS = 15000;
 
 /**
  * Whether the wider search may start inside the search's time budget, and
  * how long it may then run (server.js refineComps; SEARCH_TIME_BUDGET_SECONDS,
- * a minute by default). It is expected to take as long as the first leg did:
- * the same provider, model and reasoning depth, asked for less. No clock
- * read: the caller says what has elapsed.
+ * a minute by default). It starts whenever WIDER_MIN_RUN_MS is left after
+ * what must follow it; the deadline it is handed is what keeps the search
+ * inside the budget if it runs long. No clock read: the caller says what
+ * has elapsed.
  *
  *   budgetMs    the whole search's ceiling; 0 or less means none (always run)
  *   elapsedMs   since the search began
- *   firstLegMs  how long the first call took
+ *   firstLegMs  how long the first call took (no longer the estimate)
  *   afterMs     what follows the wider call (its link check and placement)
  *
  * Returns { run, deadlineMs } and, when it must not run, { leftMs, expectedMs }
@@ -345,7 +354,7 @@ const WIDER_MIN_RUN_MS = 5000;
 function widerSearchAllowance({ budgetMs = 0, elapsedMs = 0, firstLegMs = 0, afterMs = 0 } = {}) {
   if (!(Number(budgetMs) > 0)) return { run: true, deadlineMs: null };
   const left = Number(budgetMs) - (Number(elapsedMs) || 0) - (Number(afterMs) || 0);
-  const expected = Math.max(WIDER_MIN_RUN_MS, Number(firstLegMs) || 0);
+  const expected = WIDER_MIN_RUN_MS;
   if (left < expected) {
     return { run: false, deadlineMs: null, leftMs: Math.max(0, Math.round(left)), expectedMs: Math.round(expected) };
   }

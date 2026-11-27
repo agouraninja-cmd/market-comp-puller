@@ -67,9 +67,14 @@ test("the open page ships the form, the boot and its two scripts in order, with 
   for (const [key] of B.ACCENTS) assert.ok(html.includes('data-accent="' + key + '"'), key);
 });
 
-test("the page says once that the draft stays here, and never calls itself an appraisal", () => {
+test("the page says where a draft is kept and what Save does, and never calls itself an appraisal", () => {
   const html = renderBovBody(open());
-  assert.match(html, /Nothing you type here is sent to CompNinja\./);
+  assert.match(html, /What you type is kept in this browser as you go and is sent nowhere\./);
+  assert.match(html, /where only you can open it/);
+  // The Save controls ship hidden: the builder shows them once the account's
+  // list has answered, so a deployment ahead of migration 067 offers nothing.
+  assert.match(html, /<div class="bb-save" id="bbSaveRow" hidden>/);
+  assert.match(html, /<label class="bb-f" id="bbSavedRow" hidden>/);
   assert.match(html, /It is your opinion,\s+on your letterhead\./);
   assert.doesNotMatch(html.replace(/<style[\s\S]*?<\/style>/g, ""), /apprais/i, "the builder's own copy says appraisal");
   // The owner is not a licensed broker: the page never says CompNinja's value.
@@ -103,17 +108,24 @@ test("every element the builder reaches for is in the page", () => {
   for (const id of asked) assert.ok(ids.has(id), "bov-builder.js reads #" + id + ", which the page does not have");
 });
 
-test("the builder's every request is one of four, and the draft is in none of them (rule 6)", () => {
+test("the builder's every request is on one list, and the draft is sent in exactly one of them (rule 6)", () => {
   const code = BUILDER.replace(/\/\/[^\n]*/g, "");
   const urls = [...code.matchAll(/fetch\(\s*"([^"]+)"/g)].map((m) => m[1]).sort();
-  assert.deepEqual(urls, ["/api/branding", "/api/broker/bovs", "/api/broker/bovs/update", "/api/building-photo"]);
-  assert.equal((code.match(/fetch\(/g) || []).length, 4, "a request with a computed address");
+  assert.deepEqual(urls, ["/api/branding", "/api/broker/bov-docs", "/api/broker/bov-docs", "/api/broker/bov-docs?id=", "/api/broker/bov-docs?id=",
+    "/api/broker/bovs", "/api/broker/bovs/update", "/api/building-photo"]);
+  assert.equal((code.match(/fetch\(/g) || []).length, 8, "a request with a computed address");
+  // The two addresses that are completed in script take a saved BOV's id and nothing else.
+  assert.equal((code.match(/"\/api\/broker\/bov-docs\?id=" \+ encodeURIComponent\(id\)/g) || []).length, 2);
   for (const word of ["sendBeacon", "XMLHttpRequest", "WebSocket", "EventSource", "navigator.clipboard", "document.cookie"]) {
     assert.ok(!code.includes(word), "bov-builder.js uses " + word);
   }
   // The two bodies it sends, whole: one address for a photo, one status.
   const bodies = [...code.matchAll(/body: JSON\.stringify\(([^\n]+?)\) \}\)/g)].map((m) => m[1]);
-  assert.deepEqual(bodies, ["{ places: [{ address: address }] }", '{ id: id, status: "delivered" }']);
+  assert.deepEqual(bodies, ["{ places: [{ address: address }] }", '{ id: id, status: "delivered" }', "{ id: draft.docId || undefined, draft: draft }"]);
+  // The draft is in ONE body, and that request is made only inside the Save button's press.
+  assert.equal((code.match(/draft: draft/g) || []).length, 1);
+  const saveAt = code.indexOf('$("bbSave").addEventListener("click"'), sendAt = code.indexOf("draft: draft"), nextAt = code.indexOf('$("bbSavedRemove").addEventListener');
+  assert.ok(saveAt > -1 && saveAt < sendAt && sendAt < nextAt, "the draft is posted from somewhere other than the Save press");
   // innerHTML is written only with BOVDOC's own escaped document.
   const writes = [...code.matchAll(/\.innerHTML\s*=\s*([^;]+);/g)].map((m) => m[1]);
   assert.deepEqual(writes, ["B.documentHtml(draft, docOpts(true))", "B.documentHtml(draft, docOpts(false))"]);
@@ -159,7 +171,10 @@ class El {
     return { add: (c) => { el.className += " " + c; }, remove: (c) => { el.className = el.className.replace(" " + c, ""); } };
   }
 }
-function run({ boot, storage = {}, search = "", bovs = [], brand = null, prerendering = false } = {}) {
+// account: the stand-in for /api/broker/bov-docs. { docs: [...] } is an
+// account's saved BOVs (kept across pages when the same object is passed
+// again, as a second computer would see them); null answers 503 not_ready.
+function run({ boot, storage = {}, search = "", bovs = [], brand = null, prerendering = false, account = { docs: [] } } = {}) {
   const b = boot || open();
   const html = renderBovBody(b);
   const els = {};
@@ -182,10 +197,28 @@ function run({ boot, storage = {}, search = "", bovs = [], brand = null, prerend
   win.cnShopNav = (dev) => { win.shop = dev; };
   const fetch = (url, init) => {
     calls.push({ url, method: (init && init.method) || "GET", body: init && init.body });
+    const answer = (status, j) => Promise.resolve({ ok: status === 200, status, json: () => Promise.resolve(j) });
+    if (url.indexOf("/api/broker/bov-docs") === 0) {
+      if (!account) return answer(503, { error: "Saving to your account is not switched on yet.", code: "not_ready" });
+      const method = (init && init.method) || "GET", id = (url.split("?id=")[1] || "");
+      if (method === "GET" && id) {
+        const d = account.docs.find((x) => x.id === id);
+        return d ? answer(200, { doc: d }) : answer(404, { error: "That saved BOV was not found." });
+      }
+      if (method === "GET") return answer(200, { docs: account.docs.map(({ draft, ...rest }) => rest) });
+      if (method === "DELETE") { account.docs = account.docs.filter((x) => x.id !== id); return answer(200, { ok: true }); }
+      const sent = JSON.parse(init.body);
+      let d = sent.id ? account.docs.find((x) => x.id === sent.id) : null;
+      if (sent.id && !d) return answer(404, { error: "That saved BOV is gone. Save again to keep this one.", code: "gone" });
+      if (!d) { d = { id: "0000000" + (account.docs.length + 1) + "-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }; account.docs.unshift(d); }
+      Object.assign(d, { bov_id: sent.draft.from || null, address: sent.draft.subject.address, property_type: sent.draft.subject.type,
+        draft: JSON.parse(JSON.stringify(sent.draft)), updated_at: "2026-11-27T12:00:00Z" });
+      return answer(200, { ok: true, id: d.id, updated_at: d.updated_at });
+    }
     const j = url === "/api/branding" ? { branding: brand || {}, firm: null }
       : url === "/api/broker/bovs" ? { bovs }
       : url === "/api/building-photo" ? { photos: ["/api/streetview?t=tok"] } : { ok: true };
-    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(j) });
+    return answer(200, j);
   };
   vm.runInNewContext(BUILDER, {
     window: win, document: doc, fetch, setTimeout: (fn) => { fn(); return 0; }, clearTimeout() {}, URLSearchParams,
@@ -193,13 +226,13 @@ function run({ boot, storage = {}, search = "", bovs = [], brand = null, prerend
   });
   const settle = () => new Promise((r) => setImmediate(() => setImmediate(r)));
   const type = (id, v) => { els[id].value = v; els[id].fire("input"); };
-  return { els, calls, storage, win, doc, body, replaced, settle, type };
+  return { els, calls, storage, win, doc, body, replaced, settle, type, account };
 }
 
 test("it opens with the closest comps ticked, and asks the server only for the letterhead and the BOV log", async () => {
   const p = run();
   await p.settle();
-  assert.deepEqual(p.calls.map((c) => c.method + " " + c.url), ["GET /api/branding", "GET /api/broker/bovs"]);
+  assert.deepEqual(p.calls.map((c) => c.method + " " + c.url), ["GET /api/branding", "GET /api/broker/bovs", "GET /api/broker/bov-docs"]);
   assert.equal(p.els.bbCompN.textContent, "2 chosen", "the two industrial sales were not ticked to start");
   assert.equal(p.els.bbPrint.disabled, true, "an empty BOV can be printed");
   assert.match(p.els.bbReady.textContent, /Still needed: the property\u2019s address; the building\u2019s size; your opinion of value\./);
@@ -227,8 +260,9 @@ test("typing fills the document and is kept in this browser under the account's 
   const kept = JSON.parse(p.storage["cnBov1:abc123"]);
   assert.equal(kept.drafts._.d.client.name, OWNER);
   assert.equal(kept.drafts._.d.income.noi, "262,000");
-  // Rule 6: after all of that, the page has still asked only its two reads.
-  assert.deepEqual(p.calls.map((c) => c.url), ["/api/branding", "/api/broker/bovs"]);
+  // Rule 6: after all of that, the page has still asked only its three reads.
+  assert.deepEqual(p.calls.map((c) => c.url), ["/api/branding", "/api/broker/bovs", "/api/broker/bov-docs"]);
+  assert.equal(p.els.bbSaveMsg.textContent, "Only in this browser so far.");
   for (const c of p.calls) assert.equal(c.body, undefined);
 });
 
@@ -315,4 +349,115 @@ test("a development firm's member is sent to Sites, but never from a page built 
   const broker = run({ boot: open({ firm: { id: "f2", name: "Summit", kind: "broker" } }) });
   assert.deepEqual(broker.replaced, []);
   assert.equal(broker.win.shop, false);
+});
+
+// ---- saved to the account (2026-11-27) ------------------------------------------
+test("Save sends the draft to the account once, on the press, and the page says where it stands", async () => {
+  const p = run();
+  await p.settle();
+  assert.equal(p.els.bbSaveRow.hidden, false, "the Save controls stayed hidden with the account ready");
+  p.els.bbSave.click();
+  assert.equal(p.els.bbSaveMsg.textContent, "Enter the property\u2019s address before saving.");
+  assert.ok(!p.calls.some((c) => c.method === "POST"), "an empty BOV was sent");
+  p.type("bbAddr", "8400 W Fairview Ave, Boise, ID 83704");
+  p.type("bbClient", OWNER);
+  assert.ok(!p.calls.some((c) => c.method === "POST"), "typing sent the draft");
+  p.els.bbSave.click();
+  await p.settle();
+  const posts = p.calls.filter((c) => c.method === "POST");
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].url, "/api/broker/bov-docs");
+  const sent = JSON.parse(posts[0].body);
+  assert.equal(sent.id, undefined, "a first save named an id");
+  assert.equal(sent.draft.client.name, OWNER);
+  assert.equal(p.account.docs.length, 1);
+  assert.equal(p.els.bbSaveMsg.textContent, "Saved to your account.");
+  assert.equal(p.els.bbSave.textContent, "Save changes");
+  assert.equal(p.els.bbSavedRemove.hidden, false);
+  // A change after the save is said, and the next save updates the same copy.
+  p.type("bbClientCo", "Holdings LLC");
+  assert.equal(p.els.bbSaveMsg.textContent, "Changes since your last save are only in this browser.");
+  assert.equal(p.calls.filter((c) => c.method === "POST").length, 1, "a change after saving was sent without a press");
+  p.els.bbSave.click();
+  await p.settle();
+  assert.equal(p.account.docs.length, 1, "a second save made a second copy");
+  assert.equal(p.account.docs[0].draft.client.company, "Holdings LLC");
+  assert.equal(JSON.parse(p.calls.filter((c) => c.method === "POST")[1].body).id, p.account.docs[0].id);
+  // The browser keeps one copy of it, under the saved copy's id.
+  const kept = JSON.parse(p.storage["cnBov1:abc123"]);
+  assert.deepEqual(Object.keys(kept.drafts), ["d:" + p.account.docs[0].id]);
+});
+
+test("a saved BOV opens on another computer, from the list and from its card's link", async () => {
+  const row = { id: BOV_ID, market: "Boise, ID", property_type: "Industrial", status: "open", size_sqft: 45000, address: "8400 W Fairview Ave, Boise, ID 83704" };
+  const first = run({ search: "?from=" + BOV_ID, bovs: [row] });
+  await first.settle();
+  first.type("bbClient", OWNER);
+  first.els.bbUse.click();
+  first.els.bbSave.click();
+  await first.settle();
+  assert.equal(first.account.docs[0].bov_id, BOV_ID);
+  // Another computer: empty storage, the same account. The card's link opens the saved BOV.
+  const viaCard = run({ search: "?from=" + BOV_ID, bovs: [row], account: first.account });
+  await viaCard.settle(); await viaCard.settle();
+  assert.equal(viaCard.els.bbClient.value, OWNER, "the card's link did not open the BOV saved for it");
+  assert.equal(viaCard.els.bbLow.value, "3,825,000");
+  assert.equal(viaCard.els.bbSaveMsg.textContent, "Saved to your account.");
+  // And from the list, with no link.
+  const viaList = run({ bovs: [row], account: first.account });
+  await viaList.settle();
+  assert.equal(viaList.els.bbSavedRow.hidden, false);
+  assert.equal(viaList.els.bbClient.value, "");
+  viaList.els.bbSaved.value = first.account.docs[0].id;
+  viaList.els.bbSaved.fire("change");
+  await viaList.settle();
+  assert.equal(viaList.els.bbClient.value, OWNER);
+  // A draft this browser already holds for the card is never replaced by the saved one.
+  const local = run({ search: "?from=" + BOV_ID, bovs: [row] });
+  await local.settle();
+  local.type("bbClient", "Typed here");
+  const again = run({ search: "?from=" + BOV_ID, bovs: [row], storage: local.storage, account: first.account });
+  await again.settle(); await again.settle();
+  assert.equal(again.els.bbClient.value, "Typed here");
+});
+
+test("Remove takes the copy out of the account and keeps the draft in the browser; a copy removed elsewhere is said", async () => {
+  const p = run();
+  await p.settle();
+  p.type("bbAddr", "8400 W Fairview Ave, Boise, ID 83704");
+  p.els.bbSave.click();
+  await p.settle();
+  const id = p.account.docs[0].id;
+  p.els.bbSavedRemove.click();
+  await p.settle();
+  assert.equal(p.account.docs.length, 0);
+  assert.equal(p.calls.filter((c) => c.method === "DELETE")[0].url, "/api/broker/bov-docs?id=" + id);
+  assert.equal(p.els.bbAddr.value, "8400 W Fairview Ave, Boise, ID 83704");
+  assert.equal(p.els.bbSaveMsg.textContent, "Only in this browser so far.");
+  assert.equal(p.els.bbSave.textContent, "Save to your account");
+  // Removed on another computer while this one still holds it.
+  p.els.bbSave.click();
+  await p.settle();
+  p.account.docs.length = 0;
+  p.type("bbClient", OWNER);
+  p.els.bbSave.click();
+  await p.settle();
+  assert.match(p.els.bbSaveMsg.textContent, /That saved BOV is gone\. Save again to keep this one\./);
+  p.els.bbSave.click();
+  await p.settle();
+  assert.equal(p.account.docs.length, 1, "saving again did not keep it as a new one");
+  assert.equal(p.account.docs[0].draft.client.name, OWNER);
+});
+
+test("with saving not switched on, the page offers no Save and works from the browser as before", async () => {
+  const p = run({ account: null });
+  await p.settle();
+  assert.equal(p.els.bbSaveRow.hidden, true);
+  assert.equal(p.els.bbSavedRow.hidden, true);
+  p.type("bbAddr", "8400 W Fairview Ave, Boise, ID 83704");
+  p.type("bbSize", "45,000");
+  p.els.bbUse.click();
+  assert.equal(p.els.bbPrint.disabled, false);
+  assert.ok(JSON.parse(p.storage["cnBov1:abc123"]).drafts._, "the draft was not kept in the browser");
+  assert.ok(!p.calls.some((c) => c.method === "POST"));
 });

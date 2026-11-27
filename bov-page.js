@@ -27,15 +27,19 @@
 //                   MARKET_CSS. Buttons are components.js's .btn, unrestyled.
 //
 // THE RULES THIS PAGE HOLDS.
-//   1. NOTHING TYPED HERE IS SENT ANYWHERE (CLAUDE.md rule 6). The draft
-//      holds an owner's name, an NOI and a broker's private comps; it lives
-//      in this browser's storage and on the paper this browser prints. The
-//      page's only requests are reads of the broker's own data (the comps in
-//      the boot, GET /api/branding, GET /api/broker/bovs), plus two presses:
-//      a street photo of the subject (POST /api/building-photo, the address
-//      in the body: rule 7's own door) and "Mark it delivered", which moves
-//      the BOV's card on the Pipeline board (POST /api/broker/bovs/update,
-//      a status and nothing else).
+//   1. A DRAFT IS SENT ONLY WHEN THE BROKER SAVES IT (CLAUDE.md rule 6). It
+//      holds an owner's name, an NOI and a broker's private comps. Typing
+//      sends nothing: the draft lives in this browser's storage and on the
+//      paper this browser prints. "Save to your account" (2026-11-27, the
+//      owner: "let brokers save BOVs to their account") posts it to the
+//      broker's own row (/api/broker/bov-docs, migration 067), which only
+//      they can read. The page's other requests are reads of the broker's
+//      own data (the comps in the boot, GET /api/branding, GET
+//      /api/broker/bovs, the list of saved BOVs) and two presses: a street
+//      photo of the subject (POST /api/building-photo, the address in the
+//      body: rule 7's own door) and "Mark it delivered", which moves the
+//      BOV's card on the Pipeline board (POST /api/broker/bovs/update, a
+//      status and nothing else).
 //   2. NO WRITE ON LOAD, so a copy built ahead of the click (rule 15) is
 //      harmless. The one read that seeds (/api/broker/bovs) is on
 //      instant-nav.js's HOLD_PATHS already.
@@ -79,6 +83,8 @@ function renderBovBody(boot) {
 
       <section class="bb-card" aria-labelledby="bbH1">
         <h2 id="bbH1"><span class="bb-n">1</span>The property</h2>
+        <label class="bb-f" id="bbSavedRow" hidden><span>Open a BOV saved to your account</span>
+          <select id="bbSaved"><option value="">Choose one&hellip;</option></select></label>
         <label class="bb-f" id="bbFromRow" hidden><span>Start from a BOV in your pipeline</span>
           <select id="bbFrom"><option value="">A new BOV</option></select></label>
         <label class="bb-f"><span>Address</span>
@@ -192,14 +198,20 @@ function renderBovBody(boot) {
           <p class="bb-note" id="bbPhotoMsg"></p></div>
       </section>
 
-      <p class="bb-private">Nothing you type here is sent to CompNinja. This draft is kept in this browser only, so it is here when you
-        come back on this computer. <button type="button" class="bb-link" id="bbReset">Start over</button></p>
+      <p class="bb-private">What you type is kept in this browser as you go and is sent nowhere. Press &ldquo;Save to your
+        account&rdquo; to keep this BOV with CompNinja, where only you can open it, on any computer.
+        <button type="button" class="bb-link" id="bbReset">Start over</button></p>
     </div>
 
     <div class="bb-side">
       <div class="bb-bar">
         <div class="bb-ready" id="bbReady"></div>
         <button type="button" class="btn" id="bbPrint">Print or save as PDF</button>
+      </div>
+      <div class="bb-save" id="bbSaveRow" hidden>
+        <span id="bbSaveMsg"></span>
+        <button type="button" class="bb-link" id="bbSavedRemove" hidden>Remove from your account</button>
+        <button type="button" class="btn ghost sm" id="bbSave">Save to your account</button>
       </div>
       <div class="bb-done" id="bbDone" hidden>
         <span>Sent it to the owner?</span>
@@ -289,6 +301,10 @@ body>main.wrap{min-height:100vh;max-width:1320px}
 .bb-ready b{color:var(--ink);font-weight:600}
 .bb-ready.ok b{color:var(--ok-text)}
 .bb-bar>:last-child{flex:none}
+.bb-save{display:flex;align-items:center;justify-content:flex-end;gap:8px 14px;flex-wrap:wrap;font-size:var(--text-small);
+  line-height:1.5;color:var(--ink-3)}
+.bb-save>span{flex:1 1 200px;min-width:0}
+.bb-save .bb-err{font-size:var(--text-small)}
 .bb-done{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;padding:10px 14px;border-radius:var(--r-lg);background:var(--ok-bg);
   border:1px solid var(--ok-rule);font-size:var(--text-small);color:var(--ok-text)}
 .bb-prev{flex:1 1 auto;min-height:320px;overflow:auto;background:var(--wash);border:1px solid var(--line);border-radius:var(--r-xl);

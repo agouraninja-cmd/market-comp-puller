@@ -1,0 +1,369 @@
+{
+ "note": "Buildings that have already sold, for scripts/truth-test.js. The first six are the 2026-11-17 truth test (sale prices as that test recorded them). The rest are closed Industrial, Office and Retail sales from the comp corpus export of 2026-11-27: priced, sized, street-numbered, dated 2025 or later, not a unit sale, no price caveat in the notes, and between $40 and $800 per square foot. Sale prices are what a page reported; a row that misses by over 100% on every run is more likely a bad row than a bad report. Add rather than edit, so older runs stay comparable.",
+ "targets": [
+  {
+   "address": "2300 E Katella Ave, Anaheim, CA",
+   "type": "Office",
+   "sold": 15100000,
+   "source": "2026-11-17 truth test"
+  },
+  {
+   "address": "4500 Salisbury Rd, Jacksonville, FL",
+   "type": "Office",
+   "sold": 14700000,
+   "source": "2026-11-17 truth test"
+  },
+  {
+   "address": "1054 S De Anza Blvd, San Jose, CA",
+   "type": "Office",
+   "sold": 9700000,
+   "source": "2026-11-17 truth test"
+  },
+  {
+   "address": "20 Park Rd, Burlingame, CA",
+   "type": "Office",
+   "sold": 5400000,
+   "source": "2026-11-17 truth test"
+  },
+  {
+   "address": "23126 Valencia Blvd, Santa Clarita, CA",
+   "type": "Retail",
+   "sold": 27500000,
+   "source": "2026-11-17 truth test"
+  },
+  {
+   "address": "1690 Jeremiah St, Middleburg, FL",
+   "type": "Retail",
+   "sold": 8405000,
+   "source": "2026-11-17 truth test"
+  },
+  {
+   "address": "1002 Avenue of the Oaks, Boise, ID",
+   "type": "Industrial",
+   "sold": 1920000,
+   "size": 8223,
+   "date": "Sep 2025",
+   "source": "comp corpus, public_record"
+  },
+  {
+   "address": "1055 Sandhill Ave., Carson, CA 90746",
+   "type": "Industrial",
+   "sold": 52500000,
+   "size": 127775,
+   "date": "Apr 2025",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "12250 W Corporate Dr, Avondale, AZ 85323",
+   "type": "Industrial",
+   "sold": 89800000,
+   "size": 450260,
+   "date": "Dec 2025",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "9400 Latham St, Tolleson, AZ 85353",
+   "type": "Industrial",
+   "sold": 94130000,
+   "size": 662804,
+   "date": "Feb 2026",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "6801 N Cotton Ln, Glendale, AZ 85395",
+   "type": "Industrial",
+   "sold": 104000000,
+   "size": 915160,
+   "date": "Mar 2026",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "3302 W Washington St, Phoenix, AZ 85009",
+   "type": "Industrial",
+   "sold": 20000000,
+   "size": 101794,
+   "date": "Sep 2025",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "3809 E Watkins St, Phoenix, AZ",
+   "type": "Industrial",
+   "sold": 44150000,
+   "size": 174800,
+   "date": "May 2026",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "3400 Calle Tecate, Camarillo, CA 93012",
+   "type": "Industrial",
+   "sold": 23365000,
+   "size": 68807,
+   "date": "Q2 2025",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "4500 Park Granada, Calabasas, CA 91302",
+   "type": "Office",
+   "sold": 69400000,
+   "size": 222667,
+   "date": "Feb 2025",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "26775 Malibu Hills Rd, Calabasas, CA 91301",
+   "type": "Office",
+   "sold": 6300000,
+   "size": 34000,
+   "date": "May 2026",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "1903 Street Rd, Bensalem, PA 19020",
+   "type": "Retail",
+   "sold": 20500000,
+   "size": 109057,
+   "date": "Mar 2025",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "14 E Washington St, Orlando, FL 32801",
+   "type": "Office",
+   "sold": 5600000,
+   "size": 42088,
+   "date": "Jul 2026",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "777 E Altamonte Dr, Altamonte Springs, FL 32701",
+   "type": "Office",
+   "sold": 1450000,
+   "size": 11356,
+   "date": "Apr 2026",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "6580 69th St, Vero Beach, FL 32967",
+   "type": "Office",
+   "sold": 2500000,
+   "size": 18243,
+   "date": "Nov 2025",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "1701 S Highway A1A, Vero Beach, FL 32963",
+   "type": "Office",
+   "sold": 8500000,
+   "size": 35000,
+   "date": "Jul 2026",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "30941 Agoura Rd, Westlake Village, CA 91361",
+   "type": "Industrial",
+   "sold": 12625000,
+   "size": 64600,
+   "date": "Apr 2026",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "23907 Ventura Blvd, Calabasas, CA 91302",
+   "type": "Industrial",
+   "sold": 26500000,
+   "size": 107000,
+   "date": "Aug 2025",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "21300 Vanowen St, Canoga Park, CA 91303",
+   "type": "Industrial",
+   "sold": 16300000,
+   "size": 50000,
+   "date": "Feb 2025",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "20938 Osborne St, Canoga Park, CA 91304",
+   "type": "Industrial",
+   "sold": 4850000,
+   "size": 20038,
+   "date": "Mar 2026",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "2000 Corporate Center Dr, Newbury Park, CA 91320",
+   "type": "Industrial",
+   "sold": 36250000,
+   "size": 105215,
+   "date": "Dec 2025",
+   "source": "comp corpus, news"
+  },
+  {
+   "address": "2318 W Main St, Boise, ID",
+   "type": "Industrial",
+   "sold": 773500,
+   "size": 5175,
+   "date": "May 2026",
+   "source": "comp corpus, listing"
+  },
+  {
+   "address": "120 E 41st St, Garden City, ID",
+   "type": "Industrial",
+   "sold": 913800,
+   "size": 6560,
+   "date": "May 2026",
+   "source": "comp corpus, listing"
+  },
+  {
+   "address": "106 W 40th St, Garden City, ID",
+   "type": "Industrial",
+   "sold": 876900,
+   "size": 7960,
+   "date": "Apr 2026",
+   "source": "comp corpus, listing"
+  },
+  {
+   "address": "97 N Kings Rd, Nampa, ID",
+   "type": "Industrial",
+   "sold": 975000,
+   "size": 7640,
+   "date": "Apr 2026",
+   "source": "comp corpus, listing"
+  },
+  {
+   "address": "1045 Ancona Ave, Eagle, ID",
+   "type": "Industrial",
+   "sold": 3353000,
+   "size": 20003,
+   "date": "Apr 2026",
+   "source": "comp corpus, listing"
+  },
+  {
+   "address": "1786 S Topaz Ave, Meridian, ID",
+   "type": "Industrial",
+   "sold": 5674500,
+   "size": 22432,
+   "date": "Jun 2026",
+   "source": "comp corpus, listing"
+  },
+  {
+   "address": "5555 Ontario Mills Pkwy, Ontario, CA 91764",
+   "type": "Industrial",
+   "sold": 10000000,
+   "size": 37000,
+   "date": "Sep 2025",
+   "source": "comp corpus, listing"
+  },
+  {
+   "address": "8290 Lee Rd, Lithia Springs, GA 30122",
+   "type": "Industrial",
+   "sold": 600000,
+   "size": 7000,
+   "date": "Jul 2025",
+   "source": "comp corpus, listing"
+  },
+  {
+   "address": "9177 Center Ave, Rancho Cucamonga, CA",
+   "type": "Industrial",
+   "sold": 22258080,
+   "size": 83520,
+   "date": "Jun 2026",
+   "source": "comp corpus, listing"
+  },
+  {
+   "address": "250 Allied Pkwy, West Berlin, NJ",
+   "type": "Industrial",
+   "sold": 2100000,
+   "size": 16500,
+   "date": "Jan 2025",
+   "source": "comp corpus, public_record"
+  },
+  {
+   "address": "873 Warwick Ave, Warwick, RI",
+   "type": "Office",
+   "sold": 525000,
+   "size": 4840,
+   "date": "Oct 2026",
+   "source": "comp corpus, listing"
+  },
+  {
+   "address": "760 US-378 W, Lexington, SC 29072",
+   "type": "Retail",
+   "sold": 4560000,
+   "size": 39218,
+   "date": "Oct 2025",
+   "source": "comp corpus, listing"
+  },
+  {
+   "address": "78131 Highway 207, Hermiston, OR 97838",
+   "type": "Industrial",
+   "sold": 1025000,
+   "size": 9030,
+   "date": "Mar 2025",
+   "source": "comp corpus, public_record"
+  },
+  {
+   "address": "4272 Eldridge Loop, Orange Park, FL 32073",
+   "type": "Retail",
+   "sold": 3164873,
+   "size": 11624,
+   "date": "Jul 2026",
+   "source": "comp corpus, public_record"
+  },
+  {
+   "address": "1585 Island Ln, Fleming Island, FL 32003",
+   "type": "Retail",
+   "sold": 3225000,
+   "size": 5668,
+   "date": "Feb 2025",
+   "source": "comp corpus, listing"
+  },
+  {
+   "address": "9711 Applecross Rd, Jacksonville, FL 32222",
+   "type": "Retail",
+   "sold": 2129700,
+   "size": 5835,
+   "date": "Mar 2025",
+   "source": "comp corpus, public_record"
+  },
+  {
+   "address": "10751 Deerwood Park Blvd, Jacksonville, FL",
+   "type": "Office",
+   "sold": 21125000,
+   "size": 104092,
+   "date": "Nov 2026",
+   "source": "comp corpus, public_record"
+  },
+  {
+   "address": "9995 Gate Parkway N, Jacksonville, FL",
+   "type": "Office",
+   "sold": 7500000,
+   "size": 91880,
+   "date": "Jun 2025",
+   "source": "comp corpus, public_record"
+  },
+  {
+   "address": "7948 Baymeadows Way, Jacksonville, FL",
+   "type": "Office",
+   "sold": 3000000,
+   "size": 44928,
+   "date": "Aug 2026",
+   "source": "comp corpus, public_record"
+  },
+  {
+   "address": "6600 Corporate Center Parkway, Jacksonville, FL 32216",
+   "type": "Office",
+   "sold": 10550000,
+   "size": 88062,
+   "date": "Aug 2025",
+   "source": "comp corpus, listing"
+  },
+  {
+   "address": "44400 Valley Central Way, Lancaster, CA",
+   "type": "Retail",
+   "sold": 27100000,
+   "size": 122657,
+   "date": "Jan 2026",
+   "source": "comp corpus, public_record"
+  }
+ ]
+}

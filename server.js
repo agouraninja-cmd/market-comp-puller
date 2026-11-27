@@ -4804,7 +4804,18 @@ function searchBudgetFor(corpus, subjectSizeSqft, maxComps) {
 // steers its later searches at the gaps it knows it still has, while two
 // shallow lanes both rediscover the easy comps. Left switchable so the
 // trade can be re-measured on real traffic rather than two test addresses.
-const PARALLEL_SEARCH = /^(1|on|true|yes)$/i.test(String(process.env.PARALLEL_SEARCH || ""));
+//
+// ON by default since 2026-11-27, for a different reason than speed: comps.
+// The figures above are the Anthropic provider's, from July. On the live
+// provider at low reasoning a report comes back with four or five sale comps,
+// and scripts/truth-test.js (sold buildings, each run twice) showed what that
+// costs: the same building's value moved by tens of points between two runs
+// of the same code, because one different comp out of four moves a median a
+// long way. Two lanes run at the same time, so they add comps without adding
+// to a search that already takes 30 to 55 seconds. The cost is a second
+// billed call on every full-budget report. `PARALLEL_SEARCH=off` is the
+// rollback. search-pipeline.md has the measurement.
+const PARALLEL_SEARCH = !/^(0|off|false|no)$/i.test(String(process.env.PARALLEL_SEARCH || ""));
 
 // Corpus metro matching: offer a thin market the comps we hold in its
 // immediate neighbors (market.js's METRO_GROUPS). Candidates only, never a

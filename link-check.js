@@ -153,12 +153,31 @@ function applyLinkVerdicts(payload, verdictsByUrl) {
 // The price is looked for the ways a deal page writes it: in full
 // ("$12,625,000", "12625000"), and rounded in millions the way a headline
 // does ("$12.625 million", "$12.63M", "$12.6 MM"), or thousands under a
-// million ("$975K"). A bare "13 million" for $12.6M is NOT accepted: one
-// digit of rounding is a different number.
+// million ("$975K"). A rounding counts while it stays within PRICE_ROUNDING
+// (1%) of the price, rounded either way: "$12.5 million" is how an article
+// writes $12,450,000, and "$69M" is how a headline writes $69.4M. A bare
+// "13 million" for $12.6M is NOT accepted: that is another number.
+//
+// It is looked for in the WHOLE document, scripts included, and only the
+// question "is this page about the property" is asked of the visible text.
+// A page that draws its article in the browser carries the words in a script
+// and the address in its title: read as visible text alone, that page names
+// the property and "lacks" a price it plainly states. Finding the figure in a
+// script by coincidence costs nothing (the answer is only ever the benefit of
+// the doubt); missing it there would refuse a good sale.
 // ---------------------------------------------------------------------------
 function pageText(html) {
   return String(html || "")
     .replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ").replace(/&#36;|&dollar;/gi, "$").replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ").toLowerCase();
+}
+const PRICE_ROUNDING = 0.01;
+// The whole document as text, scripts and all: tags out, the same entities
+// as pageText. For the price search only.
+function pageRaw(html) {
+  return String(html || "")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;|&#160;/gi, " ").replace(/&#36;|&dollar;/gi, "$").replace(/&amp;/gi, "&")
     .replace(/\s+/g, " ").toLowerCase();
@@ -171,12 +190,16 @@ function priceForms(price) {
   const short = (n, unit) => {
     const seen = new Set();
     for (const d of [3, 2, 1, 0]) {
-      const fixed = n.toFixed(d);
-      const s = fixed.includes(".") ? fixed.replace(/\.?0+$/, "") : fixed;
-      // A rounding that drops more than half a percent is another number.
-      if (seen.has(s) || Math.abs(Number(s) - n) / n > 0.005) continue;
-      seen.add(s);
-      forms.push(esc(s) + "\\s*(?:" + unit + ")(?![a-z])");
+      const k = Math.pow(10, d);
+      // Rounded down and rounded up at this many decimals: a float's own
+      // toFixed gives "12.4" for 12.45, and the article says "12.5".
+      for (const v of [Math.floor(n * k + 1e-9) / k, Math.ceil(n * k - 1e-9) / k]) {
+        if (!(v > 0) || Math.abs(v - n) / n > PRICE_ROUNDING) continue;
+        const text = String(Number(v.toFixed(d)));
+        if (seen.has(text)) continue;
+        seen.add(text);
+        forms.push(esc(text) + "\\s*(?:" + unit + ")(?![a-z])");
+      }
     }
   };
   if (p >= 1e6) short(p / 1e6, "million|mil|mm|m");
@@ -185,12 +208,13 @@ function priceForms(price) {
 }
 function pageStatesPrice(html, price, address) {
   const text = pageText(html);
-  if (text.length < 200) return "unknown";
+  const raw = pageRaw(html);
+  if (raw.length < 200) return "unknown";
   const forms = priceForms(price);
   if (!forms.length) return "unknown";
-  if (forms.some((f) => new RegExp("(?:^|[^0-9.,])" + f + "(?![0-9])").test(text))) return "states";
+  if (forms.some((f) => new RegExp("(?:^|[^0-9.,])" + f + "(?![0-9])").test(raw))) return "states";
   // Is the page about this property at all? Its street number, then the
-  // first word of its street within a few words.
+  // first word of its street within a few words, in what a reader sees.
   const m = String(address || "").toLowerCase().match(/^\s*(\d+)(?:\s*-\s*\d+)?\s+(?:[nsew]\.?\s+)?([a-z0-9]+)/);
   if (!m) return "unknown";
   const about = new RegExp("(?:^|[^0-9])" + m[1] + "(?:\\s*-\\s*\\d+)?\\s+(?:[a-z.]+\\s+){0,2}" + m[2].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(text);
@@ -198,4 +222,4 @@ function pageStatesPrice(html, price, address) {
 }
 
 module.exports = { BLOCKED_HOSTS, PARKING_HOSTS, checkableUrl, hostClass, verdictFor, isParked, parkingHost, applyLinkVerdicts,
-  pageStatesPrice, priceForms, pageText };
+  pageStatesPrice, priceForms, pageText, pageRaw, PRICE_ROUNDING };

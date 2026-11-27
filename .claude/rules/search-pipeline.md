@@ -623,7 +623,13 @@ with the key and update the constant — an earlier model ID was retired.
     `source_url`, `source_type`, `address` (as the source page gives it),
     `size_sqft` (the area the price covered) and `basis`, a closed
     vocabulary (`VALUATION.OWN_SALE_BASIS_WORDS`) the prompt tells the model
-    never to leave empty. An asking price is never a sale.
+    never to leave empty. The prompt also offers `unknown`, for the two
+    doubts that cost the most (whether the price covered this property
+    alone, and whether the sale closed at that price), and forbids
+    `arms_length` under either. `unknown` is not in the vocabulary on
+    purpose: it reads as "other", which does not lean. Without that word a
+    model told never to leave the field empty writes `arms_length` for a
+    sale it could not place. An asking price is never a sale.
   - **The target's own saved rows are not offered to the model**
     (`notTheTarget`, over the three corpus blocks). The truth test's
     buildings came from the corpus, and 21 of 47 reports gave back our own

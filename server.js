@@ -290,6 +290,8 @@ const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
 const { renderBuildingsBody, renderBuildingSheetBody } = require("./buildings-page");
 const { renderPermitsBody } = require("./permits-page");
 const { renderSitesBody } = require("./sites-page");
+// /bov, the BOV builder: the Broker section's second tab (2026-11-27).
+const { renderBovBody } = require("./bov-page");
 // /brokers-firms — the one public pitch to the professional audience, which
 // replaced /brokers and /firms on 2026-09-01 (design 4a). A marketShell BODY,
 // like bulk-page.js. The shop-kind sentences and the prices are PASSED IN
@@ -15587,7 +15589,7 @@ function nextMarketExample() {
 // Sites row opens /sites, its own page since 2026-10-12: sites-page.js.)
 const VAULT_PAGE_PATHS = new Set(["/comps", "/pipeline"]);
 const VAULT_MOVED_PATH = "/vault";
-const CTA_FREE_PAGES = new Set([...VAULT_PAGE_PATHS, "/sites", "/messages", "/markets", "/bulk", "/buildings", "/building", "/permits", "/permits/compare"]);
+const CTA_FREE_PAGES = new Set([...VAULT_PAGE_PATHS, "/bov", "/sites", "/messages", "/markets", "/bulk", "/buildings", "/building", "/permits", "/permits/compare"]);
 
 // The Comps section's two tabs (2026-10-13, the owner: "Integrate it to the
 // report section and change the report section and name it Comps"). The
@@ -15600,6 +15602,21 @@ const COMPS_TABS = [["/bulk", "Run a comp report"], ["/comps", "Your comps"]];
 const compsSectionTabs = (current) =>
   `<nav class="cs-tabs" aria-label="Comps">` +
   COMPS_TABS.map(([href, label]) => `<a href="${href}"${href === current ? ' aria-current="page"' : ""}>${label}</a>`).join("") +
+  `</nav>`;
+
+// The Broker section's two tabs (2026-11-27, the owner: "Create a tool in the
+// pipeline section that creates a Professional BOV for the brokers. and
+// change the pipeline named section to be called the broker section"). The
+// rail's row, which read Pipeline, reads Broker, opens /pipeline and is
+// current on /bov too. The same bar as the Comps section's (.cs-tabs,
+// components.js's segmented control), on both pages, a member's only.
+// Routes, ids and code still say "pipeline": the Pipeline is the board, and
+// it is now one of the section's two tabs.
+const BROKER_TABS = [["/pipeline", "Pipeline"], ["/bov", "BOV builder"]];
+const BROKER_PAGE_PATHS = new Set(BROKER_TABS.map(([href]) => href));
+const brokerSectionTabs = (current) =>
+  `<nav class="cs-tabs" aria-label="Broker">` +
+  BROKER_TABS.map(([href, label]) => `<a href="${href}"${href === current ? ' aria-current="page"' : ""}>${label}</a>`).join("") +
   `</nav>`;
 
 const marketBar = (signedIn = false, current = "") =>
@@ -15729,7 +15746,11 @@ const marketBar = (signedIn = false, current = "") =>
       // it was Home's Properties tab until then, so Home twice). Every member,
       // like Comps: /pipeline answers a free member with its Pro invitation.
       // index.html carries both twins with the same ids.
-      `<a id="navPipe" href="/pipeline"${current === "/pipeline" ? ' aria-current="page"' : ""}>${NAV_ICONS.pipeline}<span class="nvl">Pipeline</span></a>` +
+      // BROKER since 2026-11-27 (the owner: "change the pipeline named section
+      // to be called the broker section"): the row is a section of two tabs,
+      // the Pipeline board and the BOV builder (brokerSectionTabs), and is
+      // current on both. Its id, icon and address are what they were.
+      `<a id="navPipe" href="/pipeline"${BROKER_PAGE_PATHS.has(current) ? ' aria-current="page"' : ""}>${NAV_ICONS.pipeline}<span class="nvl">Broker</span></a>` +
       `<a id="navSites" href="/sites"${current === "/sites" ? ' aria-current="page"' : ""}>${NAV_ICONS.sites}<span class="nvl">Sites</span></a>`
     : "") +
   // Pricing sits in the bar itself rather than one click inside Explore. It is
@@ -35158,6 +35179,12 @@ const server = http.createServer((req, res) =>
     // the global BFACTS, the one copy of "which fields inherit" the server
     // also fills with, so it must never be stale relative to the page.
     "/building-facts.js": { file: "building-facts.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // The BOV builder (/bov, 2026-11-27): its rules and document (pure, the
+    // global BOVDOC, also required by bov-page.js) and its browser half.
+    // max-age 0 for valuation.js's reason: the page and the two scripts it
+    // runs must never be a deploy apart.
+    "/bov-doc.js": { file: "bov-doc.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    "/bov-builder.js": { file: "bov-builder.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // A development firm's deals (migration 060), worked on Home since
     // 2026-10-09: their rules (the global SITES) and Home's working pane
     // (the global HOMESITES), both called from index.html's inline script,
@@ -36503,10 +36530,65 @@ const server = http.createServer((req, res) =>
         // The Board's deal cards; it left with the deal wall the same day.)
         head: INTER_FONT_HEAD + LEAFLET_HEAD + `<script>${BASEMAP_JS}</script>\n`,
         testerBadge: true,
-        // The Comps section's tabs over /comps (compsSectionTabs); /pipeline
-        // is a section of one.
-        body: (page === "comps" && parseCookies(req)[SESSION_COOKIE] ? compsSectionTabs("/comps") : "") +
+        // The Comps section's tabs over /comps (compsSectionTabs), and the
+        // Broker section's over /pipeline (brokerSectionTabs, 2026-11-27).
+        body: (parseCookies(req)[SESSION_COOKIE] ? (page === "comps" ? compsSectionTabs("/comps") : brokerSectionTabs("/pipeline")) : "") +
           renderVaultBody(boot, { page }) + visitTag,
+      }));
+    })();
+    return;
+  }
+
+  // --- GET /bov — the BOV builder, the Broker section's second tab
+  // (2026-11-27; bov-page.js). A broker writes a Broker Opinion of Value on
+  // their own letterhead from their own comps, and the browser prints it.
+  //
+  // The boot is /comps' and /pipeline's own read (vaultReadPayload), so the
+  // gate is theirs too: 401, 403 without Pro, 503 with no database. The page
+  // takes the comps and the credit identity from it and SENDS NOTHING BACK:
+  // what a broker types there stays in their browser (rule 6;
+  // bov-builder.js lists the page's every request). `tag` names the account
+  // without identifying it, so two people sharing a browser keep separate
+  // drafts. A READ only: this render may be speculative (rule 15), and
+  // vaultReadPayload already skips its backfills on one.
+  if (req.method === "GET" && vaultPagePath === "/bov") {
+    (async () => {
+      let boot = null;
+      try {
+        const p = await vaultReadPayload(req,
+          new URLSearchParams({ limit: String(VAULT_READ_MAX) }));
+        boot = { s: p.status, j: p.body };
+        if (p.status === 200) {
+          // Only what the builder draws from: the comps, the name a document
+          // is prepared under, and the firm's kind (a development firm's
+          // member is sent to Sites). The imports, counts and shelf ids the
+          // comps page needs stay out of this page's bytes.
+          boot.j = { comps: p.body.comps, identity: p.body.identity, firm: p.body.firm };
+          const member = await getSessionUser(req);
+          boot.tag = member ? crypto.createHash("sha256").update("bov-draft:" + member.id).digest("hex").slice(0, 16) : "";
+        }
+      } catch (err) {
+        console.error("bov builder boot failed:", err.message);
+      }
+      // PII-free and market-free, like vault_visit: the boot outcome alone.
+      const visitTag = logPageVisit(req, "bov_visit", { source:
+        !boot ? "error" : boot.s === 200 ? "ok" : boot.s === 401 ? "signin" : boot.s === 403 ? "locked" : "nodb" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        vary: "cookie",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      res.end(marketShell({
+        title: "BOV builder · CompNinja",
+        description: "Write a Broker Opinion of Value on your own letterhead, from your own comps.",
+        canonical: `${SITE_URL}/bov`,
+        noindex: true,
+        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+        current: "/bov",
+        head: INTER_FONT_HEAD,
+        testerBadge: true,
+        body: (parseCookies(req)[SESSION_COOKIE] ? brokerSectionTabs("/bov") : "") + renderBovBody(boot) + visitTag,
       }));
     })();
     return;

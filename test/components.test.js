@@ -287,7 +287,7 @@ test("no page writes a rule the component already draws", () => {
   // `textarea`; every page has rules of its own for those, as it should.)
   const drawn = new Set(rulesOf(CSS).filter(([, , media]) => !media).map(([s]) => s));
   const FILES = ["index.html", "server.js", "home-page.js", "brokers-firms-page.js", "lenders-page.js", "faq-page.js", "pricing-page.js", "messages-page.js",
-    "permits-page.js", "sites-page.js", "buildings-page.js", "market-rank-page.js", "bulk-page.js", "home-sites.css", "vault-page.js"];
+    "permits-page.js", "sites-page.js", "buildings-page.js", "market-rank-page.js", "bulk-page.js", "home-sites.css", "vault-page.js", "bov-page.js"];
   // server.js also holds the admin pages, which draw their own documents and
   // their own .btn and never receive the component; they sit after
   // renderAdminHTML and are out of scope.
@@ -342,7 +342,7 @@ test("the pages that restyle .btn for one spot are counted, so a new one is a de
   const LOOK = /(^|;)\s*(padding|border-radius|font-size|font-weight|background|border)\s*:/;
   const found = new Set();
   for (const file of ["index.html", "server.js", "home-page.js", "brokers-firms-page.js", "lenders-page.js", "faq-page.js", "pricing-page.js", "vault-page.js",
-    "messages-page.js", "permits-page.js", "sites-page.js", "buildings-page.js", "market-rank-page.js", "bulk-page.js", "home-sites.css"]) {
+    "messages-page.js", "permits-page.js", "sites-page.js", "buildings-page.js", "market-rank-page.js", "bulk-page.js", "home-sites.css", "bov-page.js"]) {
     const text = root(file), adminAt = file === "server.js" ? text.indexOf("function renderAdminHTML() {") : -1;
     let sheets = sheetsOf(file);
     if (file === "server.js") {

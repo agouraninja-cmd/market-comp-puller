@@ -28,6 +28,20 @@ paths:
 ---
 # The broker vault and lead inbox
 
+> **The rail's Pipeline row reads Broker, and `/pipeline` has a tab bar
+> again (2026-11-27; bov-builder.md).** Read this before the boxes below,
+> which it amends in three places. `/pipeline` is now the first of the
+> Broker section's two tabs (server.js prepends `brokerSectionTabs` for a
+> member; the other is `/bov`, the BOV builder), so where they say
+> `/pipeline` is "a section of one" or "the rail's Pipeline row", read the
+> Broker row. The page's own heading, tab and copy still say Pipeline: it is
+> the board's name. And a BOV's card in Open or Delivered carries a link,
+> "Write the BOV →" / "Open the BOV →" (`.pb-write`, `/bov?from=<id>`, in
+> `pipeCard`): a link only, ink and never red, since Request introduction is
+> the red on that page. The builder reads the same comps this page boots
+> with (`vaultReadPayload`) and writes one thing, on a press: that BOV's
+> status, through `/api/broker/bovs/update`.
+
 > **No vault page since 2026-10-13 (the owner: "the vault doesn't even
 > exist any more"; "Integrate it to the report section and change the
 > report section and name it Comps").** Read this before the rest of the

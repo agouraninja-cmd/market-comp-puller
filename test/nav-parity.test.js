@@ -349,7 +349,11 @@ test("Firm & branding opens from Home's firm header, not the account menu", () =
   assert.match(body, /qs\.delete\("firm"\)/, "the param is not cleared, so a reload reopens the panel");
 });
 
-test("Pipeline sits under Messages on both rails, and Sites takes its place for a development firm", () => {
+test("Broker (the Pipeline row) sits under Messages on both rails, and Sites takes its place for a development firm", () => {
+  // The row READS "Broker" since 2026-11-27 (the owner: "change the pipeline
+  // named section to be called the broker section"): a section of two tabs,
+  // the Pipeline board and the BOV builder. Its id, icon and address are
+  // what they were, so every rule below still finds it as navPipe.
   // Sites opens /sites, a development firm's deals by stage (sites-page.js,
   // 2026-10-12); it opened Home's Properties tab until then, Home twice.
   // Owner's call, 2026-10-09. Both rows ship on both nav authors with the
@@ -376,12 +380,17 @@ test("Pipeline sits under Messages on both rails, and Sites takes its place for 
     assert.ok(m, "NAV_ICONS has no " + name + " icon");
     return m[1];
   };
-  assert.match(SERVER_JS, /\$\{NAV_ICONS\.pipeline\}<span class="nvl">Pipeline<\/span><\/a>/);
+  assert.match(SERVER_JS, /\$\{NAV_ICONS\.pipeline\}<span class="nvl">Broker<\/span><\/a>/);
+  assert.doesNotMatch(SERVER_JS, /<span class="nvl">Pipeline<\/span>/, "marketBar's row still reads Pipeline");
+  assert.doesNotMatch(INDEX_HTML, /<span class="nvl">Pipeline<\/span>/, "the app's row still reads Pipeline");
+  // Current on both of the section's pages, as Comps is on /comps and /bulk.
+  assert.match(SERVER_JS, /const BROKER_TABS = \[\["\/pipeline", "Pipeline"\], \["\/bov", "BOV builder"\]\];/);
+  assert.match(SERVER_JS, /<a id="navPipe" href="\/pipeline"\$\{BROKER_PAGE_PATHS\.has\(current\) \? ' aria-current="page"' : ""\}>/);
   assert.match(SERVER_JS, /\$\{NAV_ICONS\.sites\}<span class="nvl">Sites<\/span><\/a>/);
   const appPipe = INDEX_HTML.slice(INDEX_HTML.indexOf('<a id="navPipe"'), INDEX_HTML.indexOf("</a>", INDEX_HTML.indexOf('<a id="navPipe"')));
   const appSites = INDEX_HTML.slice(INDEX_HTML.indexOf('<a id="navSites"'), INDEX_HTML.indexOf("</a>", INDEX_HTML.indexOf('<a id="navSites"')));
-  assert.ok(appPipe.includes(icon("pipeline")) && appPipe.includes('<span class="nvl">Pipeline</span>'),
-    "the app's Pipeline row differs from marketBar's");
+  assert.ok(appPipe.includes(icon("pipeline")) && appPipe.includes('<span class="nvl">Broker</span>'),
+    "the app's Broker row differs from marketBar's");
   assert.ok(appSites.includes(icon("sites")) && appSites.includes('<span class="nvl">Sites</span>'),
     "the app's Sites row differs from marketBar's");
 

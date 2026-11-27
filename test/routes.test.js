@@ -700,7 +700,8 @@ test("bare environment", async (t) => {
     const ROWS = [
       ["Home", /<span class="nvl">Home</],
       ["Messages", /<a [^>]*href="\/messages"/],
-      ["Pipeline", /<a id="navPipe" href="\/pipeline"/],
+      // Reads "Broker" since 2026-11-27; the id and address are unchanged.
+      ["Broker", /<a id="navPipe" href="\/pipeline"/],
       ["Sites", /<a id="navSites" href="\/sites"/],
       ["Comps", /<a id="navComps" href="\/bulk"/],
       ["Markets", /<a [^>]*href="\/markets"/],
@@ -804,8 +805,23 @@ test("bare environment", async (t) => {
       const nav = (html.match(/<nav>[\s\S]*?<\/nav>/) || [""])[0];
       assert.match(nav, /<a id="navComps" href="\/bulk" aria-current="page">/, page + " does not mark the Comps row");
     }
-    const pipe = await (await fetch(srv.base + "/pipeline", { headers: SESSION })).text();
-    assert.ok(!pipe.includes('class="cs-tabs"'), "/pipeline grew the Comps section's tabs");
+    // The Broker section (2026-11-27): the rail's row reads Broker, and its
+    // two tabs sit over /pipeline and /bov, each marking its own. Never the
+    // Comps section's bar.
+    for (const page of ["/pipeline", "/bov"]) {
+      const html = await (await fetch(srv.base + page, { headers: SESSION })).text();
+      assert.ok(!html.includes('aria-label="Comps"'), page + " grew the Comps section's tabs");
+      const tabs = (html.match(/<nav class="cs-tabs" aria-label="Broker">[\s\S]*?<\/nav>/) || [""])[0];
+      assert.match(tabs, /<a href="\/pipeline"[^>]*>Pipeline<\/a><a href="\/bov"[^>]*>BOV builder<\/a>/, page + " lost the Broker section's tabs");
+      assert.match(tabs, new RegExp('<a href="' + page + '" aria-current="page">'), page + " does not mark its tab");
+      assert.equal((tabs.match(/aria-current/g) || []).length, 1, page + " marks both tabs");
+      const nav = (html.match(/<nav>[\s\S]*?<\/nav>/) || [""])[0];
+      assert.match(nav, /<a id="navPipe" href="\/pipeline" aria-current="page">[\s\S]*?<span class="nvl">Broker<\/span>/, page + " does not mark the Broker row");
+    }
+    // A stranger on /bov gets the sign-in wall and no section bar.
+    const anonBov = await (await fetch(srv.base + "/bov")).text();
+    assert.ok(!anonBov.includes('class="cs-tabs"'), "a stranger's /bov shows the member's section tabs");
+    assert.match(anonBov, /Please <a href="\/desk">sign in<\/a> to write a BOV\./);
     // A stranger on /bulk has no comps of their own, so no section bar.
     const anonBulk = await (await fetch(srv.base + "/bulk")).text();
     assert.ok(!anonBulk.includes('class="cs-tabs"'), "a stranger's /bulk shows the member's section tabs");

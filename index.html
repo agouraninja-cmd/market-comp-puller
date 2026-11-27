@@ -7783,6 +7783,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // as "no sale was weighed".
   function ownSaleBlend(compRange, parsed, meta) {
     if (!meta || meta.txFocus === "leases" || netLeaseOn(meta)) return null;
+    // The server's rollback (OWN_SALE=off), read off the boot object this page
+    // was served with. Null, the answer every reader takes as "no sale was
+    // weighed": no blend, no refusal sentence and no switch, on a fresh
+    // report and on one rendered from a saved payload alike. Read straight
+    // off `window`, not the AUTH_BOOT constant declared far below (a report
+    // restored at boot renders before that line has run).
+    if (typeof window !== "undefined" && window.CN_AUTH_BOOT && window.CN_AUTH_BOOT.ownSale === false) return null;
     // The LISTING the search found, never the price typed into the form: a
     // typed price is the member's question, and a question must not move the
     // answer (valuation.js has the whole of it).
@@ -7881,13 +7888,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     el.classList.add("hidden");
     const off = !!(own && own.refused === "off");
     if (!own || !(own.anchored || off) || (meta && meta.shared)) return;
+    // With no comps' figure beside it (`own.comp` is null: no priced sales
+    // came back, or no size), turning the sale off leaves no estimate at all,
+    // so the words do not promise "comps alone".
+    const noComps = !own.comp;
     el.appendChild(document.createTextNode(off
-      ? "This property's own sale is switched off, so the estimate uses the comps alone. "
+      ? (noComps
+        ? "This property's own sale is switched off, and the comps alone give no estimate here. "
+        : "This property's own sale is switched off, so the estimate uses the comps alone. ")
       : "Has it changed since that sale (renovated, expanded, re-leased, damaged)? "));
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "underline decoration-edge hover:text-ink";
-    btn.textContent = off ? "Use its own sale again" : "Value it on comps alone";
+    btn.textContent = off ? "Use its own sale again" : (noComps ? "Leave that sale out" : "Value it on comps alone");
     // Assignment, not addEventListener: rebuilt on every render.
     btn.onclick = () => {
       const cur = ensureCuration(currentMeta);

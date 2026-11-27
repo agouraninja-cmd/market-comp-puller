@@ -22,6 +22,141 @@ paths:
 
 ## Architecture
 
+- **The building's own sale leads its value (2026-11-27; the owner: "23 to
+  30 Percent is not acceptable it needs to be under 10%").** Read this before
+  flow 3 and flow 3c below, which it amends: where they say the value is the
+  comps' $/SF times the size and nothing else, and that the subject's last
+  sale is "evidence, not a fourth figure", a recent, vetted sale of the
+  building itself is now WEIGHED INTO Low / Likely / High. Before and after
+  pictures of the value card, seven situations, desktop and phone:
+  https://claude.ai/artifact/QjKZNHRXGreNsysYKaGF9S
+  - **Why.** `scripts/truth-test.js` put a number on the comps: on 45
+    commercial buildings that had sold, Likely landed a typical 28 to 33%
+    from the price (28% on the 30 sales a second look at the web confirmed).
+    The cause is WHICH comps a building gets, not how many: an audit of each
+    building found the comps were a different kind of building for 21 of
+    them, and for 16 the true $/SF sat outside the whole range of the comps.
+    Dropping unsold listings or duplicate rows did not help. What a building
+    itself just sold for already prices in what the comps cannot see.
+  - **The rule is valuation.js's, and its header comment is the
+    specification** ("The building's own sale"): the formula, every constant
+    and where it comes from, every refusal, the half-weight cases. In one
+    line: `Likely = w x A + (1 - w) x the comps' Likely`, where A is the
+    price moved to the report date by the market's trend (capped) and w is
+    0.9 through the first year, a straight line to nothing at three. The
+    comps are held to within 1.5x of A first. Industrial, Office and Retail,
+    US dollars. Change a number there only with the evidence its header asks
+    for; **never on the strength of the truth test's own-sale score, which is
+    an echo** (next bullet).
+  - **Two numbers, never one.** A sold building's report now lands near its
+    price because it STARTS from that price. That is not accuracy and must
+    never be printed, said or sold as accuracy. The accuracy figure is the
+    comps-only one, and a building with no recent sale of its own is valued
+    exactly as before. The truth test prints the two apart for this reason
+    (corpus.md). No public page states an accuracy percentage, and the FAQ's
+    "How accurate is it?" answer says which of the two a report is and quotes
+    neither (`faq-page.js` has the reasoning in a comment).
+  - **Nothing leans on an unstamped sale.** The server vets the sale once,
+    before the report is cached, and stamps it `settled: 1` (`settleOwnSale`;
+    search-pipeline.md). `VALUATION.ownSaleAnchor` refuses anything without
+    the stamp, so every report cached, saved or shared before this date
+    renders exactly as it did: the pictures of such a report before and after
+    are the same file, byte for byte. Do not "help" an old report by reading
+    its sale anyway. It was never asked for a basis, never matched to an
+    address and never read.
+  - **`ownSaleBlend(compRange, parsed, meta)` is the ONE wrapper**, with two
+    callers: `renderOwnerHero` and `sellTodayEstimate`. It hands the rule the
+    report's date, trend, type, currency and year built, every name the
+    report has for the subject (`meta.address`, `meta.addressTyped`,
+    `subject_address_corrected`), the size being valued and the member's
+    switch. It returns null on a leases-only search (the answer is a rent)
+    and in net lease mode (the answer is a cap rate). A third caller must go
+    through it, or two cards quote two values.
+  - **The asking price it reads is the LISTING the search found, never the
+    one typed in the form.** A typed price is the member's question, and a
+    question must not move the answer: typed into the form it would switch
+    the sale off and drop the estimate under the reader's cursor. The typed
+    price still weights the comps, as it always has (`weightOpts`).
+  - **What the hero shows.** `ownSaleLeads(own)` (a weight of 0.5 or more,
+    `VALUATION.OWN_SALE_LEADS_AT`) is the line the words turn on.
+    Leading: the three tiles are the blend, Likely's sub-label reads "led by
+    its own sale", the basis line gives the sale and its share, the trust
+    line opens with the sale (`ownTrustLead`: what it was reported sold for,
+    its share, what the comps alone say and how far apart the two are, in
+    four tiers), the approaches table lists the sale first with its indexed
+    figure and the sales comparison row says it "carries the other N%", the
+    tick chart is drawn in the comps' own range and labelled "Comps"
+    (`renderCompScatter`'s `compsOnly`), `#ownerLastSale` stands down (the
+    trust line has said it) and the estimate note names the sale.
+    Helping (under 0.5): the same, with "the comps and its own sale" and a
+    trust line that says the comps lead. Alone (no priced comps, a clean
+    sale in its first year): its own hero branch, and the trust line says
+    nothing came back to check it against.
+  - **A refused sale is said, in one sentence, with its reason**
+    (`ownSaleRefusal`), appended to the trust line; the value is the comps'.
+    A few refusals deliberately say nothing (no price or date, too old, a
+    type or currency the rule does not cover, an unstamped report): the
+    last-sale line already shows those as the history they are. **A caveat is
+    attributed to the search** ("the search found its price covered more
+    than this one property"), never asserted as our own finding about a
+    named building, and the sale is "reported", never "verified" or
+    "recorded" (never-break rule 8).
+  - **The member's switch** (`#ownerSaleSwitch`, `renderOwnSaleSwitch`):
+    "Has it changed since that sale (renovated, expanded, re-leased,
+    damaged)? Value it on comps alone", and "Use its own sale again" once
+    off. It is the one guard for what no public record shows. It writes
+    `meta.curation.ownSaleOff` through `ensureCuration` and `applyCuration`,
+    the door every curation edit uses, so it rides a saved report and a
+    share like an excluded comp. A shared report shows its owner's choice
+    and offers no switch. `no-print no-capture`, and in `beginAssembly`'s
+    hide list.
+  - **Downstream of the hero.** `lastValuation` holds the blended figures
+    when the sale is weighed, so the portfolio snapshot, the BOV modal, the
+    Collateral Check and Sell Today all quote the hero's own numbers. The
+    Collateral Check adds what the loan is against the comps alone. The CSV
+    says so in its subject line, and the Excel Valuation sheet carries the
+    basis, the sale as reported, the sale at the report date, its share and
+    the comps' own Likely. The PowerPoint reads the hero's DOM, so it
+    follows. **A saved property's value history can step** the first time
+    its value is refreshed after this date, because the refreshed report may
+    lean on a sale the earlier snapshot ignored. Nothing marks that step on
+    Home yet (the owner's call to make).
+  - **`OWN_SALE=off` is the rollback, and a whole one** (server.js, beside
+    `settleOwnSale`; default on). This moves a report's headline figure, so
+    it can be stopped from the host's settings without new code. Off: the
+    search stops looking for the sale, nothing is settled or stamped, a
+    report settled while it was on leaves `finishReportForViewer` without its
+    stamp (a copy; the cache keeps it), the three bulk callers pass
+    `ownSaleOff`, and the page is told through the boot object
+    (`window.CN_AUTH_BOOT.ownSale === false`, present only when off), which
+    `ownSaleBlend` reads straight off `window`. That last half is what covers
+    a report rendered from a SAVED payload (a recent search, a property, a
+    shared report), whose stamp the server never sees again. With the switch
+    off `ownSaleBlend` answers null, "no sale was weighed": no blend, no
+    refusal sentence, no switch, and the last-sale line as it always was.
+    Turning it back on needs nothing re-run.
+  - **Bulk rows and a firm's building sheets** value through
+    `BULK.valueFromReport`, which calls the same `valueWithOwnSale` (bulk.md).
+  - **The public wording moved with it**: the FAQ's two answers, the bulk
+    page's footnote, the lender page's ledger sentence, the BOV
+    acknowledgment email and the outreach draft no longer say a value comes
+    from comps alone.
+  - **Not done, each the owner's to decide.** Leaning on the asking price
+    (17 audited buildings had a findable ask before they sold and the sale
+    landed a median 11% under it, but an ask is the seller's opinion and an
+    owner must not be handed their own listing back); a window past three
+    years or a higher weight (wants a repeat-sale test: buildings that sold
+    twice, the later price predicted from the earlier one, and the corpus
+    holds no such pairs yet); Residential, Multifamily and Land (each needs
+    its own truth-test run first, the rule `SIZE_ELASTICITY` keeps); printing
+    the measured comps-only miss on a report; and a broker's own vault deal
+    for the subject's address, which still arrives as an ordinary private
+    comp and is not treated as the sale.
+  - **Not measured yet.** How often a live search finds and vets a sale,
+    above all on buildings the corpus has never held, and whether the added
+    search step keeps a search under a minute (search-pipeline.md). Both need
+    a slow live run after deploy.
+
 - **The jump bar survives Safari's toolbar (2026-11-20; the owner: "When
   swiping up on mobile in CompNinja it still glitches").** On an iPhone a
   swipe slides the address bar away or back, and Safari fires a `resize`
@@ -477,10 +612,17 @@ and exporting each slide to PNG (a PowerShell one-liner, no dependency).
    WINDOW: a restore is not a fresh decision, and a deep link may carry its
    own lookback.
 
-3c. **`subject_last_sale` — the subject's own prior sale** (2026-08-10). The
-   report never looked up whether the subject itself had recently traded, so
-   a Bensalem property that sold a year earlier for $12.45M got a report that
-   never mentioned it. The model returns `{ date, price, source_url }` and
+3c. **`subject_last_sale` — the subject's own prior sale** (2026-08-10).
+   **Amended 2026-11-27, at the top of this file ("The building's own sale
+   leads its value"):** a recent, vetted sale is now weighed into the range,
+   the search looks for it on purpose, and the field carries more keys. Of
+   the four rules below, the first ("costs no extra search") is no longer
+   true for Industrial, Office and Retail, and the second ("evidence, not a
+   fourth figure") now holds for the LINE under the approaches only. The
+   other two stand.
+   The report never looked up whether the subject itself had recently traded,
+   so a Bensalem property that sold a year earlier for $12.45M got a report
+   that never mentioned it. The model returns `{ date, price, source_url }` and
    `renderSubjectLastSale` draws one line under the approaches. Four rules.
    **It costs no extra search by construction**: the ask rides on the
    `SUBJECT SIZE` step, whose assessor/parcel/listing pages already carry the
@@ -819,7 +961,11 @@ and exporting each slide to PNG (a PowerShell one-liner, no dependency).
    `test/valuation.test.js` holds the three rules.
 
 3. **All valuation math is client-side; the model only supplies market
-   figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High
+   figures.** (Since 2026-11-27 the comps' range below is blended with the
+   building's own recent sale when the report holds a vetted one: the note at
+   the top of this file. Everything this flow says about how the COMPS'
+   figure is reached still stands.) `renderOwnerHero()` in `index.html`
+   computes the Low/Likely/High
    range from sale-comp $/SF (leases are excluded even on mixed searches) ×
    the subject SF — the user's entry wins over the looked-up
    `subject_size_sqft`, and a looked-up size is auto-filled into the form

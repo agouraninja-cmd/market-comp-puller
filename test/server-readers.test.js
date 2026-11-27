@@ -11,6 +11,7 @@ const assert = require("node:assert");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const VALUATION = require("../valuation.js");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8").replace(/\r\n/g, "\n");
 
@@ -51,10 +52,45 @@ test("the cache key still ignores decorative punctuation and spacing", () => {
   assert.equal(key({ address: "12 N. Main St., Boise, ID" }), key({ address: "12 N Main St, Boise, ID" }));
   assert.equal(key({ note: "Near the airport." }), key({ note: "near the airport" }));
   assert.equal(key({ note: "Dock-high, rail spur." }), key({ note: "dock-high,rail spur" }));
-  // And a search with no decimals in it keeps the key it always had.
+  // And a search with no decimals in it keeps the key it always had. (A house:
+  // the commercial building searches were re-keyed on purpose on 2026-11-27,
+  // the next test.)
   const before = crypto.createHash("sha256")
-    .update(["500 warehouse way, boise, id", "Industrial", "near the airport", 24, 8, "both", "", ""].join("::")).digest("hex");
-  assert.equal(key({ note: "Near the airport." }), before);
+    .update(["500 warehouse way, boise, id", "Residential", "near the airport", 24, 8, "both", "", ""].join("::")).digest("hex");
+  assert.equal(key({ type: "Residential", note: "Near the airport." }), before);
+});
+
+// 2026-11-27. A report cached before the server began vetting and stamping
+// the building's own sale carries no stamp, so for the 30 days it had left it
+// would answer the same address with that sale ignored: the one place a
+// member would look for the change and not find it. Those entries are
+// retired once, by a salt on exactly the searches the rule covers. Everything
+// else keeps its key, because every key that moves is a search billed twice.
+test("a building search the own-sale rule covers is re-keyed once, and no other search moves", () => {
+  const sha = (text) => crypto.createHash("sha256").update(text).digest("hex");
+  const old = (over) => {
+    const o = { address: "500 warehouse way, boise, id", type: "Industrial", months: 24, maxComps: 8, txFocus: "both", ...over };
+    return [o.address, o.type, "", o.months, o.maxComps, o.txFocus, "", ""].join("::");
+  };
+  const covered = Object.keys(VALUATION.OWN_SALE_TYPES);
+  assert.deepEqual(covered.slice().sort(), ["Industrial", "Office", "Retail"],
+    "the rule's types moved: the list spelled out inside cacheKeyFor has to move with them");
+  for (const type of covered) {
+    assert.equal(key({ type }), sha(old({ type }) + "::own-sale-1"), type + " is re-keyed");
+    assert.equal(key({ type, txFocus: "sales" }), sha(old({ type, txFocus: "sales" }) + "::own-sale-1"));
+    // A leases-only search answers with a rent, and nothing leans on a sale there.
+    assert.equal(key({ type, txFocus: "leases" }), sha(old({ type, txFocus: "leases" })), type + " leases-only keeps its key");
+    // A city is not a building: the market pages and the Market Explorer
+    // search "Boise, ID" and share these entries with the seed generator.
+    assert.equal(key({ type, address: "Boise, ID" }), sha(old({ type, address: "boise, id" })), type + " at city level keeps its key");
+  }
+  for (const type of ["Residential", "Multifamily", "Land"]) {
+    assert.equal(key({ type }), sha(old({ type })), type + " keeps its key");
+  }
+  // The subject details still ride after it, so two buildings at one address
+  // stay two entries.
+  assert.equal(key({ subjectDetails: { clear_height: "32" } }), sha(old({}) + "::own-sale-1::clear_height=32"));
+  assert.notEqual(key({ subjectDetails: { clear_height: "32" } }), key({ subjectDetails: { clear_height: "24" } }));
 });
 
 test("corpusNum reads the first number written, not every digit in the text", () => {

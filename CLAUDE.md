@@ -10,7 +10,9 @@ do not reintroduce Adler anywhere). A user enters a property address + type;
 the server asks Claude (with web search) for recent comparable sales/leases
 and returns one unified report that both answers and proves: a "What This
 Building Is Worth" value hero (the building's SF is looked up from public
-records when not entered), a plain-English market summary, a "What's Driving
+records when not entered; since 2026-11-27 the value leans on the building's
+own recent sale when the search finds and vets one, with the comps as the
+check on it), a plain-English market summary, a "What's Driving
 Prices Here" card (model-supplied `value_drivers` + `market_trend`), a market
 position chart, a comp map, and the full sortable comp table with per-comp
 source-confidence badges (Verified / Public record / Listing / News /
@@ -202,6 +204,19 @@ session that never reads it.
     address. `POST /api/account/confirm` needs the session AND the token,
     never the link alone. `findUserById` keeps returning whole rows.
     [accounts.md]
+17. **A building's own sale moves its value through one door, and its
+    score is never called accuracy.** `VALUATION.valueWithOwnSale` (reached
+    by `ownSaleBlend` on the page and `BULK.valueFromReport` everywhere
+    else) is the only place a sale of the subject may move Low / Likely /
+    High. It leans on nothing the server has not stamped `settled: 1`
+    (`settleOwnSale`, before the cache write), so a report cached, saved or
+    shared before 2026-11-27 never changes; and a price typed into the form
+    never moves the estimate. A sold building's report lands near its price
+    because it STARTS from that price: that figure is an echo of the answer
+    key, and no page, email, pitch or devlog entry may quote it as accuracy.
+    The accuracy figure is the comps-only one (`scripts/truth-test.js`
+    prints the two apart). [report-and-valuation.md, search-pipeline.md,
+    corpus.md]
 
 ## Tests and CI
 
@@ -453,6 +468,7 @@ so they are trusted config and are never set in production.
 | `THINKING_LEVEL` | unset (production: `low`, set on Render) | Gemini reasoning depth — the largest wall-clock and cost lever | search-pipeline.md |
 | `STREAM_ANTHROPIC` | on | stream the search call | search-pipeline.md |
 | `COMP_FIT`, `COMP_WIDER_SEARCH` | on | set aside off-size, unit, dead-source, far and not-a-market-price comps before valuing, and fit the saved deals blended in afterwards (`comp-fit.js`); the second spends one more search when too few right-sized sales are left; `off` is each one's rollback | search-pipeline.md |
+| `OWN_SALE` | on | the building's own recent sale leads its value: the search looks for it, the server vets and stamps it, the page and bulk rows lean on it; `off` is the whole rollback (comps alone, on new and already-cached reports) | report-and-valuation.md |
 | `SEARCH_TIME_BUDGET_SECONDS` | 60 | the ceiling a search's optional wider leg must fit inside: it is not started if it would run past it, and is stopped there if it does; the report's own call is never cut; `0` or `off` removes the ceiling | search-pipeline.md |
 | `PARALLEL_SEARCH` | off | two concurrent search lanes; measured twice (2026-07-30, and live on sold buildings 2026-11-27) and not worth it: no accuracy for twice the spend, and it tripped the search account's spend-rate limit | search-pipeline.md |
 | `CORPUS_RADIUS`, `CORPUS_METRO`, `CORPUS_LISTED`, `ARCHIVE_FIRST` | on | `off` rolls back the radius blend, metro retrieval, on-market listings, archive-first | corpus.md |
@@ -491,9 +507,9 @@ gone. Document a new feature in its area's file, not here.
 
 | File | What it holds | Loads when Claude opens |
 |---|---|---|
-| `search-pipeline.md` | `POST /api/comps`, prompt, cache, live progress (SSE), providers, `MODEL`, `THINKING_LEVEL`, measuring a model change (`run-eval.js`), upstream health, the source-link check, comp fit and the wider search, flows 1 and 5 (parsing, currency) | `search-provider-*.js`, `report-parse.js`, `link-check.js`, `comp-fit.js`, `run-eval.js`, `eval-*` |
-| `corpus.md` | the comp corpus and its health alarm, corpus-first retrieval, radius blend, archive-first, metro matching, on-market listings, `/api/corpus-comps`, the accuracy backtest | `corpus-*.js`, `blend-corpus.js`, `backtest.js`, `market.js`, `deal-date.js` |
-| `report-and-valuation.md` | the report front end: search form, valuation math and hero, flows 2–4 and 3a–3f, private comps on screen and in exports, PowerPoint export, the Collateral Check card | `index.html`, `valuation.js`, `comp-gate.js`, `market-snapshot.js`, `collateral-check.js` |
+| `search-pipeline.md` | `POST /api/comps`, prompt, cache, live progress (SSE), providers, `MODEL`, `THINKING_LEVEL`, measuring a model change (`run-eval.js`), upstream health, the source-link check, comp fit and the wider search, the search for the building's own sale and its settle step, flows 1 and 5 (parsing, currency) | `search-provider-*.js`, `report-parse.js`, `link-check.js`, `comp-fit.js`, `run-eval.js`, `eval-*` |
+| `corpus.md` | the comp corpus and its health alarm, corpus-first retrieval, radius blend, archive-first, metro matching, on-market listings, `/api/corpus-comps`, the accuracy backtest, the accuracy lab, the truth test and its two scores | `corpus-*.js`, `blend-corpus.js`, `backtest.js`, `market.js`, `deal-date.js`, `scripts/truth-test.js` |
+| `report-and-valuation.md` | the report front end: search form, valuation math and hero, the building's own sale leading its value, flows 2–4 and 3a–3j, private comps on screen and in exports, PowerPoint export, the Collateral Check card | `index.html`, `valuation.js`, `comp-gate.js`, `market-snapshot.js`, `collateral-check.js` |
 | `billing.md` | Pro tier, trial, prices, free allowance, passkeys, admin access, branding, trial emails, `/api/config`, `/pricing` | `entitlements.js`, `stripe.js`, `branding.js`, `trial-notices.js`, `pricing-page.js` |
 | `vault.md` | the broker vault (import, mapper, editing, publishing, dashboard, gut check, BOV, building facts), comp submissions, the lead inbox | `vault-*.js`, `broker-*.js`, `building-facts.js`, `gut-check.js`, `bov-log.js`, `blend-comps.js`, `xlsx.js` |
 | `bov-desk.md` | the BOV desk: finding local brokers for a BOV request, the drafted outreach, sending, the accept link and the introduction, autopilot, `/admin/bov`, migration 065 | `bov-desk.js`, `bov-desk-page.js`, `test/bov-desk*.test.js` |

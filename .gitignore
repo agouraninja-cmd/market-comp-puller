@@ -16,6 +16,7 @@ server.err.log
 
 # Raw per-target reports from run-eval.js (the committed summary lives in docs/evals/)
 eval-runs/
+truth-runs/
 
 # Before/after design screenshots (scripts/shot.js) — regenerate, never commit
 screenshots/

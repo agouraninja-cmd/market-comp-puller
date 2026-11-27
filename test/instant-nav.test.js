@@ -184,6 +184,8 @@ test("only a plain link to another tab qualifies", () => {
 test("every tab in the rail is one it will prerender", () => {
   // The rail's destinations, both shells. A tab missing here simply loads the
   // old way; this pins that the list is the rail and not a subset of it.
+  // /bov (2026-11-27) is the Broker section's second tab, as /bulk is Comps'.
+  assert.ok(NAV.TAB_PATHS.includes("/bov"), "/bov");
   for (const p of ["/desk", "/comps", "/pipeline", "/messages", "/markets", "/bulk", "/permits"]) {
     assert.ok(NAV.TAB_PATHS.includes(p), p);
     // /bulk is the Comps section's second tab (2026-10-13), not a row of its own.
@@ -849,7 +851,7 @@ test("every page writes through fetch, the one channel the prerender guard holds
 });
 
 test("no page visit is logged around logPageVisit", () => {
-  const kinds = ["bulk_visit", "messages_visit", "building_visit", "permits_visit", "permits_compare_visit", "buildings_visit", "vault_visit", "sites_visit"];
+  const kinds = ["bulk_visit", "messages_visit", "building_visit", "permits_visit", "permits_compare_visit", "buildings_visit", "vault_visit", "sites_visit", "bov_visit"];
   for (const k of kinds) {
     assert.ok(!serverSrc.includes(`logEvent("${k}"`), `${k} is logged on a speculative GET`);
     assert.ok(serverSrc.includes(`logPageVisit(req, "${k}"`), `${k} lost its logPageVisit`);

@@ -6204,3 +6204,26 @@ test("the footer starts below the first screen on /pipeline and /comps (2026-11-
       "expected the body's own min-height and main's, and nothing else");
   }
 });
+
+// The BOV builder's door on the board (2026-11-27). A BOV still being written
+// or just sent links to /bov, which fills its form from the card; a request
+// nobody has claimed, a win and a loss do not.
+test("an open or delivered BOV card links to the BOV builder, and nothing else does", async () => {
+  const { doc, calls } = await runPage([comp({})], null, { page: "pipeline",
+    leads: deskLeads([LEAD({})]),
+    bovs: deskBovs([
+      BOV({ id: "75fecf88-d150-44d8-bc61-3946177cbb3a" }), BOV({ id: "B2", status: "delivered" }),
+      BOV({ id: "B3", status: "won" }), BOV({ id: "B4", status: "lost" }),
+    ]) });
+  assert.match(doc.getElementById("pbOpen").innerHTML,
+    /<a class="pb-write" href="\/bov\?from=75fecf88-d150-44d8-bc61-3946177cbb3a">Write the BOV &rarr;<\/a>/);
+  assert.match(doc.getElementById("pbDelivered").innerHTML, /<a class="pb-write" href="\/bov\?from=B2">Open the BOV &rarr;<\/a>/);
+  for (const id of ["pbNew", "pbWon", "pbLost"]) {
+    assert.doesNotMatch(doc.getElementById(id).innerHTML, /pb-write/, id + " offers the BOV builder");
+  }
+  // A link and nothing more: drawing the board asked the builder for nothing.
+  assert.ok(!calls.some((c) => c.url.indexOf("/bov") === 0), "the board requested the builder");
+  // Ink, never red: Request introduction is the red on this page.
+  const css = renderVaultHTML(boot([comp({})]), { page: "pipeline" });
+  assert.match(css, /\.pb-write\{[^}]*color:var\(--ink\)\}/);
+});

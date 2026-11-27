@@ -687,6 +687,11 @@ main.wrap{position:relative}
 .pb-card .f{display:flex;align-items:center;gap:6px;margin-top:10px;padding-top:9px;border-top:1px solid var(--hair);
   font-size:var(--text-label);color:var(--ink-3)}
 .pb-card .f span{flex:1;min-width:0}
+/* The door to the BOV builder (/bov, 2026-11-27) on a BOV still being
+   written or just sent. Ink, never red: Request introduction is the red on
+   this page. Real padding, not an overlay, so a thumb gets 32px. */
+.pb-write{display:block;margin-top:6px;padding:6px 0 0;font-size:var(--text-small);font-weight:600;color:var(--ink)}
+.pb-write:hover{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
 /* Its own small chevron: the page's select is 40px tall with the browser's
    arrow, and beside it a card's source and date broke onto two lines. */
 .pb-card select{flex:none;appearance:none;-webkit-appearance:none;min-height:0;height:28px;padding:0 22px 0 8px;
@@ -3655,6 +3660,11 @@ ${tabButtons}
       (r.address?'<div class="a">'+esc(r.address)+"</div>":"")+
       (r.size_sqft?'<div class="z">'+num(r.size_sqft)+" SF</div>":"")+
       (r.notes?'<p class="nt">'+esc(r.notes)+"</p>":"")+
+      // The BOV builder, started from this card (2026-11-27): /bov reads the
+      // id and fills in what the card already knows. A link and nothing
+      // more: no write, and the id is the broker's own row's.
+      (r.status==="open"||r.status==="delivered"
+        ? '<a class="pb-write" href="/bov?from='+escA(encodeURIComponent(r.id))+'">'+(r.status==="open"?"Write the BOV":"Open the BOV")+" &rarr;</a>":"")+
       '<div class="f"><span>'+esc(meta)+"</span>"+bovSelect(r.id,r.status,"Stage")+
       '<button class="pb-x" data-bovdel="'+escA(r.id)+'" aria-label="Remove this BOV" title="Remove">&times;</button></div></article>';
   }

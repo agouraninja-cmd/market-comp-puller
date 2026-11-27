@@ -5701,5 +5701,17 @@
     "type": "improvement",
     "title": "Home's map opens one property at region level",
     "details": "Zoom 12 (the town) was still too close; a single property now opens at zoom 10, showing the surrounding towns."
+  },
+  {
+    "date": "2026-11-27",
+    "type": "feature",
+    "title": "BOV builder: write a Broker Opinion of Value on your own letterhead",
+    "details": "A new tool for brokers at /bov. Fill in the property, who it is for and your value, tick the comparables from your own comps (or type them in), and the finished document builds beside the form as you type: a cover on your letterhead, your opinion of value, the property, the comparable sales, your pricing and marketing recommendation, a line to sign and the standard not-an-appraisal conditions. Print it or save it as a PDF. A BOV card on the Pipeline board now links straight to it and fills in what the card already knows. What you type stays in your browser: the draft is kept there and is never sent to CompNinja."
+  },
+  {
+    "date": "2026-11-27",
+    "type": "improvement",
+    "title": "The Pipeline section is now called Broker",
+    "details": "The sidebar row that read Pipeline reads Broker, on the desktop sidebar and the phone bar. It is a section of two tabs: Pipeline (the same board, at the same address) and the new BOV builder."
   }
 ]

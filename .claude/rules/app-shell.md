@@ -14,6 +14,21 @@ paths:
 ---
 # Navigation and the signed-in header
 
+> **Broker, where the rail read Pipeline (2026-11-27, the owner: "change the
+> pipeline named section to be called the broker section"): Home, Messages,
+> Broker | Comps, Markets, Permits.** Read this before the boxes below:
+> wherever they name the Pipeline ROW (the rail, the phone bar's cells, "a
+> member without the note reads Pipeline"), the row now reads Broker. Only
+> its label changed: `#navPipe`, `href="/pipeline"` and `NAV_ICONS.pipeline`
+> are what they were on both nav authors, so `SHOP_NAV_CSS`, the phone bar
+> and the twin-rule tests were untouched. It is a section of two tabs,
+> `brokerSectionTabs(current)` (`BROKER_TABS`: Pipeline `/pipeline`, BOV
+> builder `/bov`), the Comps section's `.cs-tabs` control with
+> `aria-label="Broker"`, and marketBar marks the row current on both
+> (`BROKER_PAGE_PATHS`). `/bov` is in `TAB_PATHS` and `CTA_FREE_PAGES`.
+> "Broker" is 6 letters to Pipeline's 8, so it fits the 84px strip and a
+> 320px phone bar with room. bov-builder.md has the page.
+
 > Moved verbatim from CLAUDE.md on 2026-09-25. Claude Code loads this file
 > when it opens a file matching `paths` above; read it by hand before changing
 > this area's code in `server.js`. The never-break rules stay in CLAUDE.md.

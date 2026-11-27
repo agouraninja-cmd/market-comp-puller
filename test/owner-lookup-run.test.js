@@ -65,13 +65,41 @@ function baseTables() {
 
 // Answers as Anthropic does (the suite boots SEARCH_PROVIDER=anthropic, the
 // BOV desk run test's choice): one text block holding the JSON.
+//
+// `calls` holds this boot's own searches and nothing else (2026-11-27). It
+// used to hold every request that reached the port, and "a month's lookups
+// used up" failed on CI with 2 calls where it asserts 0, on a commit that had
+// not touched the lookup. The server under test had sent nothing. The port
+// is the OS's choice, every suite file is its own process, and two kinds of
+// stranger can reach a port they were never given:
+//   - another suite's boot polling GET /healthz on a port its own server had
+//     not bound yet, which the OS handed to this stand-in in the meantime.
+//     Its server dies on EADDRINUSE and that boot retries, so the other suite
+//     passes and only this count is wrong. Reproduced: a stand-in parked on
+//     a port and a server booted onto it records `GET /healthz` twice, 100 ms
+//     apart, which is the 2. test/helpers/boot.js no longer polls before its
+//     server says it is listening, which closes this one at the source;
+//   - another suite's server still posting to ITS stand-in's old port while
+//     it shuts down, after this stand-in was given that number. Not seen,
+//     and not ruled out: the CI run kept the count and not the requests.
+// So the address handed to the server carries a path only this boot knows,
+// and a request to any other path is answered 404 and kept in `strays`,
+// where a failure can read what it was. The assertions on `calls` stay
+// exact: 0 means no search, 1 means one.
 async function startProvider() {
   const calls = [];
+  const strays = [];
   const state = { answer: FOUND, status: 200 };
+  const mine = "/v1/messages/" + crypto.randomBytes(8).toString("hex");
   const server = http.createServer((req, res) => {
     let body = "";
     req.on("data", (c) => { body += c; });
     req.on("end", () => {
+      if (req.method !== "POST" || req.url !== mine) {
+        strays.push({ method: req.method, url: req.url, body: body.slice(0, 200) });
+        res.writeHead(404, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ error: { message: "not this stand-in's caller" } }));
+      }
       let sent = {};
       try { sent = JSON.parse(body || "{}"); } catch (_) { /* recorded as empty */ }
       calls.push({ prompt: JSON.stringify(sent.messages || ""), url: req.url });
@@ -82,7 +110,8 @@ async function startProvider() {
     });
   });
   await new Promise((r) => server.listen(0, r));
-  return { url: `http://localhost:${server.address().port}/v1/messages`, calls, state,
+  const origin = `http://localhost:${server.address().port}`;
+  return { url: origin + mine, origin, calls, strays, state,
     stop: () => new Promise((r) => server.close(r)) };
 }
 async function startPages() {
@@ -379,6 +408,23 @@ test("the allowance and the day's cap refuse before any search", async (t) => {
     assert.equal(r.body.code, "off");
     assert.equal(provider.calls.length, 0);
   });
+});
+
+// ---------------------------------------------------------------------------
+// The counts above are only as good as this: see startProvider.
+test("the stand-in provider counts this boot's searches and nobody else's", async (t) => {
+  const { provider, srv } = await bootWith(t);
+  // Another suite's boot, polling a port it was never given.
+  assert.equal((await fetch(provider.origin + "/healthz")).status, 404);
+  // Another suite's server, posting to the address its own stand-in had.
+  const other = await fetch(provider.origin + "/v1/messages", { method: "POST",
+    headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: [] }) });
+  assert.equal(other.status, 404);
+  assert.equal(provider.calls.length, 0, "a stranger's request was counted as a search");
+  assert.deepEqual(provider.strays.map((s) => s.method + " " + s.url), ["GET /healthz", "POST /v1/messages"]);
+  // And the server it was booted for still reaches it.
+  assert.equal((await lookup(srv, "u-maya", { address: ADDRESS })).status, 200);
+  assert.equal(provider.calls.length, 1);
 });
 
 // ---------------------------------------------------------------------------

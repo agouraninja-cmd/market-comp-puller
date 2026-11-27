@@ -2,6 +2,12 @@
   {
     "date": "2026-11-27",
     "type": "fix",
+    "title": "A test that failed at random on GitHub is fixed at its cause",
+    "details": "The owner lookup's “no search ran” check failed one run in two on a change that had not touched it. Tests start many small servers at once, each on a port the computer picks, and one test's startup check was knocking on a port that had just been given to another test's pretend search provider, which counted the knocks as searches. The startup check now waits until its own server says it is listening, and the pretend provider counts only its own server's requests. Nothing on the site changed."
+  },
+  {
+    "date": "2026-11-27",
+    "type": "fix",
     "title": "Two searches at once is switched back off: it bought no accuracy and tripped the search account's rate limit",
     "details": "For about ten minutes today every report ran two searches at the same time, to see whether more comps per report would steady the value. Measured on sold buildings it did not: on the 21 buildings both settings valued, the typical miss went from 23–25% to about 30%, with 4.9 sale comps a report instead of 4.1–4.4. Averaging two whole searches of the same building did not help either, which says the misses come from which comps a building is given, not how many. Running two searches per report also doubled the spending rate, which tripped the search provider's spending limit during the test: for about three minutes every search on the site answered “unusually busy”. It is off again. The test itself now runs two buildings at a time, stops after three refusals in a row, and can re-score saved reports without running any search."
   },

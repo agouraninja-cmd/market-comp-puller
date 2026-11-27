@@ -55,6 +55,24 @@ so it is a check now rather than a convention: **`test/subtest-teardown.test.js`
 scans every suite and fails the build on either shape. The difference between
 right and wrong is one character and the suite is green either way, so a
 person is the wrong detector for it.
+**A stand-in that counts what reaches it must count only its own caller**
+(2026-11-27). Every stand-in listens on a port the OS chose, every suite file
+is its own process, and a port can be reached by a stranger: the OS hands a
+number one process has just let go of to the next `listen(0)`. That is how
+`test/owner-lookup-run.test.js` failed "no search ran" on CI with exactly 2
+calls on a commit that had not touched it. Another suite's boot was polling
+`GET /healthz` on a port its server had not bound yet, and this suite's
+stand-in provider was handed that port and counted the polls. Two fixes, one
+at each end. `test/helpers/boot.js` now waits for the server's startup banner
+(printed inside `listen()`'s callback) before its first poll, so a boot asks
+nothing of a port its child does not hold; `test/boot-helper.test.js` pins
+that, and **the banner line in server.js is now something the suite reads**:
+change its wording and change `LISTENING_BANNER` with it. And that suite's
+stand-in gives the server an address with a random path, counts only requests
+to it, and 404s the rest into `strays`. The other `*-run` suites' stand-ins
+still count every request; the boot fix covers the route that was seen, and
+a new stand-in that asserts an exact count should take the random path too.
+Never loosen such an assertion to "at most N".
 Nothing beyond those modules and that route wiring is tested; do not assume a
 green suite means the app works. CI (`.github/workflows/ci.yml`) runs on
 every push: `node --check` on

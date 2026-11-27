@@ -8,6 +8,11 @@ const fs = require("node:fs");
 const os = require("node:os");
 
 const SERVER = path.join(__dirname, "..", "..", "server.js");
+// What server.js prints from inside listen()'s callback, up to the port. The
+// boot waits for it (see `listening` in bootOnce), so if server.js ever
+// stops printing it every boot here fails with the "never said it was
+// listening" error below, not with something subtle.
+const LISTENING_BANNER = "running at http://localhost:";
 
 // Ports are OS-assigned per boot, never a fixed counter. Fixed bases (39140 /
 // 39500) collided the day `prestart` made concurrent suite runs routine: two
@@ -227,14 +232,52 @@ async function bootOnce(env) {
       BOV_DAILY_SEARCHES: "",
       ...env,
     },
-    // stderr is piped (stdout stays ignored: the startup banner is noise)
-    // so an early exit can say WHY — and so the EADDRINUSE race is
-    // distinguishable from a real crash. Capped: a crash message is small,
-    // and this must never buffer a runaway log.
-    stdio: ["ignore", "ignore", "pipe"],
+    // stderr is piped so an early exit can say WHY — and so the EADDRINUSE
+    // race is distinguishable from a real crash. Capped: a crash message is
+    // small, and this must never buffer a runaway log. stdout is piped for
+    // one line only, the startup banner (see `listening` below).
+    stdio: ["ignore", "pipe", "pipe"],
   });
   let stderr = "";
   child.stderr.on("data", (c) => { if (stderr.length < 8192) stderr += c; });
+  // Nothing is asked of the port until the child says it holds it
+  // (2026-11-27).
+  //
+  // The port came from freePort(), which has let go of it, and the child
+  // needs a few hundred milliseconds to bind it. The health check below used
+  // to start at once, so for that long it was polling a port nobody held, and
+  // any listen(0) on the machine could be handed the same number. The child
+  // then dies on EADDRINUSE and boot() retries, which is the race described
+  // above boot(), and that half was handled. The other half was not: the
+  // polls sent in the meantime landed on whoever took the port. Every suite
+  // file is its own process here and each starts stand-ins (a search
+  // provider, a page server, the database) on listen(0), and a stand-in that
+  // counts what reaches it counted them. That is how
+  // test/owner-lookup-run.test.js failed "no search ran" on CI with exactly 2
+  // calls on a commit that had not touched it: two polls, 100 ms apart,
+  // before the dying child was noticed. Reproduced by parking that suite's
+  // stand-in on a port and booting onto it: `GET /healthz` twice, every time.
+  // The OS here hands out ports at random from about 7,000, a run opens
+  // several thousand, and each boot's window is a few hundred ms.
+  //
+  // server.js prints its banner from inside listen()'s callback, so the
+  // banner is the child saying "the port is mine". A child that loses the
+  // race never prints it and is never polled. Everything after the banner is
+  // discarded unread (resume), so a chatty server cannot fill the pipe.
+  let listening = false;
+  let banner = "";
+  const onStdout = (c) => {
+    banner += c;
+    if (!banner.includes(LISTENING_BANNER + port)) {
+      banner = banner.slice(-200);
+      return;
+    }
+    listening = true;
+    banner = "";
+    child.stdout.off("data", onStdout);
+    child.stdout.resume();
+  };
+  child.stdout.on("data", onStdout);
   // A child that dies on its OWN, after it was healthy, is the suite's one
   // remaining source of random red — and until this it was invisible. The
   // stderr captured just above is reported only by the health-check loop
@@ -294,6 +337,8 @@ async function bootOnce(env) {
       throw err;
     }
     try {
+      // Not until the child holds the port: see `listening` above.
+      if (!listening) throw new Error("not listening yet");
       const r = await fetch(base + "/healthz");
       if (r.ok) {
         const body = await r.json();
@@ -334,7 +379,9 @@ async function bootOnce(env) {
     await new Promise((r) => setTimeout(r, 100));
   }
   child.kill();
-  throw new Error("server never became healthy on port " + port + " (or a foreign process held it)");
+  throw new Error(listening
+    ? "server never became healthy on port " + port + " (or a foreign process held it)"
+    : "server never said it was listening on port " + port + " (boot.js waits for its startup banner, LISTENING_BANNER)");
 }
 
 module.exports = { boot, freePort };

@@ -56,7 +56,9 @@ test("the app's rail says which row the reader is standing on", () => {
   // 2026-10-12, so the firm's kind no longer moves the mark.)
   // A sixth since 2026-11-10: leaveDeskForReport, which hides Home for a
   // saved report before the report's own render re-marks it.
-  assert.equal(INDEX_HTML.split("markNavCurrent();").length - 1, 6,
+  // A seventh since 2026-11-27: the boot rule's report door (?recent= /
+  // ?property=), which opens on the report view and never shows Home.
+  assert.equal(INDEX_HTML.split("markNavCurrent();").length - 1, 7,
     "every seam that hides or shows the workspace, and Home's tab switch, must re-mark the rail");
 });
 

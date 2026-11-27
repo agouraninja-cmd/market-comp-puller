@@ -897,7 +897,7 @@ test("Recent searches sits under the chamber, shows on the home view only, and i
   // address) is the finder standing alone, so the list shows there too — but
   // never under a shared report, which the branch excludes by name.
   const bootAt = html.indexOf("const _sharedPath = ");
-  const boot = html.slice(bootAt, bootAt + 1600);
+  const boot = html.slice(bootAt, bootAt + 2800);
   assert.match(boot, /\} else if \(!_sharedPath\) \{[\s\S]{0,900}?getElementById\("historyDeck"\)\.classList\.remove\("hidden"\);\s*renderHistory\(\);/,
     "the boot block reveals the list on the home stack, never for /r/<id>");
   // A rendering report yields the workspace at BOTH seams; the list would
@@ -948,12 +948,34 @@ test("a pending landing address keeps a member on the home view, where the form 
   // title — landAfterAuth's comment quotes that title and sits earlier.
   const at = html.indexOf("const _sharedPath = ");
   assert.ok(at > -1);
-  const block = html.slice(at, at + 900);
+  const block = html.slice(at, at + 2400);
   assert.match(block, /sessionStorage\.getItem\("pendingLandingAddress\.v1"\)/, "the boot rule reads the pending address");
   assert.doesNotMatch(block, /removeItem\("pendingLandingAddress\.v1"\)/, "and never clears it — the consumer does");
   assert.match(block, /!_sharedPath && !_pendingLanding && location\.pathname === "\/" && looksSignedIn\(\)/,
     "a pending address is an exception to the member-at-/ rule, beside the shared-report one");
   assert.match(block, /location\.pathname === "\/desk"\n/, "/desk itself is unconditional — asking for the desk is asking for the desk");
+});
+
+test("a link straight into one report never paints Home's map first", () => {
+  // 2026-11-27: a /bulk run's row links to /?recent=<id>; the boot rule sent
+  // a member at "/" to the desk, so Home's map drew and was then swapped for
+  // the report when its read landed. The report door is decided BEFORE the
+  // desk branch, and a failed open puts Home back.
+  const at = html.indexOf("const _reportDoor = ");
+  assert.ok(at > -1, "the boot rule names the report door");
+  const block = html.slice(at, at + 900);
+  assert.match(block, /_bootQs\.has\("recent"\)/);
+  assert.match(block, /_bootQs\.has\("property"\) && _bootQs\.get\("refresh"\) !== "1"/,
+    "?property=&refresh=1 keeps Home up under its confirm dialog");
+  const doorAt = block.indexOf("    if (_reportDoor) {");
+  assert.ok(doorAt > -1, "the door is decided inside the boot branch, before the desk shows");
+  const doorBranch = block.slice(doorAt, block.indexOf("} else {", doorAt));
+  assert.ok(doorBranch.includes("setReportOnly(true)"));
+  assert.ok(!doorBranch.includes("showDeskView()"), "the door branch never shows the desk");
+  const openHist = html.slice(html.indexOf("async function openHistoryReport"), html.indexOf("async function openHistoryReport") + 900);
+  assert.ok(openHist.indexOf("reportDoorFailed()") < openHist.indexOf("showStatus("), "a missing report falls back to Home, then says why");
+  const openProp = html.slice(html.indexOf("async function openPortfolioItem"), html.indexOf("async function openPortfolioItem") + 2000);
+  assert.match(openProp, /catch \(ex\) \{ reportDoorFailed\(\);/);
 });
 
 test("the workspace header carries no Run a report door", () => {

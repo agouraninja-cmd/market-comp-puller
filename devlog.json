@@ -5719,5 +5719,11 @@
     "type": "improvement",
     "title": "The Pipeline section is now called Broker",
     "details": "The sidebar row that read Pipeline reads Broker, on the desktop sidebar and the phone bar. It is a section of two tabs: Pipeline (the same board, at the same address) and the new BOV builder."
+  },
+  {
+    "date": "2026-11-27",
+    "type": "fix",
+    "title": "Opening a report from a comp report run no longer flashes Home's map first",
+    "details": "A run row links to /?recent=<id>; the page drew Home for a member at / and only swapped to the report once it loaded. That link now opens straight to the report view, with a short Opening the report line while it loads, and falls back to Home if the report cannot be opened. Same for ?property= links."
   }
 ]

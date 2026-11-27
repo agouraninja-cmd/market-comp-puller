@@ -14145,9 +14145,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const forSite = pendingSiteEstimate && r && pendingSiteEstimate.recentId === r.recentId;
     if (!full) {
       if (forSite) pendingSiteEstimate = null;
+      reportDoorFailed();   // before the status: showDeskView clears it
       showStatus("That report is no longer stored. Re-run the search to get a fresh one.", "info");
       return;
     }
+    reportDoorPending = false;
     leaveDeskForReport();
     hideLoadingCard();
     // BEFORE renderResults, not after: the hero reads the live inputs whenever
@@ -14599,6 +14601,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function setReportOnly(on) {
     reportOnly = Boolean(on);
     applySearchLock();
+  }
+  // True from a cold load through a report door (?recent= / ?property=, see
+  // the boot view rule) until that report renders or fails. While it is set
+  // nothing else is on screen, so a failure must put Home back rather than
+  // leave a status line on an empty page.
+  let reportDoorPending = false;
+  function reportDoorFailed() {
+    if (!reportDoorPending) return;
+    reportDoorPending = false;
+    showDeskView();
   }
 
   // The one line a stranger on somebody else's report is given. It used to say
@@ -15731,6 +15743,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       history.replaceState({}, "", location.pathname + (qs.toString() ? "?" + qs : ""));
       openHistoryReport({ meta: {}, data: null, ts: 0, recentId: recentParam, justRan });
     }
+    // The cookie said signed in but the account read did not: neither door
+    // above ran, so the report view the boot rule drew would stay empty.
+    if (!currentUser) reportDoorFailed();
     // Both run after the user is known, because their whole job is to wait for
     // THIS user's entitlements to catch up with their payment. They key off
     // different query params (?checkout= vs ?purchase=), so at most one acts.
@@ -15816,6 +15831,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     leaveDeskForReport();
     try {
       const item = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(id));
+      reportDoorPending = false;
       hideLoadingCard();
       // Same rule as openHistoryReport: restore before rendering, or the hero
       // falls back to the previous search's size, price and cap rate.
@@ -15830,7 +15846,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // portfolioId lets assumption edits PATCH back onto this exact item.
       renderResults(item.payload.data, { ...item.payload.meta, fromHistory: true, portfolioId: item.id,
         generatedAt: reportAt > 0 ? reportAt : Date.parse(item.updated_at) });
-    } catch (ex) { showStatus(ex.message, "error"); }
+    } catch (ex) { reportDoorFailed(); showStatus(ex.message, "error"); }
   }
 
   // listPortfolio deliberately never selects `payload`, so a row from the list
@@ -20797,10 +20813,31 @@ async function renderMyDesk() {
   const _sharedPath = /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(location.pathname);
   let _pendingLanding = false;
   try { _pendingLanding = Boolean((sessionStorage.getItem("pendingLandingAddress.v1") || "").trim()); } catch (_) {}
-  if (location.pathname === "/desk"
+  // A door straight into one report (2026-11-27): ?recent=<id> (a /bulk run's
+  // row, Earlier runs) and ?property=<id> (a saved property). These used to
+  // fall into the desk branch below, so the member watched Home's map paint
+  // and then get swapped out for the report a beat later, when the saved
+  // report's read landed. Now the first frame is the report view, empty, with
+  // one line saying it is on its way; openHistoryReport / openPortfolioItem
+  // fill it, and reportDoorFailed() puts Home back if they cannot.
+  // &refresh=1 is not a door: that path keeps Home up under its confirm
+  // dialog on purpose (see refreshPortfolioItem).
+  const _bootQs = new URLSearchParams(location.search);
+  const _reportDoor = !_sharedPath && location.pathname === "/" && looksSignedIn()
+    && (_bootQs.has("recent") || (_bootQs.has("property") && _bootQs.get("refresh") !== "1"));
+  if (_reportDoor || location.pathname === "/desk"
       || (!_sharedPath && !_pendingLanding && location.pathname === "/" && looksSignedIn())) {
     if ("scrollRestoration" in history) history.scrollRestoration = "manual";
-    showDeskView();
+    if (_reportDoor) {
+      reportDoorPending = true;
+      document.getElementById("hero").classList.add("hidden");
+      document.getElementById("homeInfo").classList.add("hidden");
+      setReportOnly(true);
+      markNavCurrent();
+      showStatus("Opening the report…", "info");
+    } else {
+      showDeskView();
+    }
     window.scrollTo(0, 0);
   } else if (!_sharedPath) {
     // The home stack is the markup's default, so nothing "shows" it — but the

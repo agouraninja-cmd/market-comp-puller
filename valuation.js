@@ -1071,19 +1071,33 @@
   // (unexplainedGain's list: Date.parse alone answers "sometime in 2021" with
   // a January nothing claimed), plus the quarter and month/year shapes
   // compDateMs reads by rule. A bare year is refused: it cannot be aged. So
-  // is a day that does not exist ("2025-02-30" would roll into March).
+  // is a day that does not exist, in every shape that names one
+  // ("2025-02-30", "Feb 30, 2025" and "2/30/2025" would all roll into March).
+  // And a word in it has to BE a month: the shape list lets through any word
+  // that starts like one, and Date.parse then reads its first three letters,
+  // so "Marketed 2024" was a March closing and "Mayor 2021" a May one.
+  var MONTH_WORDS = {
+    jan: 1, january: 1, feb: 1, february: 1, mar: 1, march: 1, apr: 1, april: 1, may: 1, jun: 1, june: 1,
+    jul: 1, july: 1, aug: 1, august: 1, sep: 1, sept: 1, september: 1, oct: 1, october: 1, nov: 1, november: 1,
+    dec: 1, december: 1,
+  };
   function saleDateMs(text) {
     var raw = String(text == null ? "" : text).trim();
     if (!raw || /^(?:19|20)\d{2}$/.test(raw)) return NaN;
     var ruled = /^q[1-4]\s*(?:19|20)\d{2}$/i.test(raw) || /^\d{1,2}\/(?:19|20)\d{2}$/.test(raw)
       || /^(?:19|20)\d{2}-\d{2}(?:-\d{2})?$/.test(raw);
     if (!ruled && !SALE_DATE_SHAPES.some(function (re) { return re.test(raw); })) return NaN;
+    if (!ruled && (raw.toLowerCase().match(/[a-z]+/g) || []).some(function (w) { return MONTH_WORDS[w] !== 1; })) return NaN;
     var iso = raw.match(/^((?:19|20)\d{2})[-/](\d{1,2})[-/](\d{1,2})$/);
     if (iso) {
       var probe = new Date(Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])));
       if (probe.getUTCMonth() !== Number(iso[2]) - 1) return NaN;
     }
-    return compDateMs(raw);
+    var ms = compDateMs(raw);
+    var day = raw.match(/^\d{1,2}\/(\d{1,2})\/\d{4}$/) || raw.match(/^[a-z]+\.?\s+(\d{1,2}),?\s+\d{4}$/i)
+      || raw.match(/^(\d{1,2})\s+[a-z]+\.?,?\s+\d{4}$/i);
+    if (day && !isNaN(ms) && new Date(ms).getDate() !== Number(day[1])) return NaN;
+    return ms;
   }
 
   function ownSaleWeight(ageYears) {
@@ -1149,14 +1163,22 @@
   // it", and of the own sales the audit found cited to a bare home page, one
   // was an asking price and one a portfolio allocation; another was cited to
   // a flyer image uploaded three months before the sale it was cited for.
+  //
+  // A query string does not make a page out of one that is not: "/search?q=…"
+  // is still a search and "/listings?page=2" still an index, whatever rides
+  // behind the "?". And with NO path, the query has to name a record
+  // ("?parcel=R123", how some county sites address one): a tracker's key or a
+  // search box's own ("?utm_source=…", "?q=…") is still the front door.
+  var NON_PAGE_KEYS = /^(?:utm_[a-z_]+|gclid|fbclid|msclkid|yclid|igshid|mc_cid|mc_eid|_ga|_hsenc|_hsmi|ref|source|q|query|s|search|keywords?|k|p|page|sort|order)$/i;
   function specificPage(url) {
     var m = String(url == null ? "" : url).trim().match(/^https?:\/\/[^\/?#\s]+([^?#\s]*)(\?[^#\s]*)?/i);
     if (!m) return false;
     var path = (m[1] || "").replace(/\/+$/, "");
-    if (path === "" && (m[2] || "").length <= 1) return false;
     if (/\.(?:jpe?g|png|gif|webp|svg|bmp)$/i.test(path)) return false;
-    if (/\/(?:search|for-sale|sold|listings|properties|recent-transactions|transactions)$/i.test(path) && (m[2] || "").length <= 1) return false;
-    return true;
+    if (/\/(?:search|for-sale|sold|listings|properties|recent-transactions|transactions)$/i.test(path)) return false;
+    if (path !== "") return true;
+    var keys = (m[2] || "").replace(/^\?/, "").split("&").map(function (kv) { return kv.split("=")[0]; }).filter(Boolean);
+    return keys.some(function (k) { return !NON_PAGE_KEYS.test(k); });
   }
 
   // Marketplaces whose pages show an ASKING price, and a "sold" figure that
@@ -1175,11 +1197,70 @@
   // States where a deed does not show the price, so a "sale price" on the web
   // is a news report or it is the last asking price.
   var NON_DISCLOSURE = { AK: 1, ID: 1, KS: 1, LA: 1, MS: 1, MO: 1, MT: 1, NM: 1, ND: 1, TX: 1, UT: 1, WY: 1 };
-  function stateOf(address) {
-    var m = String(address == null ? "" : address).toUpperCase().match(/,\s*([A-Z]{2})(?:\s+\d{5}(?:-\d{4})?)?\s*$/)
-      || String(address == null ? "" : address).toUpperCase().match(/\s([A-Z]{2})\s+\d{5}(?:-\d{4})?\s*$/);
-    return m ? m[1] : "";
+  // --- Where an address is: its ZIP, its state, its city -------------------
+  // Read off the END of the address, past a trailing country, in the shapes
+  // members and pages write: ", ID 83702", ", ID, 83702", " Boise ID",
+  // ", Idaho", ", ID 83702, USA". The state decides which rule a source is
+  // held to and whether two addresses can be one building, and read only as
+  // ", ST" at the very end it was missed in every other shape: "Springfield
+  // IL" and "Springfield, MO" came out as one place.
+  // A state is looked for only AFTER the street part (the first comma),
+  // because a street's own suffix is not a state: "100 Maple Ct" is a court,
+  // not Connecticut. A spelled-out name counts only with something before it
+  // in that tail, so "..., New York" alone is still the city.
+  var US_STATES = {
+    AL: 1, AK: 1, AZ: 1, AR: 1, CA: 1, CO: 1, CT: 1, DE: 1, FL: 1, GA: 1, HI: 1, ID: 1, IL: 1, IN: 1, IA: 1, KS: 1,
+    KY: 1, LA: 1, ME: 1, MD: 1, MA: 1, MI: 1, MN: 1, MS: 1, MO: 1, MT: 1, NE: 1, NV: 1, NH: 1, NJ: 1, NM: 1, NY: 1,
+    NC: 1, ND: 1, OH: 1, OK: 1, OR: 1, PA: 1, RI: 1, SC: 1, SD: 1, TN: 1, TX: 1, UT: 1, VT: 1, VA: 1, WA: 1, WV: 1,
+    WI: 1, WY: 1, DC: 1,
+  };
+  var STATE_NAMES = {
+    alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA", colorado: "CO",
+    connecticut: "CT", delaware: "DE", florida: "FL", georgia: "GA", hawaii: "HI", idaho: "ID", illinois: "IL",
+    indiana: "IN", iowa: "IA", kansas: "KS", kentucky: "KY", louisiana: "LA", maine: "ME", maryland: "MD",
+    massachusetts: "MA", michigan: "MI", minnesota: "MN", mississippi: "MS", missouri: "MO", montana: "MT",
+    nebraska: "NE", nevada: "NV", "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY",
+    "north carolina": "NC", "north dakota": "ND", ohio: "OH", oklahoma: "OK", oregon: "OR", pennsylvania: "PA",
+    "rhode island": "RI", "south carolina": "SC", "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT",
+    vermont: "VT", virginia: "VA", washington: "WA", "west virginia": "WV", wisconsin: "WI", wyoming: "WY",
+    "district of columbia": "DC",
+  };
+  // Longest first: "west virginia" before "virginia", "arkansas" before "kansas".
+  var STATE_NAME_LIST = Object.keys(STATE_NAMES).sort(function (a, b) { return b.length - a.length; });
+  // { zip, state, head }: head is the address with the country, the ZIP and
+  // the state taken off its end, which is where cityKey reads the city.
+  function placeOf(address) {
+    var s = String(address == null ? "" : address).trim()
+      .replace(/[,\s]+(?:usa|u\.s\.a\.?|u\.s\.|united states(?: of america)?)\.?\s*$/i, "");
+    var zip = "";
+    var z = s.match(/[,\s]\s*(\d{5})(?:-\d{4})?\s*$/);
+    if (z) { zip = z[1]; s = s.slice(0, z.index); }
+    s = s.replace(/[,\s]+$/, "");
+    var state = "", head = s;
+    var comma = s.indexOf(",");
+    if (comma >= 0) {
+      var tail = s.slice(comma + 1);
+      var code = tail.match(/(^|[,\s])([A-Za-z]{2})\.?$/);
+      if (code && US_STATES[code[2].toUpperCase()] === 1) {
+        state = code[2].toUpperCase();
+        head = s.slice(0, s.length - (tail.length - code.index));
+      } else {
+        var low = tail.toLowerCase().replace(/\./g, "");
+        for (var i = 0; i < STATE_NAME_LIST.length && !state; i++) {
+          var name = STATE_NAME_LIST[i];
+          var at = low.length - name.length;
+          if (at < 1 || low.slice(at) !== name || /[a-z]/.test(low.charAt(at - 1))) continue;
+          // Something has to stand before it: a city, or a unit and a city.
+          if (low.slice(0, at).replace(/[,\s]/g, "") === "") continue;
+          state = STATE_NAMES[name];
+          head = s.slice(0, s.length - (tail.length - at));
+        }
+      }
+    }
+    return { zip: zip, state: state, head: head.replace(/[,\s]+$/, "") };
   }
+  function stateOf(address) { return placeOf(address).state; }
+  function zipOf(address) { return placeOf(address).zip; }
 
   // --- Is this sale recorded for THIS building? ---------------------------
   // The street line, taken apart: its number (or range), its name, its
@@ -1196,20 +1277,37 @@
   };
   var STREET_SUFFIX = { ln: 1, st: 1, ave: 1, dr: 1, rd: 1, blvd: 1, ct: 1, pl: 1, pkwy: 1, hwy: 1, cir: 1, ter: 1, trl: 1, sq: 1, way: 1, loop: 1 };
   var STREET_DIR = { n: 1, s: 1, e: 1, w: 1, ne: 1, nw: 1, se: 1, sw: 1 };
-  var UNIT_WORD = /^(?:unit|units|ste|suite|apt|apartment|condo|spc|space|bldg|building|fl|floor|rm|room)$/;
+  // A unit: one of these words, then an identifier that carries a digit or is
+  // one or two letters ("Suite 200", "Apt 4B", "Bldg B", "Units 1-3"). The
+  // identifier rule is what leaves a street NAMED with one of these words
+  // whole: "2101 Space Park Dr" and "5600 Building C Way" are streets.
+  var UNIT_WORDS = "unit|units|ste|suite|suites|apt|apartment|condo|spc|space|bldg|building|fl|floor|rm|room";
+  var UNIT_WORD = new RegExp("^(?:" + UNIT_WORDS + ")$");
+  var UNIT_ID = /^(?=[a-z0-9-]*\d)[a-z0-9-]+$|^[a-z]{1,2}$/;
+  // A whole comma part that is a unit and not a city: "#5", "Suite 200",
+  // "Suite #200", "Building B", "Units 1-3".
+  var UNIT_PART = new RegExp("^(?:#\\s*([a-z0-9-]+)|(?:" + UNIT_WORDS + ")\\s*#?\\s*([a-z0-9-]+))$");
+  // Every dash a page sets a range with, read as the hyphen a keyboard types.
+  function plainDashes(text) { return String(text == null ? "" : text).replace(/[‐-―−]/g, "-"); }
+  function unitOfPart(part) {
+    var m = plainDashes(part).toLowerCase().replace(/[^\w\s#-]/g, " ").replace(/\s+/g, " ").trim().match(UNIT_PART);
+    if (!m) return "";
+    return m[1] || (UNIT_ID.test(m[2]) ? m[2] : "");
+  }
+  function foldWord(w) { return Object.prototype.hasOwnProperty.call(STREET_FOLD, w) ? STREET_FOLD[w] : w; }
   function streetKey(address) {
-    return String((String(address == null ? "" : address).split(",")[0]) || "")
-      .toLowerCase().replace(/[^\w\s]/g, " ").trim().split(/\s+/).filter(Boolean)
-      .map(function (w) { return Object.prototype.hasOwnProperty.call(STREET_FOLD, w) ? STREET_FOLD[w] : w; })
-      .join(" ");
+    return String((plainDashes(address).split(",")[0]) || "")
+      .toLowerCase().replace(/[^\w\s]/g, " ").trim().split(/\s+/).filter(Boolean).map(foldWord).join(" ");
   }
   // { lo, hi, name, dir, suffix, unit } or null when the line does not start
-  // with a street number. "23126-23170 Valencia Blvd" is a range; a unit
-  // ("Suite 101", "#5", or the comma part after the street) is kept apart.
+  // with a street number. "23126-23170 Valencia Blvd" is a range. A unit is
+  // kept apart wherever it is written: a word and an identifier on the line
+  // ("Suite 101"), a "#", the comma part after the street, or a letter on the
+  // number itself ("2020B" is not "2020A", and neither is "2020").
   function streetParts(address) {
-    var segs = String(address == null ? "" : address).split(",");
+    var segs = plainDashes(address).split(",");
     var line = String(segs[0] || "").toLowerCase();
-    var num = line.match(/^\s*(\d+)(?:\s*-\s*(\d+))?[a-z]?(?=\s|$)/);
+    var num = line.match(/^\s*(\d+)(?:\s*-\s*(\d+))?([a-z])?(?=\s|$)/);
     if (!num) return null;
     var lo = Number(num[1]), hi = num[2] ? Number(num[2]) : lo;
     // A pair that runs DOWN is not a range, it is one hyphenated house number
@@ -1218,73 +1316,90 @@
     // the block. It is kept as the one number sites that drop the hyphen
     // write ("3718").
     if (hi < lo) { lo = Number(num[1] + num[2]); hi = lo; }
+    var units = num[3] ? [num[3]] : [];
     line = line.slice(num[0].length);
-    var unit = "";
     var hash = line.match(/#\s*([a-z0-9-]+)/);
-    if (hash) { unit = hash[1]; line = line.replace(hash[0], " "); }
-    var rest = line.replace(/[^\w\s]/g, " ").trim().split(/\s+/).filter(Boolean)
-      .map(function (w) { return Object.prototype.hasOwnProperty.call(STREET_FOLD, w) ? STREET_FOLD[w] : w; });
-    for (var i = 0; i < rest.length; i++) {
-      if (UNIT_WORD.test(rest[i]) && i + 1 < rest.length) { unit = unit || rest[i + 1]; rest = rest.slice(0, i); break; }
+    if (hash) { units.push(hash[1]); line = line.replace(hash[0], " "); }
+    var toks = line.replace(/[^\w\s-]/g, " ").trim().split(/\s+/).filter(Boolean);
+    // "Suite #200": the "#" took the identifier and left the word behind.
+    if (hash && toks.length > 1 && UNIT_WORD.test(toks[toks.length - 1])) toks.pop();
+    // Never the first word (a street line needs a name ahead of its unit),
+    // and only with an identifier behind it.
+    for (var i = 1; i + 1 < toks.length; i++) {
+      if (UNIT_WORD.test(toks[i]) && UNIT_ID.test(toks[i + 1])) { units.push(toks[i + 1]); toks = toks.slice(0, i); break; }
     }
-    // The comma part right after the street, when it is a unit and not a city.
-    var second = String(segs[1] || "").toLowerCase().replace(/[^\w\s#-]/g, " ").trim();
-    var su = second.match(/^(?:#\s*([a-z0-9-]+)|(?:unit|ste|suite|apt|apartment|condo|spc|space)\s+([a-z0-9-]+))$/);
-    if (su) unit = unit || su[1] || su[2];
-    var dirs = rest.filter(function (w) { return STREET_DIR[w] === 1; });
-    var suffix = rest.length && STREET_SUFFIX[rest[rest.length - 1]] === 1 ? rest[rest.length - 1] : "";
-    var name = rest.filter(function (w, k) { return STREET_DIR[w] !== 1 && !(suffix && k === rest.length - 1); }).join(" ");
-    if (!name) name = rest.join(" ");
-    return { lo: lo, hi: hi, name: name, dir: dirs.join(" "), suffix: suffix, unit: String(unit || "") };
+    var part = unitOfPart(segs[1]);
+    if (part) units.push(part);
+    var words = [];
+    toks.forEach(function (t) { t.split("-").forEach(function (w) { if (w) words.push(foldWord(w)); }); });
+    var dirs = words.filter(function (w) { return STREET_DIR[w] === 1; });
+    // The suffix is the last word that is not a directional, so "Dr E" and
+    // "Ave NW" keep theirs.
+    var core = words.filter(function (w) { return STREET_DIR[w] !== 1; });
+    var suffix = core.length > 1 && STREET_SUFFIX[core[core.length - 1]] === 1 ? core[core.length - 1] : "";
+    var name = (suffix ? core.slice(0, -1) : core).join(" ");
+    if (!name) name = words.join(" ");
+    return { lo: lo, hi: hi, name: name, dir: dirs.join(" "), suffix: suffix, unit: units.join(" ") };
   }
   // The city as written (the comma part that is not a unit), folded; "" when
-  // the address names none. And the ZIP, when there is one.
+  // the address names none.
   function cityKey(address) {
-    var parts = String(address == null ? "" : address).split(",").slice(1)
-      .map(function (p) { return p.toLowerCase().replace(/[^\w\s#]/g, " ").replace(/\s+/g, " ").trim(); })
-      .filter(function (p) { return p && !/^(?:#|unit|ste|suite|apt|apartment|condo|spc|space)\b/.test(p); });
+    var parts = plainDashes(placeOf(address).head).split(",").slice(1)
+      .filter(function (p) { return unitOfPart(p) === ""; })
+      .map(function (p) { return p.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim(); })
+      .filter(Boolean);
     if (!parts.length) return "";
-    var toks = parts[0].replace(/\s+\d{5}(?:\s\d{4})?$/, "").split(" ");
-    // "Boise ID": the state rode in on the city's own comma part.
-    if (toks.length > 1 && /^[a-z]{2}$/.test(toks[toks.length - 1])) toks.pop();
-    return toks.join(" ").replace(/\bsaint\b/g, "st").replace(/\bfort\b/g, "ft").replace(/\bmount\b/g, "mt").trim();
-  }
-  function zipOf(address) {
-    var m = String(address == null ? "" : address).match(/\b(\d{5})(?:-\d{4})?\s*$/);
-    return m ? m[1] : "";
+    return parts[0].replace(/\bsaint\b/g, "st").replace(/\bfort\b/g, "ft").replace(/\bmount\b/g, "mt").trim();
   }
   // One street line names the other's building: the same name, a number that
   // is the same or inside the other's range, and no directional or suffix
   // that CONTRADICTS (one side leaving either out is not a contradiction).
   // Two RANGES have to be the same range: "37-52 82nd St" and "37-60 82nd St"
   // are two Queens house numbers that happen to run upward, and read as
-  // overlapping ranges they would be one building. Units are not compared
-  // here.
+  // overlapping ranges they would be one building. And one number against a
+  // range that runs even to even (or odd to odd) has to be on that side of
+  // the street: the odd numbers inside it are the buildings opposite. Units
+  // are not compared here.
   function sameStreetLine(pa, pb) {
     if (!pa || !pb || !pa.name || pa.name !== pb.name) return false;
-    if (pa.hi !== pa.lo && pb.hi !== pb.lo) {
+    var ra = pa.hi !== pa.lo, rb = pb.hi !== pb.lo;
+    if (ra && rb) {
       if (pa.lo !== pb.lo || pa.hi !== pb.hi) return false;
-    } else if (pa.hi < pb.lo || pb.hi < pa.lo) return false;
+    } else if (pa.hi < pb.lo || pb.hi < pa.lo) {
+      return false;
+    } else if (ra !== rb) {
+      var range = ra ? pa : pb, one = ra ? pb : pa;
+      if (range.lo % 2 === range.hi % 2 && one.lo % 2 !== range.lo % 2) return false;
+    }
     if (pa.dir && pb.dir && pa.dir !== pb.dir) return false;
     if (pa.suffix && pb.suffix && pa.suffix !== pb.suffix) return false;
     return true;
   }
-  // The same place: a shared ZIP settles it either way; else the same city,
-  // or one side naming none (a postal city and a locality are two names for
-  // one building: "Fleming Island" and "Orange Park").
-  function samePlace(a, b) {
-    var za = zipOf(a), zb = zipOf(b);
-    if (za && zb) return za === zb;
-    var sa = stateOf(a), sb = stateOf(b);
-    if (sa && sb && sa !== sb) return false;
+  // The same place. A shared ZIP settles it (a postal city and a locality are
+  // two names for one building: "Fleming Island" and "Orange Park"). Two
+  // different states never are. Otherwise the same city, or one side naming
+  // none.
+  // Two DIFFERENT ZIPs are two places for the purpose of LEANING on a sale,
+  // even under one city's name: a city can hold a "100 N Main St" and a
+  // "100 S Main St", written without the directional they differ only by
+  // ZIP, and a wrong sale leaned on is the costliest mistake here.
+  // `loose` drops that one test, for the callers that only take a building's
+  // own sale OUT of its comps (ownSaleFrom, the prompt's corpus rows, the
+  // radius blend): two searches wrote one Caldwell warehouse with two ZIPs,
+  // and leaving a building among its own comps is the worse error there.
+  function samePlace(a, b, loose) {
+    var pa = placeOf(a), pb = placeOf(b);
+    if (pa.zip && pb.zip && pa.zip === pb.zip) return true;
+    if (pa.state && pb.state && pa.state !== pb.state) return false;
+    if (pa.zip && pb.zip && loose !== true) return false;
     var ca = cityKey(a), cb = cityKey(b);
     return ca === "" || cb === "" || ca === cb;
   }
   // Two addresses name one building, units and all. "100 Main St Unit 5" is
   // not "100 Main St": a unit is not the building.
-  function sameBuilding(a, b) {
+  function sameBuilding(a, b, loose) {
     var pa = streetParts(a), pb = streetParts(b);
-    return sameStreetLine(pa, pb) && pa.unit === pb.unit && samePlace(a, b);
+    return sameStreetLine(pa, pb) && pa.unit === pb.unit && samePlace(a, b, loose === true);
   }
 
   // How good the sale's SOURCE is: { ok, half } with a `why` for the page.
@@ -1492,7 +1607,7 @@
     var own = [], comps = [];
     all.forEach(function (c) {
       var same = c && typeof c === "object" && isSale(c)
-        && names.some(function (a) { return sameBuilding(c.address, a); });
+        && names.some(function (a) { return sameBuilding(c.address, a, true); });
       (same ? own : comps).push(c);
     });
     var reported = r.subject_last_sale && typeof r.subject_last_sale === "object" ? r.subject_last_sale : null;
@@ -1529,7 +1644,7 @@
 
   return {
     moneyOf, saleDateMs, ownSaleWeight, ownSaleSpread, ownSaleIndex, ownSaleBasis, ownSaleSource, specificPage,
-    isListingHost, stateOf, streetParts, sameStreetLine, samePlace,
+    isListingHost, stateOf, zipOf, placeOf, cityKey, unitOfPart, streetParts, sameStreetLine, samePlace,
     ownSaleAnchor, valueWithOwnSale, ownSaleFrom, streetKey, sameBuilding,
     OWN_SALE_MAX_YEARS, OWN_SALE_FULL_YEARS, OWN_SALE_WEIGHT_NEW, OWN_SALE_HALF, OWN_SALE_MIN_WEIGHT,
     OWN_SALE_DISAGREE, OWN_SALE_COMPS_PULL, OWN_SALE_MIN_PRICE,

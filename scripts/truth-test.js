@@ -112,7 +112,7 @@ const pct = (v, d) => (v == null ? "-" : (v * 100).toFixed(d == null ? 1 : d) + 
 // (number ranges, units, the place). Taking out one comp too many costs a
 // comp; leaving the subject's sale in grades the report on a price it was
 // shown.
-const sameBuilding = (a, b) => BACKTEST.normAddress(a) === BACKTEST.normAddress(b) || VALUATION.sameBuilding(a, b);
+const sameBuilding = (a, b) => BACKTEST.normAddress(a) === BACKTEST.normAddress(b) || VALUATION.sameBuilding(a, b, true);
 
 // The answer-key checks (scripts/truth-set.json). "asking" is not a sale.
 const CHECKS = ["confirmed", "unverified", "asking"];

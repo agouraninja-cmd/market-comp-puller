@@ -84,6 +84,12 @@ test("saleDateMs reads the shapes a closing date is written in", () => {
   // 2024 had a 29 February, so the impossible-day refusal below is a real
   // calendar check and not a ceiling on the day number.
   assert.equal(V.saleDateMs("2024-02-29"), Date.UTC(2024, 1, 29));
+  assert.equal(V.saleDateMs("Feb 29, 2024"), new Date(2024, 1, 29).getTime());
+  // Every spelling of a month the refusal of look-alike words must still let
+  // through, the four-letter "Sept" and a trailing period included.
+  assert.equal(V.saleDateMs("Sept 2025"), new Date(2025, 8, 1).getTime());
+  assert.equal(V.saleDateMs("Sep. 2025"), new Date(2025, 8, 1).getTime());
+  assert.equal(V.saleDateMs("September 2025"), new Date(2025, 8, 1).getTime());
 });
 
 // Date.parse alone answers "sometime in 2021" with a January nothing claimed
@@ -99,6 +105,13 @@ test("saleDateMs refuses a date it would have to guess", () => {
     "sometime in 2021", "early 2021", "Spring 2021",       // words around a year
     "2025-02-30", "2025/02/30", "2025-02-29",              // days that do not exist (2025 is no leap year)
     "2025-13-01", "13/2025", "Q5 2025",                    // nor does a 13th month or a 5th quarter
+    // Date.parse rolls these into the next month too, in every shape that
+    // names a day, not only the year-first one.
+    "2/30/2025", "Feb 30, 2025", "30 Feb 2025", "June 31, 2025",
+    // A word that STARTS like a month is not one. Date.parse reads its first
+    // three letters, so a sale "Marketed 2024" was a March 2024 closing and
+    // leaned on at whatever weight that age gave it.
+    "Marketed 2024", "Decided 2020", "Mayor 2021", "Junk 2022",
     "Active", "Listed Mar 2025",                           // on the market, not sold
     "", "   ",
   ];
@@ -186,6 +199,29 @@ test("specificPage passes a page that could state the sale and nothing else", ()
   for (const value of [null, undefined, 42]) assert.equal(V.specificPage(value), false, String(value));
 });
 
+// A sale cited to a search engine's results was leaned on at full weight,
+// because any query string made the link "specific". A search is still a
+// search and an index still an index whatever rides behind the "?", and with
+// no path at all only a query that names a record is a page.
+test("specificPage is not fooled by a query string", () => {
+  const notPages = [
+    "https://www.google.com/search?q=14+e+washington+st+orlando+sold",
+    "https://example.com/listings?page=2",
+    "https://example.com/properties?sort=price",
+    "https://example.com/?utm_source=newsletter",           // the front door, tracked
+    "https://duckduckgo.com/?q=100+main+st+sold",           // a search box with no path
+    "https://example.com/?utm_source=x&gclid=abc",
+  ];
+  for (const url of notPages) assert.equal(V.specificPage(url), false, url);
+  const pages = [
+    "https://county.example.gov/?parcel=R123",              // how some county sites address a record
+    "https://county.example.gov/?utm_source=x&parcel=R123", // a tracker beside it changes nothing
+    "https://example.com/news/100-main-st-sells?utm_source=newsletter",
+    "https://example.com/properties/100-main-st?ref=home",
+  ];
+  for (const url of pages) assert.equal(V.specificPage(url), true, url);
+});
+
 // A marketplace page shows an ASKING price, and its "sold" figure is often
 // the last ask, so a sale cited to one counts for half. The match is on the
 // host and is label-bounded: loosened to a substring it would halve a real
@@ -228,6 +264,45 @@ test("stateOf reads the state off the end of an address, with or without a ZIP",
   }
 });
 
+// The subject's address is what a member typed, and the sale's is what a page
+// printed. Read only as ", ST" at the very end, the state was missed in every
+// other shape, and then two things went wrong at once: the same street line
+// in two states was one building, and a non-disclosure state's price was
+// never halved.
+test("stateOf and zipOf read the shapes people and pages write", () => {
+  const idaho = [
+    "100 Main St, Boise ID",                 // no comma before the state
+    "100 Main St, Boise, ID, 83702",         // a comma before the ZIP
+    "100 Main St, Boise, ID 83702, USA",     // a country behind it
+    "100 Main St, Boise, ID 83702, United States",
+    "100 Main St, Boise, Idaho 83702",       // spelled out
+    "100 Main St, Boise, Id.",
+    "100 Main St, Suite 200, Boise, ID",
+  ];
+  for (const text of idaho) assert.equal(V.stateOf(text), "ID", text);
+  assert.equal(V.zipOf("100 Main St, Boise, ID 83702, USA"), "83702");
+  assert.equal(V.zipOf("100 Main St, Boise, ID, 83702-1234"), "83702");
+  assert.equal(V.zipOf("83702 Main St, Boise, ID"), "", "a street number is not a ZIP");
+  // The longer name wins: Arkansas is not Kansas, West Virginia not Virginia.
+  assert.equal(V.stateOf("100 Main St, Little Rock, Arkansas"), "AR");
+  assert.equal(V.stateOf("100 Main St, Charleston, West Virginia"), "WV");
+  assert.equal(V.stateOf("100 Main St, Kansas City, Kansas"), "KS");
+  // A city that shares its state's name, written with no state, is still the
+  // city: read as the state it would leave the address with no city at all,
+  // and an address with no city matches any.
+  assert.equal(V.stateOf("100 Main St, New York"), "");
+  assert.equal(V.cityKey("100 Main St, New York"), "new york");
+  assert.equal(V.cityKey("100 Main St, New York, New York"), "new york");
+  // The city is read past a unit's own comma part, and without its state.
+  assert.equal(V.cityKey("100 Main St, Building B, Boise, ID 83702"), "boise");
+  assert.equal(V.cityKey("100 Main St, Kansas City MO"), "kansas city");
+  assert.equal(V.cityKey("100 Main St"), "");
+  // And the half weight follows: this is the same sale and the same state.
+  const record = { source_url: "https://www.bizjournals.com/boise/news/2026/06/14/100-main-st-sells.html", source_type: "public_record" };
+  assert.deepEqual(V.ownSaleSource(record, "100 Main St, Boise ID"), { ok: true, half: "non_disclosure" });
+  assert.deepEqual(V.ownSaleSource(record, "100 Main St, Boise, Idaho 83702, USA"), { ok: true, half: "non_disclosure" });
+});
+
 // --- the street line -------------------------------------------------------
 
 // Two searches wrote one Caldwell warehouse two ways, "Lane" and "Ln" (and
@@ -265,6 +340,65 @@ test("streetParts takes a street line apart: number or range, name, directional,
   for (const text of ["Main St, Boise, ID", "Financial District (general submarket estimate)", "", null, undefined]) {
     assert.equal(V.streetParts(text), null, JSON.stringify(text));
   }
+});
+
+// Each of these was one unit's address read as the whole building's, so a
+// suite's sale was leaned on at full weight for the building: the unit was
+// only seen on the street line, or in its own comma part in two spellings.
+test("a unit is kept apart however it is written", () => {
+  const whole = "100 Main St, Boise, ID 83702";
+  const units = [
+    ["100 Main St, Suite #200, Boise, ID 83702", "200"],   // a "#" behind the word
+    ["100 Main St, Unit #5, Boise, ID 83702", "5"],
+    ["100 Main St Suite #200, Boise, ID 83702", "200"],
+    ["100 Main St, Building B, Boise, ID 83702", "b"],     // words the comma part did not know
+    ["100 Main St, Bldg 2, Boise, ID 83702", "2"],
+    ["100 Main St, Floor 2, Boise, ID 83702", "2"],
+    ["100 Main St, Rm 5, Boise, ID 83702", "5"],
+    ["100 Main St, Suites 200-210, Boise, ID 83702", "200-210"],
+    ["100 Main St, Units 1-3, Boise, ID 83702", "1-3"],
+  ];
+  for (const [text, unit] of units) {
+    assert.equal(V.streetParts(text).unit, unit, text);
+    same(text, whole, false, "one unit is not the building");
+  }
+  same("100 Main St, Suite #200, Boise, ID", "100 Main St Ste 200, Boise, ID", true, "one suite, written two ways");
+  // A letter on the number is its own address: 2020B is neither 2020A nor 2020.
+  assert.deepEqual(V.streetParts("2020B Airport Way"), { lo: 2020, hi: 2020, name: "airport", dir: "", suffix: "way", unit: "b" });
+  same("2020B Airport Way, Boise, ID 83705", "2020A Airport Way, Boise, ID 83705", false);
+  same("100A Main St, Boise, ID", "100 Main St, Boise, ID", false);
+  same("100A Main St, Boise, ID", "100A Main Street, Boise, ID 83702", true);
+});
+
+// The other direction: a street NAMED with a unit's word lost its name to
+// the unit scan and matched nothing, not even itself. A unit needs a name
+// ahead of it and an identifier behind it (a digit, or one or two letters).
+test("a street named Space, Building or Suite is still a street", () => {
+  assert.deepEqual(V.streetParts("2101 Space Park Dr, Houston, TX"),
+    { lo: 2101, hi: 2101, name: "space park", dir: "", suffix: "dr", unit: "" });
+  same("2101 Space Park Dr, Houston, TX", "2101 Space Park Drive, Houston, TX 77058", true);
+  same("5600 Building C Way, Denver, CO 80239", "5600 Building C Way, Denver, CO", true);
+  // And a real unit on such a street is still seen.
+  same("2101 Space Park Dr Suite 100, Houston, TX", "2101 Space Park Dr, Houston, TX", false);
+});
+
+// Pages set a range with an en dash, and the prompt asks for the sale's
+// address exactly as the page gives it. Unread, the range matched nothing.
+test("a range set with an en dash is the same range", () => {
+  same("23126\u201323170 Valencia Blvd, Valencia, CA", "23126 Valencia Blvd, Valencia, CA", true);
+  same("23126\u201323170 Valencia Blvd, Valencia, CA", "23126-23170 Valencia Blvd, Valencia, CA", true);
+});
+
+// "Dr E" and "Ave NW": with the suffix looked for only as the last word, the
+// suffix became part of the street's name and a good sale was refused as
+// another address. One side leaving the directional out is not a
+// contradiction; two different ones still are.
+test("a directional written after the suffix is still a directional", () => {
+  assert.deepEqual(V.streetParts("76 Inverness Dr E"), { lo: 76, hi: 76, name: "inverness", dir: "e", suffix: "dr", unit: "" });
+  same("76 Inverness Dr E, Englewood, CO", "76 Inverness Dr, Englewood, CO", true);
+  same("76 E Inverness Dr, Englewood, CO", "76 Inverness Dr E, Englewood, CO", true);
+  same("1600 Pennsylvania Ave NW, Washington, DC", "1600 Pennsylvania Avenue, Washington, DC", true);
+  same("76 Inverness Dr E, Englewood, CO", "76 Inverness Dr W, Englewood, CO", false, "east is not west");
 });
 
 // Queens, New York writes ONE house number with a hyphen: "37-18 Northern
@@ -321,6 +455,13 @@ test("a number inside the other address's range is the same building, and one ou
   for (const outside of [23124, 23172]) same(range, at(outside), false);
   same(range, "23126 - 23170 Valencia Boulevard, Valencia, CA 91355", true, "the same range, respelled");
   same(range, at("23126-23150"), false, "two ranges must be the same range");
+  // On a US street the odd numbers are across the road. A range that runs
+  // even to even holds only its own side's numbers, so 23151 is the building
+  // opposite, not this one.
+  for (const opposite of [23127, 23151, 23169]) same(range, at(opposite), false, "the other side of the street");
+  // A range that runs across both parities says nothing about sides.
+  same("100-125 Main St, Boise, ID", "111 Main St, Boise, ID", true);
+  same("100-125 Main St, Boise, ID", "112 Main St, Boise, ID", true);
 });
 
 // "100 Main St Unit 5" is not "100 Main St": one condo's price over the
@@ -348,6 +489,39 @@ test("the same street line in another city or state is not the same building", (
   same("100 Main St, Springfield, IL", "100 Main St, Springfield, MO", false);
   same("100 Main St, Portland, OR 97204", "100 Main St, Portland, ME", false);
   same("100 Main St, Kansas City, MO 64105", "100 Main St, Kansas City, KS 66101", false);
+});
+
+// The same five addresses as above, with the state written the ways a member
+// types it. Each pair was "one building" while the state went unread.
+test("another state is another building however the state is written", () => {
+  same("100 Main St, Springfield IL", "100 Main St, Springfield, MO 65806", false);
+  same("100 Main St, Kansas City MO", "100 Main St, Kansas City, KS 66101", false);
+  same("100 Main St, Springfield, IL 62701, USA", "100 Main St, Springfield, MO 65806, USA", false);
+  same("100 Main St, Springfield, Illinois", "100 Main St, Springfield, Missouri", false);
+  same("100 MAIN ST, SPRINGFIELD, IL, 62701", "100 Main St, Springfield, MO", false);
+  // And one state written two ways is one state.
+  same("100 Main St, Springfield IL", "100 Main St, Springfield, Illinois 62701", true);
+  same("100 Main St, Charleston, West Virginia", "100 Main St, Charleston, WV", true);
+  same("100 Main St, Charleston, West Virginia", "100 Main St, Charleston, VA", false);
+});
+
+// Two different ZIPs under one city's name. For LEANING on a sale that is
+// two places: a city can hold a "100 N Main St" and a "100 S Main St", and
+// written without the directional they differ only by ZIP. For taking a
+// building's own sale OUT of its comps (the third argument) it is one place:
+// two searches wrote one Caldwell warehouse with two ZIPs, and leaving a
+// building among its own comps is the worse mistake there.
+test("one city, two ZIPs: two places to lean on, one building to take out of its own comps", () => {
+  const a = "19127 Red Label Lane, Caldwell, ID 83607", b = "19127 Red Label Ln, Caldwell, ID 83605";
+  same(a, b, false);
+  assert.equal(V.sameBuilding(a, b, true), true);
+  assert.equal(V.sameBuilding(b, a, true), true);
+  // Loose is only loose about the ZIP: another city, state, number or unit
+  // is still another building.
+  assert.equal(V.sameBuilding(a, "19127 Red Label Ln, Nampa, ID 83605", true), false);
+  assert.equal(V.sameBuilding(a, "19127 Red Label Ln, Caldwell, OR 97000", true), false);
+  assert.equal(V.sameBuilding(a, "19129 Red Label Ln, Caldwell, ID 83605", true), false);
+  assert.equal(V.sameBuilding(a, "19127 Red Label Ln Unit 2, Caldwell, ID 83605", true), false);
 });
 
 // A postal city and a locality are two names for one building ("Fleming

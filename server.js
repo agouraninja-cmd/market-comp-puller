@@ -10371,7 +10371,9 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   // cited their own saved row's URL character for character. The search
   // finds the building's sale on the web, with a page that states it, or the
   // report does not lean on one.
-  const notTheTarget = (c) => !(c && VALUATION.sameBuilding(c.address, address));
+  // Matched loosely (the third argument): one building saved under two ZIPs
+  // is still the target, and withholding a row costs the model one candidate.
+  const notTheTarget = (c) => !(c && VALUATION.sameBuilding(c.address, address, true));
   if (Array.isArray(corpusComps)) corpusComps = corpusComps.filter(notTheTarget);
   if (Array.isArray(corpusNearby)) corpusNearby = corpusNearby.filter(notTheTarget);
   if (Array.isArray(corpusListed)) corpusListed = corpusListed.filter(notTheTarget);

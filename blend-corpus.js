@@ -330,7 +330,7 @@ function blendNearbyComps(report, rows, opts) {
     // sale"), so blended back in it would be counted twice. A LEASE at the
     // subject's address stays: a suite let in the building is a real lease
     // comp for it.
-    if (!isLeaseRow(row) && subjectNames.some((a) => sameBuilding(row.address, a))) continue;
+    if (!isLeaseRow(row) && subjectNames.some((a) => sameBuilding(row.address, a, true))) continue;
     if (subjectPsf > 0 && !samePriceTier(salePsfOf(row), subjectPsf)) continue;
     if (manufactured !== null && isManufacturedHome(row) !== manufactured) continue;
     const shaped = toReportComp(row);

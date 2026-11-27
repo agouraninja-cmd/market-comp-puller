@@ -83,7 +83,12 @@ const WIDER_SEARCH_BELOW = 4;
 // Which set-aside comps are still real deals worth keeping in the corpus.
 // A different size or a farther location is a perfectly good comp for some
 // OTHER subject; a dead source or a condo unit is not one we want to store.
-const HARVESTABLE_REASONS = new Set(["size", "distance"]);
+// "own_sale" (2026-11-27) is not a comp-fit cut at all: it is the SUBJECT's
+// own sale, which came back among its comps and was taken out by the server's
+// settleOwnSale because a building is not a comp of itself. It is still a
+// real deal and the next building over's best comp, and until that date it
+// was harvested as the comp it arrived as, so it still is.
+const HARVESTABLE_REASONS = new Set(["size", "distance", "own_sale"]);
 
 function num(v) {
   if (v == null) return NaN;

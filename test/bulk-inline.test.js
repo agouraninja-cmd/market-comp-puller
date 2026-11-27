@@ -816,7 +816,9 @@ test("the form is short, keeps every field, and the note still says what a figur
   assert.ok(MOD.BULK_JS.includes("box.value=box.placeholder;"), "the empty box no longer fits its examples");
   assert.match(MOD.BULK_JS, /ta\.placeholder=list&&list\.length\?[^;]*;\s*fitBox\(\);/, "new example addresses no longer re-fit the box");
   // CLAUDE.md's rule, on the one sentence the note is now.
-  assert.match(page, /<p class="foot">Every figure is an automated estimate from comparable sales, not an appraisal\./);
+  // Since 2026-11-27 a row can lean on the building's own sale (bulk.js
+  // valueFromReport), and the sentence that says what a figure is says so.
+  assert.match(page, /<p class="foot">Every figure is an automated estimate from comparable sales and, where there is one, the building's own recent sale, not an appraisal\./);
   // The red button takes the fill red: the link red lightens on a dark page
   // and white words on it were pale pink.
   assert.match(MOD.BULK_CSS, /\.bulk button\.go\{[^}]*background:var\(--red-fill\)/);

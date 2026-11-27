@@ -576,7 +576,7 @@ function renderBulkPageBody(boot) {
     <!-- One sentence since 2026-11-15 (the owner's pick of Draft D). It must
          keep saying what a figure is: an automated estimate, never an
          appraisal. -->
-    <p class="foot">Every figure is an automated estimate from comparable sales, not an appraisal.
+    <p class="foot">Every figure is an automated estimate from comparable sales and, where there is one, the building's own recent sale, not an appraisal.
       Open a row to see its comps and how the range was reached.</p>
   </div>
 </div>

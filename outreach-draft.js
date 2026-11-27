@@ -210,7 +210,13 @@ function renderEmail({ address, city, type, url, report, from } = {}) {
     url,
     ``,
     what
-      ? `It is ${what} nearby, with the source cited on every one, and a value range built from them.`
+      // "for the building", and not "built from them" as it read until
+      // 2026-11-27: the outreach list is buildings that recently sold, and a
+      // report on one of those usually leans on that sale (valuation.js, "The
+      // building's own sale"), where "built from the comps" would describe a
+      // tenth of the figure. This file cannot know which way one report went
+      // (the sale can be refused), so the sentence claims neither.
+      ? `It is ${what} nearby, with the source cited on every one, and a value range for the building.`
       : `It is the recent ${where} activity nearby, with the source cited on every one.`,
     `The link opens without a signup.`,
     ``,

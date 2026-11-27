@@ -130,4 +130,72 @@ function applyLinkVerdicts(payload, verdictsByUrl) {
   return demoted;
 }
 
-module.exports = { BLOCKED_HOSTS, PARKING_HOSTS, checkableUrl, hostClass, verdictFor, isParked, parkingHost, applyLinkVerdicts };
+// ---------------------------------------------------------------------------
+// Does a page STATE a sale price? (2026-11-27)
+//
+// The link check above proves a page exists. That was enough for a comp, one
+// vote among several. It is not enough for the subject's OWN sale, which can
+// now carry most of a value (valuation.js, "The building's own sale"): the
+// audit behind that rule found a sale "cited" to an article that said the
+// terms were not disclosed, and an asking price cited to a company's home
+// page. So for that ONE url the server reads the page and asks whether it
+// says the price.
+//
+//   "states"   the price is on the page
+//   "absent"   the page is about this property (its street number and street
+//              are on it) and the price is NOT: the search put a number on a
+//              page that does not carry it. The sale is not leaned on.
+//   "unknown"  anything else: a page that would not load, a script shell with
+//              no text, a page that names neither. No evidence either way,
+//              and no penalty, the doctrine above: under-claim, never
+//              over-claim.
+//
+// The price is looked for the ways a deal page writes it: in full
+// ("$12,625,000", "12625000"), and rounded in millions the way a headline
+// does ("$12.625 million", "$12.63M", "$12.6 MM"), or thousands under a
+// million ("$975K"). A bare "13 million" for $12.6M is NOT accepted: one
+// digit of rounding is a different number.
+// ---------------------------------------------------------------------------
+function pageText(html) {
+  return String(html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ").replace(/&#36;|&dollar;/gi, "$").replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ").toLowerCase();
+}
+function priceForms(price) {
+  const p = Math.round(Number(price));
+  if (!(p >= 1000)) return [];
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const forms = [esc(p.toLocaleString("en-US")), String(p)];
+  const short = (n, unit) => {
+    const seen = new Set();
+    for (const d of [3, 2, 1, 0]) {
+      const fixed = n.toFixed(d);
+      const s = fixed.includes(".") ? fixed.replace(/\.?0+$/, "") : fixed;
+      // A rounding that drops more than half a percent is another number.
+      if (seen.has(s) || Math.abs(Number(s) - n) / n > 0.005) continue;
+      seen.add(s);
+      forms.push(esc(s) + "\\s*(?:" + unit + ")(?![a-z])");
+    }
+  };
+  if (p >= 1e6) short(p / 1e6, "million|mil|mm|m");
+  else short(p / 1e3, "thousand|k");
+  return forms;
+}
+function pageStatesPrice(html, price, address) {
+  const text = pageText(html);
+  if (text.length < 200) return "unknown";
+  const forms = priceForms(price);
+  if (!forms.length) return "unknown";
+  if (forms.some((f) => new RegExp("(?:^|[^0-9.,])" + f + "(?![0-9])").test(text))) return "states";
+  // Is the page about this property at all? Its street number, then the
+  // first word of its street within a few words.
+  const m = String(address || "").toLowerCase().match(/^\s*(\d+)(?:\s*-\s*\d+)?\s+(?:[nsew]\.?\s+)?([a-z0-9]+)/);
+  if (!m) return "unknown";
+  const about = new RegExp("(?:^|[^0-9])" + m[1] + "(?:\\s*-\\s*\\d+)?\\s+(?:[a-z.]+\\s+){0,2}" + m[2].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(text);
+  return about ? "absent" : "unknown";
+}
+
+module.exports = { BLOCKED_HOSTS, PARKING_HOSTS, checkableUrl, hostClass, verdictFor, isParked, parkingHost, applyLinkVerdicts,
+  pageStatesPrice, priceForms, pageText };

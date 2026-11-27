@@ -73,7 +73,8 @@ function faqEntries(pricing = {}) {
     // one at the bottom has buried it.
     ["Is this an appraisal?",
      "No, and we won’t pretend otherwise. A report is an automated estimate built from comparable " +
-     "sales, and it says so on the page and in the export. A lender, a court or the IRS wants a " +
+     "sales and, when the building itself sold recently, from that sale, and it says so on the page " +
+     "and in the export. A lender, a court or the IRS wants a " +
      "licensed appraisal — when you need one, or a licensed opinion of value, we connect you with " +
      "brokers who work that market. Everything short of that is what this is for: pricing a " +
      "listing, checking a seller’s number, deciding whether an offer is worth a drive."],
@@ -91,11 +92,27 @@ function faqEntries(pricing = {}) {
     //     includedComps() feeds the math, and excluding a comp moves the hero
     //     and re-renders the trust line with its "N of M" count.
     // Do not soften either sentence without re-checking those two.
+    //
+    // REWRITTEN 2026-11-27, because the first two sentences stopped being true
+    // twice over. (1) "As accurate as the comps underneath it" is no longer
+    // how every estimate is made: a building that itself sold recently is
+    // valued from that sale first (valuation.js, "The building's own sale").
+    // (2) "the likely number lands close" claimed more than was ever
+    // measured: scripts/truth-test.js put comps-only estimates a typical 28%
+    // to 33% from the sale price on 45 sold commercial buildings (28% on the
+    // 30 whose sale a second look at the web confirmed). The answer now says
+    // which of the two a report is and promises neither a figure nor
+    // closeness. It quotes NO percentage on purpose: a sold building's
+    // estimate lands near its price because it starts from that price, which
+    // is not accuracy, and must never be printed as if it were.
     ["How accurate is it?",
-     "As accurate as the comps underneath it, which is exactly why we show you all of them. Where " +
-     "similar buildings have traded recently, the likely number lands close. Where they haven’t, " +
-     "the range widens and the report tells you it is thin rather than hiding it behind a single " +
-     "confident figure. If a comp doesn’t belong, drop it and the range recalculates."],
+     "It depends on what the report has to go on, and the report tells you which. When the " +
+     "building itself sold recently, the estimate starts from that price, moved to today at the " +
+     "market’s trend, and the comps are the check on it. When it has not, the estimate rests on " +
+     "the comps alone: closer where similar buildings have traded nearby, rougher where they have " +
+     "not, and the report tells you when the comp set is thin rather than hiding it behind a " +
+     "single confident figure. Every comp is shown either way. If a comp doesn’t belong, drop it " +
+     "and the range recalculates."],
 
     // KEPT VERBATIM from the answer that shipped 2026-09-01, on the handoff's
     // own instruction. It was already corrected off the design once: the

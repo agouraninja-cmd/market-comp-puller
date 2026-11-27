@@ -4092,11 +4092,15 @@ test("Sell today is the hero's Likely when the comps set it", () => {
   ];
   // `nl` stands in for netLeaseValuation: null on every report that is not a
   // net-leased subject, which is every case here but the last block.
-  const sellWith = (list, cap, nl) => new Function("subjectRangeFromMeta", "numericValue", "valueFromComps", "valuationComps", "asOfOf", "trendPctOf",
-    "subjectYearForMatch", "weightOpts", "subjectCapRate", "netLeaseValuation",
+  // `blend` stands in for ownSaleBlend, the page's one wrapper around
+  // VALUATION.valueWithOwnSale: null (no sale was weighed) unless a case below
+  // hands it one, which is every report before 2026-11-27.
+  const leads = (own) => !!own && own.anchored && own.weight >= V.OWN_SALE_LEADS_AT;
+  const sellWith = (list, cap, nl, blend) => new Function("subjectRangeFromMeta", "numericValue", "valueFromComps", "valuationComps", "asOfOf", "trendPctOf",
+    "subjectYearForMatch", "weightOpts", "subjectCapRate", "netLeaseValuation", "ownSaleBlend", "ownSaleLeads",
     liftFn("  function sellTodayEstimate(parsed, meta) {") + "return sellTodayEstimate;")(
     () => ({ min: 48000, max: 48000 }), V.numericValue, V.valueFromComps, () => list, () => asOf, () => 3.5,
-    () => null, () => ({ propertyType: "Industrial" }), () => cap, () => nl || null);
+    () => null, () => ({ propertyType: "Industrial" }), () => cap, () => nl || null, blend || (() => null), leads);
   const hero = V.valueFromComps(comps, { subjectSF: { min: 48000, max: 48000 }, asOf, trendPct: 3.5, subjectYear: null, propertyType: "Industrial" });
   assert.notEqual(hero.mid, hero.psfMid * 48000, "the fixture must be one where the rounding shows, or this proves nothing");
   const sell = sellWith(comps, null)({}, { subject: {} });
@@ -4118,6 +4122,32 @@ test("Sell today is the hero's Likely when the comps set it", () => {
   assert.deepEqual(sellWith(comps, null, { band, source: "comps", noi: 180000, values: { low: 2475000, likely: 2775000, high: 3000000 } })({}, { subject: { noi: 180000 } }),
     { value: 2775000, source: "net-lease income value" });
   assert.equal(sellWith(comps, null, { band, source: "comps", noi: null, values: null })({}, { subject: {} }), null);
+
+  // THE BUILDING'S OWN SALE (2026-11-27). The hero leans on it, so "sell
+  // today" has to as well, through the same wrapper and in the hero's order,
+  // or the DCF card sells at the comps' figure under a headline that does not.
+  const SALE = { date: "Jun 2026", price: "$4,100,000", source_url: "https://news.example.com/deal", source_type: "news",
+    address: "100 Main St, Boise, ID", size_sqft: "48000", basis: "arms_length", settled: 1 };
+  const OPTS = { asOf, trendPct: 3.5, propertyType: "Industrial", subjectAddresses: ["100 Main St, Boise, ID"], subjectSize: 48000 };
+  const seen = [];
+  const blend = (sale) => (comp) => { seen.push(comp); return V.valueWithOwnSale(comp, sale, OPTS); };
+  const want = V.valueWithOwnSale({ low: hero.low, mid: hero.mid, high: hero.high }, SALE, OPTS);
+  assert.equal(want.anchored, true, "the fixture's sale must be one the rule leans on");
+  assert.notEqual(want.mid, hero.mid, "and it must move the figure, or this proves nothing");
+  assert.deepEqual(sellWith(comps, null, null, blend(SALE))({}, { subject: {} }),
+    { value: want.mid, source: "likely value, led by its own sale" });
+  assert.deepEqual(seen[0], { low: hero.low, mid: hero.mid, high: hero.high }, "the comps' own three figures are what the sale is weighed against");
+  // A sale the rule refuses changes nothing: the comps' figure and its old label.
+  assert.deepEqual(sellWith(comps, null, null, blend({ ...SALE, basis: "portfolio" }))({}, { subject: {} }),
+    { value: hero.mid, source: "comp-based likely value" });
+  // With no comps the sale stands alone, AHEAD of the income lines (the
+  // hero's own order), and one priced comp is not a comps figure.
+  const alone = sellWith([], null, null, blend(SALE))({ market_cap_rate_range: { low: "6", high: "8" } }, { subject: { noi: 480000 } });
+  assert.equal(alone.source, "its own reported sale, at today's prices");
+  assert.equal(alone.value, V.valueWithOwnSale(null, SALE, OPTS).mid);
+  seen.length = 0;
+  sellWith([comps[0]], null, null, blend(SALE))({}, { subject: {} });
+  assert.equal(seen[0], null, "one priced sale is handed over as no comps figure, the hero's two-comp floor");
 });
 
 test("the report tab's map re-measure survives the map being dropped under it", () => {
@@ -4232,9 +4262,13 @@ test("a restated Likely is labelled as the median at your size, on screen and in
   assert.match(html, /\(psfBand && psfBand\.restated \? "median at your size" : "comp median"\)/);
   assert.match(html, /\[currentPsfBand && currentPsfBand\.restated \? "Median \$\/SF at your size" : "Comp median \$\/SF", xlsxMoney\(lastValuation\.median_psf\)\]/);
   // The portfolio snapshot posted to the server keeps exactly its four fields.
-  const snap = html.match(/lastValuation = \{\s*low: val\.low,\s*likely: val\.mid,\s*high: val\.high,\s*median_psf: [^}]*\};/);
+  // Since 2026-11-27 the three dollar figures are the blend with the
+  // building's own sale when one was weighed (`led`), else the comps' own;
+  // median_psf is the comps' median either way.
+  const snap = html.match(/lastValuation = \{\s*low: led \? own\.low : val\.low,\s*likely: led \? own\.mid : val\.mid,\s*high: led \? own\.high : val\.high,\s*median_psf: [^}]*\};/);
   assert.ok(snap, "the $/SF branch's lastValuation literal moved");
   assert.doesNotMatch(snap[0], /restated/);
+  assert.match(snap[0], /median_psf: Math\.round\(rr\.mid \* 100\) \/ 100,/, "median_psf is still the comps' own median");
 });
 
 test("the copy that names the range's share of the comps agrees with the band valuation.js takes", () => {

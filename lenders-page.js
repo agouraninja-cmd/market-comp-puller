@@ -200,8 +200,9 @@ function renderLendersPageBody({ signedIn = false } = {}) {
 
   const ledger = [
     ["The value", "A range, with every comp shown",
-     "Low, Likely and High from recent sales of similar buildings nearby. Each comp carries its " +
-     "source and a badge for how far to trust it."],
+     "Low, Likely and High from recent sales of similar buildings nearby and, when the building " +
+     "itself sold recently, from that sale. Each comp carries its source and a badge for how far " +
+     "to trust it."],
     ["The loan", "Your loan, read against that range",
      "Loan-to-value at all three figures, and the value the loan needs to sit inside your own " +
      "limit. Add a purchase price and it counts the lesser of the two."],

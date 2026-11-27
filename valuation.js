@@ -590,10 +590,14 @@
   // listing was sitting on the same page the size was read from and never
   // entered the report.
   //
-  // This never changes the range — a list price is not a fourth valuation
-  // figure, any more than the subject's last sale is. It says when the
-  // comps and the listing disagree enough that the reader should look at
-  // Year Built before trusting the headline.
+  // This function never changes the range: a list price is not a fourth
+  // valuation figure. It says when the comps and the listing disagree enough
+  // that the reader should look at Year Built before trusting the headline.
+  // (Until 2026-11-27 the same was true of the subject's last sale. A vetted
+  // one is weighed into the range now, "The building's own sale" below, and
+  // that rule is the one place a found listing can move a figure: an ask far
+  // from the sale halves the sale's weight, and an ask equal to it refuses
+  // it.)
   function askFit(askPrice, midValue) {
     var ask = Number(askPrice), mid = Number(midValue);
     if (!(ask > 0) || !(mid > 0)) return null;
@@ -860,7 +864,678 @@
     return pct > 0 && pct < 100 ? pct : null;
   }
 
+  // -------------------------------------------------------------------------
+  // The building's own sale (2026-11-27).
+  //
+  // Every report looks up what the subject itself last sold for
+  // (`subject_last_sale`), and until this date the value ignored it: Low,
+  // Likely and High were the comps' $/SF times the size and nothing else, and
+  // the building's own price was one line of "evidence" underneath.
+  // scripts/truth-test.js put a number on what that cost. On 47 commercial
+  // buildings that had sold, the report's Likely landed a typical 28-33% from
+  // the price, because it priced each building off OTHER buildings: a $67/SF
+  // office off $82-$139/SF offices, a net-leased center at $483/SF off strip
+  // centers at $121-$362. More comps did not help (two whole searches of one
+  // building, averaged: 24%), dropping unsold listings or duplicate rows did
+  // not help, and for 16 of the 47 the true $/SF sat outside the whole range
+  // of the comps, where no weighting of them can reach. An audit of each
+  // building against the web gave the reason for 21 of them: the comps were
+  // a different kind of building (leased against vacant, new against old).
+  //
+  // What a building itself recently sold for already prices in everything the
+  // comps cannot see (the condition, the leases, the lot), and it is the
+  // first thing an appraisal looks at: USPAP Standards Rule 1-5 has every sale
+  // of the subject in the three years before the valuation analyzed. So when
+  // the report holds a sale of the subject that passes the
+  // checks below, the estimate LEANS on it and the comps become the check on
+  // it.
+  //
+  //   anchor  A = the price, moved to the report date with the market's
+  //             trend: the comps' own trendFactor, held to OWN_SALE_TREND_CAP
+  //             a year and OWN_SALE_INDEX_CAP in all. The trend is the
+  //             search's own estimate (it came back -2.5, +1.5 and +0.5 for
+  //             one Anaheim office across three runs), and on a comp it moves
+  //             one vote among several; here it would multiply most of the
+  //             headline.
+  //   weight  w = OWN_SALE_WEIGHT_NEW (0.9) through the first year, then a
+  //             straight line to nothing at OWN_SALE_MAX_YEARS (three). Halved
+  //             and capped at OWN_SALE_HALF for a sale with a condition
+  //             attached (see "half" below).
+  //   comps   held to within OWN_SALE_COMPS_PULL (1.5x) of A before they are
+  //             blended: past that they are describing a different kind of
+  //             building (valuation.js already calls 1.5x a different price
+  //             tier), and unheld, the worst comp sets pulled hardest.
+  //   Likely  = w x A + (1 - w) x the comps' Likely
+  //   Low/High: the same blend of the comps' Low and High with A less and
+  //             plus ownSaleSpread (10% in the first year, five more points
+  //             for each year after), and while the sale leads the range is
+  //             widened to hold both the price paid and A, and Likely is kept
+  //             inside that allowance of A: the comps are the check on the
+  //             sale, and a check does not move the answer past its own
+  //             margin.
+  //
+  // WHERE THE NUMBERS COME FROM, said plainly because the test cannot supply
+  // them. The truth test's answer key IS the sale, so on it the best possible
+  // rule is "print the sale price": it cannot tell 0.9 from 0.7, five years
+  // from three, or an index from none. So:
+  //   0.9   is arithmetic on two outside figures: comps here miss by about
+  //         28%, and one arm's-length price is good to about 10% (appraisers
+  //         with the leases in hand land 8-12% from the next sale), and
+  //         28^2 / (28^2 + 10^2) is 0.89.
+  //   three years, and the spread, are JUDGMENTS, and cautious ones. The
+  //         same arithmetic would still give a three-year-old sale most of
+  //         the answer; the line ends there because nothing here can see
+  //         whether a building was renovated, re-leased or emptied since it
+  //         sold, because no sale in the test is older than 27 months,
+  //         because it is where the trend index stops compounding, and
+  //         because three years is the look-back the appraisal standard
+  //         names. On the one building in the test that sold twice (14 E
+  //         Washington St, Orlando: $4.5M, then $5.6M 22 months later) the
+  //         older sale made the estimate WORSE than the comps alone. They
+  //         want a repeat-sale test (buildings that sold twice: predict the
+  //         later price from the earlier one), and the corpus holds no such
+  //         pairs yet. Do not widen the window or raise a weight on the
+  //         strength of the truth test's own-sale score: that score is an
+  //         echo.
+  //
+  // WHEN IT DOES NOT LEAN ON THE SALE, and says why (`refused`). Most of these
+  // came out of auditing the 47 buildings against the web and out of two
+  // adversarial reviews of the first draft, which leaned on 9 sales it should
+  // not have:
+  //   "no_price" / "no_date" / "future": nothing to hang dollars on. A date
+  //                ahead of the report is a deal announced, not closed.
+  //   "old"        too old to carry a tenth of the answer: the line of
+  //                history it has always been.
+  //   "type"       not a type the rule was measured on (OWN_SALE_TYPES).
+  //   "currency"   not a US-dollar report.
+  //   "unsettled"  the server has not vetted it (no `settled` stamp): every
+  //                report cached, saved or shared before this rule existed.
+  //                Those are valued exactly as they were.
+  //   "off"        the member turned it off (the building changed since).
+  //   "unusable"   the server's own finding: its source link is dead, or the
+  //                page was read and does not state the price.
+  //   "basis"      the search's word for the sale (ownSaleBasis) is not an
+  //                ordinary sale of this whole property: a portfolio's price,
+  //                part of the ownership, related parties, a distressed sale,
+  //                land, a deal not closed, or no word at all. A blank is not
+  //                a clean bill.
+  //   "no_source"  no link to a page that could state it (specificPage), or
+  //                the search called its own source an estimate.
+  //   "no_address" / "other_address" / "unit": the search did not say which
+  //                address the sale is recorded for, or it is another
+  //                address, or one unit of the building (or the subject is).
+  //   "scope"      the sale covered an area more than OWN_SALE_SCOPE_TOL away
+  //                from the size this report values: two buildings' price on
+  //                one building.
+  //   "implausible" the price over the subject's size is outside any price a
+  //                building fetches (a record printed in thousands, a
+  //                whole-building price on a suite).
+  //   "predates_building"  it sold before the building was built.
+  //   "matches_asking"     it is the current LISTING's price to the dollar:
+  //                the listing, read as a closing.
+  //   "disagree"   A is more than OWN_SALE_DISAGREE times the comps' figure,
+  //                or under 1/that. One of the two is describing a different
+  //                thing and nothing here can say which, so the comps stand
+  //                and the page says the two do not agree and what to check.
+  //   "alone_weak" no comps to check it against, and it is not a clean sale
+  //                inside its first year: with nothing beside it, only the
+  //                strongest sale may be the whole headline.
+  //
+  // HALF: a sale that is real evidence with a condition attached counts for
+  // half as much and never for more than OWN_SALE_HALF, with the reason on
+  // the page: a sale-leaseback, this building's stated share of a larger
+  // deal, a price cited to a listing page (which may be the last asking
+  // price), a price in a non-disclosure state that no news page reports, and
+  // a building that is LISTED today more than a quarter away from A (its own
+  // two prices disagree, which is what "improved since" looks like).
+  //
+  // THE ASKING PRICE HERE IS THE LISTING THE SEARCH FOUND, never the one a
+  // member typed. A typed price is the member's question ("is $9M right?"),
+  // and a question must not move the answer: typed into the form, it would
+  // switch the sale off and drop the estimate by the whole gap to the comps
+  // under the reader's cursor.
+  //
+  // What this is NOT: a measurement of how good the comps are. A sold
+  // building's report now lands near its sale price because it starts from
+  // that price. A building with no usable sale of its own is valued exactly
+  // as before, and the truth test scores the two cases separately and never
+  // as one figure.
+  //
+  // NOT DONE, on purpose: leaning on the building's ASKING price. Seventeen
+  // of the audited buildings had a findable ask before they sold, and the
+  // sale landed a median 11% under it, so the ask alone would have beaten the
+  // comps. But an ask is the seller's opinion, not a price a market cleared,
+  // and an owner who asks what the building is worth must not be handed
+  // their own listing back. It stays evidence (askFit).
+  // -------------------------------------------------------------------------
+  var OWN_SALE_MAX_YEARS = 3;
+  var OWN_SALE_FULL_YEARS = 1;
+  var OWN_SALE_WEIGHT_NEW = 0.9;
+  var OWN_SALE_HALF = 0.5;
+  // Under a tenth of the answer the sale is not "weighed", it is history.
+  var OWN_SALE_MIN_WEIGHT = 0.1;
+  var OWN_SALE_DISAGREE = 3;
+  var OWN_SALE_COMPS_PULL = 1.5;
+  // A recorded "sale" under this is a nominal-consideration deed ($10 and
+  // other good and valuable consideration), not a price.
+  var OWN_SALE_MIN_PRICE = 10000;
+  // Two days, for clocks and time zones. A month-and-year date reads as the
+  // first of that month, so anything later is at least next month's deal.
+  var OWN_SALE_FUTURE_SLACK_YEARS = 2 / 365.25;
+  // How far either side of its own price a building may be worth: 10% inside
+  // the first year (one sale is one buyer's price), five more points for each
+  // year after. A stated allowance, not a measurement; see the header.
+  var OWN_SALE_SPREAD_BASE = 0.10;
+  var OWN_SALE_SPREAD_PER_YEAR = 0.05;
+  var OWN_SALE_TREND_CAP = 10;        // percent a year, either way
+  var OWN_SALE_INDEX_CAP = 0.15;      // in all, either way
+  // A "sale" at exactly the building's current asking price is the listing,
+  // read as a closing.
+  var OWN_SALE_ASK_MATCH = 0.005;
+  // The sale's stated area against the size being valued. In the audit the
+  // harmless differences (rentable against gross) were all under 10% and the
+  // harmful ones (two buildings, a whole park) were 1.9x and up.
+  var OWN_SALE_SCOPE_TOL = 0.15;
+  // Dollars a square foot no whole commercial building sells outside of.
+  var OWN_SALE_PSF_MIN = 15;
+  var OWN_SALE_PSF_MAX = 2500;
+  // The estimate "leans on" the sale from here up; below it the comps lead
+  // and the sale helps. The page's words turn on it.
+  var OWN_SALE_LEADS_AT = 0.5;
+  // Measured on these three types and no other (scripts/truth-test.js: 24
+  // Industrial, 15 Office and 8 Retail buildings). A house is bought, redone
+  // and resold inside a year, an apartment building is bought to be renovated
+  // and re-rented, and land is bought to be entitled: for those a recent
+  // price is a weaker statement about today, and nothing here has measured
+  // how much weaker. Add a type with a truth-test run on that type, the rule
+  // SIZE_ELASTICITY keeps. Elsewhere the sale is the evidence line it was.
+  var OWN_SALE_TYPES = { Industrial: true, Office: true, Retail: true };
+  var YEAR_MS = 365.25 * 24 * 3600 * 1000;
+
+  // A dollar figure written the ways a sale price is written: "$12,450,000",
+  // "12450000", "$9.75M", "$12.45 million". NaN for anything else: a range,
+  // two numbers, "about $9M", another currency's sign. numericValue would
+  // read "$9.75M" as 9.75, and this figure becomes the headline.
+  function moneyOf(v) {
+    if (typeof v === "number") return Number.isFinite(v) && v > 0 ? v : NaN;
+    var s = String(v == null ? "" : v).trim().toLowerCase()
+      .replace(/^(?:usd|us\$)\s*/, "").replace(/\s*(?:usd|dollars?)$/, "");
+    var m = s.match(/^\$?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(k|thousand|m|mm|mil|million|b|bn|billion)?$/);
+    if (!m) return NaN;
+    var n = parseFloat(m[1].replace(/,/g, "") + (m[2] || ""));
+    var mult = { k: 1e3, thousand: 1e3, m: 1e6, mm: 1e6, mil: 1e6, million: 1e6, b: 1e9, bn: 1e9, billion: 1e9 }[m[3]] || 1;
+    return n > 0 ? n * mult : NaN;
+  }
+
+  // When a sale closed, as epoch ms, or NaN. Only a real date SHAPE is read
+  // (unexplainedGain's list: Date.parse alone answers "sometime in 2021" with
+  // a January nothing claimed), plus the quarter and month/year shapes
+  // compDateMs reads by rule. A bare year is refused: it cannot be aged. So
+  // is a day that does not exist ("2025-02-30" would roll into March).
+  function saleDateMs(text) {
+    var raw = String(text == null ? "" : text).trim();
+    if (!raw || /^(?:19|20)\d{2}$/.test(raw)) return NaN;
+    var ruled = /^q[1-4]\s*(?:19|20)\d{2}$/i.test(raw) || /^\d{1,2}\/(?:19|20)\d{2}$/.test(raw)
+      || /^(?:19|20)\d{2}-\d{2}(?:-\d{2})?$/.test(raw);
+    if (!ruled && !SALE_DATE_SHAPES.some(function (re) { return re.test(raw); })) return NaN;
+    var iso = raw.match(/^((?:19|20)\d{2})[-/](\d{1,2})[-/](\d{1,2})$/);
+    if (iso) {
+      var probe = new Date(Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])));
+      if (probe.getUTCMonth() !== Number(iso[2]) - 1) return NaN;
+    }
+    return compDateMs(raw);
+  }
+
+  function ownSaleWeight(ageYears) {
+    var a = Number(ageYears);
+    if (!(a >= 0) || a >= OWN_SALE_MAX_YEARS) return 0;
+    if (a <= OWN_SALE_FULL_YEARS) return OWN_SALE_WEIGHT_NEW;
+    return OWN_SALE_WEIGHT_NEW * (OWN_SALE_MAX_YEARS - a) / (OWN_SALE_MAX_YEARS - OWN_SALE_FULL_YEARS);
+  }
+
+  function ownSaleSpread(ageYears) {
+    var a = Number(ageYears);
+    return OWN_SALE_SPREAD_BASE + OWN_SALE_SPREAD_PER_YEAR * Math.max(0, (a > 0 ? a : 0) - OWN_SALE_FULL_YEARS);
+  }
+
+  // The factor that moves the sale's price to the report date: the comps'
+  // own trendFactor, on a trend held to OWN_SALE_TREND_CAP a year and a total
+  // held to OWN_SALE_INDEX_CAP (see the header for why it is held at all).
+  function ownSaleIndex(dateText, asOf, trendPct) {
+    var pct = Number(trendPct);
+    if (!Number.isFinite(pct)) return 1;
+    var held = Math.max(-OWN_SALE_TREND_CAP, Math.min(OWN_SALE_TREND_CAP, pct));
+    var f = trendFactor({ date: dateText }, asOf, held);
+    return Math.max(1 - OWN_SALE_INDEX_CAP, Math.min(1 + OWN_SALE_INDEX_CAP, f));
+  }
+
+  // What KIND of sale it was, in the search prompt's closed vocabulary.
+  // Strict the way `condition` is: the prompt gives the words, a few plain
+  // spellings of each are read, and anything else is "other". A blank is
+  // "unstated". Neither leans: an unknown caveat may cost a good sale, it
+  // must never pass for a clean one.
+  //   full weight   arms_length
+  //   half weight   sale_leaseback, allocated (OWN_SALE_HALF_BASES)
+  //   not used      portfolio, leasehold, redevelopment, partial_interest,
+  //                 related_party, distressed, land, not_closed, unstated,
+  //                 other
+  var OWN_SALE_BASIS_WORDS = {
+    arms_length: ["arms length", "arm s length", "arms length sale", "arm s length sale", "ordinary", "ordinary sale", "market sale", "open market", "open market sale"],
+    sale_leaseback: ["sale leaseback", "leaseback"],
+    allocated: ["allocated", "allocated share", "allocation", "allocated price"],
+    portfolio: ["portfolio", "portfolio sale", "multi property", "multi property sale", "package", "package sale", "bulk sale"],
+    leasehold: ["leasehold", "leasehold interest", "ground lease", "ground leased"],
+    redevelopment: ["redevelopment", "redevelopment site", "teardown", "tear down", "conversion"],
+    partial_interest: ["partial interest", "partial", "minority interest", "fractional interest", "recapitalization", "recapitalisation", "recap", "joint venture"],
+    related_party: ["related party", "related parties", "affiliate", "affiliated", "family transfer", "not arms length", "non arms length", "not arm s length", "non arm s length"],
+    distressed: ["distressed", "distressed sale", "foreclosure", "auction", "reo", "bank owned", "short sale", "bankruptcy", "bankruptcy sale", "deed in lieu"],
+    land: ["land", "land sale", "land only", "shell", "land or shell"],
+    not_closed: ["not closed", "asking", "asking price", "list price", "listing", "listed", "pending", "under contract"],
+  };
+  var OWN_SALE_HALF_BASES = { sale_leaseback: true, allocated: true };
+  function ownSaleBasis(v) {
+    var s = String(v == null ? "" : v).trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!s) return "unstated";
+    for (var key in OWN_SALE_BASIS_WORDS) {
+      if (!Object.prototype.hasOwnProperty.call(OWN_SALE_BASIS_WORDS, key)) continue;
+      if (s === key.replace(/_/g, " ") || OWN_SALE_BASIS_WORDS[key].indexOf(s) !== -1) return key;
+    }
+    return "other";
+  }
+
+  // A link to a page that could state the sale, not a site's front door:
+  // http(s) with a path or a query behind the host, that is not a picture and
+  // not a search or index page. The prompt asks for "the page that states
+  // it", and of the own sales the audit found cited to a bare home page, one
+  // was an asking price and one a portfolio allocation; another was cited to
+  // a flyer image uploaded three months before the sale it was cited for.
+  function specificPage(url) {
+    var m = String(url == null ? "" : url).trim().match(/^https?:\/\/[^\/?#\s]+([^?#\s]*)(\?[^#\s]*)?/i);
+    if (!m) return false;
+    var path = (m[1] || "").replace(/\/+$/, "");
+    if (path === "" && (m[2] || "").length <= 1) return false;
+    if (/\.(?:jpe?g|png|gif|webp|svg|bmp)$/i.test(path)) return false;
+    if (/\/(?:search|for-sale|sold|listings|properties|recent-transactions|transactions)$/i.test(path) && (m[2] || "").length <= 1) return false;
+    return true;
+  }
+
+  // Marketplaces whose pages show an ASKING price, and a "sold" figure that
+  // is often the last ask. A sale cited to one counts for half.
+  var LISTING_HOSTS = ["loopnet.com", "crexi.com", "compass.com", "homes.com", "realtor.com", "realnex.com",
+    "propertyshark.com", "zillow.com", "redfin.com", "trulia.com", "commercialsearch.com", "commercialcafe.com",
+    "showcase.com", "cityfeet.com", "officespace.com", "42floors.com", "coldwellbankerhomes.com"];
+  function hostOf(url) {
+    var m = String(url == null ? "" : url).trim().toLowerCase().match(/^https?:\/\/([^\/?#:\s]+)/);
+    return m ? m[1].replace(/^www\./, "") : "";
+  }
+  function isListingHost(url) {
+    var h = hostOf(url);
+    return h !== "" && LISTING_HOSTS.some(function (d) { return h === d || h.slice(-(d.length + 1)) === "." + d; });
+  }
+  // States where a deed does not show the price, so a "sale price" on the web
+  // is a news report or it is the last asking price.
+  var NON_DISCLOSURE = { AK: 1, ID: 1, KS: 1, LA: 1, MS: 1, MO: 1, MT: 1, NM: 1, ND: 1, TX: 1, UT: 1, WY: 1 };
+  function stateOf(address) {
+    var m = String(address == null ? "" : address).toUpperCase().match(/,\s*([A-Z]{2})(?:\s+\d{5}(?:-\d{4})?)?\s*$/)
+      || String(address == null ? "" : address).toUpperCase().match(/\s([A-Z]{2})\s+\d{5}(?:-\d{4})?\s*$/);
+    return m ? m[1] : "";
+  }
+
+  // --- Is this sale recorded for THIS building? ---------------------------
+  // The street line, taken apart: its number (or range), its name, its
+  // directionals and its suffix. backtest.js normAddress folds the same
+  // spellings ("19127 Red Label Lane ... 83607" and "19127 Red Label Ln ...
+  // 83605" are one warehouse); this goes further because it decides which
+  // sale carries most of a headline.
+  var STREET_FOLD = {
+    lane: "ln", street: "st", avenue: "ave", drive: "dr", road: "rd", boulevard: "blvd",
+    court: "ct", place: "pl", parkway: "pkwy", highway: "hwy", circle: "cir", terrace: "ter",
+    trail: "trl", square: "sq",
+    north: "n", south: "s", east: "e", west: "w",
+    northeast: "ne", northwest: "nw", southeast: "se", southwest: "sw",
+  };
+  var STREET_SUFFIX = { ln: 1, st: 1, ave: 1, dr: 1, rd: 1, blvd: 1, ct: 1, pl: 1, pkwy: 1, hwy: 1, cir: 1, ter: 1, trl: 1, sq: 1, way: 1, loop: 1 };
+  var STREET_DIR = { n: 1, s: 1, e: 1, w: 1, ne: 1, nw: 1, se: 1, sw: 1 };
+  var UNIT_WORD = /^(?:unit|units|ste|suite|apt|apartment|condo|spc|space|bldg|building|fl|floor|rm|room)$/;
+  function streetKey(address) {
+    return String((String(address == null ? "" : address).split(",")[0]) || "")
+      .toLowerCase().replace(/[^\w\s]/g, " ").trim().split(/\s+/).filter(Boolean)
+      .map(function (w) { return Object.prototype.hasOwnProperty.call(STREET_FOLD, w) ? STREET_FOLD[w] : w; })
+      .join(" ");
+  }
+  // { lo, hi, name, dir, suffix, unit } or null when the line does not start
+  // with a street number. "23126-23170 Valencia Blvd" is a range; a unit
+  // ("Suite 101", "#5", or the comma part after the street) is kept apart.
+  function streetParts(address) {
+    var segs = String(address == null ? "" : address).split(",");
+    var line = String(segs[0] || "").toLowerCase();
+    var num = line.match(/^\s*(\d+)(?:\s*-\s*(\d+))?[a-z]?(?=\s|$)/);
+    if (!num) return null;
+    var lo = Number(num[1]), hi = num[2] ? Number(num[2]) : lo;
+    // A pair that runs DOWN is not a range, it is one hyphenated house number
+    // (Queens, New York: "37-18 Northern Blvd" is the 18th lot past 37th
+    // Street). Read as the range 18 to 37 it would name every building on
+    // the block. It is kept as the one number sites that drop the hyphen
+    // write ("3718").
+    if (hi < lo) { lo = Number(num[1] + num[2]); hi = lo; }
+    line = line.slice(num[0].length);
+    var unit = "";
+    var hash = line.match(/#\s*([a-z0-9-]+)/);
+    if (hash) { unit = hash[1]; line = line.replace(hash[0], " "); }
+    var rest = line.replace(/[^\w\s]/g, " ").trim().split(/\s+/).filter(Boolean)
+      .map(function (w) { return Object.prototype.hasOwnProperty.call(STREET_FOLD, w) ? STREET_FOLD[w] : w; });
+    for (var i = 0; i < rest.length; i++) {
+      if (UNIT_WORD.test(rest[i]) && i + 1 < rest.length) { unit = unit || rest[i + 1]; rest = rest.slice(0, i); break; }
+    }
+    // The comma part right after the street, when it is a unit and not a city.
+    var second = String(segs[1] || "").toLowerCase().replace(/[^\w\s#-]/g, " ").trim();
+    var su = second.match(/^(?:#\s*([a-z0-9-]+)|(?:unit|ste|suite|apt|apartment|condo|spc|space)\s+([a-z0-9-]+))$/);
+    if (su) unit = unit || su[1] || su[2];
+    var dirs = rest.filter(function (w) { return STREET_DIR[w] === 1; });
+    var suffix = rest.length && STREET_SUFFIX[rest[rest.length - 1]] === 1 ? rest[rest.length - 1] : "";
+    var name = rest.filter(function (w, k) { return STREET_DIR[w] !== 1 && !(suffix && k === rest.length - 1); }).join(" ");
+    if (!name) name = rest.join(" ");
+    return { lo: lo, hi: hi, name: name, dir: dirs.join(" "), suffix: suffix, unit: String(unit || "") };
+  }
+  // The city as written (the comma part that is not a unit), folded; "" when
+  // the address names none. And the ZIP, when there is one.
+  function cityKey(address) {
+    var parts = String(address == null ? "" : address).split(",").slice(1)
+      .map(function (p) { return p.toLowerCase().replace(/[^\w\s#]/g, " ").replace(/\s+/g, " ").trim(); })
+      .filter(function (p) { return p && !/^(?:#|unit|ste|suite|apt|apartment|condo|spc|space)\b/.test(p); });
+    if (!parts.length) return "";
+    var toks = parts[0].replace(/\s+\d{5}(?:\s\d{4})?$/, "").split(" ");
+    // "Boise ID": the state rode in on the city's own comma part.
+    if (toks.length > 1 && /^[a-z]{2}$/.test(toks[toks.length - 1])) toks.pop();
+    return toks.join(" ").replace(/\bsaint\b/g, "st").replace(/\bfort\b/g, "ft").replace(/\bmount\b/g, "mt").trim();
+  }
+  function zipOf(address) {
+    var m = String(address == null ? "" : address).match(/\b(\d{5})(?:-\d{4})?\s*$/);
+    return m ? m[1] : "";
+  }
+  // One street line names the other's building: the same name, a number that
+  // is the same or inside the other's range, and no directional or suffix
+  // that CONTRADICTS (one side leaving either out is not a contradiction).
+  // Two RANGES have to be the same range: "37-52 82nd St" and "37-60 82nd St"
+  // are two Queens house numbers that happen to run upward, and read as
+  // overlapping ranges they would be one building. Units are not compared
+  // here.
+  function sameStreetLine(pa, pb) {
+    if (!pa || !pb || !pa.name || pa.name !== pb.name) return false;
+    if (pa.hi !== pa.lo && pb.hi !== pb.lo) {
+      if (pa.lo !== pb.lo || pa.hi !== pb.hi) return false;
+    } else if (pa.hi < pb.lo || pb.hi < pa.lo) return false;
+    if (pa.dir && pb.dir && pa.dir !== pb.dir) return false;
+    if (pa.suffix && pb.suffix && pa.suffix !== pb.suffix) return false;
+    return true;
+  }
+  // The same place: a shared ZIP settles it either way; else the same city,
+  // or one side naming none (a postal city and a locality are two names for
+  // one building: "Fleming Island" and "Orange Park").
+  function samePlace(a, b) {
+    var za = zipOf(a), zb = zipOf(b);
+    if (za && zb) return za === zb;
+    var sa = stateOf(a), sb = stateOf(b);
+    if (sa && sb && sa !== sb) return false;
+    var ca = cityKey(a), cb = cityKey(b);
+    return ca === "" || cb === "" || ca === cb;
+  }
+  // Two addresses name one building, units and all. "100 Main St Unit 5" is
+  // not "100 Main St": a unit is not the building.
+  function sameBuilding(a, b) {
+    var pa = streetParts(a), pb = streetParts(b);
+    return sameStreetLine(pa, pb) && pa.unit === pb.unit && samePlace(a, b);
+  }
+
+  // How good the sale's SOURCE is: { ok, half } with a `why` for the page.
+  // `subjectAddress` only says which state's rules apply.
+  function ownSaleSource(lastSale, subjectAddress) {
+    var type = String((lastSale && lastSale.source_type) || "").toLowerCase();
+    if (!specificPage(lastSale && lastSale.source_url)) return { ok: false, why: "no_source" };
+    if (type === "estimate") return { ok: false, why: "estimate_source" };
+    if (type === "listing" || isListingHost(lastSale.source_url)) return { ok: true, half: "listing_page" };
+    if (NON_DISCLOSURE[stateOf(subjectAddress)] === 1 && type !== "news") return { ok: true, half: "non_disclosure" };
+    return { ok: true, half: null };
+  }
+
+  // The subject's own sale as an anchor: null when the report carries none,
+  // { ok: false, reason } when it carries one we will not lean on, else
+  // { ok: true, price, dateMs, ageYears, trend, value, weight, spread, half }.
+  // `opts`: { asOf, trendPct, propertyType, currency, yearBuilt, asking,
+  //           subjectAddresses, subjectSize, off } — the report date, the
+  // market's trend, the type and currency, what the same report says about
+  // the subject that can show the "sale" is something else (or that the
+  // building is), every way the report names the subject, the size being
+  // valued, and the member's own switch.
+  function ownSaleAnchor(lastSale, opts) {
+    var o = opts || {};
+    if (!lastSale || typeof lastSale !== "object") return null;
+    var hasPrice = String(lastSale.price == null ? "" : lastSale.price).trim() !== "";
+    var hasDate = String(lastSale.date == null ? "" : lastSale.date).trim() !== "";
+    if (!hasPrice && !hasDate) return null;
+    var price = moneyOf(lastSale.price);
+    var known = price >= OWN_SALE_MIN_PRICE ? price : null;
+    var age = null;
+    var no = function (reason, extra) {
+      var out = { ok: false, reason: reason, price: known, ageYears: age };
+      if (extra) Object.keys(extra).forEach(function (k) { out[k] = extra[k]; });
+      return out;
+    };
+    if (known == null) return no("no_price");
+    var ms = saleDateMs(lastSale.date);
+    var asOf = Number(o.asOf);
+    if (isNaN(ms) || !Number.isFinite(asOf)) return no("no_date");
+    var years = (asOf - ms) / YEAR_MS;
+    if (years < -OWN_SALE_FUTURE_SLACK_YEARS) return no("future");
+    age = Math.max(0, years);
+    // Old first: past the window nothing else about the sale matters, and the
+    // page shows it as the line of history it has always been.
+    var half = null;
+    var weight = ownSaleWeight(age);
+    if (weight < OWN_SALE_MIN_WEIGHT) return no("old");
+    if (!Object.prototype.hasOwnProperty.call(OWN_SALE_TYPES, String(o.propertyType))) return no("type");
+    if (o.currency && String(o.currency).toUpperCase() !== "USD") return no("currency");
+    if (lastSale.settled !== 1 && lastSale.settled !== true) return no("unsettled");
+    if (o.off) return no("off");
+    if (lastSale.unusable) return no("unusable", { why: String(lastSale.unusable) });
+    var basis = ownSaleBasis(lastSale.basis);
+    if (basis !== "arms_length" && OWN_SALE_HALF_BASES[basis] !== true) return no("basis", { why: basis });
+    if (OWN_SALE_HALF_BASES[basis] === true) half = basis;
+    var names = [].concat(o.subjectAddresses || []).filter(function (a) { return typeof a === "string" && a.trim() !== ""; });
+    var src = ownSaleSource(lastSale, names[0] || "");
+    if (!src.ok) return no(src.why === "estimate_source" ? "no_source" : src.why, { why: src.why });
+    half = half || src.half;
+    // Recorded for this building, the whole of it. With a stated address the
+    // street line has to match one of the subject's names; a unit on either
+    // side that the other does not share is one unit of the building.
+    // No stated address is not a clean bill either: the search is asked for
+    // it on every sale, and without it nothing can tell this building from
+    // the one next door.
+    var saleAddr = String(lastSale.address == null ? "" : lastSale.address).trim();
+    if (!saleAddr || !names.length) return no("no_address");
+    var sp = streetParts(saleAddr);
+    var hit = null;
+    names.forEach(function (n) {
+      var np = streetParts(n);
+      if (!hit && sameStreetLine(sp, np) && samePlace(saleAddr, n)) hit = np;
+    });
+    if (!hit) return no("other_address", { saleAddress: saleAddr });
+    if (sp.unit !== hit.unit) return no("unit", { saleAddress: saleAddr });
+    var size = Number(o.subjectSize);
+    var saleSize = numericValue(lastSale.size_sqft);
+    if (size > 0 && saleSize > 0 && Math.abs(saleSize / size - 1) > OWN_SALE_SCOPE_TOL) {
+      return no("scope", { saleSize: saleSize, subjectSize: size });
+    }
+    if (size > 0 && (known / size < OWN_SALE_PSF_MIN || known / size > OWN_SALE_PSF_MAX)) return no("implausible");
+    // Built after it "sold": that price bought the land, or the building
+    // that stood there before.
+    var built = yearOf(o.yearBuilt);
+    if (built != null && built > new Date(ms).getFullYear()) return no("predates_building");
+    // `asking` is the LISTING the search found (see the header). Under the
+    // floor it is a misread ("$1.05M" read as 1.05), not an ask.
+    var ask = Number(o.asking);
+    if (!(ask >= OWN_SALE_MIN_PRICE)) ask = 0;
+    if (ask > 0 && Math.abs(known / ask - 1) <= OWN_SALE_ASK_MATCH) return no("matches_asking");
+    var trend = ownSaleIndex(lastSale.date, asOf, o.trendPct);
+    var value = known * trend;
+    // Listed today over a quarter away from what it sold for at today's
+    // prices (the 25% rule askFit and unexplainedGain use): work done since,
+    // income grown or lost, or a hopeful ask. Nothing here can see which, so
+    // the sale counts for half.
+    var askPct = ask > 0 ? Math.round((ask / value - 1) * 100) : 0;
+    if (ask > 0 && Math.abs(ask / value - 1) > OUTLIER_PCT) half = half || "ask_far";
+    if (half) weight = Math.min(OWN_SALE_HALF, weight / 2);
+    if (weight < OWN_SALE_MIN_WEIGHT) return no("old");
+    return {
+      ok: true, price: known, dateMs: ms, ageYears: age, trend: trend, value: value,
+      weight: weight, spread: ownSaleSpread(age), half: half, askPct: askPct,
+    };
+  }
+
+  // The estimate once the building's own sale is weighed in.
+  //
+  // `comp` is what the comps alone say, in DOLLARS ({ low, mid, high }, any
+  // basis: $/SF times the size, per unit times the units, per acre times the
+  // acres), or null when they cannot produce a dollar figure (no size, no
+  // priced sale). The answer always carries both figures so a caller can show
+  // them side by side:
+  //   { low, mid, high,          the estimate: blended when anchored, else the comps'
+  //     anchored, weight,        whether and how far it leans on the own sale
+  //     ownSale,                 ownSaleAnchor's answer (null when none was reported)
+  //     comp,                    the comps' own figures, untouched
+  //     ratio,                   own sale indexed / comps' Likely, when both exist
+  //     held,                    true when the comps were held to 1.5x of the sale
+  //     refused }                why it did not anchor, or null
+  // The comps' middle figure may be named `mid` (valueFromComps) or `likely`
+  // (the page's lastValuation): read as "no comps", the second spelling would
+  // hand the whole headline to the sale without a word.
+  function valueWithOwnSale(comp, lastSale, opts) {
+    var cm = comp ? Number(comp.mid != null ? comp.mid : comp.likely) : NaN;
+    var c = cm > 0 ? { low: Number(comp.low), mid: cm, high: Number(comp.high) } : null;
+    var a = ownSaleAnchor(lastSale, opts);
+    var out = {
+      low: c ? c.low : null, mid: c ? c.mid : null, high: c ? c.high : null,
+      anchored: false, weight: 0, ownSale: a, comp: c, ratio: null, held: false, refused: null,
+    };
+    if (!a) return out;
+    if (a.ok && c) out.ratio = a.value / c.mid;
+    if (!a.ok) { out.refused = a.reason; return out; }
+    if (c && (out.ratio > OWN_SALE_DISAGREE || out.ratio < 1 / OWN_SALE_DISAGREE)) {
+      out.refused = "disagree";
+      return out;
+    }
+    // Alone, nothing checks it: only a clean sale inside its first year.
+    if (!c && (a.half || a.ageYears > OWN_SALE_FULL_YEARS)) { out.refused = "alone_weak"; return out; }
+    var w = c ? a.weight : 1;
+    // The comps, held to within 1.5x of the sale before they pull on it.
+    var k = 1;
+    if (c) {
+      var heldMid = Math.max(a.value / OWN_SALE_COMPS_PULL, Math.min(a.value * OWN_SALE_COMPS_PULL, c.mid));
+      k = heldMid / c.mid;
+      out.held = Math.abs(k - 1) > 1e-9;
+    }
+    var mid = w * a.value + (1 - w) * (c ? c.mid * k : 0);
+    var low = w * a.value * (1 - a.spread) + (1 - w) * (c ? c.low * k : 0);
+    var high = w * a.value * (1 + a.spread) + (1 - w) * (c ? c.high * k : 0);
+    // While the sale leads: Likely stays inside the sale's own allowance (the
+    // comps check it, they do not carry it off), and the range holds the sale,
+    // both the price paid and what it comes to today.
+    if (w >= OWN_SALE_LEADS_AT) {
+      mid = Math.max(a.value * (1 - a.spread), Math.min(a.value * (1 + a.spread), mid));
+      low = Math.min(low, a.value, a.price);
+      high = Math.max(high, a.value, a.price);
+    }
+    out.anchored = true;
+    out.weight = w;
+    out.mid = heroRound(mid);
+    out.low = Math.min(heroRound(low), out.mid);
+    out.high = Math.max(heroRound(high), out.mid);
+    return out;
+  }
+
+  // Words that say a row's price is an ASK, whatever its date says. Our own
+  // corpus holds 135 sale rows whose notes say so ("list price used as proxy
+  // for closed price") under a closed-sale date.
+  var ASKING_WORDS = /\b(?:asking|list(?:ed)? price|listed|for sale|active|pending|under contract|not closed|proxy)\b/i;
+
+  // The sale a report holds of the SUBJECT ITSELF, and its comps without it.
+  //
+  // The prompt forbids the subject's own sale among its comps, and it turns
+  // up there anyway (11 of 47 audited reports), because it is the
+  // best-documented deal at that address. Counted as a comp it would be
+  // weighed once there and again as the anchor; and a report whose
+  // `subject_last_sale` came back without a price (the article said "terms
+  // undisclosed") can hold that price one row down.
+  //
+  // `addresses` is every way this report names the subject: what was typed,
+  // and the corrected address when the search moved it. Returns
+  //   { sale,     the sale to weigh: subject_last_sale, or a same-building
+  //               CLOSED sale comp when that is priced and the reported one is
+  //               not, or is newer than it. A row is promoted only when its
+  //               own source is a news page or a public record and its notes
+  //               say nothing of an asking price: a listing-sourced row is
+  //               how an ask becomes "what it sold for". Shaped like
+  //               subject_last_sale, with `from_comp: true`.
+  //     row,      the comp `sale` was read from, or null (the server reads its
+  //               notes for a price caveat, comp-fit.js priceBasisOf)
+  //     listing,  a same-building row that is ON the market (the subject's own
+  //               asking price, entered as a comp), or null
+  //     comps,    the comps that are not the subject (leases at its address
+  //               stay: a suite lease in the building is a real lease comp)
+  //     own }     the rows that came out, in order
+  function ownSaleFrom(report, addresses) {
+    var r = report || {};
+    var all = Array.isArray(r.comps) ? r.comps : [];
+    var names = [].concat(addresses || [], r.subject_address_corrected || [])
+      .filter(function (a) { return typeof a === "string" && a.trim() !== ""; });
+    var isSale = function (c) { return !String(c.transaction || "").toLowerCase().startsWith("lease"); };
+    var own = [], comps = [];
+    all.forEach(function (c) {
+      var same = c && typeof c === "object" && isSale(c)
+        && names.some(function (a) { return sameBuilding(c.address, a); });
+      (same ? own : comps).push(c);
+    });
+    var reported = r.subject_last_sale && typeof r.subject_last_sale === "object" ? r.subject_last_sale : null;
+    var listing = null, best = null, bestMs = NaN;
+    own.forEach(function (c) {
+      if (isOnMarket(c)) { if (!listing) listing = c; return; }
+      var tier = String(c.source_type || "").toLowerCase();
+      if (tier !== "news" && tier !== "public_record") return;
+      if (ASKING_WORDS.test(String(c.notes || ""))) return;
+      var price = moneyOf(c.price_or_rate);
+      var ms = saleDateMs(c.date);
+      if (!(price >= OWN_SALE_MIN_PRICE) || isNaN(ms)) return;
+      if (!best || ms > bestMs) { best = c; bestMs = ms; }
+    });
+    var sale = reported, row = null;
+    if (best) {
+      var repPrice = reported ? moneyOf(reported.price) : NaN;
+      var repMs = reported ? saleDateMs(reported.date) : NaN;
+      // A month of slack: "Mar 2026" on one line and "2026-03-27" on the
+      // other are one closing, and the reported line is the one the search
+      // was asked for.
+      var newer = !isNaN(repMs) && bestMs - repMs > 31 * 24 * 3600 * 1000;
+      if (!reported || !(repPrice >= OWN_SALE_MIN_PRICE) || isNaN(repMs) || newer) {
+        sale = {
+          date: String(best.date), price: String(best.price_or_rate), source_url: String(best.source_url || ""),
+          source_type: String(best.source_type || ""), address: String(best.address || ""),
+          size_sqft: best.size_sqft == null ? "" : String(best.size_sqft), from_comp: true,
+        };
+        row = best;
+      }
+    }
+    return { sale: sale, row: row, listing: listing, comps: comps, own: own };
+  }
+
   return {
+    moneyOf, saleDateMs, ownSaleWeight, ownSaleSpread, ownSaleIndex, ownSaleBasis, ownSaleSource, specificPage,
+    isListingHost, stateOf, streetParts, sameStreetLine, samePlace,
+    ownSaleAnchor, valueWithOwnSale, ownSaleFrom, streetKey, sameBuilding,
+    OWN_SALE_MAX_YEARS, OWN_SALE_FULL_YEARS, OWN_SALE_WEIGHT_NEW, OWN_SALE_HALF, OWN_SALE_MIN_WEIGHT,
+    OWN_SALE_DISAGREE, OWN_SALE_COMPS_PULL, OWN_SALE_MIN_PRICE,
+    OWN_SALE_SPREAD_BASE, OWN_SALE_SPREAD_PER_YEAR, OWN_SALE_TREND_CAP, OWN_SALE_INDEX_CAP,
+    OWN_SALE_SCOPE_TOL, OWN_SALE_PSF_MIN, OWN_SALE_PSF_MAX,
+    OWN_SALE_BASIS_WORDS, OWN_SALE_HALF_BASES, OWN_SALE_LEADS_AT, OWN_SALE_TYPES, NON_DISCLOSURE, LISTING_HOSTS,
     isNetLease, NET_LEASE_TYPES, NET_LEASE_CENTER_TYPE,
     capRateOf, capRateBand, netLeaseValue, impliedCapRate,
     CAP_RATE_MIN, CAP_RATE_MAX, CAP_BAND_MIN_COMPS,

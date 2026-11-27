@@ -36,6 +36,7 @@
 // ---------------------------------------------------------------------------
 
 const { isAggregateAddress } = require("./corpus-audit.js");
+const { sameBuilding } = require("./valuation.js");
 
 const RADIUS_MILES = 10;
 // Houses trade by neighborhood, not metro. The search prompt already asks
@@ -297,6 +298,8 @@ function blendNearbyComps(report, rows, opts) {
   const aggregateOf = typeof o.isAggregateAddress === "function" ? o.isAggregateAddress : isAggregateAddress;
   const cutoff = lookbackCutoffFrac(o.months, o.now);
   const subjectKey = normAddr(o.subjectAddress);
+  const subjectNames = [o.subjectAddress, report.subject_address_corrected]
+    .filter((a) => typeof a === "string" && a.trim() !== "");
   const radius = Number.isFinite(Number(o.radiusMiles))
     ? Number(o.radiusMiles)
     : radiusMilesFor(o.propertyType, o.marketNote);
@@ -320,6 +323,14 @@ function blendNearbyComps(report, rows, opts) {
     const mi = milesBetween(subject, ll);
     if (!(mi <= radius)) continue;
     if (subjectKey && normAddr(row.address) === subjectKey) continue;
+    // The subject's own SALE, saved under another spelling of its address
+    // ("Rd" for "Road", a ZIP, the city the search corrected it to). It was
+    // only ever a comp of itself, which the prompt forbids; since 2026-11-27
+    // it is also what the value leans on (valuation.js, "The building's own
+    // sale"), so blended back in it would be counted twice. A LEASE at the
+    // subject's address stays: a suite let in the building is a real lease
+    // comp for it.
+    if (!isLeaseRow(row) && subjectNames.some((a) => sameBuilding(row.address, a))) continue;
     if (subjectPsf > 0 && !samePriceTier(salePsfOf(row), subjectPsf)) continue;
     if (manufactured !== null && isManufacturedHome(row) !== manufactured) continue;
     const shaped = toReportComp(row);

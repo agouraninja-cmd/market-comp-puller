@@ -6189,6 +6189,12 @@ async function valueShelfReports(rows) {
         propertyType: meta.type,
         note: meta.note,
         asOf: Date.parse(r.created_at) || Date.now(),
+        // What the report page hands the own-sale rule (bulk.js has the
+        // list), so a building's sheet and the report it lists agree.
+        address: meta.address,
+        txFocus: meta.txFocus,
+        netLease: VALUATION.isNetLease(meta.type, subject.details),
+        ownSaleOff: !!(meta.curation && meta.curation.ownSaleOff),
       });
       if (!v || !v.value_likely) continue;
       const src = byId.get(String(r.id)) || {};
@@ -10338,6 +10344,19 @@ Rules:
 - Do not include a verified flag or a source_url.`;
 
 function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, corpusListed, subjectDetails, lane = "solo", extra = null) {
+  // Our own saved rows for the TARGET's address are never shown to the model
+  // (2026-11-27). They were how the subject's own sale came back as a comp of
+  // itself, and, now that this sale can lead the value, how an ASKING price
+  // would become "what it sold for": 135 of the corpus's 660 sale rows say in
+  // their own notes that the price is an ask ("list price used as proxy for
+  // closed price") under a closed-sale date, and 21 of 41 audited reports
+  // cited their own saved row's URL character for character. The search
+  // finds the building's sale on the web, with a page that states it, or the
+  // report does not lean on one.
+  const notTheTarget = (c) => !(c && VALUATION.sameBuilding(c.address, address));
+  if (Array.isArray(corpusComps)) corpusComps = corpusComps.filter(notTheTarget);
+  if (Array.isArray(corpusNearby)) corpusNearby = corpusNearby.filter(notTheTarget);
+  if (Array.isArray(corpusListed)) corpusListed = corpusListed.filter(notTheTarget);
   // The records lane contributes comps (and the subject size, which lives in
   // assessor data) only — the primary lane owns every market-level figure and
   // all of the narrative, so the report has one coherent voice and one set of
@@ -10366,6 +10385,22 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   // lane for it too would spend a second search re-finding the same number, and
   // listing sites are the weaker source for building SF anyway.
   const wantsSize = !subjectSizeSqft && lane !== "primary";
+  // The subject's OWN sale is looked up on every search (2026-11-27), not
+  // only when its size is unknown. That sale now leads the value
+  // (valuation.js, "The building's own sale"), and until this date the lookup
+  // rode on the size step alone: with the size typed, estimated from the
+  // footprint or remembered from an earlier search (most searches), the
+  // model was told to record a sale "only if you come across it". One lane
+  // owns it: whichever one already looks the subject up for its size, else
+  // the lane that writes the report. Never the wider lane, which is a second
+  // look for comps and nothing else. And only for the types whose value the
+  // sale leads (VALUATION.OWN_SALE_TYPES): for a house, an apartment building
+  // or land it is still the evidence line it was, found the way it was, and
+  // those searches spend nothing new.
+  // Not on a leases-only search either: it produces a rent, not a value.
+  const subjectSaleStep = Object.prototype.hasOwnProperty.call(VALUATION.OWN_SALE_TYPES, type)
+    && txFocus !== "leases"
+    && (lane === "solo" || (lane === "primary" && !!subjectSizeSqft));
 
   // Net lease mode (2026-11-23; valuation.js isNetLease, report-and-valuation.md
   // flow 3i). The report page values a single-tenant net-leased subject on the
@@ -10460,7 +10495,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `KNOWN RECENT COMPS: our own prior research already surfaced the following ${corpusComps.length === 1 ? "transaction" : "transactions"} in this market. They are already sourced — reuse them rather than re-searching for the same deals.`,
     ...corpusComps.map((c, i) =>
       `${i + 1}. ${c.address} | ${c.transaction || "transaction type unknown"} | ${c.deal_date || "date unknown"} | ${c.size_sqft ? c.size_sqft + " SF" : "size unknown"} | ${c.price_or_rate || "price unknown"}${c.price_per_sqft ? " | " + c.price_per_sqft + "/SF" : ""}${c.cap_rate ? " | cap " + c.cap_rate : ""}${typeSpecsOf(c)}${c.source_url ? " | " + c.source_url : ""}`),
-    `Include each one that is genuinely comparable to the target and inside the date window, copying its details faithfully (keep its source_url, and set "source_type" to match where it came from). Use web search only to (a) confirm the target's building size, (b) fill gaps if fewer than ${maxComps} of these are comparable, or (c) surface more recent transactions. When one of these and a fresh web result describe the same deal, keep only one. Set "verified": false on these unless they also appear in the verified list above. Never include one that is clearly in a different city or submarket than the target.`,
+    `Include each one that is genuinely comparable to the target and inside the date window, copying its details faithfully (keep its source_url, and set "source_type" to match where it came from). Use web search only to (a) confirm the target's building size and look up what the target itself last sold for, (b) fill gaps if fewer than ${maxComps} of these are comparable, or (c) surface more recent transactions. When one of these and a fresh web result describe the same deal, keep only one. Set "verified": false on these unless they also appear in the verified list above. Never include one that is clearly in a different city or submarket than the target. If one of these is a sale of the TARGET address itself, it is the target's own sale, not a comp: report it in "subject_last_sale" (with its source_url) and leave it out of "comps".`,
   ].join("\n") : "";
 
   // Nearby-metro rows get their OWN block rather than joining the list above,
@@ -10559,7 +10594,13 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // The neighbor guard matters: adjacent parcels' sizes surface readily in
     // search results, and a wrong "found" size is worse than an honest "".
     wantsSize
-      ? `SUBJECT SIZE (do this FIRST): before searching for comps, spend your first web search on the TARGET address itself to determine its building size in square feet - county assessor or parcel records, a property-detail page (realtor.com, redfin.com, loopnet.com, crexi.com), or a current or past listing of the property. This is the BUILDING square footage, not the lot or land size. The report's entire value range is computed from this number, so finding it is worth a search that might otherwise go to one more comp. If that search and everything you see later genuinely yield no size for this exact address, use "" - do not guess, and never substitute a neighboring or similar property's size. While you are on those pages, also read off four things that usually sit next to the size and cost you nothing extra: the property's own last sale date and price for "subject_last_sale" below; the county's total assessed or taxable value for "subject_assessed"; the current asking or list price if the property is actively listed, for "subject_asking"; and the year the building was constructed, for "subject_year_built". The assessor record usually carries the last sale and the assessed value; a live listing usually carries the ask and the year built. A live list price is the current market's own ask for THIS property, and a 1994 house must not be priced by 2024 new construction even on the next block.`
+      ? `SUBJECT SIZE (do this FIRST): before searching for comps, spend your first web search on the TARGET address itself to determine its building size in square feet - county assessor or parcel records, a property-detail page (realtor.com, redfin.com, loopnet.com, crexi.com), or a current or past listing of the property. This is the BUILDING square footage, not the lot or land size. The report's entire value range is computed from this number, so finding it is worth a search that might otherwise go to one more comp. If that search and everything you see later genuinely yield no size for this exact address, use "" - do not guess, and never substitute a neighboring or similar property's size. While you are on those pages, also read off four things that usually sit next to the size and cost you nothing extra: the property's own last sale date and price for "subject_last_sale" below; the county's total assessed or taxable value for "subject_assessed"; the current asking or list price if the property is actively listed, for "subject_asking"; and the year the building was constructed, for "subject_year_built". The assessor record usually carries the last sale and the assessed value; a live listing usually carries the ask and the year built. A live list price is the current market's own ask for THIS property, and a 1994 house must not be priced by 2024 new construction even on the next block. If those pages show no sale of the target in the last five years, one more search for a sale of this exact address (a deal announcement or a news article naming it) is worth making: what the target itself recently sold for is stronger evidence of its value than any comp.`
+      : subjectSaleStep
+      // ONE query, in the first round, beside the comp searches rather than
+      // ahead of them: which comps are chosen does not depend on the sale
+      // history (it does depend on the size, which is why the SIZE step is
+      // serial), so this adds a query and not a round of waiting.
+      ? `SUBJECT SALE: among your FIRST searches, alongside your first comp searches, make ONE search on the TARGET address itself: has this exact property SOLD in the last five years, and for how much? Look for a deal announcement or news article naming the address, the county assessor's or recorder's sale history, or a property-detail page. What the target itself recently sold for is the strongest evidence of its value there is, stronger than any comp, so it is worth this one search. While you are on those pages, also read off the county's total assessed or taxable value for "subject_assessed", the current asking or list price if the property is actively listed for "subject_asking", and the year the building was constructed for "subject_year_built". One search only: if it shows no sale of this exact address, leave "subject_last_sale" empty and carry on with the comps.`
       : "",
     typeGuidance[type] || "",
     // Size class moves $/SF (economies of scale) — steer comp selection
@@ -10680,7 +10721,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // (wantsSize) and of the sole/primary lane regardless; mergeLaneReports
     // carries whichever one answers.
     ...(wantsSize || !compsOnly ? [
-      `  "subject_last_sale": { "date": "", "price": "", "source_url": "" },`,
+      `  "subject_last_sale": { "date": "", "price": "", "source_url": "", "source_type": "", "address": "", "size_sqft": "", "basis": "" },`,
       `  "subject_assessed": { "value": "", "year": "", "source_url": "" },`,
       `  "subject_asking": { "price": "", "source_url": "" },`,
       `  "subject_year_built": "",`,
@@ -10753,7 +10794,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // That is also why it is phrased as opportunistic when wantsSize is false:
     // with the size already known there is no subject search to ride along on,
     // and buying one would come out of the comp budget.
-    ...(wantsSize || !compsOnly ? [`"subject_last_sale" = the TARGET property's own most recent closed sale, if the sources you are already looking at show one. ${wantsSize ? "The assessor, parcel, and listing pages you open for the subject size above normally carry the sale history, so read it off those - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "date" = the closing month and year like "Aug 2025", "price" = the sale price as one number like "$12,450,000", "source_url" = the page that states it. This is the TARGET's own transaction, never a comp, and it must NOT also appear in "comps". Include it however long ago it closed, even well outside the comp window, and even when only part of it is known (a date with no public price is still worth reporting - leave "price" empty). Leave all three fields "" if the property has no findable sale of its own, and never infer one from a neighboring or similar property.${compsOnly ? "" : ` When you do find one, mention it in "summary" - what the subject itself last traded for is the most important single fact an owner can be told, so it outranks the market-level read for the second sentence.`}`] : []),
+    ...(wantsSize || !compsOnly ? [`"subject_last_sale" = the TARGET property's own most recent CLOSED sale, if the sources you are already looking at show one. ${wantsSize ? "The assessor, parcel, and listing pages you open for the subject size above normally carry the sale history, so read it off those; the SUBJECT SIZE step above says when one more search for it is worth making." : subjectSaleStep ? "The SUBJECT SALE step above is where you look for it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "date" = the closing month and year like "Aug 2025", "price" = the sale price as one number like "$12,450,000"; copy the date and the price from the SAME line of the source, and when the newest transfer shows no real price (a $0 or $10 deed, a transfer to the owner's own company) report the last real sale before it, never that transfer's date with an earlier price. "source_url" = the specific page that states this price for this property (the article, the deal page, the record for this parcel), never a website's home page, a search page or an image. "source_type" = the same four words as a comp's. "address" = the address of the property that sale covered, exactly as that page gives it (it may be a range, a neighbouring number or one suite: report what the page says, do not correct it to the target's). "size_sqft" = the building area that price covered, as the page states it, or "" if it does not say. "basis" = exactly one of: "arms_length" (an ordinary closed sale of this one whole property between unrelated parties), "sale_leaseback" (the seller stayed on as tenant), "allocated" (this property's stated share of a larger deal), "portfolio" (the price covered other properties or buildings as well), "partial_interest" (a share of the ownership changed hands, or a recapitalization among owners), "related_party" (affiliates or family, not arm's length), "distressed" (a foreclosure, auction, bank-owned, bankruptcy or short sale), "land" (it sold as land, or before the present building existed), "not_closed" (an asking price, a pending or announced deal). Never leave "basis" empty when you report a sale, and when a sale is "not_closed" do not report it here at all: an asking or list price is never a sale, however a page words it, and belongs in "subject_asking". This is the TARGET's own transaction, never a comp, and it must NOT also appear in "comps". Include it however long ago it closed, even well outside the comp window, and even when only part of it is known (a date with no public price is still worth reporting - leave "price" empty). Leave all three fields "" if the property has no findable sale of its own, and never infer one from a neighboring or similar property.${compsOnly ? "" : ` When you do find one, mention it in "summary" - what the subject itself last traded for is the most important single fact an owner can be told, so it outranks the market-level read for the second sentence.`}`] : []),
     ...(wantsSize || !compsOnly ? [`"subject_assessed" = the TARGET parcel's total assessed or taxable value, if the sources you are already looking at show one. ${wantsSize ? "The assessor and parcel pages you open for the subject size above normally print this number, so read it off those - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "value" = the county's total assessed (or taxable) value as one number like "$412,000". "year" = the four-digit tax year like "2025", or "" if the year is not shown. "source_url" = the page that states it. This is the whole parcel, never land-only or improvements-only - if the source splits those, leave all three fields "". This is not a comp and must NOT appear in "comps". Do not put it in "summary". Leave all three fields "" if nothing findable, and never infer one from a neighboring or similar property. Never use a listing ask, a Zestimate, or a separate "market value" the assessor printed as an opinion - only the assessed or taxable number the county uses to tax the parcel.`] : []),
     ...(wantsSize || !compsOnly ? [`"subject_asking" = the TARGET property's current asking or list price if it is actively listed for sale, as one number like "$1,250,000". ${wantsSize ? "The listing page you open for the subject size above carries this next to the square footage, so read it off that page - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "source_url" = the listing page that states it. This is the current ASK, not a closed sale and not a comp, and it must NOT also appear in "comps". Leave both fields "" if the property is not listed. "subject_year_built" = the year the TARGET building was constructed, as a 4-digit year like "1994". Same lookup as the size; use "" if you cannot determine it. Do not guess.${wantsConstruction ? ` "subject_construction" = how the TARGET building is built, using the same vocabulary as the comps' "construction" field. Same lookup as the size (assessor records usually state it); use "" if you cannot determine it. Do not guess.` : ""}`] : []),
   ].join("\n");
@@ -10790,8 +10831,19 @@ const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims,
 //     that far.
 //   - fields are clipped, not rejected on length: this is one short line of
 //     provenance and a long value is a formatting problem, not a lie.
+//   - Four more fields since 2026-11-27, because this sale can now LEAD the
+//     value (valuation.js, "The building's own sale") and each is something
+//     that rule checks: "basis" (kept as one of VALUATION.ownSaleBasis's
+//     closed words; a word off the list is "other" and a blank stays blank,
+//     and neither leads), "source_type" (the comps' four words, else blank),
+//     "address" (the address the SOURCE gives the sale, so a neighbour's
+//     sale or one suite's can be told from this building's) and "size_sqft"
+//     (the building area the price covered, so two buildings' price is not
+//     put on one). All four are omitted when empty: the shape a report had
+//     before them is still a valid one.
 // Deliberately NOT harvested into comp_corpus: that table holds comps, and a
 // subject's own sale is not a comp of itself.
+const OWN_SALE_SOURCE_TYPES = new Set(["public_record", "listing", "news", "estimate"]);
 function normalizeSubjectLastSale(parsed) {
   if (!parsed || typeof parsed !== "object") return parsed;
   const raw = parsed.subject_last_sale;
@@ -10801,8 +10853,89 @@ function normalizeSubjectLastSale(parsed) {
   if (!date) { delete parsed.subject_last_sale; return parsed; }
   let url = str(raw.source_url).slice(0, 500);
   if (!/^https?:\/\//i.test(url)) url = "";
-  parsed.subject_last_sale = { date, price: str(raw.price).slice(0, 40), source_url: url };
+  const out = { date, price: str(raw.price).slice(0, 40), source_url: url };
+  const basisRaw = str(raw.basis).slice(0, 80);
+  if (basisRaw) out.basis = VALUATION.ownSaleBasis(basisRaw);
+  const type = str(raw.source_type).toLowerCase().replace(/[\s-]+/g, "_");
+  if (OWN_SALE_SOURCE_TYPES.has(type)) out.source_type = type;
+  const addr = str(raw.address).slice(0, 200);
+  if (addr) out.address = addr;
+  const size = GATE.numericValue(str(raw.size_sqft));
+  if (size > 0) out.size_sqft = String(Math.round(size));
+  parsed.subject_last_sale = out;
   return parsed;
+}
+
+// The building's own sale, settled ONCE: after the search is in and its links
+// are checked, before the comp fit counts what is left, and so before the
+// cache write and the harvest (2026-11-27). It can carry most of a value now
+// (valuation.js, "The building's own sale"), and this is the only place that
+// can vet it, so it does four things and then STAMPS the sale:
+//   1. A SALE comp at the subject's own address is the subject's sale, not a
+//      comp of itself. The prompt forbids it and it comes back anyway (11 of
+//      47 audited reports). It leaves "comps" for `set_aside` under the
+//      reason "own_sale": never valued against, kept off the wider search's
+//      and the saved-deal blend's lists by the machinery that already keeps a
+//      set-aside comp from walking back in, and still harvested, because it
+//      is a real deal and the next building's best comp (comp-fit.js
+//      HARVESTABLE_REASONS).
+//   2. When the reported `subject_last_sale` has no price, or an older date,
+//      one of those rows BECOMES the sale: only a closed sale whose own
+//      source is a news page or a public record and whose notes say nothing
+//      of an asking price (VALUATION.ownSaleFrom), with whatever its notes
+//      say about its price (COMPFIT.priceBasisOf) as the basis.
+//   3. A same-address row that is ON the market is the subject's own listing:
+//      out of "comps", and the asking price when the report has none.
+//   4. `unusable` is written for the two things only the server can see: the
+//      source link was dead (`deadUrls`), or the page was read, is about this
+//      property and does not state the price (`pageVerdict`,
+//      LINKCHECK.pageStatesPrice).
+// The stamp is `settled: 1`. VALUATION.ownSaleAnchor leans on no sale without
+// it, which is what keeps every report cached, saved or shared BEFORE this
+// rule valued exactly as it was: those sales were never asked for a basis,
+// never matched to an address and never read.
+// Never throws: a failure here is the report as the search wrote it, with no
+// stamp, and so with no sale leaned on.
+function settleOwnSale(report, address, deadUrls, pageVerdict) {
+  try {
+    if (!report || typeof report !== "object") return;
+    const own = VALUATION.ownSaleFrom(report, [address]);
+    own.removed = own.own.length;
+    if (own.removed && Array.isArray(report.comps)) {
+      report.comps = own.comps;
+      report.set_aside = (Array.isArray(report.set_aside) ? report.set_aside : [])
+        .concat(own.own.map((c) => ({ ...c, set_aside: "own_sale" })));
+      const counts = {};
+      for (const x of report.set_aside) counts[x.set_aside] = (counts[x.set_aside] || 0) + 1;
+      report.set_aside_counts = counts;
+    }
+    if (own.sale && own.sale.from_comp) {
+      const url = /^https?:\/\//i.test(String(own.sale.source_url || "")) ? String(own.sale.source_url).slice(0, 500) : "";
+      const basis = (own.row && COMPFIT.priceBasisOf(own.row)) || "arms_length";
+      const size = GATE.numericValue(own.sale.size_sqft);
+      report.subject_last_sale = {
+        date: String(own.sale.date).slice(0, 40), price: String(own.sale.price).slice(0, 40), source_url: url,
+        basis, source_type: String(own.sale.source_type || ""), address: String(own.sale.address || "").slice(0, 200),
+        ...(size > 0 ? { size_sqft: String(Math.round(size)) } : {}), from_comp: true,
+      };
+    }
+    if (own.listing && !(report.subject_asking && report.subject_asking.price)) {
+      const withAsk = normalizeSubjectAsking({ subject_asking: { price: own.listing.price_or_rate, source_url: own.listing.source_url } });
+      if (withAsk.subject_asking) report.subject_asking = withAsk.subject_asking;
+    }
+    const ls = report.subject_last_sale;
+    if (ls && typeof ls === "object") {
+      if (ls.source_url && deadUrls && typeof deadUrls.has === "function" && deadUrls.has(ls.source_url)) ls.unusable = "dead_source";
+      else if (pageVerdict === "absent") ls.unusable = "page_lacks_price";
+      if (pageVerdict === "states") ls.page_states_price = true;
+      ls.settled = 1;
+    }
+    if (own.removed) {
+      console.log(`🏷️ Own sale: ${own.removed} row(s) at the subject's address taken out of comps${own.sale && own.sale.from_comp ? ", one read as its last sale" : ""} — ${address}`);
+    }
+  } catch (err) {
+    console.warn("Own-sale settle skipped:", err && err.message);
+  }
 }
 
 // Credit the contributing broker on any verified comp the model included, by
@@ -11883,8 +12016,15 @@ async function applySourceLinkCheck(report, type, address) {
   const deadUrls = new Set();
   try {
     const comps = report && Array.isArray(report.comps) ? report.comps : [];
-    if (!comps.length) return deadUrls;
-    const { verdicts, checked, blocked } = await checkSourceLinks(comps);
+    // The page cited for the subject's OWN sale is checked with the comps',
+    // and first, so the cap on how many links are checked can never be what
+    // leaves it unread: that sale can carry most of the value, and a dead
+    // link under it is the one own-sale refusal only the server can see
+    // (settleOwnSale reads the answer off the returned set).
+    const ownUrl = report && report.subject_last_sale && report.subject_last_sale.source_url;
+    const cited = ownUrl ? [{ source_url: ownUrl }, ...comps] : comps;
+    if (!cited.length) return deadUrls;
+    const { verdicts, checked, blocked } = await checkSourceLinks(cited);
     for (const [u, v] of Object.entries(verdicts)) if (v === "dead") deadUrls.add(u);
     if (checked + blocked === 0) return deadUrls;   // nothing checkable cited
     const vals = Object.values(verdicts);
@@ -11903,6 +12043,58 @@ async function applySourceLinkCheck(report, type, address) {
     console.warn("Source link check skipped:", err && err.message);
   }
   return deadUrls;
+}
+
+// Does the page cited for the subject's OWN sale state the price? Read for
+// that ONE url, beside the comps' link check and inside the same budget, so
+// it costs the search no time of its own. The rule is LINKCHECK
+// .pageStatesPrice (pure, tested); this is the network half, behind the same
+// guards as checkSourceLinks: a public host only, the DNS answer checked
+// against private ranges, never a redirect followed, never a host that walls
+// off bots. Everything that is not a clean read is "unknown", which costs the
+// sale nothing: only a page that IS about the property and does NOT carry
+// the price counts against it.
+const OWN_SALE_PAGE_BYTES = 300 * 1024;
+async function ownSalePageVerdict(sale, address) {
+  try {
+    const url = String((sale && sale.source_url) || "").trim();
+    const price = VALUATION.moneyOf(sale && sale.price);
+    if (!url || !(price > 0) || !VALUATION.specificPage(url)) return "unknown";
+    if (!LINKCHECK.checkableUrl(url) || LINKCHECK.hostClass(url) === "blocked") return "unknown";
+    let addrs;
+    try { addrs = await lookupWithTimeout(new URL(url).hostname, LINK_CHECK_BUDGET_MS); } catch (_) { return "unknown"; }
+    if (!addrs.length || addrs.some((a) => privateAddress(a.address, a.family))) return "unknown";
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), LINK_CHECK_BUDGET_MS);
+    try {
+      const r = await fetch(url, { redirect: "manual", method: "GET", signal: controller.signal, headers: { "user-agent": LINK_CHECK_UA } });
+      if (!(r.status >= 200 && r.status < 300)) {
+        try { if (r.body && !r.bodyUsed) await r.body.cancel(); } catch (_) {}
+        return "unknown";
+      }
+      const body = await readBodyHead(r, OWN_SALE_PAGE_BYTES);
+      return LINKCHECK.pageStatesPrice(body, price, (sale && sale.address) || address);
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (_) {
+    return "unknown";
+  }
+}
+
+// The link check, the read of the own sale's page, and the settle that needs
+// both: one step for getComps's two exits. Which sale will be settled is
+// known before either request goes out (VALUATION.ownSaleFrom is pure), so
+// the two run side by side.
+async function checkLinksAndSettle(report, type, address) {
+  let sale = null;
+  try { sale = VALUATION.ownSaleFrom(report, [address]).sale; } catch (_) { sale = null; }
+  const [dead, pageVerdict] = await Promise.all([
+    applySourceLinkCheck(report, type, address),
+    ownSalePageVerdict(sale, address),
+  ]);
+  settleOwnSale(report, address, dead, pageVerdict);
+  return dead;
 }
 
 async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, corpus = { comps: [], coverage: 0, fresh: false }, subjectDetails = {}, onProgress = null, stats = null) {
@@ -11942,14 +12134,14 @@ async function getComps(address, type, note, months, maxComps, txFocus, subjectS
     // so /api/comps and the Explorer both inherit it and every downstream
     // surface (cache, harvest, snapshot, gate, share) sees the same badges.
     const firstLegMs = Date.now() - searchStartedAt;
-    const dead = await applySourceLinkCheck(merged, type, address);
+    const dead = await checkLinksAndSettle(merged, type, address);
     await refineComps(merged, { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, deadUrls: dead, onProgress, stats, searchStartedAt, firstLegMs });
     return merged;
   }
 
   const report = await solo((attempt) => callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "solo", null, progressFor(onProgress, attempt), stats), onProgress, stats);
   const firstLegMs = Date.now() - searchStartedAt;
-  const dead = await applySourceLinkCheck(report, type, address);
+  const dead = await checkLinksAndSettle(report, type, address);
   await refineComps(report, { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, deadUrls: dead, onProgress, stats, searchStartedAt, firstLegMs });
   return report;
 }
@@ -12083,6 +12275,10 @@ async function refineComps(report, ctx) {
     const widerDead = await applySourceLinkCheck(wider, type, address);
     await placeCompsForFit(wider, placeAt);
     COMPFIT.applyCompFit(wider, fitOpts(widerDead));
+    // The wider look can bring the subject's own sale back as a "comp" (it is
+    // told the addresses already in hand, and the subject's is no longer one
+    // of them). It is not a comp of itself: settleOwnSale's first rule.
+    wider.comps = VALUATION.ownSaleFrom(wider, [address, report.subject_address_corrected]).comps;
     const added = COMPFIT.mergeWiderComps(report, wider, maxComps);
     const allDead = new Set([...(deadUrls || []), ...widerDead]);
     COMPFIT.applyCompFit(report, fitOpts(allDead));
@@ -12993,6 +13189,12 @@ async function runBulkItem(item, ctx) {
       propertyType: job.property_type,
       // The row's own asking price, which the linked report weights by too.
       askingPrice: item.subject && item.subject.asking,
+      // What the report page hands the own-sale rule (bulk.js has the list):
+      // without the address a sale of the building is never leaned on, and
+      // the row would print a different value from the report it links to.
+      address,
+      txFocus: job.tx_focus || "both",
+      netLease: VALUATION.isNetLease(job.property_type, (item.subject && item.subject.details) || {}),
     });
 
     if (!valued) {
@@ -13045,7 +13247,9 @@ async function runBulkItem(item, ctx) {
       subject_size_sqft: valued.size_sqft, size_source: valued.size_source,
       sale_comps: valued.sale_comps, comp_count: valued.comp_count,
       trimmed: valued.trimmed,
-      error: valued.sized ? null : "No building size found — showing the $/SF range only.",
+      // A row with no size still has a dollar value when the building's own
+      // sale supplies one, and then there is nothing to apologize for.
+      error: valued.sized || valued.value_likely ? null : "No building size found — showing the $/SF range only.",
       recent_item_id: recentItemId,
     });
     console.log(`Bulk ${job.id}: ${address} — ${searched.kind} in ${Math.round((Date.now() - started) / 1000)}s`);
@@ -23837,9 +24041,13 @@ const server = http.createServer((req, res) =>
               // correction, so nobody has to answer for the request to move.
               ...(ackPhone ? [``, ackPhone] : []),
               ``,
+              // "and, where there is one, the property's own recent sale" since
+              // 2026-11-27: a report can lean on that sale now (valuation.js),
+              // and this sentence is the one place the email says what the
+              // numbers are made of.
               `A note on the numbers: everything in the report is an automated estimate`,
-              `built from recent comparable sales. It is not an appraisal and not a`,
-              `broker opinion of value.`,
+              `built from recent comparable sales and, where there is one, the property's`,
+              `own recent sale. It is not an appraisal and not a broker opinion of value.`,
               ``,
               `Questions? Just reply to this email.`,
               ``,
@@ -27731,6 +27939,12 @@ const server = http.createServer((req, res) =>
             note: job.note || "",
             propertyType: job.property_type,
             askingPrice: item.subject && item.subject.asking,
+            // The same four the worker passes, plus the switch the member may
+            // have thrown on the saved report since (bulk.js has the list).
+            address: item.address,
+            txFocus: job.tx_focus || "both",
+            netLease: VALUATION.isNetLease(job.property_type, (item.subject && item.subject.details) || {}),
+            ownSaleOff: !!(saved.payload.meta && saved.payload.meta.curation && saved.payload.meta.curation.ownSaleOff),
           });
           if (!valued) {
             return sendJson(res, 409, { error: "That report has no priced sale comps to value against." });

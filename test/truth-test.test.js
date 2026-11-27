@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
 const TT = require("../scripts/truth-test");
 
 const NOW = Date.parse("2026-11-27");
@@ -29,10 +30,100 @@ test("a report is scored against the sale price, with the building's own sale ta
   assert.equal(r.miss, 0);
   assert.equal(r.inRange, true);
   assert.equal(r.calls, 2);
+  // Nothing in this report is a settled sale of the building, so the second
+  // score is the first one over again and nothing "leaned".
+  assert.equal(r.leaned, false);
+  assert.equal(r.shownLikely, r.likely);
+  assert.equal(r.shownMiss, 0);
+  assert.equal(r.ownSale, null);
   // For any other building, that fifth comp is just a comp and stays.
   const other = TT.scoreReport({ ...target, address: "999 Elsewhere Rd, Boise, ID" }, report, NOW);
   assert.equal(other.ownSaleRemoved, 0);
   assert.equal(other.comps, 5);
+});
+
+// The reason the script prints two scores. Every building in the set has
+// sold and the answer key IS that sale, so a report that leans on the sale
+// lands on the answer by construction. Scored as one figure, that would read
+// as accuracy.
+test("a report that leans on the building's own sale is scored twice, and the comps-only score never sees the sale", () => {
+  const sale = { date: "2026-09", price: "$1,000,000", source_url: "https://news.example.com/deals/100-main-st-sells",
+    source_type: "news", address: "100 Main St, Boise, ID", basis: "arms_length", settled: 1 };
+  const report = {
+    subject_size_sqft: "10000", currency: "USD", subject_last_sale: sale,
+    // Comps at half the building's own price: other buildings, badly matched.
+    comps: [comp("1 A St, Boise, ID", 45), comp("2 B St, Boise, ID", 55), comp("3 C St, Boise, ID", 50), comp("4 D St, Boise, ID", 50)],
+  };
+  const r = TT.scoreReport(target, report, NOW);
+  // COMPS ONLY: $50/SF x 10,000 SF, as if the sale had never been found.
+  assert.equal(r.likely, 500000);
+  assert.equal(r.miss, -0.5);
+  // AS SHOWN: it starts from the sale, so it lands beside it.
+  assert.equal(r.leaned, true);
+  assert.ok(Math.abs(r.shownMiss) < 0.06, "leaning on the sale lands near the sale: " + r.shownMiss);
+  assert.equal(r.shownInRange, true);
+  assert.equal(r.ownSale.refused, null);
+  assert.ok(r.ownSale.weight >= 0.5);
+  // A sale the server never stamped is one the page does not lean on, and
+  // the script says why instead of quietly scoring it as a find.
+  const unstamped = TT.scoreReport(target, { ...report, subject_last_sale: { ...sale, settled: undefined } }, NOW);
+  assert.equal(unstamped.leaned, false);
+  assert.equal(unstamped.ownSale.refused, "unsettled");
+  assert.equal(unstamped.shownMiss, -0.5);
+  // The input is not edited: the same report scores the same twice.
+  assert.deepEqual(TT.scoreReport(target, report, NOW), r);
+  assert.ok(report.subject_last_sale, "scoring must not strip the caller's report");
+});
+
+test("the summary keeps the two scores apart and leaves an asking price out of both", () => {
+  const rows = [
+    { address: "a", check: "confirmed", miss: -0.40, inRange: false, shownMiss: 0.02, shownInRange: true, leaned: true, ownSale: { refused: null }, saleComps: 4 },
+    { address: "b", check: "confirmed", miss: 0.20, inRange: true, shownMiss: 0.20, shownInRange: true, leaned: false, ownSale: { refused: "basis" }, saleComps: 6 },
+    { address: "c", check: "unverified", miss: 0.60, inRange: false, shownMiss: 0.60, shownInRange: false, leaned: false, ownSale: null, saleComps: 5 },
+    // "Sold" for its own asking price: there is no answer to score against.
+    { address: "d", check: "asking", miss: 0.01, inRange: true, shownMiss: 0.01, shownInRange: true, leaned: true, ownSale: { refused: null }, saleComps: 9 },
+  ];
+  const s = TT.summarize(rows);
+  assert.equal(s.buildings, 4);
+  assert.equal(s.notASale, 1);
+  assert.equal(s.valued, 3);
+  // The headline figures are the comps-only score, as they always were.
+  assert.equal(s.medianMiss, 0.40);
+  assert.equal(s.within10, 0);
+  assert.equal(s.confirmed.n, 2);
+  assert.ok(Math.abs(s.confirmed.medianMiss - 0.30) < 1e-12);
+  // The other score, split by whether the report leaned on the sale.
+  assert.equal(s.shown.all.n, 3);
+  assert.equal(s.shown.leaned.n, 1);
+  assert.equal(s.shown.leaned.medianMiss, 0.02);
+  assert.equal(s.shown.notLeaned.n, 2);
+  assert.ok(Math.abs(s.shown.notLeaned.medianMiss - 0.40) < 1e-12);
+  assert.deepEqual(s.shown.refusals, { basis: 1, none_found: 1 });
+  assert.ok(Math.abs(s.saleComps - 5) < 1e-12, "the asking row's comps are not averaged in either");
+});
+
+test("an asking-price row is not run, and a saved report is replayed with no request", (t) => {
+  const targets = [{ address: "1 A St, Boise, ID", check: "confirmed" }, { address: "2 B St, Boise, ID", check: "asking" }, { address: "3 C St, Boise, ID" }];
+  assert.deepEqual(TT.runnable(targets).map((x) => x.address), ["1 A St, Boise, ID", "3 C St, Boise, ID"]);
+  assert.equal(TT.runnable(targets, true).length, 3);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "truth-replay-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const report = { subject_size_sqft: "10000", comps: [comp("1 A St, Boise, ID", 90), comp("2 B St, Boise, ID", 110), comp("3 C St, Boise, ID", 100), comp("4 D St, Boise, ID", 100)] };
+  fs.writeFileSync(path.join(dir, "100-main-st.json"), JSON.stringify({ target, fetchedAt: "2026-11-27T00:00:00.000Z", report }));
+  fs.writeFileSync(path.join(dir, "broken.json"), "{ not json");
+  fs.writeFileSync(path.join(dir, "notes.txt"), "ignored");
+  // The row takes its `check` from the truth set as it stands today, so a
+  // building vetted after the run is read with what is known now.
+  const rows = TT.replayRows(dir, { targets: [{ ...target, check: "confirmed" }] });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].check, "confirmed");
+  assert.equal(rows[0].miss, 0);
+  assert.equal(rows[0].replayed, "100-main-st.json");
+  // And the script still makes a request only from runOne.
+  const src = fs.readFileSync(path.join(__dirname, "..", "scripts", "truth-test.js"), "utf8");
+  const replay = src.slice(src.indexOf("function replayRows"), src.indexOf("async function runOne"));
+  assert.ok(replay.length > 200 && !/post\(|execFile|fetch\(/.test(replay), "replaying must not reach the network");
 });
 
 test("a report with no size or no priced sale is counted as not valued, never as a zero miss", () => {
@@ -111,5 +202,14 @@ test("the committed truth set is usable: an address, a type and a sale price on 
     const k = t.address.toLowerCase();
     assert.ok(!seen.has(k), "listed twice: " + t.address);
     seen.add(k);
+    // Every row says how far its price can be trusted (the 2026-11-27 audit
+    // against the web), and a row that is not a plain sale says what it is.
+    assert.ok(TT.CHECKS.includes(t.check), "no check on " + t.address);
+    if (t.check === "asking") assert.ok(t.caveat, "an asking-price row says so: " + t.address);
+    if (t.sale_type) assert.ok(t.caveat, "an unusual sale says what it was: " + t.address);
   }
+  const count = (c) => set.targets.filter((t) => t.check === c).length;
+  assert.ok(count("confirmed") >= 25, "most of the answer key should be confirmed sales");
+  assert.ok(count("asking") >= 1, "the asking-price rows stay in the file, marked, so older runs still line up");
+  assert.ok(TT.runnable(set.targets).every((t) => t.check !== "asking"));
 });

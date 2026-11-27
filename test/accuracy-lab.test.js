@@ -157,3 +157,64 @@ test("the lab carries both distance variants", () => {
   const names = LAB.VARIANTS.filter((v) => v.group === "distance").map((v) => v.name);
   assert.equal(names.length, 2);
 });
+
+// 2026-11-27: the comp-fit variants put the pool through comp-fit.js's own
+// function, so the lab cannot score a copy of the rule a report runs.
+function fitCtx(sizes, notes) {
+  return {
+    subject: { row: { property_type: "Industrial", address: "1 Subject Way, Boise, ID" } },
+    peers: sizes.map((s, i) => ({ row: { notes: (notes && notes[i]) || "" } })),
+  };
+}
+const fitComps = (sizes) => sizes.map((s, i) => comp({ address: (i + 2) + " Peer St, Boise, ID", size_sqft: String(s) }));
+
+test("the fit variant a report runs leaves a different-sized peer in; the size variant cuts it", () => {
+  const sizes = [10000, 11000, 9000, 12000, 1000, 90000];
+  const ctx = fitCtx(sizes);
+  const opts = { subjectSF: 10000 };
+  const asBlended = LAB.fittedPeers({})(fitComps(sizes), opts, ctx);
+  assert.equal(asBlended.length, 6, "refitBlended does not size-cut saved deals, so neither does its variant");
+  const withSize = LAB.fittedPeers({ size: true })(fitComps(sizes), opts, ctx);
+  assert.deepEqual(withSize.map((c) => c.size_sqft), ["10000", "11000", "9000", "12000"]);
+  // The floor is comp-fit.js's own: never under three priced sales.
+  const thin = [10000, 1000, 90000, 800];
+  assert.equal(LAB.fittedPeers({ size: true })(fitComps(thin), opts, fitCtx(thin)).length, 3);
+});
+
+test("the fit variants read a peer's notes off its row, which the backtest's comps do not carry", () => {
+  const sizes = [10000, 10000, 10000, 10000, 10000];
+  const notes = ["", "Foreclosure sale.", "", "Part of a 3-property portfolio.", ""];
+  const kept = LAB.fittedPeers({})(fitComps(sizes), { subjectSF: 10000 }, fitCtx(sizes, notes));
+  assert.equal(kept.length, 3);
+  const only = LAB.fittedPeers({ priceBasisOnly: true })(fitComps(sizes), { subjectSF: 10000 }, fitCtx(sizes, notes));
+  assert.equal(only.length, 3);
+  // Fewer than three left: the rule stands down, as a live report's floor does.
+  const most = ["Foreclosure sale.", "Sold at auction.", "Bank-owned sale.", "", ""];
+  assert.equal(LAB.fittedPeers({ priceBasisOnly: true })(fitComps(sizes), { subjectSF: 10000 }, fitCtx(sizes, most)).length, 5);
+});
+
+test("the lab carries the fit variants, the size question both ways, and the comp-count curve", () => {
+  const fit = LAB.VARIANTS.filter((v) => v.group === "fit").map((v) => v.name);
+  assert.equal(fit.length, 5);
+  assert.equal(fit.filter((n) => /PLUS the size-class cut/.test(n)).length, 2);
+  assert.equal(LAB.VARIANTS.filter((v) => v.group === "count").length, 4);
+});
+
+test("market-seed.json reads as corpus rows, and nothing else is mistaken for it", () => {
+  const rows = LAB.seedRows(JSON.stringify({
+    "industrial-boise-id": { type: "Industrial", city: "Boise", state: "ID",
+      comps: [{ address: "1 A St, Boise, ID", date: "Mar 2026", transaction: "Sale", size_sqft: "10000", price_or_rate: "$1,000,000" }] },
+    "note": "not a page",
+  }));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].market, "Boise, ID");
+  assert.equal(rows[0].property_type, "Industrial");
+  assert.equal(rows[0].deal_date, "Mar 2026");
+  assert.equal(LAB.seedRows("[1,2]"), null);
+  assert.equal(LAB.seedRows('{"a":1}'), null);
+  assert.equal(LAB.seedRows('{"address":"1 A St"}\n{"address":"2 B St"}'), null, "a .json of JSON lines still reads as lines");
+  // The committed seed itself: every row lands in a market and a type.
+  const seed = LAB.seedRows(require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "market-seed.json"), "utf8"));
+  assert.ok(seed.length > 100);
+  assert.ok(seed.every((r) => /, [A-Z]{2}$/.test(r.market) && r.property_type));
+});

@@ -160,7 +160,21 @@
     if ((m = t.match(/^(\d{1,2})\/((?:19|20)\d{2})$/)) && Number(m[1]) >= 1 && Number(m[1]) <= 12) {
       return new Date(Number(m[2]), Number(m[1]) - 1, 1).getTime();
     }
+    // A comp on the market: "Active" names no date, and "Listed Mar 2025" is
+    // the month it was listed, read by the rules above. V8 read the second
+    // that way only by guessing past the word, which no other engine is
+    // bound to do: a comp one browser ages, another may weigh as undated.
+    if (/^active\b/.test(t)) return NaN;
+    if ((m = t.match(/^listed\s+(\S.*)$/))) return compDateMs(m[1]);
     return Date.parse(text);
+  }
+
+  // An ASKING price, not a sale. The search prompt's own convention, which
+  // deal-date.js refuses on purpose so no aggregate over the corpus mistakes
+  // one for a closed deal (corpus.md): a comp that is on the market is dated
+  // "Active", or "Listed Mar 2025" when its page shows a post date.
+  function isOnMarket(c) {
+    return /^\s*(?:active|listed)\b/i.test(String(c == null || c.date == null ? "" : c.date));
   }
 
   // Age in years at `asOf`, capped at five. A future-dated comp reads as 0
@@ -352,9 +366,19 @@
   // out-of-window straggler is never extrapolated into fiction. `trendPct` is
   // the model's market-level figure (server-bounded to +/-30%/yr, null when
   // its searches showed no clear trend).
+  //
+  // Never an asking price (2026-11-27). The index answers "what would this
+  // PAST price be today"; a listing that is still on the market at its ask is
+  // already today's price, whenever it was first posted. Indexing it from its
+  // list date moved it the wrong way: in a market rising 6% a year a
+  // warehouse listed 18 months ago and still unsold counted 9% ABOVE its own
+  // asking price, when sitting that long says the ask was high to begin with.
+  // Its list date still ages its WEIGHT (compWeight), which is the right half:
+  // a stale ask is weaker evidence, not a cheaper building.
   function trendFactor(c, asOf, trendPct) {
     const pct = Number(trendPct);
     if (!Number.isFinite(pct) || pct === 0 || Math.abs(pct) > 30) return 1;
+    if (isOnMarket(c)) return 1;
     const age = compAgeYears(c, asOf);
     if (!age) return 1;
     return Math.pow(1 + pct / 100, Math.min(age, 3));
@@ -841,7 +865,7 @@
     capRateOf, capRateBand, netLeaseValue, impliedCapRate,
     CAP_RATE_MIN, CAP_RATE_MAX, CAP_BAND_MIN_COMPS,
     numericValue, salePsfOf, robustPpsfRange, BAND_LOW_PCT, BAND_HIGH_PCT, heroRound,
-    TIER_WEIGHT, tierOf, compDateMs, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
+    TIER_WEIGHT, tierOf, compDateMs, isOnMarket, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
     defaultFreePassMiles, constructionMismatch, CONSTRUCTION_MISMATCH,
     parseRadiusMiles, radiusClaimContradicted, RADIUS_CLAIM_SLACK,
     priceTierFactor, PRICE_TIER_RATIO,

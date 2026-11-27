@@ -22904,7 +22904,10 @@ async function renderMyDesk() {
     if (n("distance")) parts.push(`${n("distance")} ${n("distance") === 1 ? "was" : "were"} farther away than closer sales we found`);
     if (n("unit")) parts.push(`${n("unit")} ${n("unit") === 1 ? "was a condo or unit sale" : "were condo or unit sales"} rather than a whole building`);
     if (n("dead_source")) parts.push(`${n("dead_source")} cited a source page that was dead or a parked domain`);
-    const total = n("size") + n("distance") + n("unit") + n("dead_source");
+    // comp-fit.js "price_basis" (2026-11-27): the comp's own notes said its
+    // price was not an open-market price for one whole property.
+    if (n("price_basis")) parts.push(`${n("price_basis")} ${n("price_basis") === 1 ? "was" : "were"} not an ordinary open-market sale (a portfolio, partial-interest, related-party, foreclosure or auction sale)`);
+    const total = n("size") + n("distance") + n("unit") + n("dead_source") + n("price_basis");
     const added = Math.max(0, Math.floor(Number(wider && wider.added) || 0));
     let out = "";
     if (total) {

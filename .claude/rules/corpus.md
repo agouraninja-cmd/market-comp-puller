@@ -79,6 +79,18 @@ paths:
   report, so a later search in the area picks up deals saved after the cache
   write. Rollback is `CORPUS_RADIUS=off`. Vault rows are never read. Spec:
   `docs/superpowers/specs/2026-08-14-radius-corpus-blend-design.md`.
+  **The blended set is fitted (2026-11-27).** Right after the blend, and
+  before the paywall, `COMPFIT.refitBlended` applies the comp-fit rules the
+  search's own comps were already held to: a saved deal this report's search
+  set aside cannot come back through the corpus, a saved condo-unit sale or a
+  sale whose notes say its price is not a market price is not blended, and a
+  far deal is dropped when four near ones exist. NOT the size-class cut (a
+  measured decision; see "The accuracy lab" and search-pipeline.md). For
+  this `corpusRowsForType` selects `notes`, which the blend's own
+  manufactured-home words can now match too; the notes are taken off a saved
+  deal before it is served (`COMPFIT.withoutSavedNotes`), since they were
+  written about another search's subject. `COMP_FIT=off` rolls the fit back
+  and leaves the blend.
   **Corpus health (`CORPUS_HEALTH` + `noteCorpusFailure()`).** Fire-and-forget
   means both the write (`harvestComps`) and the read (`corpusRowsForMarket`)
   swallow their errors, which once hid a total outage: ten per-comp columns
@@ -275,6 +287,33 @@ paths:
     anything a point better: collapsing re-dated copies in the blend is NOT an
     accuracy fix, though it would tidy the comp table (both variants stay in
     the lab so the next session does not re-run the question as new).
+  - **The comp fit and the comp count are on the bench (2026-11-27), and
+    neither has been run on a real export.** Group `fit` puts the pool
+    through `COMPFIT.applyCompFit` itself (so the lab scores the rule a
+    report runs, not a copy; a peer's notes are put back from its row):
+    "as blended" is what `refitBlended` does to saved deals (unit sales,
+    price basis, and distance when the export has map points), "PLUS the
+    size-class cut" asks whether saved deals should be size-cut as well, and
+    "only the price-basis rule" isolates that one. Group `count` values each
+    sale from only its 3, 4, 6 or 8 best-weighted peers: the price of a thin
+    report, and so the case for searching again.
+    **The lab reads `market-seed.json` directly** (`seedRows`: the market
+    pages' own comps as corpus rows) for a session with no export to hand.
+    It is a weak stand-in (241 rows, 34 scored, pools of four to seven, no
+    notes, no map points) and everything below is from it, so read it as a
+    direction, never a size. On it: the size-class cut on the pool moved 15
+    sales, nearly all down to the three-comp floor, and made 60% of them
+    worse (median miss 22.7% to 27.8%, the market-resampled interval 0.0 to
+    +11.0 points), which is why `refitBlended` leaves size alone; nothing
+    else in the lab's standard set cleared the noise on it either (the
+    comp-count variants included, though with pools this small they barely
+    move). **The first thing to do with a real export** is
+    `node scripts/accuracy-lab.js <export> --only fit --by-type` and
+    `--only "how much"`. If the size cut is no better there, the same
+    question is owed to the search's own size cut (comp-fit.js's first pass,
+    2026-11-17), which was the owner's call from one report and has never
+    been measured: it leaves three comps wherever the wider search finds
+    nothing.
   - **Distance needs an export from 2026-11-16 on.** `/api/comp-corpus` now
     ends with `lat`, `lng` (appended, so no earlier column moves; both are in
     migration 001, so naming them cannot 400 the read into the file-only

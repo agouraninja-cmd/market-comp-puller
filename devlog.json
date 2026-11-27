@@ -1,5 +1,29 @@
 [
   {
+    "date": "2026-11-27",
+    "type": "fix",
+    "title": "A comp we left out of a report no longer comes back as a saved deal",
+    "details": "Since 2026-11-17 a report leaves out comps that do not fit the building (a very different size, a condo unit against a whole building, far away when closer sales exist) and says so under the table. But a report also adds deals we have saved from earlier searches within ten miles, and those were added with none of those rules. A comp left out for its size is saved as a good comp for some other building, so the next time the same report was opened it came back as a saved deal, under the sentence saying it had been left out, and a saved condo unit could join any whole-building report nearby. Saved deals now go through the fit rules before they join: one this report's search left out stays out, a condo or unit sale is not added to a whole-building report, and a far one is dropped when closer ones exist. One rule is deliberately not applied to saved deals: the size cut. Tested on the market pages' own comps, cutting a small set of comps down to its size class made the estimate worse more often than better, so a saved deal of another size stays in, adjusted for size and counted less, as before."
+  },
+  {
+    "date": "2026-11-27",
+    "type": "improvement",
+    "title": "Sales that were not ordinary market sales are left out of the value",
+    "details": "The search has always been asked to say, in a comp's notes, when its price does not mean what a price usually means: part of a portfolio sale, a partial interest, a transfer between related parties, a foreclosure or an auction. Until now that warning sat in the notes column while the price still set the range. Those comps are now left out before the value is worked out, for every property type, and the line under the table says how many. When that would leave fewer than three priced sales they come back, last, after any comp that is merely a different size, except a partial interest, whose price is for part of a building and is never used. This has not been measured on live searches yet."
+  },
+  {
+    "date": "2026-11-27",
+    "type": "fix",
+    "title": "An asking price is no longer adjusted as if it were an old sale",
+    "details": "Older sales are adjusted to today using the market's yearly price trend. A property still for sale, dated by when it was listed, was being adjusted the same way: in a market rising 6% a year, a building listed 18 months ago and still unsold counted 9% above its own asking price. An asking price that is still live is already today's price, so it is now counted as asked. How long it has been listed still makes it count for less. The listing date is also now read the same way in every browser."
+  },
+  {
+    "date": "2026-11-27",
+    "type": "improvement",
+    "title": "A report's second search never pushes it past a minute",
+    "details": "When a report comes back with too few right-sized sales, CompNinja runs one more, wider search. That second search now starts only if it should finish inside one minute from the start of the report, and is stopped at the minute if it runs long, in which case the report keeps the first search's comps. A search today takes about ten seconds, so nothing changes now; this keeps reports inside a minute if a slower model or deeper reasoning is ever switched on. The limit can be moved or removed with SEARCH_TIME_BUDGET_SECONDS."
+  },
+  {
     "date": "2026-11-25",
     "type": "fix",
     "title": "Home's map on a phone no longer opens with blank squares",

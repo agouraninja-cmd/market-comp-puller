@@ -441,7 +441,8 @@ so they are trusted config and are never set in production.
 | `SEARCH_PROVIDER` | `gemini` | `gemini` or `anthropic`; an unknown value exits at boot; `MODEL` overrides the model; `/healthz` reports what is live | search-pipeline.md |
 | `THINKING_LEVEL` | unset (production: `low`, set on Render) | Gemini reasoning depth — the largest wall-clock and cost lever | search-pipeline.md |
 | `STREAM_ANTHROPIC` | on | stream the search call | search-pipeline.md |
-| `COMP_FIT`, `COMP_WIDER_SEARCH` | on | set aside off-size, unit, dead-source and far comps before valuing (`comp-fit.js`); the second spends one more search when too few right-sized sales are left; `off` is each one's rollback | search-pipeline.md |
+| `COMP_FIT`, `COMP_WIDER_SEARCH` | on | set aside off-size, unit, dead-source, far and not-a-market-price comps before valuing, and fit the saved deals blended in afterwards (`comp-fit.js`); the second spends one more search when too few right-sized sales are left; `off` is each one's rollback | search-pipeline.md |
+| `SEARCH_TIME_BUDGET_SECONDS` | 60 | the ceiling a search's optional wider leg must fit inside: it is not started if it would run past it, and is stopped there if it does; the report's own call is never cut; `0` or `off` removes the ceiling | search-pipeline.md |
 | `PARALLEL_SEARCH` | off | two concurrent search lanes; measured and not worth it yet | search-pipeline.md |
 | `CORPUS_RADIUS`, `CORPUS_METRO`, `CORPUS_LISTED`, `ARCHIVE_FIRST` | on | `off` rolls back the radius blend, metro retrieval, on-market listings, archive-first | corpus.md |
 | `LEAD_METRO` | on | broker lead coverage matches across metro groups | vault.md |

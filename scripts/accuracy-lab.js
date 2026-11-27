@@ -5,6 +5,7 @@
 //   node scripts/accuracy-lab.js comp-corpus.csv            # the standard set
 //   node scripts/accuracy-lab.js a.csv b.jsonl --only size  # variants by name
 //   node scripts/accuracy-lab.js corpus.csv --facts         # what the data says
+//   node scripts/accuracy-lab.js market-seed.json --only fit   # no export to hand
 //
 // backtest.js is the instrument /admin reads: hold each known sale out, value
 // it from its peers with the production math, measure the miss. This is the
@@ -43,6 +44,7 @@ const ROOT = path.join(__dirname, "..");
 const BACKTEST = require(path.join(ROOT, "backtest.js"));
 const VALUATION = require(path.join(ROOT, "valuation.js"));
 const BLEND = require(path.join(ROOT, "blend-corpus.js"));
+const COMPFIT = require(path.join(ROOT, "comp-fit.js"));
 const { parseDealDate } = require(path.join(ROOT, "deal-date.js"));
 
 // ---- reading rows ---------------------------------------------------------
@@ -78,8 +80,32 @@ function parseCsv(text) {
   });
 }
 
+// market-seed.json, the market pages' own comps, read as corpus rows: each
+// page's city, state and type become the row's market and property_type, and
+// a comp's `date` its `deal_date`. A STAND-IN for when no corpus export is to
+// hand (a cloud session has no admin key), and a weak one: about 240 comps in
+// 40 markets, pools of four to seven, no notes and no map points. It can show
+// which way a change leans; it cannot settle one. Returns null for any other
+// JSON.
+function seedRows(text) {
+  let pages;
+  try { pages = JSON.parse(text); } catch (e) { return null; }
+  if (!pages || typeof pages !== "object" || Array.isArray(pages)) return null;
+  const entries = Object.values(pages).filter((p) => p && Array.isArray(p.comps) && p.city && p.type);
+  if (!entries.length) return null;
+  const rows = [];
+  entries.forEach((p) => p.comps.forEach((c) => rows.push(Object.assign({}, c, {
+    market: p.city + ", " + p.state, property_type: p.type, deal_date: c.date,
+  }))));
+  return rows;
+}
+
 function readRows(file) {
   const text = fs.readFileSync(file, "utf8");
+  if (/\.json$/i.test(file)) {
+    const seed = seedRows(text);
+    if (seed) return seed;
+  }
   if (/\.jsonl?$/i.test(file)) {
     return text.split(/\r?\n/).filter(Boolean)
       .map((l) => { try { return JSON.parse(l); } catch (e) { return null; } })
@@ -327,6 +353,70 @@ add({ name: "distance weighting on (as a live report weights a located comp)", g
 add({ name: "peers inside the radius blend's circle, weighted by distance", group: "distance",
   comps: (comps, opts, ctx) => withinBlendRadius(withDistance(comps, opts, ctx), opts, ctx) });
 
+// The comp fit, over the pool (2026-11-27). A live report's saved deals are
+// fitted with comp-fit.js's own rules once they are blended in (server.js
+// finishReportForViewer -> COMPFIT.refitBlended): a different size class, a
+// condo or unit sale and a price the comp's own notes say is not a market
+// price are left out, and a far deal is when nearer ones exist. Until that
+// date the blend added every saved deal of the type inside its circle, which
+// is what the backtest's whole-market pool has always stood in for. These
+// variants put the pool through the SAME function, floor and all (never under
+// three priced sales), so "does fitting the saved deals help?" is asked of
+// the rule a live report runs, not of a copy.
+//
+// The peers carry no notes (backtest.js's compFromRow has no use for them),
+// so they are put back from the row for the price-basis rule to read.
+function fittedPeers(rules) {
+  return (comps, opts, ctx) => {
+    let pool = comps.map((c, i) => Object.assign({}, c, { notes: ctx.peers[i].row.notes || "" }));
+    if (rules.priceBasisOnly) {
+      const keep = pool.filter((c) => !COMPFIT.priceBasisOf(c));
+      return keep.length >= 3 ? keep : pool;
+    }
+    if (rules.distance) pool = withDistance(pool, opts, ctx);
+    const work = { comps: pool.slice() };
+    COMPFIT.applyCompFit(work, {
+      subjectSqft: Number(opts.subjectSF) || 0,
+      propertyType: ctx.subject.row.property_type,
+      subjectAddress: ctx.subject.row.address,
+      sizeRule: rules.size === true,
+    });
+    return work.comps.length ? work.comps : pool;
+  };
+}
+// What a blended report does today: every rule but the size cut.
+add({ name: "comp fit on the pool, as blended: unit sales, price basis", group: "fit",
+  comps: fittedPeers({}) });
+add({ name: "comp fit on the pool, as blended, with distance (needs lat/lng)", group: "fit",
+  comps: fittedPeers({ distance: true }) });
+// The question refitBlended leaves open: should the size-class cut (under
+// 0.4x or over 2.5x the subject, floored at three priced sales) apply to
+// saved deals too? On the 2026-11-27 market-page comps it made things worse
+// (small pools cut to three). Turn it on in comp-fit.js only if this line
+// clears the noise on a real export.
+add({ name: "comp fit on the pool, PLUS the size-class cut (not in production)", group: "fit",
+  comps: fittedPeers({ size: true }) });
+add({ name: "comp fit on the pool, PLUS the size-class cut, with distance", group: "fit",
+  comps: fittedPeers({ size: true, distance: true }) });
+add({ name: "only the price-basis rule (portfolio, partial interest, distressed)", group: "fit",
+  comps: fittedPeers({ priceBasisOnly: true }) });
+
+// How much is one more comp worth? Every subject valued from only its K
+// best-weighted peers (production's own compWeight ranks them), against all
+// of them. This is the case for a thin report searching again: if the miss
+// falls as K rises, a report holding four comps is leaving accuracy on the
+// table that a second search could pick up. Subjects with K or fewer peers
+// are unmoved, so read "of the N it moved".
+[3, 4, 6, 8].forEach((k) => add({
+  name: "only the " + k + " best-weighted comps (how much is a comp worth?)", group: "count",
+  comps: (comps, opts) => {
+    if (comps.length <= k) return comps;
+    const sf = Number(opts.subjectSF) || 0;
+    return comps
+      .map((c) => ({ c, w: VALUATION.compWeight(c, opts.asOf, sf, opts.subjectYear, { propertyType: opts.propertyType }) }))
+      .sort((a, b) => b.w - a.w).slice(0, k).map((x) => x.c);
+  },
+}));
 
 function valueFnFor(variant) {
   const V = variant.patches ? patchedValuation(variant.patches) : VALUATION;
@@ -551,7 +641,7 @@ function main(argv) {
 if (require.main === module) main(process.argv.slice(2));
 
 module.exports = {
-  parseCsv, dedupeRows, patchedValuation, sizeAdjusted, sizeAdjustedLocal, peerTrendPct, summarize, pairedChange, compare, facts,
+  parseCsv, seedRows, fittedPeers, dedupeRows, patchedValuation, sizeAdjusted, sizeAdjustedLocal, peerTrendPct, summarize, pairedChange, compare, facts,
   withDistance, withinBlendRadius,
   VARIANTS, SRC,
 };

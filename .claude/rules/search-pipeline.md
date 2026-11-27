@@ -441,7 +441,8 @@ with the key and update the constant — an earlier model ID was retired.
   parked source, and comps 9 miles out, four comps in all).** Runs in
   `getComps` right after the link check (`refineComps`), so the cache, the
   harvest, the snapshot and every viewer see one kept set. Rules:
-  - **Four reasons a comp is set aside** (moved to `report.set_aside` with
+  - **Four reasons a comp is set aside, and a fifth since 2026-11-27
+    (`price_basis`, below)** (moved to `report.set_aside` with
     a `set_aside` reason, never valued): `dead_source` (link-check's dead
     URLs), `unit` (a condo/unit/suite SALE against a whole-building
     Industrial, Office, Retail or Multifamily subject; a suite lease stays),
@@ -509,8 +510,74 @@ with the key and update the constant — an earlier model ID was retired.
     distance are unchanged. **Unmeasured against the live model**; the first
     such report had 3 comps with a cap rate out of 34, which is what the
     block is there to change.
+  - **A fifth reason, `price_basis` (2026-11-27).** The prompt has always
+    told the model to lead a comp's `notes` with any caveat that changes what
+    the price MEANS (a portfolio or partial-interest sale, a related-party
+    transfer, a distressed or auction sale), and nothing read them: the
+    caveat sat in a table cell while the price set the range.
+    `COMPFIT.priceBasisOf` reads the notes of a SALE (every property type,
+    houses too) and such a comp is set aside. Each pattern names the sale,
+    not a word that turns up in property notes ("auto auction" is a tenant,
+    "its portfolio" is where a buyer puts what it buys, a tenant "in
+    bankruptcy" is not a bankruptcy sale), and a caveat that is ruled out
+    ("Not a portfolio sale", "non-distressed") is not one; the test holds
+    both lists. Under the floor a partial interest never comes back (half a
+    building's price over the whole building's size is not a $/SF) and the
+    others come back LAST, after an off-size or far comp. Not harvested. An
+    asking price is not one of these: it is weighed as a listing. The page's
+    sentence gained a clause. **Unmeasured against the live model**: no key
+    in the session that wrote it, so how often the model writes these
+    caveats is unknown. `scripts/accuracy-lab.js --only "price-basis"`
+    measures the rule on a corpus export (the rows carry notes).
+  - **Saved deals are fitted too (2026-11-27; `COMPFIT.refitBlended`).** The
+    radius blend runs at serialization (rule 2), AFTER this step, and added
+    every saved deal of the type inside its circle with none of these rules.
+    So a comp set aside here for its size, which is harvested as a good comp
+    for some other subject, came back from the corpus on the next view of
+    the same report, under a notice saying it had been left out; and a saved
+    condo unit or foreclosure sale joined any whole-building report nearby.
+    `finishReportForViewer` now reads `COMPFIT.setAsideAddresses(rep)`
+    before `stripSetAside`, and after the blend (before the paywall, so a
+    free report's `locked_basis` is the fitted set) calls `refitBlended`:
+    a saved deal this report's search set aside is barred, a saved unit sale
+    or `price_basis` sale is dropped, and the distance rule runs over the
+    whole set (saved deals count as near ones, so a far comp of the search's
+    own can be set aside here, and that one IS counted). Dropped saved deals
+    are not counted (`set_aside_counts` is what the search found) and
+    `corpus_count` falls. Pure and non-mutating: `rep` may be the cached
+    object. **The size-class cut is deliberately NOT applied to saved
+    deals**, and that is a measured decision: in the accuracy lab on the
+    market pages' own comps, cutting the pool to its size class made the
+    median miss worse (22.7% to 27.8%, small pools cut to the three-comp
+    floor; corpus.md, "The accuracy lab"). A saved deal of another size
+    stays, restated and weighted by valuation.js. `sizeRule: true` turns
+    the cut on and a test fails if server.js passes it. To read a saved
+    deal's notes, `corpusRowsForType` now selects `notes` (migration 001's
+    column, so the read cannot 400); `COMPFIT.withoutSavedNotes` then takes
+    them off the comp, because they were written about another search's
+    subject ("two miles north of the target"). That read also gives
+    blend-corpus.js's manufactured-home words something to match besides
+    the address. The internal (eval) exit is ahead of the blend as before,
+    so `run-eval.js` never sees any of this.
+  - **A search stays inside a minute (2026-11-27; the owner: improve
+    accuracy "without making the search over the 1 minute threshold").**
+    `SEARCH_TIME_BUDGET_SECONDS` (default 60; `0` or `off` removes it) and
+    `COMPFIT.widerSearchAllowance` (pure, tested). The first call is the
+    report and is never cut short. The wider search is the optional leg, so
+    it is the one the clock governs: it does not START unless it should
+    finish inside the budget, reckoned as long as the first leg took plus
+    the link check and placement after it (`WIDER_AFTER_MS`); and once
+    started it is stopped at the budget (`promptExtra.deadlineMs`, which can
+    only shorten the derived deadline and which only the wider lane passes)
+    and the report keeps the first search's comps. A skipped one is logged
+    and the report carries `wider_search: { added: 0, skipped: "time" }`.
+    On the live provider (Gemini 3.7 Flash, `THINKING_LEVEL=low`, about 10 s
+    a call) neither fires. **It bites the day a call gets slower**: at a
+    34 s first leg (the measured cost of `THINKING_LEVEL=medium`) the wider
+    search no longer fits and thin reports go out without it, cached like
+    any other. Weigh that before raising the depth.
   - `COMP_FIT=off` rolls back the whole step (no placement, no fit, no
-    wider search). Tests: `test/comp-fit.test.js` (the rules, the page's
+    wider search, no blended re-fit). Tests: `test/comp-fit.test.js` (the rules, the page's
     sentence and adoption, the wiring by source),
     `test/comp-fit-run.test.js` (a real server and a stub provider: the
     Inverness shape fitted, searched wider and served as counts),

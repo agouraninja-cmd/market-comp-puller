@@ -26,6 +26,20 @@
 //   - "distance": farther than FAR_MILES (or the typed radius, if larger)
 //     when at least NEAR_MIN comps already sit within NEAR_MILES. A far comp
 //     is only cut when closer ones are there to replace it.
+//   - "price_basis" (2026-11-27): the comp's own notes say its price is not
+//     an open-market price for one whole property: a portfolio or package
+//     sale, a partial interest, a related-party transfer, or a foreclosure,
+//     auction or other distressed sale. The prompt has always told the model
+//     to put exactly those caveats first in "notes"; until this rule nothing
+//     read them, so the caveat sat in a table cell while the price it warned
+//     about set the range.
+//
+// The rules run a second time, at serialization, once saved deals have been
+// blended in (refitBlended, below): until 2026-11-27 the blend added every
+// saved deal of the type within ten miles with none of these rules applied,
+// so a comp this module had just set aside could come straight back from the
+// corpus on the next view. Every rule but the size cut, for the measured
+// reason given there.
 //
 // The floor: size and distance never cut the set below MIN_PRICED_SALES
 // priced sales. When they would, the best-fitting of those comps (closest in
@@ -96,6 +110,50 @@ const UNIT_RE = /(?:^|[\s,])(?:#\s*[a-z0-9-]+|(?:unit|units|ste|suite|apt|apartm
 const ZIP_TAIL_RE = /,?\s*(?:[a-z]{2}\s+)?\d{5}(?:-\d{4})?\s*$/i;
 const CONDO_NOTE_RE = /\b(condo(minium)?s?|unit sale|business condo|office condo|industrial condo|flex condo)\b/i;
 
+// "price_basis": what a comp's notes say about its price. The vocabulary is
+// the prompt's own ("portfolio or partial-interest sale, related-party
+// transfer, distressed or auction sale"), widened to the words those caveats
+// are written in. Each pattern names the SALE, not a word that merely turns
+// up in commercial property notes: "auction" alone is a tenant type (an auto
+// auction yard), "portfolio" alone is where every buyer puts what it buys,
+// and a tenant "in bankruptcy" is not a bankruptcy sale.
+const PARTIAL_INTEREST_RE = /\b(?:partial|fractional|minority|undivided)[\s-]+(?:ownership\s+)?interest\b|\b\d{1,2}(?:\.\d+)?\s?%\s+(?:ownership\s+)?(?:interest|stake)\b/i;
+const PORTFOLIO_RE = /\bportfolio[\s-]+(?:sale|deal|transaction|acquisition|trade|purchase)\b|\b(?:part|piece|one) of (?:a|an|the)\b[^.;]{0,60}\bportfolio\b|\b(?:\d+|two|three|four|five|six|seven|eight|nine|ten|multi)[\s-]+(?:property|building|asset|site)[\s-]+(?:portfolio|package)\b|\b(?:bulk|package)[\s-]+(?:sale|deal)\b|\bprice (?:is |was )?(?:an? )?allocat(?:ed|ion)\b|\ballocated (?:price|value)\b/i;
+const NOT_ARMS_LENGTH_RE = /\brelated[\s-]+part(?:y|ies)\b|\bnon[\s-]+arm'?s?[\s-]+length\b|\bnot (?:an? )?arm'?s?[\s-]+length\b|\baffiliated?[\s-]+(?:transfer|sale|entity|entities|buyer|seller)\b|\b(?:intra[\s-]?family|family|internal|inter[\s-]?company)[\s-]+transfer\b|\bquit[\s-]?claim\b/i;
+const DISTRESSED_RE = /\bforeclos(?:ure|ed)\b|\b(?:at|via|by|through|online)\s+auction\b|\bauction[\s-]+(?:sale|price|purchase)\b|\b(?:sold|bought|purchased|acquired|traded)\b[^.;]{0,30}\bauction\b|\bsheriff'?s?[\s-]+sale\b|\btrustee'?s?[\s-]+sale\b|\btax[\s-]+(?:sale|deed)\b|\bbank[\s-]+owned\b|\bshort[\s-]+sale\b|\bdistress(?:ed)?\b|\breceivership\b|\bbankruptcy[\s-]+(?:sale|court|auction)\b|\bout of bankruptcy\b|\bdeed[\s-]+in[\s-]+lieu\b/i;
+const REO_RE = /\bREO\b/;   // case-sensitive: "Reo" is also a name
+// "Not a portfolio sale", "no distress", "non-distressed": a caveat that is
+// ruled OUT is not a caveat. Read off the few characters before the match.
+const NEGATED_BEFORE_RE = /(?:\bnot|\bno|\bnon|\bnever|n't)[\s-]+(?:an?\s+|the\s+|part of an?\s+)?$/i;
+
+function saysUnnegated(re, text) {
+  const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+  let m;
+  while ((m = g.exec(text))) {
+    if (!NEGATED_BEFORE_RE.test(text.slice(Math.max(0, m.index - 24), m.index))) return true;
+    if (m[0] === "") g.lastIndex += 1;
+  }
+  return false;
+}
+
+/**
+ * What a sale comp's own notes say is wrong with its price as evidence of
+ * market value: "partial_interest", "portfolio", "related_party",
+ * "distressed", or null. Sales only: a lease has no sale price to doubt.
+ * An asking price is NOT one of these (its date says "Active" or "Listed",
+ * and the valuation weighs a listing as a listing).
+ */
+function priceBasisOf(c) {
+  if (!c || !isSale(c)) return null;
+  const notes = String(c.notes || "");
+  if (!notes) return null;
+  if (saysUnnegated(PARTIAL_INTEREST_RE, notes)) return "partial_interest";
+  if (saysUnnegated(PORTFOLIO_RE, notes)) return "portfolio";
+  if (saysUnnegated(NOT_ARMS_LENGTH_RE, notes)) return "related_party";
+  if (saysUnnegated(DISTRESSED_RE, notes) || saysUnnegated(REO_RE, notes)) return "distressed";
+  return null;
+}
+
 function unitOf(address) {
   const cleaned = String(address || "").replace(ZIP_TAIL_RE, "");
   const m = UNIT_RE.exec(cleaned);
@@ -163,12 +221,24 @@ function applyCompFit(report, opts = {}) {
     if (UNIT_TYPES.has(type) && !subjectIsUnit && isUnitSale(c)) {
       cut.push({ c, reason: "unit", restorable: false }); continue;
     }
+    // Every type, houses included: a foreclosure down the street is no more a
+    // market price for a house than for a warehouse. A partial interest never
+    // comes back under the floor (half a building's price over the whole
+    // building's size is not a $/SF of anything); the others are real prices
+    // of real sales, and are the last to come back when the set is too thin.
+    const basis = priceBasisOf(c);
+    if (basis) {
+      cut.push({ c, reason: "price_basis", restorable: basis !== "partial_interest", last: true });
+      continue;
+    }
     // A net-leased subject (opts.netLease, valuation.js isNetLease) is valued
     // on its comps' cap rates, which building size does not set: a 1,400 SF
     // oil-change pad and a 10,000 SF pharmacy on the same lease terms trade
     // at the same rate. So the size rule does not apply, and cutting on it
     // would throw away exactly the comps that mode values from.
-    if (SIZE_TYPES.has(type) && subjectSqft > 0 && !opts.netLease) {
+    // `sizeRule: false` is refitBlended's (below): the blended set is fitted
+    // on everything but size, for the measured reason given there.
+    if (opts.sizeRule !== false && SIZE_TYPES.has(type) && subjectSqft > 0 && !opts.netLease) {
       const r = sizeRatio(c, subjectSqft);
       if (r > 0 && (r < HARD_SIZE_MIN || r > HARD_SIZE_MAX)) {
         cut.push({ c, reason: "size", restorable: true }); continue;
@@ -196,12 +266,15 @@ function applyCompFit(report, opts = {}) {
   // The floor: never let size/distance leave fewer than MIN_PRICED_SALES
   // priced sales. Bring back the best-fitting restorable ones.
   let priced = keep.filter(isPricedSale).length;
-  if (priced < MIN_PRICED_SALES) {
+  const floor = Number(opts.minPricedSales) > 0 ? Number(opts.minPricedSales) : MIN_PRICED_SALES;
+  if (priced < floor) {
     const back = cut
       .filter((x) => x.restorable && isPricedSale(x.c))
-      .sort((a, b) => misfit(a.c, subjectSqft) - misfit(b.c, subjectSqft));
+      // An off-size or far comp before one whose price is not a market price.
+      .sort((a, b) => (a.last ? 1 : 0) - (b.last ? 1 : 0)
+        || misfit(a.c, subjectSqft) - misfit(b.c, subjectSqft));
     for (const x of back) {
-      if (priced >= MIN_PRICED_SALES) break;
+      if (priced >= floor) break;
       keep.push(x.c);
       x.restored = true;
       priced += 1;
@@ -251,6 +324,34 @@ function needsWiderSearch(report, { propertyType, txFocus, subjectSqft, netLease
   return goodSaleCount(report, subjectSqft) < WIDER_SEARCH_BELOW;
 }
 
+// A wider search that would be given less than this is not worth starting.
+const WIDER_MIN_RUN_MS = 5000;
+
+/**
+ * Whether the wider search may start inside the search's time budget, and
+ * how long it may then run (server.js refineComps; SEARCH_TIME_BUDGET_SECONDS,
+ * a minute by default). It is expected to take as long as the first leg did:
+ * the same provider, model and reasoning depth, asked for less. No clock
+ * read: the caller says what has elapsed.
+ *
+ *   budgetMs    the whole search's ceiling; 0 or less means none (always run)
+ *   elapsedMs   since the search began
+ *   firstLegMs  how long the first call took
+ *   afterMs     what follows the wider call (its link check and placement)
+ *
+ * Returns { run, deadlineMs } and, when it must not run, { leftMs, expectedMs }
+ * for the log.
+ */
+function widerSearchAllowance({ budgetMs = 0, elapsedMs = 0, firstLegMs = 0, afterMs = 0 } = {}) {
+  if (!(Number(budgetMs) > 0)) return { run: true, deadlineMs: null };
+  const left = Number(budgetMs) - (Number(elapsedMs) || 0) - (Number(afterMs) || 0);
+  const expected = Math.max(WIDER_MIN_RUN_MS, Number(firstLegMs) || 0);
+  if (left < expected) {
+    return { run: false, deadlineMs: null, leftMs: Math.max(0, Math.round(left)), expectedMs: Math.round(expected) };
+  }
+  return { run: true, deadlineMs: Math.round(left) };
+}
+
 function addressKey(a) {
   return String(a || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
@@ -295,6 +396,109 @@ function mergeWiderComps(report, wider, maxComps) {
   return added;
 }
 
+/**
+ * The fit rules again, once saved deals have been blended into the report
+ * (server.js finishReportForViewer, after blend-corpus.js and before the
+ * paywall). The blend adds every saved deal of the type inside its circle
+ * (ten miles for commercial property) and applied none of this module's
+ * rules, so three kinds of comp the search's own list is never allowed to
+ * hold arrived through it:
+ *
+ *   1. A comp THIS report's search found and set aside. Size and distance
+ *      set-asides are harvested (a good comp for some other subject), so the
+ *      7,200 SF building left out of a 32,000 SF building's report came back
+ *      from the corpus on its next view, under a notice saying it had been
+ *      left out. `opts.setAsideAddresses` (setAsideAddresses(report), read
+ *      BEFORE stripSetAside) bars those from coming back.
+ *   2. A condo or unit sale against a whole building, and a sale whose own
+ *      notes say its price is not a market price (priceBasisOf). Neither is
+ *      a matter of degree that a weight can express.
+ *   3. A deal far out while nearer ones exist. The saved deals are counted
+ *      among the near ones, so a far comp of the search's own, kept for want
+ *      of near comps, is set aside here once the corpus supplies them. Those
+ *      are counted like any comp the search found and we left out.
+ *
+ * NOT the size-class cut, and that is a measured decision, not an oversight.
+ * A saved deal of a different size stays, restated at the subject's size and
+ * weighted down by valuation.js as before. Put through the accuracy lab's
+ * hold-one-out on the market pages' own comps (market-seed.json, 2026-11-27:
+ * 241 rows, 34 sales scored, pools of four to seven), cutting the pool to
+ * its size class moved 15 of them, nearly all down to the three-comp floor,
+ * and made 60% of those worse: median miss 22.7% -> 27.8%, the interval from
+ * resampling whole markets 0.0 to +11.0 points. That is a small sample and
+ * not the production corpus, so it ranks the two and proves neither; what it
+ * does say is that nothing supports the cut. With this few comps one more of
+ * them is worth more than a cleaner size match the restatement has already
+ * mostly paid for. The search's own size cut can afford it because a wider
+ * search refills the list; a blend has nothing to refill from.
+ * `node scripts/accuracy-lab.js <export> --only fit` asks the question both
+ * ways on a real corpus export; turn the cut on here (`sizeRule: true`) only
+ * with a run of that which clears the noise.
+ *
+ * Dropped saved deals are NOT counted: `set_aside_counts` is "comps the
+ * search found", and a saved deal that never joined the report was never
+ * one. `corpus_count` falls by the number dropped.
+ *
+ * PURE and non-mutating: `report` may be the cached object, so this returns
+ * a new one (or the same one, untouched, when nothing changed). Nothing here
+ * is per-viewer: the corpus is public, and every viewer of the report at
+ * that moment gets the same kept set.
+ *
+ * opts: applyCompFit's, minus deadUrls (a saved deal's link is not checked
+ * at view time; the search's own dead links were set aside before the cache).
+ */
+function refitBlended(report, opts = {}) {
+  if (!report || typeof report !== "object" || !Array.isArray(report.comps)) return report;
+  const isExtra = (c) => Boolean(c && c.from_corpus === true);
+  const extrasBefore = report.comps.filter(isExtra).length;
+  if (!extrasBefore) return report;
+  const barred = new Set((Array.isArray(opts.setAsideAddresses) ? opts.setAsideAddresses : []).map(addressKey).filter(Boolean));
+  const work = { comps: report.comps.filter((c) => !(isExtra(c) && barred.has(addressKey(c.address)))) };
+  applyCompFit(work, { ...opts, deadUrls: null, sizeRule: opts.sizeRule === true });
+  if (work.comps.length === report.comps.length) return report;
+  const prior = report.set_aside_counts && typeof report.set_aside_counts === "object" ? report.set_aside_counts : {};
+  const counts = { ...prior };
+  for (const x of Array.isArray(work.set_aside) ? work.set_aside : []) {
+    if (x.from_corpus !== true) counts[x.set_aside] = (counts[x.set_aside] || 0) + 1;
+  }
+  const extrasDropped = extrasBefore - work.comps.filter(isExtra).length;
+  const out = { ...report, comps: work.comps };
+  const left = Math.max(0, (Number(report.corpus_count) || 0) - extrasDropped);
+  if (left > 0) out.corpus_count = left; else delete out.corpus_count;
+  if (Object.keys(counts).length) out.set_aside_counts = counts;
+  return out;
+}
+
+/**
+ * A saved deal's notes are evidence for the rules above and nothing a reader
+ * should be shown: the model wrote them about a DIFFERENT subject ("two miles
+ * north of the target", "smaller than the target"), so on this report they
+ * would describe a building the reader has never heard of. Until 2026-11-27
+ * the type-wide corpus read did not select the column at all, so a saved deal
+ * never carried notes onto a report; it selects them now, for priceBasisOf
+ * and the blend's manufactured-home test, and this keeps the page as it was.
+ * Returns a new report only when something had notes to drop.
+ */
+function withoutSavedNotes(report) {
+  if (!report || typeof report !== "object" || !Array.isArray(report.comps)) return report;
+  if (!report.comps.some((c) => c && c.from_corpus === true && c.notes)) return report;
+  return {
+    ...report,
+    comps: report.comps.map((c) => {
+      if (!c || c.from_corpus !== true || !c.notes) return c;
+      const { notes, ...rest } = c;   // eslint-disable-line no-unused-vars
+      return rest;
+    }),
+  };
+}
+
+/** The addresses of the comps this report's own search set aside, for
+ *  refitBlended's `setAsideAddresses`. Read it before stripSetAside. */
+function setAsideAddresses(report) {
+  const list = report && Array.isArray(report.set_aside) ? report.set_aside : [];
+  return list.map((c) => String((c && c.address) || "").trim()).filter(Boolean);
+}
+
 /** The set-aside comps still worth harvesting into the corpus. */
 function harvestableSetAside(report) {
   const list = report && Array.isArray(report.set_aside) ? report.set_aside : [];
@@ -312,7 +516,8 @@ function stripSetAside(report) {
 
 module.exports = {
   applyCompFit, needsWiderSearch, goodSaleCount, knownAddresses, mergeWiderComps,
-  harvestableSetAside, stripSetAside, unitOf, isUnitSale,
+  harvestableSetAside, stripSetAside, unitOf, isUnitSale, priceBasisOf, refitBlended, setAsideAddresses,
+  widerSearchAllowance, WIDER_MIN_RUN_MS, withoutSavedNotes,
   SIZE_TYPES, HARD_SIZE_MIN, HARD_SIZE_MAX, BAND_MIN, BAND_MAX,
   NEAR_MILES, NEAR_MIN, FAR_MILES, MIN_PRICED_SALES, WIDER_SEARCH_BELOW,
 };

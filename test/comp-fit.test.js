@@ -271,3 +271,236 @@ test("the search and the fit are told a subject is net leased, from the one defi
   // estimated: an invented rate would move the value by a multiple.
   assert.match(prompt, /Never estimate a cap rate for a comp from market averages/);
 });
+
+// ---------------------------------------------------------------------------
+// 2026-11-27: the price-basis rule, the blended re-fit and the time budget.
+// ---------------------------------------------------------------------------
+
+test("priceBasisOf reads the caveats the prompt asks for, and only as caveats", () => {
+  const of = (notes, transaction = "Sale") => FIT.priceBasisOf({ transaction, notes });
+  // What the prompt names: "portfolio or partial-interest sale, related-party
+  // transfer, distressed or auction sale".
+  assert.equal(of("Portfolio sale; price allocated."), "portfolio");
+  assert.equal(of("Part of a 3-building portfolio sold to an investor."), "portfolio");
+  assert.equal(of("One of a two-building package."), "portfolio");
+  assert.equal(of("Partial-interest sale."), "partial_interest");
+  assert.equal(of("50% interest sold to the co-owner."), "partial_interest");
+  assert.equal(of("Related-party transfer between affiliates."), "related_party");
+  assert.equal(of("Not arm's length: sold to an affiliated entity."), "related_party");
+  assert.equal(of("Sold at auction after foreclosure."), "distressed");
+  assert.equal(of("Bank-owned (REO) sale."), "distressed");
+  assert.equal(of("Sold out of bankruptcy."), "distressed");
+  assert.equal(of("Distressed sale; lender-directed."), "distressed");
+  // The same words when they are not a statement about the sale. Each of
+  // these is the false positive its pattern was narrowed to refuse.
+  assert.equal(of("Buyer adds it to its regional portfolio."), null);
+  assert.equal(of("Leased to an auto auction operator; NNN."), null);
+  assert.equal(of("Auction yard tenant on a ground lease."), null);
+  assert.equal(of("Tenant in bankruptcy; sold vacant."), null);
+  assert.equal(of("Reo Blvd frontage, corner lot."), null);
+  assert.equal(of("Sale-leaseback with the seller."), null);
+  // A caveat that is ruled out is not a caveat.
+  assert.equal(of("Not a portfolio sale. Owner-user buyer."), null);
+  assert.equal(of("Non-distressed arm's-length sale."), null);
+  assert.equal(of("No distress; stabilized at sale."), null);
+  // An asking price is weighed as a listing, not set aside here.
+  assert.equal(of("Asking price, not a closed sale."), null);
+  // Sales only, and silence is not a caveat.
+  assert.equal(of("Portfolio sale.", "Lease"), null);
+  assert.equal(of(""), null);
+  assert.equal(FIT.priceBasisOf(null), null);
+});
+
+function plainSale(i, extra) {
+  return { address: `${i} Plain St, Boise, ID`, transaction: "Sale", size_sqft: "30000",
+           price_or_rate: "$6,000,000", source_url: "https://example.com/p" + i, ...extra };
+}
+
+test("a sale whose notes say its price is not a market price is set aside, for every type", () => {
+  for (const propertyType of ["Industrial", "Multifamily", "Land", "Residential"]) {
+    const r = { comps: [plainSale(1), plainSale(2), plainSale(3),
+      plainSale(4, { notes: "Sold at auction after foreclosure." }),
+      plainSale(5, { notes: "Part of a 4-property portfolio; price allocated." })] };
+    const out = FIT.applyCompFit(r, { subjectSqft: 30000, propertyType });
+    assert.equal(r.comps.length, 3, propertyType);
+    assert.deepEqual(out.counts, { price_basis: 2 }, propertyType);
+    assert.deepEqual(r.set_aside.map((c) => c.set_aside), ["price_basis", "price_basis"]);
+  }
+  // A lease that mentions a portfolio is still a lease comp.
+  const lease = { comps: [plainSale(1), { address: "9 Lease Ln, Boise, ID", transaction: "Lease", price_per_sqft: "$12", notes: "Portfolio sale pending." }] };
+  FIT.applyCompFit(lease, { subjectSqft: 30000, propertyType: "Industrial" });
+  assert.equal(lease.comps.length, 2);
+  // A broker-verified comp is never second-guessed.
+  const vouched = { comps: [plainSale(1, { verified: true, notes: "Sold at auction." })] };
+  FIT.applyCompFit(vouched, { propertyType: "Industrial" });
+  assert.equal(vouched.comps.length, 1);
+});
+
+test("under the floor a caveated sale comes back last, and a partial interest never does", () => {
+  // Two plain sales, one off-size, one foreclosure: the floor needs one more
+  // priced sale, and the off-size building is the better evidence.
+  const r = { comps: [plainSale(1), plainSale(2),
+    plainSale(3, { size_sqft: "9000", price_or_rate: "$2,400,000" }),
+    plainSale(4, { notes: "Foreclosure sale." })] };
+  FIT.applyCompFit(r, { subjectSqft: 30000, propertyType: "Industrial" });
+  assert.deepEqual(r.comps.map((c) => c.address), ["1 Plain St, Boise, ID", "2 Plain St, Boise, ID", "3 Plain St, Boise, ID"]);
+  assert.deepEqual(r.set_aside_counts, { price_basis: 1 });
+  // With nothing else to bring back, the foreclosure is still a real price.
+  const thin = { comps: [plainSale(1), plainSale(2), plainSale(4, { notes: "Foreclosure sale." })] };
+  FIT.applyCompFit(thin, { subjectSqft: 30000, propertyType: "Industrial" });
+  assert.equal(thin.comps.length, 3);
+  assert.equal(thin.set_aside, undefined);
+  // Half a building's price over the whole building's size is not a $/SF.
+  const half = { comps: [plainSale(1), plainSale(2), plainSale(4, { notes: "50% interest sold." })] };
+  FIT.applyCompFit(half, { subjectSqft: 30000, propertyType: "Industrial" });
+  assert.equal(half.comps.length, 2);
+  assert.deepEqual(half.set_aside_counts, { price_basis: 1 });
+});
+
+// The blended re-fit. `from_corpus` is what blend-corpus.js's toReportComp
+// stamps on a saved deal.
+function saved(address, extra) {
+  return { address, transaction: "Sale", size_sqft: "30000", price_or_rate: "$6,300,000",
+           date: "2026-06", source_type: "listing", from_corpus: true, distance_mi: 2, ...extra };
+}
+const BLEND_OPTS = { subjectSqft: 32000, propertyType: "Industrial", subjectAddress: "76 Inverness Dr E, Englewood, CO" };
+
+test("a comp this report's search set aside does not come back as a saved deal", () => {
+  const cached = inverness();
+  cached.comps.push(
+    { address: "1 A St, Englewood, CO", transaction: "Sale", size_sqft: "28,000", price_or_rate: "$7,000,000", distance_mi: 1 },
+    { address: "2 B St, Englewood, CO", transaction: "Sale", size_sqft: "35,000", price_or_rate: "$8,500,000", distance_mi: 2 });
+  FIT.applyCompFit(cached, { ...BLEND_OPTS, deadUrls: [PARKED] });
+  assert.deepEqual(cached.set_aside_counts, { dead_source: 1, size: 2 });
+  const barred = FIT.setAsideAddresses(cached);
+  assert.equal(barred.length, 3);
+  // What the viewer's copy looks like after the blend: the two small
+  // buildings are back, harvested (respelled, as a corpus row can be) and
+  // saved.
+  const blended = { ...FIT.stripSetAside(cached), corpus_count: 3, comps: [...cached.comps,
+    saved("9500 E Easter Ave, Centennial, CO", { size_sqft: "7200", price_or_rate: "$1,900,000" }),
+    saved("9510 e easter ave,  Centennial, CO", { size_sqft: "7260", price_or_rate: "$1,950,000" }),
+    saved("500 Other Way, Englewood, CO")] };
+  const out = FIT.refitBlended(blended, { ...BLEND_OPTS, setAsideAddresses: barred });
+  assert.ok(!out.comps.some((c) => /easter ave/i.test(c.address)));
+  assert.ok(out.comps.some((c) => c.address === "500 Other Way, Englewood, CO"));
+  assert.equal(out.corpus_count, 1);
+  // Counts are "comps the search found": unchanged by a saved deal that
+  // never joined the report.
+  assert.deepEqual(out.set_aside_counts, { dead_source: 1, size: 2 });
+  assert.equal("set_aside" in out, false);
+  // Never a write to the object it was handed (it may be the cached one).
+  assert.equal(blended.comps.length, cached.comps.length + 3);
+  assert.equal(blended.corpus_count, 3);
+});
+
+test("a saved condo unit or caveated sale is not blended; a saved deal of another size is", () => {
+  const search = [1, 2, 3].map((i) => ({ address: `${i} Near St, Englewood, CO`, transaction: "Sale", size_sqft: "30000", price_or_rate: "$7,000,000", distance_mi: 1 }));
+  const blended = { summary: "s", corpus_count: 4, comps: [...search,
+    saved("8 Flex Ct, Unit 4, Englewood, CO"),
+    saved("9 Bank Rd, Englewood, CO", { notes: "Bank-owned (REO) sale." }),
+    saved("10 Small Rd, Englewood, CO", { size_sqft: "6000", price_or_rate: "$1,500,000" }),
+    saved("11 Big Rd, Englewood, CO", { size_sqft: "200000", price_or_rate: "$24,000,000" })] };
+  const out = FIT.refitBlended(blended, BLEND_OPTS);
+  assert.deepEqual(out.comps.filter((c) => c.from_corpus).map((c) => c.address),
+    ["10 Small Rd, Englewood, CO", "11 Big Rd, Englewood, CO"],
+    "the size-class cut is NOT applied to saved deals (comp-fit.js says why, with the measurement)");
+  assert.equal(out.corpus_count, 2);
+  assert.equal(out.set_aside_counts, undefined, "nothing the search found was left out");
+  assert.equal(out.summary, "s");
+  // The cut is one option away, for the day a lab run supports it.
+  const strict = FIT.refitBlended(blended, { ...BLEND_OPTS, sizeRule: true });
+  assert.deepEqual(strict.comps.filter((c) => c.from_corpus), []);
+  assert.equal("corpus_count" in strict, false);
+  // A net-leased subject's saved deals are never size-cut, even then.
+  const nl = FIT.refitBlended(blended, { ...BLEND_OPTS, propertyType: "Retail", sizeRule: true, netLease: true });
+  assert.equal(nl.comps.filter((c) => c.from_corpus).length, 2);
+});
+
+test("saved deals nearby let a far comp of the search's own be set aside, and that one is counted", () => {
+  const far = { address: "9 Far Rd, Golden, CO", transaction: "Sale", size_sqft: "30000", price_or_rate: "$7,000,000", distance_mi: 9.2 };
+  const near = { address: "1 Near St, Englewood, CO", transaction: "Sale", size_sqft: "30000", price_or_rate: "$7,000,000", distance_mi: 1 };
+  // Alone, the search keeps its far comp: one near comp cannot stand in.
+  const alone = { comps: [near, far] };
+  FIT.applyCompFit(alone, BLEND_OPTS);
+  assert.equal(alone.comps.length, 2);
+  const blended = { comps: [near, far, saved("2 S St, Englewood, CO"), saved("3 S St, Englewood, CO"),
+    saved("4 S St, Englewood, CO"), saved("12 Far Saved Rd, Golden, CO", { distance_mi: 9.6 })], corpus_count: 4 };
+  const out = FIT.refitBlended(blended, BLEND_OPTS);
+  assert.ok(!out.comps.some((c) => /Far/.test(c.address)));
+  assert.deepEqual(out.set_aside_counts, { distance: 1 }, "the search's far comp is counted, the saved one is not");
+  assert.equal(out.corpus_count, 3);
+  // A typed radius past eight miles keeps both, as it does in the first pass.
+  const wide = FIT.refitBlended(blended, { ...BLEND_OPTS, radiusMiles: 12 });
+  assert.equal(wide, blended, "nothing changed, so the same object comes back");
+});
+
+test("refitBlended leaves a report with no saved deals, or nothing to cut, exactly as it was", () => {
+  const plain = { comps: [plainSale(1, { notes: "Foreclosure sale." })] };
+  assert.equal(FIT.refitBlended(plain, BLEND_OPTS), plain, "no saved deals: the first pass already decided");
+  const fine = { comps: [plainSale(1), saved("5 S St, Boise, ID")], corpus_count: 1 };
+  assert.equal(FIT.refitBlended(fine, BLEND_OPTS), fine);
+  assert.equal(FIT.refitBlended(null, BLEND_OPTS), null);
+  assert.deepEqual(FIT.setAsideAddresses({ comps: [] }), []);
+});
+
+test("the wider search starts only when it should finish inside the search's time budget", () => {
+  const A = FIT.widerSearchAllowance;
+  // The live case: a 10 s first leg, checked and placed by 15.5 s.
+  assert.deepEqual(A({ budgetMs: 60000, elapsedMs: 15500, firstLegMs: 10000, afterMs: 6000 }),
+    { run: true, deadlineMs: 38500 });
+  // A 34 s first leg (the measured cost of deeper reasoning) leaves 14.5 s
+  // for a call expected to take 34: it is skipped, not started and cut.
+  assert.deepEqual(A({ budgetMs: 60000, elapsedMs: 39500, firstLegMs: 34000, afterMs: 6000 }),
+    { run: false, deadlineMs: null, leftMs: 14500, expectedMs: 34000 });
+  // The boundary: exactly enough runs, one millisecond short does not.
+  assert.equal(A({ budgetMs: 60000, elapsedMs: 24000, firstLegMs: 30000, afterMs: 6000 }).run, true);
+  assert.equal(A({ budgetMs: 60000, elapsedMs: 24001, firstLegMs: 30000, afterMs: 6000 }).run, false);
+  // A first leg too quick to trust as an estimate still needs a real window.
+  assert.equal(A({ budgetMs: 60000, elapsedMs: 50000, firstLegMs: 200, afterMs: 6000 }).run, false);
+  assert.equal(A({ budgetMs: 60000, elapsedMs: 49000, firstLegMs: 200, afterMs: 6000 }).run, true);
+  // No budget is no ceiling: the behaviour before the budget existed.
+  assert.deepEqual(A({ budgetMs: 0, elapsedMs: 999999, firstLegMs: 999999 }), { run: true, deadlineMs: null });
+  assert.deepEqual(A(), { run: true, deadlineMs: null });
+});
+
+test("server.js fits the blended set before the paywall and governs the wider search by the clock", () => {
+  const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "server.js"), "utf8");
+  const viewer = src.slice(src.indexOf("async function finishReportForViewer("), src.indexOf("async function runCompSearch("));
+  // The set-aside addresses are read before the list is stripped...
+  assert.ok(viewer.indexOf("COMPFIT.setAsideAddresses(rep)") > 0);
+  assert.ok(viewer.indexOf("COMPFIT.setAsideAddresses(rep)") < viewer.indexOf("rep = COMPFIT.stripSetAside(rep)"));
+  // ...the re-fit runs after the blend and before the gate, so a free
+  // report's locked_basis is the fitted set...
+  const refit = viewer.indexOf("COMPFIT.refitBlended(merged");
+  assert.ok(refit > viewer.indexOf("blendNearbyComps(rep"));
+  assert.ok(refit < viewer.indexOf("GATE.gateReport(merged"));
+  // ...behind the step's own rollback, with the one net-lease definition,
+  // and never with the size cut switched on by accident.
+  assert.match(viewer, /if \(COMP_FIT && merged && merged\.corpus_count\)/);
+  assert.match(viewer, /netLease: VALUATION\.isNetLease\(typeOk, detailsOk\)/);
+  assert.doesNotMatch(viewer, /sizeRule/);
+  // Both callers hand it the subject's details.
+  assert.match(src, /txFocusOk, detailsOk,\s*corpusRadiusRows, vaultRows, firmCompRows,/);
+  assert.match(src, /detailsOk: sanitizeSubjectDetails\(job\.property_type/);
+  // The internal (eval) exit is still ahead of all of it.
+  assert.ok(viewer.indexOf("if (internal)") < viewer.indexOf("COMPFIT.setAsideAddresses(rep)"));
+
+  const refine = src.slice(src.indexOf("async function refineComps(report, ctx) {"), src.indexOf("function progressFor("));
+  assert.match(refine, /COMPFIT\.widerSearchAllowance\(\{\s*budgetMs: SEARCH_TIME_BUDGET_MS, afterMs: WIDER_AFTER_MS,/);
+  assert.ok(refine.indexOf("if (!allowance.run)") < refine.indexOf('"wider", WIDER_SEARCH_USES'), "decided before the billed call");
+  assert.match(refine, /deadlineMs: allowance\.deadlineMs/);
+  assert.match(src, /process\.env\.SEARCH_TIME_BUDGET_SECONDS/);
+  // The lane's deadline can only shorten the derived one, and only the
+  // wider lane passes one: the report's own call is never cut short.
+  assert.match(src, /Math\.min\(searchTimeoutMsFor\(deadlineUses, PROVIDER\.deadlineTokens\(body\)\), laneDeadlineMs\)/);
+  assert.equal((src.match(/deadlineMs: allowance\.deadlineMs/g) || []).length, 1);
+});
+
+test("the page words the price-basis reason", () => {
+  const say = new Function(pageFn("setAsideSentence") + "; return setAsideSentence;")();
+  assert.equal(say({ price_basis: 1 }),
+    "We left out 1 comp the search found: 1 was not an ordinary open-market sale (a portfolio, partial-interest, related-party, foreclosure or auction sale).");
+  assert.equal(say({ size: 1, price_basis: 2 }),
+    "We left out 3 comps the search found: 1 was a very different size from your property; and 2 were not an ordinary open-market sale (a portfolio, partial-interest, related-party, foreclosure or auction sale).");
+});

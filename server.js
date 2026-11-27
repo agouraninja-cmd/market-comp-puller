@@ -4806,6 +4806,26 @@ function searchBudgetFor(corpus, subjectSizeSqft, maxComps) {
 // steers its later searches at the gaps it knows it still has, while two
 // shallow lanes both rediscover the easy comps. Left switchable so the
 // trade can be re-measured on real traffic rather than two test addresses.
+//
+// MEASURED ON THE LIVE PROVIDER 2026-11-27, AND STILL OFF. It was switched on
+// by default for about ten minutes that day, on the theory that more comps
+// per report would steady the value (scripts/truth-test.js, 47 sold
+// buildings). It did not:
+//   - on the 21 buildings both settings valued, the median miss went from
+//     23-25% to 29.6%, closer on 9 and further on 11-12, for 4.9 sale comps a
+//     report against 4.1-4.4;
+//   - averaging two whole independent searches of one building left the miss
+//     where it was (23.4% and 30.5% alone, 24.2% averaged): the same
+//     buildings miss the same way every run, so the error is in WHICH comps a
+//     building is given, not in how many;
+//   - and two calls a report doubled the spend rate, which tripped the Gemini
+//     account's spend-based rate limit (a 429 that names it) after about 25
+//     reports at three at a time. For three minutes every search on the site
+//     answered "unusually busy", the test's own and anybody else's.
+// So it costs twice as much, buys no accuracy, and halves the traffic the
+// account can carry. Do not turn it on to "get more comps" again without a
+// truth-test run that says otherwise, and never run that test faster than
+// the account's spend rate allows (truth-test.js's header).
 const PARALLEL_SEARCH = /^(1|on|true|yes)$/i.test(String(process.env.PARALLEL_SEARCH || ""));
 
 // Corpus metro matching: offer a thin market the comps we hold in its

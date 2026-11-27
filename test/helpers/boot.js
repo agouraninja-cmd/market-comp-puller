@@ -208,6 +208,12 @@ async function bootOnce(env) {
       // would be measuring it instead of what they test. Its own suite
       // (test/comp-fit-run.test.js) turns it on.
       COMP_WIDER_SEARCH: "off",
+      // The two-lane search is off by default (it was on for ten minutes on
+      // 2026-11-27; server.js PARALLEL_SEARCH has the measurement) and is
+      // pinned off here so a developer's own .env cannot add a second
+      // provider call to every suite that counts them.
+      // test/parallel-search-run.test.js turns it on.
+      PARALLEL_SEARCH: "off",
       // The BOV desk's automatic start (bov-desk.js, 2026-11-20), OFF by
       // default here for the wider search's reason. On, every suite that
       // posts a BOV lead against the stand-in database would also start a

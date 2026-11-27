@@ -203,6 +203,8 @@ const BFACTS = require("./building-facts");
 const DIRECTORY = require("./broker-directory");
 const LEADSVC = require("./broker-leads");
 const BOVSVC = require("./bov-log");
+// The BOV builder's rules (/bov): what a saved BOV may hold (cleanDraft).
+const BOVDOC = require("./bov-doc");
 // The BOV desk (2026-11-20, migration 065): the brokers found for a Broker
 // Opinion of Value request, the email drafted to each, and the introduction.
 // Every rule and every word is in bov-desk.js (pure, tested); the owner's
@@ -26492,6 +26494,135 @@ const server = http.createServer((req, res) =>
       }
     })().catch((err) => { console.error("broker leads error:", err); sendJson(res, 500, { error: "Lead lookup failed." }); });
     return;
+  }
+
+  // --- Saved BOVs (2026-11-27; migration 067; bov-builder.md) ----------------
+  // The owner: "let brokers save BOVs to their account". A BOV written in
+  // the builder (/bov) lived only in the browser it was typed in. This is
+  // where a broker KEEPS one: the whole draft, on a press of Save, so it
+  // opens on another computer.
+  //
+  // Vault-class private, the BOV log's rules: DB-only (rule 4: a file Render
+  // erases would lose a broker's work without telling them), every read and
+  // write scoped by user_id, read by no owner surface and nothing public.
+  // A draft can hold an owner's name and an NOI, so with the signed-in
+  // portfolio this is the second place rule 6 lets private finances be
+  // stored: the broker's own row, written only when they press Save, and
+  // never handed to the model, /api/comps or a share.
+  //
+  // What is stored is BOVDOC.cleanDraft's answer, never the body as sent, so
+  // an unknown key or an oversized string cannot be parked here. An id the
+  // caller does not own matches no row (no existence oracle across users).
+  // DEPLOY ORDER IS SOFT: before 067 runs every call answers 503 `not_ready`
+  // and the builder keeps working from the browser, as it did.
+  if (req.url.split("?")[0] === "/api/broker/bov-docs") {
+    const bovDocGate = async () => {
+      if (rateLimited("bovdocs:" + clientIp(req), 120)) {
+        sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        return null;
+      }
+      const user = await requireUser(req, res);
+      if (!user) return null;
+      if (!(await entitlementsFor(req)).canUseVault) {
+        sendJson(res, 403, { error: "Saving a BOV is part of Pro.", code: "broker_required" });
+        return null;
+      }
+      if (!DB_CONFIGURED) {
+        sendJson(res, 503, { error: "Saved BOVs are unavailable right now. Please try again in a minute." });
+        return null;
+      }
+      return user;
+    };
+    const bovDocFail = (what) => (err) => {
+      if (res.headersSent) return;
+      if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+      if (bovTablesMissing(err)) {
+        return sendJson(res, 503, { error: "Saving to your account is not switched on yet.", code: "not_ready" });
+      }
+      console.error(`bov docs ${what} failed:`, err.message);
+      return sendJson(res, 503, { error: "Saved BOVs are unavailable right now. Nothing was changed. Please try again in a minute." });
+    };
+    const docId = new URL(req.url, "http://localhost").searchParams.get("id") || "";
+    const isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || ""));
+    const LIST = "id,bov_id,address,property_type,updated_at";
+    // The answer's shape is this list, whatever the read returned: user_id
+    // is plumbing and is never sent back.
+    const listed = (r) => Object.fromEntries(LIST.split(",").map((k) => [k, r[k] == null ? null : r[k]]));
+    if (req.method === "GET") {
+      (async () => {
+        const user = await bovDocGate();
+        if (!user) return;
+        const mine = `broker_bov_docs?user_id=eq.${encodeURIComponent(user.id)}`;
+        if (docId) {
+          if (!isUuid(docId)) return sendJson(res, 400, { error: "Missing or malformed id." });
+          const rows = await sbRequest("GET", `${mine}&id=eq.${encodeURIComponent(docId)}&select=${LIST},draft&limit=1`);
+          if (!rows || !rows[0]) return sendJson(res, 404, { error: "That saved BOV was not found." });
+          return sendJson(res, 200, { doc: { ...listed(rows[0]), draft: BOVDOC.cleanDraft(rows[0].draft) } });
+        }
+        // The list carries no draft: an owner's name and an NOI ride only
+        // the one read that opens a BOV.
+        const rows = await sbRequest("GET", `${mine}&select=${LIST}&order=updated_at.desc&limit=${BOVDOC.SAVED_MAX}`);
+        return sendJson(res, 200, { docs: (rows || []).map(listed) });
+      })().catch(bovDocFail("read"));
+      return;
+    }
+    if (req.method === "POST") {
+      let body = "";
+      req.setEncoding("utf8");
+      // A cover photo is up to 900 KB of the draft (BOVDOC.okPhoto).
+      req.on("data", (c) => { body += c; if (body.length > 1.4e6) req.destroy(); });
+      req.on("end", () => {
+        (async () => {
+          const user = await bovDocGate();
+          if (!user) return;
+          const sent = JSON.parse(body || "{}");
+          const draft = BOVDOC.cleanDraft(sent.draft);
+          if (!draft.subject.address.trim()) {
+            return sendJson(res, 400, { error: "Enter the property’s address before saving." });
+          }
+          const row = {
+            bov_id: draft.from || null,
+            address: draft.subject.address,
+            property_type: draft.subject.type,
+            draft,
+            updated_at: new Date().toISOString(),
+          };
+          const mine = `broker_bov_docs?user_id=eq.${encodeURIComponent(user.id)}`;
+          if (sent.id !== undefined && sent.id !== null && sent.id !== "") {
+            if (!isUuid(sent.id)) return sendJson(res, 400, { error: "Missing or malformed id." });
+            const rows = await sbRequest("PATCH", `${mine}&id=eq.${encodeURIComponent(String(sent.id))}`,
+              row, { prefer: "return=representation" });
+            // Removed on another computer, or never this account's: say so,
+            // and let the page save it as a new one.
+            if (!rows || !rows[0]) return sendJson(res, 404, { error: "That saved BOV is gone. Save again to keep this one.", code: "gone" });
+            return sendJson(res, 200, { ok: true, id: rows[0].id, updated_at: rows[0].updated_at });
+          }
+          // Refuse past the read's cap, so a broker never owns a BOV the
+          // list silently leaves out (the BOV log's rule).
+          const count = ((await sbRequest("GET", `${mine}&select=id&limit=${BOVDOC.SAVED_MAX + 1}`)) || []).length;
+          if (count >= BOVDOC.SAVED_MAX) {
+            return sendJson(res, 400, { error: `You can keep ${BOVDOC.SAVED_MAX} saved BOVs. Remove one to save another.` });
+          }
+          const rows = await sbRequest("POST", "broker_bov_docs", { ...row, user_id: user.id }, { prefer: "return=representation" });
+          if (!rows || !rows[0]) throw new Error("insert returned no row");
+          logEvent("bov_doc_saved", { prop_type: draft.subject.type });
+          return sendJson(res, 200, { ok: true, id: rows[0].id, updated_at: rows[0].updated_at });
+        })().catch(bovDocFail("save"));
+      });
+      return;
+    }
+    if (req.method === "DELETE") {
+      (async () => {
+        const user = await bovDocGate();
+        if (!user) return;
+        if (!isUuid(docId)) return sendJson(res, 400, { error: "Missing or malformed id." });
+        await sbRequest("DELETE",
+          `broker_bov_docs?id=eq.${encodeURIComponent(docId)}&user_id=eq.${encodeURIComponent(user.id)}`);
+        return sendJson(res, 200, { ok: true });
+      })().catch(bovDocFail("delete"));
+      return;
+    }
+    return sendJson(res, 405, { error: "Method not allowed." });
   }
 
   // --- BOV tracker (v4 slice 2) ---------------------------------------------

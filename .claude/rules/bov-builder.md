@@ -20,6 +20,55 @@ paths:
 > the stand-in database with a seeded book; `scripts/shot.js` boots with no
 > database and shows `/bov` only its sign-in wall).
 
+> **A BOV can be saved to the broker's account (2026-11-27, the same day;
+> the owner: "let brokers save BOVs to their account"; migration
+> `067-broker-bov-docs.sql`, deploy order SOFT).** Read this before the
+> rules below, which it amends: where they say nothing a broker types
+> leaves the page, that there is no server-side store, and that a draft does
+> not follow the broker to another computer, this is what is true now.
+> - **Typing still sends nothing.** The draft is kept in the browser as
+>   before. It is sent in exactly ONE request, `POST /api/broker/bov-docs`
+>   `{ id?, draft }`, made only inside the "Save to your account" press
+>   (`test/bov-page.test.js` holds both halves, by source and by running
+>   it). After a save, later changes are again browser-only until the next
+>   press, and the line beside the button says which state the draft is in.
+> - **`broker_bov_docs`** is vault-class, the BOV log's rules: DB-only (rule
+>   4; 503 with no database), every read and write scoped by `user_id`, read
+>   by no owner surface and nothing public, behind `canUseVault`. The row
+>   holds `BOVDOC.cleanDraft`'s answer, never the body as sent, plus
+>   `bov_id`, `address` and `property_type` copied out so the list can name
+>   a BOV without reading it. No FK to `broker_bovs`: removing a card keeps
+>   the document. `BOVDOC.SAVED_MAX` (100) per account, refused past it.
+> - **Rule 6 now names two stores.** A draft can hold an NOI, so with the
+>   signed-in portfolio a saved BOV is the second place private finances may
+>   be stored: the broker's own row, on their own press. It is never read
+>   into a report, the model, the corpus or a share, and anything built on
+>   it later (sharing a BOV, a firm's shelf of them) must strip or ask
+>   first.
+> - **Routes:** `GET` lists (`id, bov_id, address, property_type,
+>   updated_at`; the list carries no draft), `GET ?id=` opens one, `POST`
+>   creates or updates, `DELETE ?id=` removes. The route shapes its own
+>   answer (`listed`), so `user_id` is never sent back. An id that is not
+>   the caller's matches no row: 404 on a read or an update (`code: "gone"`,
+>   and the page saves it as a new one on the next press), 200 on a delete
+>   (no existence oracle). None of the GETs writes, so none is on
+>   `HOLD_PATHS`.
+> - **Soft deploy order.** Before 067 runs every call answers 503
+>   `not_ready` (`bovTablesMissing`), and the builder shows no Save controls
+>   (`savedReady` is true only once the list answers 200) and works from the
+>   browser as it did. A free account and an outage look the same to the
+>   page: no Save, nothing broken.
+> - **In the browser** a saved copy is kept under `d:<docId>` (`keyOf`), so
+>   one BOV is one local entry, with `u` marking unsaved changes. "Open a
+>   BOV saved to your account" lists them; a card's `/bov?from=<id>` link
+>   opens the BOV saved for that card when this browser holds no draft for
+>   it (`openForCard`), and never replaces one it does hold. "Remove from
+>   your account" deletes the row and keeps the draft in the browser; "Start
+>   over" clears the browser's draft and leaves the account's copy alone.
+> - Tests: `test/bov-run.test.js` (the routes on the stand-in database,
+>   another member's attempts, the unrun migration) and the last four blocks
+>   of `test/bov-page.test.js`.
+
 ## The Broker section
 
 The rail row that read **Pipeline** reads **Broker** (the phone bar too). It
@@ -154,9 +203,7 @@ tag, the scripts), and the board card in `test/vault-page.test.js`. Checked
 in Chromium on the stand-in database with a seeded book, desktop and phone,
 and printed to PDF.
 
-**Not built, and the obvious next steps:** saving a BOV to the account (a
-private table of its own, vault-class, stripped of nothing because it would
-be the broker's own, but rule 4 applies: refuse without a database);
-pulling public comps in from a comp report the member ran; a comp map on
+**Not built, and the obvious next steps:** sharing a saved BOV with a firm
+or by link; pulling public comps in from a comp report the member ran; a comp map on
 the comparables page; a Word or PowerPoint copy; a market overview written
 from the market page's figures.

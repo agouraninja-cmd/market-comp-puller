@@ -41,7 +41,9 @@ tabs (`brokerSectionTabs`): `/pipeline`, the Pipeline board, and `/bov`, the
 **BOV builder**, where a broker writes a Broker Opinion of Value on their own
 letterhead from their own comps and prints it (`bov-doc.js`, `bov-page.js`,
 `bov-builder.js`; bov-builder.md). The row's id, icon and address did not
-change, and nothing a broker types into the builder leaves their browser.
+change. What a broker types into the builder stays in their browser until
+they press "Save to your account", which keeps the BOV on their own private
+row (`broker_bov_docs`, migration 067, `/api/broker/bov-docs`).
 **Comps** is a section of two tabs (`compsSectionTabs`): `/bulk`, "Run a
 comp report", first and where the rail's Comps row opens (since
 2026-11-15), and `/comps`, "Your comps", the member's own comps and the
@@ -136,8 +138,11 @@ session that never reads it.
    gross income and development costs never reach the model, `/api/comps` (so
    never the cache key) or any public surface, and `/api/share` strips them,
    as does every read of a shared report (`SHARE_PRIVATE_ASSUMPTIONS`). The
-   signed-in portfolio is the one place they are stored, so any future
-   share-from-portfolio must strip them too. `/comps`' loan check holds its
+   signed-in portfolio is one of the two places they are stored, so any
+   future share-from-portfolio must strip them too. The other, since
+   2026-11-27, is a BOV a broker saved from the builder (`broker_bov_docs`):
+   their own row, written only on their press of Save, and anything built on
+   it later must strip them the same way. `/comps`' loan check holds its
    loan, price and limit in the page's memory alone: no request, no storage.
    [report-and-valuation.md, vault.md]
 7. **A private comp's address reaches a third party only through our own
@@ -492,7 +497,7 @@ gone. Document a new feature in its area's file, not here.
 | `billing.md` | Pro tier, trial, prices, free allowance, passkeys, admin access, branding, trial emails, `/api/config`, `/pricing` | `entitlements.js`, `stripe.js`, `branding.js`, `trial-notices.js`, `pricing-page.js` |
 | `vault.md` | the broker vault (import, mapper, editing, publishing, dashboard, gut check, BOV, building facts), comp submissions, the lead inbox | `vault-*.js`, `broker-*.js`, `building-facts.js`, `gut-check.js`, `bov-log.js`, `blend-comps.js`, `xlsx.js` |
 | `bov-desk.md` | the BOV desk: finding local brokers for a BOV request, the drafted outreach, sending, the accept link and the introduction, autopilot, `/admin/bov`, migration 065 | `bov-desk.js`, `bov-desk-page.js`, `test/bov-desk*.test.js` |
-| `bov-builder.md` | the Broker section (the rail row that read Pipeline) and the BOV builder at `/bov`: the document, the draft kept in the browser, the four requests the page may make, the door from a Pipeline card | `bov-doc.js`, `bov-builder.js`, `bov-page.js`, `test/bov-doc.test.js`, `test/bov-page.test.js`, `test/bov-run.test.js` |
+| `bov-builder.md` | the Broker section (the rail row that read Pipeline) and the BOV builder at `/bov`: the document, the draft kept in the browser, saving a BOV to the account (migration 067), the requests the page may make, the door from a Pipeline card | `bov-doc.js`, `bov-builder.js`, `bov-page.js`, `test/bov-doc.test.js`, `test/bov-page.test.js`, `test/bov-run.test.js` |
 | `owner-lookup.md` | finding a commercial property's owner by web search (`/api/owner-lookup`), its monthly allowance, a member's own contacts (`/api/account/contacts`), a contact's phone and source, the legal review, migration 066 | `owner-lookup.js`, `org-contacts.js`, `test/owner-lookup*.test.js` |
 | `firms.md` | firms: membership, shelf, buildings, sheets, leases, contacts, messaging doors, Messages' Reports view, auto-share, the shared vault, seats, shop kinds | `org-*.js`, `buildings-page.js`, `messaging.js`, `messages-page.js`, `report-inbox.js` |
 | `workspace.md` | the signed-in Home (`/desk`): Home as one map and its layer switch, layout history, one-paint fill, `DESK_BOOT`, `AUTH_BOOT`, `pagePath`, index.html's script served as `/app.<hash>.js` (`app-page.js`) | `index.html`, `home-map.js`, `app-page.js`, desk tests |

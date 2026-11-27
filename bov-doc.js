@@ -38,9 +38,12 @@
 //    a comp of another type is still listed, and the document says it was
 //    left out of the range.
 //
-// 5. EVERYTHING HERE STAYS IN THE BROWSER (CLAUDE.md rule 6). The draft holds
-//    an owner's name, an NOI and a broker's private comps. Nothing in this
-//    file makes a request, and bov-builder.js sends none of it anywhere.
+// 5. A DRAFT LEAVES THE BROWSER ONLY WHEN THE BROKER SAVES IT (CLAUDE.md rule
+//    6). It holds an owner's name, an NOI and which private comps were used.
+//    Nothing in this file makes a request. bov-builder.js sends the draft to
+//    one place, the broker's own account (POST /api/broker/bov-docs), and
+//    only on a press of Save; the route stores cleanDraft's answer, never
+//    the body as sent.
 //
 // 6. EVERY STRING IS ESCAPED ON THE WAY INTO THE DOCUMENT. An address, a note
 //    and an owner's name are all text a person typed.
@@ -71,6 +74,9 @@
   const SUGGEST_MAX = 6;
   const COMPS_MAX = 15;
   const MANUAL_MAX = 10;
+  // How many BOVs one account may keep saved (the save route refuses past
+  // it, so the list never silently leaves one out).
+  const SAVED_MAX = 100;
 
   const LIMITS = {
     address: 200, name: 120, short: 80, highlights: 1200, text: 4000,
@@ -184,6 +190,9 @@
   function blankDraft() {
     return {
       v: 1,
+      // The saved copy this draft is, once the broker has pressed Save
+      // (broker_bov_docs.id); "" for a draft that lives in the browser only.
+      docId: "",
       from: "",
       subject: { address: "", type: "Industrial", size: "", acres: "", year: "", occupancy: "", zoning: "", highlights: "" },
       client: { name: "", company: "" },
@@ -214,6 +223,7 @@
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return d;
     const sub = raw.subject || {}, cl = raw.client || {}, val = raw.value || {}, inc = raw.income || {}, tx = raw.text || {};
     d.from = /^[0-9a-f-]{36}$/i.test(str(raw.from)) ? str(raw.from) : "";
+    d.docId = /^[0-9a-f-]{36}$/i.test(str(raw.docId)) ? str(raw.docId) : "";
     d.subject.address = clean(sub.address, LIMITS.address);
     d.subject.type = PROPERTY_TYPES.includes(sub.type) ? sub.type : "Industrial";
     ["size", "acres", "year", "occupancy", "zoning"].forEach((k) => { d.subject[k] = clean(sub[k], LIMITS.short); });
@@ -746,7 +756,7 @@
   }
 
   return {
-    PROPERTY_TYPES, ACCENTS, SUGGEST_MAX, COMPS_MAX, MANUAL_MAX, LIMITS,
+    PROPERTY_TYPES, ACCENTS, SUGGEST_MAX, COMPS_MAX, MANUAL_MAX, SAVED_MAX, LIMITS,
     money, number, percent, year,
     fmtMoney, fmtNum, fmtRate, fmtRateShort, longDate, shortDate,
     splitAddress, marketOfAddress,

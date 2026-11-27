@@ -104,3 +104,113 @@ test("/bov boots with the member's own comps behind the comps' gate, and serves 
   assert.ok(tables.analytics_events.some((e) => e.kind === "bov_visit" || e.event === "bov_visit" || JSON.stringify(e).includes("bov_visit")), "the visit was not logged");
   assert.equal(db.unparsed.length, 0, JSON.stringify(db.unparsed));
 });
+
+// Saved BOVs (2026-11-27; migration 067). A broker keeps a BOV on their
+// account: their own row, behind the comps' gate, holding what cleanDraft
+// allows and nothing else.
+const seed = () => ({
+  users: PEOPLE.map((p) => ({ ...p, email_verified: true, pro_tester: false, vault_beta: false, digest_optout: false, created_at: "2025-01-01T00:00:00Z" })),
+  sessions: PEOPLE.map((p) => ({ token_hash: sha256("tok-" + p.id), user_id: p.id, expires_at: YEAR_OUT })),
+  subscriptions: PEOPLE.filter((p) => p.id !== "u-free").map((p) => ({ user_id: p.id, plan: "pro_monthly", status: "active", current_period_end: YEAR_OUT, cancel_at_period_end: false })),
+  orgs: [], org_members: [], org_subscriptions: [], analytics_events: [], broker_bov_docs: [],
+});
+const DRAFT = () => ({
+  from: "75fecf88-d150-44d8-bc61-3946177cbb3a", sneaky: "x",
+  subject: { address: "8400 W Fairview Ave, Boise, ID 83704", type: "Industrial", size: "45,000", evil: 1 },
+  client: { name: "The Owner LLC" }, value: { low: "3,800,000", high: "4,200,000", list: "" }, income: { noi: "262,000", cap: "6.5" },
+  photo: "https://elsewhere.example/x.jpg",
+});
+
+test("a BOV is saved to its broker's own account, opened, updated and removed, and nobody else can reach it", async (t) => {
+  const tables = seed();
+  const db = await fake.start({ tables });
+  const srv = await shared.boot({ ACCOUNT_WALL: "off", PRO_ENABLED: "on", SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key" });
+  t.after(async () => { srv.stop(); await db.stop(); });
+  const call = async (id, method, url, body) => {
+    const r = await fetch(srv.base + url, { method, headers: { "content-type": "application/json", ...(id ? { cookie: `cn_session=tok-${id}` } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body) });
+    return { s: r.status, j: await r.json() };
+  };
+  const API = "/api/broker/bov-docs";
+
+  // The gate, in the comps' order: signed in, then Pro.
+  assert.equal((await call(null, "GET", API)).s, 401);
+  assert.equal((await call(null, "POST", API, { draft: DRAFT() })).s, 401);
+  const free = await call("u-free", "POST", API, { draft: DRAFT() });
+  assert.equal(free.s, 403);
+  assert.match(free.j.error, /part of Pro/);
+  assert.equal(tables.broker_bov_docs.length, 0, "a refused save stored a row");
+
+  // Nothing saved yet.
+  assert.deepEqual((await call("u-pro", "GET", API)).j, { docs: [] });
+  // A BOV with no address is not one.
+  assert.equal((await call("u-pro", "POST", API, { draft: { subject: { address: "  " } } })).s, 400);
+
+  const saved = await call("u-pro", "POST", API, { draft: DRAFT() });
+  assert.equal(saved.s, 200, JSON.stringify(saved.j));
+  assert.match(saved.j.id, /^[0-9a-f-]{36}$/);
+  const row = tables.broker_bov_docs[0];
+  assert.equal(row.user_id, "u-pro");
+  assert.equal(row.bov_id, "75fecf88-d150-44d8-bc61-3946177cbb3a");
+  assert.equal(row.address, "8400 W Fairview Ave, Boise, ID 83704");
+  // What is stored is cleanDraft's answer, never the body as sent.
+  assert.equal(row.draft.sneaky, undefined);
+  assert.equal(row.draft.subject.evil, undefined);
+  assert.equal(row.draft.photo, "", "a cover photo from another site was stored");
+  assert.equal(row.draft.income.noi, "262,000");
+
+  // The list names it without its contents; opening it returns the draft.
+  const list = await call("u-pro", "GET", API);
+  assert.deepEqual(Object.keys(list.j.docs[0]).sort(), ["address", "bov_id", "id", "property_type", "updated_at"]);
+  const got = await call("u-pro", "GET", API + "?id=" + saved.j.id);
+  assert.equal(got.s, 200);
+  assert.equal(got.j.doc.draft.client.name, "The Owner LLC");
+  assert.equal(got.j.doc.user_id, undefined, "the account's id is in the answer");
+
+  // Another member sees none of it and can neither open, change nor remove it.
+  assert.deepEqual((await call("u-two", "GET", API)).j, { docs: [] });
+  assert.equal((await call("u-two", "GET", API + "?id=" + saved.j.id)).s, 404);
+  const theirs = DRAFT(); theirs.client.name = "Changed by a stranger";
+  assert.equal((await call("u-two", "POST", API, { id: saved.j.id, draft: theirs })).s, 404);
+  assert.equal((await call("u-two", "DELETE", API + "?id=" + saved.j.id)).s, 200, "a delete is no existence oracle");
+  assert.equal(tables.broker_bov_docs.length, 1, "another member removed it");
+  assert.equal(tables.broker_bov_docs[0].draft.client.name, "The Owner LLC", "another member changed it");
+
+  // Saving again with its id updates the one row.
+  const next = DRAFT(); next.value.list = "4,050,000";
+  const again = await call("u-pro", "POST", API, { id: saved.j.id, draft: next });
+  assert.equal(again.s, 200);
+  assert.equal(again.j.id, saved.j.id);
+  assert.equal(tables.broker_bov_docs.length, 1);
+  assert.equal(tables.broker_bov_docs[0].draft.value.list, "4,050,000");
+
+  // Malformed ids are refused before the database is asked.
+  assert.equal((await call("u-pro", "GET", API + "?id=nope")).s, 400);
+  assert.equal((await call("u-pro", "POST", API, { id: "nope", draft: DRAFT() })).s, 400);
+  assert.equal((await call("u-pro", "DELETE", API)).s, 400);
+
+  // Removed, and then saving with the old id says it is gone.
+  assert.equal((await call("u-pro", "DELETE", API + "?id=" + saved.j.id)).s, 200);
+  assert.equal(tables.broker_bov_docs.length, 0);
+  const gone = await call("u-pro", "POST", API, { id: saved.j.id, draft: DRAFT() });
+  assert.equal(gone.s, 404);
+  assert.equal(gone.j.code, "gone");
+  assert.equal(db.unparsed.length, 0, JSON.stringify(db.unparsed));
+});
+
+test("before migration 067 runs, saving answers not_ready and the builder page still opens", async (t) => {
+  const tables = seed();
+  delete tables.broker_bov_docs;
+  Object.assign(tables, { broker_comps: [], broker_uploads: [], broker_properties: [], broker_profiles: [], branding_profiles: [], comp_submissions: [] });
+  const db = await fake.start({ tables, missingTables: ["broker_bov_docs"] });
+  const srv = await shared.boot({ ACCOUNT_WALL: "off", PRO_ENABLED: "on", SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key" });
+  t.after(async () => { srv.stop(); await db.stop(); });
+  const headers = { "content-type": "application/json", cookie: "cn_session=tok-u-pro" };
+  for (const [method, url, body] of [["GET", "/api/broker/bov-docs"], ["POST", "/api/broker/bov-docs", { draft: DRAFT() }]]) {
+    const r = await fetch(srv.base + url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    assert.equal(r.status, 503, method);
+    assert.equal((await r.json()).code, "not_ready", method);
+  }
+  const page = await (await fetch(srv.base + "/bov", { headers })).text();
+  assert.ok(page.includes('id="bbApp"'), "the builder did not open without the table");
+});

@@ -5719,5 +5719,11 @@
     "type": "improvement",
     "title": "The Pipeline section is now called Broker",
     "details": "The sidebar row that read Pipeline reads Broker, on the desktop sidebar and the phone bar. It is a section of two tabs: Pipeline (the same board, at the same address) and the new BOV builder."
+  },
+  {
+    "date": "2026-11-27",
+    "type": "feature",
+    "title": "BOV builder: save a BOV to your account",
+    "details": "A BOV written in the builder used to live only in the browser it was typed in. A new “Save to your account” button keeps it on your account, where only you can open it, so it is there on any computer. Saved BOVs are listed at the top of the builder, and a Pipeline card’s link opens the one saved for it. What you type is still sent nowhere until you press Save. Needs migration 067."
   }
 ]

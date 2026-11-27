@@ -14,10 +14,17 @@
 //   POST /api/building-photo    ONE press, the subject's address in the body
 //                               (rule 7's own door), for a street photo
 //   POST /api/broker/bovs/update  ONE press, { id, status: "delivered" }
+//   GET  /api/broker/bov-docs   the list of BOVs saved to their account
+//   GET  /api/broker/bov-docs?id=   ONE press (or a card's link), to open one
+//   POST /api/broker/bov-docs   ONE press of Save: { id, draft }
+//   DELETE /api/broker/bov-docs?id=   ONE press of Remove
 // The draft itself (an owner's name, an NOI, a value, which private comps
-// were used) goes nowhere. It is kept in localStorage under a key that names
-// the account by a tag the server hashed, so two people sharing a browser do
-// not read each other's drafts, and a draft per pipeline BOV.
+// were used) goes to ONE place and only when the broker presses "Save to
+// your account" (2026-11-27, the owner: "let brokers save BOVs to their
+// account"): their own row, which only they can read. Typing sends nothing.
+// Until it is saved, and between saves, the draft is kept in localStorage
+// under a key that names the account by a tag the server hashed, so two
+// people sharing a browser do not read each other's drafts.
 //
 // NOTHING IS WRITTEN ON LOAD. A copy of this page built ahead of the click
 // (rule 15) reads, draws, and waits.
@@ -50,13 +57,17 @@
     var parsed = raw ? JSON.parse(raw) : null;
     if (parsed && parsed.drafts && typeof parsed.drafts === "object") store = { drafts: parsed.drafts, last: String(parsed.last || "_") };
   } catch (e) {}
-  var keyOf = function (from) { return from || "_"; };
+  // Where a draft sits in this browser: a saved copy under its own id, else
+  // the pipeline BOV it is for, else the one free-standing draft.
+  var keyOf = function (d) { return d.docId ? "d:" + d.docId : (d.from || "_"); };
   var draft = B.blankDraft();
   var saveNote = "";
+  // dirty: this draft holds changes the account's copy does not.
+  var dirty = false;
 
   function save() {
-    var key = keyOf(draft.from);
-    store.drafts[key] = { at: Date.now(), d: draft };
+    var key = keyOf(draft);
+    store.drafts[key] = { at: Date.now(), d: draft, u: dirty ? 1 : 0 };
     store.last = key;
     var keys = Object.keys(store.drafts).sort(function (a, b) { return (store.drafts[b].at || 0) - (store.drafts[a].at || 0); });
     keys.slice(MAX_DRAFTS).forEach(function (k) { delete store.drafts[k]; });
@@ -82,10 +93,25 @@
   // may fill the form in. A kept draft is never written over by it.
   var fresh = true;
   function loadDraft(from) {
-    var held = store.drafts[keyOf(from)];
+    var held = store.drafts[from || "_"];
+    // A BOV for this card that was saved to the account is kept here under
+    // its own id: the newest of those is this card's draft.
+    if (!held && from) {
+      Object.keys(store.drafts).forEach(function (k) {
+        var e = store.drafts[k];
+        if (k.indexOf("d:") === 0 && e && e.d && e.d.from === from && (!held || (e.at || 0) > (held.at || 0))) held = e;
+      });
+    }
     fresh = !held;
     draft = B.cleanDraft(held && held.d);
     draft.from = from || "";
+    dirty = !!(held && held.u);
+  }
+  function loadKey(key) {
+    var held = store.drafts[key];
+    fresh = !held;
+    draft = B.cleanDraft(held && held.d);
+    dirty = !!(held && held.u);
   }
 
   // ---- the form ---------------------------------------------------------------
@@ -215,7 +241,7 @@
     var ierr = (!noi.ok && noi.error) || (!cap.ok && cap.error) || "";
     setText($("bbIncErr"), ierr); show($("bbIncErr"), !!ierr);
     setText($("bbIncomeOut"), inc ? B.fmtMoney(inc.noi) + " a year at a " + inc.cap + "% cap rate indicates " + B.fmtMoney(inc.value) + ". It prints under the comparables."
-      : "Your figures stay on this page and on the document you print.");
+      : "Your figures are on this page and the document. They are sent nowhere unless you save the BOV to your account.");
 
     var s = draft.subject, perr = "";
     var sz = B.number(B.isLandType(s.type) ? s.acres : s.size), yr = B.year(s.year);
@@ -289,8 +315,9 @@
     if (now) { renderDoc(); return; }
     timer = setTimeout(renderDoc, 120);
   }
-  // A change the broker made: kept, then drawn.
-  function changed() { save(); redraw(false); }
+  // A change the broker made: kept in this browser, then drawn. Nothing is
+  // sent: the account's copy changes only on a press of Save.
+  function changed() { dirty = true; save(); renderSaved(); redraw(false); }
 
   // ---- wiring -----------------------------------------------------------------
   FIELDS.forEach(function (f) {
@@ -396,7 +423,7 @@
           if (B.okPhoto(url)) out = url;
         }
         if (!out) { photoMsg("That image is too large to use. Try a smaller one."); return; }
-        draft.photo = out; photoMsg("Your photo is on the cover. It was not uploaded anywhere."); changed();
+        draft.photo = out; photoMsg("Your photo is on the cover."); changed();
       };
       img.src = String(reader.result || "");
     };
@@ -437,8 +464,13 @@
     var row = bovs.filter(function (b) { return String(b.id) === from; })[0];
     prefillFrom(row);
     applySuggestion();
-    fillForm(); show($("bbDone"), false); photoMsg("");
-    redraw(true);
+    showDraft();
+    openForCard();
+  }
+  // The form, the saved line and the document, from the draft as it now is.
+  function showDraft() {
+    fillForm(); show($("bbDone"), false); photoMsg(""); saveMsg = "";
+    renderFrom(); renderSaved(); redraw(true);
   }
   $("bbFrom").addEventListener("change", function () { switchTo(this.value); });
   function renderFrom() {
@@ -506,10 +538,124 @@
 
   $("bbReset").addEventListener("click", function () {
     if (!window.confirm("Clear this draft and start over? This cannot be undone.")) return;
+    // The browser's draft goes. A copy saved to the account is untouched:
+    // it is still in "Open a saved BOV", and Remove is its own press.
     var from = draft.from;
-    delete store.drafts[keyOf(from)];
-    switchTo(from);
+    delete store.drafts[keyOf(draft)];
+    draft = B.blankDraft(); draft.from = from; fresh = true; dirty = false;
+    prefillFrom(bovs.filter(function (b) { return String(b.id) === from; })[0]);
+    applySuggestion();
     save();
+    showDraft();
+  });
+
+  // ---- saved to the account -------------------------------------------------------
+  // The one place a draft is sent, and only on a press (the header's rule).
+  // savedReady stays false until the list read answers 200: a free account, an
+  // outage or an unrun migration 067 leaves the page as it was, with no Save.
+  var docs = [], savedReady = false, saveMsg = "", saveBad = false;
+  function docLabel(d) {
+    var when = B.shortDate(String(d.updated_at || "").slice(0, 10));
+    return [B.splitAddress(d.address).street || "A saved BOV", d.property_type, when].filter(Boolean).join(" \u00b7 ");
+  }
+  function renderSaved() {
+    show($("bbSaveRow"), savedReady);
+    var sel = $("bbSaved");
+    while (sel.options.length > 1) sel.remove(1);
+    docs.forEach(function (d) {
+      var o = document.createElement("option");
+      o.value = String(d.id); setText(o, docLabel(d));
+      sel.appendChild(o);
+    });
+    sel.value = draft.docId || "";
+    show($("bbSavedRow"), savedReady && docs.length > 0);
+    setText($("bbSave"), draft.docId ? "Save changes" : "Save to your account");
+    show($("bbSavedRemove"), !!draft.docId);
+    var msg = $("bbSaveMsg");
+    msg.className = saveBad ? "bb-err" : "";
+    setText(msg, saveMsg || (draft.docId
+      ? (dirty ? "Changes since your last save are only in this browser." : "Saved to your account.")
+      : "Only in this browser so far."));
+  }
+  function loadDocs(then) {
+    fetch("/api/broker/bov-docs", { credentials: "same-origin" })
+      .then(function (r) { return r.json().then(function (o) { return { s: r.status, j: o }; }); })
+      .catch(function () { return { s: 0, j: null }; })
+      .then(function (o) {
+        savedReady = o.s === 200;
+        docs = (savedReady && o.j && o.j.docs) || [];
+        renderSaved();
+        if (then) then();
+      });
+  }
+  function openSaved(id) {
+    fetch("/api/broker/bov-docs?id=" + encodeURIComponent(id), { credentials: "same-origin" })
+      .then(function (r) { return r.json().then(function (o) { return { s: r.status, j: o }; }); })
+      .catch(function () { return { s: 0, j: null }; })
+      .then(function (o) {
+        if (o.s !== 200 || !o.j || !o.j.doc) {
+          saveMsg = (o.j && o.j.error) || "That saved BOV could not be opened just now."; saveBad = true;
+          renderSaved(); return;
+        }
+        draft = B.cleanDraft(o.j.doc.draft);
+        draft.docId = String(o.j.doc.id);
+        fresh = false; dirty = false; saveBad = false;
+        save();
+        showDraft();
+      });
+  }
+  // A card's link, on a computer that holds no draft for it: the BOV saved
+  // for that card opens. A draft kept in this browser is never replaced.
+  function openForCard() {
+    if (!savedReady || !fresh || !draft.from || draft.docId) return;
+    var hit = docs.filter(function (d) { return String(d.bov_id || "") === draft.from; })[0];
+    if (hit) openSaved(String(hit.id));
+  }
+  $("bbSaved").addEventListener("change", function () {
+    var id = this.value;
+    if (!id || id === draft.docId) return;
+    if (dirty && !window.confirm("Open the saved BOV? Changes you have not saved to your account stay in this browser only.")) { this.value = draft.docId || ""; return; }
+    openSaved(id);
+  });
+  $("bbSave").addEventListener("click", function () {
+    var btn = this, was = keyOf(draft);
+    if (!draft.subject.address.trim()) { saveMsg = "Enter the property\u2019s address before saving."; saveBad = true; renderSaved(); return; }
+    btn.disabled = true; saveMsg = "Saving\u2026"; saveBad = false; renderSaved();
+    fetch("/api/broker/bov-docs", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: draft.docId || undefined, draft: draft }) })
+      .then(function (r) { return r.json().then(function (o) { return { s: r.status, j: o }; }); })
+      .catch(function () { return { s: 0, j: null }; })
+      .then(function (o) {
+        btn.disabled = false;
+        if (o.s !== 200 || !o.j || !o.j.id) {
+          // Removed on another computer: this draft is a new one again.
+          if (o.j && o.j.code === "gone") { delete store.drafts[was]; draft.docId = ""; save(); }
+          saveMsg = (o.j && o.j.error) || "That could not be saved just now. Your draft is still in this browser."; saveBad = true;
+          renderSaved(); return;
+        }
+        draft.docId = String(o.j.id);
+        dirty = false; saveMsg = ""; saveBad = false;
+        // The browser's copy moves under the saved copy's id.
+        if (was !== keyOf(draft)) delete store.drafts[was];
+        save();
+        loadDocs();
+      });
+  });
+  $("bbSavedRemove").addEventListener("click", function () {
+    var id = draft.docId, btn = this;
+    if (!id || !window.confirm("Remove this BOV from your account? It stays in this browser until you start over.")) return;
+    btn.disabled = true;
+    fetch("/api/broker/bov-docs?id=" + encodeURIComponent(id), { method: "DELETE", credentials: "same-origin" })
+      .then(function (r) { return r.json().then(function (o) { return { s: r.status, j: o }; }); })
+      .catch(function () { return { s: 0, j: null }; })
+      .then(function (o) {
+        btn.disabled = false;
+        if (o.s !== 200) { saveMsg = (o.j && o.j.error) || "That could not be removed just now."; saveBad = true; renderSaved(); return; }
+        delete store.drafts[keyOf(draft)];
+        draft.docId = ""; dirty = false; saveMsg = ""; saveBad = false;
+        save();
+        loadDocs();
+      });
   });
 
   if (window.addEventListener) window.addEventListener("resize", fitPreview);
@@ -520,10 +666,12 @@
   var asked = "";
   try { asked = new URLSearchParams(window.location.search).get("from") || ""; } catch (e) {}
   if (!/^[0-9a-f-]{36}$/i.test(asked)) asked = "";
-  var start = asked || (store.last && store.last !== "_" && store.drafts[store.last] ? store.last : "");
-  loadDraft(start);
+  if (asked) loadDraft(asked);
+  else if (store.last && store.drafts[store.last]) loadKey(store.last);
+  else loadDraft("");
   applySuggestion();
   fillForm();
+  renderSaved();
   redraw(true);
 
   fetch("/api/branding", { credentials: "same-origin" })
@@ -540,9 +688,12 @@
     .catch(function () { return null; })
     .then(function (o) {
       bovs = (o && o.bovs) || [];
-      // A link to a BOV that is not this account's starts a plain draft.
-      if (draft.from && !bovs.some(function (b) { return String(b.id) === draft.from; })) { loadDraft(""); applySuggestion(); fillForm(); }
+      // A link to a BOV that is not this account's starts a plain draft. A
+      // draft already kept (its card since removed) is left as it is.
+      if (draft.from && fresh && !bovs.some(function (b) { return String(b.id) === draft.from; })) { loadDraft(""); applySuggestion(); fillForm(); }
       else if (draft.from) { prefillFrom(bovs.filter(function (b) { return String(b.id) === draft.from; })[0]); applySuggestion(); fillForm(); }
       renderFrom(); redraw(true);
+      openForCard();
     });
+  loadDocs(openForCard);
 })();

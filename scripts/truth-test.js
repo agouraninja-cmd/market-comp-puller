@@ -6,6 +6,7 @@
 //   node scripts/truth-test.js --label baseline            # the whole set
 //   node scripts/truth-test.js --label try --limit 6       # the first six
 //   node scripts/truth-test.js --compare a.json b.json     # two saved runs
+//   node scripts/truth-test.js --label x --raw dir --cached  # free: the cache
 //
 // This is the only instrument here that measures the WHOLE product: the
 // search finding comps and the math valuing them. backtest.js (the /admin
@@ -37,6 +38,16 @@
 //      on every run is more likely a bad row than a bad report: check it.
 //   4. An internal caller's report skips the radius blend, so this measures
 //      the SEARCH's comps, not the saved deals a member's report also gets.
+//
+// AND ONE RULE FOR RUNNING IT: this spends real money at a real rate, on the
+// same account every member's search runs on. On 2026-11-27 four passes of
+// this set in ninety minutes, the last two at double rate, tripped the
+// search account's spend-based rate limit, and for three minutes every search
+// on the site failed. So it runs two at a time by default, it STOPS after
+// three refusals in a row instead of hammering an account that has said no,
+// and `--cached` re-scores the reports the last run left in the cache without
+// a single billed call. Reach for that first: a change to the MATH needs no
+// new searches at all (`--raw <dir>` keeps the reports for exactly that).
 // ---------------------------------------------------------------------------
 
 "use strict";
@@ -140,6 +151,13 @@ function compare(a, b) {
   };
 }
 
+// "The search account has said no": our own daily cap (429), the provider's
+// rate or spend limit (502 "busy", from upstreamError) or the service down.
+const REFUSALS_TO_STOP = 3;
+function isRefusal(row) {
+  return Boolean(row && row.error && /^(429|502|503)\b/.test(String(row.error)));
+}
+
 function post(body) {
   const args = ["-sS", "-m", "300", "-X", "POST", "-H", "content-type: application/json"];
   if (process.env.ADMIN_KEY) args.push("-H", "x-admin-key: " + process.env.ADMIN_KEY);
@@ -153,14 +171,29 @@ function post(body) {
   });
 }
 
-async function runOne(target, months) {
+// A file name for one building's raw report: its street line, made safe.
+function rawName(target) {
+  return BACKTEST.normAddress(target.address).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") + ".json";
+}
+
+// `flags.cached` leaves `fresh` off, so the server answers from its cache
+// when it holds this exact search (it does after any earlier run of the set)
+// and nothing is billed. A cache MISS on that path IS a billed search, which
+// is why the run still goes through the same limits.
+async function runOne(target, flags) {
   const started = Date.now();
   try {
-    const r = await post({ address: target.address, type: target.type, months, maxComps: 12, fresh: true });
+    const body = { address: target.address, type: target.type, months: flags.months, maxComps: 12 };
+    if (!flags.cached) body.fresh = true;
+    const r = await post(body);
     const seconds = (Date.now() - started) / 1000;
     let report;
     try { report = JSON.parse(r.text); } catch (e) { return { address: target.address, type: target.type, sold: target.sold, seconds, error: "unreadable answer (" + r.status + ")" }; }
     if (r.status !== "200") return { address: target.address, type: target.type, sold: target.sold, seconds, error: r.status + " " + String(report.error || "").slice(0, 120) };
+    if (flags.raw) {
+      fs.mkdirSync(flags.raw, { recursive: true });
+      fs.writeFileSync(path.join(flags.raw, rawName(target)), JSON.stringify({ target, fetchedAt: new Date().toISOString(), report }, null, 1));
+    }
     return { ...scoreReport(target, report, Date.now()), seconds };
   } catch (err) {
     return { address: target.address, type: target.type, sold: target.sold, seconds: (Date.now() - started) / 1000, error: String(err && err.message || err).slice(0, 160) };
@@ -168,7 +201,7 @@ async function runOne(target, months) {
 }
 
 async function main(argv) {
-  const flags = { label: "run", concurrency: 3, months: 24, set: path.join(__dirname, "truth-set.json") };
+  const flags = { label: "run", concurrency: 2, months: 24, set: path.join(__dirname, "truth-set.json") };
   const files = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -178,6 +211,8 @@ async function main(argv) {
     else if (a === "--months") flags.months = Number(argv[++i]);
     else if (a === "--set") flags.set = argv[++i];
     else if (a === "--out") flags.out = argv[++i];
+    else if (a === "--raw") flags.raw = argv[++i];
+    else if (a === "--cached") flags.cached = true;
     else if (a === "--compare") flags.compare = true;
     else files.push(a);
   }
@@ -195,19 +230,28 @@ async function main(argv) {
   }
   const set = JSON.parse(fs.readFileSync(flags.set, "utf8"));
   const targets = (flags.limit > 0 ? set.targets.slice(0, flags.limit) : set.targets);
-  console.log(`${targets.length} buildings against ${BASE}, ${flags.concurrency} at a time. Every one is a billed search.`);
+  console.log(`${targets.length} buildings against ${BASE}, ${flags.concurrency} at a time. `
+    + (flags.cached ? "From the server's cache where it has them: only a miss is billed." : "Every one is a billed search."));
   const rows = new Array(targets.length);
-  let next = 0;
+  let next = 0, refusals = 0, stopped = false;
   await Promise.all(Array.from({ length: flags.concurrency }, async () => {
     for (;;) {
       const i = next++;
       if (i >= targets.length) return;
-      rows[i] = await runOne(targets[i], flags.months);
+      if (stopped) {
+        rows[i] = { address: targets[i].address, type: targets[i].type, sold: targets[i].sold, seconds: 0, error: "not run: stopped after " + REFUSALS_TO_STOP + " refusals in a row" };
+        continue;
+      }
+      rows[i] = await runOne(targets[i], flags);
       const r = rows[i];
+      // The account saying no (a 429 from the provider reaches us as a 502
+      // "busy", our own cap as a 429) is not a failure to retry through.
+      if (isRefusal(r)) { refusals += 1; if (refusals >= REFUSALS_TO_STOP) stopped = true; } else refusals = 0;
       console.log((r.error ? "FAILED  " : pct(r.miss).padStart(8)) + "  " + r.seconds.toFixed(0).padStart(3) + "s  "
         + String(r.saleComps == null ? "-" : r.saleComps).padStart(2) + " comps  " + r.address + (r.error ? "  [" + r.error + "]" : ""));
     }
   }));
+  if (stopped) console.log(`\n!! Stopped: the search account refused ${REFUSALS_TO_STOP} searches in a row. Wait before running this again, and run it slower.`);
   const s = summarize(rows);
   printSummary(flags.label, s);
   const out = flags.out || path.join(ROOT, "truth-runs", flags.label + "-" + Date.now() + ".json");
@@ -218,4 +262,4 @@ async function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2)).catch((e) => { console.error(e); process.exit(1); });
 
-module.exports = { scoreReport, summarize, compare, median };
+module.exports = { scoreReport, summarize, compare, median, isRefusal, rawName, REFUSALS_TO_STOP };

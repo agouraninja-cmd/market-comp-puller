@@ -2,6 +2,12 @@
   {
     "date": "2026-11-27",
     "type": "fix",
+    "title": "Two searches at once is switched back off: it bought no accuracy and tripped the search account's rate limit",
+    "details": "For about ten minutes today every report ran two searches at the same time, to see whether more comps per report would steady the value. Measured on sold buildings it did not: on the 21 buildings both settings valued, the typical miss went from 23–25% to about 30%, with 4.9 sale comps a report instead of 4.1–4.4. Averaging two whole searches of the same building did not help either, which says the misses come from which comps a building is given, not how many. Running two searches per report also doubled the spending rate, which tripped the search provider's spending limit during the test: for about three minutes every search on the site answered “unusually busy”. It is off again. The test itself now runs two buildings at a time, stops after three refusals in a row, and can re-score saved reports without running any search."
+  },
+  {
+    "date": "2026-11-27",
+    "type": "fix",
     "title": "The one-minute limit was skipping second searches that had room to run",
     "details": "The limit added earlier today assumed a search takes about ten seconds and that a second, wider search takes as long as the first. Measured on the live site, a search takes 32 to 55 seconds and the second search only 10 to 15, so the limit was skipping the second search on most thin reports, leaving them with two or three comps. It now runs whenever 15 seconds are left, and is still stopped at the minute."
   },

@@ -1,7 +1,8 @@
 // The two-lane search, wired into a real server.js against a stub provider.
-// On by default since 2026-11-27 (server.js PARALLEL_SEARCH has the reason:
-// more comps per report without a longer search). test/helpers/boot.js turns
-// it off for every other suite, so this is the one place it runs.
+// OFF by default. It was on for ten minutes on 2026-11-27 and measured on the
+// live provider: no accuracy for twice the spend (server.js PARALLEL_SEARCH
+// has the figures). This suite is the one place it runs, so the switch still
+// works the day a truth-test run says it has earned its place.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
@@ -86,9 +87,20 @@ test("PARALLEL_SEARCH=off is one call, as before", async (t) => {
   assert.equal(report.comps.length, 3);
 });
 
-test("the two-lane search is on unless it is switched off, and the suites switch it off", () => {
+test("the two-lane search is OFF unless it is switched on (measured 2026-11-27: no accuracy, twice the spend)", () => {
   const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
-  assert.match(src, /const PARALLEL_SEARCH = !\/\^\(0\|off\|false\|no\)\$\/i\.test\(String\(process\.env\.PARALLEL_SEARCH \|\| ""\)\);/);
+  assert.match(src, /const PARALLEL_SEARCH = \/\^\(1\|on\|true\|yes\)\$\/i\.test\(String\(process\.env\.PARALLEL_SEARCH \|\| ""\)\);/);
   const boot = fs.readFileSync(path.join(__dirname, "helpers", "boot.js"), "utf8");
   assert.match(boot, /PARALLEL_SEARCH: "off",/);
+});
+
+test("with nothing set, a report is one provider call", async (t) => {
+  const stub = await startStub();
+  t.after(() => stub.stop());
+  // "" is what an unset variable reads as: boot.js's own "off" is replaced.
+  const srv = await shared.boot(ENV(stub, { PARALLEL_SEARCH: "" }));
+  t.after(() => srv.stop());
+  const res = await search(srv.base);
+  assert.equal(res.status, 200);
+  assert.deepEqual(stub.calls, ["solo"]);
 });

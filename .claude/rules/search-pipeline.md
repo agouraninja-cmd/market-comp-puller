@@ -247,6 +247,26 @@ paths:
   the same easy comps. Re-measure on real traffic before flipping it on.
   Each search logs `Anthropic call [lane]: Ns · N search(es) · N out / N in
   tokens`, which is how any of this gets re-measured.
+  **Re-measured on the live provider 2026-11-27, and it is still off.** It
+  was the default for about ten minutes that day (PR #521), on the theory
+  that more comps per report would steady the value, and
+  `scripts/truth-test.js` (47 sold buildings) said no three ways. On the 21
+  buildings both settings valued, the median miss went from 23-25% to 29.6%
+  (closer on 9, further on 11-12) for 4.9 sale comps a report against
+  4.1-4.4. Averaging two whole independent searches of one building left the
+  miss where it was (23.4% and 30.5% alone, 24.2% averaged), so the error is
+  in WHICH comps a building is given, not in how many: the same buildings
+  miss the same way on every run. And two calls a report doubled the spend
+  rate, which tripped the Gemini account's **spend-based rate limit** (a 429
+  whose message names it; it reaches a visitor as the 502 "unusually busy")
+  about 25 reports into a pass at three at a time: for roughly three minutes
+  every search on the site failed, 106 upstream failures on `/api/stats`.
+  It cleared by itself within minutes. Two things to carry from it: **the
+  records lane's call is not counted** in `_call.billed_calls` or its cost
+  (`callAnthropicOnce` is not handed `stats` for that lane), so a two-lane
+  report under-reports its own spend by about half; and the truth test is
+  now built not to do this again (two at a time, stop after three refusals,
+  `--cached` to re-score without a search; its header has the rule).
 - `SEARCH_PROVIDER` — optional `gemini` (**default since 2026-08-10**) or `anthropic`. Picks which
   vendor runs the comp search. An unrecognized value **exits at boot** rather
   than silently falling back, the same no-fallthrough rule `/api/checkout`'s

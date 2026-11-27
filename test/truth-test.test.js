@@ -76,6 +76,30 @@ test("two runs are compared only on buildings valued in both, and report the swi
   assert.equal(c.compsB, 7.5);
 });
 
+test("a refusal from the search account is told apart from an ordinary failure", () => {
+  // The provider's rate or spend limit reaches a caller as a 502 "busy",
+  // our own daily cap as a 429: after three in a row the run stops.
+  assert.equal(TT.isRefusal({ error: "502 Our comp search is unusually busy right now. Please try again in a minute." }), true);
+  assert.equal(TT.isRefusal({ error: "429 Daily search limit reached" }), true);
+  assert.equal(TT.isRefusal({ error: "503 temporarily unavailable" }), true);
+  assert.equal(TT.isRefusal({ error: "400 Address is required" }), false);
+  assert.equal(TT.isRefusal({ error: "unreadable answer (200)" }), false);
+  assert.equal(TT.isRefusal({ miss: 0.1 }), false);
+  assert.equal(TT.isRefusal(null), false);
+  assert.equal(TT.REFUSALS_TO_STOP, 3);
+  // And the run is slow by default: this spends on the account every
+  // member's search runs on.
+  const src = fs.readFileSync(path.join(__dirname, "..", "scripts", "truth-test.js"), "utf8");
+  assert.match(src, /const flags = \{ label: "run", concurrency: 2,/);
+  assert.match(src, /if \(!flags\.cached\) body\.fresh = true;/);
+});
+
+test("a raw report is filed under its building's street line", () => {
+  assert.equal(TT.rawName({ address: "4500 Salisbury Rd, Jacksonville, FL" }), "4500-salisbury-rd.json");
+  assert.equal(TT.rawName({ address: "5705 W. 98th St., Los Angeles, CA 90045" }), "5705-w-98th-st.json");
+  assert.equal(TT.rawName({ address: "760 US-378 W, Lexington, SC 29072" }), "760-us-378-w.json");
+});
+
 test("the committed truth set is usable: an address, a type and a sale price on every row, no repeats", () => {
   const set = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "scripts", "truth-set.json"), "utf8"));
   assert.ok(set.targets.length >= 40);

@@ -48,7 +48,8 @@ const WIDER = {
   ],
 };
 
-async function startStub() {
+async function startStub(first) {
+  const FIRST_ANSWER = first || FIRST;
   const calls = [];
   const server = http.createServer((req, res) => {
     let body = "";
@@ -59,7 +60,7 @@ async function startStub() {
       const prompt = JSON.stringify(sent.messages || "");
       const tool = (sent.tools && sent.tools[0]) || {};
       calls.push({ prompt, maxUses: tool.max_uses == null ? null : tool.max_uses });
-      const text = JSON.stringify(/WIDER SEARCH FOR SIZE-MATCHED SALES/.test(prompt) ? WIDER : FIRST);
+      const text = JSON.stringify(/WIDER SEARCH FOR SIZE-MATCHED SALES/.test(prompt) ? WIDER : FIRST_ANSWER);
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ stop_reason: "end_turn", usage: { input_tokens: 1000, output_tokens: 500 },
         content: [{ type: "text", text }] }));
@@ -139,4 +140,119 @@ test("COMP_FIT=off serves the model's comps as they came", async (t) => {
   assert.equal(stub.calls.length, 1);
   assert.equal(report.comps.length, 4);
   assert.equal("set_aside_counts" in report, false);
+});
+
+// The search's time budget (2026-11-27): the wider search is the one optional
+// leg, so it is the one the clock governs. A budget too small to fit it means
+// it never starts: one billed call, the first search's comps, and the report
+// says nothing was added.
+test("a wider search that would not fit the time budget is never started", async (t) => {
+  const stub = await startStub();
+  t.after(() => stub.stop());
+  const srv = await shared.boot({
+    ACCOUNT_WALL: "off", GUEST_SEARCH_LIMIT: "5",
+    SEARCH_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "test-key-not-a-real-one",
+    STREAM_ANTHROPIC: "off", SEARCH_API_URL: stub.url,
+    COMP_WIDER_SEARCH: "on", SEARCH_TIME_BUDGET_SECONDS: "5",
+  });
+  t.after(() => srv.stop());
+  const res = await search(srv.base, "76 Inverness Dr E, Englewood, CO");
+  const report = await res.json();
+  assert.equal(res.status, 200, JSON.stringify(report).slice(0, 300));
+  assert.equal(stub.calls.length, 1, "the thin report asked for a wider search and the clock refused it");
+  assert.deepEqual(report.wider_search, { added: 0, skipped: "time" });
+  // The first search's comps, fitted: the unit is gone, and the floor kept
+  // the two small buildings because nothing came to replace them.
+  assert.deepEqual(report.set_aside_counts, { unit: 1 });
+  assert.equal(report.comps.length, 3);
+});
+
+test("SEARCH_TIME_BUDGET_SECONDS=off is the behaviour before the budget", async (t) => {
+  const stub = await startStub();
+  t.after(() => stub.stop());
+  const srv = await shared.boot({
+    ACCOUNT_WALL: "off", GUEST_SEARCH_LIMIT: "5",
+    SEARCH_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "test-key-not-a-real-one",
+    STREAM_ANTHROPIC: "off", SEARCH_API_URL: stub.url,
+    COMP_WIDER_SEARCH: "on", SEARCH_TIME_BUDGET_SECONDS: "off",
+  });
+  t.after(() => srv.stop());
+  const res = await search(srv.base, "76 Inverness Dr E, Englewood, CO");
+  const report = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(stub.calls.length, 2);
+  assert.deepEqual(report.wider_search, { added: 3 });
+});
+
+// The blended re-fit (2026-11-27). The corpus already holds, with map points:
+// the two small buildings this very search will set aside (harvested by an
+// earlier search, as a size set-aside is), a condo unit, a foreclosure, a
+// right-sized deal, and a deal of another size. Only the last two may join.
+function corpusRow(address, over) {
+  const row = {
+    ts: new Date().toISOString(), property_type: "Industrial", market: "Englewood, CO",
+    address, transaction: "Sale", deal_date: DAYS_AGO(90), size_sqft: "30000",
+    price_or_rate: "$6,600,000", price_per_sqft: "", cap_rate: "", notes: "",
+    source_url: "https://example.com/saved", source_type: "listing",
+    lat: "39.5750", lng: "-104.8600", verified: false, ...over,
+  };
+  row.dedupe_key = [row.address, row.deal_date, row.price_or_rate].join("|").toLowerCase();
+  return row;
+}
+const SAVED_ROWS = [
+  corpusRow("9500 E Easter Ave, Centennial, CO", { size_sqft: "7200", price_or_rate: "$1,900,000", deal_date: DAYS_AGO(200) }),
+  corpusRow("9510 E Easter Ave, Centennial, CO", { size_sqft: "7260", price_or_rate: "$1,950,000", deal_date: DAYS_AGO(200) }),
+  corpusRow("8 Flex Ct, Unit 4, Englewood, CO"),
+  corpusRow("9 Bank Rd, Englewood, CO", { notes: "Bank-owned (REO) sale; two miles north of the target." }),
+  corpusRow("500 Other Way, Englewood, CO", { notes: "Owner-user purchase next to the target." }),
+  corpusRow("10 Small Rd, Englewood, CO", { size_sqft: "9000", price_or_rate: "$2,300,000" }),
+];
+
+test("saved deals are fitted before they join a report, and a set-aside comp cannot come back through them", async (t) => {
+  const stub = await startStub({ ...FIRST, subject_lat: "39.5700", subject_lng: "-104.8600" });
+  t.after(() => stub.stop());
+  const boot = (extra) => shared.boot({
+    ACCOUNT_WALL: "off", GUEST_SEARCH_LIMIT: "5",
+    SEARCH_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "test-key-not-a-real-one",
+    STREAM_ANTHROPIC: "off", SEARCH_API_URL: stub.url,
+    COMP_WIDER_SEARCH: "on",
+    DATA_FILES: { "comp-corpus.jsonl": SAVED_ROWS.map((r) => JSON.stringify(r)).join("\n") + "\n" },
+    ...extra,
+  });
+  // Everything a visitor's report is valued from: the comps shown in full
+  // and the locked rows standing in for the rest of a free report.
+  const basisOf = (rep) => (rep.comps || []).length + (rep.locked_basis || []).length;
+
+  const srv = await boot({});
+  t.after(() => srv.stop());
+  const res = await search(srv.base, "76 Inverness Dr E, Englewood, CO");
+  const report = await res.json();
+  assert.equal(res.status, 200, JSON.stringify(report).slice(0, 300));
+
+  await t.test("only the two saved deals that fit joined: four search comps and two saved", () => {
+    assert.equal(report.corpus_count, 2);
+    assert.equal(basisOf(report), 6);
+    const addrs = report.comps.map((c) => c.address);
+    assert.ok(!addrs.some((a) => /Easter Ave|Unit 4|Bank Rd/.test(a)), addrs.join(" | "));
+  });
+
+  await t.test("the counts still describe what the SEARCH found and nothing else", () => {
+    assert.deepEqual(report.set_aside_counts, { unit: 1, size: 2 });
+    assert.equal("set_aside" in report, false);
+  });
+
+  await t.test("a saved deal's notes, written about another subject, never reach the page", () => {
+    const savedShown = report.comps.filter((c) => c.from_corpus);
+    assert.ok(savedShown.every((c) => !("notes" in c)));
+    assert.doesNotMatch(JSON.stringify(report), /next to the target|north of the target/);
+  });
+
+  await t.test("COMP_FIT=off is the blend as it was: every saved deal in the circle", async (t2) => {
+    const off = await boot({ COMP_FIT: "off" });
+    t2.after(() => off.stop());
+    const r2 = await (await search(off.base, "76 Inverness Dr E, Englewood, CO")).json();
+    assert.equal(r2.corpus_count, 6);
+    assert.equal(basisOf(r2), 10);
+    assert.doesNotMatch(JSON.stringify(r2), /next to the target|north of the target/, "notes stay off the page either way");
+  });
 });

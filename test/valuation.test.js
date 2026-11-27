@@ -1041,3 +1041,59 @@ test("impliedCapRate is the income over the price, as a percent", () => {
   assert.equal(V.impliedCapRate(179970, 0), null);
   assert.equal(V.impliedCapRate(5000000, 1000000), null, "a rate of 500% is a typo, not a rate");
 });
+
+// An asking price is not a past price (2026-11-27). The search prompt dates a
+// comp that is on the market "Active", or "Listed Mar 2025" when its page
+// shows a post date.
+test("isOnMarket reads the prompt's own convention for an asking price", () => {
+  for (const date of ["Active", "active", " Active ", "Listed Mar 2025", "listed 03/2025", "Listed"]) {
+    assert.equal(V.isOnMarket({ date }), true, JSON.stringify(date));
+  }
+  for (const date of ["Mar 2025", "2025-03", "Q3 2025", "", null, undefined, "Activewear Blvd", "Unlisted"]) {
+    assert.equal(V.isOnMarket({ date }), false, JSON.stringify(date));
+  }
+  assert.equal(V.isOnMarket(null), false);
+});
+
+test("a listing's post date is read by rule, to the instant V8 guessed", () => {
+  // The rule that makes this safe is the one compDateMs has always had: no
+  // weight V8 could already compute moves.
+  for (const [listed, sold] of [["Listed Mar 2025", "Mar 2025"], ["listed Sept. 2025", "Sept. 2025"]]) {
+    assert.equal(V.compDateMs(listed), V.compDateMs(sold));
+    assert.equal(V.compDateMs(listed), Date.parse(listed), listed);
+  }
+  // Shapes V8 could NOT read past the word are read now too, so a listing
+  // the model dated by quarter or by number ages like any other.
+  assert.equal(V.compDateMs("Listed Q2 2025"), V.compDateMs("Q2 2025"));
+  assert.equal(V.compDateMs("Listed 03/2025"), V.compDateMs("03/2025"));
+  // "Active" names no date in any engine, by rule and not by luck.
+  assert.ok(Number.isNaN(V.compDateMs("Active")));
+  assert.ok(Number.isNaN(V.compDateMs("Active listing")));
+  assert.ok(Number.isNaN(V.compDateMs("Listed")));
+});
+
+test("an asking price is never trend-indexed; its age still costs it weight", () => {
+  const listed = comp({ date: "Listed Jan 2025", source_type: "listing" });
+  const sold = comp({ date: "Jan 2025", source_type: "listing" });
+  // A sale from January 2025 is indexed 18 months forward at 6% a year...
+  assert.ok(V.trendFactor(sold, AS_OF, 6) > 1.08);
+  // ...a listing still asking the same figure today is already today's price,
+  // in a rising market and in a falling one.
+  assert.equal(V.trendFactor(listed, AS_OF, 6), 1);
+  assert.equal(V.trendFactor(listed, AS_OF, -8), 1);
+  assert.equal(V.trendFactor(comp({ date: "Active" }), AS_OF, 6), 1);
+  // The weight is the half that was already right: a stale ask is weaker
+  // evidence, exactly as weak as a sale of the same month.
+  assert.equal(V.compWeight(listed, AS_OF, 10000), V.compWeight(sold, AS_OF, 10000));
+  assert.ok(V.compWeight(listed, AS_OF, 10000) < V.compWeight(comp({ date: "Active", source_type: "listing" }), AS_OF, 10000));
+  // And the composition carries it: four old listings in a market rising 10%
+  // a year are valued at their asking $/SF, not 15% above it.
+  const four = [1, 2, 3, 4].map((i) => comp({ address: i + " A St, Boise, ID", date: "Listed Jan 2025", source_type: "listing" }));
+  const v = V.valueFromComps(four, { subjectSF: 10000, asOf: AS_OF, trendPct: 10, propertyType: "Industrial" });
+  assert.equal(v.psfMid, 100);
+  const closed = V.valueFromComps(four.map((c) => ({ ...c, date: "Jan 2025" })), { subjectSF: 10000, asOf: AS_OF, trendPct: 10, propertyType: "Industrial" });
+  assert.ok(closed.psfMid > 114, "closed sales of the same month are still indexed");
+  // The table's "adj" mark reads the same factor, so it cannot claim an
+  // adjustment the range did not make.
+  assert.equal(V.countedPsf(listed, { subjectSF: 10000, asOf: AS_OF, trendPct: 6, propertyType: "Industrial" }).trend, 1);
+});

@@ -4616,7 +4616,15 @@ async function corpusRowsForType(property_type, limit) {
       dbRows = await sbRequest("GET",
         `comp_corpus?property_type=eq.${encodeURIComponent(property_type)}` +
         `&select=ts,dedupe_key,address,transaction,deal_date,size_sqft,price_or_rate,price_per_sqft,cap_rate,` +
-        `${ALL_TYPE_COMP_FIELDS.join(",")},market,source_url,source_type,verified,lat,lng,year_built,tenancy,construction` +
+        // `notes` since 2026-11-27, for the two rules that read a saved deal's
+        // notes before it is blended: comp-fit.js's price basis ("Foreclosure
+        // sale.") and blend-corpus.js's manufactured-home words, which until
+        // now could only ever match on the address because the notes were not
+        // read. The column is in migration 001 and every harvest writes it, so
+        // naming it cannot 400 this read into the file-only fallback (rule 9).
+        // The notes are READ, never shown: finishReportForViewer takes them
+        // off a saved deal before it leaves (COMPFIT.withoutSavedNotes).
+        `${ALL_TYPE_COMP_FIELDS.join(",")},market,source_url,source_type,verified,lat,lng,year_built,tenancy,construction,notes` +
         `&order=ts.desc&limit=${cap}`) || [];
     } catch (e) { noteCorpusFailure("read", e); }
   }
@@ -11440,7 +11448,12 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // deadline derived from it would be arbitrary. Budget the worst case (a full
   // 10-search run) instead of a number that was silently ignored.
   const deadlineUses = PROVIDER.capabilities.searchBudget ? searchUses : 10;
-  const callDeadlineMs = searchTimeoutMsFor(deadlineUses, PROVIDER.deadlineTokens(body));
+  // `promptExtra.deadlineMs` is the wider lane's share of the search's time
+  // budget (widerSearchAllowance): a ceiling BELOW the derived one, never
+  // above it. Only that optional lane passes one. The report's own call keeps
+  // the derived deadline, which exists so an alive, billed call is not cut.
+  const laneDeadlineMs = promptExtra && Number(promptExtra.deadlineMs) > 0 ? Number(promptExtra.deadlineMs) : Infinity;
+  const callDeadlineMs = Math.min(searchTimeoutMsFor(deadlineUses, PROVIDER.deadlineTokens(body)), laneDeadlineMs);
   const timer = setTimeout(() => controller.abort(), callDeadlineMs);
   // Two very different failures used to raise the SAME error with no way to
   // tell them apart, in the message OR in the log:
@@ -11877,6 +11890,8 @@ async function getComps(address, type, note, months, maxComps, txFocus, subjectS
   // single call, but half the serial depth — and because context grows
   // quadratically with round count, materially fewer input tokens too.
   const budget = searchBudgetFor(corpus, subjectSizeSqft, maxComps);
+  // When this search began, for the wider search's time budget (refineComps).
+  const searchStartedAt = Date.now();
   if (PARALLEL_SEARCH && budget >= SPLIT_MIN_BUDGET) {
     const perLane = Math.ceil(budget / 2);
     const laneComps = laneCompsFor(maxComps);
@@ -11902,14 +11917,16 @@ async function getComps(address, type, note, months, maxComps, txFocus, subjectS
     // Dead-at-birth link check runs on the FINISHED report, inside getComps,
     // so /api/comps and the Explorer both inherit it and every downstream
     // surface (cache, harvest, snapshot, gate, share) sees the same badges.
+    const firstLegMs = Date.now() - searchStartedAt;
     const dead = await applySourceLinkCheck(merged, type, address);
-    await refineComps(merged, { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, deadUrls: dead, onProgress, stats });
+    await refineComps(merged, { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, deadUrls: dead, onProgress, stats, searchStartedAt, firstLegMs });
     return merged;
   }
 
   const report = await solo((attempt) => callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "solo", null, progressFor(onProgress, attempt), stats), onProgress, stats);
+  const firstLegMs = Date.now() - searchStartedAt;
   const dead = await applySourceLinkCheck(report, type, address);
-  await refineComps(report, { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, deadUrls: dead, onProgress, stats });
+  await refineComps(report, { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, deadUrls: dead, onProgress, stats, searchStartedAt, firstLegMs });
   return report;
 }
 
@@ -11944,6 +11961,34 @@ const COMP_WIDER_SEARCH = !/^(0|off|false|no)$/i.test(String(process.env.COMP_WI
 const COMP_PLACE_BUDGET_MS = 3000;
 const COMP_PLACE_MAX = 16;
 const WIDER_SEARCH_USES = 6;
+// A search stays inside a minute (the owner's ceiling, 2026-11-26: improve
+// accuracy "without making the search over the 1 minute threshold"). The
+// first call IS the report and is never cut short: an aborted first call is
+// a billed search with nothing to show. The wider search is the one leg that
+// is optional, so it is the one this governs:
+//   - it does not START unless it should finish inside the budget, reckoned
+//     as "as long as the first leg took" (same provider, same model, same
+//     reasoning depth, a smaller ask) plus the link check and placement that
+//     follow it;
+//   - once started it is stopped at the budget, and the report keeps the
+//     first search's comps. That call is billed and wasted, which is why the
+//     first test exists: the stop is the backstop, not the plan.
+// On the live provider at its current depth a first leg runs about 10 s, so
+// neither fires and nothing changes. They matter the day the model, the
+// reasoning depth or the provider gets slower: at a 34 s first leg (the
+// measured cost of THINKING_LEVEL=medium) the wider search no longer fits
+// and is skipped, and the log says so. SEARCH_TIME_BUDGET_SECONDS moves the
+// ceiling without a deploy; 0 or off removes it (the behaviour before).
+const SEARCH_TIME_BUDGET_MS = (() => {
+  const raw = String(process.env.SEARCH_TIME_BUDGET_SECONDS == null ? "" : process.env.SEARCH_TIME_BUDGET_SECONDS).trim();
+  if (/^(0|off|false|no)$/i.test(raw)) return 0;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 1000) : 60_000;
+})();
+// What follows the wider call and so comes out of its share: the link check
+// and the placement its comps go through, and a little for the merge and the
+// response. The rule itself is COMPFIT.widerSearchAllowance (pure, tested).
+const WIDER_AFTER_MS = LINK_CHECK_BUDGET_MS + COMP_PLACE_BUDGET_MS + 500;
 
 async function placeCompsForFit(report, address) {
   const comps = report && Array.isArray(report.comps) ? report.comps : [];
@@ -11973,7 +12018,7 @@ async function placeCompsForFit(report, address) {
 async function refineComps(report, ctx) {
   if (!COMP_FIT || !report || !Array.isArray(report.comps)) return;
   const { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails,
-          deadUrls, onProgress, stats } = ctx;
+          deadUrls, onProgress, stats, searchStartedAt = 0, firstLegMs = 0 } = ctx;
   try {
     const subjectSqft = Number(subjectSizeSqft) > 0 ? Number(subjectSizeSqft)
       : (GATE.numericValue(report.subject_size_sqft) || 0);
@@ -11995,6 +12040,14 @@ async function refineComps(report, ctx) {
     if (!COMP_WIDER_SEARCH || !COMPFIT.needsWiderSearch(report, { propertyType: type, txFocus, subjectSqft, netLease })) return;
 
     const have = COMPFIT.goodSaleCount(report, subjectSqft);
+    const allowance = COMPFIT.widerSearchAllowance({
+      budgetMs: SEARCH_TIME_BUDGET_MS, afterMs: WIDER_AFTER_MS,
+      elapsedMs: searchStartedAt ? Date.now() - searchStartedAt : 0, firstLegMs });
+    if (!allowance.run) {
+      console.log(`🔭 Wider search skipped to keep the search inside ${SEARCH_TIME_BUDGET_MS / 1000}s: ${have} size-matched priced sale(s) kept, ${(allowance.leftMs / 1000).toFixed(1)}s left, about ${(allowance.expectedMs / 1000).toFixed(1)}s needed — ${address}`);
+      report.wider_search = { added: 0, skipped: "time" };
+      return;
+    }
     const ask = Math.max(4, Math.min(8, (Number(maxComps) || 8) - report.comps.length));
     console.log(`🔭 Wider search: only ${have} size-matched priced sale(s) kept; asking for ${ask} more — ${address}`);
     if (typeof onProgress === "function") {
@@ -12002,7 +12055,7 @@ async function refineComps(report, ctx) {
     }
     const wider = await callAnthropicOnce(address, type, note, months, ask, "sales", [], subjectSqft,
       { comps: [] }, subjectDetails, "wider", WIDER_SEARCH_USES, null, stats,
-      { exclude: COMPFIT.knownAddresses(report) })
+      { exclude: COMPFIT.knownAddresses(report), deadlineMs: allowance.deadlineMs })
       .catch((err) => { console.warn("Wider search failed; keeping the first search's comps.", err && err.message); return null; });
     if (!wider || !Array.isArray(wider.comps) || !wider.comps.length) return;
     const widerDead = await applySourceLinkCheck(wider, type, address);
@@ -12075,6 +12128,11 @@ async function finishReportForViewer(rep, ctx) {
     // (blend-corpus.js): until 2026-11-10 it did not, so saved SALES were
     // appended to a leases-only report, and saved leases to a sales-only one.
     txFocusOk = "both",
+    // The subject's own per-type details, already sanitized. Read here only
+    // to ask VALUATION.isNetLease, the one definition the prompt and
+    // refineComps use, so the blended fit below cannot size-cut a net-leased
+    // report's saved deals when the search's own comps were exempt.
+    detailsOk = {},
   } = ctx || {};
   // An internal caller (x-admin-key, i.e. the seed generator and the eval
   // harness) gets the whole report, ungated. It also gets what the search
@@ -12117,6 +12175,10 @@ async function finishReportForViewer(rep, ctx) {
   // paywall's limit. A copy, never a write to the cached object.
   // `rep` itself is replaced, not just `merged`: the radius blend below
   // reads `rep`.
+  // Their addresses are kept for one thing only: a comp this search set aside
+  // must not come back from the corpus as a saved deal (refitBlended, below).
+  // The list itself never leaves this function.
+  const setAsideAddresses = COMPFIT.setAsideAddresses(rep);
   rep = COMPFIT.stripSetAside(rep);
   let merged = rep;
   if (CORPUS_RADIUS) {
@@ -12144,6 +12206,40 @@ async function finishReportForViewer(rep, ctx) {
     merged = RADIUSBLEND.attachCompDistances(merged);
   }
   const subjectSqft = sizeOk || GATE.numericValue(merged && merged.subject_size_sqft) || 0;
+  // The fit rules, again, over the blended set (comp-fit.js refitBlended,
+  // 2026-11-27). The blend above adds every saved deal of the type inside its
+  // circle with none of the rules the search's own comps were held to in
+  // getComps, so the 7,200 SF building refineComps set aside for a 32,000 SF
+  // subject (and then harvested, as a good comp for some OTHER subject) came
+  // back from the corpus on the next view of the same report, along with any
+  // condo unit or foreclosure sale the corpus held nearby. Every rule but the
+  // size cut (refitBlended says why, with the measurement). Here, and not in
+  // getComps, because the saved deals only exist at serialization (rule 2):
+  // the cache, the harvest and the snapshot still see the search alone.
+  // Before the paywall, so a free report's locked_basis is the fitted set
+  // and its range still matches Pro. COMP_FIT=off rolls this back with the
+  // rest of the step. Never a lost report over a refinement.
+  if (COMP_FIT && merged && merged.corpus_count) {
+    try {
+      const before = merged.comps.length;
+      merged = COMPFIT.refitBlended(merged, {
+        subjectSqft, propertyType: typeOk, subjectAddress: (rep && rep.subject_address_corrected) || addressOk,
+        radiusMiles: RADIUSBLEND.parseRadiusMiles(noteOk),
+        netLease: VALUATION.isNetLease(typeOk, detailsOk),
+        setAsideAddresses,
+      });
+      if (merged.comps.length !== before) {
+        console.log(`🎯 Comp fit (blended): ${before - merged.comps.length} of ${before} comp(s) left out; ${merged.corpus_count || 0} saved deal(s) kept — ${addressOk}`);
+      }
+    } catch (err) {
+      console.warn("Blended comp fit skipped:", err && err.message);
+    }
+  }
+  // A saved deal's notes were written about ANOTHER search's subject ("two
+  // miles north of the target"), so they are read for the rules above and
+  // then left off the comp. Outside the COMP_FIT switch on purpose: the read
+  // carries them whether or not the fit runs.
+  merged = COMPFIT.withoutSavedNotes(merged);
   const gated = GATE.gateReport(merged, ent, {
     asOfMs: Date.now(),
     subjectSqft,
@@ -12858,6 +12954,7 @@ async function runBulkItem(item, ctx) {
       addressOk: address, typeOk: job.property_type, noteOk: job.note || "",
       monthsOk: job.months, sizeOk: size,
       txFocusOk: ["sales", "leases"].includes(job.tx_focus) ? job.tx_focus : "both",
+      detailsOk: sanitizeSubjectDetails(job.property_type, (item.subject && item.subject.details) || {}),
       corpusRadiusRows: shared.corpusRadiusRows,
       vaultRows: (priv && priv.vault) || [],
       firmCompRows: (priv && priv.firm) || [],
@@ -23126,7 +23223,7 @@ const server = http.createServer((req, res) =>
         // after the guest gate, and `searched` carries the call's real spend,
         // which only exists once the search has run.
         const gate = (rep) => finishReportForViewer(rep, {
-          ent, internal, addressOk, typeOk, noteOk, monthsOk, sizeOk, txFocusOk,
+          ent, internal, addressOk, typeOk, noteOk, monthsOk, sizeOk, txFocusOk, detailsOk,
           corpusRadiusRows, vaultRows, firmCompRows,
           callStats: searched ? searched.callStats : null,
         });

@@ -788,6 +788,36 @@ and exporting each slide to PNG (a PowerShell one-liner, no dependency).
      Chromium on sample comps in all three states, desktop and phone, with no
      console errors.
 
+3j. **An asking price is never trend-indexed (2026-11-27).** The prompt
+   dates a comp that is on the market "Active", or "Listed Mar 2025" when
+   its page shows a post date, and the valuation counts it as a sale comp at
+   the Listing tier's weight. Two things were wrong with how its date was
+   read, both in `valuation.js`:
+   - **`trendFactor` indexed it from its list date.** The index answers
+     "what would this past price be today", and a listing still on the
+     market at its ask is already today's price. In a market rising 6% a
+     year, a building listed 18 months ago and still unsold counted 9% ABOVE
+     its own asking price, when sitting that long says the ask was high to
+     begin with. `VALUATION.isOnMarket(c)` (a date starting "Active" or
+     "Listed") now makes the factor 1, in a rising market and a falling one.
+     `countedPsf` reads the same factor, so the table's `adj` mark cannot
+     claim a time adjustment the range did not make.
+   - **"Listed Mar 2025" was read by `Date.parse`'s guess.** V8 skips the
+     word and answers March 2025; no other engine is bound to, and one that
+     does not reads the comp as undated and weighs it in full. `compDateMs`
+     now reads it by rule (the word, then the shapes it already knew), to
+     the instant V8 gave, so no weight moved in Chrome or on the server; and
+     "Listed Q2 2025" and "Listed 03/2025", which V8 could not read, age
+     like any other. "Active" is NaN by rule. ⚠ comp-gate.js's `compDateMs`
+     moved with it, body for body (the gate ranks by the same recency).
+   The list date still ages the comp's WEIGHT (`compWeight`), which was the
+   half already right: a stale ask is weaker evidence, not a cheaper
+   building. **Not done, because nothing here can measure it:** discounting
+   an asking price toward what such listings close at. The corpus cannot say
+   what an ask is worth as a comp (corpus.md, "The answer key is weaker than
+   it looks"); it needs closed sales paired with their own asks.
+   `test/valuation.test.js` holds the three rules.
+
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High
    range from sale-comp $/SF (leases are excluded even on mixed searches) ×

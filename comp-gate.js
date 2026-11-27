@@ -85,6 +85,12 @@ function compDateMs(text) {
   if ((m = t.match(/^(\d{1,2})\/((?:19|20)\d{2})$/)) && Number(m[1]) >= 1 && Number(m[1]) <= 12) {
     return new Date(Number(m[2]), Number(m[1]) - 1, 1).getTime();
   }
+  // A comp on the market: "Active" names no date, and "Listed Mar 2025" is
+  // the month it was listed, read by the rules above. V8 read the second
+  // that way only by guessing past the word, which no other engine is
+  // bound to do: a comp one browser ages, another may weigh as undated.
+  if (/^active\b/.test(t)) return NaN;
+  if ((m = t.match(/^listed\s+(\S.*)$/))) return compDateMs(m[1]);
   return Date.parse(text);
 }
 

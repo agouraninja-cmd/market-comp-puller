@@ -16225,7 +16225,7 @@ async function renderMyDesk() {
   let hmMarkets = null;      // the cities with market pages (HOMEMAP.marketCities); null until read, false on a failed read
   let hmMarketsAsked = false;
   let hmSel = "";            // the selected row's key
-  let hmMap = null, hmPinLayer = null, hmBaseLayers = null, hmFitFor = "", hmOpenedOnce = false, hmPopup = null;
+  let hmMap = null, hmPinLayer = null, hmBaseLayers = null, hmFitFor = "", hmPopup = null;
   // The map's self-heal (hmHealTiles): how long after a settle it looks, how
   // often a failed tile is asked for again, and at most how many looks in a
   // row, so a tile the server will never send cannot keep the page asking.
@@ -16656,7 +16656,7 @@ async function renderMyDesk() {
     { const m = document.getElementById("hmPropMsg"); if (m) { m.textContent = ""; m.classList.add("hidden"); } }
     hmLeads = null; hmLeadsAsked = false;
     hmPermits = null; hmPermitsAsked = false; hmPermitsFiled = 0; hmPermitCities = ""; hmLayerTab = "";
-    hmRows = []; hmItems = []; hmLater = []; hmSel = ""; hmFitFor = ""; hmOpenedOnce = false; hmNothing = false;
+    hmRows = []; hmItems = []; hmLater = []; hmSel = ""; hmFitFor = ""; hmNothing = false;
     hmFirstGone = false;
     hmFirstShow(false);
     hmGeoTried.clear();
@@ -17943,9 +17943,10 @@ async function renderMyDesk() {
     let fitted = false;
     if (!empty && fitKey !== hmFitFor) {
       hmFitFor = fitKey;
-      // One place (2026-10-18) opens on its neighbourhood, not one block:
-      // at the fit's own ceiling a first property was a dot in a grid of
-      // streets.
+      // One place (2026-10-18) opens on its town, not one block: at the
+      // fit's own ceiling a first property was a dot in a grid of streets,
+      // and at 14 (a neighbourhood) still a few streets (2026-11-27, the
+      // owner: "zoomed in too far"). 12 shows the town around it.
       const one = fitTo.every((p) => p[0] === fitTo[0][0] && p[1] === fitTo[0][1]);
       hmMap.fitBounds(fitTo, one ? { ...hmFitOpts(), maxZoom: HM_ONE_ZOOM } : hmFitOpts());
       fitted = true;
@@ -17955,29 +17956,15 @@ async function renderMyDesk() {
     }
     hmSyncLayerNote();
     hmPhotoAskAll();
-    // The first view of Today opens the card of what is due first, the way
-    // the draft showed it; only once, and only beside a list (not on a phone).
-    // After the fit has settled: a card's pan clear of the switch, asked for
-    // mid-animation, is dropped, and the card is left under it.
-    if (!hmOpenedOnce && hmTab === "today" && window.innerWidth >= 900) {
-      const first = hmItems.find((x) => x.num != null && hmLLForAddress(x.address));
-      if (first) {
-        hmOpenedOnce = true;
-        const open = () => { if (!hmSel && hmTab === "today") hmSelect(HOMEMAP.addressKey(first.address), { item: first }); };
-        if (fitted) hmAfterMove(open); else open();
-      } else if (!hmItems.length && hmRows.length === 1 && hmLL(hmRows[0])) {
-        // Nothing due and one property (Draft C's first property): its card.
-        hmOpenedOnce = true;
-        const only = hmRows[0];
-        const open = () => { if (!hmSel && hmTab === "today") hmSelect(only.key, {}); };
-        if (fitted) hmAfterMove(open); else open();
-      }
-    }
+    // No card opens by itself (2026-11-27, the owner: the start screen
+    // opened 180 Deere St's card over the map unasked). A card opens on a
+    // click or a hover; until then the map shows its pins. It used to open
+    // the first dated row's card, or a lone property's, on Today's first view.
   }
   // Room for what sits over the map: the switch at the top-left, the legend
   // at the foot. A fit never puts a pin under either. Tighter on the phone
   // strip, which is 300px tall and would otherwise be all margin.
-  const HM_ONE_ZOOM = 14;
+  const HM_ONE_ZOOM = 12;
   const hmFitOpts = () => (window.innerWidth >= 900
     ? { paddingTopLeft: [56, 84], paddingBottomRight: [56, 72], maxZoom: 15 }
     : { paddingTopLeft: [20, 56], paddingBottomRight: [20, 60], maxZoom: 15 });

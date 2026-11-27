@@ -5722,6 +5722,12 @@
   },
   {
     "date": "2026-11-27",
+    "type": "fix",
+    "title": "Opening a report from a comp report run no longer flashes Home's map first",
+    "details": "A run row links to /?recent=<id>; the page drew Home for a member at / and only swapped to the report once it loaded. That link now opens straight to the report view, with a short Opening the report line while it loads, and falls back to Home if the report cannot be opened. Same for ?property= links."
+  },
+  {
+    "date": "2026-11-27",
     "type": "feature",
     "title": "BOV builder: save a BOV to your account",
     "details": "A BOV written in the builder used to live only in the browser it was typed in. A new “Save to your account” button keeps it on your account, where only you can open it, so it is there on any computer. Saved BOVs are listed at the top of the builder, and a Pipeline card’s link opens the one saved for it. What you type is still sent nowhere until you press Save. Needs migration 067."

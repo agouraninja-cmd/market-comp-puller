@@ -70,6 +70,13 @@ test("a report that leans on the building's own sale is scored twice, and the co
   assert.equal(unstamped.leaned, false);
   assert.equal(unstamped.ownSale.refused, "unsettled");
   assert.equal(unstamped.shownMiss, -0.5);
+  // The search corrected the address, and the sale is recorded under the
+  // corrected one. COMPS ONLY must still never see it: valued with the sale
+  // left in, this report lands at about $965,000, the answer key echoed into
+  // the one figure the docs call accuracy.
+  const corrected = TT.scoreReport(target, { ...report, subject_address_corrected: "100 Main St, Boise, ID 83702",
+    subject_last_sale: { ...sale, address: "100 Main St, Boise, ID 83702" } }, NOW);
+  assert.equal(corrected.likely, 500000, "COMPS ONLY never weighs the building's own sale");
   // The input is not edited: the same report scores the same twice.
   assert.deepEqual(TT.scoreReport(target, report, NOW), r);
   assert.ok(report.subject_last_sale, "scoring must not strip the caller's report");

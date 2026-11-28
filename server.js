@@ -6206,10 +6206,14 @@ async function valueShelfReports(rows) {
         subjectSizeSqft: subject.sizeMin || subject.size || null,
         propertyType: meta.type,
         note: meta.note,
-        asOf: Date.parse(r.created_at) || Date.now(),
+        // The report's own date, the one the page values it at (asOfOf:
+        // meta.generatedAt); the share's created_at is when it was shared,
+        // which can be months later, and the sale's weight would differ.
+        asOf: Date.parse(meta.generatedAt || "") || Date.parse(r.created_at) || Date.now(),
         // What the report page hands the own-sale rule (bulk.js has the
         // list), so a building's sheet and the report it lists agree.
         address: meta.address,
+        addressTyped: meta.addressTyped,
         txFocus: meta.txFocus,
         netLease: VALUATION.isNetLease(meta.type, subject.details),
         ownSaleOff: !OWN_SALE || !!(meta.curation && meta.curation.ownSaleOff),
@@ -13478,6 +13482,10 @@ async function saveBulkValuationToRecents(user, job, item, report, valued) {
       note: job.note || "",
       months: job.months,
       txFocus: job.tx_focus || "both",
+      // The date the row was valued at, which the reopened report values at
+      // too (index.html asOfOf). Without it the page used the wall clock, and
+      // a report leaning on its own sale drifted from its row as it aged.
+      generatedAt: (valued && valued.as_of) || new Date().toISOString(),
       // The row's own facts (051) land where a hand-run report keeps them, so
       // the reopened report shows its income approach, its asking-price
       // check and its per-type details exactly as if they had been typed.
@@ -28114,7 +28122,10 @@ const server = http.createServer((req, res) =>
             // The report's own date, not now: a saved report's numbers must
             // not drift as it ages, which is what asOfOf() protects in the
             // browser. updated_at is when this report was written.
-            asOf: Date.parse(saved.updated_at || saved.created_at || "") || Date.now(),
+            // meta.generatedAt first, the date the page values the report at
+            // (asOfOf); updated_at moves whenever the row is re-saved.
+            asOf: Date.parse((saved.payload.meta && saved.payload.meta.generatedAt) || "")
+              || Date.parse(saved.updated_at || saved.created_at || "") || Date.now(),
             note: job.note || "",
             propertyType: job.property_type,
             askingPrice: item.subject && item.subject.asking,

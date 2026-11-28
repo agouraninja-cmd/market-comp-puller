@@ -106,9 +106,11 @@ function faqEntries(pricing = {}) {
     // estimate lands near its price because it starts from that price, which
     // is not accuracy, and must never be printed as if it were.
     ["How accurate is it?",
-     "It depends on what the report has to go on, and the report tells you which. When the " +
-     "building itself sold recently, the estimate starts from that price, moved to today at the " +
-     "market’s trend, and the comps are the check on it. When it has not, the estimate rests on " +
+     "It depends on what the report has to go on, and the report tells you which. When an " +
+     "industrial, office or retail building itself sold in the last few years and that sale passes " +
+     "our checks, the estimate weighs that price, moved to today at the market’s trend, against the " +
+     "comps: a sale in its first year carries most of the estimate, and an older sale, or one with a " +
+     "condition attached, carries less, with the report saying how much. When it has not, the estimate rests on " +
      "the comps alone: closer where similar buildings have traded nearby, rougher where they have " +
      "not, and the report tells you when the comp set is thin rather than hiding it behind a " +
      "single confident figure. Every comp is shown either way. If a comp doesn’t belong, drop it " +

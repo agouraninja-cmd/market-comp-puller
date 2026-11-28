@@ -7803,8 +7803,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       asking: listedAsk,
       subjectAddresses: [meta.address, meta.addressTyped, parsed && parsed.subject_address_corrected],
       subjectSize: subjectSizeForMatch(parsed),
+      compPsf: ownSaleCompPsf(parsed, meta),
       off: ownSaleOff(meta),
     });
+  }
+  // The comps' $/SF from one priced sale up, weighed as the hero weighs them
+  // and with no size: what checks the sale when the comps have no figure in
+  // dollars (one sale, or no size). bulk.js passes its own val.psfMid.
+  function ownSaleCompPsf(parsed, meta) {
+    try {
+      const v = valueFromComps(valuationComps(), {
+        subjectSF: subjectSizeForMatch(parsed) || 0, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
+        subjectYear: subjectYearForMatch(parsed),
+        ...weightOpts(meta, parsed),
+      });
+      return v && v.psfMid > 0 ? v.psfMid : 0;
+    } catch (e) { return 0; }
   }
   // The member's own switch, kept with the report like an excluded comp
   // (meta.curation, so it rides a saved report and a share). The one guard
@@ -7835,12 +7849,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
   // Why a sale of the building was NOT weighed, as the end of the sentence
   // "... is not part of this estimate: ___". "" for the refusals that need no
-  // sentence: nothing to speak of (no price, no date), a sale too old to
+  // sentence: nothing to speak of (no price, no date, a date after the
+  // report), a sale too old to
   // count (the last-sale line already shows it as history), a report this
   // rule does not cover (another type or currency, or one written before the
   // sale was vetted). A caveat is attributed to the search, never stated as
   // our own finding about a named building.
-  function ownSaleRefusal(own, shared) {
+  function ownSaleRefusal(own, shared, noun) {
+    const n = noun || "property";
     const a = own && own.ownSale;
     if (!own || own.anchored || !own.refused || !a) return "";
     const why = String(a.why || "");
@@ -7860,18 +7876,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       case "unusable":
         return why === "price_undisclosed" ? "the page it was cited to says the price was not disclosed"
           : "the page it was cited to no longer loads";
-      case "no_source": return "the search could not link it to a page that states it";
-      case "no_address": return "the search did not say which address that sale was recorded for";
-      case "other_address": return `it is recorded for ${a.saleAddress}, not for this address`;
-      case "unit": return "it is recorded for one unit, not for the whole building this report values";
+      case "no_source":
+        return why === "estimate_source" ? "the search called its own source for that price an estimate"
+          : "the search could not link it to a page that states it";
+      case "no_address": return "the search did not say which address that sale was for";
+      case "other_address": return `the search reported it for ${a.saleAddress}, not for this address`;
+      case "unit":
+        return a.unitSide === "subject" ? `the search reported it as a sale of the whole ${n}, and this report values one unit of it`
+          : a.unitSide === "both" ? "the search reported it for a different unit from the one this report values"
+          : `the search reported it as a sale of one unit, not of the whole ${n} this report values`;
       case "scope":
         return `it covered about ${sf(a.saleSize)} and this report values ${sf(a.subjectSize)}. If ${sf(a.saleSize)} is the right size, change the size above`;
-      case "implausible": return "that price over this size is outside what a building sells for, so one of the two is misread";
-      case "predates_building": return "it closed before this building was built";
+      case "implausible": return `that price over this size is outside what a ${n} like this sells for, so one of the two is misread`;
+      case "predates_building": return `the search reported it closing before this ${n} was built`;
       case "matches_asking": return "it matches the current listing's asking price, so it may be the listing and not a closing";
       case "disagree":
-        return "it is more than three times, or less than a third of, what the comps say, so one of the two is describing "
-          + "a different property. Check the size above first, then whether that sale covered this building alone";
+        return `it is more than ${VALUATION.OWN_SALE_DISAGREE} times, or less than 1/${VALUATION.OWN_SALE_DISAGREE} of, what the comps say, so one of the two is describing `
+          + `a different property. Check the size above first, then whether that sale covered this ${n} alone`;
+      case "unchecked":
+        return `the comps came back as a price per square foot, and with no size for this ${n} or for that sale the two cannot be checked against each other`;
       case "alone_weak": return "no priced sale comps came back to check it against, and it is not strong enough to stand alone";
       default: return "";
     }
@@ -7886,6 +7909,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function renderOwnSaleSwitch(own, meta) {
     const el = document.getElementById("ownerSaleSwitch");
     if (!el) return;
+    // A press redraws this switch (applyCuration renders the hero again), and
+    // the button that had the keyboard's focus is thrown away with it: hand
+    // the focus to the new one.
+    const hadFocus = !!(document.activeElement && el.contains(document.activeElement));
     el.textContent = "";
     el.classList.add("hidden");
     const off = !!(own && own.refused === "off");
@@ -7912,6 +7939,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     };
     el.appendChild(btn);
     el.classList.remove("hidden");
+    if (hadFocus) btn.focus({ preventScroll: true });
   }
 
   function matchQuality(comp, meta, parsed) {
@@ -8189,8 +8217,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       `Each gray tick is one of the ${vals.length} ${o.compNoun || "sale comps"} at `
       + (o.counted ? `the ${o.unitPhrase} it counts as at your building's size (adj in the table). ` : `its own ${o.unitPhrase}. `)
       + (o.compsOnly
-        ? "The shaded span is the comps' own range and the red mark their middle. The estimate above leans on what "
-          + "this property itself sold for, so it can sit to one side of them."
+        ? "The shaded span is the comps' own range and the red mark their middle. The estimate above "
+          + (o.ownLeads ? "leans on" : "also weighs") + " what this property itself sold for, so it can sit to one side of them."
         : "The shaded span is the range above and the red mark is Likely, so the tighter the ticks cluster, "
           + "the firmer this estimate.");
     // The meaning lives entirely in mark positions, so the accessible name has
@@ -8981,7 +9009,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       return head + tail + heldNote;
     };
     const ownTrustRefused = () => {
-      const why = ownSaleRefusal(own, !!meta.shared);
+      const why = ownSaleRefusal(own, !!meta.shared, noun);
       return why
         ? ` This ${noun}'s own sale (reported at ${displayMoney(String(ownLs.price))} in ${ownLs.date}) is not part of this estimate: ${why}.`
         : "";
@@ -9224,7 +9252,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         fmt: (v) => ppsf0(v) + "/SF", unitPhrase: "$/SF", counted: !!restatedTicks,
         // The line is the comps' own range. Once the ledger above it is not,
         // its mark and its note say whose range they are (`compsOnly`).
-        compsOnly: led,
+        compsOnly: led, ownLeads: ownSaleLeads(own),
       });
 
       const entries = [{
@@ -9249,7 +9277,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       entries.push(costApproachEntry);
       // The county's figure is read against the range the ledger shows.
       renderApproaches(led
-        ? withAssessed(entries, own.low, own.high, true)
+        ? withAssessed(entries, own.low, own.high, ownSaleLeads(own))
         : withAssessed(entries, rr.low * sizeR.min, rr.high * sizeR.max));
     } else if (altRange) {
       // No usable $/SF range, but this asset class doesn't price on square feet
@@ -9617,6 +9645,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (left) trustEl.textContent += left;
     }
     if (led) document.getElementById("ownerLastSale").classList.add("hidden");
+    // The "would be worth about $X today" line indexes that same sale its own
+    // way (uncapped, off the typed ask) and says it is "not in the range
+    // above". Once the sale is weighed the trust line quotes its figure at
+    // today's prices, and two figures for one sale cannot both stand.
+    if (led) document.getElementById("ownerImproved").classList.add("hidden");
     renderOwnSaleSwitch(own, meta);
 
     // Listing vs. estimate: same 25% rule as outlierOf / subjectSizeFit.
@@ -9785,8 +9818,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (!own.comp && trustEl.textContent) mechanics.shift();
       mechanics.splice(own.comp ? 1 : 0, 0,
         `A sale of the property itself carries ${pctOf(VALUATION.OWN_SALE_WEIGHT_NEW)}% of the estimate in its first year, then less each month `
-        + `until it stops counting ${VALUATION.OWN_SALE_MAX_YEARS} years after it closed; a sale with a condition attached (a sale-leaseback, `
-        + `a share of a larger deal, a price from a listing page) carries half as much. Its price is moved to the report date by the market's trend, `
+        + `until it would carry under ${pctOf(VALUATION.OWN_SALE_MIN_WEIGHT)}%, when it stops counting (a little under ${VALUATION.OWN_SALE_MAX_YEARS} years after it closed); `
+        + `a sale with a condition attached (a sale-leaseback, a share of a larger deal, a price from a listing page) carries half as much, and stops counting sooner. Its price is moved to the report date by the market's trend, `
         + `by no more than ${pctOf(VALUATION.OWN_SALE_INDEX_CAP)}% in all. Low and High allow ${pctOf(VALUATION.OWN_SALE_SPREAD_BASE)}% either side of that price `
         + `in the first year and ${pctOf(VALUATION.OWN_SALE_SPREAD_PER_YEAR)} more points for each year after, blended with the comps' own range. `
         + "Those allowances are a judgment, not a measurement.");

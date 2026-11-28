@@ -426,7 +426,8 @@ function subjectPsfOf(report, sizeSqft, askingPrice) {
  * with `own_sale` saying what happened:
  *   { anchored, weight, half, price, date, indexed, refused, why }
  * Four more inputs make this the page's answer and not a second one:
- *   `address`     the subject's address: the sale has to be recorded for it,
+ *   `address`     the subject's address (and `addressTyped`, the address as typed when
+ *                 the search corrected it): the sale has to be recorded for it,
  *                 so a caller that leaves it out gets the comps alone
  *   `txFocus`     a leases-only search headlines a rent, so nothing is
  *                 leaned on
@@ -491,8 +492,11 @@ function valueFromReport(report, opts) {
     currency: rep.currency,
     yearBuilt: rep.subject_year_built,
     asking: moneyOrNum(rep.subject_asking && rep.subject_asking.price),
-    subjectAddresses: [o.address, rep.subject_address_corrected],
+    subjectAddresses: [o.address, o.addressTyped, rep.subject_address_corrected],
     subjectSize: sizeSqft,
+    // The comps' $/SF, from one priced sale up: the check on the sale when
+    // there is no comps' range in dollars (valuation.js, "unchecked").
+    compPsf: val && val.psfMid > 0 ? val.psfMid : 0,
     off: o.ownSaleOff === true,
   });
   if (!val && !led.anchored) return null;

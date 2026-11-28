@@ -107,6 +107,21 @@ paths:
     sale carrying a tenth does not pin the headline and nothing jumps when
     it ages out; the trust line says when the comps' figure was pulled
     toward the sale (`own.held`).
+  - **Comps with no dollar figure still check the sale** (`opts.compPsf`,
+    2026-11-28): with one priced comp, or several and no size, the sale's
+    $/SF (over the subject's size or the size the sale states) is held to
+    the comps' $/SF by the same 3x; with neither size the sale is refused
+    `unchecked`. Only a report with no priced sale comps at all lets a sale
+    stand alone. `ownSaleCompPsf` (page) and `val.psfMid` (bulk.js) feed it.
+  - **Known gaps, left for the owner (2026-11-28 review):** the member's
+    switch (`meta.curation.ownSaleOff`) is not written back to a bulk row or
+    a saved property's value snapshot until the next Refresh / re-value;
+    `OWN_SALE=off` does not re-value bulk rows already stored; an address
+    written with no comma at all ("100 Main St Boise ID 83702") is not read
+    for its city or state; the sale-alone hero's Low / High sub-labels say
+    the spread even when the range was widened to hold the price paid; the
+    truth set's `confirmed` group still includes rows whose caveat says the
+    price covered more than one building.
   - **A refused sale is said, in one sentence, with its reason**
     (`ownSaleRefusal`), appended to the trust line; the value is the comps'.
     A few refusals deliberately say nothing (no price or date, too old, a

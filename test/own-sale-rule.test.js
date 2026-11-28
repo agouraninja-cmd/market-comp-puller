@@ -688,3 +688,24 @@ test("the 1.5 times hold fades with the sale's weight, so a sale carrying a tent
   const leading = V.valueWithOwnSale({ low: 4500000, mid: 5000000, high: 5500000 }, good().sale, good().opts);
   assert.ok(Math.abs(leading.mid - 2100000) / 2100000 < 0.02, `Likely ${leading.mid} is about 2,100,000`);
 });
+
+test("priced comps with no dollar figure still check the sale: by $/SF, or the sale does not stand alone", () => {
+  // No size (or one priced comp) leaves the comps without a range in
+  // dollars. Read as "no comps", a $90,000,000 sale stood alone at full
+  // weight beside five comps at $64 to $96 a foot, and adding comps was what
+  // switched the check on.
+  const g = good({ size_sqft: "" }, { subjectSize: 0, compPsf: 80 });
+  assert.equal(V.valueWithOwnSale(null, g.sale, g.opts).refused, "unchecked", "neither side has a size");
+  // The sale states its size: $2,000,000 over 20,000 SF is $100/SF against
+  // the comps' $80, a ratio of 1.25, so it stands alone.
+  const sized = good({ size_sqft: "20000" }, { subjectSize: 0, compPsf: 80 });
+  const ok = V.valueWithOwnSale(null, sized.sale, sized.opts);
+  assert.equal(ok.anchored, true);
+  near(ok.ratio, 1.25, "sale $/SF over the comps' $/SF");
+  // One comp at $20/SF against the subject's 20,000 SF: $100 / $20 = 5, past 3.
+  const one = good({}, { compPsf: 20 });
+  assert.equal(V.valueWithOwnSale(null, one.sale, one.opts).refused, "disagree");
+  // No priced comps at all: alone, as before.
+  const none = good({}, { compPsf: 0 });
+  assert.equal(V.valueWithOwnSale(null, none.sale, none.opts).anchored, true);
+});

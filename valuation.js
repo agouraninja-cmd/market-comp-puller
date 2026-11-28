@@ -985,6 +985,11 @@
   //                or under 1/that. One of the two is describing a different
   //                thing and nothing here can say which, so the comps stand
   //                and the page says the two do not agree and what to check.
+  //                With no comps' figure in dollars but priced comps in the
+  //                table (opts.compPsf), the sale's $/SF is held to theirs.
+  //   "unchecked"  priced comps came back, but neither the subject nor the
+  //                sale has a size, so nothing can check the sale against
+  //                them; it does not stand alone while they sit in the table.
   //   "alone_weak" no comps to check it against, and it is not a clean sale
   //                inside its first year: with nothing beside it, only the
   //                strongest sale may be the whole headline.
@@ -1600,7 +1605,14 @@
     // the first one found: a subject typed as "Suite 200" is one suite however
     // the search rewrote its address, and listed in the other order the same
     // report leaned on the whole building's sale.
-    if (hits.some(function (h) { return h.unit !== sp.unit; })) return no("unit", { saleAddress: saleAddr });
+    // `unitSide`: which side names the unit, for the page's sentence ("sale"
+    // when the sale was of one unit, "subject" when the report values one
+    // unit and the sale was the whole, "both" for two different units).
+    var odd = hits.filter(function (h) { return h.unit !== sp.unit; });
+    if (odd.length) {
+      var side = sp.unit && odd[0].unit ? "both" : sp.unit ? "sale" : "subject";
+      return no("unit", { saleAddress: saleAddr, unitSide: side });
+    }
     var size = Number(o.subjectSize);
     var saleSize = numericValue(lastSale.size_sqft);
     if (size > 0 && saleSize > 0 && Math.abs(saleSize / size - 1) > OWN_SALE_SCOPE_TOL) {
@@ -1668,6 +1680,22 @@
     if (c && (out.ratio > OWN_SALE_DISAGREE || out.ratio < 1 / OWN_SALE_DISAGREE)) {
       out.refused = "disagree";
       return out;
+    }
+    // No comps' figure in dollars does not always mean no comps. When priced
+    // sales came back (one sale, or several and no size to multiply), their
+    // $/SF (opts.compPsf) is still the check: the sale's own $/SF, over the
+    // subject's size or the size the sale states, is held to the same 3x.
+    // With neither size there is nothing to compare, and a sale nothing
+    // checked must not carry the headline while comps sit in the table
+    // ("unchecked"). Alone means no priced comps at all.
+    if (!c) {
+      var cp = Number(opts && opts.compPsf);
+      if (cp > 0) {
+        var ss = Number(opts && opts.subjectSize) > 0 ? Number(opts.subjectSize) : numericValue(lastSale && lastSale.size_sqft);
+        if (!(ss > 0)) { out.refused = "unchecked"; return out; }
+        out.ratio = (a.value / ss) / cp;
+        if (out.ratio > OWN_SALE_DISAGREE || out.ratio < 1 / OWN_SALE_DISAGREE) { out.refused = "disagree"; return out; }
+      }
     }
     // Alone, nothing checks it: only a clean sale inside its first year.
     if (!c && (a.half || a.ageYears > OWN_SALE_FULL_YEARS)) { out.refused = "alone_weak"; return out; }

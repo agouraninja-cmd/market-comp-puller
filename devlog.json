@@ -1,4 +1,5 @@
 [
+  {"date": "2026-11-28", "type": "improvement", "title": "The value card's chart says Likely again", "details": "When a report weighs the building's own sale, the small chart under Low, Likely and High had relabelled its red mark \"Comps\" and drawn the comps' range. It now keeps the word Likely and draws the estimate itself: the shaded span is the report's Low to High and the red mark its Likely, per square foot, with the comps as gray ticks, so it shows where the estimate sits against them. Reports with no sale of their own are unchanged."},
   {"date": "2026-11-28", "type": "improvement", "title": "The report form asks for the city", "details": "A street address typed without its city (\"1200 W Industrial Blvd\", or a street and a ZIP) no longer starts a search: the form says to add the city, with an example, and puts the cursor back in the box, before the address check and before anything is billed. A street name alone is in every town, the search had to guess which one, and the building's own recent sale is matched to it by address. A market search (\"Boise, ID\") is never asked."},
   {
     "date": "2026-11-27",

@@ -8179,7 +8179,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const fmt = typeof o.fmt === "function" ? o.fmt : (v) => String(v);
     const vals = (values || []).filter((v) => v > 0).sort((a, b) => a - b);
     if (!band || !band.trimmed || vals.length < 4) return;
-    const lo = vals[0], hi = vals[vals.length - 1];
+    // `includeBand`: the band is the estimate's own, which a building's own
+    // sale can put past every comp, so the axis reaches it too.
+    const lo = o.includeBand ? Math.min(vals[0], band.low) : vals[0];
+    const hi = o.includeBand ? Math.max(vals[vals.length - 1], band.high) : vals[vals.length - 1];
     if (!(hi > lo)) return;
     // Band edges are clamped to the axis: an upward trend index can push the
     // whole band past the raw displayed spread, and a tint hanging off the end
@@ -8204,10 +8207,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // would hang the word off the card. No transform: html2canvas (PNG export)
     // captures this card and its transform support is partial.
     const lab = add("rd-scat-midlab", { left: midPct + "%" });
-    // `opts.compsOnly`: the ledger above leans on the building's own sale, so
-    // this line is no longer the estimate's range. It is still the comps'
-    // own, which is what it has always drawn, and it says whose.
-    lab.textContent = o.compsOnly ? "Comps" : "Likely";
+    // Always "Likely": the mark is the estimate's own Likely, also when the
+    // building's own sale is weighed (`opts.ownLed`; the caller then hands
+    // the estimate's range, not the comps').
+    lab.textContent = "Likely";
     if (midPct < 12) Object.assign(lab.style, { marginLeft: "0", textAlign: "left" });
     else if (midPct > 88) Object.assign(lab.style, { marginLeft: "-60px", textAlign: "right" });
 
@@ -8216,18 +8219,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("ownerScatterNote").textContent =
       `Each gray tick is one of the ${vals.length} ${o.compNoun || "sale comps"} at `
       + (o.counted ? `the ${o.unitPhrase} it counts as at your building's size (adj in the table). ` : `its own ${o.unitPhrase}. `)
-      + (o.compsOnly
-        ? "The shaded span is the comps' own range and the red mark their middle. The estimate above "
-          + (o.ownLeads ? "leans on" : "also weighs") + " what this property itself sold for, so it can sit to one side of them."
+      + (o.ownLed
+        ? "The shaded span is the range above and the red mark is Likely. The estimate "
+          + (o.ownLeads ? "leans on" : "also weighs") + " what this property itself sold for, so it can sit to one side of the comps."
         : "The shaded span is the range above and the red mark is Likely, so the tighter the ticks cluster, "
           + "the firmer this estimate.");
     // The meaning lives entirely in mark positions, so the accessible name has
     // to state the same thing in words.
     wrap.setAttribute("aria-label",
       `${vals.length} sale comps ranging from ${fmt(lo)} to ${fmt(hi)}. `
-      + (o.compsOnly
-        ? `The comps' own range is ${fmt(band.low)} to ${fmt(band.high)}, middle ${fmt(band.mid)}.`
-        : `The estimate's range is ${fmt(band.low)} to ${fmt(band.high)}, likely ${fmt(band.mid)}.`));
+      + `The estimate's range is ${fmt(band.low)} to ${fmt(band.high)}, likely ${fmt(band.mid)}.`);
     wrap.classList.remove("hidden");
   }
 
@@ -9248,11 +9249,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           asOf: asOfOf(meta), trendPct: trendPctOf(parsed), subjectSF: sizeR, propertyType: meta.type,
         }) || {}).value).filter((v) => v > 0)
         : null;
-      renderCompScatter(restatedTicks || ppsfs, rr, {
+      // When the building's own sale is weighed, the tint and the red mark
+      // are the ESTIMATE's own Low to High and Likely, per square foot (the
+      // owner, 2026-11-28: "I like the likely wording better" than a mark
+      // labelled "Comps"), and the gray ticks stay the comps, so the line
+      // shows where the estimate sits against them. The axis then reaches
+      // the estimate (`includeBand`), which can sit past every comp.
+      const sfMid = sizeR ? (sizeR.min + sizeR.max) / 2 : 0;
+      const scatBand = led && sfMid > 0
+        ? { low: own.low / sfMid, mid: own.mid / sfMid, high: own.high / sfMid, trimmed: rr.trimmed }
+        : rr;
+      renderCompScatter(restatedTicks || ppsfs, scatBand, {
         fmt: (v) => ppsf0(v) + "/SF", unitPhrase: "$/SF", counted: !!restatedTicks,
-        // The line is the comps' own range. Once the ledger above it is not,
-        // its mark and its note say whose range they are (`compsOnly`).
-        compsOnly: led, ownLeads: ownSaleLeads(own),
+        ownLed: led && sfMid > 0, ownLeads: ownSaleLeads(own), includeBand: led && sfMid > 0,
       });
 
       const entries = [{

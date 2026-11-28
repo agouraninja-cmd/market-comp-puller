@@ -4231,7 +4231,11 @@ test("under a size-restated band the ticks and the outlier chip both read the co
   // the chip are a pair, so they switch together, off one flag.
   assert.match(html, /trimmed: val\.trimmed, restated: val\.sizeRestated > 0 \}/);
   assert.match(html, /const restatedTicks = psfBand && psfBand\.restated\s*\? saleComps\.map\(\(x\) => \(countedPsf\(x\.comp, \{/);
-  assert.match(html, /renderCompScatter\(restatedTicks \|\| ppsfs, rr, \{[^}]*counted: !!restatedTicks,/);
+  assert.match(html, /renderCompScatter\(restatedTicks \|\| ppsfs, scatBand, \{[^}]*counted: !!restatedTicks,/);
+  // Without the building's own sale the band is the comps' own (rr); with it,
+  // the estimate's own range per square foot, so the mark still reads Likely.
+  assert.match(html, /lab\.textContent = "Likely";/, "the mark reads Likely, with or without the building's own sale");
+  assert.match(html, /const scatBand = led && sfMid > 0\s*\? \{ low: own\.low \/ sfMid, mid: own\.mid \/ sfMid, high: own\.high \/ sfMid, trimmed: rr\.trimmed \}\s*: rr;/);
   assert.match(html, /const counted = currentPsfBand\.restated \? countedPsfOf\(comp, currentMeta, currentParsed\) : null;/);
   assert.match(html, /VALUATION\.outlierOf\(counted \? counted\.value : salePsfOf\(comp\), currentPsfBand\)/);
 

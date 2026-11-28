@@ -1954,7 +1954,7 @@ test("ADMIN_KEY_IN_URL=on puts the key in the address back", async (t) => {
   const KEY = "test-admin-key-in-url";
   const srv = await boot({ ADMIN_KEY: KEY, ADMIN_KEY_IN_URL: "on" });
   t.after(() => srv.stop());
-  for (const route of ["/api/stats", "/api/leads", "/api/admin/submissions"]) {
+  for (const route of ["/api/stats", "/api/leads", "/api/admin/submissions", "/api/accuracy"]) {
     const ok = await fetch(srv.base + route + "?key=" + encodeURIComponent(KEY));
     await ok.arrayBuffer();
     assert.equal(ok.status, 200, route);
@@ -2125,7 +2125,7 @@ test("admin gating", async (t) => {
   // routes that took it now refuse it, and say what to do instead.
   await t.test("the admin key is refused in the address on every route that used to take it", async () => {
     const routes = ["/api/stats", "/api/leads", "/api/comp-submissions", "/api/comp-corpus",
-      "/api/admin/submissions", "/api/corpus-audit"];
+      "/api/admin/submissions", "/api/corpus-audit", "/api/accuracy"];
     for (const route of routes) {
       const right = await fetch(srv.base + route + "?key=" + encodeURIComponent(ADMIN));
       assert.equal(right.status, 401, route + " still takes the key in the address");

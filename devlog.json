@@ -5731,5 +5731,11 @@
     "type": "feature",
     "title": "BOV builder: save a BOV to your account",
     "details": "A BOV written in the builder used to live only in the browser it was typed in. A new “Save to your account” button keeps it on your account, where only you can open it, so it is there on any computer. Saved BOVs are listed at the top of the builder, and a Pipeline card’s link opens the one saved for it. What you type is still sent nowhere until you press Save. Needs migration 067."
+  },
+  {
+    "date": "2026-11-27",
+    "type": "fix",
+    "title": "The admin key is no longer accepted in the address of the accuracy report",
+    "details": "/api/accuracy, the backtest panel on /admin, was missed when the admin key stopped being accepted in a link’s address on 2026-11-14, and still took ?key= whatever ADMIN_KEY_IN_URL said. It now refuses the key in the address like the other six admin routes and says to send the x-admin-key header instead. The header and an unlocked /admin still work, and ADMIN_KEY_IN_URL=on restores the old behaviour."
   }
 ]

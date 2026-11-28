@@ -626,3 +626,21 @@ test("ownSaleSource halves a price whose source the search did not classify", ()
   // A marketplace's host still says "listing" by itself, classified or not.
   assert.deepEqual(V.ownSaleSource({ source_url: LISTING }, FLORIDA), { ok: true, half: "listing_page" });
 });
+
+test("a street address with no city is asked for one before the search; a market or a full address is not", () => {
+  // The owner, 2026-11-28: "make it so they have to type in a city". A
+  // street name alone is in every town, and the building's own sale is
+  // matched to it by address.
+  for (const a of ["100 Main St", "100 Main St, TX 75201", "100 Main St 83702", "100 Main St, Suite 5, TX"]) {
+    assert.equal(V.missingCity(a), true, a);
+  }
+  for (const a of ["100 Main St, Boise, ID", "100 Main St Boise ID 83702", "100 Main Street Dallas", "Boise, ID", "", null]) {
+    assert.equal(V.missingCity(a), false, String(a));
+  }
+  // The report form asks before the geocode and before anything is billed.
+  const html = require("fs").readFileSync(require("path").join(__dirname, "..", "index.html"), "utf8");
+  const submit = html.indexOf('document.getElementById("compForm").addEventListener("submit"');
+  const ask = html.indexOf("VALUATION.missingCity(address)", submit);
+  const geo = html.indexOf("geocodeAddress(address)", submit);
+  assert.ok(submit > 0 && ask > submit && ask < geo, "the city is asked for before the geocode");
+});

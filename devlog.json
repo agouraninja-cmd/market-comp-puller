@@ -1,4 +1,5 @@
 [
+  {"date": "2026-11-28", "type": "improvement", "title": "The report form asks for the city", "details": "A street address typed without its city (\"1200 W Industrial Blvd\", or a street and a ZIP) no longer starts a search: the form says to add the city, with an example, and puts the cursor back in the box, before the address check and before anything is billed. A street name alone is in every town, the search had to guess which one, and the building's own recent sale is matched to it by address. A market search (\"Boise, ID\") is never asked."},
   {
     "date": "2026-11-27",
     "type": "improvement",

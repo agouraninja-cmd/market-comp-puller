@@ -26456,6 +26456,15 @@ async function renderMyDesk() {
     const capVal = numericValue(document.getElementById("capRate").value);
     const subjectDetails = readSubjectDetails();
     if (!address) return;
+    // A street address must name its city (valuation.js missingCity): a
+    // street name alone is in every town, the search would pick one, and the
+    // building's own sale is matched by its address. Asked here, before the
+    // geocode and before anything is billed.
+    if (VALUATION.missingCity(address)) {
+      showStatus("Add the city to the address, for example: 1200 W Industrial Blvd, Dallas, TX.", "error");
+      document.getElementById("address").focus();
+      return;
+    }
     if (!months) {
       showStatus("Enter a custom lookback window between 1 and 120 months.", "error");
       document.getElementById("lookbackCustom").focus();

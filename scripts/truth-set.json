@@ -1,41 +1,49 @@
 {
- "note": "Buildings that have already sold, for scripts/truth-test.js. The first six are the 2026-11-17 truth test (sale prices as that test recorded them). The rest are closed Industrial, Office and Retail sales from the comp corpus export of 2026-11-27: priced, sized, street-numbered, dated 2025 or later, not a unit sale, no price caveat in the notes, and between $40 and $800 per square foot. Sale prices are what a page reported; a row that misses by over 100% on every run is more likely a bad row than a bad report. Add rather than edit, so older runs stay comparable.",
+ "note": "Buildings that have already sold, for scripts/truth-test.js. The first six are the 2026-11-17 truth test (sale prices as that test recorded them). The rest are closed Industrial, Office and Retail sales from the comp corpus export of 2026-11-27: priced, sized, street-numbered, dated 2025 or later, not a unit sale, no price caveat in the notes, and between $40 and $800 per square foot. Every row was checked against the web on 2026-11-27, and `check` holds the answer: \"confirmed\" (a page other than our own row reports that price for that building), \"unverified\" (no such page could be found or opened, so the price is only what our corpus row says) and \"asking\" (the figure is an asking price and no closing was found: not scored, and not run unless --all). `caveat` says what a row is when it is not a plain sale of that one building, `web_price` and `web_size` are what the web gave where it differs, and `sale_type` names a sale that is not an ordinary one. `sold` is never edited, so older runs stay comparable: add rows rather than change them.",
  "targets": [
   {
    "address": "2300 E Katella Ave, Anaheim, CA",
    "type": "Office",
    "sold": 15100000,
-   "source": "2026-11-17 truth test"
+   "source": "2026-11-17 truth test",
+   "check": "confirmed",
+   "web_price": 15150000
   },
   {
    "address": "4500 Salisbury Rd, Jacksonville, FL",
    "type": "Office",
    "sold": 14700000,
-   "source": "2026-11-17 truth test"
+   "source": "2026-11-17 truth test",
+   "check": "confirmed"
   },
   {
    "address": "1054 S De Anza Blvd, San Jose, CA",
    "type": "Office",
    "sold": 9700000,
-   "source": "2026-11-17 truth test"
+   "source": "2026-11-17 truth test",
+   "check": "confirmed",
+   "web_price": 9750000
   },
   {
    "address": "20 Park Rd, Burlingame, CA",
    "type": "Office",
    "sold": 5400000,
-   "source": "2026-11-17 truth test"
+   "source": "2026-11-17 truth test",
+   "check": "confirmed"
   },
   {
    "address": "23126 Valencia Blvd, Santa Clarita, CA",
    "type": "Retail",
    "sold": 27500000,
-   "source": "2026-11-17 truth test"
+   "source": "2026-11-17 truth test",
+   "check": "confirmed"
   },
   {
    "address": "1690 Jeremiah St, Middleburg, FL",
    "type": "Retail",
    "sold": 8405000,
-   "source": "2026-11-17 truth test"
+   "source": "2026-11-17 truth test",
+   "check": "confirmed"
   },
   {
    "address": "1002 Avenue of the Oaks, Boise, ID",
@@ -43,7 +51,9 @@
    "sold": 1920000,
    "size": 8223,
    "date": "Sep 2025",
-   "source": "comp corpus, public_record"
+   "source": "comp corpus, public_record",
+   "check": "unverified",
+   "caveat": "No Boise building at this address was found on the web. The only 1002 Avenue of the Oaks it shows is in Sparks, NV."
   },
   {
    "address": "1055 Sandhill Ave., Carson, CA 90746",
@@ -51,7 +61,8 @@
    "sold": 52500000,
    "size": 127775,
    "date": "Apr 2025",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed"
   },
   {
    "address": "12250 W Corporate Dr, Avondale, AZ 85323",
@@ -59,7 +70,8 @@
    "sold": 89800000,
    "size": 450260,
    "date": "Dec 2025",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed"
   },
   {
    "address": "9400 Latham St, Tolleson, AZ 85353",
@@ -67,7 +79,10 @@
    "sold": 94130000,
    "size": 662804,
    "date": "Feb 2026",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed",
+   "sale_type": "leasehold",
+   "caveat": "A leasehold interest on ground-leased land. The closing was reported about Mar 2026."
   },
   {
    "address": "6801 N Cotton Ln, Glendale, AZ 85395",
@@ -75,7 +90,8 @@
    "sold": 104000000,
    "size": 915160,
    "date": "Mar 2026",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed"
   },
   {
    "address": "3302 W Washington St, Phoenix, AZ 85009",
@@ -83,7 +99,8 @@
    "sold": 20000000,
    "size": 101794,
    "date": "Sep 2025",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed"
   },
   {
    "address": "3809 E Watkins St, Phoenix, AZ",
@@ -91,7 +108,8 @@
    "sold": 44150000,
    "size": 174800,
    "date": "May 2026",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed"
   },
   {
    "address": "3400 Calle Tecate, Camarillo, CA 93012",
@@ -99,7 +117,8 @@
    "sold": 23365000,
    "size": 68807,
    "date": "Q2 2025",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed"
   },
   {
    "address": "4500 Park Granada, Calabasas, CA 91302",
@@ -107,7 +126,8 @@
    "sold": 69400000,
    "size": 222667,
    "date": "Feb 2025",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed"
   },
   {
    "address": "26775 Malibu Hills Rd, Calabasas, CA 91301",
@@ -115,7 +135,9 @@
    "sold": 6300000,
    "size": 34000,
    "date": "May 2026",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "unverified",
+   "caveat": "A news page's address names a $6.3M sale of a 34,000 SF building, but dates disagree (Jan or May 2026) and it could not be opened."
   },
   {
    "address": "1903 Street Rd, Bensalem, PA 19020",
@@ -123,7 +145,8 @@
    "sold": 20500000,
    "size": 109057,
    "date": "Mar 2025",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed"
   },
   {
    "address": "14 E Washington St, Orlando, FL 32801",
@@ -131,7 +154,8 @@
    "sold": 5600000,
    "size": 42088,
    "date": "Jul 2026",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed"
   },
   {
    "address": "777 E Altamonte Dr, Altamonte Springs, FL 32701",
@@ -139,7 +163,8 @@
    "sold": 1450000,
    "size": 11356,
    "date": "Apr 2026",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "unverified"
   },
   {
    "address": "6580 69th St, Vero Beach, FL 32967",
@@ -147,7 +172,9 @@
    "sold": 2500000,
    "size": 18243,
    "date": "Nov 2025",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed",
+   "caveat": "The size is doubtful: the for-sale listing describes a 7,640 SF building and the public record 8,682 SF."
   },
   {
    "address": "1701 S Highway A1A, Vero Beach, FL 32963",
@@ -155,7 +182,8 @@
    "sold": 8500000,
    "size": 35000,
    "date": "Jul 2026",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "unverified"
   },
   {
    "address": "30941 Agoura Rd, Westlake Village, CA 91361",
@@ -163,7 +191,8 @@
    "sold": 12625000,
    "size": 64600,
    "date": "Apr 2026",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed"
   },
   {
    "address": "23907 Ventura Blvd, Calabasas, CA 91302",
@@ -171,7 +200,10 @@
    "sold": 26500000,
    "size": 107000,
    "date": "Aug 2025",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed",
+   "sale_type": "portfolio",
+   "caveat": "The price is the whole six-building park, about 107,000 SF, not this one building. Right only at that size."
   },
   {
    "address": "21300 Vanowen St, Canoga Park, CA 91303",
@@ -179,7 +211,8 @@
    "sold": 16300000,
    "size": 50000,
    "date": "Feb 2025",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "unverified"
   },
   {
    "address": "20938 Osborne St, Canoga Park, CA 91304",
@@ -187,7 +220,8 @@
    "sold": 4850000,
    "size": 20038,
    "date": "Mar 2026",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed"
   },
   {
    "address": "2000 Corporate Center Dr, Newbury Park, CA 91320",
@@ -195,7 +229,8 @@
    "sold": 36250000,
    "size": 105215,
    "date": "Dec 2025",
-   "source": "comp corpus, news"
+   "source": "comp corpus, news",
+   "check": "confirmed"
   },
   {
    "address": "2318 W Main St, Boise, ID",
@@ -203,7 +238,9 @@
    "sold": 773500,
    "size": 5175,
    "date": "May 2026",
-   "source": "comp corpus, listing"
+   "source": "comp corpus, listing",
+   "check": "confirmed",
+   "caveat": "One source (a broker's quarterly table) in a non-disclosure state, 57% under the asking price of three months earlier."
   },
   {
    "address": "120 E 41st St, Garden City, ID",
@@ -211,7 +248,8 @@
    "sold": 913800,
    "size": 6560,
    "date": "May 2026",
-   "source": "comp corpus, listing"
+   "source": "comp corpus, listing",
+   "check": "confirmed"
   },
   {
    "address": "106 W 40th St, Garden City, ID",
@@ -219,7 +257,9 @@
    "sold": 876900,
    "size": 7960,
    "date": "Apr 2026",
-   "source": "comp corpus, listing"
+   "source": "comp corpus, listing",
+   "check": "unverified",
+   "caveat": "The building did sell (broker post, Jun 2026), but no page that could be read states the price. Idaho deeds do not show one."
   },
   {
    "address": "97 N Kings Rd, Nampa, ID",
@@ -227,7 +267,8 @@
    "sold": 975000,
    "size": 7640,
    "date": "Apr 2026",
-   "source": "comp corpus, listing"
+   "source": "comp corpus, listing",
+   "check": "unverified"
   },
   {
    "address": "1045 Ancona Ave, Eagle, ID",
@@ -235,7 +276,8 @@
    "sold": 3353000,
    "size": 20003,
    "date": "Apr 2026",
-   "source": "comp corpus, listing"
+   "source": "comp corpus, listing",
+   "check": "confirmed"
   },
   {
    "address": "1786 S Topaz Ave, Meridian, ID",
@@ -243,7 +285,9 @@
    "sold": 5674500,
    "size": 22432,
    "date": "Jun 2026",
-   "source": "comp corpus, listing"
+   "source": "comp corpus, listing",
+   "check": "unverified",
+   "caveat": "Seen on the web only as a for-sale listing ($5,250,000, then $4,995,000). The price here is above both asks."
   },
   {
    "address": "5555 Ontario Mills Pkwy, Ontario, CA 91764",
@@ -251,7 +295,9 @@
    "sold": 10000000,
    "size": 37000,
    "date": "Sep 2025",
-   "source": "comp corpus, listing"
+   "source": "comp corpus, listing",
+   "check": "asking",
+   "caveat": "Not a sale: $10,000,000 is the Sep 2025 list price (later relisted at $11,000,000). No closing was found."
   },
   {
    "address": "8290 Lee Rd, Lithia Springs, GA 30122",
@@ -259,7 +305,8 @@
    "sold": 600000,
    "size": 7000,
    "date": "Jul 2025",
-   "source": "comp corpus, listing"
+   "source": "comp corpus, listing",
+   "check": "unverified"
   },
   {
    "address": "9177 Center Ave, Rancho Cucamonga, CA",
@@ -267,7 +314,9 @@
    "sold": 22258080,
    "size": 83520,
    "date": "Jun 2026",
-   "source": "comp corpus, listing"
+   "source": "comp corpus, listing",
+   "check": "asking",
+   "caveat": "Not a sale: $22,258,080 is the asking price on the for-sale listing (83,520 SF at $266.50). No closing was found."
   },
   {
    "address": "250 Allied Pkwy, West Berlin, NJ",
@@ -275,7 +324,10 @@
    "sold": 2100000,
    "size": 16500,
    "date": "Jan 2025",
-   "source": "comp corpus, public_record"
+   "source": "comp corpus, public_record",
+   "check": "confirmed",
+   "web_size": 19000,
+   "caveat": "Closed 4/9/2025 for the whole 200-250 Allied Pkwy site: three buildings, about 19,000 SF."
   },
   {
    "address": "873 Warwick Ave, Warwick, RI",
@@ -283,7 +335,8 @@
    "sold": 525000,
    "size": 4840,
    "date": "Oct 2026",
-   "source": "comp corpus, listing"
+   "source": "comp corpus, listing",
+   "check": "unverified"
   },
   {
    "address": "760 US-378 W, Lexington, SC 29072",
@@ -291,7 +344,8 @@
    "sold": 4560000,
    "size": 39218,
    "date": "Oct 2025",
-   "source": "comp corpus, listing"
+   "source": "comp corpus, listing",
+   "check": "confirmed"
   },
   {
    "address": "78131 Highway 207, Hermiston, OR 97838",
@@ -299,7 +353,8 @@
    "sold": 1025000,
    "size": 9030,
    "date": "Mar 2025",
-   "source": "comp corpus, public_record"
+   "source": "comp corpus, public_record",
+   "check": "unverified"
   },
   {
    "address": "4272 Eldridge Loop, Orange Park, FL 32073",
@@ -307,7 +362,10 @@
    "sold": 3164873,
    "size": 11624,
    "date": "Jul 2026",
-   "source": "comp corpus, public_record"
+   "source": "comp corpus, public_record",
+   "check": "confirmed",
+   "sale_type": "sale_leaseback",
+   "caveat": "A deed allocation inside a 26-store sale-leaseback, not a separately negotiated price."
   },
   {
    "address": "1585 Island Ln, Fleming Island, FL 32003",
@@ -315,7 +373,10 @@
    "sold": 3225000,
    "size": 5668,
    "date": "Feb 2025",
-   "source": "comp corpus, listing"
+   "source": "comp corpus, listing",
+   "check": "unverified",
+   "web_size": 7936,
+   "caveat": "If the price is right it covers two buildings together (about 7,936 SF), not the 5,668 SF one alone."
   },
   {
    "address": "9711 Applecross Rd, Jacksonville, FL 32222",
@@ -323,7 +384,8 @@
    "sold": 2129700,
    "size": 5835,
    "date": "Mar 2025",
-   "source": "comp corpus, public_record"
+   "source": "comp corpus, public_record",
+   "check": "unverified"
   },
   {
    "address": "10751 Deerwood Park Blvd, Jacksonville, FL",
@@ -331,7 +393,8 @@
    "sold": 21125000,
    "size": 104092,
    "date": "Nov 2026",
-   "source": "comp corpus, public_record"
+   "source": "comp corpus, public_record",
+   "check": "unverified"
   },
   {
    "address": "9995 Gate Parkway N, Jacksonville, FL",
@@ -339,7 +402,10 @@
    "sold": 7500000,
    "size": 91880,
    "date": "Jun 2025",
-   "source": "comp corpus, public_record"
+   "source": "comp corpus, public_record",
+   "check": "confirmed",
+   "web_size": 57572,
+   "caveat": "Brokers market the building at 57,572 SF. 91,880 SF is what the sales roundup prints, probably county gross area."
   },
   {
    "address": "7948 Baymeadows Way, Jacksonville, FL",
@@ -347,7 +413,10 @@
    "sold": 3000000,
    "size": 44928,
    "date": "Aug 2026",
-   "source": "comp corpus, public_record"
+   "source": "comp corpus, public_record",
+   "check": "confirmed",
+   "web_size": 41511,
+   "caveat": "Sale listings give 41,511 SF and the reported $72/SF agrees. 44,928 SF is probably county gross area."
   },
   {
    "address": "6600 Corporate Center Parkway, Jacksonville, FL 32216",
@@ -355,7 +424,8 @@
    "sold": 10550000,
    "size": 88062,
    "date": "Aug 2025",
-   "source": "comp corpus, listing"
+   "source": "comp corpus, listing",
+   "check": "confirmed"
   },
   {
    "address": "44400 Valley Central Way, Lancaster, CA",
@@ -363,7 +433,8 @@
    "sold": 27100000,
    "size": 122657,
    "date": "Jan 2026",
-   "source": "comp corpus, public_record"
+   "source": "comp corpus, public_record",
+   "check": "unverified"
   }
  ]
 }

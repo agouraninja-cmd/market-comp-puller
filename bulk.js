@@ -416,9 +416,35 @@ function subjectPsfOf(report, sizeSqft, askingPrice) {
  * same precedence the form's size box has, because someone who typed a square
  * footage knows their own building better than a public record does.
  *
- * Returns null when there is nothing to value — no sale comps at all. A row
- * with a $/SF band but no size is NOT null: it returns `sized: false` and no
- * dollar figures, because "we found the market but not your building's size"
+ * THE BUILDING'S OWN SALE (2026-11-27; valuation.js, "The building's own
+ * sale", has the rule and every refusal). When the report holds a sale of the
+ * subject that passes those checks, the three dollar figures are
+ * VALUATION.valueWithOwnSale's blend of that sale and the comps, exactly as
+ * the report page's hero shows them, and the row's $/SF figures are those
+ * dollars over the size, so the row still multiplies out. What the comps
+ * alone said rides beside them (`comps_low`, `comps_likely`, `comps_high`)
+ * with `own_sale` saying what happened:
+ *   { anchored, weight, half, price, date, indexed, refused, why }
+ * Four more inputs make this the page's answer and not a second one:
+ *   `address`     the subject's address (and `addressTyped`, the address as typed when
+ *                 the search corrected it): the sale has to be recorded for it,
+ *                 so a caller that leaves it out gets the comps alone
+ *   `txFocus`     a leases-only search headlines a rent, so nothing is
+ *                 leaned on
+ *   `netLease`    net lease mode values on cap rates, and the page does not
+ *                 lean there either
+ *   `ownSaleOff`  the member's own switch on a saved report
+ *                 (meta.curation.ownSaleOff), where the caller has one
+ * Nothing here decides WHICH sale is the building's own: the search settles
+ * that once, before the report is cached (settleOwnSale, in the server), and
+ * stamps it, so this function and the page read one `subject_last_sale` and
+ * one list of comps. A report written before that stamp existed is valued
+ * exactly as it always was.
+ *
+ * Returns null when there is nothing to value: no sale comps and no usable
+ * sale of the building itself. A row with a $/SF band but no size is NOT
+ * null: it returns `sized: false` and no dollar figures (unless its own sale
+ * supplies them), because "we found the market but not your building's size"
  * is a different, fixable answer from "we found nothing", and collapsing the
  * two would send someone hunting for comps that are already there.
  */
@@ -426,15 +452,17 @@ function valueFromReport(report, opts) {
   const o = opts || {};
   const rep = report || {};
   const comps = Array.isArray(rep.comps) ? rep.comps : [];
+  const ownSale = rep.subject_last_sale && typeof rep.subject_last_sale === "object" ? rep.subject_last_sale : null;
 
   const typed = num(o.subjectSizeSqft);
   const found = num(rep.subject_size_sqft);
   const sizeSqft = typed > 0 ? typed : (found > 0 ? found : 0);
   const sizeSource = typed > 0 ? null : (sizeSqft > 0 ? (rep.subject_size_source || "estimate") : null);
+  const asOf = Number.isFinite(Number(o.asOf)) ? Number(o.asOf) : Date.now();
 
   const val = VALUATION.valueFromComps(comps, {
     subjectSF: sizeSqft,
-    asOf: Number.isFinite(Number(o.asOf)) ? Number(o.asOf) : Date.now(),
+    asOf,
     trendPct: rep.annual_price_trend_pct,
     subjectYear: VALUATION.yearOf(rep.subject_year_built),
     propertyType: o.propertyType,
@@ -442,33 +470,78 @@ function valueFromReport(report, opts) {
     subjectPsf: subjectPsfOf(rep, sizeSqft, o.askingPrice),
     subjectConstruction: rep.subject_construction || "",
   });
-  if (!val) return null;
+
+  // The comps' own answer in dollars, which they have only with a size.
+  const base = val && sizeSqft > 0 ? { low: val.low, mid: val.mid, high: val.high } : null;
+  // What the building's own sale is weighed against: that figure, but only
+  // when two or more priced sales stand behind it, which is the floor the
+  // page's hero keeps for a comps figure (one sale is not a range).
+  const compRange = base && val.n >= 2 ? base : null;
+  // The LISTING the search found, and never the row's own asking price
+  // (`o.askingPrice`, which still weights the comps above): a price the
+  // member typed is their question, and a question must not move the answer.
+  // The page's ownSaleBlend passes the same one figure, for the same reason.
+  // Read as money first, because a listing written "$1.05M" is 1.05 to a
+  // plain number parse.
+  const moneyOrNum = (v) => { const m = VALUATION.moneyOf(v); return m > 0 ? m : num(v); };
+  const leans = o.txFocus !== "leases" && !o.netLease;
+  const led = VALUATION.valueWithOwnSale(compRange, leans ? ownSale : null, {
+    asOf,
+    trendPct: rep.annual_price_trend_pct,
+    propertyType: o.propertyType,
+    currency: rep.currency,
+    yearBuilt: rep.subject_year_built,
+    asking: moneyOrNum(rep.subject_asking && rep.subject_asking.price),
+    subjectAddresses: [o.address, o.addressTyped, rep.subject_address_corrected],
+    subjectSize: sizeSqft,
+    // The comps' $/SF, from one priced sale up: the check on the sale when
+    // there is no comps' range in dollars (valuation.js, "unchecked").
+    compPsf: val && val.psfMid > 0 ? val.psfMid : 0,
+    off: o.ownSaleOff === true,
+  });
+  if (!val && !led.anchored) return null;
 
   const saleComps = comps.filter(
     (c) => c && !String(c.transaction || "").toLowerCase().startsWith("lease"));
+  const a = led.ownSale;
+  const perSf = (v, fallback) => (led.anchored && sizeSqft > 0 ? v / sizeSqft : fallback);
+  const dollars = (key) => (led.anchored ? led[key] : (base ? base[key] : null));
 
   return {
     sized: sizeSqft > 0,
     size_sqft: sizeSqft || null,
     size_source: sizeSource,
-    // Zeroes when unsized (valueFromComps multiplies by 0), and `sized`
-    // above is what the caller reads rather than inferring it from a 0.
-    value_low: sizeSqft > 0 ? val.low : null,
-    value_likely: sizeSqft > 0 ? val.mid : null,
-    value_high: sizeSqft > 0 ? val.high : null,
-    psf_low: val.psfLow,
-    psf_mid: val.psfMid,
-    psf_high: val.psfHigh,
+    // Null when the comps cannot say (no size) and no sale of the building
+    // itself does; `sized` above is what a caller reads for the first case.
+    value_low: dollars("low"),
+    value_likely: dollars("mid"),
+    value_high: dollars("high"),
+    psf_low: perSf(led.low, val ? val.psfLow : null),
+    psf_mid: perSf(led.mid, val ? val.psfMid : null),
+    psf_high: perSf(led.high, val ? val.psfHigh : null),
+    comps_low: base ? base.low : null,
+    comps_likely: base ? base.mid : null,
+    comps_high: base ? base.high : null,
+    own_sale: a ? {
+      anchored: led.anchored,
+      weight: led.anchored ? led.weight : 0,
+      half: a.half || null,
+      price: a.price || null,
+      date: ownSale && ownSale.date ? String(ownSale.date) : "",
+      indexed: a.ok ? VALUATION.heroRound(a.value) : null,
+      refused: led.refused,
+      why: a.why || null,
+    } : null,
     // The count the band was actually computed from, not the comp count: a
     // 10-comp lease-heavy report can carry two sale comps, and the row has to
     // be able to say so rather than implying ten deals stand behind it.
-    sale_comps: val.n,
+    sale_comps: val ? val.n : 0,
     comp_count: comps.length,
     lease_comps: comps.length - saleComps.length,
     // Below four sale comps the band is the full observed spread rather than
     // the trimmed middle 70% (see robustPpsfRange). That is a materially
     // weaker number and the page says so, so it has to ride out of here.
-    trimmed: val.trimmed === true,
+    trimmed: Boolean(val && val.trimmed === true),
   };
 }
 

@@ -13,6 +13,9 @@ paths:
   - "test/archive-first.test.js"
   - "scripts/accuracy-lab.js"
   - "test/accuracy-lab.test.js"
+  - "scripts/truth-test.js"
+  - "scripts/truth-set.json"
+  - "test/truth-test.test.js"
 ---
 # The comp corpus and retrieval
 
@@ -69,7 +72,19 @@ paths:
   houses at $300-$600. The live search never mixed the two in any harvested
   report; the mile circle was where they met, and the price-tier test above
   needs an ask an owner's valuation rarely has. Lab figures are under "The
-  accuracy lab". Commercial blends never read the kind. They join
+  accuracy lab". Commercial blends never read the kind.
+  **A saved sale of the subject's own building is never blended in as one
+  of its comps (2026-11-27).** `blendNearbyComps` skips a non-lease row whose
+  address is the subject's (`VALUATION.sameBuilding`, against the typed
+  address and `subject_address_corrected`). The search's own copy of that
+  sale is taken out of the comps by the server (search-pipeline.md, "The
+  building's own sale"), and without this the radius blend laid the saved
+  copy straight back in: a building valued against itself, and then again
+  through its own sale. A LEASE at the subject's address still blends (a
+  suite lease in the building is a real lease comp), and so does the
+  neighbour one street number over. The row is not hidden from anything
+  else: it is still harvested, still in the corpus and still the next
+  building's comp. Blended extras join
   the table and the Low / Likely / High math; a free report turns extras
   into `locked_basis` so the dollar range still matches Pro.
   Harvest Census-geocodes new rows before the insert (fire-and-forget with
@@ -329,3 +344,56 @@ paths:
     the noise, the backtest itself (and so `/admin`'s figure) should pool that
     way too, the same argument as feeding it year built on 2026-11-15; the
     `/api/accuracy` read would then have to select lat/lng as well.
+- **The truth test** (`scripts/truth-test.js`, not a route; 2026-11-17, two
+  scores since 2026-11-27) is the one instrument that measures the WHOLE
+  product: a real search on a building that has already sold, valued the way
+  a member's report is, against the price it sold for. The backtest and the
+  lab above score the math over comps already saved. Its header is the
+  manual. What to know before quoting a line of its output:
+  - **It prints two scores and they are never one figure.** COMPS ONLY
+    hides the building's own sale (every row at its address out of the comps,
+    `subject_last_sale` deleted): that is the accuracy figure, and the only
+    one. AS SHOWN applies the rule a member's page applies, the own sale used
+    where the server found and vetted one (report-and-valuation.md, "The
+    building's own sale leads its value"), split into the buildings that
+    leaned on their sale and those that did not. Every building in the set
+    has sold and the answer key IS that sale, so the "leaned" half lands near
+    the answer because it starts from the answer. Read it for how often a
+    sale is found and for anything far from zero (a wrong sale leaned on).
+    **It is an echo. Never quote it as accuracy, in a report, a page, an
+    email or a pitch.**
+  - **What it has measured.** On the 45 real sales in the set, COMPS ONLY:
+    median miss 33.0%, 16% within 10%, the sold price inside Low to High 49%
+    of the time; on the 30 confirmed sales, 28.0%. That is one draw of each
+    building (the same address landed +48%, -12% and +29% in one afternoon),
+    so compare two settings only on the same buildings run at least twice.
+    More comps did not help (two lanes, or two whole searches averaged), and
+    neither did dropping unsold listings or duplicate rows.
+  - **The answer key carries its own audit** (`scripts/truth-set.json`,
+    `check` on every row; all 47 were checked against the web on
+    2026-11-27): 30 `confirmed`, 15 `unverified` (the price is only what our
+    own corpus row says) and 2 `asking` (an asking price dated as a sale:
+    kept in the file so older runs line up, never scored, not run unless
+    `--all`). Every summary prints the confirmed rows beside all of them.
+    `caveat`, `web_price`, `web_size` and `sale_type` say what a row is when
+    it is not a plain sale of that one building. `sold` is never edited: add
+    rows, do not change them.
+  - **The set came from the corpus, and that flatters the search.** 41 of
+    the 47 buildings are in `comp_corpus`. Until 2026-11-27 the prompt handed
+    the model the target's own saved row, and 21 reports gave it straight
+    back as the building's "last sale". The prompt no longer offers a target
+    its own rows (search-pipeline.md), but a hit rate measured on this set is
+    still not the hit rate on a stranger's building. Measure that on
+    addresses the corpus has never held.
+  - **`--replay <dir>` re-scores saved reports with no request** (`--raw
+    <dir>` on a live run writes them). A change to the MATH needs nothing
+    else. A report saved before the server stamped its sale leans on nothing,
+    so on those the two scores are the same number: replaying old reports
+    cannot measure the own-sale rule, only a fresh run can.
+  - **It spends real money on the account every member's search runs on.**
+    Two at a time by default, it stops after three refusals in a row, and it
+    skips nothing silently. On 2026-11-27 four passes in ninety minutes
+    tripped the provider's spend-rate limit and every search on the site
+    failed for three minutes (search-pipeline.md, `PARALLEL_SEARCH`).
+  - Tests: `test/truth-test.test.js` (the pure half; requiring the script
+    runs nothing).

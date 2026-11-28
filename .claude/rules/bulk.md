@@ -46,6 +46,42 @@ paths:
 
 ## Architecture
 
+- **A row leans on the building's own sale exactly as its report does
+  (2026-11-27; report-and-valuation.md, "The building's own sale leads its
+  value", has the rule).** "One number, one place" below now covers the
+  blend too: `BULK.valueFromReport` values the comps as before and then
+  calls `VALUATION.valueWithOwnSale`, the function the report page's hero
+  calls, with the same inputs. Read this before changing that function or
+  any of its callers:
+  - **Four more inputs, and a caller that leaves one out gets a different
+    number from the report.** `address` (the sale has to be recorded for the
+    subject: without it the row never leans, refused `no_address`),
+    `txFocus` (a leases-only search leans on nothing), `netLease` (net lease
+    mode does not lean; `VALUATION.isNetLease(type, details)`) and
+    `ownSaleOff` (the member's switch on a saved report,
+    `meta.curation.ownSaleOff`). All three callers in server.js pass them:
+    the worker (`runBulkItem`), the re-value route
+    (`POST /api/bulk/item/size`, which also reads the switch off the saved
+    report) and `valueShelfReports` (a firm's building sheet).
+  - **The asking price that can touch the sale is the listing the SEARCH
+    found** (`report.subject_asking`), never the row's own Asking column. The
+    row's own still weights the comps (`subjectPsfOf`), as it has since
+    2026-11-10.
+  - **What comes back.** `value_low/likely/high` are the blend when the sale
+    is weighed and the comps' own otherwise; `psf_*` are those dollars over
+    the size, so a row still multiplies out; `comps_low/likely/high` are
+    what the comps alone say; `own_sale` says what happened (`anchored`,
+    `weight`, `half`, `price`, `date`, `indexed`, `refused`, `why`). A row
+    with no size can now have a dollar value (a clean first-year sale stands
+    alone), so the worker writes no "No building size found" note on it.
+  - **Nothing is stored about the sale.** `bulk_job_items` has no column
+    for it and none was added (no migration): the row keeps its three
+    figures, and the report it links to explains them. The CSV is unchanged.
+  - **A row valued before this date does not move**, and neither does its
+    report: that report's sale carries no stamp, so nothing leans on it. The
+    two still agree. Re-running the address is what brings the new rule.
+  - Tests: `test/bulk-own-sale.test.js`.
+
 - **The example addresses are unsearched buildings near the member
   (2026-11-18, the owner: "the more searches that aren't in our cache the
   more data we have. So make the sample addresses random addresses in their

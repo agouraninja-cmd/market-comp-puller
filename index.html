@@ -4824,17 +4824,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                English. Built by renderOwnerHero; margins only, no flex gap
                (this block IS captured in the PNG export). -->
           <div id="ownerApproaches" class="hidden mt-4 pt-4 border-t border-hair"></div>
-          <!-- The subject's OWN last sale, when the model found one. Sits with
-               the approaches rather than in the ledger on purpose: it is
-               evidence about this property, not a fourth estimate of it, and a
-               years-old price shown as a headline figure would be read as a
-               current value. Prints and captures for the same reason the
-               scatter does. Built by renderSubjectLastSale; margins only, no
-               flex gap (the PNG exporter can't render it). -->
+          <!-- The subject's OWN last sale, when the model found one, as a line
+               of history: a sale too old or too uncertain to count, or one on
+               a report the own-sale rule does not cover. Since 2026-11-27 a
+               sale that passes that rule's checks LEADS the estimate above
+               (valuation.js, "The building's own sale"), and is then the
+               first row of the approaches and the first sentence of the trust
+               line, so this line stands down rather than say it a third time.
+               Prints and captures for the same reason the scatter does. Built
+               by renderSubjectLastSale; margins only, no flex gap (the PNG
+               exporter can't render it). -->
           <p id="ownerLastSale" class="hidden text-xs text-ink-mute mt-4"></p>
           <!-- Current asking / list price, when the model found one on the
                same listing page it used for the subject's size. Evidence,
-               not a fourth figure in the ledger — same rule as last sale.
+               not a fourth figure in the ledger.
                The 2026-08-13 Austin Rosedale report looked up 2,752 SF from
                the listing and never mentioned the $1,250,000 ask sitting
                next to it, so a $1.65M estimate had nothing to be checked
@@ -4854,6 +4857,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <!-- Trust line: plain paragraph, margins only — the PNG exporter can't
                render flex gap, and #ownerHero IS captured in the image export. -->
           <p id="ownerTrust" class="hidden text-xs text-ink-mute mt-4"></p>
+          <!-- The member's switch for the building's own sale: "Value it on
+               comps alone" while the estimate leans on that sale, "Use its own
+               sale again" once it is off. The one guard for what no record
+               shows (a renovation, a lease signed or lost, a fire, a price
+               that included equipment). Screen only: it is a control, and the
+               trust line above carries what it did. Built by renderOwnerHero. -->
+          <p id="ownerSaleSwitch" class="hidden no-print no-capture text-xs text-ink-mute mt-2"></p>
           <!-- The MECHANICS half of the trust line: how the weighting works,
                and the MLS caveat that is identical on every house report.
                Collapsed on screen so the warnings above stay readable (the
@@ -6080,6 +6090,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // screen-only outlier chips. One computation feeds both surfaces, so the
   // hero and the chips can never disagree. Null when no estimate rendered.
   let currentPsfBand = null;
+  // What the building's OWN sale did to the last hero's estimate
+  // (VALUATION.valueWithOwnSale's answer: anchored, weight, ownSale, comp,
+  // refused), or null when the hero weighed none. Stashed the way the band
+  // above is, and for its reason: the exports and the cards under the hero
+  // describe the estimate in words, and they must describe the one the hero
+  // computed. currentPsfBand stays the COMPS' own $/SF band whatever this
+  // says: the scatter and the outlier chips are statements about the comps.
+  let currentOwnSale = null;
   let pendingPortfolioRefresh = null; // {id, address, type} of a portfolio item awaiting a fresh billed report
   let currentMeta = null;
   let currentParsed = null;   // last rendered report, for client-side recomputes
@@ -7042,7 +7060,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ["ownerLow", "ownerMid", "ownerHigh"].forEach((id) => { document.getElementById(id).textContent = "-"; });
     ["ownerLowPpsf", "ownerMidPpsf", "ownerHighPpsf"].forEach((id) => { document.getElementById(id).textContent = ""; });
     document.getElementById("ownerBasis").textContent = "Valuation computes when all comps are in";
-    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerYearBuilt", "ownerImproved", "ownerTrust", "ownerTrustHowWrap", "collDoor", "bovCtaWrap"].forEach((id) =>
+    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerYearBuilt", "ownerImproved", "ownerTrust", "ownerTrustHowWrap", "collDoor", "bovCtaWrap", "ownerSaleSwitch"].forEach((id) =>
       document.getElementById(id).classList.add("asm-hidden"));
     document.getElementById("ownerHero").classList.remove("hidden");
     // A repeat search must not show the previous report's prose or rows.
@@ -7751,6 +7769,179 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     };
   }
 
+  // The building's own sale, weighed against what the comps say IN DOLLARS
+  // (valuation.js, "The building's own sale": the rule, its refusals and why).
+  // ONE wrapper with two callers, the hero and sellTodayEstimate, so both hand
+  // the rule the same inputs (the report's date, trend, type and currency,
+  // the listing the search found, every name the report has for the subject,
+  // the size being valued and the member's own switch) and the Analysis cards
+  // cannot quote a different value from the ledger above them.
+  // `compRange` is { low, mid, high } in dollars, or null when the comps
+  // cannot say (no size, fewer than two priced sales). Never on a leases-only
+  // search (its answer is a rent) and never in net lease mode (its answer is a
+  // cap rate, and that ledger says so): null there, which every reader treats
+  // as "no sale was weighed".
+  function ownSaleBlend(compRange, parsed, meta) {
+    if (!meta || meta.txFocus === "leases" || netLeaseOn(meta)) return null;
+    // The server's rollback (OWN_SALE=off), read off the boot object this page
+    // was served with. Null, the answer every reader takes as "no sale was
+    // weighed": no blend, no refusal sentence and no switch, on a fresh
+    // report and on one rendered from a saved payload alike. Read straight
+    // off `window`, not the AUTH_BOOT constant declared far below (a report
+    // restored at boot renders before that line has run).
+    if (typeof window !== "undefined" && window.CN_AUTH_BOOT && window.CN_AUTH_BOOT.ownSale === false) return null;
+    // The LISTING the search found, never the price typed into the form: a
+    // typed price is the member's question, and a question must not move the
+    // answer (valuation.js has the whole of it).
+    const listed = parsed && parsed.subject_asking ? parsed.subject_asking.price : "";
+    const listedAsk = VALUATION.moneyOf(listed) || numericValue(listed) || 0;
+    return VALUATION.valueWithOwnSale(compRange, parsed && parsed.subject_last_sale, {
+      asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
+      propertyType: meta.type,
+      currency: parsed && parsed.currency,
+      yearBuilt: parsed && parsed.subject_year_built,
+      asking: listedAsk,
+      subjectAddresses: [meta.address, meta.addressTyped, parsed && parsed.subject_address_corrected],
+      subjectSize: subjectSizeForMatch(parsed),
+      compPsf: ownSaleCompPsf(parsed, meta),
+      off: ownSaleOff(meta),
+    });
+  }
+  // The comps' $/SF from one priced sale up, weighed as the hero weighs them
+  // and with no size: what checks the sale when the comps have no figure in
+  // dollars (one sale, or no size). bulk.js passes its own val.psfMid.
+  function ownSaleCompPsf(parsed, meta) {
+    try {
+      const v = valueFromComps(valuationComps(), {
+        subjectSF: subjectSizeForMatch(parsed) || 0, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
+        subjectYear: subjectYearForMatch(parsed),
+        ...weightOpts(meta, parsed),
+      });
+      return v && v.psfMid > 0 ? v.psfMid : 0;
+    } catch (e) { return 0; }
+  }
+  // The member's own switch, kept with the report like an excluded comp
+  // (meta.curation, so it rides a saved report and a share). The one guard
+  // that covers what no public record shows: a renovation, a lease signed or
+  // lost, a fire.
+  function ownSaleOff(meta) {
+    return !!(meta && meta.curation && meta.curation.ownSaleOff);
+  }
+  // The share of the estimate the sale carries, as a whole percent.
+  function ownSaleShare(own) { return Math.round(own.weight * 100); }
+  function ownSaleLeads(own) { return !!own && own.anchored && own.weight >= VALUATION.OWN_SALE_LEADS_AT; }
+  // Why a sale counts for half as much, as a clause that follows "because".
+  function ownSaleHalfWhy(own) {
+    switch (own && own.ownSale && own.ownSale.half) {
+      case "sale_leaseback": return "the seller stayed on as its tenant, so the price was set together with a lease";
+      case "allocated": return "the price is this property's share of a larger deal";
+      case "listing_page": return "the price comes from a listing page, which may show the last asking price and not the closing price";
+      case "unclassified": return "the search did not say what kind of page that price comes from";
+      case "from_comp": return "the search listed that sale among the comps, where it is not asked what kind of sale it was";
+      case "non_disclosure": return "sale prices are not public record in this state, and no news report of the price was found";
+      case "ask_far": {
+        const pct = own.ownSale.askPct;
+        return `it is listed today ${Math.abs(pct)}% ${pct > 0 ? "above" : "below"} what that sale comes to at today's prices, `
+          + "which often means the property was improved or its income changed since";
+      }
+      default: return "";
+    }
+  }
+  // Why a sale of the building was NOT weighed, as the end of the sentence
+  // "... is not part of this estimate: ___". "" for the refusals that need no
+  // sentence: nothing to speak of (no price, no date, a date after the
+  // report), a sale too old to
+  // count (the last-sale line already shows it as history), a report this
+  // rule does not cover (another type or currency, or one written before the
+  // sale was vetted). A caveat is attributed to the search, never stated as
+  // our own finding about a named building.
+  function ownSaleRefusal(own, shared, noun) {
+    const n = noun || "property";
+    const a = own && own.ownSale;
+    if (!own || own.anchored || !own.refused || !a) return "";
+    const why = String(a.why || "");
+    const sf = (v) => Math.round(v).toLocaleString() + " SF";
+    switch (own.refused) {
+      case "off": return shared ? "the report's owner turned it off" : "you turned it off";
+      case "basis":
+        return why === "portfolio" ? "the search found its price covered more than this one property"
+          : why === "leasehold" ? "the search found it was a sale of a leasehold interest, not of the property outright"
+          : why === "redevelopment" ? "the search found it was bought to be redeveloped or converted"
+          : why === "partial_interest" ? "the search found it was a sale of part of the ownership, not of the whole property"
+          : why === "related_party" ? "the search found it was between related parties, not on the open market"
+          : why === "distressed" ? "the search found it was a distressed sale, such as a foreclosure or an auction"
+          : why === "land" ? "the search found it sold as land, or before the present building stood"
+          : why === "not_closed" ? "the search found an asking or pending price, not a closed sale"
+          : "the search did not confirm it was an ordinary sale of this whole property";
+      case "unusable":
+        return why === "price_undisclosed" ? "the page it was cited to says the price was not disclosed"
+          : "the page it was cited to no longer loads";
+      case "no_source":
+        return why === "estimate_source" ? "the search called its own source for that price an estimate"
+          : "the search could not link it to a page that states it";
+      case "no_address": return "the search did not say which address that sale was for";
+      case "other_address": return `the search reported it for ${a.saleAddress}, not for this address`;
+      case "unit":
+        return a.unitSide === "subject" ? `the search reported it as a sale of the whole ${n}, and this report values one unit of it`
+          : a.unitSide === "both" ? "the search reported it for a different unit from the one this report values"
+          : `the search reported it as a sale of one unit, not of the whole ${n} this report values`;
+      case "scope":
+        return `it covered about ${sf(a.saleSize)} and this report values ${sf(a.subjectSize)}. If ${sf(a.saleSize)} is the right size, change the size above`;
+      case "implausible": return `that price over this size is outside what a ${n} like this sells for, so one of the two is misread`;
+      case "predates_building": return `the search reported it closing before this ${n} was built`;
+      case "matches_asking": return "it matches the current listing's asking price, so it may be the listing and not a closing";
+      case "disagree":
+        return `it is more than ${VALUATION.OWN_SALE_DISAGREE} times, or less than 1/${VALUATION.OWN_SALE_DISAGREE} of, what the comps say, so one of the two is describing `
+          + `a different property. Check the size above first, then whether that sale covered this ${n} alone`;
+      case "unchecked":
+        return `the comps came back as a price per square foot, and with no size for this ${n} or for that sale the two cannot be checked against each other`;
+      case "alone_weak": return "no priced sale comps came back to check it against, and it is not strong enough to stand alone";
+      default: return "";
+    }
+  }
+
+  // The member's switch for the building's own sale (#ownerSaleSwitch):
+  // offered while the estimate leans on a sale, and to turn one back on.
+  // Never on a shared report, whose curation is its owner's. It writes
+  // meta.curation.ownSaleOff and goes through applyCuration, the door every
+  // other curation edit uses, so the hero, the Analysis cards, the share memo
+  // and the saved report all follow.
+  function renderOwnSaleSwitch(own, meta) {
+    const el = document.getElementById("ownerSaleSwitch");
+    if (!el) return;
+    // A press redraws this switch (applyCuration renders the hero again), and
+    // the button that had the keyboard's focus is thrown away with it: hand
+    // the focus to the new one.
+    const hadFocus = !!(document.activeElement && el.contains(document.activeElement));
+    el.textContent = "";
+    el.classList.add("hidden");
+    const off = !!(own && own.refused === "off");
+    if (!own || !(own.anchored || off) || (meta && meta.shared)) return;
+    // With no comps' figure beside it (`own.comp` is null: no priced sales
+    // came back, or no size), turning the sale off leaves no estimate at all,
+    // so the words do not promise "comps alone".
+    const noComps = !own.comp;
+    el.appendChild(document.createTextNode(off
+      ? (noComps
+        ? "This property's own sale is switched off, and the comps alone give no estimate here. "
+        : "This property's own sale is switched off, so the estimate uses the comps alone. ")
+      : "Has it changed since that sale (renovated, expanded, re-leased, damaged)? "));
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "underline decoration-edge hover:text-ink";
+    btn.textContent = off ? "Use its own sale again" : (noComps ? "Leave that sale out" : "Value it on comps alone");
+    // Assignment, not addEventListener: rebuilt on every render.
+    btn.onclick = () => {
+      const cur = ensureCuration(currentMeta);
+      if (!cur) return;
+      if (off) delete cur.ownSaleOff; else cur.ownSaleOff = true;
+      applyCuration();
+    };
+    el.appendChild(btn);
+    el.classList.remove("hidden");
+    if (hadFocus) btn.focus({ preventScroll: true });
+  }
+
   function matchQuality(comp, meta, parsed) {
     const opts = weightOpts(meta, parsed);
     const w = compWeight(comp, asOfOf(meta), subjectSizeForMatch(parsed), subjectYearForMatch(parsed), opts);
@@ -8013,7 +8204,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // would hang the word off the card. No transform: html2canvas (PNG export)
     // captures this card and its transform support is partial.
     const lab = add("rd-scat-midlab", { left: midPct + "%" });
-    lab.textContent = "Likely";
+    // `opts.compsOnly`: the ledger above leans on the building's own sale, so
+    // this line is no longer the estimate's range. It is still the comps'
+    // own, which is what it has always drawn, and it says whose.
+    lab.textContent = o.compsOnly ? "Comps" : "Likely";
     if (midPct < 12) Object.assign(lab.style, { marginLeft: "0", textAlign: "left" });
     else if (midPct > 88) Object.assign(lab.style, { marginLeft: "-60px", textAlign: "right" });
 
@@ -8022,13 +8216,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("ownerScatterNote").textContent =
       `Each gray tick is one of the ${vals.length} ${o.compNoun || "sale comps"} at `
       + (o.counted ? `the ${o.unitPhrase} it counts as at your building's size (adj in the table). ` : `its own ${o.unitPhrase}. `)
-      + "The shaded span is the range above and the red mark is Likely, so the tighter the ticks cluster, "
-      + "the firmer this estimate.";
+      + (o.compsOnly
+        ? "The shaded span is the comps' own range and the red mark their middle. The estimate above "
+          + (o.ownLeads ? "leans on" : "also weighs") + " what this property itself sold for, so it can sit to one side of them."
+        : "The shaded span is the range above and the red mark is Likely, so the tighter the ticks cluster, "
+          + "the firmer this estimate.");
     // The meaning lives entirely in mark positions, so the accessible name has
     // to state the same thing in words.
     wrap.setAttribute("aria-label",
       `${vals.length} sale comps ranging from ${fmt(lo)} to ${fmt(hi)}. `
-      + `The estimate's range is ${fmt(band.low)} to ${fmt(band.high)}, likely ${fmt(band.mid)}.`);
+      + (o.compsOnly
+        ? `The comps' own range is ${fmt(band.low)} to ${fmt(band.high)}, middle ${fmt(band.mid)}.`
+        : `The estimate's range is ${fmt(band.low)} to ${fmt(band.high)}, likely ${fmt(band.mid)}.`));
     wrap.classList.remove("hidden");
   }
 
@@ -8036,9 +8235,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // single strongest piece of evidence about what a property is worth and the
   // report used to be silent about it even when it was public knowledge (owner
   // feedback 2026-08-10: a Bensalem property that had sold a year earlier for
-  // $12.45M). Rendered as one plain sentence of PROVENANCE, never as a figure
-  // in the ledger — an old price shown big reads as a current valuation, which
-  // is the one thing it is not.
+  // $12.45M). THIS LINE is one plain sentence of provenance: it puts no
+  // figure in the ledger, because an old price shown big reads as a current
+  // valuation. Since 2026-11-27 a recent, vetted sale does more than sit here:
+  // it is weighed into Low / Likely / High (valuation.js, "The building's own
+  // sale"; ownSaleBlend below), and while it LEADS the estimate the hero says
+  // so in its trust line and approaches and hides this line. This line still
+  // shows every sale that is not leading: an old one, a refused one, one on a
+  // report the rule does not cover.
   //
   // Built with DOM calls rather than innerHTML because two of the three values
   // are model-written free text and one of them is a URL. The server's
@@ -8063,11 +8267,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // so compute it whenever both halves are known — but only from the SAME
     // size the hero itself used, never a second guess at the size.
     const sizeR = subjectRangeFromMeta("size");
-    const sf = sizeR ? (sizeR.min + sizeR.max) / 2
+    const subjectSf = sizeR ? (sizeR.min + sizeR.max) / 2
       : (parsed ? numericValue(parsed.subject_size_sqft) : 0);
-    const paid = numericValue(price);
+    // When the search says what area that price covered, the $/SF is over
+    // THAT area and says so: a two-building price over one building's size
+    // is a figure nobody paid.
+    const saleSf = numericValue(ls.size_sqft);
+    const sf = saleSf > 0 ? saleSf : subjectSf;
+    // Read as money first: a price written "$9.75M" is 9.75 to a plain number
+    // parse, and the rule that weighs this sale reads it as money too.
+    const paid = VALUATION.moneyOf(price) || numericValue(price);
     if (paid > 0 && sf > 0) {
-      sentence += ` That is ${formatUsd(paid / sf, { maximumFractionDigits: 0 })}/SF.`;
+      sentence += ` That is ${formatUsd(paid / sf, { maximumFractionDigits: 0 })}/SF`
+        + (saleSf > 0 && subjectSf > 0 && Math.abs(saleSf / subjectSf - 1) > 0.02
+          ? ` over the ${Math.round(saleSf).toLocaleString()} SF it covered.` : ".");
     }
     el.appendChild(document.createTextNode(sentence + " "));
 
@@ -8202,6 +8415,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function renderOwnerHero(parsed, meta) {
     lastValuation = null;
     currentPsfBand = null;
+    currentOwnSale = null;
     const card = document.getElementById("ownerHero");
     if (!meta) { card.classList.add("hidden"); return; }
     const noun = assetNoun(meta.type);
@@ -8625,7 +8839,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // drift. Disagreement uses VALUATION.outlierOf (the same 25% nearest-edge
     // rule as the table chips and the vault gut check). Spec:
     // docs/superpowers/specs/2026-08-14-tax-assessed-approach-design.md
-    const assessedApproachEntry = (parsed, salesLo, salesHi) => {
+    // `ownLed`: the range above leans on the building's own sale, so a gap to
+    // the county's figure is not the size box's or the comps' to answer for.
+    const assessedApproachEntry = (parsed, salesLo, salesHi, ownLed) => {
       const ass = parsed && parsed.subject_assessed;
       if (!ass || !ass.value) return null;
       const assessedNum = numericValue(ass.value);
@@ -8636,7 +8852,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (Number.isFinite(salesLo) && Number.isFinite(salesHi) && salesLo > 0 && salesHi >= salesLo) {
         const gap = outlierOf(assessedNum, { low: salesLo, high: salesHi });
         if (gap) {
-          text += ` ${gap.pct}% ${gap.dir} the range above — the size box or the comps deserve a second look.`;
+          text += ownLed
+            ? ` ${gap.pct}% ${gap.dir} the range above, which rests mostly on what this property itself sold for.`
+            : ` ${gap.pct}% ${gap.dir} the range above — the size box or the comps deserve a second look.`;
         }
       }
       const row = {
@@ -8647,8 +8865,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (/^https?:\/\//i.test(String(ass.source_url || ""))) row.href = ass.source_url;
       return row;
     };
-    const withAssessed = (entries, salesLo, salesHi) => {
-      const row = assessedApproachEntry(parsed, salesLo, salesHi);
+    const withAssessed = (entries, salesLo, salesHi, ownLed) => {
+      const row = assessedApproachEntry(parsed, salesLo, salesHi, ownLed);
       if (row) {
         const i = entries.findIndex((e) => e.label === "Cost approach");
         if (i >= 0) entries.splice(i, 0, row);
@@ -8710,6 +8928,108 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       : "");
     const leaseDrivesNote = " A net-leased property is priced on its lease, so building size is not part of this estimate; "
       + "the tenant's credit and the years left on the lease decide where in the range it belongs.";
+
+    // THE BUILDING'S OWN SALE (2026-11-27; valuation.js has the rule). The
+    // comps' answer in dollars, for whichever sales basis is about to lead, is
+    // weighed against what the building itself recently sold for. `own` is
+    // null when nothing was weighed (no sale reported, a leases-only search,
+    // net lease mode), and then every line below reads exactly as it did
+    // before this existed. Three states otherwise:
+    //   own.anchored            the ledger is the blend, and says so
+    //   own.refused + a reason  the ledger is the comps', and the trust line
+    //                           says why the sale was left out
+    //   own.refused, no words   an old sale, an unreadable one, a type the
+    //                           rule does not cover, a report from before the
+    //                           sale was vetted: the page as it was
+    // currentPsfBand is NOT touched: the scatter, the outlier chips and the
+    // condition sentence describe the comps, and stay about the comps.
+    const compDollars = (sfUsable && !leadWithAlt)
+      ? { low: val.low, mid: val.mid, high: val.high }
+      : altRange
+        ? { low: heroRound(altRange.rr.low * altRange.qty), mid: heroRound(altRange.rr.mid * altRange.qty),
+            high: heroRound(altRange.rr.high * altRange.qty) }
+        : null;
+    const own = ownSaleBlend(compDollars, parsed, meta);
+    currentOwnSale = own;
+    const led = !!(own && own.anchored);
+    const ownLs = (parsed && parsed.subject_last_sale) || {};
+    const ownMoved = () => !!(own && own.ownSale && own.ownSale.ok && Math.abs(own.ownSale.trend - 1) >= 0.005);
+    // "was reported sold for $14,700,000 in Jul 2026 (about $14,550,000 at
+    // today's prices)". "Reported", because the price is what a page says,
+    // and the second half only when the index moved it, so a report with no
+    // trend never claims an adjustment it did not make.
+    const ownSoldPhrase = () => `was reported sold for ${displayMoney(String(ownLs.price))} in ${ownLs.date}`
+      + (ownMoved() ? ` (about ${fmtTotal(own.ownSale.value)} at today's prices)` : "");
+    // The sentence the trust line opens with when a sale was weighed. Keyed
+    // on the weight: "leans on" is said only while the sale carries half or
+    // more. Then what the comps alone say, measured from the sale's side, in
+    // three sizes of gap, because a gap over a quarter is the usual case
+    // (two reports in three in the test) and must not read as an alarm,
+    // while one past double or half must not read as routine.
+    const ownTrustLead = () => {
+      if (!led) return "";
+      const share = ownSaleShare(own);
+      const c = own.comp;
+      if (!c) {
+        // Two ways to have no comps' figure: none came back, or they came back
+        // and there is no size to turn their $/SF into dollars (the basis
+        // line above says so). Only the first is "none came back".
+        return psfBand
+          ? `This ${noun} ${ownSoldPhrase()}. The comps came back as a price per square foot, and without this ${noun}'s size `
+            + "they cannot be turned into dollars to check that against, so this estimate rests on that sale alone."
+          : `This ${noun} ${ownSoldPhrase()}. No priced sale comps came back to check that against, `
+            + "so this estimate rests on that sale alone.";
+      }
+      const halfWhy = ownSaleHalfWhy(own);
+      const head = ownSaleLeads(own)
+        ? `This ${noun} ${ownSoldPhrase()}. A ${noun}'s own sale usually says more about it than other ${assetNounPlural(meta.type)}' prices do, `
+          + `so it carries ${share}% of this estimate and the comps carry the rest.`
+        : `This ${noun} ${ownSoldPhrase()}. This estimate leans on the comps: that sale carries ${share}% of it`
+          + (halfWhy ? `, because ${halfWhy}.` : ", and less each month, because an older price says less about today.");
+      const gap = c.mid / own.ownSale.value - 1;
+      const pct = Math.round(Math.abs(gap) * 100);
+      const dir = gap > 0 ? "higher" : "lower";
+      const alone = `On their own the comps say ${fmtTotal(c.mid)}`;
+      const tail = Math.abs(gap) <= 0.10
+        ? ` ${alone}${pct ? `, ${pct}% ${dir}` : ""}, so the two agree.`
+        : Math.abs(gap) <= 0.25
+        ? ` ${alone}, ${pct}% ${dir}, which is a normal gap between one ${noun} and its comps.`
+        : (c.mid / own.ownSale.value > 2 || c.mid / own.ownSale.value < 0.5)
+          ? ` ${alone}, ${pct}% ${dir}. A gap that wide usually means the two are not describing the same thing: `
+            + `check the size above and whether that sale covered this ${noun} alone.`
+          : ` ${alone}, ${pct}% ${dir}. A gap like that is common, because the comps are other ${assetNounPlural(meta.type)}; `
+            + `if it looks wrong, check the size above and whether that sale covered this ${noun} alone.`;
+      // The comps' figure in the blend is not the one quoted above when it
+      // was held toward the sale (valuation.js: within 1.5 times of it while
+      // the sale leads, less as it fades), so the reader is told why the
+      // shares do not multiply out from the figure printed.
+      const heldNote = own.held
+        ? " The comps' figure is so far from the sale that it is pulled part of the way toward it before the two are blended."
+        : "";
+      return head + tail + heldNote;
+    };
+    const ownTrustRefused = () => {
+      const why = ownSaleRefusal(own, !!meta.shared, noun);
+      return why
+        ? ` This ${noun}'s own sale (reported at ${displayMoney(String(ownLs.price))} in ${ownLs.date}) is not part of this estimate: ${why}.`
+        : "";
+    };
+    // The first row of the approaches table when a sale was weighed.
+    const ownApproachEntry = () => {
+      const a = own.ownSale;
+      const row = {
+        label: `This ${noun}'s own sale`,
+        value: fmtTotal(a.value),
+        text: `reported at ${displayMoney(String(ownLs.price))} in ${ownLs.date}`
+          + (ownMoved() ? `, moved to the report date by this market's ${a.trend > 1 ? "rise" : "fall"} since` : "")
+          + `. It carries ${ownSaleShare(own)}% of the headline range above.`,
+      };
+      if (/^https?:\/\//i.test(String(ownLs.source_url || ""))) row.href = ownLs.source_url;
+      return row;
+    };
+    // What the estimate note says once the sale is part of the estimate.
+    const ownEstimateNote = "Automated estimate from this " + noun + "'s own reported sale and recent comparable sales. "
+      + "Not an appraisal and not a broker opinion of value.";
 
     if (nl && nl.values) {
       netLeaseHero = true;
@@ -8823,18 +9143,30 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const sizeLabel = sizeR.min === sizeR.max
         ? `${sizeR.min.toLocaleString()} SF`
         : `${sizeR.min.toLocaleString()}–${sizeR.max.toLocaleString()} SF`;
-      animateValue(lowEl, rr.low * sizeR.min, fmtTotal);
-      animateValue(midEl, rr.mid * midSize, fmtTotal);
-      animateValue(highEl, rr.high * sizeR.max, fmtTotal);
+      // The comps' three figures, or the blend of them with the building's
+      // own sale when one was weighed (`led`).
+      animateValue(lowEl, led ? own.low : rr.low * sizeR.min, fmtTotal);
+      animateValue(midEl, led ? own.mid : rr.mid * midSize, fmtTotal);
+      animateValue(highEl, led ? own.high : rr.high * sizeR.max, fmtTotal);
       // val already rounded these against the same sizeR, so this can just
-      // read the totals off it instead of re-applying heroRound.
+      // read the totals off it instead of re-applying heroRound. median_psf
+      // stays the COMPS' median either way: it is what the table's footer and
+      // the workbook call it.
       lastValuation = {
-        low: val.low,
-        likely: val.mid,
-        high: val.high,
+        low: led ? own.low : val.low,
+        likely: led ? own.mid : val.mid,
+        high: led ? own.high : val.high,
         median_psf: Math.round(rr.mid * 100) / 100,
       };
       const ppsf0 = (v) => formatUsd(v, { maximumFractionDigits: 0 });   // $/SF reads as whole dollars
+      if (led) {
+        // The same dollars over the same size, so the sub-labels still
+        // multiply out to the figures above them.
+        setPpsf("ownerLowPpsf", "at " + ppsf0(own.low / sizeR.min) + "/SF");
+        setPpsf("ownerMidPpsf", "at " + ppsf0(own.mid / midSize) + "/SF · "
+          + (ownSaleLeads(own) ? "led by its own sale" : "the comps and its own sale"));
+        setPpsf("ownerHighPpsf", "at " + ppsf0(own.high / sizeR.max) + "/SF");
+      } else {
       setPpsf("ownerLowPpsf", "at " + ppsf0(rr.low) + "/SF");
       // "comp median" is what the table's own footer prints (the plain median
       // of the $/SF column). Once the comps are restated at the subject's size
@@ -8843,6 +9175,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       setPpsf("ownerMidPpsf", "at " + ppsf0(rr.mid) + "/SF · "
         + (psfBand && psfBand.restated ? "median at your size" : "comp median"));
       setPpsf("ownerHighPpsf", "at " + ppsf0(rr.high) + "/SF");
+      }
       const srcPhrase = sizeSource === "public_record" ? "from public records"
         : sizeSource === "listing" ? "from a listing"
         : sizeSource ? "estimated from public data" : null;
@@ -8855,6 +9188,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       basisEl.textContent = srcPhrase
         ? `${sizeLabel} (${srcPhrase}; edit ${sizeFieldLabel} above if wrong) × ${compsPhrase}`
         : `${sizeLabel} × ${compsPhrase}`;
+      // Led by its own sale: the line names both parts and how much each
+      // carries, because "size × comps" is no longer how the figures above
+      // were reached.
+      if (led) {
+        basisEl.textContent = `Its own reported sale (${displayMoney(String(ownLs.price))}, ${ownLs.date}) carries ${ownSaleShare(own)}%; `
+          + `the comps carry the rest: ` + basisEl.textContent;
+      }
       // Trust line: provenance mix + spread in one quiet sentence. Legacy
       // saved reports predate source_type (compTier returns null) and just
       // get the count + spread.
@@ -8889,6 +9229,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       trustEl.textContent = countPhrase
         + (srcBits.length ? `, ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}`
         + sizeNote + smallNNote(ppsfs.length);
+      // With the building's own sale weighed in, that sentence is about the
+      // COMPS' figure, not the headline, so it is said second and says whose
+      // it is; a sale that was left out is named last, with the reason.
+      if (led) {
+        trustEl.textContent = ownTrustLead() + " "
+          + trustEl.textContent.replace(/^Based on/, "The comps' figure is based on")
+            .replace("so this range is extrapolated", "so that figure is extrapolated")
+            .replace("back this range, so it shows", "back that figure, so it shows");
+      }
       trustEl.classList.remove("hidden");
       // Size-restated band: tick each comp where it COUNTS, with the inputs
       // valueFromComps was just handed, so the ticks and the tint are one
@@ -8901,6 +9250,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         : null;
       renderCompScatter(restatedTicks || ppsfs, rr, {
         fmt: (v) => ppsf0(v) + "/SF", unitPhrase: "$/SF", counted: !!restatedTicks,
+        // The line is the comps' own range. Once the ledger above it is not,
+        // its mark and its note say whose range they are (`compsOnly`).
+        compsOnly: led, ownLeads: ownSaleLeads(own),
       });
 
       const entries = [{
@@ -8909,13 +9261,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         text: `what ${ppsfs.length} recent `
           + `sale comps say buyers pay per square foot, applied to your ${noun}'s size. This is the headline range above.`,
       }];
+      // Its own sale goes first (the PowerPoint keeps the first five rows),
+      // and the comps' row stops claiming to be the headline.
+      if (led) {
+        entries[0].text = `what ${ppsfs.length} recent sale comps say buyers pay per square foot, applied to your ${noun}'s size. `
+          + `It carries the other ${100 - ownSaleShare(own)}% of the headline range above.`;
+        entries.unshift(ownApproachEntry());
+        estimateNoteEl.textContent = ownEstimateNote;
+      }
       // Sits right after the sales-comparison line because it is the same
       // comps expressed in a different unit, not a separate approach.
       const altEntry = altBasisEntry(meta, sAlt, saleComps, parsed);
       if (altEntry) entries.push(altEntry);
       entries.push(...incomeApproachEntries(rr.low * sizeR.min, rr.high * sizeR.max));
       entries.push(costApproachEntry);
-      renderApproaches(withAssessed(entries, rr.low * sizeR.min, rr.high * sizeR.max));
+      // The county's figure is read against the range the ledger shows.
+      renderApproaches(led
+        ? withAssessed(entries, own.low, own.high, ownSaleLeads(own))
+        : withAssessed(entries, rr.low * sizeR.min, rr.high * sizeR.max));
     } else if (altRange) {
       // No usable $/SF range, but this asset class doesn't price on square feet
       // anyway. A multifamily owner often doesn't know the building's SF and
@@ -8980,6 +9343,53 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       entries.push(...incomeApproachEntries(rr.low * qty, rr.high * qty));
       entries.push(costApproachEntry);
       renderApproaches(withAssessed(entries, rr.low * qty, rr.high * qty));
+    } else if (led) {
+      // The comps cannot put a dollar figure on this building (no size from
+      // any source, or fewer than two priced sales), and it sold recently
+      // enough for that sale to lead: the sale stands alone, with its own
+      // spread as the range (valuation.js ownSaleSpread; "alone_old" refuses
+      // a sale too old for this). Ahead of the income branches on purpose: a
+      // price this building fetched outranks one implied by a market cap
+      // rate, and the income lines still print below it.
+      // ⚠ sellTodayEstimate takes the same order.
+      const a = own.ownSale;
+      const spreadPct = Math.round(a.spread * 100);
+      const moved = ownMoved();
+      animateValue(lowEl, own.low, fmtTotal);
+      animateValue(midEl, own.mid, fmtTotal);
+      animateValue(highEl, own.high, fmtTotal);
+      lastValuation = { low: own.low, likely: own.mid, high: own.high, median_psf: null };
+      setPpsf("ownerLowPpsf", spreadPct + "% under");
+      setPpsf("ownerMidPpsf", moved ? "its own sale, at today's prices" : "its own sale");
+      setPpsf("ownerHighPpsf", spreadPct + "% over");
+      basisEl.textContent = `What this ${noun} itself was reported sold for (${displayMoney(String(ownLs.price))}, ${ownLs.date})`
+        + (moved ? ", indexed to the report date. " : ". ")
+        + (ppsfs.length >= 2
+          ? `We couldn't find its square footage, so the comps cannot be turned into dollars to check that; `
+            + `enter the size under 'Details for comps' and they are.`
+          : "Too few priced sale comps came back in this window to check it against.");
+      trustEl.textContent = ownTrustLead();
+      trustEl.classList.remove("hidden");
+      const entries = [ownApproachEntry()];
+      const fmtPsf = (v) => formatUsd(v, { maximumFractionDigits: 0 }) + "/SF";
+      entries.push(ppsfs.length >= 2 ? {
+        label: "Sales comparison approach",
+        text: `${fmtPsf(psfBand.low)} – ${fmtPsf(psfBand.high)} is what ${ppsfs.length} recent sale comps say buyers pay per `
+          + `square foot. Enter your ${noun}'s size under 'Details for comps' and it becomes a dollar range to read against the sale.`,
+        muted: true,
+      } : {
+        label: "Sales comparison approach",
+        text: "not enough priced sale comps came back in this window to build a per-square-foot range.",
+        muted: true,
+      });
+      // The income lines compare themselves with "the sale comps"; here the
+      // range they are read against is the building's own sale.
+      entries.push(...incomeApproachEntries(own.low, own.high).map((e) => (
+        { ...e, text: e.text.replace("than the sale comps", `than this ${noun}'s own sale`) })));
+      entries.push(costApproachEntry);
+      renderApproaches(withAssessed(entries, own.low, own.high, true));
+      estimateNoteEl.textContent = "Automated estimate from this " + noun + "'s own reported sale. "
+        + "Not an appraisal and not a broker opinion of value.";
     } else if (noi && capOk) {
       // No usable sale range — lead with the income approach instead.
       const loVal = noi / (capHi / 100);
@@ -9224,6 +9634,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }
     }
 
+    // THE BUILDING'S OWN SALE, after the chain. A sale that was looked at and
+    // left out is said so, with the reason, wherever a range rendered for it
+    // to be missing from. The last-sale line stands down when the sale is
+    // already the first row of the approaches and the first sentence of the
+    // trust line (said three times, it read as three sales). And the
+    // member's switch is drawn.
+    if (own && !led && trustEl.textContent) {
+      const left = ownTrustRefused();
+      if (left) trustEl.textContent += left;
+    }
+    if (led) document.getElementById("ownerLastSale").classList.add("hidden");
+    // The "would be worth about $X today" line indexes that same sale its own
+    // way (uncapped, off the typed ask) and says it is "not in the range
+    // above". Once the sale is weighed the trust line quotes its figure at
+    // today's prices, and two figures for one sale cannot both stand.
+    if (led) document.getElementById("ownerImproved").classList.add("hidden");
+    renderOwnSaleSwitch(own, meta);
+
     // Listing vs. estimate: same 25% rule as outlierOf / subjectSizeFit.
     // A quiet MLS disclaimer is not enough — the Austin Rosedale report
     // already carried one and still led with $1.65M against a $1.25M ask.
@@ -9240,6 +9668,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const askMoney = formatUsd(askMid, { maximumFractionDigits: 0 });
       const askPsf = subjSFMid > 0 ? formatUsd(askMid / subjSFMid, { maximumFractionDigits: 0 }) + "/SF" : "";
       const psfBit = askPsf ? ` (${askPsf})` : "";
+      // Leaning on its own sale, a gap to the ask is not about the comps'
+      // vintage or pocket: the estimate did not come from them.
+      if (led && ownSaleLeads(own)) {
+        trustEl.textContent += (trustEl.textContent ? " " : "")
+          + `Currently listed at ${askMoney}${psfBit}, ${askGap.pct}% ${askGap.dir === "above" ? "below" : "above"} this estimate, `
+          + "which starts from what the property itself was reported sold for."
+          + (askGap.dir === "above" ? "" : " An ask well above that often means it was improved, or its income grew, since.");
+      } else
       trustEl.textContent += (trustEl.textContent ? " " : "")
         + (askGap.dir === "above"
           ? `Currently listed at ${askMoney}${psfBit} — ${askGap.pct}% below this estimate. A gap this large usually means the comps are a different vintage or a pricier pocket than this property, not that the list price is a steal.`
@@ -9374,6 +9810,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       + "income divided by a rate, so the lowest cap rate gives the High figure. Comps with no stated rate, "
       + "and lease comps, are in the table but not in this range.";
     if (trustEl.textContent) mechanics.unshift(netLeaseHero ? netLeaseWeighNote : leaseHero ? leaseWeighNote : weighNote);
+    // Led by its own sale: say how that half was worked out, from the rule's
+    // own numbers. Standing alone, the weighting sentence just added
+    // describes comps that were not weighed, so it goes.
+    if (led) {
+      const pctOf = (v) => Math.round(v * 100);
+      if (!own.comp && trustEl.textContent) mechanics.shift();
+      mechanics.splice(own.comp ? 1 : 0, 0,
+        `A sale of the property itself carries ${pctOf(VALUATION.OWN_SALE_WEIGHT_NEW)}% of the estimate in its first year, then less each month `
+        + `until it would carry under ${pctOf(VALUATION.OWN_SALE_MIN_WEIGHT)}%, when it stops counting (a little under ${VALUATION.OWN_SALE_MAX_YEARS} years after it closed); `
+        + `a sale with a condition attached (a sale-leaseback, a share of a larger deal, a price from a listing page) carries half as much, and stops counting sooner. Its price is moved to the report date by the market's trend, `
+        + `by no more than ${pctOf(VALUATION.OWN_SALE_INDEX_CAP)}% in all. Low and High allow ${pctOf(VALUATION.OWN_SALE_SPREAD_BASE)}% either side of that price `
+        + `in the first year and ${pctOf(VALUATION.OWN_SALE_SPREAD_PER_YEAR)} more points for each year after, blended with the comps' own range. `
+        + "Those allowances are a judgment, not a measurement.");
+    }
     const howWrap = document.getElementById("ownerTrustHowWrap");
     const howBody = document.getElementById("ownerTrustHow");
     howBody.textContent = mechanics.join(" ");
@@ -9427,7 +9877,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       subjectYear: subjectYearForMatch(parsed),
       ...weightOpts(meta, parsed),
     }) : null;
-    if (val && val.n >= 2) {
+    // The building's own sale, weighed exactly as the hero weighs it (one
+    // wrapper, ownSaleBlend), and in the hero's order: the blend when there
+    // are comps to blend with, the sale alone when there are none, and only
+    // then the income lines. Without this the DCF card would sell today at
+    // the comps' figure under a headline that leans on the sale.
+    const compRange = val && val.n >= 2 ? { low: val.low, mid: val.mid, high: val.high } : null;
+    const own = ownSaleBlend(compRange, parsed, meta);
+    if (own && own.anchored) {
+      return {
+        value: own.mid,
+        source: !compRange ? "its own reported sale, at today's prices"
+          : ownSaleLeads(own) ? "likely value, led by its own sale" : "likely value, from the comps and its own sale",
+      };
+    }
+    if (compRange) {
       // val.mid, the figure the hero prints as Likely (rounded by heroRound).
       // Until 2026-11-10 this returned the unrounded product, so the DCF card
       // read $6,150,426 under a hero of $6,150,000, and the Excel sheet's
@@ -9494,6 +9958,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (!Array.isArray(cur.excluded)) cur.excluded = [];
     cur.excluded = cur.excluded.filter((k) => typeof k === "string");
     if (!Array.isArray(cur.added)) cur.added = [];
+    // The member's switch for the building's own sale (ownSaleOff): true or
+    // absent, nothing else.
+    if (cur.ownSaleOff !== true) delete cur.ownSaleOff;
     // Re-stamp provenance on every entry: a hand-edited or legacy payload must
     // never smuggle a comp that claims Verified / Public record. Stamped IN
     // PLACE (not spread into new objects) so object identity survives repeated
@@ -10269,6 +10736,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     const parts = d.read.slice();
     if (collUnread.has("collPrice")) parts.push(COLLATERAL.UNREAD.price);
+    // When the range above leans on what the property itself sold for, a
+    // purchase price "inside this report's range" is that price agreeing with
+    // itself. So the card says what the range rests on, and gives the reading
+    // a lender is after: the loan against what the comps alone say.
+    if (typeof currentOwnSale !== "undefined" && ownSaleLeads(currentOwnSale) && (r.loan || r.price)) {
+      const c = currentOwnSale.comp;
+      parts.push("This report's range rests mostly on what the property itself was reported sold for, so it cannot confirm that price on its own."
+        + (c && r.loan ? ` Against what the comps alone say (${fmtT(c.mid)} likely), this loan is ${(r.loan / c.mid * 100).toFixed(1)}% of value.` : ""));
+    }
     const readEl = document.getElementById("collRead");
     readEl.textContent = parts.join(" ");
     readEl.classList.toggle("hidden", !parts.length);
@@ -22937,7 +23413,10 @@ async function renderMyDesk() {
     // comp-fit.js "price_basis" (2026-11-27): the comp's own notes said its
     // price was not an open-market price for one whole property.
     if (n("price_basis")) parts.push(`${n("price_basis")} ${n("price_basis") === 1 ? "was" : "were"} not an ordinary open-market sale (a portfolio, partial-interest, related-party, foreclosure or auction sale)`);
-    const total = n("size") + n("distance") + n("unit") + n("dead_source") + n("price_basis");
+    // The server's settleOwnSale (2026-11-27): a building is not a comp of
+    // itself. Its own sale is weighed, or shown, as its own sale.
+    if (n("own_sale")) parts.push(`${n("own_sale")} ${n("own_sale") === 1 ? "was" : "were"} this property's own sale or listing, which is not a comp of itself`);
+    const total = n("size") + n("distance") + n("unit") + n("dead_source") + n("price_basis") + n("own_sale");
     const added = Math.max(0, Math.floor(Number(wider && wider.added) || 0));
     let out = "";
     if (total) {
@@ -23085,7 +23564,11 @@ async function renderMyDesk() {
     const chip = document.createElement("span");
     chip.className = "rd-chip no-print no-capture whitespace-nowrap";
     chip.textContent = `${o.pct}% ${o.dir} the range`;
-    const bandText = `${formatUsd(currentPsfBand.low, { maximumFractionDigits: 0 })}-${formatUsd(currentPsfBand.high, { maximumFractionDigits: 0 })}/SF range the estimate uses`;
+    // Once the estimate leans on the building's own sale, this band is the
+    // comps' own range and no longer the estimate's: the chip still checks a
+    // comp against the other comps, and says so.
+    const bandText = `${formatUsd(currentPsfBand.low, { maximumFractionDigits: 0 })}-${formatUsd(currentPsfBand.high, { maximumFractionDigits: 0 })}/SF range `
+      + (currentOwnSale && currentOwnSale.anchored ? "the other comps fall in" : "the estimate uses");
     chip.title = (counted
       ? `At your building's size this sale counts as ${formatUsd(counted.value, { maximumFractionDigits: 0 })}/SF, ${o.pct}% ${o.dir} the ${bandText}.`
       : `This sale sits ${o.pct}% ${o.dir} the ${bandText}.`)
@@ -23125,8 +23608,21 @@ async function renderMyDesk() {
     const wrap = document.getElementById("corpusOffer");
     const rowsEl = document.getElementById("corpusOfferRows");
     if (!wrap || !rowsEl) return;
+    // A SALE of the building this report values is not a comp to add to it.
+    // The server leaves it out of the offer (/api/corpus-comps); this is the
+    // page's own guard, with every name the report has for the subject. It
+    // matters since 2026-11-27: the search's copy of that sale is taken out
+    // of the comp table, so the "already in the table" test below no longer
+    // hides the saved copy, and the estimate may already lean on that sale.
+    const subjectNames = [
+      typeof currentMeta !== "undefined" && currentMeta ? currentMeta.address : "",
+      typeof currentMeta !== "undefined" && currentMeta ? currentMeta.addressTyped : "",
+      typeof currentParsed !== "undefined" && currentParsed ? currentParsed.subject_address_corrected : "",
+    ].filter((a) => typeof a === "string" && a.trim() !== "");
+    const isOwnSale = (r) => !String((r && r.transaction) || "").toLowerCase().startsWith("lease")
+      && subjectNames.some((a) => VALUATION.sameBuilding(r.address, a, true));
     const usable = curationControlsAllowed() && currentComps
-      ? corpusOfferRows.filter((r) => !currentComps.some((c) => compKeyOf(c) === compKeyOf(r)))
+      ? corpusOfferRows.filter((r) => !isOwnSale(r) && !currentComps.some((c) => compKeyOf(c) === compKeyOf(r)))
       : [];
     rowsEl.innerHTML = "";
     // Locked: name the count and stop. No rows to render, nothing withheld
@@ -24095,7 +24591,7 @@ async function renderMyDesk() {
     // sheet; CSV is the export that lacked it.
     const fmtV = (v) => formatUsd(v, { maximumFractionDigits: 0 });
     const subjectLine = currentMeta && lastValuation && lastValuation.likely > 0
-      ? esc(`Subject property: ${currentMeta.address} | Estimated value range ${fmtV(lastValuation.low)} – ${fmtV(lastValuation.high)} (likely ${fmtV(lastValuation.likely)}) | Comp-based estimate, not an appraisal. The rows below are the comparable transactions, so the subject itself is not a row.`)
+      ? esc(`Subject property: ${currentMeta.address} | Estimated value range ${fmtV(lastValuation.low)} – ${fmtV(lastValuation.high)} (likely ${fmtV(lastValuation.likely)}) | ${currentOwnSale && currentOwnSale.anchored ? (currentOwnSale.comp ? `Estimate from the property's own reported sale (${ownSaleShare(currentOwnSale)}%) and the comps` : "Estimate from the property's own reported sale") : "Comp-based estimate"}, not an appraisal. The rows below are the comparable transactions, so the subject itself is not a row.`)
       : "";
     // Co-branding, not white label: even the CSV, which has no letterhead of
     // its own, still names CompNinja as the one that computed the number.
@@ -24208,7 +24704,21 @@ async function renderMyDesk() {
             [nlX.source === "comps" ? `Cap rates of ${nlX.band.n} sale comps` : "Market cap-rate range",
               `${capRateText(nlX.band.low)} – ${capRateText(nlX.band.high)}, ${nlX.source === "comps" ? "median" : "midpoint"} ${capRateText(nlX.band.mid)}`],
           ] : [
+            // Led by its own sale: the basis, the sale as reported and as
+            // moved to the report date, its share, and what the comps alone say.
+            ...(currentOwnSale && currentOwnSale.anchored ? [
+              ["Basis", currentOwnSale.comp ? "The property's own reported sale and the comps" : "The property's own reported sale"],
+              ["Own sale (reported)", `${String((currentParsed.subject_last_sale || {}).price || "")} in ${String((currentParsed.subject_last_sale || {}).date || "")}`],
+              ["Own sale at the report date", xlsxMoney(heroRound(currentOwnSale.ownSale.value))],
+              ["Share of the estimate", ownSaleShare(currentOwnSale) + "%"],
+              ...(currentOwnSale.comp ? [["Comps alone (likely)", xlsxMoney(currentOwnSale.comp.mid)]] : []),
+            ] : []),
+            // The sale standing alone has no comp median behind it, and the
+            // row is left out rather than written blank. Every other report
+            // writes it as it always did.
+            ...(currentOwnSale && currentOwnSale.anchored && !currentOwnSale.comp ? [] : [
             [currentPsfBand && currentPsfBand.restated ? "Median $/SF at your size" : "Comp median $/SF", xlsxMoney(lastValuation.median_psf)],
+            ]),
           ]),
         ] : []),
         ...(sell && sell.value > 0 && (!lastValuation || Math.round(sell.value) !== Math.round(lastValuation.likely))

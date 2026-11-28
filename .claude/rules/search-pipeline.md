@@ -608,6 +608,132 @@ with the key and update the constant — an earlier model ID was retired.
     `test/comp-fit-run.test.js` (a real server and a stub provider: the
     Inverness shape fitted, searched wider and served as counts),
     `test/link-check.test.js`, `test/report-parse.test.js`.
+  **The building's own sale: asked for, settled and stamped (2026-11-27;
+  report-and-valuation.md, "The building's own sale leads its value", has
+  the rule and why).** A sale of the subject itself can carry up to 90% of a
+  value now, so the search goes looking for it and the server vets it once,
+  before anything downstream sees the report. Rules:
+  - **The prompt asks for it on purpose** (`buildPrompt`). For the types
+    the rule covers (`VALUATION.OWN_SALE_TYPES`), on anything but a
+    leases-only search, `subjectSaleStep` adds a SUBJECT SALE step: one of
+    the FIRST searches is on the target address itself. Until then the sale
+    only rode along on the size lookup's pages (flow 3c), so a building whose
+    size was typed never had its sale looked up at all. The
+    `subject_last_sale` template carries seven keys: `date`, `price`,
+    `source_url`, `source_type`, `address` (as the source page gives it),
+    `size_sqft` (the area the price covered) and `basis`, a closed
+    vocabulary (`VALUATION.OWN_SALE_BASIS_WORDS`) the prompt tells the model
+    never to leave empty. The prompt also offers `unknown`, for the two
+    doubts that cost the most (whether the price covered this property
+    alone, and whether the sale closed at that price), and forbids
+    `arms_length` under either. `unknown` is not in the vocabulary on
+    purpose: it reads as "other", which does not lean. Without that word a
+    model told never to leave the field empty writes `arms_length` for a
+    sale it could not place. An asking price is never a sale.
+  - **The target's own saved rows are not offered to the model**
+    (`notTheTarget`, over the three corpus blocks). The truth test's
+    buildings came from the corpus, and 21 of 47 reports gave back our own
+    saved row as the building's "last sale", source link and all: a sale
+    nobody had found on the web, and often an asking price (135 of 660 corpus
+    sale rows are asks under a sale date). A member's building is usually not
+    in the corpus, so that was a hit rate no real search had.
+  - **`normalizeSubjectLastSale` keeps the four new keys only in a known
+    shape**: `basis` through `VALUATION.ownSaleBasis` (a word off the list
+    is "other", and "other" does not lean), `source_type` when it is one of
+    the comps' four words, `address` clipped, `size_sqft` as a whole number.
+    It builds a NEW object from those keys alone, so nothing else the model
+    writes there survives: a model cannot stamp its own sale.
+  - **`checkLinksAndSettle(report, type, address)` is one step for both of
+    `getComps`'s exits**, and it runs before `refineComps`, so before the
+    cache write, the harvest and the snapshot (never-break rule 2: they see
+    the settled public report). It runs the comps' link check and
+    `ownSalePageVerdict` side by side, inside the link check's own budget,
+    then `settleOwnSale`:
+    1. A SALE comp at the subject's own address is the subject's sale, not a
+       comp of itself. The prompt forbids it and it comes back anyway (11 of
+       47 audited reports). It moves to `set_aside` with the reason
+       `own_sale`: never valued against, kept off the wider search's and the
+       saved-deal blend's lists, and still harvested, because it is a real
+       deal and the next building's best comp (`COMPFIT.HARVESTABLE_REASONS`).
+       Which rows are "the subject's" is `VALUATION.ownSaleFrom` and
+       `sameBuilding` (street number or range, street name, no contradicting
+       directional or suffix, the same unit, the same place). A lease at the
+       subject's address stays a comp.
+    2. When the reported sale has no price, or an older date, one of those
+       rows BECOMES the sale, but only a closed sale sourced to a news page
+       or a public record whose notes say nothing of an asking price.
+    3. A same-address row that is on the market is the subject's own
+       listing: out of the comps, and `subject_asking` when the report had
+       none.
+    4. `unusable` is written for the two things only the server can see: the
+       source link is dead (`dead_source`), or the page was read and SAYS in
+       words that the price was not disclosed (`price_undisclosed`;
+       `LINKCHECK.pageStatesPrice` answers "states", "undisclosed" or
+       "unknown", pure and tested). A page that does not mention the price
+       is "unknown" and costs the sale nothing: the first build refused on
+       "absent" and a page cut off by the byte cap, a price held in a script
+       or one written "$12.5 million" for $12,450,000 all read as absent.
+    A promoted row's basis is its own notes' (`COMPFIT.priceBasisOf`, then
+    `VALUATION.ownSaleNoteBasis`), else the basis the search gave the same
+    closing on the reported line (`ownSaleFrom` carries it), else none, and
+    a silent promoted row weighs half (`from_comp`). Its URL is checked
+    first in the link check. If a removed row was a Verified comp the report
+    is scrubbed again (rule 8). The wider search's sale is settled on a
+    stand-in report and merged back.
+    Then the stamp, `settled: 1`. Nothing leans on a sale without it.
+  - **`ownSalePageVerdict` fetches a model-supplied URL**, so it keeps every
+    guard `checkSourceLinks` has: a public host only, the DNS answer checked
+    against private ranges, no redirect followed, no bot-walled host, a body
+    cap (`OWN_SALE_PAGE_BYTES`) and the link check's deadline. Anything that
+    is not a clean read is "unknown".
+  - **The wider search's comps go through the same filter** (`refineComps`),
+    and `blend-corpus.js` no longer blends a saved sale row for the subject's
+    own building into its comps.
+  - **`ownSaleCovers(type, txFocus, address)` is the one gate** for the
+    SUBJECT SALE step, the prompt's withholding of the target's saved rows
+    (`notTheTarget`, sale rows only), and the settle: Industrial, Office or
+    Retail, not leases-only, a street-numbered address. Any other search is
+    left exactly as it was (its own-address rows are not stripped).
+    `blend-corpus.js` skips a saved row of the subject's own building only
+    when the report's sale is stamped, and `/api/corpus-comps` and the
+    page's saved-comps offer (`renderCorpusOffer`) leave out the subject's
+    own sale rows.
+  - **Only for a building.** The SUBJECT SALE step needs an address that
+    starts with a street number. The market pages and the Market Explorer
+    search "Boise, ID" through the same prompt, and a city has no sale of its
+    own to look up.
+  - **The covered searches were re-keyed once, on purpose** (`cacheKeyFor`,
+    the salt `::own-sale-1`). A report cached before this date has no stamp,
+    so for the 30 days it had left it would have answered the same address
+    with the building's own sale ignored: the one place a member would look
+    for this change and not find it. The salt is appended only where the
+    rule applies (a street-numbered address, Industrial, Office or Retail,
+    not a leases-only search), so city-level entries (shared with
+    `gen-market-seed.js`), houses, apartments, land and lease searches keep
+    the key they always had. Cost: the next search of such an address is
+    billed once (about a cent). Two things it leaves slightly wrong for up
+    to 30 days: the Address Explorer's "Instant" badge is presence-based and
+    still counts the retired rows, and the truth test's `--cached` mode
+    misses and bills (use `--replay`). ⚠ The three types are spelled out
+    inside `cacheKeyFor` because `test/server-readers.test.js` lifts and runs
+    it alone; that test holds the list to `VALUATION.OWN_SALE_TYPES`.
+  - **`OWN_SALE=off` is the rollback** (report-and-valuation.md has the
+    whole of it): no SUBJECT SALE step, `checkLinksAndSettle` is the link
+    check alone, and a report settled earlier is served without its stamp.
+    The cache key keeps its salt either way.
+  - **No migration and no new table.** `subject_last_sale` is not harvested
+    into `comp_corpus` (a subject's own sale is not a comp of itself); the
+    set-aside own-sale ROW is, as the comp it always was.
+  - **Not measured.** Gemini ignores the search budget, and a one-call
+    search already took 32 to 55 s on 2026-11-27, so whether the added step
+    costs time against the one-minute ceiling is unknown until a slow live
+    run. So is how often a live search finds and vets a sale on a building
+    the corpus has never held (on the six such buildings in the truth test,
+    every one had its sale found on the web).
+  - Tests: `test/own-sale-run.test.js` (a real server and a stub provider),
+    `test/own-sale-wall.test.js` (the page-states-price rule, the blend and
+    the harvest), `test/own-sale-match.test.js` and
+    `test/own-sale-rule.test.js` (valuation.js).
   **Cached**: identical requests
   within a 30-day TTL (7 days until 2026-08-03 — widened as a cost lever) are
   served from the `search_cache` layer (Supabase table

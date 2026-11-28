@@ -1460,6 +1460,17 @@
     if (!parts.length) return "";
     return parts[0].replace(/\bsaint\b/g, "st").replace(/\bfort\b/g, "ft").replace(/\bmount\b/g, "mt").trim();
   }
+  // A street address with no city in it ("100 Main St", "100 Main St, TX
+  // 75201"): the report form asks for the city before it searches (the
+  // owner, 2026-11-28: "make it so they have to type in a city"). A street
+  // name alone is in every town, and the address is how a building's own
+  // sale is matched to it. A market search ("Boise, ID") has no street
+  // number and is never asked.
+  function missingCity(address) {
+    var a = String(address == null ? "" : address).trim();
+    if (!/^\d/.test(a)) return false;
+    return cityKey(a) === "";
+  }
   // One street line names the other's building: the same name, a number that
   // is the same or inside the other's range, and no directional or suffix
   // that CONTRADICTS (one side leaving either out is not a contradiction).
@@ -1827,7 +1838,7 @@
 
   return {
     moneyOf, saleDateMs, ownSaleWeight, ownSaleSpread, ownSaleIndex, ownSaleBasis, ownSaleNoteBasis, ownSaleSource, specificPage,
-    isListingHost, stateOf, zipOf, placeOf, cityKey, unitOfPart, streetParts, sameStreetLine, samePlace,
+    isListingHost, stateOf, zipOf, placeOf, cityKey, missingCity, unitOfPart, streetParts, sameStreetLine, samePlace,
     ownSaleAnchor, valueWithOwnSale, ownSaleFrom, streetKey, sameBuilding,
     OWN_SALE_MAX_YEARS, OWN_SALE_FULL_YEARS, OWN_SALE_WEIGHT_NEW, OWN_SALE_HALF, OWN_SALE_MIN_WEIGHT,
     OWN_SALE_DISAGREE, OWN_SALE_COMPS_PULL, OWN_SALE_MIN_PRICE,

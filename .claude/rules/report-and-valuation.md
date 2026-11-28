@@ -117,11 +117,21 @@ paths:
     switch (`meta.curation.ownSaleOff`) is not written back to a bulk row or
     a saved property's value snapshot until the next Refresh / re-value;
     `OWN_SALE=off` does not re-value bulk rows already stored; an address
-    written with no comma at all ("100 Main St Boise ID 83702") is not read
-    for its city or state; the sale-alone hero's Low / High sub-labels say
+    written with no comma at all ("100 Main St Boise ID 83702") is read for
+    its city but not its state (the report form now asks for a city, below); the sale-alone hero's Low / High sub-labels say
     the spread even when the range was widened to hold the price paid; the
     truth set's `confirmed` group still includes rows whose caveat says the
     price covered more than one building.
+  - **The report form asks for the city (2026-11-28; the owner: "make it so
+    they have to type in a city").** `VALUATION.missingCity(address)`: an
+    address that starts with a street number and names no city (`cityKey`
+    is "") stops in the submit handler, before the geocode and before
+    anything is billed, with "Add the city to the address, for example:
+    1200 W Industrial Blvd, Dallas, TX." and the cursor back in the box. A
+    city typed without a comma counts ("100 Main Street Dallas"); a street
+    and a ZIP, or a street and a state, does not. A market search has no
+    street number and is never asked. Only the report form: bulk lists,
+    Home's add forms and the API are not held to it.
   - **A refused sale is said, in one sentence, with its reason**
     (`ownSaleRefusal`), appended to the trust line; the value is the comps'.
     A few refusals deliberately say nothing (no price or date, too old, a

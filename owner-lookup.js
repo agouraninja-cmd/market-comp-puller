@@ -160,6 +160,23 @@ function cleanPhone(v) {
 
 function cleanAddress(v) { return clean(v, MAX_ADDRESS + 1); }
 
+// A member types "1210 N 17th St Boise ID" as often as "..., Boise, ID".
+// Without commas the address still names its market when it ENDS in a
+// state (code or name), after at least a street and a city word. "Ct" is
+// both Connecticut and Court, so that one code counts only typed as "CT".
+const STATE_CODES = new Set("AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY PR".split(" "));
+const STATE_NAMES = /\s(?:alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new\s+hampshire|new\s+jersey|new\s+mexico|new\s+york|north\s+carolina|north\s+dakota|ohio|oklahoma|oregon|pennsylvania|rhode\s+island|south\s+carolina|south\s+dakota|tennessee|texas|utah|vermont|virginia|washington|west\s+virginia|wisconsin|wyoming)\.?$/i;
+function endsWithState(a) {
+  const s = String(a || "").trim();
+  const words = s.split(/\s+/);
+  if (words.length < 4) return false;            // number, street, city, state
+  if (STATE_NAMES.test(s)) return true;
+  const last = words[words.length - 1].replace(/\.$/, "");
+  if (!/^[A-Za-z]{2}$/.test(last)) return false;
+  if (last.toUpperCase() === "CT") return last === "CT";
+  return STATE_CODES.has(last.toUpperCase());
+}
+
 // Why a lookup may not run, or "" when it may. The sentence is what the
 // member reads.
 function lookupRefusal({ address, type } = {}) {
@@ -168,7 +185,7 @@ function lookupRefusal({ address, type } = {}) {
   if (a.length > MAX_ADDRESS) return "That address is too long.";
   if (/https?:|www\.|[<>@]/i.test(a)) return "That doesn't look like an address.";
   if (!/^\d+[A-Za-z]?(?:\s*-\s*\d+)?\s+\S+/.test(a)) return "Start with the street number, like 1450 S Eagle Rd, Meridian, ID.";
-  if (!/,\s*[A-Za-z]{2}\b/.test(a) && !/\b\d{5}\b/.test(a)) return "Add the city and state, like 1450 S Eagle Rd, Meridian, ID.";
+  if (!/,\s*[A-Za-z]{2}\b/.test(a) && !/\b\d{5}\b/.test(a) && !endsWithState(a)) return "Add the city and state, like 1450 S Eagle Rd, Meridian, ID.";
   // A unit of a building is very often somebody's home (rule 1).
   if (/(?:^|[\s,])(?:apt|apartment|unit|trailer|lot|spc|space)\.?\s*#?\s*[A-Za-z0-9-]+\s*(?:,|$)/i.test(a) && String(type || "") === "") {
     return "Owner lookup is for a whole commercial property, not one unit of it.";

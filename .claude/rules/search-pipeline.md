@@ -666,10 +666,20 @@ with the key and update the constant — an earlier model ID was retired.
        listing: out of the comps, and `subject_asking` when the report had
        none.
     4. `unusable` is written for the two things only the server can see: the
-       source link is dead, or the page was read, names this property and
-       does not state the price (`LINKCHECK.pageStatesPrice`, pure and
-       tested: "absent" needs the property named, so a page that simply
-       could not be read costs the sale nothing).
+       source link is dead (`dead_source`), or the page was read and SAYS in
+       words that the price was not disclosed (`price_undisclosed`;
+       `LINKCHECK.pageStatesPrice` answers "states", "undisclosed" or
+       "unknown", pure and tested). A page that does not mention the price
+       is "unknown" and costs the sale nothing: the first build refused on
+       "absent" and a page cut off by the byte cap, a price held in a script
+       or one written "$12.5 million" for $12,450,000 all read as absent.
+    A promoted row's basis is its own notes' (`COMPFIT.priceBasisOf`, then
+    `VALUATION.ownSaleNoteBasis`), else the basis the search gave the same
+    closing on the reported line (`ownSaleFrom` carries it), else none, and
+    a silent promoted row weighs half (`from_comp`). Its URL is checked
+    first in the link check. If a removed row was a Verified comp the report
+    is scrubbed again (rule 8). The wider search's sale is settled on a
+    stand-in report and merged back.
     Then the stamp, `settled: 1`. Nothing leans on a sale without it.
   - **`ownSalePageVerdict` fetches a model-supplied URL**, so it keeps every
     guard `checkSourceLinks` has: a public host only, the DNS answer checked
@@ -679,6 +689,15 @@ with the key and update the constant — an earlier model ID was retired.
   - **The wider search's comps go through the same filter** (`refineComps`),
     and `blend-corpus.js` no longer blends a saved sale row for the subject's
     own building into its comps.
+  - **`ownSaleCovers(type, txFocus, address)` is the one gate** for the
+    SUBJECT SALE step, the prompt's withholding of the target's saved rows
+    (`notTheTarget`, sale rows only), and the settle: Industrial, Office or
+    Retail, not leases-only, a street-numbered address. Any other search is
+    left exactly as it was (its own-address rows are not stripped).
+    `blend-corpus.js` skips a saved row of the subject's own building only
+    when the report's sale is stamped, and `/api/corpus-comps` and the
+    page's saved-comps offer (`renderCorpusOffer`) leave out the subject's
+    own sale rows.
   - **Only for a building.** The SUBJECT SALE step needs an address that
     starts with a street number. The market pages and the Market Explorer
     search "Boise, ID" through the same prompt, and a city has no sale of its

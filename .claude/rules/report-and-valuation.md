@@ -92,6 +92,21 @@ paths:
     trust line that says the comps lead. Alone (no priced comps, a clean
     sale in its first year): its own hero branch, and the trust line says
     nothing came back to check it against.
+  - **Which addresses are one building** (`sameBuilding`, 2026-11-28
+    review round): a campus sibling named as its own comma part ("Building
+    Two", "Tower 2", "Pad C", "Phase II", "Lot 5", "2nd Floor") is another
+    building, identifiers fold to one spelling (One = 1, II = 2); an
+    address typed with no comma before the city, and Third/3rd, Saint/St,
+    Center/Ctr, match. A loose match (two ZIPs in one city) only takes a
+    row OUT of the comps; promoting a row to the sale needs the strict one.
+  - **Half weight** also for a sale whose source the search did not classify
+    as news or a public record (`unclassified`) and for a promoted comp row
+    whose notes state no basis (`from_comp`); `ownSaleHalfWhy` has a clause
+    for each.
+  - **The 1.5x hold fades with the weight** below `OWN_SALE_LEADS_AT`, so a
+    sale carrying a tenth does not pin the headline and nothing jumps when
+    it ages out; the trust line says when the comps' figure was pulled
+    toward the sale (`own.held`).
   - **A refused sale is said, in one sentence, with its reason**
     (`ownSaleRefusal`), appended to the trust line; the value is the comps'.
     A few refusals deliberately say nothing (no price or date, too old, a

@@ -100,10 +100,13 @@
   // Display rounding for TOTAL dollar figures. "$926,987" projects a precision
   // the math does not have: it is an interpolated percentile of a handful of
   // comps times a size range.
+  function heroStep(v) {
+    const a = Math.abs(v);
+    return a >= 10e6 ? 100000 : a >= 1e6 ? 25000 : a >= 100000 ? 5000 : 1000;
+  }
   function heroRound(v) {
     if (!isFinite(v) || v === 0) return v;
-    const a = Math.abs(v);
-    const step = a >= 10e6 ? 100000 : a >= 1e6 ? 25000 : a >= 100000 ? 5000 : 1000;
+    const step = heroStep(v);
     return Math.round(v / step) * step;
   }
 
@@ -905,6 +908,10 @@
   //             blended: past that they are describing a different kind of
   //             building (valuation.js already calls 1.5x a different price
   //             tier), and unheld, the worst comp sets pulled hardest.
+  //             In full while the sale leads (w at OWN_SALE_LEADS_AT or
+  //             more); under that the hold fades with w, to none at w = 0, so
+  //             a sale said to carry a tenth does not pin the headline to
+  //             itself, and nothing jumps when an aging sale drops out.
   //   Likely  = w x A + (1 - w) x the comps' Likely
   //   Low/High: the same blend of the comps' Low and High with A less and
   //             plus ownSaleSpread (10% in the first year, five more points
@@ -953,7 +960,7 @@
   //                Those are valued exactly as they were.
   //   "off"        the member turned it off (the building changed since).
   //   "unusable"   the server's own finding: its source link is dead, or the
-  //                page was read and does not state the price.
+  //                page was read and says the price was not disclosed.
   //   "basis"      the search's word for the sale (ownSaleBasis) is not an
   //                ordinary sale of this whole property: a portfolio's price,
   //                part of the ownership, related parties, a distressed sale,
@@ -971,8 +978,9 @@
   //                building fetches (a record printed in thousands, a
   //                whole-building price on a suite).
   //   "predates_building"  it sold before the building was built.
-  //   "matches_asking"     it is the current LISTING's price to the dollar:
-  //                the listing, read as a closing.
+  //   "matches_asking"     it is the current LISTING's price, to within
+  //                OWN_SALE_ASK_MATCH (half a percent, so a figure a page
+  //                rounded still matches): the listing, read as a closing.
   //   "disagree"   A is more than OWN_SALE_DISAGREE times the comps' figure,
   //                or under 1/that. One of the two is describing a different
   //                thing and nothing here can say which, so the comps stand
@@ -985,9 +993,14 @@
   // half as much and never for more than OWN_SALE_HALF, with the reason on
   // the page: a sale-leaseback, this building's stated share of a larger
   // deal, a price cited to a listing page (which may be the last asking
-  // price), a price in a non-disclosure state that no news page reports, and
-  // a building that is LISTED today more than a quarter away from A (its own
-  // two prices disagree, which is what "improved since" looks like).
+  // price), a price whose source the search did not classify (a comp's
+  // unknown source is an "estimate"; this one is a page that exists, so it
+  // is not refused, but it is not a record or an article either), a price in
+  // a non-disclosure state that no news page reports, a sale the server read
+  // off a COMP row whose notes say nothing about what kind of sale it was
+  // (a comp is never asked), and a building that is LISTED today more than a
+  // quarter away from A (its own two prices disagree, which is what
+  // "improved since" looks like).
   //
   // THE ASKING PRICE HERE IS THE LISTING THE SEARCH FOUND, never the one a
   // member typed. A typed price is the member's question ("is $9M right?"),
@@ -1029,8 +1042,9 @@
   var OWN_SALE_SPREAD_PER_YEAR = 0.05;
   var OWN_SALE_TREND_CAP = 10;        // percent a year, either way
   var OWN_SALE_INDEX_CAP = 0.15;      // in all, either way
-  // A "sale" at exactly the building's current asking price is the listing,
-  // read as a closing.
+  // A "sale" at the building's current asking price is the listing, read as
+  // a closing. Half a percent of slack, because one page rounds what another
+  // prints in full ($2,008,000 and "$2.0M" are one asking price).
   var OWN_SALE_ASK_MATCH = 0.005;
   // The sale's stated area against the size being valued. In the audit the
   // harmless differences (rentable against gross) were all under 10% and the
@@ -1101,7 +1115,10 @@
   }
 
   function ownSaleWeight(ageYears) {
-    var a = Number(ageYears);
+    // Number(null), Number("") and Number([]) are all 0, "a sale that closed
+    // today": an age that is not a number weighs nothing.
+    var a = typeof ageYears === "number" ? ageYears
+      : (typeof ageYears === "string" && ageYears.trim() !== "" ? Number(ageYears) : NaN);
     if (!(a >= 0) || a >= OWN_SALE_MAX_YEARS) return 0;
     if (a <= OWN_SALE_FULL_YEARS) return OWN_SALE_WEIGHT_NEW;
     return OWN_SALE_WEIGHT_NEW * (OWN_SALE_MAX_YEARS - a) / (OWN_SALE_MAX_YEARS - OWN_SALE_FULL_YEARS);
@@ -1118,6 +1135,10 @@
   function ownSaleIndex(dateText, asOf, trendPct) {
     var pct = Number(trendPct);
     if (!Number.isFinite(pct)) return 1;
+    // A trend the comps' own index disbelieves (past 30% a year either way)
+    // moves the sale no more than it moves them: tested before the cap below,
+    // which would otherwise turn "40% a year, not believed" into 10.
+    if (trendFactor({ date: dateText }, asOf, pct) === 1) return 1;
     var held = Math.max(-OWN_SALE_TREND_CAP, Math.min(OWN_SALE_TREND_CAP, pct));
     var f = trendFactor({ date: dateText }, asOf, held);
     return Math.max(1 - OWN_SALE_INDEX_CAP, Math.min(1 + OWN_SALE_INDEX_CAP, f));
@@ -1155,6 +1176,39 @@
       if (s === key.replace(/_/g, " ") || OWN_SALE_BASIS_WORDS[key].indexOf(s) !== -1) return key;
     }
     return "other";
+  }
+
+  // What a comp row's own NOTES say about its sale, for the one case a comp
+  // row becomes the building's sale (the server promotes a same-address row
+  // when the reported sale has no price). A comp is never asked for a basis,
+  // so its notes are all there is: the server's comp-fit rules read four
+  // kinds out of them (portfolio, partial interest, related party,
+  // distressed) and this reads the rest of the vocabulary above. Each
+  // pattern names the SALE, the comp-fit doctrine: "redevelopment" alone is
+  // also what is happening next door.
+  // Returns a key of OWN_SALE_BASIS_WORDS, "other" when the notes say the
+  // price itself is not a stated closing price (estimated, undisclosed), or
+  // "" when they say nothing. The refusing kinds are read first.
+  var NOTE_BASIS = [
+    ["other", /\b(?:price|figure|amount|value)\b[^.;]{0,40}\b(?:estimated|approximate|approximated|implied|derived|assumed|imputed|undisclosed|not disclosed)\b|\bestimated (?:sale |purchase )?price\b|\b(?:from|based on|per) (?:the )?transfer tax\b|\bterms (?:were |are )?(?:not disclosed|undisclosed)\b|\bundisclosed (?:price|sum|amount|terms)\b/i],
+    ["leasehold", /\bleasehold\b|\bground[\s-]?leas(?:e|ed)\b/i],
+    ["land", /\bsold as land\b|\bland (?:sale|value|only)\b|\bvacant (?:land|lot|parcel)\b|\bshell (?:building|condition|sale)\b|\bbefore (?:the )?(?:building|construction) (?:was|is|began|started)\b/i],
+    ["redevelopment", /\bfor redevelopment\b|\bredevelopment (?:site|play|opportunity|project)\b|\b(?:to|will) be (?:redeveloped|demolished|razed|converted|torn down)\b|\b(?:slated|planned|bought|purchased|acquired) for (?:demolition|redevelopment|conversion)\b|\btear[\s-]?down\b/i],
+    ["sale_leaseback", /\bsale[\s-]?lease[\s-]?back\b|\blease[\s-]?back\b|\bleased? (?:it|the (?:building|property|site|facility)) back\b/i],
+    ["allocated", /\ballocat(?:ed|ion)\b/i],
+  ];
+  var NOTE_NEGATED = /(?:\bnot|\bno|\bnon|\bnever|n't)[\s-]+(?:an?\s+|the\s+)?$/i;
+  function ownSaleNoteBasis(text) {
+    var t = String(text == null ? "" : text);
+    if (!t.trim()) return "";
+    for (var i = 0; i < NOTE_BASIS.length; i++) {
+      var re = new RegExp(NOTE_BASIS[i][1].source, "gi"), m;
+      while ((m = re.exec(t))) {
+        if (!NOTE_NEGATED.test(t.slice(Math.max(0, m.index - 24), m.index))) return NOTE_BASIS[i][0];
+        if (m[0] === "") re.lastIndex += 1;
+      }
+    }
+    return "";
   }
 
   // A link to a page that could state the sale, not a site's front door:
@@ -1271,33 +1325,78 @@
   var STREET_FOLD = {
     lane: "ln", street: "st", avenue: "ave", drive: "dr", road: "rd", boulevard: "blvd",
     court: "ct", place: "pl", parkway: "pkwy", highway: "hwy", circle: "cir", terrace: "ter",
-    trail: "trl", square: "sq",
+    trail: "trl", square: "sq", expressway: "expy", freeway: "fwy",
+    center: "ctr", centre: "ctr", saint: "st", mount: "mt", fort: "ft",
+    first: "1st", second: "2nd", third: "3rd", fourth: "4th", fifth: "5th",
+    sixth: "6th", seventh: "7th", eighth: "8th", ninth: "9th", tenth: "10th",
     north: "n", south: "s", east: "e", west: "w",
     northeast: "ne", northwest: "nw", southeast: "se", southwest: "sw",
   };
-  var STREET_SUFFIX = { ln: 1, st: 1, ave: 1, dr: 1, rd: 1, blvd: 1, ct: 1, pl: 1, pkwy: 1, hwy: 1, cir: 1, ter: 1, trl: 1, sq: 1, way: 1, loop: 1 };
+  var STREET_SUFFIX = { ln: 1, st: 1, ave: 1, dr: 1, rd: 1, blvd: 1, ct: 1, pl: 1, pkwy: 1, hwy: 1, cir: 1, ter: 1, trl: 1, sq: 1, way: 1, loop: 1, expy: 1, fwy: 1 };
   var STREET_DIR = { n: 1, s: 1, e: 1, w: 1, ne: 1, nw: 1, se: 1, sw: 1 };
   // A unit: one of these words, then an identifier that carries a digit or is
   // one or two letters ("Suite 200", "Apt 4B", "Bldg B", "Units 1-3"). The
   // identifier rule is what leaves a street NAMED with one of these words
   // whole: "2101 Space Park Dr" and "5600 Building C Way" are streets.
-  var UNIT_WORDS = "unit|units|ste|suite|suites|apt|apartment|condo|spc|space|bldg|building|fl|floor|rm|room";
+  // Tower, pad, phase, lot, wing and parcel name one building of a campus
+  // ("Building One", "Tower 2", "Pad C", "Phase II", "Lot 5"): read as part
+  // of the street they let a sibling's sale pass for the subject's.
+  var UNIT_WORDS = "unit|units|ste|suite|suites|apt|apartment|condo|spc|space|bldg|building|fl|floor|rm|room|tower|twr|pad|phase|lot|wing|parcel";
   var UNIT_WORD = new RegExp("^(?:" + UNIT_WORDS + ")$");
-  var UNIT_ID = /^(?=[a-z0-9-]*\d)[a-z0-9-]+$|^[a-z]{1,2}$/;
+  // An identifier: anything with a digit, one or two letters, a letter range
+  // ("a-c"), a number word or a Roman numeral of two letters or more.
+  var NUMBER_WORDS = { one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10",
+    eleven: "11", twelve: "12", first: "1", second: "2", third: "3", fourth: "4", fifth: "5" };
+  var ROMAN = { ii: "2", iii: "3", iv: "4", vi: "6", vii: "7", viii: "8", ix: "9", xi: "11", xii: "12" };
+  var UNIT_ID = /^(?=[a-z0-9-]*\d)[a-z0-9-]+$|^[a-z]{1,2}$|^[a-z]-[a-z]$|^(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|first|second|third|fourth|fifth|ii|iii|iv|vi|vii|viii|ix|xi|xii)$/;
+  // One spelling per identifier, so "Building One" is "Building 1" and
+  // "Phase II" is "Phase 2".
+  function unitId(id) {
+    var w = String(id || "");
+    if (Object.prototype.hasOwnProperty.call(NUMBER_WORDS, w)) return NUMBER_WORDS[w];
+    if (Object.prototype.hasOwnProperty.call(ROMAN, w)) return ROMAN[w];
+    return w.replace(/^(\d+)(?:st|nd|rd|th)$/, "$1");
+  }
   // A whole comma part that is a unit and not a city: "#5", "Suite 200",
   // "Suite #200", "Building B", "Units 1-3".
   var UNIT_PART = new RegExp("^(?:#\\s*([a-z0-9-]+)|(?:" + UNIT_WORDS + ")\\s*#?\\s*([a-z0-9-]+))$");
   // Every dash a page sets a range with, read as the hyphen a keyboard types.
   function plainDashes(text) { return String(text == null ? "" : text).replace(/[‐-―−]/g, "-"); }
   function unitOfPart(part) {
-    var m = plainDashes(part).toLowerCase().replace(/[^\w\s#-]/g, " ").replace(/\s+/g, " ").trim().match(UNIT_PART);
+    var t = plainDashes(part).toLowerCase().replace(/[^\w\s#-]/g, " ").replace(/\s+/g, " ").trim();
+    // "2nd Floor", "Third Floor": the identifier comes first.
+    var fl = t.match(/^([a-z0-9]+)\s+(?:floor|fl)$/);
+    if (fl && UNIT_ID.test(fl[1])) return unitId(fl[1]);
+    var m = t.match(UNIT_PART);
     if (!m) return "";
-    return m[1] || (UNIT_ID.test(m[2]) ? m[2] : "");
+    return m[1] ? unitId(m[1]) : (UNIT_ID.test(m[2]) ? unitId(m[2]) : "");
   }
   function foldWord(w) { return Object.prototype.hasOwnProperty.call(STREET_FOLD, w) ? STREET_FOLD[w] : w; }
   function streetKey(address) {
     return String((plainDashes(address).split(",")[0]) || "")
       .toLowerCase().replace(/[^\w\s]/g, " ").trim().split(/\s+/).filter(Boolean).map(foldWord).join(" ");
+  }
+  // An address typed with no comma between the street and the city
+  // ("1200 W Industrial Blvd Dallas, TX 75207"): the city is the words after
+  // the last street suffix that are not a directional. { line, city } with
+  // city "" whenever there is a comma to go by or no such words.
+  function citylessSplit(address) {
+    var head = plainDashes(placeOf(address).head);
+    if (head.indexOf(",") >= 0) return { line: head.split(",")[0], city: "" };
+    var raw = head.trim().split(/\s+/);
+    var at = -1;
+    for (var i = 2; i < raw.length - 1; i++) {
+      if (STREET_SUFFIX[foldWord(raw[i].toLowerCase().replace(/[^\w]/g, ""))] === 1) at = i;
+    }
+    if (at < 0) return { line: head, city: "" };
+    var rest = raw.slice(at + 1);
+    var tail = rest.map(function (w) { return foldWord(w.toLowerCase().replace(/[^\w]/g, "")); });
+    if (tail.every(function (w) { return STREET_DIR[w] === 1 || w === ""; })) return { line: head, city: "" };
+    // A unit after the suffix ("Suite 200") is the line's, not a city.
+    if (UNIT_WORD.test(tail[0]) || /^#/.test(rest[0])) return { line: head, city: "" };
+    var lead = 0;
+    while (lead < tail.length && STREET_DIR[tail[lead]] === 1) lead++;
+    return { line: raw.slice(0, at + 1 + lead).join(" "), city: rest.slice(lead).join(" ") };
   }
   // { lo, hi, name, dir, suffix, unit } or null when the line does not start
   // with a street number. "23126-23170 Valencia Blvd" is a range. A unit is
@@ -1305,8 +1404,7 @@
   // ("Suite 101"), a "#", the comma part after the street, or a letter on the
   // number itself ("2020B" is not "2020A", and neither is "2020").
   function streetParts(address) {
-    var segs = plainDashes(address).split(",");
-    var line = String(segs[0] || "").toLowerCase();
+    var line = String(citylessSplit(address).line || "").toLowerCase();
     var num = line.match(/^\s*(\d+)(?:\s*-\s*(\d+))?([a-z])?(?=\s|$)/);
     if (!num) return null;
     var lo = Number(num[1]), hi = num[2] ? Number(num[2]) : lo;
@@ -1319,17 +1417,22 @@
     var units = num[3] ? [num[3]] : [];
     line = line.slice(num[0].length);
     var hash = line.match(/#\s*([a-z0-9-]+)/);
-    if (hash) { units.push(hash[1]); line = line.replace(hash[0], " "); }
+    if (hash) { units.push(unitId(hash[1])); line = line.replace(hash[0], " "); }
     var toks = line.replace(/[^\w\s-]/g, " ").trim().split(/\s+/).filter(Boolean);
     // "Suite #200": the "#" took the identifier and left the word behind.
     if (hash && toks.length > 1 && UNIT_WORD.test(toks[toks.length - 1])) toks.pop();
     // Never the first word (a street line needs a name ahead of its unit),
     // and only with an identifier behind it.
     for (var i = 1; i + 1 < toks.length; i++) {
-      if (UNIT_WORD.test(toks[i]) && UNIT_ID.test(toks[i + 1])) { units.push(toks[i + 1]); toks = toks.slice(0, i); break; }
+      if (UNIT_WORD.test(toks[i]) && UNIT_ID.test(toks[i + 1])) { units.push(unitId(toks[i + 1])); toks = toks.slice(0, i); break; }
     }
-    var part = unitOfPart(segs[1]);
-    if (part) units.push(part);
+    // Every comma part between the street and the state that names a unit or
+    // one building of several ("100 Main St, Building One, Dallas, TX"), not
+    // only the first: a city never reads as one.
+    plainDashes(placeOf(address).head).split(",").slice(1).forEach(function (p) {
+      var u = unitOfPart(p);
+      if (u) units.push(u);
+    });
     var words = [];
     toks.forEach(function (t) { t.split("-").forEach(function (w) { if (w) words.push(foldWord(w)); }); });
     var dirs = words.filter(function (w) { return STREET_DIR[w] === 1; });
@@ -1344,7 +1447,8 @@
   // The city as written (the comma part that is not a unit), folded; "" when
   // the address names none.
   function cityKey(address) {
-    var parts = plainDashes(placeOf(address).head).split(",").slice(1)
+    var bare = citylessSplit(address).city;
+    var parts = (bare ? [bare] : plainDashes(placeOf(address).head).split(",").slice(1))
       .filter(function (p) { return unitOfPart(p) === ""; })
       .map(function (p) { return p.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim(); })
       .filter(Boolean);
@@ -1409,6 +1513,10 @@
     if (!specificPage(lastSale && lastSale.source_url)) return { ok: false, why: "no_source" };
     if (type === "estimate") return { ok: false, why: "estimate_source" };
     if (type === "listing" || isListingHost(lastSale.source_url)) return { ok: true, half: "listing_page" };
+    // The search did not say what kind of page this is (or said a word the
+    // server could not place). Trusted in full, a sale the model failed to
+    // classify outranked one it classified honestly as a listing.
+    if (type !== "news" && type !== "public_record") return { ok: true, half: "unclassified" };
     if (NON_DISCLOSURE[stateOf(subjectAddress)] === 1 && type !== "news") return { ok: true, half: "non_disclosure" };
     return { ok: true, half: null };
   }
@@ -1454,10 +1562,24 @@
     if (o.off) return no("off");
     if (lastSale.unusable) return no("unusable", { why: String(lastSale.unusable) });
     var basis = ownSaleBasis(lastSale.basis);
-    if (basis !== "arms_length" && OWN_SALE_HALF_BASES[basis] !== true) return no("basis", { why: basis });
+    // `from_comp` is the server's own mark (settleOwnSale; a model's is
+    // dropped): this sale was read off a comp row, and a comp is never asked
+    // what kind of sale it was. Where its notes named a kind, the server
+    // wrote it as the basis and it is judged like any other. Where they said
+    // nothing, it is not a clean bill and not a refusal either: half.
+    var silentComp = basis === "unstated" && lastSale.from_comp === true;
+    if (!silentComp && basis !== "arms_length" && OWN_SALE_HALF_BASES[basis] !== true) return no("basis", { why: basis });
     if (OWN_SALE_HALF_BASES[basis] === true) half = basis;
+    if (silentComp) half = "from_comp";
     var names = [].concat(o.subjectAddresses || []).filter(function (a) { return typeof a === "string" && a.trim() !== ""; });
-    var src = ownSaleSource(lastSale, names[0] || "");
+    var saleAddr = String(lastSale.address == null ? "" : lastSale.address).trim();
+    // Which state's rule the source is held to: the sale's own address says
+    // where the property is, else whichever of the subject's names carries a
+    // state. Never simply the FIRST name: the page and a bulk row list the
+    // subject's names in different orders, and read that way one report was
+    // worth $1,950,000 on one screen and $1,725,000 on the other.
+    var where = [saleAddr].concat(names).filter(function (a) { return stateOf(a) !== ""; })[0] || names[0] || "";
+    var src = ownSaleSource(lastSale, where);
     if (!src.ok) return no(src.why === "estimate_source" ? "no_source" : src.why, { why: src.why });
     half = half || src.half;
     // Recorded for this building, the whole of it. With a stated address the
@@ -1466,16 +1588,19 @@
     // No stated address is not a clean bill either: the search is asked for
     // it on every sale, and without it nothing can tell this building from
     // the one next door.
-    var saleAddr = String(lastSale.address == null ? "" : lastSale.address).trim();
     if (!saleAddr || !names.length) return no("no_address");
     var sp = streetParts(saleAddr);
-    var hit = null;
+    var hits = [];
     names.forEach(function (n) {
       var np = streetParts(n);
-      if (!hit && sameStreetLine(sp, np) && samePlace(saleAddr, n)) hit = np;
+      if (sameStreetLine(sp, np) && samePlace(saleAddr, n)) hits.push(np);
     });
-    if (!hit) return no("other_address", { saleAddress: saleAddr });
-    if (sp.unit !== hit.unit) return no("unit", { saleAddress: saleAddr });
+    if (!hits.length) return no("other_address", { saleAddress: saleAddr });
+    // EVERY name that matches has to agree with the sale about the unit, not
+    // the first one found: a subject typed as "Suite 200" is one suite however
+    // the search rewrote its address, and listed in the other order the same
+    // report leaned on the whole building's sale.
+    if (hits.some(function (h) { return h.unit !== sp.unit; })) return no("unit", { saleAddress: saleAddr });
     var size = Number(o.subjectSize);
     var saleSize = numericValue(lastSale.size_sqft);
     if (size > 0 && saleSize > 0 && Math.abs(saleSize / size - 1) > OWN_SALE_SCOPE_TOL) {
@@ -1484,8 +1609,13 @@
     if (size > 0 && (known / size < OWN_SALE_PSF_MIN || known / size > OWN_SALE_PSF_MAX)) return no("implausible");
     // Built after it "sold": that price bought the land, or the building
     // that stood there before.
+    // The sale's year is read off the date AS WRITTEN: getFullYear() on an
+    // ISO date (which is UTC midnight) answers the year before in any zone
+    // west of Greenwich, so a January 2026 sale of a 2026 building was
+    // refused on a server in Oregon and leaned on in a browser in London.
     var built = yearOf(o.yearBuilt);
-    if (built != null && built > new Date(ms).getFullYear()) return no("predates_building");
+    var soldYear = Number((String(lastSale.date).match(/(?:19|20)\d{2}/) || [])[0]);
+    if (built != null && soldYear > 0 && built > soldYear) return no("predates_building");
     // `asking` is the LISTING the search found (see the header). Under the
     // floor it is a misread ("$1.05M" read as 1.05), not an ask.
     var ask = Number(o.asking);
@@ -1546,7 +1676,9 @@
     var k = 1;
     if (c) {
       var heldMid = Math.max(a.value / OWN_SALE_COMPS_PULL, Math.min(a.value * OWN_SALE_COMPS_PULL, c.mid));
-      k = heldMid / c.mid;
+      // In full while the sale leads, fading with its weight below that.
+      var fade = Math.min(1, w / OWN_SALE_LEADS_AT);
+      k = 1 + (heldMid / c.mid - 1) * fade;
       out.held = Math.abs(k - 1) > 1e-9;
     }
     var mid = w * a.value + (1 - w) * (c ? c.mid * k : 0);
@@ -1565,6 +1697,15 @@
     out.mid = heroRound(mid);
     out.low = Math.min(heroRound(low), out.mid);
     out.high = Math.max(heroRound(high), out.mid);
+    // Rounding to the display step can carry Low up past the price paid, or
+    // High down below it, by half a step. While the sale leads the range is
+    // promised to hold both the price and what it comes to today, so those
+    // two ends are rounded OUTWARD when they have to be.
+    if (w >= OWN_SALE_LEADS_AT) {
+      var floorAt = Math.min(a.value, a.price), ceilAt = Math.max(a.value, a.price);
+      if (out.low > floorAt) out.low = Math.floor(floorAt / heroStep(floorAt)) * heroStep(floorAt);
+      if (out.high < ceilAt) out.high = Math.ceil(ceilAt / heroStep(ceilAt)) * heroStep(ceilAt);
+    }
     return out;
   }
 
@@ -1590,7 +1731,8 @@
   //               own source is a news page or a public record and its notes
   //               say nothing of an asking price: a listing-sourced row is
   //               how an ask becomes "what it sold for". Shaped like
-  //               subject_last_sale, with `from_comp: true`.
+  //               subject_last_sale, with `from_comp: true`, and with the
+  //               reported sale's `basis` when it is the same closing.
   //     row,      the comp `sale` was read from, or null (the server reads its
   //               notes for a price caveat, comp-fit.js priceBasisOf)
   //     listing,  a same-building row that is ON the market (the subject's own
@@ -1613,6 +1755,13 @@
     var reported = r.subject_last_sale && typeof r.subject_last_sale === "object" ? r.subject_last_sale : null;
     var listing = null, best = null, bestMs = NaN;
     own.forEach(function (c) {
+      // Taken out of the comps on the LOOSE match (one building under two
+      // ZIPs is still not its own comp), but only a row that matches the way
+      // the anchor itself matches may be READ as the building's sale or its
+      // listing: otherwise another ZIP's row displaced the sale recorded for
+      // this exact address and was then refused, and another ZIP's asking
+      // price halved the real sale's weight.
+      if (!names.some(function (a) { return sameBuilding(c.address, a); })) return;
       if (isOnMarket(c)) { if (!listing) listing = c; return; }
       var tier = String(c.source_type || "").toLowerCase();
       if (tier !== "news" && tier !== "public_record") return;
@@ -1636,6 +1785,12 @@
           source_type: String(best.source_type || ""), address: String(best.address || ""),
           size_sqft: best.size_sqft == null ? "" : String(best.size_sqft), from_comp: true,
         };
+        // The same closing (the reported line had no price, or no date to
+        // tell them apart): the basis the search gave it is still the basis.
+        // A sale it called a leaseback, a portfolio or a related-party deal
+        // must not come back clean one row down. A NEWER row is another
+        // closing and carries nothing.
+        if (reported && !newer && ownSaleBasis(reported.basis) !== "unstated") sale.basis = String(reported.basis);
         row = best;
       }
     }
@@ -1643,14 +1798,14 @@
   }
 
   return {
-    moneyOf, saleDateMs, ownSaleWeight, ownSaleSpread, ownSaleIndex, ownSaleBasis, ownSaleSource, specificPage,
+    moneyOf, saleDateMs, ownSaleWeight, ownSaleSpread, ownSaleIndex, ownSaleBasis, ownSaleNoteBasis, ownSaleSource, specificPage,
     isListingHost, stateOf, zipOf, placeOf, cityKey, unitOfPart, streetParts, sameStreetLine, samePlace,
     ownSaleAnchor, valueWithOwnSale, ownSaleFrom, streetKey, sameBuilding,
     OWN_SALE_MAX_YEARS, OWN_SALE_FULL_YEARS, OWN_SALE_WEIGHT_NEW, OWN_SALE_HALF, OWN_SALE_MIN_WEIGHT,
     OWN_SALE_DISAGREE, OWN_SALE_COMPS_PULL, OWN_SALE_MIN_PRICE,
     OWN_SALE_SPREAD_BASE, OWN_SALE_SPREAD_PER_YEAR, OWN_SALE_TREND_CAP, OWN_SALE_INDEX_CAP,
     OWN_SALE_SCOPE_TOL, OWN_SALE_PSF_MIN, OWN_SALE_PSF_MAX,
-    OWN_SALE_BASIS_WORDS, OWN_SALE_HALF_BASES, OWN_SALE_LEADS_AT, OWN_SALE_TYPES, NON_DISCLOSURE, LISTING_HOSTS,
+    OWN_SALE_BASIS_WORDS, OWN_SALE_HALF_BASES, OWN_SALE_LEADS_AT, OWN_SALE_ASK_MATCH, OWN_SALE_TYPES, NON_DISCLOSURE, LISTING_HOSTS,
     isNetLease, NET_LEASE_TYPES, NET_LEASE_CENTER_TYPE,
     capRateOf, capRateBand, netLeaseValue, impliedCapRate,
     CAP_RATE_MIN, CAP_RATE_MAX, CAP_BAND_MIN_COMPS,

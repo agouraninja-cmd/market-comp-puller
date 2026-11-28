@@ -7822,6 +7822,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       case "sale_leaseback": return "the seller stayed on as its tenant, so the price was set together with a lease";
       case "allocated": return "the price is this property's share of a larger deal";
       case "listing_page": return "the price comes from a listing page, which may show the last asking price and not the closing price";
+      case "unclassified": return "the search did not say what kind of page that price comes from";
+      case "from_comp": return "the search listed that sale among the comps, where it is not asked what kind of sale it was";
       case "non_disclosure": return "sale prices are not public record in this state, and no news report of the price was found";
       case "ask_far": {
         const pct = own.ownSale.askPct;
@@ -7856,7 +7858,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           : why === "not_closed" ? "the search found an asking or pending price, not a closed sale"
           : "the search did not confirm it was an ordinary sale of this whole property";
       case "unusable":
-        return why === "page_lacks_price" ? "the page it was cited to does not state that price"
+        return why === "price_undisclosed" ? "the page it was cited to says the price was not disclosed"
           : "the page it was cited to no longer loads";
       case "no_source": return "the search could not link it to a page that states it";
       case "no_address": return "the search did not say which address that sale was recorded for";
@@ -7866,7 +7868,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         return `it covered about ${sf(a.saleSize)} and this report values ${sf(a.subjectSize)}. If ${sf(a.saleSize)} is the right size, change the size above`;
       case "implausible": return "that price over this size is outside what a building sells for, so one of the two is misread";
       case "predates_building": return "it closed before this building was built";
-      case "matches_asking": return "it is the same figure as the current listing's asking price, so it may be the listing and not a closing";
+      case "matches_asking": return "it matches the current listing's asking price, so it may be the listing and not a closing";
       case "disagree":
         return "it is more than three times, or less than a third of, what the comps say, so one of the two is describing "
           + "a different property. Check the size above first, then whether that sale covered this building alone";
@@ -8941,8 +8943,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const share = ownSaleShare(own);
       const c = own.comp;
       if (!c) {
-        return `This ${noun} ${ownSoldPhrase()}. No priced sale comps came back to check that against, `
-          + "so this estimate rests on that sale alone.";
+        // Two ways to have no comps' figure: none came back, or they came back
+        // and there is no size to turn their $/SF into dollars (the basis
+        // line above says so). Only the first is "none came back".
+        return psfBand
+          ? `This ${noun} ${ownSoldPhrase()}. The comps came back as a price per square foot, and without this ${noun}'s size `
+            + "they cannot be turned into dollars to check that against, so this estimate rests on that sale alone."
+          : `This ${noun} ${ownSoldPhrase()}. No priced sale comps came back to check that against, `
+            + "so this estimate rests on that sale alone.";
       }
       const halfWhy = ownSaleHalfWhy(own);
       const head = ownSaleLeads(own)
@@ -8963,7 +8971,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             + `check the size above and whether that sale covered this ${noun} alone.`
           : ` ${alone}, ${pct}% ${dir}. A gap like that is common, because the comps are other ${assetNounPlural(meta.type)}; `
             + `if it looks wrong, check the size above and whether that sale covered this ${noun} alone.`;
-      return head + tail;
+      // The comps' figure in the blend is not the one quoted above when it
+      // was held toward the sale (valuation.js: within 1.5 times of it while
+      // the sale leads, less as it fades), so the reader is told why the
+      // shares do not multiply out from the figure printed.
+      const heldNote = own.held
+        ? " The comps' figure is so far from the sale that it is pulled part of the way toward it before the two are blended."
+        : "";
+      return head + tail + heldNote;
     };
     const ownTrustRefused = () => {
       const why = ownSaleRefusal(own, !!meta.shared);
@@ -23560,8 +23575,21 @@ async function renderMyDesk() {
     const wrap = document.getElementById("corpusOffer");
     const rowsEl = document.getElementById("corpusOfferRows");
     if (!wrap || !rowsEl) return;
+    // A SALE of the building this report values is not a comp to add to it.
+    // The server leaves it out of the offer (/api/corpus-comps); this is the
+    // page's own guard, with every name the report has for the subject. It
+    // matters since 2026-11-27: the search's copy of that sale is taken out
+    // of the comp table, so the "already in the table" test below no longer
+    // hides the saved copy, and the estimate may already lean on that sale.
+    const subjectNames = [
+      typeof currentMeta !== "undefined" && currentMeta ? currentMeta.address : "",
+      typeof currentMeta !== "undefined" && currentMeta ? currentMeta.addressTyped : "",
+      typeof currentParsed !== "undefined" && currentParsed ? currentParsed.subject_address_corrected : "",
+    ].filter((a) => typeof a === "string" && a.trim() !== "");
+    const isOwnSale = (r) => !String((r && r.transaction) || "").toLowerCase().startsWith("lease")
+      && subjectNames.some((a) => VALUATION.sameBuilding(r.address, a, true));
     const usable = curationControlsAllowed() && currentComps
-      ? corpusOfferRows.filter((r) => !currentComps.some((c) => compKeyOf(c) === compKeyOf(r)))
+      ? corpusOfferRows.filter((r) => !isOwnSale(r) && !currentComps.some((c) => compKeyOf(c) === compKeyOf(r)))
       : [];
     rowsEl.innerHTML = "";
     // Locked: name the count and stop. No rows to render, nothing withheld

@@ -604,13 +604,25 @@ test("ownSaleSource halves a price cited to a listing page, by its host or by th
 // no news page behind it, it counts for half.
 test("ownSaleSource halves a non-disclosure state's price unless a news page reports it", () => {
   assert.deepEqual(V.ownSaleSource({ source_url: ARTICLE, source_type: "public_record" }, TEXAS), { ok: true, half: "non_disclosure" });
-  assert.deepEqual(V.ownSaleSource({ source_url: ARTICLE }, TEXAS), { ok: true, half: "non_disclosure" }, "a source of no stated kind is not news");
   assert.deepEqual(V.ownSaleSource({ source_url: ARTICLE, source_type: "public_record" }, "8000 S Federal Way, Boise, ID 83716"),
     { ok: true, half: "non_disclosure" });
   assert.deepEqual(V.ownSaleSource({ source_url: ARTICLE, source_type: "news" }, TEXAS), { ok: true, half: null });
-  // Where deeds show the price, a record, an article and an unlabelled page
-  // all count in full.
-  for (const type of ["public_record", "news", ""]) {
+  // Where deeds show the price, a record and an article both count in full.
+  for (const type of ["public_record", "news"]) {
     assert.deepEqual(V.ownSaleSource({ source_url: ARTICLE, source_type: type }, FLORIDA), { ok: true, half: null }, JSON.stringify(type));
   }
+});
+
+// A comp whose source the search cannot classify is an "estimate". A sale of
+// the subject with no kind of source at all used to be trusted in FULL, so a
+// model that failed to classify its page outranked one that classified it
+// honestly as a listing (0.9 against 0.45, same sale, same link). It is a
+// page that exists, so it is not refused, and it counts for half.
+test("ownSaleSource halves a price whose source the search did not classify", () => {
+  for (const sale of [{ source_url: ARTICLE }, { source_url: ARTICLE, source_type: "" }, { source_url: ARTICLE, source_type: "broker flyer" }]) {
+    assert.deepEqual(V.ownSaleSource(sale, FLORIDA), { ok: true, half: "unclassified" }, JSON.stringify(sale.source_type));
+    assert.deepEqual(V.ownSaleSource(sale, TEXAS), { ok: true, half: "unclassified" }, JSON.stringify(sale.source_type));
+  }
+  // A marketplace's host still says "listing" by itself, classified or not.
+  assert.deepEqual(V.ownSaleSource({ source_url: LISTING }, FLORIDA), { ok: true, half: "listing_page" });
 });

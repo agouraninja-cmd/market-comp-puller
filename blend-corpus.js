@@ -298,6 +298,7 @@ function blendNearbyComps(report, rows, opts) {
   const aggregateOf = typeof o.isAggregateAddress === "function" ? o.isAggregateAddress : isAggregateAddress;
   const cutoff = lookbackCutoffFrac(o.months, o.now);
   const subjectKey = normAddr(o.subjectAddress);
+  const settled = Boolean(report.subject_last_sale && report.subject_last_sale.settled === 1);
   const subjectNames = [o.subjectAddress, report.subject_address_corrected]
     .filter((a) => typeof a === "string" && a.trim() !== "");
   const radius = Number.isFinite(Number(o.radiusMiles))
@@ -324,13 +325,17 @@ function blendNearbyComps(report, rows, opts) {
     if (!(mi <= radius)) continue;
     if (subjectKey && normAddr(row.address) === subjectKey) continue;
     // The subject's own SALE, saved under another spelling of its address
-    // ("Rd" for "Road", a ZIP, the city the search corrected it to). It was
-    // only ever a comp of itself, which the prompt forbids; since 2026-11-27
-    // it is also what the value leans on (valuation.js, "The building's own
-    // sale"), so blended back in it would be counted twice. A LEASE at the
-    // subject's address stays: a suite let in the building is a real lease
-    // comp for it.
-    if (!isLeaseRow(row) && subjectNames.some((a) => sameBuilding(row.address, a, true))) continue;
+    // ("Rd" for "Road", a ZIP, the city the search corrected it to), on a
+    // report whose own sale the server SETTLED (2026-11-27; valuation.js,
+    // "The building's own sale"). There the search's copy was taken out of
+    // the comps and the sale is weighed, or refused, by name, so the saved
+    // copy blended back in would count it twice. A LEASE at the subject's
+    // address stays: a suite let in the building is a real lease comp for it.
+    // ONLY on a settled report. A house, land, a leases-only search and every
+    // report cached before that date carry no stamp, nothing leans on their
+    // sale, and they blend exactly as they always did: skipped for all of
+    // them (for one day), a cached house report lost $150,000 off its High.
+    if (settled && !isLeaseRow(row) && subjectNames.some((a) => sameBuilding(row.address, a, true))) continue;
     if (subjectPsf > 0 && !samePriceTier(salePsfOf(row), subjectPsf)) continue;
     if (manufactured !== null && isManufacturedHome(row) !== manufactured) continue;
     const shaped = toReportComp(row);

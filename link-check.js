@@ -141,14 +141,24 @@ function applyLinkVerdicts(payload, verdictsByUrl) {
 // page. So for that ONE url the server reads the page and asks whether it
 // says the price.
 //
-//   "states"   the price is on the page
-//   "absent"   the page is about this property (its street number and street
-//              are on it) and the price is NOT: the search put a number on a
-//              page that does not carry it. The sale is not leaned on.
-//   "unknown"  anything else: a page that would not load, a script shell with
-//              no text, a page that names neither. No evidence either way,
-//              and no penalty, the doctrine above: under-claim, never
-//              over-claim.
+//   "states"       the price is on the page
+//   "undisclosed"  the page is about this property (its street number and
+//                  street are on it), carries the price nowhere, and SAYS the
+//                  price or the terms were not disclosed. The search put a
+//                  number on a page that says there is none to give, and the
+//                  sale is not leaned on.
+//   "unknown"      anything else: a page that would not load, a script shell
+//                  with no text, a page that names neither, and a page that
+//                  names the property and simply shows no price. No evidence
+//                  either way, and no penalty, the doctrine above: under-claim,
+//                  never over-claim.
+//
+// Why "shows no price" is not enough to refuse a sale (it was, for one day):
+// one GET sees less than a reader or the search did. A business journal
+// serves a headline, a paragraph and "Subscribe to keep reading"; a county
+// page names the parcel and loads its sale history a request later. Both
+// name the property and show no price, and both may state it. What our GET
+// CAN establish is a page saying, in words, that the price was not given.
 //
 // The price is looked for the ways a deal page writes it: in full
 // ("$12,625,000", "12625000"), and rounded in millions the way a headline
@@ -156,7 +166,8 @@ function applyLinkVerdicts(payload, verdictsByUrl) {
 // million ("$975K"). A rounding counts while it stays within PRICE_ROUNDING
 // (1%) of the price, rounded either way: "$12.5 million" is how an article
 // writes $12,450,000, and "$69M" is how a headline writes $69.4M. A bare
-// "13 million" for $12.6M is NOT accepted: that is another number.
+// "13 million" for $12.6M is NOT accepted: that is another number. The unit
+// may be hyphened on ("a $12.6-million sale") or written "mln".
 //
 // It is looked for in the WHOLE document, scripts included, and only the
 // question "is this page about the property" is asked of the visible text.
@@ -198,14 +209,21 @@ function priceForms(price) {
         const text = String(Number(v.toFixed(d)));
         if (seen.has(text)) continue;
         seen.add(text);
-        forms.push(esc(text) + "\\s*(?:" + unit + ")(?![a-z])");
+        forms.push(esc(text) + "\\s*-?\\s*(?:" + unit + ")(?![a-z])");
       }
     }
   };
-  if (p >= 1e6) short(p / 1e6, "million|mil|mm|m");
+  if (p >= 1e6) short(p / 1e6, "million|mil|mln|mm|m");
   else short(p / 1e3, "thousand|k");
   return forms;
 }
+// A page saying, in words, that there is no price to give.
+const UNDISCLOSED_RE = new RegExp([
+  "\\b(?:terms|price|pricing|financial terms|financial details|details|amount|sum)\\b[^.]{0,60}\\b(?:not disclosed|undisclosed|not released|not made public|not announced|not available|not provided|kept private|confidential|were(?:n't| not) disclosed|was(?:n't| not) disclosed)\\b",
+  "\\bundisclosed (?:price|sum|amount|terms|figure)\\b",
+  "\\bfor an undisclosed\\b",
+  "\\b(?:did not|didn't|declined to|would not|wouldn't) disclose\\b",
+].join("|"));
 function pageStatesPrice(html, price, address) {
   const text = pageText(html);
   const raw = pageRaw(html);
@@ -218,7 +236,7 @@ function pageStatesPrice(html, price, address) {
   const m = String(address || "").toLowerCase().match(/^\s*(\d+)(?:\s*-\s*\d+)?\s+(?:[nsew]\.?\s+)?([a-z0-9]+)/);
   if (!m) return "unknown";
   const about = new RegExp("(?:^|[^0-9])" + m[1] + "(?:\\s*-\\s*\\d+)?\\s+(?:[a-z.]+\\s+){0,2}" + m[2].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(text);
-  return about ? "absent" : "unknown";
+  return about && UNDISCLOSED_RE.test(text) ? "undisclosed" : "unknown";
 }
 
 module.exports = { BLOCKED_HOSTS, PARKING_HOSTS, checkableUrl, hostClass, verdictFor, isParked, parkingHost, applyLinkVerdicts,

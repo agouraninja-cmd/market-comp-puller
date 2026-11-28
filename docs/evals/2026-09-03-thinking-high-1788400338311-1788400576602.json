@@ -1,0 +1,51 @@
+{
+  "label": "thinking-high-1788400338311",
+  "model": "gemini-3.8-flash",
+  "provider": "gemini",
+  "thinkingLevel": "high",
+  "ranAt": "2026-09-03T01:56:16.601Z",
+  "base": "http://127.0.0.1:3170",
+  "setSize": 3,
+  "targetSelection": "first 3 (3 targets)",
+  "corpusWiped": false,
+  "subjectSizesWiped": false,
+  "summary": {
+    "targets": 3,
+    "scored": 0,
+    "failures": 3,
+    "failedTargets": [
+      {
+        "target": "Industrial / 1200 W Industrial Blvd, Dallas, TX",
+        "error": "fetch failed"
+      },
+      {
+        "target": "Industrial / 4050 E Franklin Rd, Nampa, ID",
+        "error": "fetch failed"
+      },
+      {
+        "target": "Industrial / 1010 Yellowstone Ave, Pocatello, ID",
+        "error": "fetch failed"
+      }
+    ],
+    "metrics": {},
+    "valuationPossibleRate": 0,
+    "subjectSizeFoundRate": 0
+  },
+  "results": [
+    {
+      "target": "Industrial / 1200 W Industrial Blvd, Dallas, TX",
+      "ok": false,
+      "error": "fetch failed"
+    },
+    {
+      "target": "Industrial / 4050 E Franklin Rd, Nampa, ID",
+      "ok": false,
+      "error": "fetch failed"
+    },
+    {
+      "target": "Industrial / 1010 Yellowstone Ave, Pocatello, ID",
+      "ok": false,
+      "error": "fetch failed"
+    }
+  ]
+}

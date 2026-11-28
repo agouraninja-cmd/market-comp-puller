@@ -1,0 +1,140 @@
+{
+  "label": "thinking-low-1788400188159",
+  "model": "gemini-3.8-flash",
+  "provider": "gemini",
+  "thinkingLevel": "low",
+  "ranAt": "2026-09-03T01:50:53.148Z",
+  "base": "http://127.0.0.1:3170",
+  "setSize": 3,
+  "targetSelection": "first 3 (3 targets)",
+  "corpusWiped": true,
+  "subjectSizesWiped": true,
+  "summary": {
+    "targets": 3,
+    "scored": 3,
+    "failures": 0,
+    "failedTargets": [],
+    "metrics": {
+      "comps": 5.666666666666667,
+      "pricedSales": 5.333333333333333,
+      "provenanceScore": 0.7822222222222223,
+      "estimateRate": 0.12222222222222223,
+      "aggregateRate": 0,
+      "inWindowRate": 0.5555555555555555,
+      "marketMatchRate": 0.888888888888889,
+      "sizeRate": 1,
+      "summaryChars": 487.3333333333333,
+      "valueDriversChars": 189.66666666666666,
+      "marketTrendChars": 126,
+      "priceDiscoveryChars": 121.66666666666667,
+      "durationMs": 21450.666666666668,
+      "costUsd": 0.009657375000000001,
+      "billedCalls": 1,
+      "inputTokens": 4706.333333333333,
+      "outputTokens": 1480.3333333333333,
+      "thoughtTokens": 0,
+      "reportTokens": 1480.3333333333333,
+      "thoughtShare": 0
+    },
+    "valuationPossibleRate": 1,
+    "subjectSizeFoundRate": 0.3333333333333333
+  },
+  "results": [
+    {
+      "target": "Industrial / 1200 W Industrial Blvd, Dallas, TX",
+      "ok": true,
+      "metrics": {
+        "comps": 5,
+        "pricedSales": 5,
+        "valuationPossible": true,
+        "provenanceScore": 0.78,
+        "tierCounts": {
+          "estimate": 1,
+          "listing": 4
+        },
+        "estimateRate": 0.2,
+        "aggregateRate": 0,
+        "inWindowRate": 0,
+        "marketMatchRate": 1,
+        "sizeRate": 1,
+        "subjectSizeFound": true,
+        "summaryChars": 487,
+        "valueDriversChars": 155,
+        "marketTrendChars": 127,
+        "priceDiscoveryChars": 117,
+        "costUsd": 0.0095739375,
+        "billedCalls": 1,
+        "inputTokens": 4706,
+        "outputTokens": 1483,
+        "thoughtTokens": 0,
+        "reportTokens": 1483,
+        "thoughtShare": 0,
+        "durationMs": 18781
+      }
+    },
+    {
+      "target": "Industrial / 4050 E Franklin Rd, Nampa, ID",
+      "ok": true,
+      "metrics": {
+        "comps": 6,
+        "pricedSales": 6,
+        "valuationPossible": true,
+        "provenanceScore": 0.7749999999999999,
+        "tierCounts": {
+          "news": 3,
+          "listing": 3
+        },
+        "estimateRate": 0,
+        "aggregateRate": 0,
+        "inWindowRate": 1,
+        "marketMatchRate": 0.8333333333333334,
+        "sizeRate": 1,
+        "subjectSizeFound": false,
+        "summaryChars": 547,
+        "valueDriversChars": 186,
+        "marketTrendChars": 120,
+        "priceDiscoveryChars": 101,
+        "costUsd": 0.0095964375,
+        "billedCalls": 1,
+        "inputTokens": 4707,
+        "outputTokens": 1446,
+        "thoughtTokens": 0,
+        "reportTokens": 1446,
+        "thoughtShare": 0,
+        "durationMs": 22847
+      }
+    },
+    {
+      "target": "Industrial / 1010 Yellowstone Ave, Pocatello, ID",
+      "ok": true,
+      "metrics": {
+        "comps": 6,
+        "pricedSales": 5,
+        "valuationPossible": true,
+        "provenanceScore": 0.7916666666666666,
+        "tierCounts": {
+          "listing": 5,
+          "estimate": 1
+        },
+        "estimateRate": 0.16666666666666666,
+        "aggregateRate": 0,
+        "inWindowRate": 0.6666666666666666,
+        "marketMatchRate": 0.8333333333333334,
+        "sizeRate": 1,
+        "subjectSizeFound": false,
+        "summaryChars": 428,
+        "valueDriversChars": 228,
+        "marketTrendChars": 131,
+        "priceDiscoveryChars": 147,
+        "costUsd": 0.00980175,
+        "billedCalls": 1,
+        "inputTokens": 4706,
+        "outputTokens": 1512,
+        "thoughtTokens": 0,
+        "reportTokens": 1512,
+        "thoughtShare": 0,
+        "durationMs": 22724
+      }
+    }
+  ]
+}

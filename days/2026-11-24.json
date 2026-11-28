@@ -1,0 +1,128 @@
+{
+  "day": "2026-11-24",
+  "updatedAt": "2026-11-25T17:55:07.819Z",
+  "period": {
+    "start": "2026-11-19",
+    "end": "2026-12-02",
+    "index": 6,
+    "length": 14,
+    "days": [
+      "2026-11-19",
+      "2026-11-20",
+      "2026-11-21",
+      "2026-11-22",
+      "2026-11-23",
+      "2026-11-24",
+      "2026-11-25",
+      "2026-11-26",
+      "2026-11-27",
+      "2026-11-28",
+      "2026-11-29",
+      "2026-11-30",
+      "2026-12-01",
+      "2026-12-02"
+    ]
+  },
+  "resetsOn": "2026-12-03",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 4,
+        "prs": 2
+      },
+      "periodTotal": 36,
+      "periodPrs": 25,
+      "points": [
+        16,
+        3,
+        2,
+        3,
+        8,
+        4,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 512,
+      "title": "Find a property's owner, and contacts for every member",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 510,
+      "title": "Account menu above Home's map; Run a report's example addresses fit on a phone",
+      "login": "agouraninja-cmd",
+      "commits": 3
+    }
+  ]
+}

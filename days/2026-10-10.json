@@ -1,0 +1,134 @@
+{
+  "day": "2026-10-10",
+  "updatedAt": "2026-10-11T12:41:22.523Z",
+  "period": {
+    "start": "2026-10-08",
+    "end": "2026-10-21",
+    "index": 3,
+    "length": 14,
+    "days": [
+      "2026-10-08",
+      "2026-10-09",
+      "2026-10-10",
+      "2026-10-11",
+      "2026-10-12",
+      "2026-10-13",
+      "2026-10-14",
+      "2026-10-15",
+      "2026-10-16",
+      "2026-10-17",
+      "2026-10-18",
+      "2026-10-19",
+      "2026-10-20",
+      "2026-10-21"
+    ]
+  },
+  "resetsOn": "2026-10-22",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 3,
+        "prs": 3
+      },
+      "periodTotal": 8,
+      "periodPrs": 8,
+      "points": [
+        1,
+        4,
+        3,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 396,
+      "title": "The Board is a stock-style watchlist on the Markets page",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 397,
+      "title": "Home's building pictures show the building, never the aerial first",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 398,
+      "title": "Home's map: a two-finger swipe pans, a pinch zooms",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    }
+  ]
+}

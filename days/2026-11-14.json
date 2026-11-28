@@ -1,0 +1,224 @@
+{
+  "day": "2026-11-14",
+  "updatedAt": "2026-11-15T14:40:07.551Z",
+  "period": {
+    "start": "2026-11-05",
+    "end": "2026-11-18",
+    "index": 10,
+    "length": 14,
+    "days": [
+      "2026-11-05",
+      "2026-11-06",
+      "2026-11-07",
+      "2026-11-08",
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15",
+      "2026-11-16",
+      "2026-11-17",
+      "2026-11-18"
+    ]
+  },
+  "resetsOn": "2026-11-19",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 26,
+        "prs": 18
+      },
+      "periodTotal": 63,
+      "periodPrs": 40,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        24,
+        0,
+        0,
+        13,
+        26,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 437,
+      "title": "Phone: a signed-out visitor's header is two rows, on the public pages and the app page",
+      "login": "agouraninja-cmd",
+      "commits": 2
+    },
+    {
+      "number": 438,
+      "title": "Member pages: every title is Inter, like Home's greeting",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 440,
+      "title": "Phone: the comp set stops short of the Feedback button",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 441,
+      "title": "Member pages: the headings and figures inside each page are Inter too",
+      "login": "agouraninja-cmd",
+      "commits": 3
+    },
+    {
+      "number": 444,
+      "title": "The comp report is Inter too: the app page sets no Georgia",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 442,
+      "title": "Phone: Messages' sheets open over the bottom bar",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 443,
+      "title": "Your comps: check a loan against a comp set, and no publishing for an account that cannot publish",
+      "login": "agouraninja-cmd",
+      "commits": 2
+    },
+    {
+      "number": 445,
+      "title": "The public pages are Inter too: the whole site is one typeface",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 447,
+      "title": "Phone: a report shows its estimate on the first screen; Firm settings fits",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 448,
+      "title": "Privacy policy: name Google Fonts among the outside services",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 439,
+      "title": "Five fixes: publisher review, security headers, graceful shutdown, cacheable app script, no admin key in URLs",
+      "login": "agouraninja-cmd",
+      "commits": 5
+    },
+    {
+      "number": 449,
+      "title": "Legal pages: the Terms and the Privacy Policy each carry their own date",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 451,
+      "title": "Emails ask for Inter, with Arial behind it",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 450,
+      "title": "Phone: every small control is at least 32px to a finger",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 453,
+      "title": "Privacy policy: the Google Fonts line names email as well as pages",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 452,
+      "title": "Raise Render's shutdown delay to 300 seconds",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 454,
+      "title": "Phone: an open chat is one screen, and the comp set is one line",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 455,
+      "title": "Phone: forty more tap targets, and Your comps reaches its list sooner",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    }
+  ]
+}

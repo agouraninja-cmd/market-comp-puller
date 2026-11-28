@@ -1,0 +1,122 @@
+{
+  "day": "2026-10-08",
+  "updatedAt": "2026-10-09T13:08:27.339Z",
+  "period": {
+    "start": "2026-10-08",
+    "end": "2026-10-21",
+    "index": 1,
+    "length": 14,
+    "days": [
+      "2026-10-08",
+      "2026-10-09",
+      "2026-10-10",
+      "2026-10-11",
+      "2026-10-12",
+      "2026-10-13",
+      "2026-10-14",
+      "2026-10-15",
+      "2026-10-16",
+      "2026-10-17",
+      "2026-10-18",
+      "2026-10-19",
+      "2026-10-20",
+      "2026-10-21"
+    ]
+  },
+  "resetsOn": "2026-10-22",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 1,
+        "prs": 1
+      },
+      "periodTotal": 1,
+      "periodPrs": 1,
+      "points": [
+        1,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 391,
+      "title": "Home's map shows properties, comps and permits; Reports moves into Messages",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    }
+  ]
+}

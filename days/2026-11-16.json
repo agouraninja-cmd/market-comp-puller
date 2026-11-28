@@ -1,0 +1,218 @@
+{
+  "day": "2026-11-16",
+  "updatedAt": "2026-11-17T16:49:45.671Z",
+  "period": {
+    "start": "2026-11-05",
+    "end": "2026-11-18",
+    "index": 12,
+    "length": 14,
+    "days": [
+      "2026-11-05",
+      "2026-11-06",
+      "2026-11-07",
+      "2026-11-08",
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15",
+      "2026-11-16",
+      "2026-11-17",
+      "2026-11-18"
+    ]
+  },
+  "resetsOn": "2026-11-19",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 17,
+        "prs": 17
+      },
+      "periodTotal": 85,
+      "periodPrs": 62,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        24,
+        0,
+        0,
+        13,
+        26,
+        5,
+        17,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 461,
+      "title": "Low to High is the middle 70% of the comps, not the middle half",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 462,
+      "title": "Radius blend keeps manufactured homes and houses apart",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 463,
+      "title": "Corpus export carries lat/lng; lab can pool by distance",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 464,
+      "title": "Run a report and Sites open with the footer below the fold",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 465,
+      "title": "Messages: one screen on a computer, keeps your place, drafts per chat",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 467,
+      "title": "Messages: profile photos beside messages",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 468,
+      "title": "Messages: seen and typing indicators in firm chats",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 469,
+      "title": "Messages: load in parallel instead of one read at a time",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 471,
+      "title": "Sites: a design pass on the page",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 472,
+      "title": "Markets: tidy a member's Market Explorer page",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 473,
+      "title": "Messages: Draft A — colour circles, real tabs, one-line composer, first-visit card",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 474,
+      "title": "Settings: take a selfie for your profile photo",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 475,
+      "title": "Rail: move the current-page stripe flush to the rail's edge",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 476,
+      "title": "Desktop app 1.2.0: the release that carries the camera permission",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 477,
+      "title": "Deal rooms: the broker can name a client, instead of the start of their email",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 478,
+      "title": "Desktop app: the Mac camera entitlement, ready for a signed build",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 479,
+      "title": "Log migration 063 as applied",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    }
+  ]
+}

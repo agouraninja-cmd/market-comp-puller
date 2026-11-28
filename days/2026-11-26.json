@@ -1,0 +1,158 @@
+{
+  "day": "2026-11-26",
+  "updatedAt": "2026-11-27T17:23:39.546Z",
+  "period": {
+    "start": "2026-11-19",
+    "end": "2026-12-02",
+    "index": 8,
+    "length": 14,
+    "days": [
+      "2026-11-19",
+      "2026-11-20",
+      "2026-11-21",
+      "2026-11-22",
+      "2026-11-23",
+      "2026-11-24",
+      "2026-11-25",
+      "2026-11-26",
+      "2026-11-27",
+      "2026-11-28",
+      "2026-11-29",
+      "2026-11-30",
+      "2026-12-01",
+      "2026-12-02"
+    ]
+  },
+  "resetsOn": "2026-12-03",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 7,
+        "prs": 7
+      },
+      "periodTotal": 43,
+      "periodPrs": 32,
+      "points": [
+        16,
+        3,
+        2,
+        3,
+        8,
+        4,
+        0,
+        7,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 513,
+      "title": "Phone bar reaches the bottom edge on iPhone",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 514,
+      "title": "Home's map on a phone heals blank tiles on first load",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 515,
+      "title": "Home: close a property's map card when the map switches to Permits",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 517,
+      "title": "Comp accuracy: fit saved deals, leave out non-market sales, stop indexing asking prices",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 518,
+      "title": "Home: no card opens by itself; one property opens on its town",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 520,
+      "title": "Wider search: stop the one-minute limit skipping second searches that fit",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 519,
+      "title": "Home: one property opens at region level (zoom 10)",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    }
+  ]
+}

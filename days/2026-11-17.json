@@ -1,0 +1,128 @@
+{
+  "day": "2026-11-17",
+  "updatedAt": "2026-11-18T16:21:58.221Z",
+  "period": {
+    "start": "2026-11-05",
+    "end": "2026-11-18",
+    "index": 13,
+    "length": 14,
+    "days": [
+      "2026-11-05",
+      "2026-11-06",
+      "2026-11-07",
+      "2026-11-08",
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15",
+      "2026-11-16",
+      "2026-11-17",
+      "2026-11-18"
+    ]
+  },
+  "resetsOn": "2026-11-19",
+  "series": [
+    {
+      "login": "agouraninja-cmd",
+      "name": "Jacob",
+      "color": "#B91C1C",
+      "today": {
+        "commits": 2,
+        "prs": 2
+      },
+      "periodTotal": 87,
+      "periodPrs": 64,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        24,
+        0,
+        0,
+        13,
+        26,
+        5,
+        17,
+        2,
+        null
+      ]
+    },
+    {
+      "login": "owenbarnes5",
+      "name": "Owen",
+      "color": "#2A78D6",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null
+      ]
+    },
+    {
+      "login": "chuckdickinson-ninja",
+      "name": "Chuck",
+      "color": "#1BAF7A",
+      "today": {
+        "commits": 0,
+        "prs": 0
+      },
+      "periodTotal": 0,
+      "periodPrs": 0,
+      "points": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        null
+      ]
+    }
+  ],
+  "others": {
+    "commits": 0,
+    "prs": 0
+  },
+  "merged": [
+    {
+      "number": 480,
+      "title": "Messages fills the whole screen, with no heading",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    },
+    {
+      "number": 482,
+      "title": "Leave out comps that don't fit, and search wider when too few are left",
+      "login": "agouraninja-cmd",
+      "commits": 1
+    }
+  ]
+}

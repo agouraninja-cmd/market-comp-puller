@@ -85,8 +85,11 @@ paths:
     its share, what the comps alone say and how far apart the two are, in
     four tiers), the approaches table lists the sale first with its indexed
     figure and the sales comparison row says it "carries the other N%", the
-    tick chart is drawn in the comps' own range and labelled "Comps"
-    (`renderCompScatter`'s `compsOnly`), `#ownerLastSale` stands down (the
+    tick chart keeps its "Likely" mark (the owner, 2026-11-28: "I like the
+    likely wording better"; it read "Comps" for a day): its tint and red mark
+    are the ESTIMATE's own Low to High and Likely per square foot, the gray
+    ticks stay the comps, and the axis reaches the estimate when the sale
+    puts it past every comp (`renderCompScatter`'s `ownLed` / `includeBand`), `#ownerLastSale` stands down (the
     trust line has said it) and the estimate note names the sale.
     Helping (under 0.5): the same, with "the comps and its own sale" and a
     trust line that says the comps lead. Alone (no priced comps, a clean

@@ -41,6 +41,13 @@ test("an address is refused in a sentence the member can act on", () => {
   assert.match(O.lookupRefusal({ address: "" }), /Type the property's address/);
   assert.match(O.lookupRefusal({ address: "Eagle Rd, Meridian, ID" }), /street number/);
   assert.match(O.lookupRefusal({ address: "1450 S Eagle Rd" }), /city and state/);
+  // Without commas, an address that ends in a state still names its market.
+  assert.equal(O.lookupRefusal({ address: "1210 N 17th st Boise ID" }), "");
+  assert.equal(O.lookupRefusal({ address: "1210 N 17th St Boise id" }), "");
+  assert.equal(O.lookupRefusal({ address: "1210 N 17th St Boise Idaho" }), "");
+  assert.equal(O.lookupRefusal({ address: "50 Main St Hartford CT" }), "");
+  assert.match(O.lookupRefusal({ address: "1450 S Eagle Ct" }), /city and state/, "Ct is Court, not Connecticut");
+  assert.match(O.lookupRefusal({ address: "12 Elm St" }), /city and state/);
   assert.match(O.lookupRefusal({ address: "1 Main St, Boise, ID https://x.example" }), /doesn't look like an address/);
   assert.match(O.lookupRefusal({ address: "1 " + "Main ".repeat(60) + "St, Boise, ID" }), /too long/);
 });

@@ -5744,5 +5744,11 @@
     "type": "fix",
     "title": "The admin key is no longer accepted in the address of the accuracy report",
     "details": "/api/accuracy, the backtest panel on /admin, was missed when the admin key stopped being accepted in a link’s address on 2026-11-14, and still took ?key= whatever ADMIN_KEY_IN_URL said. It now refuses the key in the address like the other six admin routes and says to send the x-admin-key header instead. The header and an unlocked /admin still work, and ADMIN_KEY_IN_URL=on restores the old behaviour."
+  },
+  {
+    "date": "2026-11-28",
+    "type": "fix",
+    "title": "Find a property’s owner accepts an address without commas",
+    "details": "“1210 N 17th St Boise ID” was refused with “Add the city and state” because the check only looked for a comma before the state or a ZIP code. An address that ends in a state code or name (after a street and a city) now counts; “Ct” alone is still read as Court, not Connecticut."
   }
 ]

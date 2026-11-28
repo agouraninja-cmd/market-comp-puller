@@ -286,10 +286,12 @@ column. So "is this an admin?" is answered by **possession of that key**, which
    session the click fetches the file with the header and saves it from
    memory (`renderDls`).
 
-**The key is never accepted in a URL (2026-11-14).** Six routes took `?key=`
+**The key is never accepted in a URL (2026-11-14).** Seven routes took `?key=`
 "for machine callers": the three CSV downloads (`/api/leads`,
 `/api/comp-submissions`, `/api/comp-corpus`), `/api/stats`,
-`/api/admin/submissions` and `/api/corpus-audit`. A key in an address is
+`/api/admin/submissions`, `/api/corpus-audit` and `/api/accuracy` (the
+seventh was missed on 2026-11-14 and still took `?key=` whatever the switch
+said until 2026-11-27; `/admin`'s `loadAccuracy` already sent the header). A key in an address is
 written to the host's access log and the browser's history, and the lead CSV
 behind it is people's contact details; every caller in the repo already sent
 the header, and `/hq` was the one page still building such a link. Those

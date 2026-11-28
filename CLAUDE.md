@@ -481,7 +481,7 @@ so they are trusted config and are never set in production.
 | `OWNER_DAILY_SEARCHES` | 150 | owner-lookup searches the whole site may run per UTC day | owner-lookup.md |
 | `NAV_SHELL` | `rail` | signed-in chrome as a left rail; `bar` is the rollback | app-shell.md |
 | `WARM_TABS` | `all` | build every rail tab the member can see ahead of the click; `one` is the rollback (only the likely next tab); an unknown value exits at boot | app-shell.md |
-| `ADMIN_KEY_IN_URL` | off | `on` lets the six admin routes that used to take `?key=` take it again (the CSV downloads, `/api/stats`, `/api/admin/submissions`, `/api/corpus-audit`); the rollback for a forgotten bookmark, not a setting to leave on | billing.md |
+| `ADMIN_KEY_IN_URL` | off | `on` lets the seven admin routes that used to take `?key=` take it again (the CSV downloads, `/api/stats`, `/api/admin/submissions`, `/api/corpus-audit`, `/api/accuracy`); the rollback for a forgotten bookmark, not a setting to leave on | billing.md |
 | `EXTERNAL_APP_SCRIPT` | on | serve index.html's megabyte of inline script as `/app.<hash>.js`, cached for a year; `off` is the rollback (script inline, as before) | workspace.md |
 | `SHUTDOWN_GRACE_SECONDS` | 280 | how long a stop (a deploy's SIGTERM, Ctrl+C, a crash) waits for requests in flight; the host's own shutdown delay is the real limit | app-shell.md |
 | `SITE_URL`, `GOOGLE_SITE_VERIFICATION` | Render URL / unset | canonical origin; Search Console file verification (keep it set for good) | public-pages.md |

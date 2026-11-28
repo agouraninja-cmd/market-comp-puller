@@ -1598,9 +1598,10 @@ function isAdminRequest(req) {
 }
 // The admin key in a URL (`?key=`), which is no longer accepted (2026-11-14).
 //
-// Six routes took it "for machine callers": the three CSV downloads (leads,
-// broker submissions, the corpus), /api/stats, /api/admin/submissions and
-// /api/corpus-audit. A key in a URL is written to the host's access log, the
+// Seven routes took it "for machine callers": the three CSV downloads (leads,
+// broker submissions, the corpus), /api/stats, /api/admin/submissions,
+// /api/corpus-audit and /api/accuracy (missed on 2026-11-14, converted on
+// 2026-11-27). A key in a URL is written to the host's access log, the
 // browser's history and any proxy in between, and the lead CSV it opens is
 // people's names, emails and phone numbers. Every caller in this repository
 // already sends the `x-admin-key` header (the workflows, gen-market-seed.js,
@@ -36465,10 +36466,8 @@ const server = http.createServer((req, res) =>
   // be what breaks it. `?refresh=1` busts the memo.
   if (req.method === "GET" && req.url.split("?")[0] === "/api/accuracy") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!isAdminRequestOrUrlKey(req)) return sendJson(res, 401, adminRefusal(req));
     const params = new URL(req.url, "http://localhost").searchParams;
-    if (!isAdminRequest(req) && !secretMatches(params.get("key"), ADMIN_KEY)) {
-      return sendJson(res, 401, { error: "Unauthorized." });
-    }
     accuracyReport(params.get("refresh") === "1")
       .then((data) => sendJson(res, 200, data))
       .catch((err) => {
